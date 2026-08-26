@@ -170,11 +170,41 @@ def validate_review(
         raise ReviewValidationError(
             f"acceptance mapping references unknown criteria: {unknown}"
         )
+    if review.mode == "PRIMARY":
+        missing_assessments = acceptance_ids - set(review.acceptance)
+        if missing_assessments:
+            missing = ", ".join(sorted(missing_assessments))
+            raise ReviewValidationError(
+                f"PRIMARY review is missing acceptance criteria: {missing}"
+            )
+
+    failed_acceptance = {
+        acceptance_id
+        for acceptance_id, outcome in review.acceptance.items()
+        if outcome == "FAIL"
+    }
+    if review.verdict == "PASS" and failed_acceptance:
+        failed = ", ".join(sorted(failed_acceptance))
+        raise ReviewValidationError(
+            f"PASS review contains failed acceptance criteria: {failed}"
+        )
+    if review.verdict == "CHANGES_REQUIRED" and not failed_acceptance:
+        raise ReviewValidationError(
+            "CHANGES_REQUIRED review must contain at least one acceptance FAIL"
+        )
+
     for finding in review.findings:
         if finding.basis not in acceptance_ids:
             raise ReviewValidationError(
                 f"{finding.id} basis references unknown acceptance: "
                 f"{finding.basis}"
+            )
+        if (
+            review.verdict == "CHANGES_REQUIRED"
+            and finding.basis not in failed_acceptance
+        ):
+            raise ReviewValidationError(
+                f"{finding.id} basis must reference an acceptance marked FAIL"
             )
 
     if review.prior_finding_id is not None:

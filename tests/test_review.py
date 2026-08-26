@@ -100,6 +100,42 @@ def test_rejects_finding_basis_outside_task_acceptance() -> None:
         validate_review(task=task, result=result, review=review)
 
 
+def test_rejects_pass_with_failed_acceptance() -> None:
+    task, result = contracts()
+    review = parse_review(PASS_REVIEW.replace("AC1: PASS", "AC1: FAIL"))
+
+    with pytest.raises(ReviewValidationError, match="PASS.*failed.*AC1"):
+        validate_review(task=task, result=result, review=review)
+
+
+def test_rejects_primary_review_missing_acceptance() -> None:
+    task, result = contracts()
+    review = parse_review(PASS_REVIEW.replace("  AC2: PASS\n", ""))
+
+    with pytest.raises(ReviewValidationError, match="missing.*AC2"):
+        validate_review(task=task, result=result, review=review)
+
+
+def test_rejects_finding_whose_basis_is_marked_pass() -> None:
+    task, result = contracts()
+    review = parse_review(
+        CHANGES_REVIEW.replace("AC1: FAIL", "AC1: PASS").replace(
+            "AC2: PASS", "AC2: FAIL"
+        )
+    )
+
+    with pytest.raises(ReviewValidationError, match="R1.*marked FAIL"):
+        validate_review(task=task, result=result, review=review)
+
+
+def test_rejects_changes_required_without_failed_acceptance() -> None:
+    task, result = contracts()
+    review = parse_review(CHANGES_REVIEW.replace("AC1: FAIL", "AC1: PASS"))
+
+    with pytest.raises(ReviewValidationError, match="at least one acceptance FAIL"):
+        validate_review(task=task, result=result, review=review)
+
+
 def test_pass_cannot_contain_finding() -> None:
     invalid = CHANGES_REVIEW.replace("verdict: CHANGES_REQUIRED", "verdict: PASS")
 
