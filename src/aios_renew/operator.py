@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -32,12 +33,45 @@ class OperatorError(RuntimeError):
     """Raised for a clear operator-level failure."""
 
 
+class RepositoryLock:
+    """Process-safe local repository mutation guard."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._acquired = False
+
+    def acquire(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            self._acquired = True
+        except FileExistsError:
+            raise OperatorError("another AIOS run is active in this repository")
+
+    def release(self) -> None:
+        if self._acquired:
+            try:
+                self.path.unlink()
+            except FileNotFoundError:
+                pass
+            self._acquired = False
+
+    def __enter__(self) -> RepositoryLock:
+        self.acquire()
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.release()
+
+
 @dataclass(frozen=True)
 class RuntimePaths:
     root: Path
     runs: Path
     handoffs: Path
     results: Path
+    lock: Path
 
 
 @dataclass(frozen=True)
@@ -134,6 +168,7 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         runs=state_root / "runs",
         handoffs=state_root / "handoffs",
         results=state_root / "results",
+        lock=state_root / "operator.lock",
     )
     for path in (paths.runs, paths.handoffs, paths.results):
         path.mkdir(parents=True, exist_ok=True)
@@ -175,78 +210,80 @@ def run_task(
     if executor == "codex" and codex_sandbox not in CODEX_SANDBOXES:
         raise OperatorError(f"unsupported Codex sandbox: {codex_sandbox}")
     state = runtime_paths(root)
-    run_id = next_run_id(task_id, state.runs)
-    run = Run.from_task(
-        run_id=run_id,
-        task=task,
-        executor=executor,
-        base_sha=base_sha,
-        workspace=str(root),
-    )
-    result_path = state.results / f"{run_id}.json"
-    _write_json(state.runs / f"{run_id}.json", asdict(run))
 
-    if executor == "codex":
-        selected_adapter = CodexAdapter(
-            runner=_codex_runner(native_runner, codex_sandbox)
-        )
-    else:
-        handoff_path = state.handoffs / f"{run_id}.json"
-        _write_json(
-            handoff_path,
-            {
-                "task": asdict(task),
-                "run": asdict(run),
-                "result_package_path": str(result_path),
-            },
-        )
-        selected_adapter = AntigravityAdapter(
-            transport=_antigravity_transport(
-                repo=root,
-                handoff_path=handoff_path,
-                result_path=result_path,
-                native_runner=native_runner,
-            )
-        )
-
-    leases = RunLeaseRegistry()
-    lease = leases.acquire(run)
-    try:
-        package = ExecutorBoundary(leases).invoke(
+    with RepositoryLock(state.lock):
+        run_id = next_run_id(task_id, state.runs)
+        run = Run.from_task(
+            run_id=run_id,
             task=task,
-            run=run,
-            lease=lease,
-            adapter=selected_adapter,
+            executor=executor,
+            base_sha=base_sha,
+            workspace=str(root),
         )
-    except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
-        raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
-    except CodexExecutionError as exc:
-        raise OperatorError(f"Codex invocation failed: {exc}") from exc
-    except AntigravityExecutionError as exc:
-        raise OperatorError(str(exc)) from exc
-    except ExecutorBoundaryError as exc:
-        raise OperatorError(f"executor boundary failed: {exc}") from exc
+        result_path = state.results / f"{run_id}.json"
+        _write_json(state.runs / f"{run_id}.json", asdict(run))
 
-    actual_head = _git(root, "rev-parse", "HEAD")
-    if package.result.head_sha != actual_head:
-        raise OperatorError("RESULT.head_sha mismatch")
-    post_status = _git(root, "status", "--porcelain")
-    if post_status:
-        raise OperatorError("working tree dirty after execution")
-    if package.result.changed_files and actual_head == base_sha:
-        raise OperatorError("final Git HEAD did not advance")
+        if executor == "codex":
+            selected_adapter = CodexAdapter(
+                runner=_codex_runner(native_runner, codex_sandbox)
+            )
+        else:
+            handoff_path = state.handoffs / f"{run_id}.json"
+            _write_json(
+                handoff_path,
+                {
+                    "task": asdict(task),
+                    "run": asdict(run),
+                    "result_package_path": str(result_path),
+                },
+            )
+            selected_adapter = AntigravityAdapter(
+                transport=_antigravity_transport(
+                    repo=root,
+                    handoff_path=handoff_path,
+                    result_path=result_path,
+                    native_runner=native_runner,
+                )
+            )
 
-    if executor == "codex":
-        _write_json(result_path, result_package_data(package))
+        leases = RunLeaseRegistry()
+        lease = leases.acquire(run)
+        try:
+            package = ExecutorBoundary(leases).invoke(
+                task=task,
+                run=run,
+                lease=lease,
+                adapter=selected_adapter,
+            )
+        except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
+            raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
+        except CodexExecutionError as exc:
+            raise OperatorError(f"Codex invocation failed: {exc}") from exc
+        except AntigravityExecutionError as exc:
+            raise OperatorError(str(exc)) from exc
+        except ExecutorBoundaryError as exc:
+            raise OperatorError(f"executor boundary failed: {exc}") from exc
 
-    return RunSummary(
-        task_id=task_id,
-        run_id=run_id,
-        executor=executor,
-        base_sha=base_sha,
-        head_sha=actual_head,
-        result_path=result_path,
-    )
+        actual_head = _git(root, "rev-parse", "HEAD")
+        if package.result.head_sha != actual_head:
+            raise OperatorError("RESULT.head_sha mismatch")
+        post_status = _git(root, "status", "--porcelain")
+        if post_status:
+            raise OperatorError("working tree dirty after execution")
+        if package.result.changed_files and actual_head == base_sha:
+            raise OperatorError("final Git HEAD did not advance")
+
+        if executor == "codex":
+            _write_json(result_path, result_package_data(package))
+
+        return RunSummary(
+            task_id=task_id,
+            run_id=run_id,
+            executor=executor,
+            base_sha=base_sha,
+            head_sha=actual_head,
+            result_path=result_path,
+        )
 
 
 def result_package_data(package: ResultPackage) -> dict[str, Any]:

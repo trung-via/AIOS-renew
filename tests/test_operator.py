@@ -491,3 +491,107 @@ def test_operator_adds_no_background_or_orchestration_framework() -> None:
         "message broker",
     ):
         assert forbidden not in source
+
+
+def test_first_operator_run_can_acquire_repository_lock(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=FakeCodexRunner(repo),
+    )
+    assert summary.run_id == "RUN-101-001"
+
+
+def test_concurrent_second_acquisition_fails_before_executor_invocation(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    paths.lock.parent.mkdir(parents=True, exist_ok=True)
+    paths.lock.write_text("locked", encoding="utf-8")
+
+    def runner(command, **kwargs):
+        raise AssertionError("executor must not be invoked when lock is held")
+
+    with pytest.raises(
+        OperatorError, match="another AIOS run is active in this repository"
+    ):
+        run_task(
+            "TASK-101", executor="codex", repo=repo, native_runner=runner
+        )
+
+
+def test_lock_released_after_successful_execution(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=FakeCodexRunner(repo),
+    )
+    assert not paths.lock.exists()
+
+
+def test_lock_released_after_executor_failure(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+
+    with pytest.raises(OperatorError, match="Antigravity CLI not found"):
+        run_task(
+            "TASK-101",
+            executor="antigravity",
+            repo=repo,
+            native_runner=FakeAntigravityRunner(repo, mode="missing"),
+        )
+    assert not paths.lock.exists()
+
+
+def test_run_id_allocation_happens_while_lock_is_held(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    lock_was_held = False
+    run_file_existed = False
+
+    class LockCheckingRunner:
+        def __call__(self, command, **kwargs):
+            nonlocal lock_was_held, run_file_existed
+            lock_was_held = paths.lock.exists()
+            run_file_existed = (paths.runs / "RUN-101-001.json").is_file()
+            return FakeCodexRunner(repo)(command, **kwargs)
+
+    run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=LockCheckingRunner(),
+    )
+    assert lock_was_held is True
+    assert run_file_existed is True
+    assert not paths.lock.exists()
+
+
+def test_runtime_lock_remains_under_git_dir_and_does_not_dirty_git_status(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+
+    assert paths.lock.is_relative_to(repo / ".git")
+    paths.lock.parent.mkdir(parents=True, exist_ok=True)
+    paths.lock.write_text("active", encoding="utf-8")
+
+    assert git(repo, "status", "--porcelain") == ""
+
+
+def test_aios_task_remains_readonly_and_does_not_require_lock(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    paths.lock.parent.mkdir(parents=True, exist_ok=True)
+    paths.lock.write_text("locked", encoding="utf-8")
+
+    summary = describe_task("TASK-101", repo=repo)
+    assert summary.task.task_id == "TASK-101"
+
