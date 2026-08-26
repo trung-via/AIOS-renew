@@ -14,6 +14,7 @@ from .artifacts import (
     validate_result,
     validate_result_package,
 )
+from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
 from .executor import ExecutorAdapter, ExecutorBoundary, ExecutorBoundaryError
 from .run import (
     LeaseConflictError,
@@ -50,6 +51,9 @@ __all__ = [
     "AcceptanceCriterion",
     "ArtifactValidationError",
     "Claim",
+    "CodexAdapter",
+    "CodexExecutionError",
+    "CodexOutputError",
     "Evidence",
     "EvidenceOutcome",
     "EvidenceSource",
