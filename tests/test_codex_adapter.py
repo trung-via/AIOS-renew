@@ -167,9 +167,15 @@ def test_schema_represents_canonical_result_and_evidence_shape() -> None:
         "changed_files",
         "unresolved",
     }
+    claims_prop = result_prop["properties"]["claims"]
+    claim_prop = claims_prop["items"]
+    assert "minItems" not in claims_prop
+    assert claim_prop["properties"]["satisfies"]["minItems"] == 1
+    assert claim_prop["properties"]["evidence"]["minItems"] == 1
 
     evidence_prop = schema["properties"]["evidence"]
     assert evidence_prop["type"] == "array"
+    assert "minItems" not in evidence_prop
     assert set(evidence_prop["items"]["required"]) == {
         "evidence_id",
         "run_id",
@@ -188,6 +194,16 @@ def test_schema_represents_canonical_result_and_evidence_shape() -> None:
     invalid_payload = {"evidence": valid_payload["evidence"]}
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(instance=invalid_payload, schema=schema)
+
+    empty_satisfies = json.loads(successful_output("RUN-007-001"))
+    empty_satisfies["result"]["claims"][0]["satisfies"] = []
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=empty_satisfies, schema=schema)
+
+    empty_claim_evidence = json.loads(successful_output("RUN-007-001"))
+    empty_claim_evidence["result"]["claims"][0]["evidence"] = []
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=empty_claim_evidence, schema=schema)
 
 
 def test_invalid_output_remains_explicit_failure_cases() -> None:
