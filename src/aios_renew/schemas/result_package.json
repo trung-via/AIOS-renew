@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ResultPackage",
+  "type": "object",
+  "required": [
+    "result",
+    "evidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "result": {
+      "type": "object",
+      "required": [
+        "head_sha",
+        "claims",
+        "changed_files",
+        "unresolved"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "head_sha": {
+          "type": "string"
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "satisfies",
+              "claim",
+              "evidence"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "satisfies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "claim": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "changed_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "run_id",
+          "subject_sha",
+          "type",
+          "source",
+          "result",
+          "raw"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "subject_sha": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "command"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "type": "string"
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "required": [
+              "exit_code",
+              "summary"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "exit_code": {
+                "type": "integer"
+              },
+              "summary": {
+                "type": "string"
+              }
+            }
+          },
+          "raw": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

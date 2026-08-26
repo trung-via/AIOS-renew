@@ -5,6 +5,7 @@ from dataclasses import asdict
 import pytest
 
 from aios_renew import (
+    RESULT_PACKAGE_SCHEMA_PATH,
     CodexAdapter,
     CodexExecutionError,
     CodexOutputError,
@@ -112,6 +113,8 @@ def test_constructs_and_invokes_native_codex_command() -> None:
         "C:/workspace",
         "--sandbox",
         "workspace-write",
+        "--output-schema",
+        str(RESULT_PACKAGE_SCHEMA_PATH),
         "--color",
         "never",
         "-",
@@ -119,6 +122,129 @@ def test_constructs_and_invokes_native_codex_command() -> None:
     assert calls[0][1]["capture_output"] is True
     assert calls[0][1]["text"] is True
     assert calls[0][1]["check"] is False
+
+
+def test_output_schema_is_passed() -> None:
+    task, run, registry, boundary = make_execution()
+    lease = registry.acquire(run)
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=successful_output(run.run_id),
+            stderr="",
+        )
+
+    boundary.invoke(
+        task=task,
+        run=run,
+        lease=lease,
+        adapter=CodexAdapter(runner=runner),
+    )
+
+    cmd = calls[0]
+    assert "--output-schema" in cmd
+    idx = cmd.index("--output-schema")
+    assert cmd[idx + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
+
+
+def test_schema_represents_canonical_result_and_evidence_shape() -> None:
+    assert RESULT_PACKAGE_SCHEMA_PATH.exists()
+    schema = json.loads(RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    assert schema.get("type") == "object"
+    assert set(schema.get("required", [])) == {"result", "evidence"}
+    assert schema.get("additionalProperties") is False
+
+    result_prop = schema["properties"]["result"]
+    assert result_prop["type"] == "object"
+    assert set(result_prop["required"]) == {
+        "head_sha",
+        "claims",
+        "changed_files",
+        "unresolved",
+    }
+
+    evidence_prop = schema["properties"]["evidence"]
+    assert evidence_prop["type"] == "array"
+    assert set(evidence_prop["items"]["required"]) == {
+        "evidence_id",
+        "run_id",
+        "subject_sha",
+        "type",
+        "source",
+        "result",
+        "raw",
+    }
+
+    import jsonschema
+
+    valid_payload = json.loads(successful_output("RUN-007-001"))
+    jsonschema.validate(instance=valid_payload, schema=schema)
+
+    invalid_payload = {"evidence": valid_payload["evidence"]}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=invalid_payload, schema=schema)
+
+
+def test_invalid_output_remains_explicit_failure_cases() -> None:
+    task, run, registry, boundary = make_execution()
+
+    def runner_non_json(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout="not-json", stderr=""
+        )
+
+    lease1 = registry.acquire(run)
+    with pytest.raises(CodexOutputError, match="invalid canonical output"):
+        boundary.invoke(
+            task=task,
+            run=run,
+            lease=lease1,
+            adapter=CodexAdapter(runner=runner_non_json),
+        )
+    registry.release(lease1)
+
+    def runner_missing_key(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps({"evidence": []}),
+            stderr="",
+        )
+
+    lease2 = registry.acquire(run)
+    with pytest.raises(CodexOutputError, match="invalid canonical output"):
+        boundary.invoke(
+            task=task,
+            run=run,
+            lease=lease2,
+            adapter=CodexAdapter(runner=runner_missing_key),
+        )
+    registry.release(lease2)
+
+    def runner_bad_type(command, **kwargs):
+        payload = json.loads(successful_output(run.run_id))
+        payload["evidence"][0]["result"]["exit_code"] = "zero"
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(payload),
+            stderr="",
+        )
+
+    lease3 = registry.acquire(run)
+    with pytest.raises(CodexOutputError, match="invalid canonical output"):
+        boundary.invoke(
+            task=task,
+            run=run,
+            lease=lease3,
+            adapter=CodexAdapter(runner=runner_bad_type),
+        )
+    registry.release(lease3)
 
 
 def test_hands_off_unchanged_canonical_task_and_run() -> None:

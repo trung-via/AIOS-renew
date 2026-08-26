@@ -14,7 +14,12 @@ from .artifacts import (
     validate_result,
     validate_result_package,
 )
-from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
+from .codex_adapter import (
+    RESULT_PACKAGE_SCHEMA_PATH,
+    CodexAdapter,
+    CodexExecutionError,
+    CodexOutputError,
+)
 from .executor import ExecutorAdapter, ExecutorBoundary, ExecutorBoundaryError
 from .run import (
     LeaseConflictError,
@@ -62,6 +67,7 @@ __all__ = [
     "ExecutorBoundaryError",
     "Finding",
     "LeaseConflictError",
+    "RESULT_PACKAGE_SCHEMA_PATH",
     "Result",
     "ResultPackage",
     "Remediation",

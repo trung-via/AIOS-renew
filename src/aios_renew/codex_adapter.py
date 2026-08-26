@@ -6,6 +6,7 @@ import json
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 from .artifacts import (
@@ -19,6 +20,10 @@ from .task import Task
 
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
+
+RESULT_PACKAGE_SCHEMA_PATH = (
+    Path(__file__).parent / "schemas" / "result_package.json"
+).resolve()
 
 
 class CodexExecutionError(RuntimeError):
@@ -47,13 +52,19 @@ class CodexAdapter:
 
     executor = "codex"
 
-    def __init__(self, *, runner: ProcessRunner = subprocess.run) -> None:
+    def __init__(
+        self,
+        *,
+        runner: ProcessRunner = subprocess.run,
+        schema_path: str | Path = RESULT_PACKAGE_SCHEMA_PATH,
+    ) -> None:
         self._runner = runner
+        self._schema_path = Path(schema_path)
 
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
         """Execute an unchanged TASK/RUN pair through native Codex CLI."""
 
-        command = self.command_for(run)
+        command = self.command_for(run, schema_path=self._schema_path)
         prompt = self.prompt_for(task=task, run=run)
         try:
             completed = self._runner(
@@ -84,7 +95,10 @@ class CodexAdapter:
         return self._normalize(completed.stdout, stderr=completed.stderr)
 
     @staticmethod
-    def command_for(run: Run) -> tuple[str, ...]:
+    def command_for(
+        run: Run,
+        schema_path: str | Path = RESULT_PACKAGE_SCHEMA_PATH,
+    ) -> tuple[str, ...]:
         """Build the native non-interactive Codex command."""
 
         return (
@@ -94,6 +108,8 @@ class CodexAdapter:
             run.workspace,
             "--sandbox",
             "workspace-write",
+            "--output-schema",
+            str(schema_path),
             "--color",
             "never",
             "-",
