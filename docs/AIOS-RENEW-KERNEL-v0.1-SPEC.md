@@ -1,8 +1,11 @@
 # AIOS-renew Kernel v0.1 Specification
 
-**Status:** Draft baseline for freeze  
+**Status:** FROZEN
+**Freeze date:** 2026-08-26
 **Version:** 0.1  
 **Purpose:** Define the minimum canonical protocol for AI-assisted software execution using ChatGPT as Brain/Reviewer and Codex or Google Antigravity as the single active Executor.
+
+The v0.1 architecture is frozen. Future kernel features require separate tasks and observed evidence. This freeze does not mean the entire AIOS product is finished; it means the minimum kernel contract is stable enough for real engineering use.
 
 ---
 
