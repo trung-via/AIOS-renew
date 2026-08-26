@@ -1,0 +1,493 @@
+import inspect
+import json
+import subprocess
+import tomllib
+from pathlib import Path
+
+import pytest
+
+import aios_renew.operator as operator_module
+from aios_renew.operator import (
+    OperatorError,
+    describe_task,
+    load_task,
+    resolve_repository,
+    run_task,
+    runtime_paths,
+)
+
+
+TASK_SOURCE = """
+task_id: TASK-101
+revision: 1
+goal: Create one deterministic operator test output.
+problem: Exercise the thin operator without a real executor.
+assumptions: []
+scope:
+  inspect: []
+  modify:
+    - OUTPUT.txt
+non_goals:
+  - Change the frozen kernel.
+constraints:
+  hard:
+    - Commit the output.
+acceptance:
+  - id: AC1
+    condition: OUTPUT.txt is committed.
+verification:
+  required:
+    - git status --porcelain
+"""
+
+
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ("git", "-C", str(repo), *args),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def make_repo(
+    root: Path,
+    *,
+    task_source: str | None = TASK_SOURCE,
+) -> Path:
+    repo = root / "repo"
+    repo.mkdir()
+    git(repo, "init", "--quiet")
+    git(repo, "config", "user.name", "AIOS Operator Test")
+    git(repo, "config", "user.email", "operator@example.invalid")
+    (repo / "README.md").write_text("# operator test\n", encoding="utf-8")
+    if task_source is not None:
+        task_dir = repo / ".ai" / "tasks"
+        task_dir.mkdir(parents=True)
+        (task_dir / "TASK-101.yaml").write_text(task_source, encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "baseline")
+    return repo
+
+
+def result_payload(
+    run_id: str,
+    head_sha: str,
+    *,
+    changed_files: list[str] | None = None,
+) -> dict:
+    files = ["OUTPUT.txt"] if changed_files is None else changed_files
+    return {
+        "result": {
+            "head_sha": head_sha,
+            "claims": [
+                {
+                    "id": "C1",
+                    "satisfies": ["AC1"],
+                    "claim": "The operator output was committed.",
+                    "evidence": ["E1"],
+                }
+            ],
+            "changed_files": files,
+            "unresolved": [],
+        },
+        "evidence": [
+            {
+                "evidence_id": "E1",
+                "run_id": run_id,
+                "subject_sha": head_sha,
+                "type": "TEST",
+                "source": {"command": "git status --porcelain"},
+                "result": {"exit_code": 0, "summary": "verified"},
+                "raw": {"path": ".ai/evidence/E1.log"},
+            }
+        ],
+    }
+
+
+class FakeCodexRunner:
+    def __init__(
+        self,
+        repo: Path,
+        *,
+        reported_head: str | None = None,
+        dirty_after: bool = False,
+    ) -> None:
+        self.repo = repo
+        self.reported_head = reported_head
+        self.dirty_after = dirty_after
+        self.calls = []
+        self.count = 0
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        self.count += 1
+        canonical = json.loads(kwargs["input"].split("CANONICAL_INPUT:\n", 1)[1])
+        run_id = canonical["run"]["run_id"]
+        (self.repo / "OUTPUT.txt").write_text(
+            f"operator output {self.count}\n",
+            encoding="utf-8",
+        )
+        git(self.repo, "add", "OUTPUT.txt")
+        git(self.repo, "commit", "--quiet", "-m", f"executor {self.count}")
+        actual_head = git(self.repo, "rev-parse", "HEAD")
+        if self.dirty_after:
+            (self.repo / "DIRTY.txt").write_text("dirty\n", encoding="utf-8")
+        payload = result_payload(run_id, self.reported_head or actual_head)
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(payload),
+            stderr="",
+        )
+
+
+class FakeAntigravityRunner:
+    def __init__(
+        self,
+        repo: Path,
+        *,
+        mode: str = "success",
+    ) -> None:
+        self.repo = repo
+        self.mode = mode
+        self.calls = []
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        if self.mode == "missing":
+            raise FileNotFoundError("agy")
+        if self.mode == "nonzero":
+            return subprocess.CompletedProcess(
+                command,
+                returncode=9,
+                stdout="",
+                stderr="agy failed",
+            )
+        if self.mode == "no-result":
+            return subprocess.CompletedProcess(
+                command,
+                returncode=0,
+                stdout="done",
+                stderr="",
+            )
+
+        handoff_path = next(
+            (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
+        )
+        handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+        result_path = Path(handoff["result_package_path"])
+        if self.mode == "invalid":
+            result_path.write_text("{}", encoding="utf-8")
+        else:
+            (self.repo / "OUTPUT.txt").write_text(
+                "antigravity output\n",
+                encoding="utf-8",
+            )
+            git(self.repo, "add", "OUTPUT.txt")
+            git(self.repo, "commit", "--quiet", "-m", "antigravity executor")
+            head_sha = git(self.repo, "rev-parse", "HEAD")
+            payload = result_payload(handoff["run"]["run_id"], head_sha)
+            result_path.write_text(json.dumps(payload), encoding="utf-8")
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout="operator prose is not authoritative",
+            stderr="",
+        )
+
+
+def test_task_resolution_and_compact_description(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+
+    task = load_task(repo, "TASK-101")
+    rendered = describe_task("TASK-101", repo=repo).render()
+
+    assert task.task_id == "TASK-101"
+    assert rendered.startswith("TASK-101\nrevision: 1")
+    assert "acceptance: AC1" in rendered
+    assert "- git status --porcelain" in rendered
+
+
+def test_missing_task_fails(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+
+    with pytest.raises(OperatorError, match="TASK not found"):
+        load_task(repo, "TASK-101")
+
+
+def test_requested_task_id_mismatch_fails(tmp_path: Path) -> None:
+    repo = make_repo(
+        tmp_path,
+        task_source=TASK_SOURCE.replace("task_id: TASK-101", "task_id: TASK-999"),
+    )
+
+    with pytest.raises(OperatorError, match="TASK id mismatch"):
+        load_task(repo, "TASK-101")
+
+
+def test_invalid_task_uses_canonical_parser(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, task_source="task_id: TASK-101\n")
+
+    with pytest.raises(OperatorError, match="invalid TASK"):
+        load_task(repo, "TASK-101")
+
+
+def test_non_git_directory_fails(tmp_path: Path) -> None:
+    with pytest.raises(OperatorError, match="not a Git repository"):
+        resolve_repository(tmp_path)
+
+
+def test_dirty_repository_fails_before_executor_invocation(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    (repo / "DIRTY.txt").write_text("dirty\n", encoding="utf-8")
+
+    def runner(command, **kwargs):
+        raise AssertionError("executor must not be invoked")
+
+    with pytest.raises(OperatorError, match="repository dirty"):
+        run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+
+def test_base_sha_comes_from_real_git_head(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    base_sha = git(repo, "rev-parse", "HEAD")
+
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=FakeCodexRunner(repo),
+    )
+
+    assert summary.base_sha == base_sha
+
+
+def test_runtime_files_under_git_dir_do_not_dirty_worktree(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    (paths.runs / "RUN-TEST-001.json").write_text("{}", encoding="utf-8")
+    (paths.handoffs / "RUN-TEST-001.json").write_text("{}", encoding="utf-8")
+    (paths.results / "RUN-TEST-001.json").write_text("{}", encoding="utf-8")
+
+    assert git(repo, "status", "--porcelain") == ""
+
+
+def test_sequential_run_ids_increment(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+
+    first = run_task(
+        "TASK-101", executor="codex", repo=repo, native_runner=runner
+    )
+    second = run_task(
+        "TASK-101", executor="codex", repo=repo, native_runner=runner
+    )
+
+    assert first.run_id == "RUN-101-001"
+    assert second.run_id == "RUN-101-002"
+
+
+def test_codex_path_uses_executor_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    real_boundary = operator_module.ExecutorBoundary
+    calls = []
+
+    class SpyBoundary:
+        def __init__(self, leases):
+            self.inner = real_boundary(leases)
+
+        def invoke(self, **kwargs):
+            calls.append(kwargs)
+            return self.inner.invoke(**kwargs)
+
+    monkeypatch.setattr(operator_module, "ExecutorBoundary", SpyBoundary)
+    run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=FakeCodexRunner(repo),
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["lease"] is not None
+
+
+def test_default_codex_sandbox_is_workspace_write(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+
+    run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    command = runner.calls[0][0]
+    assert command[command.index("--sandbox") + 1] == "workspace-write"
+    assert "danger-full-access" not in command
+
+
+def test_danger_full_access_requires_explicit_request(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+
+    run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        codex_sandbox="danger-full-access",
+        native_runner=runner,
+    )
+
+    command = runner.calls[0][0]
+    assert command[command.index("--sandbox") + 1] == "danger-full-access"
+
+
+def test_antigravity_invocation_contract(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeAntigravityRunner(repo)
+
+    run_task(
+        "TASK-101",
+        executor="antigravity",
+        repo=repo,
+        native_runner=runner,
+    )
+
+    command, kwargs = runner.calls[0]
+    instruction = command[2]
+    assert command[:2] == ("agy", "--print")
+    assert kwargs["cwd"] == str(repo.resolve())
+    assert ".git" in instruction and "handoff" in instruction
+    assert "Create one deterministic operator test output" not in instruction
+    assert "--dangerously-skip-permissions" not in command
+
+
+def test_missing_agy_executable_fails_clearly(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+
+    with pytest.raises(OperatorError, match="Antigravity CLI not found"):
+        run_task(
+            "TASK-101",
+            executor="antigravity",
+            repo=repo,
+            native_runner=FakeAntigravityRunner(repo, mode="missing"),
+        )
+
+
+def test_nonzero_agy_exit_fails_clearly(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+
+    with pytest.raises(OperatorError, match="CLI returned nonzero"):
+        run_task(
+            "TASK-101",
+            executor="antigravity",
+            repo=repo,
+            native_runner=FakeAntigravityRunner(repo, mode="nonzero"),
+        )
+
+
+def test_missing_antigravity_result_file_fails(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+
+    with pytest.raises(OperatorError, match="ResultPackage missing"):
+        run_task(
+            "TASK-101",
+            executor="antigravity",
+            repo=repo,
+            native_runner=FakeAntigravityRunner(repo, mode="no-result"),
+        )
+
+
+def test_invalid_antigravity_result_fails_canonical_validation(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+
+    with pytest.raises(OperatorError, match="invalid canonical ResultPackage"):
+        run_task(
+            "TASK-101",
+            executor="antigravity",
+            repo=repo,
+            native_runner=FakeAntigravityRunner(repo, mode="invalid"),
+        )
+
+
+def test_result_head_sha_mismatch_fails(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+
+    with pytest.raises(OperatorError, match="RESULT.head_sha mismatch"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=FakeCodexRunner(repo, reported_head="deadbeef"),
+        )
+
+
+def test_dirty_post_execution_worktree_fails(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+
+    with pytest.raises(OperatorError, match="working tree dirty after execution"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=FakeCodexRunner(repo, dirty_after=True),
+        )
+
+
+def test_successful_codex_execution_stores_result_package(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=FakeCodexRunner(repo),
+    )
+    stored = json.loads(summary.result_path.read_text(encoding="utf-8"))
+
+    assert stored["result"]["head_sha"] == summary.head_sha
+    assert stored["evidence"][0]["raw"]["path"] == ".ai/evidence/E1.log"
+    assert summary.result_path.parent == repo / ".git" / "aios" / "results"
+
+
+def test_successful_antigravity_execution_returns_pass_summary(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+
+    summary = run_task(
+        "TASK-101",
+        executor="antigravity",
+        repo=repo,
+        native_runner=FakeAntigravityRunner(repo),
+    )
+
+    assert summary.render().startswith("AIOS RUN PASS\n")
+    assert "executor: antigravity" in summary.render()
+    assert summary.result_path.is_file()
+
+
+def test_pyproject_registers_aios_entry_point() -> None:
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+
+    assert project["project"]["scripts"]["aios"] == "aios_renew.operator:main"
+
+
+def test_operator_adds_no_background_or_orchestration_framework() -> None:
+    source = inspect.getsource(operator_module).lower()
+
+    for forbidden in (
+        "while ",
+        "polling",
+        "watcher",
+        "daemon",
+        "retry",
+        "router",
+        "database",
+        "redis",
+        "message broker",
+    ):
+        assert forbidden not in source
