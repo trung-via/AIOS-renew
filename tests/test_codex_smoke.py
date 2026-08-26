@@ -30,13 +30,21 @@ def git(workspace: Path, *args: str) -> str:
     ).stdout.strip()
 
 
-def result_package(run_id: str, head_sha: str) -> ResultPackage:
+def result_package(
+    run_id: str,
+    head_sha: str,
+    *,
+    satisfies: tuple[str, ...] = ("AC1", "AC2", "AC3"),
+    evidence_exit_code: int = 0,
+    include_evidence: bool = True,
+) -> ResultPackage:
+    satisfies_yaml = ", ".join(satisfies)
     result = parse_result(
         f"""
 head_sha: {head_sha}
 claims:
   - id: C1
-    satisfies: [AC1, AC2, AC3]
+    satisfies: [{satisfies_yaml}]
     claim: The smoke target was created and committed.
     evidence: [E1]
 changed_files:
@@ -53,13 +61,29 @@ type: TEST
 source:
   command: deterministic smoke verification
 result:
-  exit_code: 0
+  exit_code: {evidence_exit_code}
   summary: file and Git state verified
 raw:
   path: .ai/evidence/E1.log
 """
     )
-    return ResultPackage(result=result, evidence=(evidence,))
+    return ResultPackage(
+        result=result,
+        evidence=(evidence,) if include_evidence else (),
+    )
+
+
+def empty_result_package(head_sha: str) -> ResultPackage:
+    result = parse_result(
+        f"""
+head_sha: {head_sha}
+claims: []
+changed_files:
+  - SMOKE_OK.txt
+unresolved: []
+"""
+    )
+    return ResultPackage(result=result, evidence=())
 
 
 def commit_smoke_file(workspace: Path, content: bytes = SMOKE_CONTENT) -> str:
@@ -118,6 +142,70 @@ def test_expected_file_and_content_verification_passes(tmp_path: Path) -> None:
 
     assert summary.head_sha == head_sha
     assert summary.working_tree == "clean"
+
+
+def test_empty_claims_and_evidence_are_rejected(tmp_path: Path) -> None:
+    workspace = tmp_path / "smoke-repo"
+    base_sha = initialize_smoke_repository(workspace)
+    head_sha = commit_smoke_file(workspace)
+
+    with pytest.raises(SmokeFailure, match="missing smoke acceptance coverage"):
+        verify_smoke_result(
+            workspace=workspace,
+            base_sha=base_sha,
+            package=empty_result_package(head_sha),
+        )
+
+
+def test_missing_ac3_coverage_is_rejected(tmp_path: Path) -> None:
+    workspace = tmp_path / "smoke-repo"
+    base_sha = initialize_smoke_repository(workspace)
+    head_sha = commit_smoke_file(workspace)
+
+    with pytest.raises(SmokeFailure, match="coverage: AC3"):
+        verify_smoke_result(
+            workspace=workspace,
+            base_sha=base_sha,
+            package=result_package(
+                "RUN-009-SMOKE",
+                head_sha,
+                satisfies=("AC1", "AC2"),
+            ),
+        )
+
+
+def test_nonzero_supporting_evidence_is_rejected(tmp_path: Path) -> None:
+    workspace = tmp_path / "smoke-repo"
+    base_sha = initialize_smoke_repository(workspace)
+    head_sha = commit_smoke_file(workspace)
+
+    with pytest.raises(SmokeFailure, match="E1 must have exit_code 0"):
+        verify_smoke_result(
+            workspace=workspace,
+            base_sha=base_sha,
+            package=result_package(
+                "RUN-009-SMOKE",
+                head_sha,
+                evidence_exit_code=1,
+            ),
+        )
+
+
+def test_missing_supporting_evidence_is_rejected(tmp_path: Path) -> None:
+    workspace = tmp_path / "smoke-repo"
+    base_sha = initialize_smoke_repository(workspace)
+    head_sha = commit_smoke_file(workspace)
+
+    with pytest.raises(SmokeFailure, match="missing evidence: E1"):
+        verify_smoke_result(
+            workspace=workspace,
+            base_sha=base_sha,
+            package=result_package(
+                "RUN-009-SMOKE",
+                head_sha,
+                include_evidence=False,
+            ),
+        )
 
 
 def test_wrong_content_fails(tmp_path: Path) -> None:
