@@ -10,10 +10,12 @@ from aios_renew import (
     Task,
     parse_evidence,
     parse_result,
+    parse_task,
 )
 from scripts.codex_smoke import (
     PROJECT_ROOT,
     SMOKE_CONTENT,
+    SMOKE_TASK_SOURCE,
     SmokeFailure,
     initialize_smoke_repository,
     run_smoke,
@@ -127,6 +129,18 @@ def test_temporary_repo_creation_produces_real_baseline_sha(tmp_path: Path) -> N
     assert base_sha == git(workspace, "rev-parse", "HEAD")
     assert len(base_sha) == 40
     assert git(workspace, "status", "--porcelain") == ""
+
+
+def test_smoke_task_requests_deterministic_git_head_verification() -> None:
+    task = parse_task(SMOKE_TASK_SOURCE)
+
+    assert "git rev-parse HEAD" in task.verification.required
+
+
+def test_smoke_task_requests_clean_worktree_verification() -> None:
+    task = parse_task(SMOKE_TASK_SOURCE)
+
+    assert "git status --porcelain" in task.verification.required
 
 
 def test_expected_file_and_content_verification_passes(tmp_path: Path) -> None:

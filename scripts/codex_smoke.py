@@ -55,6 +55,8 @@ acceptance:
 verification:
   required:
     - python -c "from pathlib import Path; assert Path('SMOKE_OK.txt').read_bytes() == b'AIOS smoke pass\\n'"
+    - git rev-parse HEAD
+    - git status --porcelain
 """
 
 
