@@ -1,5 +1,10 @@
 """AIOS-renew kernel package."""
 
+from .antigravity_adapter import (
+    AntigravityAdapter,
+    AntigravityExecutionError,
+    AntigravityOutputError,
+)
 from .artifacts import (
     ArtifactValidationError,
     Claim,
@@ -54,6 +59,9 @@ __version__ = "0.1.0"
 
 __all__ = [
     "AcceptanceCriterion",
+    "AntigravityAdapter",
+    "AntigravityExecutionError",
+    "AntigravityOutputError",
     "ArtifactValidationError",
     "Claim",
     "CodexAdapter",
