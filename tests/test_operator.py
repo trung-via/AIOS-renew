@@ -573,6 +573,37 @@ def test_run_id_allocation_happens_while_lock_is_held(tmp_path: Path) -> None:
     assert not paths.lock.exists()
 
 
+def test_base_sha_is_captured_and_bound_while_lock_is_held(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    real_git = operator_module._git
+    head_capture_lock_states = []
+
+    def lock_checking_git(repo_path, *args):
+        if args == ("rev-parse", "HEAD"):
+            head_capture_lock_states.append(paths.lock.exists())
+        return real_git(repo_path, *args)
+
+    monkeypatch.setattr(operator_module, "_git", lock_checking_git)
+    runner = FakeCodexRunner(repo)
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=runner,
+    )
+
+    canonical = json.loads(
+        runner.calls[0][1]["input"].split("CANONICAL_INPUT:\n", 1)[1]
+    )
+    assert head_capture_lock_states[0] is True
+    assert canonical["run"]["base_sha"] == summary.base_sha
+    assert not paths.lock.exists()
+
+
 def test_runtime_lock_remains_under_git_dir_and_does_not_dirty_git_status(
     tmp_path: Path,
 ) -> None:
@@ -594,4 +625,3 @@ def test_aios_task_remains_readonly_and_does_not_require_lock(tmp_path: Path) ->
 
     summary = describe_task("TASK-101", repo=repo)
     assert summary.task.task_id == "TASK-101"
-

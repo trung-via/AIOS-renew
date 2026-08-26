@@ -201,10 +201,6 @@ def run_task(
 
     root = resolve_repository(repo)
     task = load_task(root, task_id)
-    dirty = _git(root, "status", "--porcelain")
-    if dirty:
-        raise OperatorError("repository dirty")
-    base_sha = _git(root, "rev-parse", "HEAD")
     if executor not in ("codex", "antigravity"):
         raise OperatorError(f"unsupported executor: {executor}")
     if executor == "codex" and codex_sandbox not in CODEX_SANDBOXES:
@@ -212,6 +208,10 @@ def run_task(
     state = runtime_paths(root)
 
     with RepositoryLock(state.lock):
+        dirty = _git(root, "status", "--porcelain")
+        if dirty:
+            raise OperatorError("repository dirty")
+        base_sha = _git(root, "rev-parse", "HEAD")
         run_id = next_run_id(task_id, state.runs)
         run = Run.from_task(
             run_id=run_id,
