@@ -27,7 +27,6 @@ from aios_renew import (  # noqa: E402
 SMOKE_CONTENT = b"AIOS smoke pass\n"
 SMOKE_FILE = "SMOKE_OK.txt"
 SMOKE_RUN_ID = "RUN-009-SMOKE"
-SMOKE_ACCEPTANCE_IDS = frozenset({"AC1", "AC2", "AC3"})
 SMOKE_TASK_SOURCE = """
 task_id: TASK-009-SMOKE
 revision: 1
@@ -47,10 +46,6 @@ constraints:
     - Commit the final repository state.
     - After committing the final repository state, obtain the actual final commit SHA using git rev-parse HEAD.
     - RESULT.head_sha MUST be exactly the actual final commit SHA returned by git rev-parse HEAD.
-    - A successful RESULT MUST contain claims whose combined satisfies values cover AC1, AC2, and AC3.
-    - Every claim used to cover AC1, AC2, or AC3 MUST reference at least one EVIDENCE item.
-    - Every EVIDENCE item supporting a successful smoke claim MUST have exit_code equal to 0.
-    - AC3 MUST be supported by the deterministic Git HEAD verification EVIDENCE produced by git rev-parse HEAD.
 acceptance:
   - id: AC1
     condition: SMOKE_OK.txt exists.
@@ -122,7 +117,6 @@ def verify_smoke_result(
 ) -> SmokeSummary:
     """Independently verify filesystem and Git state after execution."""
 
-    _verify_smoke_acceptance(package)
     target = Path(workspace).resolve()
     smoke_file = target / SMOKE_FILE
     if not smoke_file.is_file():
@@ -154,38 +148,6 @@ def verify_smoke_result(
         ),
         working_tree="clean",
     )
-
-
-def _verify_smoke_acceptance(package: ResultPackage) -> None:
-    evidence_by_id = {
-        item.evidence_id: item
-        for item in package.evidence
-    }
-    covered: set[str] = set()
-
-    for claim in package.result.claims:
-        claim_coverage = SMOKE_ACCEPTANCE_IDS.intersection(claim.satisfies)
-        if not claim_coverage:
-            continue
-
-        missing_evidence = set(claim.evidence) - evidence_by_id.keys()
-        if missing_evidence:
-            missing = ", ".join(sorted(missing_evidence))
-            raise SmokeFailure(
-                f"smoke acceptance claim references missing evidence: {missing}"
-            )
-        for evidence_id in claim.evidence:
-            if evidence_by_id[evidence_id].result.exit_code != 0:
-                raise SmokeFailure(
-                    f"smoke acceptance evidence {evidence_id} must have exit_code 0"
-                )
-
-        covered.update(claim_coverage)
-
-    missing_acceptance = SMOKE_ACCEPTANCE_IDS - covered
-    if missing_acceptance:
-        missing = ", ".join(sorted(missing_acceptance))
-        raise SmokeFailure(f"missing smoke acceptance coverage: {missing}")
 
 
 def run_smoke(

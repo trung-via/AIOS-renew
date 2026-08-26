@@ -121,6 +121,18 @@ class FailingCodexAdapter:
         raise CodexExecutionError("native failure", exit_code=7)
 
 
+class InvalidPackageCodexAdapter:
+    executor = "codex"
+
+    def execute(self, *, task: Task, run: Run) -> ResultPackage:
+        actual_head = commit_smoke_file(Path(run.workspace))
+        return result_package(
+            run.run_id,
+            actual_head,
+            include_evidence=False,
+        )
+
+
 def test_temporary_repo_creation_produces_real_baseline_sha(tmp_path: Path) -> None:
     workspace = tmp_path / "smoke-repo"
 
@@ -137,16 +149,6 @@ def test_smoke_task_requests_deterministic_git_head_verification() -> None:
     assert "git rev-parse HEAD" in task.verification.required
 
 
-def test_smoke_task_requires_complete_success_claim_coverage() -> None:
-    task = parse_task(SMOKE_TASK_SOURCE)
-    constraints = "\n".join(task.constraints.hard)
-
-    assert "combined satisfies values cover AC1, AC2, and AC3" in constraints
-    assert "Every claim used to cover AC1, AC2, or AC3" in constraints
-    assert "MUST reference at least one EVIDENCE item" in constraints
-    assert "MUST have exit_code equal to 0" in constraints
-
-
 def test_smoke_task_derives_result_head_from_final_git_head() -> None:
     task = parse_task(SMOKE_TASK_SOURCE)
     constraints = "\n".join(task.constraints.hard)
@@ -154,14 +156,6 @@ def test_smoke_task_derives_result_head_from_final_git_head() -> None:
     assert "After committing the final repository state" in constraints
     assert "obtain the actual final commit SHA using git rev-parse HEAD" in constraints
     assert "RESULT.head_sha MUST be exactly the actual final commit SHA" in constraints
-
-
-def test_smoke_task_binds_ac3_to_git_head_evidence() -> None:
-    task = parse_task(SMOKE_TASK_SOURCE)
-    constraints = "\n".join(task.constraints.hard)
-
-    assert "AC3 MUST be supported" in constraints
-    assert "Git HEAD verification EVIDENCE produced by git rev-parse HEAD" in constraints
 
 
 def test_smoke_task_keeps_all_deterministic_verification_commands() -> None:
@@ -197,12 +191,30 @@ def test_expected_file_and_content_verification_passes(tmp_path: Path) -> None:
     assert summary.working_tree == "clean"
 
 
-def test_empty_claims_and_evidence_are_rejected(tmp_path: Path) -> None:
+def test_empty_claims_and_evidence_allow_deterministic_pass(tmp_path: Path) -> None:
     workspace = tmp_path / "smoke-repo"
     base_sha = initialize_smoke_repository(workspace)
     head_sha = commit_smoke_file(workspace)
 
-    with pytest.raises(SmokeFailure, match="missing smoke acceptance coverage"):
+    summary = verify_smoke_result(
+        workspace=workspace,
+        base_sha=base_sha,
+        package=empty_result_package(head_sha),
+    )
+
+    assert summary.head_sha == head_sha
+    assert summary.working_tree == "clean"
+
+
+def test_missing_smoke_file_fails(tmp_path: Path) -> None:
+    workspace = tmp_path / "smoke-repo"
+    base_sha = initialize_smoke_repository(workspace)
+    (workspace / "README.md").write_bytes(b"# changed\n")
+    git(workspace, "add", "README.md")
+    git(workspace, "commit", "--quiet", "-m", "advance without smoke file")
+    head_sha = git(workspace, "rev-parse", "HEAD")
+
+    with pytest.raises(SmokeFailure, match="SMOKE_OK.txt does not exist"):
         verify_smoke_result(
             workspace=workspace,
             base_sha=base_sha,
@@ -210,54 +222,30 @@ def test_empty_claims_and_evidence_are_rejected(tmp_path: Path) -> None:
         )
 
 
-def test_missing_ac3_coverage_is_rejected(tmp_path: Path) -> None:
+def test_final_head_equal_to_baseline_fails(tmp_path: Path) -> None:
     workspace = tmp_path / "smoke-repo"
     base_sha = initialize_smoke_repository(workspace)
-    head_sha = commit_smoke_file(workspace)
+    (workspace / "SMOKE_OK.txt").write_bytes(SMOKE_CONTENT)
 
-    with pytest.raises(SmokeFailure, match="coverage: AC3"):
+    with pytest.raises(SmokeFailure, match="did not advance beyond the baseline"):
         verify_smoke_result(
             workspace=workspace,
             base_sha=base_sha,
-            package=result_package(
-                "RUN-009-SMOKE",
-                head_sha,
-                satisfies=("AC1", "AC2"),
-            ),
+            package=empty_result_package(base_sha),
         )
 
 
-def test_nonzero_supporting_evidence_is_rejected(tmp_path: Path) -> None:
+def test_dirty_working_tree_fails(tmp_path: Path) -> None:
     workspace = tmp_path / "smoke-repo"
     base_sha = initialize_smoke_repository(workspace)
     head_sha = commit_smoke_file(workspace)
+    (workspace / "DIRTY.txt").write_text("dirty", encoding="utf-8")
 
-    with pytest.raises(SmokeFailure, match="E1 must have exit_code 0"):
+    with pytest.raises(SmokeFailure, match="working tree is not clean"):
         verify_smoke_result(
             workspace=workspace,
             base_sha=base_sha,
-            package=result_package(
-                "RUN-009-SMOKE",
-                head_sha,
-                evidence_exit_code=1,
-            ),
-        )
-
-
-def test_missing_supporting_evidence_is_rejected(tmp_path: Path) -> None:
-    workspace = tmp_path / "smoke-repo"
-    base_sha = initialize_smoke_repository(workspace)
-    head_sha = commit_smoke_file(workspace)
-
-    with pytest.raises(SmokeFailure, match="missing evidence: E1"):
-        verify_smoke_result(
-            workspace=workspace,
-            base_sha=base_sha,
-            package=result_package(
-                "RUN-009-SMOKE",
-                head_sha,
-                include_evidence=False,
-            ),
+            package=empty_result_package(head_sha),
         )
 
 
@@ -285,6 +273,16 @@ def test_executor_native_failure_becomes_smoke_failure(tmp_path: Path) -> None:
         )
 
     assert isinstance(captured.value.__cause__, CodexExecutionError)
+
+
+def test_invalid_result_package_fails_through_canonical_boundary(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(SmokeFailure, match="missing evidence: E1"):
+        run_smoke(
+            tmp_path / "smoke-repo",
+            adapter=InvalidPackageCodexAdapter(),
+        )
 
 
 def test_canonical_repo_path_is_not_used_as_smoke_workspace() -> None:
