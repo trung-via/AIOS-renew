@@ -137,6 +137,45 @@ def test_smoke_task_requests_deterministic_git_head_verification() -> None:
     assert "git rev-parse HEAD" in task.verification.required
 
 
+def test_smoke_task_requires_complete_success_claim_coverage() -> None:
+    task = parse_task(SMOKE_TASK_SOURCE)
+    constraints = "\n".join(task.constraints.hard)
+
+    assert "combined satisfies values cover AC1, AC2, and AC3" in constraints
+    assert "Every claim used to cover AC1, AC2, or AC3" in constraints
+    assert "MUST reference at least one EVIDENCE item" in constraints
+    assert "MUST have exit_code equal to 0" in constraints
+
+
+def test_smoke_task_derives_result_head_from_final_git_head() -> None:
+    task = parse_task(SMOKE_TASK_SOURCE)
+    constraints = "\n".join(task.constraints.hard)
+
+    assert "After committing the final repository state" in constraints
+    assert "obtain the actual final commit SHA using git rev-parse HEAD" in constraints
+    assert "RESULT.head_sha MUST be exactly the actual final commit SHA" in constraints
+
+
+def test_smoke_task_binds_ac3_to_git_head_evidence() -> None:
+    task = parse_task(SMOKE_TASK_SOURCE)
+    constraints = "\n".join(task.constraints.hard)
+
+    assert "AC3 MUST be supported" in constraints
+    assert "Git HEAD verification EVIDENCE produced by git rev-parse HEAD" in constraints
+
+
+def test_smoke_task_keeps_all_deterministic_verification_commands() -> None:
+    task = parse_task(SMOKE_TASK_SOURCE)
+
+    assert (
+        "python -c \"from pathlib import Path; assert "
+        "Path('SMOKE_OK.txt').read_bytes() == b'AIOS smoke pass\\n'\""
+        in task.verification.required
+    )
+    assert "git rev-parse HEAD" in task.verification.required
+    assert "git status --porcelain" in task.verification.required
+
+
 def test_smoke_task_requests_clean_worktree_verification() -> None:
     task = parse_task(SMOKE_TASK_SOURCE)
 

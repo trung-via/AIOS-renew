@@ -45,6 +45,12 @@ constraints:
   hard:
     - The exact SMOKE_OK.txt bytes must be AIOS smoke pass followed by LF.
     - Commit the final repository state.
+    - After committing the final repository state, obtain the actual final commit SHA using git rev-parse HEAD.
+    - RESULT.head_sha MUST be exactly the actual final commit SHA returned by git rev-parse HEAD.
+    - A successful RESULT MUST contain claims whose combined satisfies values cover AC1, AC2, and AC3.
+    - Every claim used to cover AC1, AC2, or AC3 MUST reference at least one EVIDENCE item.
+    - Every EVIDENCE item supporting a successful smoke claim MUST have exit_code equal to 0.
+    - AC3 MUST be supported by the deterministic Git HEAD verification EVIDENCE produced by git rev-parse HEAD.
 acceptance:
   - id: AC1
     condition: SMOKE_OK.txt exists.
