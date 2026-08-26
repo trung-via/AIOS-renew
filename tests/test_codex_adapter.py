@@ -2,6 +2,7 @@ import json
 import subprocess
 from dataclasses import asdict
 
+import jsonschema
 import pytest
 
 from aios_renew import (
@@ -186,8 +187,6 @@ def test_schema_represents_canonical_result_and_evidence_shape() -> None:
         "raw",
     }
 
-    import jsonschema
-
     valid_payload = json.loads(successful_output("RUN-007-001"))
     jsonschema.validate(instance=valid_payload, schema=schema)
 
@@ -204,6 +203,62 @@ def test_schema_represents_canonical_result_and_evidence_shape() -> None:
     empty_claim_evidence["result"]["claims"][0]["evidence"] = []
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(instance=empty_claim_evidence, schema=schema)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("result", "head_sha"),
+        ("result", "claims", 0, "id"),
+        ("result", "claims", 0, "satisfies", 0),
+        ("result", "claims", 0, "claim"),
+        ("result", "claims", 0, "evidence", 0),
+        ("result", "changed_files", 0),
+        ("result", "unresolved", 0),
+        ("evidence", 0, "evidence_id"),
+        ("evidence", 0, "run_id"),
+        ("evidence", 0, "subject_sha"),
+        ("evidence", 0, "type"),
+        ("evidence", 0, "source", "command"),
+        ("evidence", 0, "result", "summary"),
+        ("evidence", 0, "raw", "path"),
+    ],
+)
+def test_schema_rejects_empty_canonical_string(path) -> None:
+    schema = json.loads(RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
+    payload = json.loads(successful_output("RUN-007-001"))
+    payload["result"]["unresolved"] = ["known issue"]
+
+    target = payload
+    for segment in path[:-1]:
+        target = target[segment]
+    target[path[-1]] = ""
+
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=payload, schema=schema)
+
+
+@pytest.mark.parametrize(
+    "array_path",
+    [
+        ("result", "claims"),
+        ("result", "changed_files"),
+        ("result", "unresolved"),
+        ("evidence",),
+    ],
+)
+def test_schema_keeps_canonical_arrays_allowed_empty(array_path) -> None:
+    schema = json.loads(RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
+    payload = json.loads(successful_output("RUN-007-001"))
+    if array_path == ("evidence",):
+        payload["result"]["claims"] = []
+
+    target = payload
+    for segment in array_path[:-1]:
+        target = target[segment]
+    target[array_path[-1]] = []
+
+    jsonschema.validate(instance=payload, schema=schema)
 
 
 def test_invalid_output_remains_explicit_failure_cases() -> None:
