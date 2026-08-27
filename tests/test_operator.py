@@ -433,12 +433,54 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     )
 
     command, kwargs = runner.calls[0]
-    instruction = command[2]
-    assert command[:2] == ("agy", "--print")
+    instruction = command[command.index("--print") + 1]
+    assert command[0] == "agy"
+    assert command[command.index("--effort") + 1] == "low"
+    assert command[command.index("--mode") + 1] == "accept-edits"
+    assert "--disable-slash-commands" in command
+    assert command[command.index("--output-format") + 1] == "json"
+    assert command[command.index("--print-timeout") + 1] == "5m"
     assert kwargs["cwd"] == str(repo.resolve())
     assert ".git" in instruction and "handoff" in instruction
     assert "Create one deterministic operator test output" not in instruction
     assert "--dangerously-skip-permissions" not in command
+    assert "--model" not in command
+
+
+def test_antigravity_instruction_defines_canonical_result_package(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeAntigravityRunner(repo)
+
+    run_task(
+        "TASK-101",
+        executor="antigravity",
+        repo=repo,
+        native_runner=runner,
+    )
+
+    command = runner.calls[0][0]
+    instruction = command[command.index("--print") + 1]
+    for field in (
+        "head_sha",
+        "claims",
+        "changed_files",
+        "unresolved",
+        "evidence_id",
+        "run_id",
+        "subject_sha",
+        "type",
+        "source.command",
+        "result.exit_code",
+        "result.summary",
+        "raw.path",
+    ):
+        assert field in instruction
+    assert "evidence.run_id must reference the current RUN" in instruction
+    assert "evidence.subject_sha must equal result.head_sha" in instruction
+    assert "known TASK acceptance ID" in instruction
+    assert "existing evidence_id" in instruction
 
 
 def test_missing_agy_executable_fails_clearly(tmp_path: Path) -> None:

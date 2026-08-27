@@ -356,14 +356,35 @@ def _antigravity_transport(
         "Execute its canonical TASK and RUN exactly within the supplied repository. "
         "Commit the final implementation state when required, obtain final Git HEAD, "
         "and write canonical ResultPackage JSON to the result_package_path specified "
-        "in the handoff. Finish only after that result file exists."
+        "in the handoff. The ResultPackage must be an object with result and evidence. "
+        "result must contain head_sha, claims, changed_files, and unresolved. Each "
+        "claim must contain id, satisfies, claim, and evidence. Each evidence entry "
+        "must contain evidence_id, run_id, subject_sha, type, source.command, "
+        "result.exit_code, result.summary, and raw.path. evidence.run_id must reference "
+        "the current RUN; evidence.subject_sha must equal result.head_sha; every "
+        "claim.satisfies entry must be a known TASK acceptance ID; and every claim "
+        "evidence reference must name an existing evidence_id. Finish only after the "
+        "ResultPackage file exists."
     )
 
     def transport(*, task: Task, run: Run) -> str:
         del task, run
         try:
             completed = native_runner(
-                ("agy", "--print", instruction),
+                (
+                    "agy",
+                    "--print",
+                    instruction,
+                    "--effort",
+                    "low",
+                    "--mode",
+                    "accept-edits",
+                    "--disable-slash-commands",
+                    "--output-format",
+                    "json",
+                    "--print-timeout",
+                    "5m",
+                ),
                 cwd=str(repo),
                 capture_output=True,
                 text=True,
