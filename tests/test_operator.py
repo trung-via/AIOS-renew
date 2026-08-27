@@ -40,6 +40,11 @@ verification:
     - git status --porcelain
 """
 
+MULTI_ACCEPTANCE_TASK_SOURCE = TASK_SOURCE.replace(
+    "verification:\n",
+    "  - id: AC2\n    condition: The second criterion is satisfied.\nverification:\n",
+)
+
 
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(
@@ -195,6 +200,79 @@ class FakeAntigravityRunner:
             stdout="operator prose is not authoritative",
             stderr="",
         )
+
+
+class StaticResultRunner:
+    def __init__(self, repo: Path, result: dict) -> None:
+        self.repo = repo
+        self.result = result
+
+    def __call__(self, command, **kwargs):
+        payload = json.loads(json.dumps(self.result))
+        if command[0] == "agy":
+            handoff_path = next(
+                (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
+            )
+            handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+            run_id = handoff["run"]["run_id"]
+            result_path = Path(handoff["result_package_path"])
+            payload["result"]["head_sha"] = git(self.repo, "rev-parse", "HEAD")
+            for item in payload["evidence"]:
+                item["run_id"] = run_id
+                item["subject_sha"] = payload["result"]["head_sha"]
+            result_path.write_text(json.dumps(payload), encoding="utf-8")
+        else:
+            canonical = json.loads(kwargs["input"].split("CANONICAL_INPUT:\n", 1)[1])
+            run_id = canonical["run"]["run_id"]
+            payload["result"]["head_sha"] = git(self.repo, "rev-parse", "HEAD")
+            for item in payload["evidence"]:
+                item["run_id"] = run_id
+                item["subject_sha"] = payload["result"]["head_sha"]
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(payload),
+            stderr="",
+        )
+
+
+def static_payload(
+    *,
+    satisfies: list[str] | None = None,
+    unresolved: list[str] | None = None,
+) -> dict:
+    criteria = ["AC1"] if satisfies is None else satisfies
+    claims = []
+    evidence = []
+    if criteria:
+        claims.append(
+            {
+                "id": "C1",
+                "satisfies": criteria,
+                "claim": "The stated acceptance criteria are satisfied.",
+                "evidence": ["E1"],
+            }
+        )
+        evidence.append(
+            {
+                "evidence_id": "E1",
+                "run_id": "replaced-by-runner",
+                "subject_sha": "replaced-by-runner",
+                "type": "TEST",
+                "source": {"command": "git status --porcelain"},
+                "result": {"exit_code": 0, "summary": "verified"},
+                "raw": {"path": ".ai/evidence/E1.log"},
+            }
+        )
+    return {
+        "result": {
+            "head_sha": "replaced-by-runner",
+            "claims": claims,
+            "changed_files": [],
+            "unresolved": [] if unresolved is None else unresolved,
+        },
+        "evidence": evidence,
+    }
 
 
 def test_task_resolution_and_compact_description(tmp_path: Path) -> None:
@@ -435,6 +513,98 @@ def test_dirty_post_execution_worktree_fails(tmp_path: Path) -> None:
             repo=repo,
             native_runner=FakeCodexRunner(repo, dirty_after=True),
         )
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_run_013_false_pass_shape_fails_closed(
+    tmp_path: Path,
+    executor: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    payload = static_payload(
+        satisfies=[],
+        unresolved=["Codex could not complete execution."],
+    )
+
+    with pytest.raises(OperatorError, match="RESULT has unresolved items"):
+        run_task(
+            "TASK-101",
+            executor=executor,
+            repo=repo,
+            native_runner=StaticResultRunner(repo, payload),
+        )
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_missing_acceptance_coverage_fails_closed(
+    tmp_path: Path,
+    executor: str,
+) -> None:
+    repo = make_repo(tmp_path, task_source=MULTI_ACCEPTANCE_TASK_SOURCE)
+    payload = static_payload(satisfies=["AC1"])
+
+    with pytest.raises(
+        OperatorError,
+        match="RESULT does not satisfy acceptance criteria: AC2",
+    ):
+        run_task(
+            "TASK-101",
+            executor=executor,
+            repo=repo,
+            native_runner=StaticResultRunner(repo, payload),
+        )
+
+
+def test_acceptance_coverage_is_union_of_claim_satisfies(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, task_source=MULTI_ACCEPTANCE_TASK_SOURCE)
+    payload = static_payload(satisfies=["AC1"])
+    payload["result"]["claims"].append(
+        {
+            "id": "C2",
+            "satisfies": ["AC2"],
+            "claim": "The second criterion is satisfied.",
+            "evidence": ["E2"],
+        }
+    )
+    payload["evidence"].append(
+        {
+            "evidence_id": "E2",
+            "run_id": "replaced-by-runner",
+            "subject_sha": "replaced-by-runner",
+            "type": "TEST",
+            "source": {"command": "git status --porcelain"},
+            "result": {"exit_code": 0, "summary": "verified"},
+            "raw": {"path": ".ai/evidence/E2.log"},
+        }
+    )
+
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=StaticResultRunner(repo, payload),
+    )
+
+    assert summary.render().startswith("AIOS RUN PASS\n")
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_complete_result_retains_pass_without_head_advancement(
+    tmp_path: Path,
+    executor: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    initial_head = git(repo, "rev-parse", "HEAD")
+
+    summary = run_task(
+        "TASK-101",
+        executor=executor,
+        repo=repo,
+        native_runner=StaticResultRunner(repo, static_payload()),
+    )
+
+    assert summary.head_sha == initial_head
+    assert summary.render().startswith("AIOS RUN PASS\n")
 
 
 def test_successful_codex_execution_stores_result_package(tmp_path: Path) -> None:

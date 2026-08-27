@@ -273,6 +273,8 @@ def run_task(
         if package.result.changed_files and actual_head == base_sha:
             raise OperatorError("final Git HEAD did not advance")
 
+        _require_complete_result(task, package)
+
         if executor == "codex":
             _write_json(result_path, result_package_data(package))
 
@@ -283,6 +285,24 @@ def run_task(
             base_sha=base_sha,
             head_sha=actual_head,
             result_path=result_path,
+        )
+
+
+def _require_complete_result(task: Task, package: ResultPackage) -> None:
+    """Reject canonical packages that do not establish TASK completion."""
+
+    if package.result.unresolved:
+        raise OperatorError("RESULT has unresolved items")
+
+    satisfied = {
+        acceptance_id
+        for claim in package.result.claims
+        for acceptance_id in claim.satisfies
+    }
+    missing = [item.id for item in task.acceptance if item.id not in satisfied]
+    if missing:
+        raise OperatorError(
+            "RESULT does not satisfy acceptance criteria: " + ", ".join(missing)
         )
 
 
