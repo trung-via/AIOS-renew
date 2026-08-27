@@ -1,0 +1,126 @@
+task_id: TASK-020
+revision: 1
+
+goal: >
+  Enforce TASK verification.required as a deterministic ResultPackage
+  completion contract so a RUN cannot pass unless every required verification
+  command has successful evidence bound to the final RUN and Git HEAD.
+
+problem: >
+  TASK verification.required is currently delivered to executors but
+  validate_result_package does not require corresponding EVIDENCE entries.
+  A ResultPackage can therefore satisfy acceptance coverage and unresolved
+  checks while omitting a required verification command, or while containing
+  only failed evidence for that command.
+
+assumptions:
+  - ExecutorBoundary is the shared canonical ResultPackage gate for both Codex
+    and Antigravity.
+  - EVIDENCE.source.command records the command actually executed by the
+    executor.
+  - EVIDENCE.result.exit_code records that command's deterministic outcome.
+  - Required verification must remain executor-owned and must not be re-run by
+    AIOS Runtime.
+
+scope:
+  inspect:
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/executor.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/operator.py
+    - tests/test_artifacts.py
+    - tests/test_executor.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+  modify:
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/operator.py
+    - tests/test_artifacts.py
+    - tests/test_codex_adapter.py
+    - tests/test_operator.py
+
+non_goals:
+  - Execute TASK verification commands from AIOS Runtime.
+  - Re-run verification already performed by the executor.
+  - Add semantic command equivalence or command normalization.
+  - Change TASK, RUN, RESULT, EVIDENCE, or ResultPackage schemas.
+  - Change acceptance coverage or unresolved completion semantics.
+  - Change Git HEAD or clean-worktree gates.
+  - Change executor selection, permissions, workspace binding, or locking.
+  - Add retries, polling, discovery, or additional reasoning.
+  - Modify unrelated files.
+
+constraints:
+  hard:
+    - Every string in task.verification.required must have at least one
+      EVIDENCE entry whose source.command exactly equals that required string.
+    - Exact command matching must be deterministic string equality; AIOS must
+      not infer that different shell commands are semantically equivalent.
+    - For every required verification command, at least one exact-match
+      EVIDENCE entry must have result.exit_code equal to zero.
+    - If no evidence exact-matches a required command, ResultPackage validation
+      must fail closed.
+    - If evidence exists for a required command but no exact-match evidence has
+      exit_code zero, ResultPackage validation must fail closed.
+    - Extra EVIDENCE entries not listed in verification.required must remain
+      allowed.
+    - Existing RUN binding, immutable SHA binding, acceptance-ID validation,
+      evidence-ID validation, and claim-to-evidence validation must remain
+      unchanged.
+    - Verification evidence does not need to be referenced by an acceptance
+      claim solely because it satisfies verification.required.
+    - Codex and Antigravity execution instructions must state that required
+      verification commands are executed exactly as written and represented by
+      successful EVIDENCE.source.command entries.
+    - The same canonical validation gate must apply to Codex and Antigravity.
+    - Do not add executor-specific verification semantics.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A ResultPackage containing successful exact-match evidence for every
+      TASK verification.required command passes the verification-evidence gate.
+
+  - id: AC2
+    condition: >
+      A ResultPackage missing evidence for any verification.required command
+      fails canonical validation.
+
+  - id: AC3
+    condition: >
+      A required command represented only by evidence with non-zero exit codes
+      fails canonical validation.
+
+  - id: AC4
+    condition: >
+      A command string that differs from the required command does not satisfy
+      that requirement even when it appears semantically equivalent.
+
+  - id: AC5
+    condition: >
+      Extra valid evidence remains permitted when all required verification
+      commands have successful exact-match evidence.
+
+  - id: AC6
+    condition: >
+      Existing TASK/RUN/SHA, acceptance, claim-to-evidence, and ResultPackage
+      validation behavior remains unchanged.
+
+  - id: AC7
+    condition: >
+      Codex and Antigravity both remain subject to the same shared
+      verification-evidence gate with no executor-specific bypass.
+
+  - id: AC8
+    condition: >
+      Native executor instructions explicitly require verification.required
+      commands to be executed exactly as written and reported as successful
+      evidence.
+
+verification:
+  required:
+    - '$env:PYTHONPATH = ".;src"; pytest tests/test_artifacts.py tests/test_codex_adapter.py tests/test_operator.py'
+    - '$env:PYTHONPATH = ".;src"; pytest'
+    - git diff --check
+    - git status --porcelain
