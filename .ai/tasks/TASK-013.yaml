@@ -1,0 +1,106 @@
+task_id: TASK-013
+revision: 1
+
+goal: >
+  Harden the native Antigravity Operator transport so
+  `aios run <TASK> --executor antigravity` invokes agy through a controlled
+  headless execution profile and gives Antigravity an explicit canonical
+  ResultPackage contract.
+
+problem: >
+  The current Antigravity transport invokes only `agy --print <instruction>`.
+  Real headless execution has demonstrated that the transport needs an explicit
+  execution profile, and the executor cannot reliably infer the AIOS canonical
+  ResultPackage schema from the phrase "canonical ResultPackage" alone.
+
+assumptions:
+  - agy is installed and authenticated before Operator execution.
+  - Antigravity tool permissions are configured outside the frozen kernel.
+  - TASK, RUN, RESULT, and EVIDENCE canonical contracts remain unchanged.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/artifacts.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, or ResultPackage canonical schemas.
+  - Change ExecutorBoundary.
+  - Change AntigravityAdapter normalization semantics.
+  - Add retries, polling, daemons, background workers, routers, or orchestration.
+  - Hard-code a particular Antigravity model.
+  - Auto-approve all Antigravity permissions.
+  - Add --dangerously-skip-permissions.
+  - Implement independent execution or materialization validation of EVIDENCE.
+  - Optimize Antigravity token usage.
+
+constraints:
+  hard:
+    - Preserve the unchanged TASK/RUN handoff semantics.
+    - Keep Antigravity-specific operational behavior inside the thin Operator transport.
+    - Invoke agy in headless accept-edits mode.
+    - Use low reasoning effort for the Operator execution profile.
+    - Disable slash-command expansion.
+    - Request JSON CLI output.
+    - Use a 5 minute print timeout ceiling.
+    - Do not pass --dangerously-skip-permissions.
+    - Do not hard-code --model.
+    - The handoff or executor instruction must explicitly describe the canonical ResultPackage structure.
+    - Antigravity must continue to write the ResultPackage to result_package_path.
+    - Executor prose/stdout must not become authoritative when the ResultPackage file is missing.
+    - Missing, unreadable, invalid, or SHA-inconsistent ResultPackage must remain fail-closed.
+    - Existing repository lock, base SHA binding, clean-worktree, and final HEAD checks must remain unchanged.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The Antigravity native command includes --effort low,
+      --mode accept-edits, --disable-slash-commands,
+      --output-format json, and --print-timeout 5m.
+
+  - id: AC2
+    condition: >
+      The Antigravity native command does not include
+      --dangerously-skip-permissions and does not hard-code --model.
+
+  - id: AC3
+    condition: >
+      The executor-facing handoff or instruction explicitly defines canonical
+      ResultPackage fields for result.head_sha, result.claims,
+      result.changed_files, result.unresolved, and evidence entries including
+      evidence_id, run_id, subject_sha, type, source.command,
+      result.exit_code, result.summary, and raw.path.
+
+  - id: AC4
+    condition: >
+      The explicit contract states the important binding invariants:
+      evidence.run_id references the current RUN, evidence.subject_sha matches
+      RESULT.head_sha, claims satisfy known acceptance IDs, and claim evidence
+      references existing evidence IDs.
+
+  - id: AC5
+    condition: >
+      Existing Antigravity success, missing executable, nonzero exit,
+      missing ResultPackage, invalid ResultPackage, final HEAD,
+      repository lock, and clean-working-tree behavior remains covered by tests.
+
+  - id: AC6
+    condition: >
+      FakeAntigravityRunner tests verify the real command contract without
+      depending on the old positional assumption `("agy", "--print")`.
+
+  - id: AC7
+    condition: >
+      No frozen kernel contract or unrelated source file is modified.
+
+verification:
+  required:
+    - pytest tests/test_operator.py tests/test_antigravity_adapter.py
+    - pytest
+    - git diff --check
+    - git status --porcelain
