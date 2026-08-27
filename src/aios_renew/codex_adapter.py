@@ -73,9 +73,11 @@ class CodexAdapter:
                 input=prompt,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="strict",
                 check=False,
             )
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             raise CodexExecutionError(
                 f"Codex CLI invocation failed: {exc}",
                 exit_code=None,
@@ -107,9 +109,11 @@ class CodexAdapter:
                 input=self.remediation_prompt_for(execution=execution),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="strict",
                 check=False,
             )
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             raise CodexExecutionError(
                 f"Codex CLI invocation failed: {exc}", exit_code=None
             ) from exc
@@ -199,6 +203,7 @@ class CodexAdapter:
             json.JSONDecodeError,
             KeyError,
             TypeError,
+            UnicodeError,
         ) as exc:
             raise CodexOutputError(
                 f"Codex CLI returned invalid canonical output: {exc}",

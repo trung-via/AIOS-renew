@@ -198,9 +198,11 @@ def resolve_repository(path: str | Path | None = None) -> Path:
             ("git", "-C", str(candidate), "rev-parse", "--show-toplevel"),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="strict",
             check=False,
         )
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         raise OperatorError(f"Git invocation failed: {exc}") from exc
     if completed.returncode != 0:
         raise OperatorError(f"not a Git repository: {candidate}")
@@ -910,11 +912,13 @@ def _antigravity_transport(
                 cwd=str(repo),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="strict",
                 check=False,
             )
         except FileNotFoundError as exc:
             raise AntigravityExecutionError("Antigravity CLI not found: agy") from exc
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             raise AntigravityExecutionError(
                 f"Antigravity CLI invocation failed: {exc}"
             ) from exc
@@ -934,7 +938,7 @@ def _antigravity_transport(
             raise AntigravityExecutionError(message)
         try:
             return result_path.read_text(encoding="utf-8")
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             raise AntigravityExecutionError(
                 f"Antigravity ResultPackage unreadable: {exc}"
             ) from exc
@@ -988,13 +992,15 @@ def _antigravity_remediation_transport(
                 cwd=str(repo),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="strict",
                 check=False,
             )
         except FileNotFoundError as exc:
             raise AntigravityExecutionError(
                 "Antigravity CLI not found: agy"
             ) from exc
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             raise AntigravityExecutionError(
                 f"Antigravity CLI invocation failed: {exc}"
             ) from exc
@@ -1012,7 +1018,7 @@ def _antigravity_remediation_transport(
             raise AntigravityExecutionError(message)
         try:
             return result_path.read_text(encoding="utf-8")
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             raise AntigravityExecutionError(
                 f"Antigravity ResultPackage unreadable: {exc}"
             ) from exc
@@ -1026,9 +1032,11 @@ def _git(repo: Path, *args: str, strip_stdout: bool = True) -> str:
             ("git", "-C", str(repo), *args),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="strict",
             check=False,
         )
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         raise OperatorError(f"Git invocation failed: {exc}") from exc
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()

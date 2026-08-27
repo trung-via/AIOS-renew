@@ -125,7 +125,48 @@ def test_constructs_and_invokes_native_codex_command() -> None:
     )
     assert calls[0][1]["capture_output"] is True
     assert calls[0][1]["text"] is True
+    assert calls[0][1]["encoding"] == "utf-8"
+    assert calls[0][1]["errors"] == "strict"
     assert calls[0][1]["check"] is False
+
+
+def test_utf8_output_outside_cp1252_is_preserved() -> None:
+    task, run, registry, boundary = make_execution()
+    lease = registry.acquire(run)
+    output = json.loads(successful_output(run.run_id))
+    output["result"]["claims"][0]["claim"] = "Completed: 漢字 🚀"
+
+    package = boundary.invoke(
+        task=task,
+        run=run,
+        lease=lease,
+        adapter=CodexAdapter(
+            runner=lambda command, **kwargs: subprocess.CompletedProcess(
+                command,
+                returncode=0,
+                stdout=json.dumps(output, ensure_ascii=False),
+                stderr="",
+            )
+        ),
+    )
+
+    assert package.result.claims[0].claim == "Completed: 漢字 🚀"
+
+
+def test_malformed_utf8_reader_failure_fails_closed() -> None:
+    task, run, registry, boundary = make_execution()
+    lease = registry.acquire(run)
+
+    def runner(command, **kwargs):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    with pytest.raises(CodexExecutionError, match="invocation failed"):
+        boundary.invoke(
+            task=task,
+            run=run,
+            lease=lease,
+            adapter=CodexAdapter(runner=runner),
+        )
 
 
 def test_prompt_requires_exact_successful_verification_evidence() -> None:

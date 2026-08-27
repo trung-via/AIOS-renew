@@ -483,6 +483,8 @@ def test_narrow_remediation_uses_shared_completion_policy(
     assert stored["result"]["changed_files"] == ["OUTPUT.txt"]
     assert stored["evidence"][0]["source"]["command"] == "git diff --check"
     assert "git status --porcelain" not in json.dumps(stored)
+    assert runner.calls[0][1]["encoding"] == "utf-8"
+    assert runner.calls[0][1]["errors"] == "strict"
     if executor == "antigravity":
         instruction = runner.calls[0][0][runner.calls[0][0].index("--print") + 1]
         assert "CODE_FIX, commit the permitted remediation delta" in instruction
@@ -654,6 +656,45 @@ def test_non_git_directory_fails(tmp_path: Path) -> None:
         resolve_repository(tmp_path)
 
 
+def test_repository_discovery_uses_strict_utf8(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = {}
+
+    def runner(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=str(tmp_path), stderr=""
+        )
+
+    monkeypatch.setattr(operator_module.subprocess, "run", runner)
+
+    assert resolve_repository(tmp_path) == tmp_path.resolve()
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "strict"
+
+
+def test_git_output_preserves_utf8_nul_delimited_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = {}
+    raw_output = "普通.txt\0emoji-🚀.txt\0"
+
+    def runner(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=raw_output, stderr=""
+        )
+
+    monkeypatch.setattr(operator_module.subprocess, "run", runner)
+
+    assert operator_module._git(
+        tmp_path, "diff", "--name-status", "-z", strip_stdout=False
+    ) == raw_output
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "strict"
+
+
 def test_dirty_repository_fails_before_executor_invocation(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     (repo / "DIRTY.txt").write_text("dirty\n", encoding="utf-8")
@@ -781,6 +822,8 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert command[command.index("--output-format") + 1] == "json"
     assert command[command.index("--print-timeout") + 1] == "5m"
     assert kwargs["cwd"] == workspace
+    assert kwargs["encoding"] == "utf-8"
+    assert kwargs["errors"] == "strict"
     assert ".git" in instruction and "handoff" in instruction
     assert "Create one deterministic operator test output" not in instruction
     assert "--dangerously-skip-permissions" not in command
