@@ -348,8 +348,37 @@ def static_payload(
     }
 
 
-def remediation_contract(repo: Path, *, reviewed_sha: str | None = None):
+def remediation_contract(
+    repo: Path,
+    *,
+    reviewed_sha: str | None = None,
+    persist_prior_result: bool = True,
+):
     sha = reviewed_sha or git(repo, "rev-parse", "HEAD")
+    if persist_prior_result:
+        state = runtime_paths(repo)
+        run_id = "RUN-101-000"
+        (state.runs / f"{run_id}.json").write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "task": {"id": "TASK-101", "revision": 1},
+                    "executor": "codex",
+                    "base_sha": sha,
+                    "workspace": str(repo),
+                    "head_sha": None,
+                    "status": "ACTIVE",
+                }
+            ),
+            encoding="utf-8",
+        )
+        payload = static_payload()
+        payload["result"]["head_sha"] = sha
+        payload["evidence"][0]["run_id"] = run_id
+        payload["evidence"][0]["subject_sha"] = sha
+        (state.results / f"{run_id}.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
     review = operator_module.parse_review(
         f"""
 review_id: REVIEW-101-001
@@ -460,6 +489,51 @@ def test_remediation_sha_mismatch_fails_before_executor(tmp_path: Path) -> None:
     calls = []
 
     with pytest.raises(OperatorError, match="current HEAD"):
+        run_remediation(
+            "TASK-101",
+            review=review,
+            remediation=remediation,
+            executor="codex",
+            repo=repo,
+            native_runner=lambda *args, **kwargs: calls.append(args),
+        )
+
+    assert calls == []
+
+
+def test_remediation_missing_prior_result_fails_before_executor(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo, persist_prior_result=False)
+    calls = []
+
+    with pytest.raises(OperatorError, match="authoritative prior RESULT not found"):
+        run_remediation(
+            "TASK-101",
+            review=review,
+            remediation=remediation,
+            executor="codex",
+            repo=repo,
+            native_runner=lambda *args, **kwargs: calls.append(args),
+        )
+
+    assert calls == []
+
+
+def test_remediation_mismatched_prior_result_lineage_fails_before_executor(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo)
+    state = runtime_paths(repo)
+    run_path = state.runs / "RUN-101-000.json"
+    run_data = json.loads(run_path.read_text(encoding="utf-8"))
+    run_data["task"]["id"] = "TASK-999"
+    run_path.write_text(json.dumps(run_data), encoding="utf-8")
+    calls = []
+
+    with pytest.raises(OperatorError, match="authoritative prior RESULT lineage mismatch"):
         run_remediation(
             "TASK-101",
             review=review,

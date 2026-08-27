@@ -18,10 +18,17 @@ from .antigravity_adapter import (
     AntigravityExecutionError,
     AntigravityOutputError,
 )
-from .artifacts import ArtifactValidationError, Result, ResultPackage
+from .artifacts import (
+    ArtifactValidationError,
+    Result,
+    ResultPackage,
+    validate_evidence,
+    validate_result,
+    validate_result_package,
+)
 from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
 from .executor import ExecutorBoundary, ExecutorBoundaryError
-from .run import Run, RunLeaseRegistry
+from .run import Run, RunLeaseRegistry, RunTaskReference
 from .review import (
     Remediation,
     RemediationExecution,
@@ -274,6 +281,77 @@ def next_run_id(task_id: str, runs_path: Path) -> str:
     return f"{prefix}{max(numbers, default=0) + 1:03d}"
 
 
+def _load_authoritative_prior_result(
+    state: RuntimePaths,
+    task: Task,
+    reviewed_sha: str,
+) -> Result:
+    """Load the unique persisted TASK result with canonical RUN lineage."""
+
+    matches: list[Result] = []
+    lineage_mismatch = False
+    for result_path in sorted(state.results.glob("*.json")):
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        result_data = payload.get("result")
+        if not isinstance(result_data, Mapping):
+            continue
+        if result_data.get("head_sha") != reviewed_sha:
+            continue
+
+        try:
+            result = validate_result(result_data)
+            evidence_data = payload["evidence"]
+            if not isinstance(evidence_data, list):
+                raise ArtifactValidationError("evidence must be a list")
+            evidence = tuple(validate_evidence(item) for item in evidence_data)
+
+            run_id = result_path.stem
+            run_data = json.loads(
+                (state.runs / f"{run_id}.json").read_text(encoding="utf-8")
+            )
+            if not isinstance(run_data, Mapping) or "kind" in run_data:
+                raise ValueError("prior RUN is not a TASK execution")
+            task_data = run_data["task"]
+            if not isinstance(task_data, Mapping):
+                raise TypeError("RUN.task must be a mapping")
+            run = Run(
+                run_id=run_data["run_id"],
+                task=RunTaskReference(
+                    id=task_data["id"], revision=task_data["revision"]
+                ),
+                executor=run_data["executor"],
+                base_sha=run_data["base_sha"],
+                workspace=run_data["workspace"],
+                head_sha=run_data.get("head_sha"),
+                status=run_data["status"],
+            )
+            if run.run_id != run_id:
+                raise ValueError("RESULT filename does not match RUN id")
+            validate_result_package(
+                task=task,
+                run=run,
+                result=result,
+                evidence=evidence,
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+            lineage_mismatch = True
+            continue
+        matches.append(result)
+
+    if len(matches) == 1 and not lineage_mismatch:
+        return matches[0]
+    if len(matches) > 1:
+        raise OperatorError("authoritative prior RESULT lineage is ambiguous")
+    if lineage_mismatch:
+        raise OperatorError("authoritative prior RESULT lineage mismatch")
+    raise OperatorError("authoritative prior RESULT not found")
+
+
 def run_task(
     task_id: str,
     *,
@@ -412,15 +490,16 @@ def run_remediation(
             else load_review(prior_review)
         )
     )
+    state = runtime_paths(root)
+    prior_result = _load_authoritative_prior_result(
+        state,
+        task,
+        canonical_review.reviewed_sha,
+    )
     try:
         validate_review(
             task=task,
-            result=Result(
-                head_sha=canonical_review.reviewed_sha,
-                claims=(),
-                changed_files=(),
-                unresolved=(),
-            ),
+            result=prior_result,
             review=canonical_review,
             prior_review=canonical_prior_review,
         )
@@ -446,7 +525,6 @@ def run_remediation(
     if not canonical_remediation.affected_verification:
         raise OperatorError("REMEDIATION affected verification is empty")
 
-    state = runtime_paths(root)
     with RepositoryLock(state.lock):
         if _git(root, "status", "--porcelain"):
             raise OperatorError("repository dirty")
