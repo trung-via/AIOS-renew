@@ -13,6 +13,7 @@ from .artifacts import (
     validate_result,
 )
 from .run import Run
+from .review import RemediationExecution
 from .task import Task
 
 
@@ -47,6 +48,21 @@ class AntigravityAdapter:
                 f"Antigravity native invocation failed: {exc}"
             ) from exc
 
+        return self._normalize(output)
+
+    def execute_remediation(
+        self, *, execution: RemediationExecution
+    ) -> ResultPackage:
+        """Hand off the same narrow contract used by Codex."""
+
+        try:
+            output = self._transport(execution=execution)
+        except AntigravityExecutionError:
+            raise
+        except Exception as exc:
+            raise AntigravityExecutionError(
+                f"Antigravity native invocation failed: {exc}"
+            ) from exc
         return self._normalize(output)
 
     @staticmethod

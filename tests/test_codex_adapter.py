@@ -14,8 +14,11 @@ from aios_renew import (
     ExecutorBoundaryError,
     Run,
     RunLeaseRegistry,
+    parse_remediation,
+    parse_review,
     parse_task,
 )
+from aios_renew.review import RemediationExecution
 
 
 TASK_SOURCE = """
@@ -133,6 +136,51 @@ def test_prompt_requires_exact_successful_verification_evidence() -> None:
     assert "task.verification.required exactly as written" in prompt
     assert "source.command is the exact command string" in prompt
     assert "result.exit_code is zero" in prompt
+
+
+def test_remediation_prompt_excludes_complete_original_task_contract() -> None:
+    task, run, _, _ = make_execution()
+    review = parse_review(
+        """
+review_id: REVIEW-007-001
+reviewed_sha: abc123
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {AC1: FAIL}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: src/aios_renew/codex_adapter.py
+    issue: Narrow issue.
+    expected: Narrow fix.
+"""
+    )
+    remediation = parse_remediation(
+        """
+finding_id: R1
+action: CODE_FIX
+reviewed_sha: abc123
+modification_scope: [src/aios_renew/codex_adapter.py]
+affected_verification: [pytest tests/test_codex_adapter.py]
+"""
+    )
+    execution = RemediationExecution(
+        review_id=review.review_id,
+        finding=review.findings[0],
+        remediation=remediation,
+        run=run,
+    )
+
+    prompt = CodexAdapter.remediation_prompt_for(execution=execution)
+    payload = json.loads(prompt.split("REMEDIATION_INPUT:\n", 1)[1])
+
+    assert payload["finding"]["issue"] == "Narrow issue."
+    assert payload["remediation"]["affected_verification"] == [
+        "pytest tests/test_codex_adapter.py"
+    ]
+    assert "goal" not in json.dumps(payload)
+    assert "acceptance" not in json.dumps(payload)
 
 
 def test_output_schema_is_passed() -> None:

@@ -18,10 +18,20 @@ from .antigravity_adapter import (
     AntigravityExecutionError,
     AntigravityOutputError,
 )
-from .artifacts import ArtifactValidationError, ResultPackage
+from .artifacts import ArtifactValidationError, Result, ResultPackage
 from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
 from .executor import ExecutorBoundary, ExecutorBoundaryError
 from .run import Run, RunLeaseRegistry
+from .review import (
+    Remediation,
+    RemediationExecution,
+    Review,
+    ReviewValidationError,
+    parse_remediation,
+    parse_review,
+    validate_remediation,
+    validate_review,
+)
 from .task import Task, TaskValidationError, parse_task
 
 
@@ -146,6 +156,31 @@ class RunSummary:
         )
 
 
+@dataclass(frozen=True)
+class RemediationSummary:
+    task_id: str
+    review_id: str
+    finding_id: str
+    run_id: str
+    executor: str
+    reviewed_sha: str
+    head_sha: str
+    result_path: Path
+
+    def render(self) -> str:
+        return (
+            "AIOS REMEDIATION PASS\n"
+            f"task: {self.task_id}\n"
+            f"review: {self.review_id}\n"
+            f"finding: {self.finding_id}\n"
+            f"run: {self.run_id}\n"
+            f"executor: {self.executor}\n"
+            f"reviewed_sha: {self.reviewed_sha}\n"
+            f"head_sha: {self.head_sha}\n"
+            f"result: {self.result_path}"
+        )
+
+
 def resolve_repository(path: str | Path | None = None) -> Path:
     """Resolve an explicit path or current directory to its real Git root."""
 
@@ -181,6 +216,24 @@ def load_task(repo: str | Path, task_id: str) -> Task:
             f"TASK id mismatch: requested {task_id}, document contains {task.task_id}"
         )
     return task
+
+
+def load_review(path: str | Path) -> Review:
+    """Load and structurally validate one canonical REVIEW file."""
+
+    try:
+        return parse_review(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ReviewValidationError) as exc:
+        raise OperatorError(f"invalid REVIEW: {exc}") from exc
+
+
+def load_remediation(path: str | Path) -> Remediation:
+    """Load and structurally validate one canonical REMEDIATION file."""
+
+    try:
+        return parse_remediation(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ReviewValidationError) as exc:
+        raise OperatorError(f"invalid REMEDIATION: {exc}") from exc
 
 
 def describe_task(task_id: str, *, repo: str | Path | None = None) -> TaskSummary:
@@ -325,6 +378,227 @@ def run_task(
             head_sha=actual_head,
             result_path=result_path,
         )
+
+
+def run_remediation(
+    task_id: str,
+    *,
+    review: Review | str | Path,
+    remediation: Remediation | str | Path,
+    prior_review: Review | str | Path | None = None,
+    executor: str,
+    repo: str | Path | None = None,
+    codex_sandbox: str = "workspace-write",
+    native_runner: NativeRunner = subprocess.run,
+) -> RemediationSummary:
+    """Execute one bound remediation without entering the TASK execution path."""
+
+    root = resolve_repository(repo)
+    task = load_task(root, task_id)
+    canonical_review = (
+        review if isinstance(review, Review) else load_review(review)
+    )
+    canonical_remediation = (
+        remediation
+        if isinstance(remediation, Remediation)
+        else load_remediation(remediation)
+    )
+    canonical_prior_review = (
+        None
+        if prior_review is None
+        else (
+            prior_review
+            if isinstance(prior_review, Review)
+            else load_review(prior_review)
+        )
+    )
+    try:
+        validate_review(
+            task=task,
+            result=Result(
+                head_sha=canonical_review.reviewed_sha,
+                claims=(),
+                changed_files=(),
+                unresolved=(),
+            ),
+            review=canonical_review,
+            prior_review=canonical_prior_review,
+        )
+    except ReviewValidationError as exc:
+        raise OperatorError(f"invalid REVIEW: {exc}") from exc
+    try:
+        validate_remediation(
+            review=canonical_review,
+            remediation=canonical_remediation,
+            task=task,
+        )
+    except ReviewValidationError as exc:
+        raise OperatorError(f"invalid REMEDIATION: {exc}") from exc
+    if executor not in ("codex", "antigravity"):
+        raise OperatorError(f"unsupported executor: {executor}")
+    if executor == "codex" and codex_sandbox not in CODEX_SANDBOXES:
+        raise OperatorError(f"unsupported Codex sandbox: {codex_sandbox}")
+    if (
+        canonical_remediation.action == "CODE_FIX"
+        and not canonical_remediation.modification_scope
+    ):
+        raise OperatorError("CODE_FIX remediation modification scope is empty")
+    if not canonical_remediation.affected_verification:
+        raise OperatorError("REMEDIATION affected verification is empty")
+
+    state = runtime_paths(root)
+    with RepositoryLock(state.lock):
+        if _git(root, "status", "--porcelain"):
+            raise OperatorError("repository dirty")
+        actual_baseline = _git(root, "rev-parse", "HEAD")
+        if actual_baseline != canonical_remediation.reviewed_sha:
+            raise OperatorError("current HEAD does not match REMEDIATION reviewed_sha")
+
+        run_id = next_run_id(task_id, state.runs)
+        run = Run.from_task(
+            run_id=run_id,
+            task=task,
+            executor=executor,
+            base_sha=actual_baseline,
+            workspace=str(root),
+        )
+        finding = next(
+            item
+            for item in canonical_review.findings
+            if item.id == canonical_remediation.finding_id
+        )
+        execution = RemediationExecution(
+            review_id=canonical_review.review_id,
+            finding=finding,
+            remediation=canonical_remediation,
+            run=run,
+            original_constraints=canonical_remediation.constraints,
+        )
+        result_path = state.results / f"{run_id}.json"
+        _write_json(
+            state.runs / f"{run_id}.json",
+            {"kind": "REMEDIATION", "execution": asdict(execution)},
+        )
+
+        if executor == "codex":
+            selected_adapter = CodexAdapter(
+                runner=_codex_runner(native_runner, codex_sandbox)
+            )
+        else:
+            handoff_path = state.handoffs / f"{run_id}.json"
+            _write_json(
+                handoff_path,
+                {
+                    "remediation_execution": asdict(execution),
+                    "result_package_path": str(result_path),
+                },
+            )
+            selected_adapter = AntigravityAdapter(
+                transport=_antigravity_remediation_transport(
+                    repo=root,
+                    handoff_path=handoff_path,
+                    result_path=result_path,
+                    native_runner=native_runner,
+                )
+            )
+
+        try:
+            package = selected_adapter.execute_remediation(execution=execution)
+        except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
+            raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
+        except CodexExecutionError as exc:
+            raise OperatorError(f"Codex invocation failed: {exc}") from exc
+        except AntigravityExecutionError as exc:
+            raise OperatorError(str(exc)) from exc
+
+        actual_head = _git(root, "rev-parse", "HEAD")
+        if package.result.head_sha != actual_head:
+            raise OperatorError("RESULT.head_sha mismatch")
+        if _git(root, "status", "--porcelain"):
+            raise OperatorError("working tree dirty after execution")
+        _require_remediation_result(
+            root, execution, package, actual_head=actual_head
+        )
+        _write_json(result_path, result_package_data(package))
+        return RemediationSummary(
+            task_id=task_id,
+            review_id=canonical_review.review_id,
+            finding_id=canonical_remediation.finding_id,
+            run_id=run_id,
+            executor=executor,
+            reviewed_sha=actual_baseline,
+            head_sha=actual_head,
+            result_path=result_path,
+        )
+
+
+def _require_remediation_result(
+    repo: Path,
+    execution: RemediationExecution,
+    package: ResultPackage,
+    *,
+    actual_head: str,
+) -> None:
+    """Apply one shared completion policy to either native executor."""
+
+    if package.result.claims:
+        raise OperatorError("remediation RESULT claims must be empty")
+    if package.result.unresolved:
+        raise OperatorError("remediation RESULT has unresolved items")
+
+    evidence_ids: set[str] = set()
+    for item in package.evidence:
+        if item.evidence_id in evidence_ids:
+            raise OperatorError(f"duplicate evidence_id: {item.evidence_id}")
+        evidence_ids.add(item.evidence_id)
+        if item.run_id != execution.run.run_id:
+            raise OperatorError(
+                f"{item.evidence_id} does not reference RUN {execution.run.run_id}"
+            )
+        if item.subject_sha != actual_head:
+            raise OperatorError(
+                f"{item.evidence_id} subject_sha does not match RESULT head_sha"
+            )
+    for command in execution.remediation.affected_verification:
+        matching = [
+            item for item in package.evidence if item.source.command == command
+        ]
+        if not matching:
+            raise OperatorError(
+                f"missing affected verification evidence for required command: {command}"
+            )
+        if not any(item.result.exit_code == 0 for item in matching):
+            raise OperatorError(
+                "affected verification command has no successful evidence: "
+                + command
+            )
+
+    output = _git(
+        repo,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        execution.remediation.reviewed_sha,
+        actual_head,
+        strip_stdout=False,
+    )
+    actual_changed = {path for path in output.split("\0") if path}
+    if set(package.result.changed_files) != actual_changed:
+        raise OperatorError("RESULT.changed_files mismatch")
+    outside_scope = actual_changed.difference(
+        execution.remediation.modification_scope
+    )
+    if outside_scope:
+        raise OperatorError(
+            "committed changed paths outside REMEDIATION modification scope: "
+            + ", ".join(sorted(outside_scope))
+        )
+    if execution.remediation.action == "EVIDENCE_ONLY":
+        if actual_head != execution.remediation.reviewed_sha or actual_changed:
+            raise OperatorError("EVIDENCE_ONLY remediation changed repository HEAD")
+    elif actual_changed and actual_head == execution.remediation.reviewed_sha:
+        raise OperatorError("CODE_FIX committed changes did not advance HEAD")
 
 
 def _require_changed_files(
@@ -497,6 +771,82 @@ def _antigravity_transport(
     return transport
 
 
+def _antigravity_remediation_transport(
+    *,
+    repo: Path,
+    handoff_path: Path,
+    result_path: Path,
+    native_runner: NativeRunner,
+) -> Callable[..., str]:
+    instruction = (
+        f"Read the AIOS remediation handoff JSON at {handoff_path}. "
+        "Execute exactly its one remediation_execution contract. Do not run or "
+        "restart the original TASK, scan for a different repository, perform semantic "
+        "review or repeat unaffected verification. Change only paths in "
+        "remediation.modification_scope and execute only commands in "
+        "remediation.affected_verification exactly as written. Write one canonical "
+        "ResultPackage to result_package_path with empty result.claims and "
+        "result.unresolved. Include exact successful evidence for every affected "
+        "command; bind evidence.run_id to the remediation RUN and both "
+        "evidence.subject_sha and result.head_sha to final Git HEAD. Finish only "
+        "after the ResultPackage file exists."
+    )
+
+    def transport(*, execution: RemediationExecution) -> str:
+        del execution
+        try:
+            completed = native_runner(
+                (
+                    "agy",
+                    "--print",
+                    instruction,
+                    "--add-dir",
+                    str(repo),
+                    "--effort",
+                    "low",
+                    "--mode",
+                    "accept-edits",
+                    "--disable-slash-commands",
+                    "--output-format",
+                    "json",
+                    "--print-timeout",
+                    "5m",
+                ),
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            raise AntigravityExecutionError(
+                "Antigravity CLI not found: agy"
+            ) from exc
+        except OSError as exc:
+            raise AntigravityExecutionError(
+                f"Antigravity CLI invocation failed: {exc}"
+            ) from exc
+        if completed.returncode != 0:
+            detail = completed.stderr.strip() or completed.stdout.strip()
+            message = f"Antigravity CLI returned nonzero ({completed.returncode})"
+            if detail:
+                message = f"{message}: {detail}"
+            raise AntigravityExecutionError(message)
+        if not result_path.is_file():
+            detail = completed.stderr.strip() or completed.stdout.strip()
+            message = "Antigravity ResultPackage missing"
+            if detail:
+                message = f"{message}: {detail}"
+            raise AntigravityExecutionError(message)
+        try:
+            return result_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise AntigravityExecutionError(
+                f"Antigravity ResultPackage unreadable: {exc}"
+            ) from exc
+
+    return transport
+
+
 def _git(repo: Path, *args: str, strip_stdout: bool = True) -> str:
     try:
         completed = subprocess.run(
@@ -534,6 +884,18 @@ def _parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--executor", required=True, choices=("codex", "antigravity"))
     run_parser.add_argument("--repo")
     run_parser.add_argument("--codex-sandbox", choices=CODEX_SANDBOXES)
+    remediation_parser = commands.add_parser(
+        "remediate", help="Execute one canonical narrow REMEDIATION"
+    )
+    remediation_parser.add_argument("task_id")
+    remediation_parser.add_argument("--review", required=True)
+    remediation_parser.add_argument("--remediation", required=True)
+    remediation_parser.add_argument("--prior-review")
+    remediation_parser.add_argument(
+        "--executor", required=True, choices=("codex", "antigravity")
+    )
+    remediation_parser.add_argument("--repo")
+    remediation_parser.add_argument("--codex-sandbox", choices=CODEX_SANDBOXES)
     return parser
 
 
@@ -542,11 +904,24 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "task":
             print(describe_task(args.task_id, repo=args.repo).render())
-        else:
+        elif args.command == "run":
             if args.executor != "codex" and args.codex_sandbox is not None:
                 raise OperatorError("--codex-sandbox is only valid for Codex")
             summary = run_task(
                 args.task_id,
+                executor=args.executor,
+                repo=args.repo,
+                codex_sandbox=args.codex_sandbox or "workspace-write",
+            )
+            print(summary.render())
+        else:
+            if args.executor != "codex" and args.codex_sandbox is not None:
+                raise OperatorError("--codex-sandbox is only valid for Codex")
+            summary = run_remediation(
+                args.task_id,
+                review=args.review,
+                remediation=args.remediation,
+                prior_review=args.prior_review,
                 executor=args.executor,
                 repo=args.repo,
                 codex_sandbox=args.codex_sandbox or "workspace-write",

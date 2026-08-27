@@ -13,7 +13,10 @@ from aios_renew import (
     Run,
     RunLeaseRegistry,
     parse_task,
+    parse_remediation,
+    parse_review,
 )
+from aios_renew.review import RemediationExecution
 
 
 TASK_SOURCE = """
@@ -111,6 +114,50 @@ def test_hands_off_unchanged_task_and_run() -> None:
     assert captured == {"task": task, "run": run}
     assert captured["task"] is task
     assert captured["run"] is run
+
+
+def test_hands_off_one_narrow_remediation_execution() -> None:
+    task, run, _, _ = make_execution()
+    review = parse_review(
+        """
+review_id: REVIEW-008-001
+reviewed_sha: abc123
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {AC1: FAIL}
+findings:
+  - id: R1
+    basis: AC1
+    action: EVIDENCE_ONLY
+    location: tests/test_antigravity_adapter.py
+    issue: Evidence missing.
+    expected: Supply evidence.
+"""
+    )
+    execution = RemediationExecution(
+        review_id=review.review_id,
+        finding=review.findings[0],
+        remediation=parse_remediation(
+            """
+finding_id: R1
+action: EVIDENCE_ONLY
+reviewed_sha: abc123
+modification_scope: []
+affected_verification: [pytest tests/test_antigravity_adapter.py]
+"""
+        ),
+        run=run,
+    )
+    captured = []
+    output = successful_output(run.run_id)
+    output["result"]["claims"] = []
+
+    package = AntigravityAdapter(
+        transport=lambda **kwargs: (captured.append(kwargs), output)[1]
+    ).execute_remediation(execution=execution)
+
+    assert captured == [{"execution": execution}]
+    assert package.result.claims == ()
 
 
 def test_boundary_rejects_without_active_lease_before_native_invocation() -> None:

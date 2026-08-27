@@ -14,6 +14,7 @@ from aios_renew.operator import (
     describe_task,
     load_task,
     resolve_repository,
+    run_remediation,
     run_task,
     runtime_paths,
 )
@@ -345,6 +346,130 @@ def static_payload(
         },
         "evidence": evidence,
     }
+
+
+def remediation_contract(repo: Path, *, reviewed_sha: str | None = None):
+    sha = reviewed_sha or git(repo, "rev-parse", "HEAD")
+    review = operator_module.parse_review(
+        f"""
+review_id: REVIEW-101-001
+reviewed_sha: {sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The output is absent.
+    expected: Commit only the output.
+"""
+    )
+    remediation = operator_module.parse_remediation(
+        f"""
+finding_id: R1
+action: CODE_FIX
+reviewed_sha: {sha}
+modification_scope: [OUTPUT.txt]
+affected_verification: [git diff --check]
+constraints:
+  hard: [Commit the output.]
+"""
+    )
+    return review, remediation
+
+
+class RemediationRunner:
+    def __init__(self, repo: Path) -> None:
+        self.repo = repo
+        self.calls = []
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        result_path = None
+        if command[0] == "agy":
+            handoff_path = next(
+                (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
+            )
+            handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+            execution = handoff["remediation_execution"]
+            result_path = Path(handoff["result_package_path"])
+        else:
+            execution = json.loads(
+                kwargs["input"].split("REMEDIATION_INPUT:\n", 1)[1]
+            )
+        (self.repo / "OUTPUT.txt").write_text("remediated\n", encoding="utf-8")
+        git(self.repo, "add", "OUTPUT.txt")
+        git(self.repo, "commit", "--quiet", "-m", "narrow remediation")
+        head_sha = git(self.repo, "rev-parse", "HEAD")
+        payload = {
+            "result": {
+                "head_sha": head_sha,
+                "claims": [],
+                "changed_files": ["OUTPUT.txt"],
+                "unresolved": [],
+            },
+            "evidence": [
+                {
+                    "evidence_id": "ER1",
+                    "run_id": execution["run"]["run_id"],
+                    "subject_sha": head_sha,
+                    "type": "TEST",
+                    "source": {"command": "git diff --check"},
+                    "result": {"exit_code": 0, "summary": "clean diff"},
+                    "raw": {"path": ".ai/evidence/ER1.log"},
+                }
+            ],
+        }
+        if result_path is not None:
+            result_path.write_text(json.dumps(payload), encoding="utf-8")
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=json.dumps(payload), stderr=""
+        )
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_narrow_remediation_uses_shared_completion_policy(
+    tmp_path: Path, executor: str
+) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo)
+    runner = RemediationRunner(repo)
+
+    summary = run_remediation(
+        "TASK-101",
+        review=review,
+        remediation=remediation,
+        executor=executor,
+        repo=repo,
+        native_runner=runner,
+    )
+    stored = json.loads(summary.result_path.read_text(encoding="utf-8"))
+
+    assert len(runner.calls) == 1
+    assert stored["result"]["claims"] == []
+    assert stored["result"]["changed_files"] == ["OUTPUT.txt"]
+    assert stored["evidence"][0]["source"]["command"] == "git diff --check"
+    assert "git status --porcelain" not in json.dumps(stored)
+
+
+def test_remediation_sha_mismatch_fails_before_executor(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo, reviewed_sha="deadbeef")
+    calls = []
+
+    with pytest.raises(OperatorError, match="current HEAD"):
+        run_remediation(
+            "TASK-101",
+            review=review,
+            remediation=remediation,
+            executor="codex",
+            repo=repo,
+            native_runner=lambda *args, **kwargs: calls.append(args),
+        )
+
+    assert calls == []
 
 
 def test_task_resolution_and_compact_description(tmp_path: Path) -> None:

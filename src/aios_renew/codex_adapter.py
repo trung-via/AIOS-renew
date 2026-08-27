@@ -16,6 +16,7 @@ from .artifacts import (
     validate_result,
 )
 from .run import Run
+from .review import RemediationExecution
 from .task import Task
 
 
@@ -94,6 +95,37 @@ class CodexAdapter:
 
         return self._normalize(completed.stdout, stderr=completed.stderr)
 
+    def execute_remediation(
+        self, *, execution: RemediationExecution
+    ) -> ResultPackage:
+        """Execute one narrow remediation through one native Codex process."""
+
+        command = self.command_for(execution.run, schema_path=self._schema_path)
+        try:
+            completed = self._runner(
+                command,
+                input=self.remediation_prompt_for(execution=execution),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise CodexExecutionError(
+                f"Codex CLI invocation failed: {exc}", exit_code=None
+            ) from exc
+        if completed.returncode != 0:
+            detail = completed.stderr.strip() or completed.stdout.strip()
+            message = f"Codex CLI exited with code {completed.returncode}"
+            if detail:
+                message = f"{message}: {detail}"
+            raise CodexExecutionError(
+                message,
+                exit_code=completed.returncode,
+                stdout=completed.stdout,
+                stderr=completed.stderr,
+            )
+        return self._normalize(completed.stdout, stderr=completed.stderr)
+
     @staticmethod
     def command_for(
         run: Run,
@@ -132,6 +164,22 @@ class CodexAdapter:
             "JSON object "
             "with keys 'result' and 'evidence' matching the canonical contracts.\n"
             f"CANONICAL_INPUT:\n{canonical_input}"
+        )
+
+    @staticmethod
+    def remediation_prompt_for(*, execution: RemediationExecution) -> str:
+        """Serialize only the shared narrow remediation contract."""
+
+        canonical_input = json.dumps(asdict(execution), sort_keys=True)
+        return (
+            "Execute exactly one canonical narrow REMEDIATION. Do not run or "
+            "restart the original TASK, rediscover the repository, perform "
+            "semantic review, or retry. Change only remediation.modification_scope. "
+            "Execute only every command in remediation.affected_verification "
+            "exactly as written and provide exact successful EVIDENCE for each. "
+            "Return one canonical ResultPackage with empty result.claims and "
+            "result.unresolved.\nREMEDIATION_INPUT:\n"
+            f"{canonical_input}"
         )
 
     @staticmethod

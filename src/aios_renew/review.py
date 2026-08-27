@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from .artifacts import Result
+from .run import Run
 from .task import Task
 
 
@@ -49,6 +50,20 @@ class Remediation:
     finding_id: str
     action: str
     reviewed_sha: str
+    modification_scope: tuple[str, ...] = ()
+    affected_verification: tuple[str, ...] = ()
+    constraints: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RemediationExecution:
+    """The complete, deliberately narrow semantic input to an executor."""
+
+    review_id: str
+    finding: Finding
+    remediation: Remediation
+    run: Run
+    original_constraints: tuple[str, ...] = ()
 
 
 def parse_review(source: str) -> Review:
@@ -225,6 +240,28 @@ def parse_remediation(source: str) -> Remediation:
     """Parse and structurally validate one YAML REMEDIATION document."""
 
     root = _mapping(_parse_yaml(source, "REMEDIATION"), "REMEDIATION")
+    modification_scope = _optional_remediation_list(
+        root, "modification_scope", nested=("scope", "modify")
+    )
+    affected_verification = _optional_remediation_list(
+        root, "affected_verification", nested=("verification", "affected")
+    )
+    if not affected_verification and "verification" in root:
+        verification = _mapping(root["verification"], "verification")
+        if "required" in verification:
+            affected_verification = _string_tuple(
+                verification["required"], "verification.required"
+            )
+    constraints: tuple[str, ...] = ()
+    if "constraints" in root:
+        value = root["constraints"]
+        if isinstance(value, Mapping):
+            constraints = _string_tuple(
+                _required(value, "hard", "constraints"), "constraints.hard"
+            )
+        else:
+            constraints = _string_tuple(value, "constraints")
+
     return Remediation(
         finding_id=_string(
             _required(root, "finding_id", "REMEDIATION"), "finding_id"
@@ -238,11 +275,14 @@ def parse_remediation(source: str) -> Remediation:
             _required(root, "reviewed_sha", "REMEDIATION"),
             "reviewed_sha",
         ),
+        modification_scope=modification_scope,
+        affected_verification=affected_verification,
+        constraints=constraints,
     )
 
 
 def validate_remediation(
-    *, review: Review, remediation: Remediation
+    *, review: Review, remediation: Remediation, task: Task | None = None
 ) -> Remediation:
     """Bind REMEDIATION to one explicit finding without executing it."""
 
@@ -260,7 +300,38 @@ def validate_remediation(
         raise ReviewValidationError(
             "REMEDIATION action does not match finding action"
         )
+    if task is not None:
+        outside_scope = set(remediation.modification_scope).difference(
+            task.scope.modify
+        )
+        if outside_scope:
+            raise ReviewValidationError(
+                "REMEDIATION modification scope widens TASK.scope.modify: "
+                + ", ".join(sorted(outside_scope))
+            )
+        unknown_constraints = set(remediation.constraints).difference(
+            task.constraints.hard
+        )
+        if unknown_constraints:
+            raise ReviewValidationError(
+                "REMEDIATION constraints are not original TASK constraints: "
+                + ", ".join(sorted(unknown_constraints))
+            )
     return remediation
+
+
+def _optional_remediation_list(
+    root: Mapping[Any, Any], key: str, *, nested: tuple[str, str]
+) -> tuple[str, ...]:
+    if key in root:
+        return _string_tuple(root[key], key)
+    parent_key, child_key = nested
+    if parent_key not in root:
+        return ()
+    parent = _mapping(root[parent_key], parent_key)
+    if child_key not in parent:
+        return ()
+    return _string_tuple(parent[child_key], f"{parent_key}.{child_key}")
 
 
 def _parse_yaml(source: str, document: str) -> Any:
@@ -286,6 +357,13 @@ def _list(value: Any, path: str) -> list[Any]:
     if not isinstance(value, list):
         raise ReviewValidationError(f"{path} must be a list")
     return value
+
+
+def _string_tuple(value: Any, path: str) -> tuple[str, ...]:
+    return tuple(
+        _string(item, f"{path}[{index}]")
+        for index, item in enumerate(_list(value, path))
+    )
 
 
 def _string(value: Any, path: str) -> str:

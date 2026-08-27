@@ -234,6 +234,52 @@ reviewed_sha: def456
     assert validate_remediation(review=review, remediation=remediation) is remediation
 
 
+def test_remediation_carries_narrow_scope_verification_and_constraints() -> None:
+    task, _ = contracts()
+    review = parse_review(CHANGES_REVIEW)
+    remediation = parse_remediation(
+        """
+finding_id: R1
+action: CODE_FIX
+reviewed_sha: def456
+scope:
+  modify:
+    - src/aios_renew/review.py
+verification:
+  affected:
+    - pytest tests/test_review.py
+constraints:
+  hard:
+    - Do not execute remediation.
+"""
+    )
+
+    assert remediation.modification_scope == ("src/aios_renew/review.py",)
+    assert remediation.affected_verification == (
+        "pytest tests/test_review.py",
+    )
+    assert validate_remediation(
+        review=review, remediation=remediation, task=task
+    ) is remediation
+
+
+def test_remediation_scope_cannot_widen_original_task() -> None:
+    task, _ = contracts()
+    review = parse_review(CHANGES_REVIEW)
+    remediation = parse_remediation(
+        """
+finding_id: R1
+action: CODE_FIX
+reviewed_sha: def456
+modification_scope: [outside.py]
+affected_verification: [pytest tests/test_review.py]
+"""
+    )
+
+    with pytest.raises(ReviewValidationError, match="widens TASK.scope.modify"):
+        validate_remediation(review=review, remediation=remediation, task=task)
+
+
 def test_rejects_noncanonical_remediation_action() -> None:
     with pytest.raises(ReviewValidationError, match="action must be one of"):
         parse_remediation(
