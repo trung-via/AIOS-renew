@@ -1,0 +1,138 @@
+﻿task_id: TASK-025
+revision: 1
+
+goal: >
+  Add deterministic tracked-upstream synchronization before every new PRIMARY
+  AIOS run so a newly published TASK can be executed without a separate manual
+  git pull, while preserving exact state binding and kernel invariants.
+
+problem: >
+  ChatGPT Brain can publish TASK artifacts to a project's tracked upstream, but
+  the local workspace may still be behind. The human currently has to align Git
+  state manually before aios run. PRIMARY execution should deterministically
+  align a clean tracked branch to its exact fetched upstream state before TASK
+  loading and base_sha binding.
+
+assumptions:
+  - PRIMARY execution uses a checked-out local branch with a tracked upstream.
+  - The tracked upstream is authoritative for a new PRIMARY run baseline.
+  - Automatic alignment is allowed only by exact fast-forward.
+  - REMEDIATION remains bound to reviewed_sha and must not auto-sync.
+  - aios task remains read-only and must not auto-sync.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - src/aios_renew/run.py
+    - src/aios_renew/task.py
+
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - Add automatic push.
+  - Add merge commits, rebase, reset, checkout, stash, clean, force operations,
+    branch creation, or conflict resolution.
+  - Add Git/network retries or polling.
+  - Auto-sync REMEDIATION.
+  - Auto-sync aios task.
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Change Codex or Antigravity adapter semantics.
+  - Hard-code origin, main, or GitHub URLs.
+  - Add another planner, worker, reviewer, watcher, or background process.
+
+constraints:
+  hard:
+    - Synchronization applies only to PRIMARY run_task.
+    - Synchronization must occur inside the existing RepositoryLock.
+    - It must occur before TASK loading, RUN creation, base_sha capture,
+      handoff creation, adapter selection, or executor invocation.
+    - Require a clean working tree before fetch; dirty state fails closed.
+    - Require an attached current branch with a configured tracked upstream.
+    - Detached HEAD, missing upstream, or unresolved upstream fails closed.
+    - Resolve the actual configured upstream; never assume origin/main.
+    - Fetch the configured upstream deterministically.
+    - Fetch/auth/network failure fails closed with no automatic retry.
+    - After fetch classify exact state:
+        equal -> no-op;
+        local behind -> fast-forward only;
+        local ahead -> fail closed;
+        diverged -> fail closed.
+    - Never merge, rebase, reset, checkout, stash, clean, force-update, or
+      automatically resolve conflicts.
+    - After sync require working tree clean and local HEAD exactly equal fetched
+      upstream HEAD.
+    - Load TASK only after successful synchronization so a newly published TASK
+      can become available during the same aios run invocation.
+    - Capture PRIMARY base_sha only after successful synchronization and TASK
+      loading.
+    - PRIMARY base_sha must equal synchronized local/upstream HEAD.
+    - Sync history is baseline state and must never appear in
+      RESULT.changed_files.
+    - TASK implementation delta remains post-sync base_sha -> final executor HEAD.
+    - Sync failure must happen before RUN/handoff persistence and before any
+      executor invocation.
+    - Codex and Antigravity must use the same shared Runtime sync gate.
+    - No sync logic may be duplicated inside either adapter.
+    - run_remediation must perform no fetch or fast-forward and must retain the
+      exact HEAD == reviewed_sha continuity check.
+    - describe_task / aios task must remain read-only.
+    - Preserve strict UTF-8 subprocess decoding.
+    - Preserve raw NUL-delimited Git changed-path semantics.
+    - Preserve crash-safe RepositoryLock behavior.
+    - Keep implementation minimal and deterministic.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Equal local/upstream state is a deterministic no-op and PRIMARY execution
+      proceeds normally.
+
+  - id: AC2
+    condition: >
+      A clean local branch behind upstream is fast-forwarded exactly, TASK is
+      loaded from synchronized state, and RUN.base_sha equals synchronized HEAD.
+
+  - id: AC3
+    condition: >
+      Dirty, detached, missing-upstream, fetch-failed, ahead, diverged,
+      fast-forward-failed, post-sync-dirty, or HEAD-mismatch states fail closed
+      before executor invocation.
+
+  - id: AC4
+    condition: >
+      A TASK absent locally but present upstream becomes loadable by the same
+      aios run invocation after synchronization.
+
+  - id: AC5
+    condition: >
+      Synchronization occurs inside RepositoryLock before TASK load, RUN
+      creation, base_sha binding, handoff creation, and executor invocation.
+
+  - id: AC6
+    condition: >
+      RESULT.changed_files continues to describe only the implementation delta
+      from synchronized base_sha to final executor HEAD.
+
+  - id: AC7
+    condition: >
+      REMEDIATION performs no automatic synchronization and remains strictly
+      bound to reviewed_sha.
+
+  - id: AC8
+    condition: >
+      aios task / describe_task remains read-only with no fetch or mutation.
+
+  - id: AC9
+    condition: >
+      Codex and Antigravity share identical Runtime synchronization semantics
+      and all existing kernel invariants remain unchanged.
+
+verification:
+  required:
+    - '$env:PYTHONPATH = ".;src"; pytest tests/test_operator.py'
+    - '$env:PYTHONPATH = ".;src"; pytest'
+    - git diff --check
+    - git status --porcelain
