@@ -786,13 +786,23 @@ def publish_upstream(
 
 
 def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = make_repo(tmp_path, task_source=None)
+    local_sha = git(repo, "rev-parse", "HEAD")
+    branch_ref = git(repo, "symbolic-ref", "HEAD")
     published_sha = publish_upstream(
         repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE}, "publish task"
     )
     runner = FakeCodexRunner(repo)
+    git_calls = []
+    real_git = operator_module._git
+
+    def recording_git(root, *args, **kwargs):
+        git_calls.append(args)
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", recording_git)
 
     summary = run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
 
@@ -802,6 +812,10 @@ def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(
     assert summary.base_sha == published_sha
     assert canonical["run"]["base_sha"] == published_sha
     assert canonical["task"]["task_id"] == "TASK-101"
+    assert ("read-tree", "-u", "-m", local_sha, published_sha) in git_calls
+    assert ("update-ref", branch_ref, published_sha, local_sha) in git_calls
+    prohibited = {"merge", "rebase", "reset", "checkout", "stash", "clean"}
+    assert not any(args and args[0] in prohibited for args in git_calls)
 
 
 @pytest.mark.parametrize(

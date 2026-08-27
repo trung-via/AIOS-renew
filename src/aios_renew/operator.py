@@ -542,6 +542,7 @@ def _synchronize_primary_branch(root: Path) -> None:
     if _git(root, "status", "--porcelain"):
         raise OperatorError("repository dirty")
     try:
+        branch_ref = _git(root, "symbolic-ref", "--quiet", "HEAD")
         branch = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
     except OperatorError as exc:
         raise OperatorError("repository HEAD is detached") from exc
@@ -568,7 +569,8 @@ def _synchronize_primary_branch(root: Path) -> None:
     if local_sha != upstream_sha:
         if _git_is_ancestor(root, local_sha, upstream_sha):
             try:
-                _git(root, "merge", "--ff-only", upstream)
+                _git(root, "read-tree", "-u", "-m", local_sha, upstream_sha)
+                _git(root, "update-ref", branch_ref, upstream_sha, local_sha)
             except OperatorError as exc:
                 raise OperatorError(f"upstream fast-forward failed: {exc}") from exc
         elif _git_is_ancestor(root, upstream_sha, local_sha):
