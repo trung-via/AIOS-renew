@@ -428,7 +428,9 @@ class RemediationRunner:
             execution = json.loads(
                 kwargs["input"].split("REMEDIATION_INPUT:\n", 1)[1]
             )
-        (self.repo / "OUTPUT.txt").write_text("remediated\n", encoding="utf-8")
+        (self.repo / "OUTPUT.txt").write_text(
+            f"remediated by {execution['run']['run_id']}\n", encoding="utf-8"
+        )
         git(self.repo, "add", "OUTPUT.txt")
         git(self.repo, "commit", "--quiet", "-m", "narrow remediation")
         head_sha = git(self.repo, "rev-parse", "HEAD")
@@ -481,6 +483,71 @@ def test_narrow_remediation_uses_shared_completion_policy(
     assert stored["result"]["changed_files"] == ["OUTPUT.txt"]
     assert stored["evidence"][0]["source"]["command"] == "git diff --check"
     assert "git status --porcelain" not in json.dumps(stored)
+    if executor == "antigravity":
+        instruction = runner.calls[0][0][runner.calls[0][0].index("--print") + 1]
+        assert "CODE_FIX, commit the permitted remediation delta" in instruction
+        assert "EVIDENCE_ONLY, do not create a code commit" in instruction
+
+
+def test_persisted_remediation_result_is_authoritative_lineage(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    primary_review, first_remediation = remediation_contract(repo)
+    first_runner = RemediationRunner(repo)
+    first = run_remediation(
+        "TASK-101",
+        review=primary_review,
+        remediation=first_remediation,
+        executor="codex",
+        repo=repo,
+        native_runner=first_runner,
+    )
+    delta_review = operator_module.parse_review(
+        f"""
+review_id: REVIEW-101-002
+reviewed_sha: {first.head_sha}
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The first remediation needs one further narrow correction.
+    expected: Commit only the corrected output.
+prior_finding_id: R1
+"""
+    )
+    second_remediation = operator_module.parse_remediation(
+        f"""
+finding_id: R2
+action: CODE_FIX
+reviewed_sha: {first.head_sha}
+modification_scope: [OUTPUT.txt]
+affected_verification: [git diff --check]
+constraints:
+  hard: [Commit the output.]
+"""
+    )
+    second_runner = RemediationRunner(repo)
+
+    second = run_remediation(
+        "TASK-101",
+        review=delta_review,
+        remediation=second_remediation,
+        prior_review=primary_review,
+        executor="codex",
+        repo=repo,
+        native_runner=second_runner,
+    )
+
+    assert first.run_id == "RUN-101-001"
+    assert second.run_id == "RUN-101-002"
+    assert second.reviewed_sha == first.head_sha
+    assert second.head_sha != first.head_sha
+    assert len(first_runner.calls) == len(second_runner.calls) == 1
 
 
 def test_remediation_sha_mismatch_fails_before_executor(tmp_path: Path) -> None:

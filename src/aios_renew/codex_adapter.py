@@ -175,6 +175,8 @@ class CodexAdapter:
             "Execute exactly one canonical narrow REMEDIATION. Do not run or "
             "restart the original TASK, rediscover the repository, perform "
             "semantic review, or retry. Change only remediation.modification_scope. "
+            "For CODE_FIX, commit the permitted remediation delta before returning; "
+            "for EVIDENCE_ONLY, do not create a code commit. "
             "Execute only every command in remediation.affected_verification "
             "exactly as written and provide exact successful EVIDENCE for each. "
             "Return one canonical ResultPackage with empty result.claims and "

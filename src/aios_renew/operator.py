@@ -30,6 +30,7 @@ from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
 from .executor import ExecutorBoundary, ExecutorBoundaryError
 from .run import Run, RunLeaseRegistry, RunTaskReference
 from .review import (
+    Finding,
     Remediation,
     RemediationExecution,
     Review,
@@ -285,8 +286,10 @@ def _load_authoritative_prior_result(
     state: RuntimePaths,
     task: Task,
     reviewed_sha: str,
+    *,
+    repo: Path,
 ) -> Result:
-    """Load the unique persisted TASK result with canonical RUN lineage."""
+    """Load one persisted primary or remediation result with canonical lineage."""
 
     matches: list[Result] = []
     lineage_mismatch = False
@@ -314,31 +317,39 @@ def _load_authoritative_prior_result(
             run_data = json.loads(
                 (state.runs / f"{run_id}.json").read_text(encoding="utf-8")
             )
-            if not isinstance(run_data, Mapping) or "kind" in run_data:
-                raise ValueError("prior RUN is not a TASK execution")
-            task_data = run_data["task"]
-            if not isinstance(task_data, Mapping):
-                raise TypeError("RUN.task must be a mapping")
-            run = Run(
-                run_id=run_data["run_id"],
-                task=RunTaskReference(
-                    id=task_data["id"], revision=task_data["revision"]
-                ),
-                executor=run_data["executor"],
-                base_sha=run_data["base_sha"],
-                workspace=run_data["workspace"],
-                head_sha=run_data.get("head_sha"),
-                status=run_data["status"],
-            )
-            if run.run_id != run_id:
-                raise ValueError("RESULT filename does not match RUN id")
-            validate_result_package(
-                task=task,
-                run=run,
-                result=result,
-                evidence=evidence,
-            )
-        except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+            if not isinstance(run_data, Mapping):
+                raise TypeError("RUN must be a mapping")
+            if "kind" not in run_data:
+                run = _run_from_data(run_data)
+                if run.run_id != run_id:
+                    raise ValueError("RESULT filename does not match RUN id")
+                validate_result_package(
+                    task=task,
+                    run=run,
+                    result=result,
+                    evidence=evidence,
+                )
+            elif run_data.get("kind") == "REMEDIATION":
+                execution = _remediation_execution_from_data(run_data["execution"])
+                if execution.run.run_id != run_id:
+                    raise ValueError("RESULT filename does not match RUN id")
+                _validate_persisted_remediation_result(
+                    repo=repo,
+                    task=task,
+                    execution=execution,
+                    package=ResultPackage(result=result, evidence=evidence),
+                )
+            else:
+                raise ValueError("unknown RUN kind")
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+            OperatorError,
+        ):
             lineage_mismatch = True
             continue
         matches.append(result)
@@ -350,6 +361,73 @@ def _load_authoritative_prior_result(
     if lineage_mismatch:
         raise OperatorError("authoritative prior RESULT lineage mismatch")
     raise OperatorError("authoritative prior RESULT not found")
+
+
+def _run_from_data(data: Any) -> Run:
+    root = data if isinstance(data, Mapping) else None
+    if root is None:
+        raise TypeError("RUN must be a mapping")
+    task_data = root["task"]
+    if not isinstance(task_data, Mapping):
+        raise TypeError("RUN.task must be a mapping")
+    return Run(
+        run_id=root["run_id"],
+        task=RunTaskReference(id=task_data["id"], revision=task_data["revision"]),
+        executor=root["executor"],
+        base_sha=root["base_sha"],
+        workspace=root["workspace"],
+        head_sha=root.get("head_sha"),
+        status=root["status"],
+    )
+
+
+def _remediation_execution_from_data(data: Any) -> RemediationExecution:
+    root = data if isinstance(data, Mapping) else None
+    if root is None:
+        raise TypeError("REMEDIATION execution must be a mapping")
+    finding_data = root["finding"]
+    if not isinstance(finding_data, Mapping):
+        raise TypeError("REMEDIATION finding must be a mapping")
+    finding = Finding(
+        id=finding_data["id"],
+        basis=finding_data["basis"],
+        action=finding_data["action"],
+        location=finding_data["location"],
+        issue=finding_data["issue"],
+        expected=finding_data["expected"],
+    )
+    remediation = parse_remediation(json.dumps(root["remediation"]))
+    if remediation.finding_id != finding.id or remediation.action != finding.action:
+        raise ValueError("REMEDIATION execution does not match its finding")
+    return RemediationExecution(
+        review_id=root["review_id"],
+        finding=finding,
+        remediation=remediation,
+        run=_run_from_data(root["run"]),
+        original_constraints=tuple(root.get("original_constraints", ())),
+    )
+
+
+def _validate_persisted_remediation_result(
+    *,
+    repo: Path,
+    task: Task,
+    execution: RemediationExecution,
+    package: ResultPackage,
+) -> None:
+    """Validate persisted remediation lineage against its actual result contract."""
+
+    run = execution.run
+    if run.task.id != task.task_id or run.task.revision != task.revision:
+        raise ValueError("REMEDIATION RUN does not reference the supplied TASK")
+    if run.base_sha != execution.remediation.reviewed_sha:
+        raise ValueError("REMEDIATION RUN base_sha does not match reviewed_sha")
+    _require_remediation_result(
+        repo,
+        execution,
+        package,
+        actual_head=package.result.head_sha,
+    )
 
 
 def run_task(
@@ -495,6 +573,7 @@ def run_remediation(
         state,
         task,
         canonical_review.reviewed_sha,
+        repo=root,
     )
     try:
         validate_review(
@@ -619,6 +698,46 @@ def _require_remediation_result(
 ) -> None:
     """Apply one shared completion policy to either native executor."""
 
+    _require_remediation_package_contract(
+        execution, package, actual_head=actual_head
+    )
+
+    output = _git(
+        repo,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        execution.remediation.reviewed_sha,
+        actual_head,
+        strip_stdout=False,
+    )
+    actual_changed = {path for path in output.split("\0") if path}
+    if set(package.result.changed_files) != actual_changed:
+        raise OperatorError("RESULT.changed_files mismatch")
+    outside_scope = actual_changed.difference(
+        execution.remediation.modification_scope
+    )
+    if outside_scope:
+        raise OperatorError(
+            "committed changed paths outside REMEDIATION modification scope: "
+            + ", ".join(sorted(outside_scope))
+        )
+    if execution.remediation.action == "EVIDENCE_ONLY":
+        if actual_head != execution.remediation.reviewed_sha or actual_changed:
+            raise OperatorError("EVIDENCE_ONLY remediation changed repository HEAD")
+    elif actual_changed and actual_head == execution.remediation.reviewed_sha:
+        raise OperatorError("CODE_FIX committed changes did not advance HEAD")
+
+
+def _require_remediation_package_contract(
+    execution: RemediationExecution,
+    package: ResultPackage,
+    *,
+    actual_head: str,
+) -> None:
+    """Bind a remediation package without applying the primary TASK contract."""
+
     if package.result.claims:
         raise OperatorError("remediation RESULT claims must be empty")
     if package.result.unresolved:
@@ -651,32 +770,6 @@ def _require_remediation_result(
                 + command
             )
 
-    output = _git(
-        repo,
-        "diff",
-        "--name-only",
-        "--no-renames",
-        "-z",
-        execution.remediation.reviewed_sha,
-        actual_head,
-        strip_stdout=False,
-    )
-    actual_changed = {path for path in output.split("\0") if path}
-    if set(package.result.changed_files) != actual_changed:
-        raise OperatorError("RESULT.changed_files mismatch")
-    outside_scope = actual_changed.difference(
-        execution.remediation.modification_scope
-    )
-    if outside_scope:
-        raise OperatorError(
-            "committed changed paths outside REMEDIATION modification scope: "
-            + ", ".join(sorted(outside_scope))
-        )
-    if execution.remediation.action == "EVIDENCE_ONLY":
-        if actual_head != execution.remediation.reviewed_sha or actual_changed:
-            raise OperatorError("EVIDENCE_ONLY remediation changed repository HEAD")
-    elif actual_changed and actual_head == execution.remediation.reviewed_sha:
-        raise OperatorError("CODE_FIX committed changes did not advance HEAD")
 
 
 def _require_changed_files(
@@ -861,7 +954,9 @@ def _antigravity_remediation_transport(
         "Execute exactly its one remediation_execution contract. Do not run or "
         "restart the original TASK, scan for a different repository, perform semantic "
         "review or repeat unaffected verification. Change only paths in "
-        "remediation.modification_scope and execute only commands in "
+        "remediation.modification_scope. For CODE_FIX, commit the permitted "
+        "remediation delta before returning; for EVIDENCE_ONLY, do not create a "
+        "code commit. Execute only commands in "
         "remediation.affected_verification exactly as written. Write one canonical "
         "ResultPackage to result_package_path with empty result.claims and "
         "result.unresolved. Include exact successful evidence for every affected "

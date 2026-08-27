@@ -181,6 +181,8 @@ affected_verification: [pytest tests/test_codex_adapter.py]
     ]
     assert "goal" not in json.dumps(payload)
     assert "acceptance" not in json.dumps(payload)
+    assert "CODE_FIX, commit the permitted remediation delta" in prompt
+    assert "EVIDENCE_ONLY, do not create a code commit" in prompt
 
 
 def test_output_schema_is_passed() -> None:
