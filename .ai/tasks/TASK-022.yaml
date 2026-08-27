@@ -1,0 +1,220 @@
+task_id: TASK-022
+revision: 1
+
+goal: >
+  Wire the frozen REVIEW -> narrow REMEDIATION -> DELTA REVIEW lifecycle into
+  the AIOS runtime so one explicit review finding can be remediated by exactly
+  one executor without restarting the original TASK or repeating unaffected
+  verification.
+
+problem: >
+  AIOS currently defines and validates REVIEW and REMEDIATION documents but
+  does not execute remediation. The only executable path is run_task(), whose
+  adapters receive the complete TASK and require every original
+  verification.required command. Reusing that path for a review fix would
+  violate the frozen kernel rules by turning remediation into a hidden second
+  TASK. A manual remediation of REVIEW-021-001/R1 proved the required narrow
+  behavior but also showed that the runtime needs canonical lineage, clean
+  baseline enforcement, executor parity, affected verification evidence,
+  Git-authoritative delta binding, and a result bound to the new SHA for
+  DELTA review.
+
+assumptions:
+  - RepositoryLock remains the cross-process repository mutation authority.
+  - REVIEW and REMEDIATION remain deterministic contracts, not reasoning
+    agents.
+  - One remediation continues from REVIEW.reviewed_sha.
+  - A remediation executor may return the existing ResultPackage structural
+    container with no TASK acceptance claims.
+  - DELTA REVIEW may bind to the remediation Result.head_sha using the existing
+    REVIEW contract.
+  - The Brain or Reviewer determines the narrow remediation scope and affected
+    verification before execution.
+  - Codex and Antigravity must receive the same semantic remediation contract.
+
+scope:
+  inspect:
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - src/aios_renew/review.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/executor.py
+    - src/aios_renew/run.py
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_review.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+  modify:
+    - src/aios_renew/review.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_review.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+
+non_goals:
+  - Restart the original TASK during remediation.
+  - Re-run task.verification.required automatically.
+  - Re-plan the original implementation.
+  - Rediscover the repository by default.
+  - Perform semantic review inside AIOS Runtime.
+  - Automatically produce ChatGPT semantic REVIEW judgments.
+  - Add new user intent through remediation.
+  - Fix unrelated repository defects.
+  - Add persistent model sessions or executor conversation continuity.
+  - Redesign primary TASK execution.
+  - Change RepositoryLock semantics.
+  - Add retries or unbounded remediation loops.
+  - Require full canonical verification for narrow remediation.
+  - Modify unrelated files.
+
+constraints:
+  hard:
+    - Remediation execution must be a separate runtime path from run_task().
+    - It must not call run_task() internally or synthesize a hidden TASK.
+    - A canonical REMEDIATION must identify one existing REVIEW finding,
+      preserve its action, and bind to REVIEW.reviewed_sha.
+    - Extend the minimal REMEDIATION execution contract only as necessary to
+      carry an explicit narrow modification scope and explicit affected
+      verification commands.
+    - The remediation modification scope must not widen the original
+      TASK.scope.modify.
+    - The affected verification list must be executed exactly as written by
+      the selected executor.
+    - Original TASK.verification.required commands must not be implicitly
+      appended to remediation verification.
+    - Before invoking an executor, Runtime must hold RepositoryLock, require a
+      clean worktree, and require current Git HEAD to equal
+      REMEDIATION.reviewed_sha.
+    - If baseline HEAD differs from reviewed_sha, remediation must fail closed
+      before executor invocation.
+    - If the repository is dirty before remediation, remediation must fail
+      closed before executor invocation.
+    - Exactly one selected executor may perform one remediation execution.
+    - Codex and Antigravity must implement the same semantic remediation input
+      and canonical output contract.
+    - Remediation executor input must contain only the explicit finding,
+      remediation contract, immutable lineage/reference data, and minimum
+      original constraints needed for safe execution; it must not serialize
+      the complete original TASK as execution instructions.
+    - CODE_FIX may change only paths explicitly permitted by the remediation
+      modification scope.
+    - EVIDENCE_ONLY must not require a code commit solely to produce evidence.
+    - Remediation output may use ResultPackage structurally, but remediation
+      must not fabricate TASK acceptance claims; remediation RESULT claims must
+      be empty.
+    - Remediation RESULT.unresolved must be empty for successful completion.
+    - Every affected verification command must have exact-match EVIDENCE with
+      result.exit_code equal to zero.
+    - Extra evidence remains allowed.
+    - Evidence must bind to the remediation execution identity and final
+      immutable subject SHA.
+    - Runtime must obtain the real final Git HEAD after executor completion.
+    - RESULT.head_sha must equal the real final Git HEAD.
+    - Runtime must require a clean post-execution worktree.
+    - Runtime must derive the remediation committed delta from
+      reviewed_sha to final HEAD using Git-authoritative NUL-delimited paths
+      with rename detection disabled and without stripping path data.
+    - The actual committed changed-file set must equal
+      RESULT.changed_files.
+    - Every actual committed changed path must be inside the explicit
+      remediation modification scope.
+    - CODE_FIX with committed changes must advance HEAD.
+    - EVIDENCE_ONLY may leave HEAD unchanged and RESULT.changed_files empty.
+    - Runtime must persist the canonical remediation execution result under the
+      Git-local AIOS runtime state rather than the tracked source tree.
+    - The persisted remediation result must expose a Result.head_sha that can
+      serve as the immutable target of an existing DELTA REVIEW.
+    - Existing validate_review DELTA semantics must continue to require
+      prior_finding_id to reference the prior REVIEW finding.
+    - No semantic determination that a finding is resolved may be performed by
+      Runtime; that remains DELTA REVIEW responsibility.
+    - No affected verification command may be repeated by Runtime after the
+      executor has already supplied valid evidence for the same relevant state.
+    - Existing primary TASK execution behavior must remain unchanged.
+    - Existing primary Codex and Antigravity parity must remain unchanged.
+    - Remediation execution must be bounded to one executor invocation per
+      command invocation; repeated findings require a new explicit remediation
+      invocation rather than an internal loop.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Runtime can load and validate a REVIEW and one bound REMEDIATION and
+      execute that remediation without invoking run_task() or restarting the
+      original TASK.
+
+  - id: AC2
+    condition: >
+      Remediation fails before executor invocation when current HEAD differs
+      from reviewed_sha or when the repository is dirty.
+
+  - id: AC3
+    condition: >
+      Remediation executor input contains the explicit finding, narrow
+      remediation scope, affected verification, immutable lineage, and only
+      minimum required original constraints rather than the complete original
+      TASK execution contract.
+
+  - id: AC4
+    condition: >
+      Only remediation affected verification commands are required and original
+      TASK verification commands are not automatically repeated.
+
+  - id: AC5
+    condition: >
+      Successful remediation requires exact successful evidence for every
+      affected verification command and does not require evidence for
+      unaffected original TASK verification.
+
+  - id: AC6
+    condition: >
+      Runtime binds remediation RESULT.head_sha and RESULT.changed_files to the
+      actual post-remediation Git state and fails closed on undeclared or
+      out-of-remediation-scope committed paths.
+
+  - id: AC7
+    condition: >
+      CODE_FIX supports a narrow committed delta while EVIDENCE_ONLY supports
+      unchanged HEAD and an empty changed-file set without fabricating a code
+      change.
+
+  - id: AC8
+    condition: >
+      Codex and Antigravity execute the same semantic remediation contract
+      through one shared runtime completion policy with no executor-specific
+      semantic bypass.
+
+  - id: AC9
+    condition: >
+      A successful remediation persists a canonical result bound to its final
+      immutable SHA, and an existing DELTA REVIEW can validate against that
+      Result with prior_finding_id bound to the original finding.
+
+  - id: AC10
+    condition: >
+      Runtime performs no semantic review, full-task restart, automatic
+      repository rediscovery, full verification ritual, or duplicate
+      verification execution during remediation.
+
+  - id: AC11
+    condition: >
+      Existing primary TASK execution, ResultPackage validation, repository
+      locking, changed-file binding, and verification-evidence behavior remain
+      unchanged.
+
+  - id: AC12
+    condition: >
+      One remediation command invokes at most one native executor and contains
+      no internal retry or remediation loop.
+
+verification:
+  required:
+    - '$env:PYTHONPATH = ".;src"; pytest tests/test_review.py tests/test_operator.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py'
+    - '$env:PYTHONPATH = ".;src"; pytest'
+    - git diff --check
+    - git status --porcelain
