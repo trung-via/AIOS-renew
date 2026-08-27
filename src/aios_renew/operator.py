@@ -305,6 +305,14 @@ def run_task(
         if package.result.changed_files and actual_head == base_sha:
             raise OperatorError("final Git HEAD did not advance")
 
+        _require_changed_files(
+            root,
+            task,
+            package,
+            base_sha=base_sha,
+            actual_head=actual_head,
+        )
+
         _require_complete_result(task, package)
 
         _write_json(result_path, result_package_data(package))
@@ -316,6 +324,38 @@ def run_task(
             base_sha=base_sha,
             head_sha=actual_head,
             result_path=result_path,
+        )
+
+
+def _require_changed_files(
+    repo: Path,
+    task: Task,
+    package: ResultPackage,
+    *,
+    base_sha: str,
+    actual_head: str,
+) -> None:
+    """Bind declared files to the committed delta and the exact TASK scope."""
+
+    output = _git(
+        repo,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        base_sha,
+        actual_head,
+    )
+    actual_changed_files = {path for path in output.split("\0") if path}
+    declared_changed_files = set(package.result.changed_files)
+    if declared_changed_files != actual_changed_files:
+        raise OperatorError("RESULT.changed_files mismatch")
+
+    out_of_scope = actual_changed_files.difference(task.scope.modify)
+    if out_of_scope:
+        raise OperatorError(
+            "committed changed paths outside TASK.scope.modify: "
+            + ", ".join(sorted(out_of_scope))
         )
 
 

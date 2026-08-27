@@ -258,6 +258,57 @@ class StaticResultRunner:
         )
 
 
+class CommitResultRunner:
+    def __init__(
+        self,
+        repo: Path,
+        *,
+        writes: dict[str, str] | None = None,
+        renames: dict[str, str] | None = None,
+        changed_files: list[str],
+    ) -> None:
+        self.repo = repo
+        self.writes = {} if writes is None else writes
+        self.renames = {} if renames is None else renames
+        self.changed_files = changed_files
+
+    def __call__(self, command, **kwargs):
+        if command[0] == "agy":
+            handoff_path = next(
+                (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
+            )
+            handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+            run_id = handoff["run"]["run_id"]
+            result_path = Path(handoff["result_package_path"])
+        else:
+            canonical = json.loads(kwargs["input"].split("CANONICAL_INPUT:\n", 1)[1])
+            run_id = canonical["run"]["run_id"]
+            result_path = None
+
+        for source, destination in self.renames.items():
+            (self.repo / source).rename(self.repo / destination)
+        for path, content in self.writes.items():
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "--quiet", "-m", "executor changes")
+        head_sha = git(self.repo, "rev-parse", "HEAD")
+        payload = result_payload(
+            run_id,
+            head_sha,
+            changed_files=self.changed_files,
+        )
+        if result_path is not None:
+            result_path.write_text(json.dumps(payload), encoding="utf-8")
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(payload),
+            stderr="",
+        )
+
+
 def static_payload(
     *,
     satisfies: list[str] | None = None,
@@ -637,6 +688,109 @@ def test_dirty_post_execution_worktree_fails(tmp_path: Path) -> None:
             executor="codex",
             repo=repo,
             native_runner=FakeCodexRunner(repo, dirty_after=True),
+        )
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_changed_files_exact_committed_delta_passes_shared_gate(
+    tmp_path: Path,
+    executor: str,
+) -> None:
+    task_source = TASK_SOURCE.replace(
+        "    - OUTPUT.txt",
+        "    - FIRST.txt\n    - SECOND.txt",
+    )
+    repo = make_repo(tmp_path, task_source=task_source)
+    runner = CommitResultRunner(
+        repo,
+        writes={"FIRST.txt": "first\n", "SECOND.txt": "second\n"},
+        changed_files=["SECOND.txt", "FIRST.txt"],
+    )
+
+    summary = run_task(
+        "TASK-101", executor=executor, repo=repo, native_runner=runner
+    )
+
+    assert summary.render().startswith("AIOS RUN PASS\n")
+
+
+def test_committed_file_omitted_from_result_fails_closed(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = CommitResultRunner(
+        repo,
+        writes={"OUTPUT.txt": "output\n"},
+        changed_files=[],
+    )
+
+    with pytest.raises(OperatorError, match="RESULT.changed_files mismatch"):
+        run_task(
+            "TASK-101", executor="codex", repo=repo, native_runner=runner
+        )
+
+
+def test_declared_file_absent_from_committed_delta_fails_closed(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    runner = CommitResultRunner(
+        repo,
+        writes={"OUTPUT.txt": "output\n"},
+        changed_files=["OUTPUT.txt", "ABSENT.txt"],
+    )
+
+    with pytest.raises(OperatorError, match="RESULT.changed_files mismatch"):
+        run_task(
+            "TASK-101", executor="codex", repo=repo, native_runner=runner
+        )
+
+
+def test_truthfully_declared_out_of_scope_file_fails_closed(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = CommitResultRunner(
+        repo,
+        writes={"OUTSIDE.txt": "outside\n"},
+        changed_files=["OUTSIDE.txt", "OUTSIDE.txt"],
+    )
+
+    with pytest.raises(OperatorError, match="outside TASK.scope.modify"):
+        run_task(
+            "TASK-101", executor="codex", repo=repo, native_runner=runner
+        )
+
+
+def test_rename_checks_old_and_new_paths_with_rename_detection_disabled(
+    tmp_path: Path,
+) -> None:
+    task_source = TASK_SOURCE.replace(
+        "    - OUTPUT.txt",
+        "    - README.md\n    - RENAMED.md",
+    )
+    repo = make_repo(tmp_path, task_source=task_source)
+    runner = CommitResultRunner(
+        repo,
+        renames={"README.md": "RENAMED.md"},
+        changed_files=["README.md", "RENAMED.md"],
+    )
+
+    summary = run_task(
+        "TASK-101", executor="codex", repo=repo, native_runner=runner
+    )
+
+    assert summary.render().startswith("AIOS RUN PASS\n")
+
+
+def test_rename_old_path_cannot_bypass_scope_enforcement(tmp_path: Path) -> None:
+    task_source = TASK_SOURCE.replace("    - OUTPUT.txt", "    - RENAMED.md")
+    repo = make_repo(tmp_path, task_source=task_source)
+    runner = CommitResultRunner(
+        repo,
+        renames={"README.md": "RENAMED.md"},
+        changed_files=["README.md", "RENAMED.md"],
+    )
+
+    with pytest.raises(OperatorError, match="README.md"):
+        run_task(
+            "TASK-101", executor="codex", repo=repo, native_runner=runner
         )
 
 
