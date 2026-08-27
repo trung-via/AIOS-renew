@@ -1,0 +1,94 @@
+task_id: TASK-018
+revision: 1
+
+goal: >
+  Persist the validated canonical ResultPackage uniformly for both Codex and
+  Antigravity after successful execution.
+
+problem: >
+  Operator currently serializes and writes the validated canonical
+  ResultPackage only for Codex. Antigravity writes its native ResultPackage
+  file before adapter normalization, and the normalized canonical package
+  exists only in memory. This can allow AIOS RUN PASS to point at a result
+  file whose on-disk representation is not canonical.
+
+assumptions:
+  - ExecutorBoundary returns the validated canonical ResultPackage.
+  - result_package_data serializes the canonical ResultPackage representation.
+  - Antigravity native output may require deterministic adapter normalization
+    before becoming canonical.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change Antigravity normalization rules.
+  - Change TASK, RUN, RESULT, EVIDENCE, or ResultPackage schemas.
+  - Move .git/aios runtime paths.
+  - Add a second raw-result artifact.
+  - Change workspace binding or permissions.
+  - Change Codex execution behavior.
+  - Add retries, polling, or additional reasoning.
+  - Modify unrelated files.
+
+constraints:
+  hard:
+    - After all existing canonical validation, repository state checks, and
+      completion checks succeed, Operator must serialize package using
+      result_package_data and persist it to result_path for either executor.
+    - Codex canonical persistence behavior must remain unchanged.
+    - Antigravity native output must not be treated as authoritative after
+      canonical validation succeeds; result_path must contain the validated
+      canonical package.
+    - Canonical persistence must not occur before executor output validation.
+    - Existing invalid-package, HEAD mismatch, dirty-worktree, unresolved,
+      missing acceptance coverage, and execution-failure paths must remain
+      fail-closed.
+    - The existing result_path must remain unchanged.
+    - Do not add executor-specific semantic logic.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A successful Codex run persists result_package_data(package) at
+      result_path as before.
+
+  - id: AC2
+    condition: >
+      A successful Antigravity run also persists
+      result_package_data(package) at result_path.
+
+  - id: AC3
+    condition: >
+      Antigravity singleton satisfies normalization is reflected on disk as
+      a JSON array in the final canonical ResultPackage.
+
+  - id: AC4
+    condition: >
+      Canonical result persistence happens only after existing validation,
+      repository-state, and completion gates succeed.
+
+  - id: AC5
+    condition: >
+      Invalid Antigravity output continues to fail and is not converted into
+      a successful canonical result.
+
+  - id: AC6
+    condition: >
+      Codex and Antigravity expose the same canonical on-disk ResultPackage
+      contract after successful execution.
+
+  - id: AC7
+    condition: >
+      Existing Operator and Antigravity adapter tests continue to pass.
+
+verification:
+  required:
+    - pytest tests/test_operator.py tests/test_antigravity_adapter.py
+    - git diff --check
+    - git status --porcelain
