@@ -1,0 +1,96 @@
+task_id: TASK-017
+revision: 1
+
+goal: >
+  Deterministically normalize a singleton Antigravity claim satisfies value
+  into the canonical list form before canonical validation.
+
+problem: >
+  Real zero-touch RUN-102-004 completed implementation, verification, commit,
+  final HEAD binding, and ResultPackage generation successfully, but
+  Antigravity serialized claim.satisfies as a single acceptance-id string
+  such as "AC1" instead of the canonical list ["AC1"].
+  An in-memory probe proved that converting only these singleton string values
+  to singleton lists makes the complete RESULT and all EVIDENCE pass their
+  canonical validators.
+
+assumptions:
+  - A string satisfies value represents exactly one acceptance criterion.
+  - ResultPackage validation remains the authoritative semantic and binding gate.
+  - Other malformed or ambiguous shapes must continue to fail closed.
+
+scope:
+  inspect:
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_antigravity_adapter.py
+  modify:
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_antigravity_adapter.py
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, or ResultPackage schemas.
+  - Weaken canonical validators.
+  - Normalize arbitrary malformed fields.
+  - Infer acceptance criteria.
+  - Split comma-separated or otherwise ambiguous satisfies strings.
+  - Change Antigravity workspace binding.
+  - Change Antigravity permissions.
+  - Change execution-profile flags.
+  - Add retries or another planning/review layer.
+  - Change Codex behavior.
+
+constraints:
+  hard:
+    - If claim.satisfies is a string, normalize it to a one-element list
+      containing exactly that unchanged string before validate_result.
+    - If claim.satisfies is already a list, preserve it unchanged.
+    - Do not normalize integers, objects, null, comma-separated strings, or
+      other malformed/ambiguous values beyond singleton string wrapping.
+    - Unknown acceptance IDs must still be rejected later by canonical
+      ResultPackage validation.
+    - Missing evidence references, SHA mismatches, wrong run IDs, unresolved
+      items, missing acceptance coverage, and all other existing failures must
+      remain fail-closed.
+    - ResultPackage remains authoritative.
+    - Do not modify unrelated files.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Antigravity output with satisfies equal to "AC1" is normalized to
+      ["AC1"] before validate_result.
+
+  - id: AC2
+    condition: >
+      Existing list-valued satisfies fields are preserved unchanged.
+
+  - id: AC3
+    condition: >
+      Malformed non-string/non-list satisfies values still fail canonical
+      validation.
+
+  - id: AC4
+    condition: >
+      The adapter does not infer, split, rewrite, or otherwise semantically
+      reinterpret acceptance IDs.
+
+  - id: AC5
+    condition: >
+      Unknown acceptance IDs remain rejectable by existing ResultPackage
+      validation.
+
+  - id: AC6
+    condition: >
+      Existing Antigravity adapter failure and success behavior remains
+      covered.
+
+  - id: AC7
+    condition: >
+      Full existing test suite continues to pass.
+
+verification:
+  required:
+    - pytest tests/test_antigravity_adapter.py
+    - pytest
+    - git diff --check
+    - git status --porcelain
