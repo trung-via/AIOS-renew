@@ -11,7 +11,7 @@ import sys
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from .antigravity_adapter import (
     AntigravityAdapter,
@@ -38,24 +38,33 @@ class RepositoryLock:
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self._acquired = False
+        self._file: BinaryIO | None = None
 
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = self.path.open("a+b")
         try:
-            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.close(fd)
-            self._acquired = True
-        except FileExistsError:
-            raise OperatorError("another AIOS run is active in this repository")
+            lock_file.seek(0, os.SEEK_END)
+            if lock_file.tell() == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            _acquire_file_lock(lock_file)
+        except OSError as exc:
+            lock_file.close()
+            raise OperatorError(
+                "another AIOS run is active in this repository"
+            ) from exc
+        self._file = lock_file
 
     def release(self) -> None:
-        if self._acquired:
+        if self._file is not None:
+            lock_file = self._file
+            self._file = None
             try:
-                self.path.unlink()
-            except FileNotFoundError:
-                pass
-            self._acquired = False
+                _release_file_lock(lock_file)
+            finally:
+                lock_file.close()
 
     def __enter__(self) -> RepositoryLock:
         self.acquire()
@@ -63,6 +72,29 @@ class RepositoryLock:
 
     def __exit__(self, *args: Any) -> None:
         self.release()
+
+
+def _acquire_file_lock(lock_file: BinaryIO) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _release_file_lock(lock_file: BinaryIO) -> None:
+    lock_file.seek(0)
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 @dataclass(frozen=True)

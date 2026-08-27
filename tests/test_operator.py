@@ -1,5 +1,6 @@
 import inspect
 import json
+import multiprocessing
 import subprocess
 import tomllib
 from pathlib import Path
@@ -9,12 +10,19 @@ import pytest
 import aios_renew.operator as operator_module
 from aios_renew.operator import (
     OperatorError,
+    RepositoryLock,
     describe_task,
     load_task,
     resolve_repository,
     run_task,
     runtime_paths,
 )
+
+
+def hold_repository_lock(lock_path: str, ready, release) -> None:
+    with RepositoryLock(Path(lock_path)):
+        ready.set()
+        release.wait()
 
 
 TASK_SOURCE = """
@@ -818,7 +826,7 @@ def test_first_operator_run_can_acquire_repository_lock(tmp_path: Path) -> None:
     assert summary.run_id == "RUN-101-001"
 
 
-def test_concurrent_second_acquisition_fails_before_executor_invocation(
+def test_preexisting_lock_file_without_owner_does_not_block_acquisition(
     tmp_path: Path,
 ) -> None:
     repo = make_repo(tmp_path)
@@ -826,15 +834,59 @@ def test_concurrent_second_acquisition_fails_before_executor_invocation(
     paths.lock.parent.mkdir(parents=True, exist_ok=True)
     paths.lock.write_text("locked", encoding="utf-8")
 
-    def runner(command, **kwargs):
-        raise AssertionError("executor must not be invoked when lock is held")
+    with RepositoryLock(paths.lock):
+        pass
 
-    with pytest.raises(
-        OperatorError, match="another AIOS run is active in this repository"
-    ):
-        run_task(
-            "TASK-101", executor="codex", repo=repo, native_runner=runner
-        )
+
+def test_concurrent_second_acquisition_fails_closed(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    context = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    release = context.Event()
+    owner = context.Process(
+        target=hold_repository_lock,
+        args=(str(paths.lock), ready, release),
+    )
+    owner.start()
+    assert ready.wait(timeout=10)
+
+    try:
+        with pytest.raises(
+            OperatorError, match="another AIOS run is active in this repository"
+        ):
+            RepositoryLock(paths.lock).acquire()
+    finally:
+        release.set()
+        owner.join(timeout=10)
+        if owner.is_alive():
+            owner.terminate()
+            owner.join(timeout=10)
+
+    assert owner.exitcode == 0
+
+
+def test_lock_is_acquirable_after_owner_process_terminates_abnormally(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    context = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    release = context.Event()
+    owner = context.Process(
+        target=hold_repository_lock,
+        args=(str(paths.lock), ready, release),
+    )
+    owner.start()
+    assert ready.wait(timeout=10)
+
+    owner.terminate()
+    owner.join(timeout=10)
+    assert not owner.is_alive()
+
+    with RepositoryLock(paths.lock):
+        pass
 
 
 def test_lock_released_after_successful_execution(tmp_path: Path) -> None:
@@ -846,7 +898,8 @@ def test_lock_released_after_successful_execution(tmp_path: Path) -> None:
         repo=repo,
         native_runner=FakeCodexRunner(repo),
     )
-    assert not paths.lock.exists()
+    with RepositoryLock(paths.lock):
+        pass
 
 
 def test_lock_released_after_executor_failure(tmp_path: Path) -> None:
@@ -860,7 +913,8 @@ def test_lock_released_after_executor_failure(tmp_path: Path) -> None:
             repo=repo,
             native_runner=FakeAntigravityRunner(repo, mode="missing"),
         )
-    assert not paths.lock.exists()
+    with RepositoryLock(paths.lock):
+        pass
 
 
 def test_run_id_allocation_happens_while_lock_is_held(tmp_path: Path) -> None:
@@ -884,7 +938,8 @@ def test_run_id_allocation_happens_while_lock_is_held(tmp_path: Path) -> None:
     )
     assert lock_was_held is True
     assert run_file_existed is True
-    assert not paths.lock.exists()
+    with RepositoryLock(paths.lock):
+        pass
 
 
 def test_base_sha_is_captured_and_bound_while_lock_is_held(
@@ -915,7 +970,8 @@ def test_base_sha_is_captured_and_bound_while_lock_is_held(
     )
     assert head_capture_lock_states[0] is True
     assert canonical["run"]["base_sha"] == summary.base_sha
-    assert not paths.lock.exists()
+    with RepositoryLock(paths.lock):
+        pass
 
 
 def test_runtime_lock_remains_under_git_dir_and_does_not_dirty_git_status(
