@@ -720,6 +720,53 @@ def test_successful_codex_execution_stores_result_package(tmp_path: Path) -> Non
     assert summary.result_path.parent == repo / ".git" / "aios" / "results"
 
 
+def test_successful_antigravity_execution_stores_canonical_result_package(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    payload = static_payload()
+    payload["result"]["claims"][0]["satisfies"] = "AC1"
+
+    summary = run_task(
+        "TASK-101",
+        executor="antigravity",
+        repo=repo,
+        native_runner=StaticResultRunner(repo, payload),
+    )
+    stored = json.loads(summary.result_path.read_text(encoding="utf-8"))
+
+    assert stored["result"]["head_sha"] == summary.head_sha
+    assert stored["result"]["claims"][0]["satisfies"] == ["AC1"]
+    assert stored["evidence"][0]["raw"]["path"] == ".ai/evidence/E1.log"
+
+
+def test_antigravity_result_is_not_canonically_rewritten_before_completion_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    payload = static_payload(satisfies=[])
+    real_write_json = operator_module._write_json
+    canonical_result_writes = []
+
+    def tracking_write_json(path, data):
+        if path.parent.name == "results":
+            canonical_result_writes.append(path)
+        real_write_json(path, data)
+
+    monkeypatch.setattr(operator_module, "_write_json", tracking_write_json)
+
+    with pytest.raises(OperatorError, match="does not satisfy acceptance criteria"):
+        run_task(
+            "TASK-101",
+            executor="antigravity",
+            repo=repo,
+            native_runner=StaticResultRunner(repo, payload),
+        )
+
+    assert canonical_result_writes == []
+
+
 def test_successful_antigravity_execution_returns_pass_summary(
     tmp_path: Path,
 ) -> None:

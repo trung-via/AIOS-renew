@@ -275,8 +275,7 @@ def run_task(
 
         _require_complete_result(task, package)
 
-        if executor == "codex":
-            _write_json(result_path, result_package_data(package))
+        _write_json(result_path, result_package_data(package))
 
         return RunSummary(
             task_id=task_id,
