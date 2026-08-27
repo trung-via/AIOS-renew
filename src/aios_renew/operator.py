@@ -394,7 +394,10 @@ def _antigravity_transport(
         "result.exit_code, result.summary, and raw.path. evidence.run_id must reference "
         "the current RUN; evidence.subject_sha must equal result.head_sha; every "
         "claim.satisfies entry must be a known TASK acceptance ID; and every claim "
-        "evidence reference must name an existing evidence_id. Finish only after the "
+        "evidence reference must name an existing evidence_id. Execute every command "
+        "in task.verification.required exactly as written and include successful "
+        "evidence for each: evidence.source.command must exactly equal the required "
+        "command and evidence.result.exit_code must be zero. Finish only after the "
         "ResultPackage file exists."
     )
 

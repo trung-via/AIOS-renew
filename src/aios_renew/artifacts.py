@@ -143,7 +143,7 @@ def validate_evidence(data: Any) -> Evidence:
         ),
         type=_string(_required(root, "type", "EVIDENCE"), "type"),
         source=EvidenceSource(
-            command=_string(
+            command=_exact_string(
                 _required(source, "command", "source"), "source.command"
             )
         ),
@@ -207,6 +207,17 @@ def validate_result_package(
                 f"{claim.id} references missing evidence: {missing}"
             )
 
+    for command in task.verification.required:
+        matching = [item for item in items if item.source.command == command]
+        if not matching:
+            raise ArtifactValidationError(
+                f"missing verification evidence for required command: {command}"
+            )
+        if not any(item.result.exit_code == 0 for item in matching):
+            raise ArtifactValidationError(
+                f"required verification command has no successful evidence: {command}"
+            )
+
     return ResultPackage(result=result, evidence=items)
 
 
@@ -239,6 +250,12 @@ def _string(value: Any, path: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ArtifactValidationError(f"{path} must be a non-empty string")
     return value.strip()
+
+
+def _exact_string(value: Any, path: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ArtifactValidationError(f"{path} must be a non-empty string")
+    return value
 
 
 def _string_list(value: Any, path: str) -> tuple[str, ...]:

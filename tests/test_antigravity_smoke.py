@@ -34,6 +34,12 @@ def commit_smoke_file(workspace: Path, content: bytes = SMOKE_CONTENT) -> str:
 
 
 def write_result(path: Path, *, run_id: str, head_sha: str) -> None:
+    commands = [
+        "python -c \"from pathlib import Path; assert "
+        "Path('SMOKE_OK.txt').read_bytes() == b'AIOS smoke pass\\n'\"",
+        "git rev-parse HEAD",
+        "git status --porcelain",
+    ]
     path.write_text(
         json.dumps(
             {
@@ -43,7 +49,18 @@ def write_result(path: Path, *, run_id: str, head_sha: str) -> None:
                     "changed_files": ["SMOKE_OK.txt"],
                     "unresolved": [],
                 },
-                "evidence": [],
+                "evidence": [
+                    {
+                        "evidence_id": f"E{index}",
+                        "run_id": run_id,
+                        "subject_sha": head_sha,
+                        "type": "TEST",
+                        "source": {"command": command},
+                        "result": {"exit_code": 0, "summary": "verified"},
+                        "raw": {"path": f".ai/evidence/E{index}.log"},
+                    }
+                    for index, command in enumerate(commands, start=1)
+                ],
             }
         ),
         encoding="utf-8",

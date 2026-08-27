@@ -69,9 +69,31 @@ raw:
   path: .ai/evidence/E1.log
 """
     )
+    required_evidence = tuple(
+        parse_evidence(
+            f"""
+evidence_id: E{index}
+run_id: {run_id}
+subject_sha: {head_sha}
+type: TEST
+source:
+  command: |-
+    {command}
+result:
+  exit_code: 0
+  summary: required verification passed
+raw:
+  path: .ai/evidence/E{index}.log
+"""
+        )
+        for index, command in enumerate(
+            parse_task(SMOKE_TASK_SOURCE).verification.required,
+            start=2,
+        )
+    )
     return ResultPackage(
         result=result,
-        evidence=(evidence,) if include_evidence else (),
+        evidence=(evidence, *required_evidence) if include_evidence else (),
     )
 
 

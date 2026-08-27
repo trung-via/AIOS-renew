@@ -125,7 +125,11 @@ class CodexAdapter:
         )
         return (
             "Execute the canonical TASK within its bound RUN. "
-            "Do not reinterpret its requirements. Return only one JSON object "
+            "Do not reinterpret its requirements. Execute every command in "
+            "task.verification.required exactly as written and represent each "
+            "required command with EVIDENCE whose source.command is the exact "
+            "command string and whose result.exit_code is zero. Return only one "
+            "JSON object "
             "with keys 'result' and 'evidence' matching the canonical contracts.\n"
             f"CANONICAL_INPUT:\n{canonical_input}"
         )

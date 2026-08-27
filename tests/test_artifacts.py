@@ -149,3 +149,95 @@ def test_rejects_unknown_acceptance_reference() -> None:
             result=result,
             evidence=[evidence],
         )
+
+
+def test_rejects_missing_required_verification_evidence() -> None:
+    task, run, result, _ = make_contracts()
+    unrelated = parse_evidence(
+        EVIDENCE_SOURCE.replace(
+            "command: pytest tests/test_artifacts.py",
+            "command: pytest tests/test_executor.py",
+        )
+    )
+
+    with pytest.raises(
+        ArtifactValidationError, match="missing verification evidence"
+    ):
+        validate_result_package(
+            task=task,
+            run=run,
+            result=result,
+            evidence=[unrelated],
+        )
+
+
+def test_rejects_failed_required_verification_evidence() -> None:
+    task, run, result, _ = make_contracts()
+    failed = parse_evidence(EVIDENCE_SOURCE.replace("exit_code: 0", "exit_code: 1"))
+
+    with pytest.raises(ArtifactValidationError, match="no successful evidence"):
+        validate_result_package(
+            task=task,
+            run=run,
+            result=result,
+            evidence=[failed],
+        )
+
+
+def test_required_verification_uses_exact_command_equality() -> None:
+    task, run, result, _ = make_contracts()
+    different = parse_evidence(
+        EVIDENCE_SOURCE.replace(
+            "command: pytest tests/test_artifacts.py",
+            "command: pytest  tests/test_artifacts.py",
+        )
+    )
+
+    with pytest.raises(
+        ArtifactValidationError, match="missing verification evidence"
+    ):
+        validate_result_package(
+            task=task,
+            run=run,
+            result=result,
+            evidence=[different],
+        )
+
+
+def test_allows_extra_evidence_with_successful_required_verification() -> None:
+    task, run, result, required = make_contracts()
+    extra = parse_evidence(
+        EVIDENCE_SOURCE.replace("evidence_id: E1", "evidence_id: E2").replace(
+            "command: pytest tests/test_artifacts.py",
+            "command: git diff --check",
+        )
+    )
+
+    package = validate_result_package(
+        task=task,
+        run=run,
+        result=result,
+        evidence=[required, extra],
+    )
+
+    assert package.evidence == (required, extra)
+
+
+def test_verification_evidence_need_not_be_referenced_by_claim() -> None:
+    task, run, result, required = make_contracts()
+    claim_evidence = parse_evidence(
+        EVIDENCE_SOURCE.replace("evidence_id: E1", "evidence_id: E2").replace(
+            "command: pytest tests/test_artifacts.py",
+            "command: manual acceptance inspection",
+        )
+    )
+    result = parse_result(RESULT_SOURCE.replace("- E1", "- E2"))
+
+    package = validate_result_package(
+        task=task,
+        run=run,
+        result=result,
+        evidence=[claim_evidence, required],
+    )
+
+    assert package.result == result

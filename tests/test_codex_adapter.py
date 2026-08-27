@@ -125,6 +125,16 @@ def test_constructs_and_invokes_native_codex_command() -> None:
     assert calls[0][1]["check"] is False
 
 
+def test_prompt_requires_exact_successful_verification_evidence() -> None:
+    task, run, _, _ = make_execution()
+
+    prompt = CodexAdapter.prompt_for(task=task, run=run)
+
+    assert "task.verification.required exactly as written" in prompt
+    assert "source.command is the exact command string" in prompt
+    assert "result.exit_code is zero" in prompt
+
+
 def test_output_schema_is_passed() -> None:
     task, run, registry, boundary = make_execution()
     lease = registry.acquire(run)

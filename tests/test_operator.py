@@ -265,7 +265,17 @@ def static_payload(
 ) -> dict:
     criteria = ["AC1"] if satisfies is None else satisfies
     claims = []
-    evidence = []
+    evidence = [
+        {
+            "evidence_id": "E1",
+            "run_id": "replaced-by-runner",
+            "subject_sha": "replaced-by-runner",
+            "type": "TEST",
+            "source": {"command": "git status --porcelain"},
+            "result": {"exit_code": 0, "summary": "verified"},
+            "raw": {"path": ".ai/evidence/E1.log"},
+        }
+    ]
     if criteria:
         claims.append(
             {
@@ -273,17 +283,6 @@ def static_payload(
                 "satisfies": criteria,
                 "claim": "The stated acceptance criteria are satisfied.",
                 "evidence": ["E1"],
-            }
-        )
-        evidence.append(
-            {
-                "evidence_id": "E1",
-                "run_id": "replaced-by-runner",
-                "subject_sha": "replaced-by-runner",
-                "type": "TEST",
-                "source": {"command": "git status --porcelain"},
-                "result": {"exit_code": 0, "summary": "verified"},
-                "raw": {"path": ".ai/evidence/E1.log"},
             }
         )
     return {
@@ -505,6 +504,27 @@ def test_antigravity_instruction_defines_canonical_result_package(
     assert "evidence.subject_sha must equal result.head_sha" in instruction
     assert "known TASK acceptance ID" in instruction
     assert "existing evidence_id" in instruction
+    assert "task.verification.required exactly as written" in instruction
+    assert "evidence.source.command must exactly equal" in instruction
+    assert "evidence.result.exit_code must be zero" in instruction
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_missing_verification_evidence_fails_shared_boundary(
+    tmp_path: Path,
+    executor: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    payload = static_payload()
+    payload["evidence"][0]["source"]["command"] = "git diff --check"
+
+    with pytest.raises(OperatorError, match="missing verification evidence"):
+        run_task(
+            "TASK-101",
+            executor=executor,
+            repo=repo,
+            native_runner=StaticResultRunner(repo, payload),
+        )
 
 
 def test_missing_agy_executable_fails_clearly(tmp_path: Path) -> None:
