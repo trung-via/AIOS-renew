@@ -1,0 +1,94 @@
+task_id: TASK-015
+revision: 1
+
+goal: >
+  Preserve native Antigravity headless diagnostics when execution finishes
+  without producing the required canonical ResultPackage.
+
+problem: >
+  Real Antigravity E2E RUN-102 demonstrated that agy may finish without a
+  ResultPackage while AIOS reports only "Antigravity ResultPackage missing".
+  The native transport currently discards stderr/stdout diagnostics when the
+  process return code is zero, preventing AIOS from exposing the actual
+  permission or tool failure.
+
+assumptions:
+  - Antigravity may return exit code 0 even when a headless tool action is denied.
+  - ResultPackage remains the authoritative executor output.
+  - Existing Antigravity execution profile remains unchanged.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change Antigravity permissions.
+  - Change the Antigravity execution profile.
+  - Change TASK, RUN, RESULT, EVIDENCE, or ResultPackage schemas.
+  - Change AntigravityAdapter or ExecutorBoundary.
+  - Add retries or polling.
+  - Re-run TASK-102.
+  - Change Codex behavior.
+  - Add --dangerously-skip-permissions.
+  - Change model selection.
+
+constraints:
+  hard:
+    - ResultPackage remains authoritative.
+    - A missing ResultPackage must remain fail-closed.
+    - If the ResultPackage is missing and stderr contains diagnostic text,
+      AntigravityExecutionError must preserve that stderr text.
+    - If stderr is empty and stdout contains diagnostic text, the error must
+      preserve stdout as a fallback.
+    - If both stderr and stdout are empty, retain a concise generic
+      "Antigravity ResultPackage missing" error.
+    - A zero process return code must not cause diagnostic output to be discarded
+      when the ResultPackage is missing.
+    - Existing handling of nonzero agy exit codes must remain unchanged.
+    - Existing repository lock, base SHA, completion gate, final HEAD, and
+      clean-worktree checks must remain unchanged.
+    - Do not modify unrelated files.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Missing ResultPackage with non-empty stderr fails and includes the stderr
+      diagnostic in the Operator error.
+
+  - id: AC2
+    condition: >
+      Missing ResultPackage with empty stderr and non-empty stdout fails and
+      includes the stdout diagnostic in the Operator error.
+
+  - id: AC3
+    condition: >
+      Missing ResultPackage with empty stderr and stdout retains the generic
+      missing ResultPackage failure.
+
+  - id: AC4
+    condition: >
+      Nonzero agy exit handling retains its existing behavior.
+
+  - id: AC5
+    condition: >
+      Successful Antigravity ResultPackage handling remains unchanged.
+
+  - id: AC6
+    condition: >
+      Tests explicitly cover the headless soft-denial shape: exit code 0,
+      missing ResultPackage, and diagnostic text present.
+
+  - id: AC7
+    condition: >
+      Existing Operator and Antigravity adapter tests continue to pass.
+
+verification:
+  required:
+    - pytest tests/test_operator.py tests/test_antigravity_adapter.py
+    - pytest
+    - git diff --check
+    - git status --porcelain
