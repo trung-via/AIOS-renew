@@ -1,5 +1,5 @@
-﻿task_id: TASK-025
-revision: 1
+task_id: TASK-025
+revision: 2
 
 goal: >
   Add deterministic tracked-upstream synchronization before every new PRIMARY
@@ -55,11 +55,9 @@ constraints:
     - Resolve the actual configured upstream; never assume origin/main.
     - Fetch the configured upstream deterministically.
     - Fetch/auth/network failure fails closed with no automatic retry.
-    - After fetch classify exact state:
-        equal -> no-op;
-        local behind -> fast-forward only;
-        local ahead -> fail closed;
-        diverged -> fail closed.
+    - >-
+      After fetch classify exact state: equal -> no-op; local behind ->
+      fast-forward only; local ahead -> fail closed; diverged -> fail closed.
     - Never merge, rebase, reset, checkout, stash, clean, force-update, or
       automatically resolve conflicts.
     - After sync require working tree clean and local HEAD exactly equal fetched
