@@ -1,0 +1,122 @@
+task_id: TASK-023
+revision: 1
+
+goal: >
+  Complete the narrow remediation kernel so CODE_FIX remediations commit their
+  permitted delta before returning and remediation lineage can continue from
+  either a primary TASK result or a prior successful remediation result.
+
+problem: >
+  TASK-022 introduced narrow remediation execution. E2E use exposed two
+  remaining kernel blockers. First, CODE_FIX executor instructions do not
+  require committing the remediation delta even though Runtime requires a
+  clean committed final state. Second, authoritative prior-result loading
+  accepts only primary TASK RUN results and rejects persisted REMEDIATION
+  results, preventing DELTA REVIEW -> subsequent remediation continuity.
+
+assumptions:
+  - Existing REVIEW, REMEDIATION, ResultPackage, RepositoryLock, and Git delta
+    contracts remain authoritative.
+  - A successful remediation Result.head_sha is a valid immutable state for
+    DELTA REVIEW and a later explicit remediation.
+  - Runtime remains deterministic and performs no semantic review.
+
+scope:
+  inspect:
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - src/aios_renew/operator.py
+    - src/aios_renew/review.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/artifacts.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+
+non_goals:
+  - Restart or redesign primary TASK execution.
+  - Change REVIEW semantic judgment.
+  - Add retries or automatic remediation loops.
+  - Require full verification for remediation.
+  - Add persistent executor sessions.
+  - Fix unrelated Windows encoding behavior.
+  - Modify unrelated files.
+
+constraints:
+  hard:
+    - Preserve the separate run_remediation path.
+    - Do not call run_task from remediation.
+    - A CODE_FIX executor must commit its permitted remediation delta before
+      returning its ResultPackage.
+    - EVIDENCE_ONLY must not create a code commit.
+    - Runtime remains the authority for final HEAD, clean status, changed-file
+      equality, and remediation modification scope.
+    - Runtime must not perform the commit on behalf of the executor.
+    - Codex and Antigravity must receive equivalent commit semantics.
+    - A successful remediation RESULT persisted by Runtime must be accepted as
+      authoritative lineage for a later DELTA REVIEW and explicit remediation.
+    - Authoritative lineage validation must distinguish primary TASK results
+      from remediation results and validate each according to its actual
+      contract rather than pretending a remediation result is a primary TASK
+      result.
+    - Missing, malformed, ambiguous, wrong-task, wrong-run, or wrong-SHA
+      lineage must fail closed before executor invocation.
+    - A DELTA REVIEW must remain bound to its prior finding and to the actual
+      persisted Result.head_sha being reviewed.
+    - Sequential remediation must not restart the original TASK or require the
+      original TASK verification commands.
+    - Each remediation invocation may invoke only one native executor once.
+    - No internal remediation loop may be introduced.
+    - Existing primary TASK behavior must remain unchanged.
+
+acceptance:
+  - id: AC1
+    condition: >
+      CODE_FIX Codex and Antigravity remediation instructions explicitly
+      require committing the permitted remediation delta before returning,
+      while EVIDENCE_ONLY does not require or permit a code commit.
+
+  - id: AC2
+    condition: >
+      A successful persisted remediation result can serve as authoritative
+      immutable lineage for a DELTA REVIEW and a subsequent remediation.
+
+  - id: AC3
+    condition: >
+      Primary TASK results and remediation results are validated according to
+      their respective real contracts without synthetic Result binding.
+
+  - id: AC4
+    condition: >
+      Missing, malformed, ambiguous, mismatched-task, mismatched-run, and
+      mismatched-SHA lineage fail before executor invocation.
+
+  - id: AC5
+    condition: >
+      Two sequential narrow remediations can progress TASK lineage forward
+      without rerunning the original TASK or its unaffected verification.
+
+  - id: AC6
+    condition: >
+      Runtime still requires clean post-execution state, real final HEAD,
+      Git-authoritative changed files, exact remediation scope, and successful
+      affected-verification evidence.
+
+  - id: AC7
+    condition: >
+      Existing primary TASK execution and existing narrow remediation
+      invariants remain unchanged.
+
+verification:
+  required:
+    - '$env:PYTHONPATH = ".;src"; pytest tests/test_operator.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py'
+    - '$env:PYTHONPATH = ".;src"; pytest'
+    - git diff --check
+    - git status --porcelain
