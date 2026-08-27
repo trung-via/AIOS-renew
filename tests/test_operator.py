@@ -448,13 +448,15 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
 
     command, kwargs = runner.calls[0]
     instruction = command[command.index("--print") + 1]
+    workspace = command[command.index("--add-dir") + 1]
     assert command[0] == "agy"
+    assert workspace == str(repo.resolve())
     assert command[command.index("--effort") + 1] == "low"
     assert command[command.index("--mode") + 1] == "accept-edits"
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
     assert command[command.index("--print-timeout") + 1] == "5m"
-    assert kwargs["cwd"] == str(repo.resolve())
+    assert kwargs["cwd"] == workspace
     assert ".git" in instruction and "handoff" in instruction
     assert "Create one deterministic operator test output" not in instruction
     assert "--dangerously-skip-permissions" not in command

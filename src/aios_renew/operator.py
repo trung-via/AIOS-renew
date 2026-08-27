@@ -375,6 +375,8 @@ def _antigravity_transport(
                     "agy",
                     "--print",
                     instruction,
+                    "--add-dir",
+                    str(repo),
                     "--effort",
                     "low",
                     "--mode",
