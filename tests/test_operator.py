@@ -758,6 +758,22 @@ def test_truthfully_declared_out_of_scope_file_fails_closed(tmp_path: Path) -> N
         )
 
 
+def test_whitespace_path_cannot_be_normalized_into_declared_scope(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    runner = CommitResultRunner(
+        repo,
+        writes={" OUTPUT.txt": "outside scope\n"},
+        changed_files=["OUTPUT.txt"],
+    )
+
+    with pytest.raises(OperatorError, match="RESULT.changed_files mismatch"):
+        run_task(
+            "TASK-101", executor="codex", repo=repo, native_runner=runner
+        )
+
+
 def test_rename_checks_old_and_new_paths_with_rename_detection_disabled(
     tmp_path: Path,
 ) -> None:
@@ -1125,10 +1141,10 @@ def test_base_sha_is_captured_and_bound_while_lock_is_held(
     real_git = operator_module._git
     head_capture_lock_states = []
 
-    def lock_checking_git(repo_path, *args):
+    def lock_checking_git(repo_path, *args, **kwargs):
         if args == ("rev-parse", "HEAD"):
             head_capture_lock_states.append(paths.lock.exists())
-        return real_git(repo_path, *args)
+        return real_git(repo_path, *args, **kwargs)
 
     monkeypatch.setattr(operator_module, "_git", lock_checking_git)
     runner = FakeCodexRunner(repo)

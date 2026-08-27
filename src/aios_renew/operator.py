@@ -345,6 +345,7 @@ def _require_changed_files(
         "-z",
         base_sha,
         actual_head,
+        strip_stdout=False,
     )
     actual_changed_files = {path for path in output.split("\0") if path}
     declared_changed_files = set(package.result.changed_files)
@@ -496,7 +497,7 @@ def _antigravity_transport(
     return transport
 
 
-def _git(repo: Path, *args: str) -> str:
+def _git(repo: Path, *args: str, strip_stdout: bool = True) -> str:
     try:
         completed = subprocess.run(
             ("git", "-C", str(repo), *args),
@@ -509,7 +510,7 @@ def _git(repo: Path, *args: str) -> str:
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()
         raise OperatorError(f"Git command failed: {detail}")
-    return completed.stdout.strip()
+    return completed.stdout.strip() if strip_stdout else completed.stdout
 
 
 def _write_json(path: Path, data: Mapping[str, Any]) -> None:
