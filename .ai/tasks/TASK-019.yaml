@@ -1,0 +1,103 @@
+task_id: TASK-019
+revision: 1
+
+goal: >
+  Make repository mutation locking crash-safe so an abandoned operator.lock
+  artifact cannot permanently block future AIOS runs after the owning process
+  terminates abnormally.
+
+problem: >
+  RepositoryLock currently treats lock-file existence as active ownership by
+  creating operator.lock with O_CREAT | O_EXCL and deleting it during normal
+  release. If the owning AIOS process terminates before release runs, the file
+  remains on disk and all future runs fail with "another AIOS run is active in
+  this repository" even though no active process owns mutation authority.
+
+assumptions:
+  - RepositoryLock is the cross-process authority preventing concurrent
+    mutation of one repository.
+  - RunLeaseRegistry is an in-process TASK/RUN/executor binding mechanism and
+    is not the cross-process repository lock.
+  - Runtime lock state belongs under the repository Git directory.
+  - Operating-system-owned locking can release active ownership automatically
+    when the owning process terminates.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - Redesign RunLeaseRegistry.
+  - Change Codex or Antigravity adapters.
+  - Change executor selection or invocation behavior.
+  - Change TASK, RUN, RESULT, EVIDENCE, or ResultPackage contracts.
+  - Change artifact validation or completion gates.
+  - Add parallel execution within one repository.
+  - Add PID-age, timestamp, timeout, or stale-lock guessing policy.
+  - Add a third-party runtime dependency.
+  - Modify unrelated files.
+
+constraints:
+  hard:
+    - Preserve exactly one active mutating AIOS run per repository.
+    - Repository mutation authority must be owned by an active process rather
+      than inferred solely from operator.lock file existence.
+    - A competing process must fail closed while another process genuinely
+      holds repository mutation authority.
+    - A pre-existing operator.lock file with no active owner must not
+      permanently block a new run.
+    - Abnormal termination of the lock-owning process must release mutation
+      authority without requiring manual deletion of operator.lock.
+    - Runtime lock state must remain under the repository Git directory and
+      must not dirty the Git worktree.
+    - Existing successful-execution and executor-failure release behavior must
+      remain correct.
+    - Use only the Python standard library.
+    - Do not add executor-specific behavior.
+    - Do not broaden implementation beyond repository locking and its tests.
+
+acceptance:
+  - id: AC1
+    condition: >
+      While one process actively holds repository mutation authority, a
+      competing process cannot acquire RepositoryLock and fails closed.
+
+  - id: AC2
+    condition: >
+      A pre-existing operator.lock file that has no active owner does not
+      prevent RepositoryLock from being acquired.
+
+  - id: AC3
+    condition: >
+      After a process holding RepositoryLock terminates abnormally, another
+      process can acquire repository mutation authority without manual
+      lock-file deletion.
+
+  - id: AC4
+    condition: >
+      Successful operator execution releases repository mutation authority.
+
+  - id: AC5
+    condition: >
+      Executor failure releases repository mutation authority.
+
+  - id: AC6
+    condition: >
+      Repository lock state remains under the Git directory and does not make
+      git status dirty.
+
+  - id: AC7
+    condition: >
+      Existing Operator behavior outside RepositoryLock semantics remains
+      unchanged.
+
+verification:
+  required:
+    - pytest tests/test_operator.py
+    - pytest
+    - git diff --check
+    - git status --porcelain
