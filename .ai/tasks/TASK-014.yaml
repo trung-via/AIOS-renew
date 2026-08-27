@@ -1,0 +1,89 @@
+task_id: TASK-014
+revision: 1
+
+goal: >
+  Make the AIOS Operator fail closed when an executor returns an incomplete
+  canonical ResultPackage, instead of rendering AIOS RUN PASS.
+
+problem: >
+  RUN-013-001 demonstrated that a canonical ResultPackage containing no claims,
+  no evidence, no changed files, and a non-empty unresolved list was accepted
+  as AIOS RUN PASS. The Operator currently validates canonical structure and Git
+  state but does not require completion semantics before producing PASS.
+
+assumptions:
+  - ResultPackage may validly represent incomplete or blocked execution.
+  - Canonical artifact schemas remain unchanged.
+  - Executor-specific behavior must not enter the core completion gate.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - src/aios_renew/artifacts.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, or ResultPackage schemas.
+  - Change CodexAdapter or AntigravityAdapter.
+  - Fix the Windows Codex sandbox failure.
+  - Implement independent verification execution.
+  - Require every valid ResultPackage to represent PASS.
+  - Add retry, polling, orchestration, or background execution.
+  - Resume or re-run TASK-013.
+
+constraints:
+  hard:
+    - Keep canonical ResultPackage validation unchanged.
+    - Operator must not report PASS when result.unresolved is non-empty.
+    - Operator must not report PASS unless every TASK acceptance criterion is
+      satisfied by at least one canonical claim.
+    - Acceptance coverage must be determined from claim.satisfies IDs.
+    - Existing claim-to-evidence validation remains authoritative.
+    - The completion gate must be executor-neutral.
+    - Existing repository lock, base SHA, final HEAD, dirty worktree, and
+      changed-files checks must remain unchanged.
+    - Do not require final HEAD advancement merely because scope.modify is
+      non-empty.
+    - Do not modify unrelated files.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A ResultPackage with non-empty unresolved cannot produce AIOS RUN PASS.
+
+  - id: AC2
+    condition: >
+      A ResultPackage that does not cover every TASK acceptance criterion
+      cannot produce AIOS RUN PASS.
+
+  - id: AC3
+    condition: >
+      Acceptance coverage is computed from the union of result.claims[].satisfies.
+
+  - id: AC4
+    condition: >
+      A complete canonical ResultPackage with empty unresolved and complete
+      acceptance coverage retains existing PASS behavior.
+
+  - id: AC5
+    condition: >
+      The completion gate behaves identically for Codex and Antigravity.
+
+  - id: AC6
+    condition: >
+      Tests reproduce the RUN-013-001 false-PASS shape and prove that it now
+      fails closed.
+
+  - id: AC7
+    condition: >
+      Existing Operator and adapter tests continue to pass.
+
+verification:
+  required:
+    - pytest tests/test_operator.py
+    - pytest
+    - git diff --check
+    - git status --porcelain
