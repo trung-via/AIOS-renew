@@ -149,6 +149,58 @@ def test_success_normalizes_result_package() -> None:
     assert package.evidence[0].run_id == run.run_id
 
 
+def test_singleton_string_satisfies_is_wrapped_before_validation() -> None:
+    task, run, registry, boundary = make_execution()
+    lease = registry.acquire(run)
+    output = successful_output(run.run_id)
+    output["result"]["claims"][0]["satisfies"] = "AC1"
+
+    package = boundary.invoke(
+        task=task,
+        run=run,
+        lease=lease,
+        adapter=AntigravityAdapter(transport=lambda **kwargs: output),
+    )
+
+    assert package.result.claims[0].satisfies == ("AC1",)
+
+
+def test_list_satisfies_is_preserved() -> None:
+    output = successful_output("RUN-008-001")
+    output["result"]["claims"][0]["satisfies"] = ["AC1", "AC2"]
+
+    package = AntigravityAdapter._normalize(output)
+
+    assert package.result.claims[0].satisfies == ("AC1", "AC2")
+
+
+@pytest.mark.parametrize("malformed", [1, {"id": "AC1"}, None])
+def test_malformed_non_string_satisfies_still_fails(malformed) -> None:
+    output = successful_output("RUN-008-001")
+    output["result"]["claims"][0]["satisfies"] = malformed
+
+    with pytest.raises(AntigravityOutputError, match="invalid canonical output"):
+        AntigravityAdapter._normalize(output)
+
+
+@pytest.mark.parametrize("satisfies", ["AC1,AC2", "AC-UNKNOWN"])
+def test_string_satisfies_is_not_reinterpreted_and_remains_canonically_bound(
+    satisfies: str,
+) -> None:
+    task, run, registry, boundary = make_execution()
+    lease = registry.acquire(run)
+    output = successful_output(run.run_id)
+    output["result"]["claims"][0]["satisfies"] = satisfies
+
+    with pytest.raises(ValueError, match="unknown acceptance criteria"):
+        boundary.invoke(
+            task=task,
+            run=run,
+            lease=lease,
+            adapter=AntigravityAdapter(transport=lambda **kwargs: output),
+        )
+
+
 def test_native_failure_propagates() -> None:
     task, run, registry, boundary = make_execution()
     lease = registry.acquire(run)

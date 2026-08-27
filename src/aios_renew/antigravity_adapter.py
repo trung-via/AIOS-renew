@@ -54,7 +54,7 @@ class AntigravityAdapter:
         try:
             payload = json.loads(output) if isinstance(output, str) else output
             root = _mapping(payload, "Antigravity output")
-            result = validate_result(root["result"])
+            result = validate_result(_normalize_satisfies(root["result"]))
             evidence_data = root["evidence"]
             if not isinstance(evidence_data, list):
                 raise TypeError("evidence must be a list")
@@ -76,3 +76,28 @@ def _mapping(value: Any, path: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise TypeError(f"{path} must be a mapping")
     return value
+
+
+def _normalize_satisfies(result: Any) -> Any:
+    """Wrap singleton string ``satisfies`` values without interpreting them."""
+
+    if not isinstance(result, Mapping):
+        return result
+    claims = result.get("claims")
+    if not isinstance(claims, list):
+        return result
+
+    normalized_claims: list[Any] = []
+    changed = False
+    for claim in claims:
+        if isinstance(claim, Mapping) and isinstance(claim.get("satisfies"), str):
+            claim = dict(claim)
+            claim["satisfies"] = [claim["satisfies"]]
+            changed = True
+        normalized_claims.append(claim)
+
+    if not changed:
+        return result
+    normalized_result = dict(result)
+    normalized_result["claims"] = normalized_claims
+    return normalized_result
