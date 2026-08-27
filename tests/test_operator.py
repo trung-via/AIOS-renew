@@ -81,6 +81,10 @@ def make_repo(
         (task_dir / "TASK-101.yaml").write_text(task_source, encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "--quiet", "-m", "baseline")
+    upstream = root / "upstream.git"
+    subprocess.run(("git", "init", "--bare", "--quiet", str(upstream)), check=True)
+    git(repo, "remote", "add", "origin", str(upstream))
+    git(repo, "push", "--quiet", "--set-upstream", "origin", "HEAD")
     return repo
 
 
@@ -746,12 +750,102 @@ def test_sequential_run_ids_increment(tmp_path: Path) -> None:
     first = run_task(
         "TASK-101", executor="codex", repo=repo, native_runner=runner
     )
+    git(repo, "push", "--quiet")
     second = run_task(
         "TASK-101", executor="codex", repo=repo, native_runner=runner
     )
 
     assert first.run_id == "RUN-101-001"
     assert second.run_id == "RUN-101-002"
+
+
+def publish_upstream(
+    repo: Path, files: dict[str, str], message: str = "publish"
+) -> str:
+    publisher = repo.parent / "publisher"
+    subprocess.run(
+        (
+            "git",
+            "clone",
+            "--quiet",
+            git(repo, "remote", "get-url", "origin"),
+            str(publisher),
+        ),
+        check=True,
+    )
+    git(publisher, "config", "user.name", "AIOS Publisher")
+    git(publisher, "config", "user.email", "publisher@example.invalid")
+    for name, content in files.items():
+        path = publisher / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    git(publisher, "add", ".")
+    git(publisher, "commit", "--quiet", "-m", message)
+    git(publisher, "push", "--quiet")
+    return git(publisher, "rev-parse", "HEAD")
+
+
+def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    published_sha = publish_upstream(
+        repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE}, "publish task"
+    )
+    runner = FakeCodexRunner(repo)
+
+    summary = run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    canonical = json.loads(
+        runner.calls[0][1]["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
+    )
+    assert summary.base_sha == published_sha
+    assert canonical["run"]["base_sha"] == published_sha
+    assert canonical["task"]["task_id"] == "TASK-101"
+
+
+@pytest.mark.parametrize(
+    "state", ["detached", "missing-upstream", "ahead", "diverged"]
+)
+def test_unsafe_primary_git_states_fail_before_executor(
+    tmp_path: Path, state: str
+) -> None:
+    repo = make_repo(tmp_path)
+    if state == "detached":
+        git(repo, "checkout", "--quiet", "--detach")
+    elif state == "missing-upstream":
+        git(repo, "branch", "--unset-upstream")
+    elif state == "ahead":
+        (repo / "LOCAL.txt").write_text("local\n", encoding="utf-8")
+        git(repo, "add", "LOCAL.txt")
+        git(repo, "commit", "--quiet", "-m", "local")
+    else:
+        publish_upstream(repo, {"REMOTE.txt": "remote\n"}, "remote")
+        (repo / "LOCAL.txt").write_text("local\n", encoding="utf-8")
+        git(repo, "add", "LOCAL.txt")
+        git(repo, "commit", "--quiet", "-m", "local")
+
+    def runner(command, **kwargs):
+        raise AssertionError("executor must not be invoked")
+
+    with pytest.raises(OperatorError):
+        run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_fetch_failure_fails_before_run_persistence(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    git(repo, "remote", "set-url", "origin", str(tmp_path / "missing.git"))
+
+    with pytest.raises(OperatorError, match="upstream fetch failed"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=lambda *a, **k: None,
+        )
+
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
 
 
 def test_codex_path_uses_executor_boundary(

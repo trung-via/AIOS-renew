@@ -443,7 +443,6 @@ def run_task(
     """Execute a stored TASK through the frozen kernel boundary."""
 
     root = resolve_repository(repo)
-    task = load_task(root, task_id)
     if executor not in ("codex", "antigravity"):
         raise OperatorError(f"unsupported executor: {executor}")
     if executor == "codex" and codex_sandbox not in CODEX_SANDBOXES:
@@ -451,9 +450,8 @@ def run_task(
     state = runtime_paths(root)
 
     with RepositoryLock(state.lock):
-        dirty = _git(root, "status", "--porcelain")
-        if dirty:
-            raise OperatorError("repository dirty")
+        _synchronize_primary_branch(root)
+        task = load_task(root, task_id)
         base_sha = _git(root, "rev-parse", "HEAD")
         run_id = next_run_id(task_id, state.runs)
         run = Run.from_task(
@@ -536,6 +534,81 @@ def run_task(
             head_sha=actual_head,
             result_path=result_path,
         )
+
+
+def _synchronize_primary_branch(root: Path) -> None:
+    """Align a clean attached branch to its configured upstream by exact FF."""
+
+    if _git(root, "status", "--porcelain"):
+        raise OperatorError("repository dirty")
+    try:
+        branch = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    except OperatorError as exc:
+        raise OperatorError("repository HEAD is detached") from exc
+    try:
+        upstream = _git(
+            root,
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        )
+        remote = _git(root, "config", "--get", f"branch.{branch}.remote")
+        merge_ref = _git(root, "config", "--get", f"branch.{branch}.merge")
+    except OperatorError as exc:
+        raise OperatorError("current branch has no resolved upstream") from exc
+
+    try:
+        _git(root, "fetch", "--no-tags", remote, merge_ref)
+    except OperatorError as exc:
+        raise OperatorError(f"upstream fetch failed: {exc}") from exc
+
+    local_sha = _git(root, "rev-parse", "HEAD")
+    upstream_sha = _git(root, "rev-parse", upstream)
+    if local_sha != upstream_sha:
+        if _git_is_ancestor(root, local_sha, upstream_sha):
+            try:
+                _git(root, "merge", "--ff-only", upstream)
+            except OperatorError as exc:
+                raise OperatorError(f"upstream fast-forward failed: {exc}") from exc
+        elif _git_is_ancestor(root, upstream_sha, local_sha):
+            raise OperatorError("local branch is ahead of upstream")
+        else:
+            raise OperatorError("local branch has diverged from upstream")
+
+    if _git(root, "status", "--porcelain"):
+        raise OperatorError("repository dirty after synchronization")
+    if _git(root, "rev-parse", "HEAD") != upstream_sha:
+        raise OperatorError(
+            "repository HEAD does not match upstream after synchronization"
+        )
+
+
+def _git_is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
+    try:
+        completed = subprocess.run(
+            (
+                "git",
+                "-C",
+                str(repo),
+                "merge-base",
+                "--is-ancestor",
+                ancestor,
+                descendant,
+            ),
+            capture_output=True,
+            text=False,
+            check=False,
+        )
+        _decode_utf8(completed.stdout)
+        stderr = _decode_utf8(completed.stderr)
+    except (OSError, UnicodeError) as exc:
+        raise OperatorError(f"Git invocation failed: {exc}") from exc
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 1:
+        return False
+    raise OperatorError(f"Git command failed: {stderr.strip()}")
 
 
 def run_remediation(
