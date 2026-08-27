@@ -405,7 +405,11 @@ def _antigravity_transport(
                 message = f"{message}: {detail}"
             raise AntigravityExecutionError(message)
         if not result_path.is_file():
-            raise AntigravityExecutionError("Antigravity ResultPackage missing")
+            detail = completed.stderr.strip() or completed.stdout.strip()
+            message = "Antigravity ResultPackage missing"
+            if detail:
+                message = f"{message}: {detail}"
+            raise AntigravityExecutionError(message)
         try:
             return result_path.read_text(encoding="utf-8")
         except OSError as exc:

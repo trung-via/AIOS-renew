@@ -176,6 +176,20 @@ class FakeAntigravityRunner:
                 stdout="done",
                 stderr="",
             )
+        if self.mode == "no-result-stderr":
+            return subprocess.CompletedProcess(
+                command,
+                returncode=0,
+                stdout="less useful stdout",
+                stderr="headless tool action denied",
+            )
+        if self.mode == "no-result-empty":
+            return subprocess.CompletedProcess(
+                command,
+                returncode=0,
+                stdout="",
+                stderr="",
+            )
 
         handoff_path = next(
             (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
@@ -507,16 +521,55 @@ def test_nonzero_agy_exit_fails_clearly(tmp_path: Path) -> None:
         )
 
 
-def test_missing_antigravity_result_file_fails(tmp_path: Path) -> None:
+def test_headless_soft_denial_preserves_stderr_when_result_missing(
+    tmp_path: Path,
+) -> None:
     repo = make_repo(tmp_path)
 
-    with pytest.raises(OperatorError, match="ResultPackage missing"):
+    with pytest.raises(OperatorError) as captured:
+        run_task(
+            "TASK-101",
+            executor="antigravity",
+            repo=repo,
+            native_runner=FakeAntigravityRunner(repo, mode="no-result-stderr"),
+        )
+
+    assert str(captured.value) == (
+        "Antigravity ResultPackage missing: headless tool action denied"
+    )
+    assert "less useful stdout" not in str(captured.value)
+
+
+def test_missing_antigravity_result_preserves_stdout_fallback(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+
+    with pytest.raises(OperatorError) as captured:
         run_task(
             "TASK-101",
             executor="antigravity",
             repo=repo,
             native_runner=FakeAntigravityRunner(repo, mode="no-result"),
         )
+
+    assert str(captured.value) == "Antigravity ResultPackage missing: done"
+
+
+def test_missing_antigravity_result_without_diagnostic_is_generic(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+
+    with pytest.raises(OperatorError) as captured:
+        run_task(
+            "TASK-101",
+            executor="antigravity",
+            repo=repo,
+            native_runner=FakeAntigravityRunner(repo, mode="no-result-empty"),
+        )
+
+    assert str(captured.value) == "Antigravity ResultPackage missing"
 
 
 def test_invalid_antigravity_result_fails_canonical_validation(
