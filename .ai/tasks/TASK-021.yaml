@@ -1,0 +1,127 @@
+task_id: TASK-021
+revision: 1
+
+goal: >
+  Bind RESULT.changed_files to the actual committed Git delta and enforce
+  TASK.scope.modify so a RUN cannot pass by changing undeclared or
+  out-of-scope files.
+
+problem: >
+  The operator currently binds RESULT.head_sha to the actual final Git HEAD
+  and requires a clean worktree, but it does not derive the files actually
+  changed between RUN.base_sha and the final HEAD. RESULT.changed_files is
+  therefore trusted as an executor claim, and TASK.scope.modify is not
+  deterministically enforced. RUN-020-001 demonstrated this gap when two
+  necessary files outside TASK-020 revision 1 scope.modify were committed and
+  reported while AIOS still returned PASS.
+
+assumptions:
+  - RUN.base_sha is captured from the real repository HEAD while
+    RepositoryLock is held.
+  - actual_head is obtained from the real repository after executor completion.
+  - The post-execution clean-worktree gate remains authoritative for
+    uncommitted changes.
+  - RESULT.changed_files describes the net committed file delta from base_sha
+    to final HEAD.
+  - TASK.scope.modify contains exact repository-relative paths, not globs.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - src/aios_renew/task.py
+    - src/aios_renew/artifacts.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - Re-run tests or TASK verification commands from AIOS Runtime.
+  - Change executor selection or executor adapters.
+  - Change TASK, RUN, RESULT, EVIDENCE, or ResultPackage schemas.
+  - Add semantic path equivalence, glob expansion, directory recursion, or
+    filesystem discovery.
+  - Infer executor intent from Git history.
+  - Reject or interpret commits based on commit messages.
+  - Redesign RepositoryLock or RunLeaseRegistry.
+  - Change acceptance, unresolved, verification-evidence, HEAD, or clean-tree
+    semantics.
+  - Modify unrelated files.
+
+constraints:
+  hard:
+    - Derive actual_changed_files deterministically from the committed Git
+      delta between RUN.base_sha and actual final HEAD.
+    - Use Git with rename detection disabled so a rename is represented by its
+      old path and new path rather than requiring rename semantics.
+    - Compare paths as exact repository-relative strings after only the
+      canonical parsing already provided by the existing contracts.
+    - The set of actual_changed_files must equal the set of
+      RESULT.changed_files.
+    - If Git contains a changed path omitted from RESULT.changed_files, the RUN
+      must fail closed.
+    - If RESULT.changed_files names a path absent from the actual Git delta,
+      the RUN must fail closed.
+    - Every actual changed path must exist in TASK.scope.modify.
+    - Any actual changed path outside TASK.scope.modify must fail closed.
+    - Ordering differences alone must not cause failure.
+    - Duplicate RESULT.changed_files entries must not be used to bypass the
+      equality or scope gates.
+    - Existing RESULT.head_sha, clean-worktree, final-HEAD advancement,
+      completion, verification-evidence, and canonical persistence gates must
+      remain unchanged.
+    - The Git delta must be inspected by AIOS Runtime only; no executor or
+      model invocation may be added for this check.
+    - Codex and Antigravity must pass through the same shared operator gate.
+    - Do not perform redundant Git HEAD or status discovery when the existing
+      base_sha and actual_head values are already available.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A RUN whose RESULT.changed_files exactly represents the committed Git
+      delta and whose actual changed paths are all permitted by
+      TASK.scope.modify passes the changed-file binding gate.
+
+  - id: AC2
+    condition: >
+      A committed file present in the Git delta but omitted from
+      RESULT.changed_files causes the RUN to fail closed.
+
+  - id: AC3
+    condition: >
+      A path declared in RESULT.changed_files that is absent from the committed
+      Git delta causes the RUN to fail closed.
+
+  - id: AC4
+    condition: >
+      A committed changed path outside TASK.scope.modify causes the RUN to fail
+      closed even when the executor truthfully declares that path in
+      RESULT.changed_files.
+
+  - id: AC5
+    condition: >
+      RESULT.changed_files ordering differences do not cause failure when the
+      declared and actual path sets are otherwise identical.
+
+  - id: AC6
+    condition: >
+      A rename cannot bypass scope enforcement through Git rename detection;
+      both affected repository paths are evaluated as changed paths.
+
+  - id: AC7
+    condition: >
+      Existing HEAD, clean-worktree, completion, verification-evidence, and
+      canonical ResultPackage behavior remains unchanged.
+
+  - id: AC8
+    condition: >
+      Codex and Antigravity are subject to the same deterministic changed-file
+      and scope gate with no executor-specific bypass.
+
+verification:
+  required:
+    - '$env:PYTHONPATH = ".;src"; pytest tests/test_operator.py'
+    - '$env:PYTHONPATH = ".;src"; pytest'
+    - git diff --check
+    - git status --porcelain
