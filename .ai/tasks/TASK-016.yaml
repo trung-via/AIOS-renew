@@ -1,0 +1,90 @@
+task_id: TASK-016
+revision: 1
+
+goal: >
+  Bind the repository root as the active Antigravity workspace during native
+  headless execution.
+
+problem: >
+  Real E2E diagnostics proved that setting subprocess cwd to the repository is
+  insufficient for Antigravity headless mode. Without an explicit workspace
+  binding, Antigravity reports no active workspace and read_file access to the
+  canonical handoff is denied. The same handoff is read successfully when agy
+  is invoked with --add-dir <repository-root>.
+
+assumptions:
+  - The repository passed to Operator is the intended executor workspace.
+  - Existing canonical handoff and ResultPackage locations remain unchanged.
+  - Existing Antigravity execution profile remains valid.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - Move .git/aios runtime artifacts.
+  - Change TASK, RUN, RESULT, EVIDENCE, or ResultPackage schemas.
+  - Change Antigravity permissions.
+  - Add --dangerously-skip-permissions.
+  - Hard-code an Antigravity model.
+  - Change Codex behavior.
+  - Add retries, polling, routing, or background orchestration.
+  - Optimize Antigravity token usage.
+
+constraints:
+  hard:
+    - Native Antigravity execution must pass the resolved repository root through
+      --add-dir.
+    - The --add-dir value must be the same repository supplied to the transport.
+    - Existing cwd behavior must remain unchanged.
+    - Existing --effort low, --mode accept-edits, --disable-slash-commands,
+      --output-format json, and --print-timeout 5m profile must remain unchanged.
+    - Do not add --dangerously-skip-permissions.
+    - Do not add --model.
+    - Canonical handoff and ResultPackage paths remain under .git/aios.
+    - Existing diagnostic preservation and fail-closed behavior remain unchanged.
+    - Do not modify unrelated files.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Antigravity native invocation contains --add-dir followed by the resolved
+      repository root.
+
+  - id: AC2
+    condition: >
+      The repository used by --add-dir is the same repository used as subprocess
+      cwd.
+
+  - id: AC3
+    condition: >
+      Existing Antigravity execution-profile flags remain unchanged.
+
+  - id: AC4
+    condition: >
+      The command still contains neither --dangerously-skip-permissions nor a
+      hard-coded --model.
+
+  - id: AC5
+    condition: >
+      Existing missing-result diagnostic, nonzero-exit, canonical ResultPackage,
+      final HEAD, completion, and clean-worktree behavior remains covered.
+
+  - id: AC6
+    condition: >
+      Tests explicitly verify the --add-dir repository workspace binding.
+
+  - id: AC7
+    condition: >
+      Existing Operator and Antigravity adapter tests continue to pass.
+
+verification:
+  required:
+    - pytest tests/test_operator.py tests/test_antigravity_adapter.py
+    - pytest
+    - git diff --check
+    - git status --porcelain
