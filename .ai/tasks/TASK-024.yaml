@@ -1,0 +1,102 @@
+task_id: TASK-024
+revision: 1
+
+goal: >
+  Make all AIOS subprocess text boundaries deterministic on Windows and remove
+  dependence on the host locale encoding.
+
+problem: >
+  AIOS currently invokes Codex, Antigravity, and Git using subprocess text mode
+  without an explicit encoding. On the observed Windows host,
+  locale.getpreferredencoding(False) is cp1252 while executor output is UTF-8.
+  A real RUN already produced a cp1252 UnicodeDecodeError in a subprocess reader
+  thread while the enclosing AIOS execution still reached PASS. This can lose
+  stdout/stderr diagnostics and weakens deterministic transport behavior.
+
+assumptions:
+  - Codex and Antigravity machine-readable transport is UTF-8.
+  - AIOS repository artifacts are UTF-8.
+  - Git command output used by AIOS must be decoded deterministically.
+  - Invalid canonical executor output must fail closed rather than be silently
+    repaired.
+
+scope:
+  inspect:
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_operator.py
+
+  modify:
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change executor semantics.
+  - Change TASK or REMEDIATION contracts.
+  - Change Git delta or scope rules.
+  - Add retries.
+  - Add another process abstraction unless required for deterministic decoding.
+  - Fix unrelated console display behavior.
+  - Change RESULT or EVIDENCE schemas.
+
+constraints:
+  hard:
+    - No subprocess boundary may depend on the Windows locale for decoding.
+    - Codex primary and remediation execution must use deterministic UTF-8
+      transport.
+    - Antigravity primary and remediation execution must use deterministic
+      UTF-8 transport.
+    - Git repository discovery and shared Git helper output must use
+      deterministic UTF-8 decoding.
+    - Canonical executor stdout must not use lossy replacement decoding.
+    - Invalid canonical UTF-8 or invalid canonical JSON must fail closed.
+    - Diagnostic stderr handling must not allow a decoding problem to produce
+      an unobserved reader-thread failure while AIOS continues as PASS.
+    - Preserve injectable native_runner / runner behavior used by tests.
+    - Preserve exact NUL-delimited Git output semantics used by changed-file
+      validation.
+    - Preserve Codex and Antigravity parity.
+    - Do not change primary TASK or remediation execution policy.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Codex primary and remediation subprocess communication no longer depends
+      on locale.getpreferredencoding(False).
+
+  - id: AC2
+    condition: >
+      Antigravity primary and remediation subprocess communication no longer
+      depends on locale.getpreferredencoding(False).
+
+  - id: AC3
+    condition: >
+      Git repository discovery and _git output decoding are deterministic and
+      preserve raw NUL-delimited changed paths.
+
+  - id: AC4
+    condition: >
+      UTF-8 executor output containing characters not representable by cp1252
+      is handled correctly.
+
+  - id: AC5
+    condition: >
+      Malformed canonical executor encoding/output fails closed instead of
+      allowing AIOS to complete with silently lost canonical output.
+
+  - id: AC6
+    condition: >
+      Existing TASK, remediation, evidence, Git scope, and executor parity
+      behavior remains unchanged.
+
+verification:
+  required:
+    - '$env:PYTHONPATH = ".;src"; pytest tests/test_codex_adapter.py tests/test_antigravity_adapter.py tests/test_operator.py'
+    - '$env:PYTHONPATH = ".;src"; pytest'
+    - git diff --check
+    - git status --porcelain
