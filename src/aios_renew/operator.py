@@ -43,7 +43,7 @@ from .review import (
 from .task import Task, TaskValidationError, parse_task
 
 
-NativeRunner = Callable[..., subprocess.CompletedProcess[str]]
+NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 CODEX_SANDBOXES = ("workspace-write", "danger-full-access")
 
 
@@ -197,16 +197,16 @@ def resolve_repository(path: str | Path | None = None) -> Path:
         completed = subprocess.run(
             ("git", "-C", str(candidate), "rev-parse", "--show-toplevel"),
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="strict",
+            text=False,
             check=False,
         )
+        stdout = _decode_utf8(completed.stdout)
+        stderr = _decode_utf8(completed.stderr)
     except (OSError, UnicodeError) as exc:
         raise OperatorError(f"Git invocation failed: {exc}") from exc
     if completed.returncode != 0:
         raise OperatorError(f"not a Git repository: {candidate}")
-    return Path(completed.stdout.strip()).resolve()
+    return Path(stdout.strip()).resolve()
 
 
 def load_task(repo: str | Path, task_id: str) -> Task:
@@ -851,7 +851,7 @@ def result_package_data(package: ResultPackage) -> dict[str, Any]:
 
 
 def _codex_runner(native_runner: NativeRunner, sandbox: str) -> NativeRunner:
-    def run(command: tuple[str, ...], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def run(command: tuple[str, ...], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
         updated = list(command)
         try:
             index = updated.index("--sandbox")
@@ -911,11 +911,11 @@ def _antigravity_transport(
                 ),
                 cwd=str(repo),
                 capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="strict",
+                text=False,
                 check=False,
             )
+            stdout = _decode_utf8(completed.stdout)
+            stderr = _decode_utf8(completed.stderr)
         except FileNotFoundError as exc:
             raise AntigravityExecutionError("Antigravity CLI not found: agy") from exc
         except (OSError, UnicodeError) as exc:
@@ -923,7 +923,7 @@ def _antigravity_transport(
                 f"Antigravity CLI invocation failed: {exc}"
             ) from exc
         if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip()
+            detail = stderr.strip() or stdout.strip()
             message = (
                 f"Antigravity CLI returned nonzero ({completed.returncode})"
             )
@@ -931,7 +931,7 @@ def _antigravity_transport(
                 message = f"{message}: {detail}"
             raise AntigravityExecutionError(message)
         if not result_path.is_file():
-            detail = completed.stderr.strip() or completed.stdout.strip()
+            detail = stderr.strip() or stdout.strip()
             message = "Antigravity ResultPackage missing"
             if detail:
                 message = f"{message}: {detail}"
@@ -991,11 +991,11 @@ def _antigravity_remediation_transport(
                 ),
                 cwd=str(repo),
                 capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="strict",
+                text=False,
                 check=False,
             )
+            stdout = _decode_utf8(completed.stdout)
+            stderr = _decode_utf8(completed.stderr)
         except FileNotFoundError as exc:
             raise AntigravityExecutionError(
                 "Antigravity CLI not found: agy"
@@ -1005,13 +1005,13 @@ def _antigravity_remediation_transport(
                 f"Antigravity CLI invocation failed: {exc}"
             ) from exc
         if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip()
+            detail = stderr.strip() or stdout.strip()
             message = f"Antigravity CLI returned nonzero ({completed.returncode})"
             if detail:
                 message = f"{message}: {detail}"
             raise AntigravityExecutionError(message)
         if not result_path.is_file():
-            detail = completed.stderr.strip() or completed.stdout.strip()
+            detail = stderr.strip() or stdout.strip()
             message = "Antigravity ResultPackage missing"
             if detail:
                 message = f"{message}: {detail}"
@@ -1031,17 +1031,23 @@ def _git(repo: Path, *args: str, strip_stdout: bool = True) -> str:
         completed = subprocess.run(
             ("git", "-C", str(repo), *args),
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="strict",
+            text=False,
             check=False,
         )
+        stdout = _decode_utf8(completed.stdout)
+        stderr = _decode_utf8(completed.stderr)
     except (OSError, UnicodeError) as exc:
         raise OperatorError(f"Git invocation failed: {exc}") from exc
     if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip()
+        detail = stderr.strip() or stdout.strip()
         raise OperatorError(f"Git command failed: {detail}")
-    return completed.stdout.strip() if strip_stdout else completed.stdout
+    return stdout.strip() if strip_stdout else stdout
+
+
+def _decode_utf8(value: bytes | str) -> str:
+    """Decode captured subprocess bytes synchronously and fail closed."""
+
+    return value.decode("utf-8", errors="strict") if isinstance(value, bytes) else value
 
 
 def _write_json(path: Path, data: Mapping[str, Any]) -> None:

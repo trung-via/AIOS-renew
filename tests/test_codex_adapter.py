@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from dataclasses import asdict
 
 import jsonschema
@@ -124,9 +125,10 @@ def test_constructs_and_invokes_native_codex_command() -> None:
         "-",
     )
     assert calls[0][1]["capture_output"] is True
-    assert calls[0][1]["text"] is True
-    assert calls[0][1]["encoding"] == "utf-8"
-    assert calls[0][1]["errors"] == "strict"
+    assert calls[0][1]["text"] is False
+    assert "encoding" not in calls[0][1]
+    assert "errors" not in calls[0][1]
+    assert isinstance(calls[0][1]["input"], bytes)
     assert calls[0][1]["check"] is False
 
 
@@ -153,12 +155,22 @@ def test_utf8_output_outside_cp1252_is_preserved() -> None:
     assert package.result.claims[0].claim == "Completed: 漢字 🚀"
 
 
-def test_malformed_utf8_reader_failure_fails_closed() -> None:
+@pytest.mark.parametrize("file_descriptor", [1, 2])
+def test_real_subprocess_malformed_utf8_fails_closed(
+    file_descriptor: int,
+) -> None:
     task, run, registry, boundary = make_execution()
     lease = registry.acquire(run)
 
     def runner(command, **kwargs):
-        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        return subprocess.run(
+            (
+                sys.executable,
+                "-c",
+                f"import os; os.write({file_descriptor}, b'\\xff')",
+            ),
+            **kwargs,
+        )
 
     with pytest.raises(CodexExecutionError, match="invocation failed"):
         boundary.invoke(
@@ -425,7 +437,7 @@ def test_hands_off_unchanged_canonical_task_and_run() -> None:
     captured = {}
 
     def runner(command, **kwargs):
-        captured["input"] = kwargs["input"]
+        captured["input"] = kwargs["input"].decode("utf-8", errors="strict")
         return subprocess.CompletedProcess(
             command,
             returncode=0,

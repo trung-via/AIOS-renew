@@ -136,7 +136,9 @@ class FakeCodexRunner:
     def __call__(self, command, **kwargs):
         self.calls.append((command, kwargs))
         self.count += 1
-        canonical = json.loads(kwargs["input"].split("CANONICAL_INPUT:\n", 1)[1])
+        canonical = json.loads(
+            kwargs["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
+        )
         run_id = canonical["run"]["run_id"]
         (self.repo / "OUTPUT.txt").write_text(
             f"operator output {self.count}\n",
@@ -245,7 +247,9 @@ class StaticResultRunner:
                 item["subject_sha"] = payload["result"]["head_sha"]
             result_path.write_text(json.dumps(payload), encoding="utf-8")
         else:
-            canonical = json.loads(kwargs["input"].split("CANONICAL_INPUT:\n", 1)[1])
+            canonical = json.loads(
+                kwargs["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
+            )
             run_id = canonical["run"]["run_id"]
             payload["result"]["head_sha"] = git(self.repo, "rev-parse", "HEAD")
             for item in payload["evidence"]:
@@ -282,7 +286,9 @@ class CommitResultRunner:
             run_id = handoff["run"]["run_id"]
             result_path = Path(handoff["result_package_path"])
         else:
-            canonical = json.loads(kwargs["input"].split("CANONICAL_INPUT:\n", 1)[1])
+            canonical = json.loads(
+                kwargs["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
+            )
             run_id = canonical["run"]["run_id"]
             result_path = None
 
@@ -426,7 +432,7 @@ class RemediationRunner:
             result_path = Path(handoff["result_package_path"])
         else:
             execution = json.loads(
-                kwargs["input"].split("REMEDIATION_INPUT:\n", 1)[1]
+                kwargs["input"].decode("utf-8").split("REMEDIATION_INPUT:\n", 1)[1]
             )
         (self.repo / "OUTPUT.txt").write_text(
             f"remediated by {execution['run']['run_id']}\n", encoding="utf-8"
@@ -483,8 +489,9 @@ def test_narrow_remediation_uses_shared_completion_policy(
     assert stored["result"]["changed_files"] == ["OUTPUT.txt"]
     assert stored["evidence"][0]["source"]["command"] == "git diff --check"
     assert "git status --porcelain" not in json.dumps(stored)
-    assert runner.calls[0][1]["encoding"] == "utf-8"
-    assert runner.calls[0][1]["errors"] == "strict"
+    assert runner.calls[0][1]["text"] is False
+    assert "encoding" not in runner.calls[0][1]
+    assert "errors" not in runner.calls[0][1]
     if executor == "antigravity":
         instruction = runner.calls[0][0][runner.calls[0][0].index("--print") + 1]
         assert "CODE_FIX, commit the permitted remediation delta" in instruction
@@ -670,8 +677,9 @@ def test_repository_discovery_uses_strict_utf8(
     monkeypatch.setattr(operator_module.subprocess, "run", runner)
 
     assert resolve_repository(tmp_path) == tmp_path.resolve()
-    assert captured["encoding"] == "utf-8"
-    assert captured["errors"] == "strict"
+    assert captured["text"] is False
+    assert "encoding" not in captured
+    assert "errors" not in captured
 
 
 def test_git_output_preserves_utf8_nul_delimited_paths(
@@ -691,8 +699,9 @@ def test_git_output_preserves_utf8_nul_delimited_paths(
     assert operator_module._git(
         tmp_path, "diff", "--name-status", "-z", strip_stdout=False
     ) == raw_output
-    assert captured["encoding"] == "utf-8"
-    assert captured["errors"] == "strict"
+    assert captured["text"] is False
+    assert "encoding" not in captured
+    assert "errors" not in captured
 
 
 def test_dirty_repository_fails_before_executor_invocation(tmp_path: Path) -> None:
@@ -822,8 +831,9 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert command[command.index("--output-format") + 1] == "json"
     assert command[command.index("--print-timeout") + 1] == "5m"
     assert kwargs["cwd"] == workspace
-    assert kwargs["encoding"] == "utf-8"
-    assert kwargs["errors"] == "strict"
+    assert kwargs["text"] is False
+    assert "encoding" not in kwargs
+    assert "errors" not in kwargs
     assert ".git" in instruction and "handoff" in instruction
     assert "Create one deterministic operator test output" not in instruction
     assert "--dangerously-skip-permissions" not in command
@@ -1465,7 +1475,9 @@ def test_base_sha_is_captured_and_bound_while_lock_is_held(
     )
 
     canonical = json.loads(
-        runner.calls[0][1]["input"].split("CANONICAL_INPUT:\n", 1)[1]
+        runner.calls[0][1]["input"]
+        .decode("utf-8")
+        .split("CANONICAL_INPUT:\n", 1)[1]
     )
     assert head_capture_lock_states[0] is True
     assert canonical["run"]["base_sha"] == summary.base_sha

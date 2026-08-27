@@ -20,7 +20,7 @@ from .review import RemediationExecution
 from .task import Task
 
 
-ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
+ProcessRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 
 RESULT_PACKAGE_SCHEMA_PATH = (
     Path(__file__).parent / "schemas" / "result_package.json"
@@ -70,13 +70,13 @@ class CodexAdapter:
         try:
             completed = self._runner(
                 command,
-                input=prompt,
+                input=prompt.encode("utf-8", errors="strict"),
                 capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="strict",
+                text=False,
                 check=False,
             )
+            stdout = _decode_utf8(completed.stdout)
+            stderr = _decode_utf8(completed.stderr)
         except (OSError, UnicodeError) as exc:
             raise CodexExecutionError(
                 f"Codex CLI invocation failed: {exc}",
@@ -84,18 +84,18 @@ class CodexAdapter:
             ) from exc
 
         if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip()
+            detail = stderr.strip() or stdout.strip()
             message = f"Codex CLI exited with code {completed.returncode}"
             if detail:
                 message = f"{message}: {detail}"
             raise CodexExecutionError(
                 message,
                 exit_code=completed.returncode,
-                stdout=completed.stdout,
-                stderr=completed.stderr,
+                stdout=stdout,
+                stderr=stderr,
             )
 
-        return self._normalize(completed.stdout, stderr=completed.stderr)
+        return self._normalize(stdout, stderr=stderr)
 
     def execute_remediation(
         self, *, execution: RemediationExecution
@@ -106,29 +106,31 @@ class CodexAdapter:
         try:
             completed = self._runner(
                 command,
-                input=self.remediation_prompt_for(execution=execution),
+                input=self.remediation_prompt_for(execution=execution).encode(
+                    "utf-8", errors="strict"
+                ),
                 capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="strict",
+                text=False,
                 check=False,
             )
+            stdout = _decode_utf8(completed.stdout)
+            stderr = _decode_utf8(completed.stderr)
         except (OSError, UnicodeError) as exc:
             raise CodexExecutionError(
                 f"Codex CLI invocation failed: {exc}", exit_code=None
             ) from exc
         if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip()
+            detail = stderr.strip() or stdout.strip()
             message = f"Codex CLI exited with code {completed.returncode}"
             if detail:
                 message = f"{message}: {detail}"
             raise CodexExecutionError(
                 message,
                 exit_code=completed.returncode,
-                stdout=completed.stdout,
-                stderr=completed.stderr,
+                stdout=stdout,
+                stderr=stderr,
             )
-        return self._normalize(completed.stdout, stderr=completed.stderr)
+        return self._normalize(stdout, stderr=stderr)
 
     @staticmethod
     def command_for(
@@ -219,3 +221,9 @@ def _mapping(value: Any, path: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise TypeError(f"{path} must be a mapping")
     return value
+
+
+def _decode_utf8(value: bytes | str) -> str:
+    """Decode captured subprocess bytes synchronously and fail closed."""
+
+    return value.decode("utf-8", errors="strict") if isinstance(value, bytes) else value
