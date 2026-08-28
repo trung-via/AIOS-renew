@@ -221,6 +221,31 @@ def test_list_satisfies_is_preserved() -> None:
     assert package.result.claims[0].satisfies == ("AC1", "AC2")
 
 
+def test_structural_output_accepts_empty_runtime_owned_evidence() -> None:
+    task, run, _, _ = make_execution()
+    output = successful_output("RUN-008-001")
+    output["result"]["claims"][0]["satisfies"] = "AC1"
+    output["result"]["claims"][0]["evidence"] = []
+    output["evidence"] = []
+
+    package = AntigravityAdapter(
+        transport=lambda **kwargs: output,
+        structural_output=True,
+    ).execute(task=task, run=run)
+
+    assert package.result.claims[0].satisfies == ("AC1",)
+    assert package.result.claims[0].evidence == ()
+    assert package.evidence == ()
+
+
+def test_canonical_output_still_requires_claim_evidence() -> None:
+    output = successful_output("RUN-008-001")
+    output["result"]["claims"][0]["evidence"] = []
+
+    with pytest.raises(AntigravityOutputError, match="invalid canonical output"):
+        AntigravityAdapter._normalize(output)
+
+
 @pytest.mark.parametrize("malformed", [1, {"id": "AC1"}, None])
 def test_malformed_non_string_satisfies_still_fails(malformed) -> None:
     output = successful_output("RUN-008-001")

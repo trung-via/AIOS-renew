@@ -25,7 +25,6 @@ from .artifacts import (
     validate_evidence,
     validate_result,
     validate_result_package,
-    validate_structural_result,
 )
 from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
 from .executor import ExecutorBoundary, ExecutorBoundaryError
@@ -56,34 +55,6 @@ CODEX_SANDBOXES = ("workspace-write", "danger-full-access")
 
 class OperatorError(RuntimeError):
     """Raised for a clear operator-level failure."""
-
-
-class _StructuralAntigravityAdapter(AntigravityAdapter):
-    """Operator-local Antigravity normalization for pre-verification output."""
-
-    @staticmethod
-    def _normalize(output: Any) -> ResultPackage:
-        try:
-            payload = json.loads(output) if isinstance(output, str) else output
-            if not isinstance(payload, Mapping):
-                raise TypeError("Antigravity output must be a mapping")
-            result = validate_structural_result(
-                _normalize_structural_satisfies(payload["result"])
-            )
-            evidence_data = payload["evidence"]
-            if not isinstance(evidence_data, list):
-                raise TypeError("evidence must be a list")
-            evidence = tuple(validate_evidence(item) for item in evidence_data)
-        except (
-            ArtifactValidationError,
-            json.JSONDecodeError,
-            KeyError,
-            TypeError,
-        ) as exc:
-            raise AntigravityOutputError(
-                f"Antigravity returned invalid structural output: {exc}"
-            ) from exc
-        return ResultPackage(result=result, evidence=evidence)
 
 
 class RepositoryLock:
@@ -525,13 +496,14 @@ def run_task(
                     "structural_result_path": str(staging_path),
                 },
             )
-            selected_adapter = _StructuralAntigravityAdapter(
+            selected_adapter = AntigravityAdapter(
                 transport=_antigravity_transport(
                     repo=root,
                     handoff_path=handoff_path,
                     result_path=staging_path,
                     native_runner=native_runner,
-                )
+                ),
+                structural_output=True,
             )
 
         leases = RunLeaseRegistry()
@@ -805,13 +777,14 @@ def run_remediation(
                     "structural_result_path": str(staging_path),
                 },
             )
-            selected_adapter = _StructuralAntigravityAdapter(
+            selected_adapter = AntigravityAdapter(
                 transport=_antigravity_remediation_transport(
                     repo=root,
                     handoff_path=handoff_path,
                     result_path=staging_path,
                     native_runner=native_runner,
-                )
+                ),
+                structural_output=True,
             )
 
         try:
@@ -1054,29 +1027,6 @@ def _executor_remediation_data(
     data = asdict(execution)
     data["remediation"].pop("affected_verification")
     return data
-
-
-def _normalize_structural_satisfies(result: Any) -> Any:
-    """Preserve Antigravity's existing singleton-satisfies compatibility."""
-
-    if not isinstance(result, Mapping):
-        return result
-    claims = result.get("claims")
-    if not isinstance(claims, list):
-        return result
-    normalized = []
-    changed = False
-    for claim in claims:
-        if isinstance(claim, Mapping) and isinstance(claim.get("satisfies"), str):
-            claim = dict(claim)
-            claim["satisfies"] = [claim["satisfies"]]
-            changed = True
-        normalized.append(claim)
-    if not changed:
-        return result
-    output = dict(result)
-    output["claims"] = normalized
-    return output
 
 
 def result_package_data(package: ResultPackage) -> dict[str, Any]:

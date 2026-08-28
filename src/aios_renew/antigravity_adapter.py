@@ -11,6 +11,7 @@ from .artifacts import (
     ResultPackage,
     validate_evidence,
     validate_result,
+    validate_structural_result,
 )
 from .run import Run
 from .review import RemediationExecution
@@ -33,8 +34,11 @@ class AntigravityAdapter:
 
     executor = "antigravity"
 
-    def __init__(self, *, transport: NativeTransport) -> None:
+    def __init__(
+        self, *, transport: NativeTransport, structural_output: bool = False
+    ) -> None:
         self._transport = transport
+        self._structural_output = structural_output
 
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
         """Execute the unchanged TASK/RUN pair through the native transport."""
@@ -48,7 +52,7 @@ class AntigravityAdapter:
                 f"Antigravity native invocation failed: {exc}"
             ) from exc
 
-        return self._normalize(output)
+        return self._normalize(output, structural=self._structural_output)
 
     def execute_remediation(
         self, *, execution: RemediationExecution
@@ -63,14 +67,17 @@ class AntigravityAdapter:
             raise AntigravityExecutionError(
                 f"Antigravity native invocation failed: {exc}"
             ) from exc
-        return self._normalize(output)
+        return self._normalize(output, structural=self._structural_output)
 
     @staticmethod
-    def _normalize(output: Any) -> ResultPackage:
+    def _normalize(
+        output: Any, *, structural: bool = False
+    ) -> ResultPackage:
         try:
             payload = json.loads(output) if isinstance(output, str) else output
             root = _mapping(payload, "Antigravity output")
-            result = validate_result(_normalize_satisfies(root["result"]))
+            validate = validate_structural_result if structural else validate_result
+            result = validate(_normalize_satisfies(root["result"]))
             evidence_data = root["evidence"]
             if not isinstance(evidence_data, list):
                 raise TypeError("evidence must be a list")
@@ -81,8 +88,9 @@ class AntigravityAdapter:
             KeyError,
             TypeError,
         ) as exc:
+            output_kind = "structural" if structural else "canonical"
             raise AntigravityOutputError(
-                f"Antigravity returned invalid canonical output: {exc}"
+                f"Antigravity returned invalid {output_kind} output: {exc}"
             ) from exc
 
         return ResultPackage(result=result, evidence=evidence)

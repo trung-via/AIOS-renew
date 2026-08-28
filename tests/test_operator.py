@@ -996,6 +996,13 @@ def test_antigravity_instruction_defines_structural_staging_package(
     assert handoff["task"]["constraints"]["hard"] == ["Commit the output."]
 
 
+def test_operator_contains_no_antigravity_structural_normalizer() -> None:
+    source = inspect.getsource(operator_module)
+
+    assert "_StructuralAntigravityAdapter" not in source
+    assert "_normalize_structural_satisfies" not in source
+
+
 @pytest.mark.parametrize("executor", ["codex", "antigravity"])
 def test_empty_executor_verification_evidence_succeeds_via_runtime(
     tmp_path: Path,
