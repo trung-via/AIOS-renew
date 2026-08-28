@@ -13,7 +13,7 @@ from .artifacts import (
     ArtifactValidationError,
     ResultPackage,
     validate_evidence,
-    validate_result,
+    validate_structural_result,
 )
 from .run import Run
 from .review import RemediationExecution
@@ -155,23 +155,24 @@ class CodexAdapter:
 
     @staticmethod
     def prompt_for(*, task: Task, run: Run) -> str:
-        """Serialize only the canonical TASK and RUN as variable input."""
+        """Serialize executor context without Runtime-owned verification commands."""
 
+        task_input = asdict(task)
+        task_input.pop("verification")
         canonical_input = json.dumps(
-            {"task": asdict(task), "run": asdict(run)},
+            {"task": task_input, "run": asdict(run)},
             sort_keys=True,
         )
         return (
             "Execute the canonical TASK within its bound RUN. "
-            "Do not reinterpret its requirements. Execute every command in "
-            "task.verification.required exactly as written and represent each "
-            "required command with EVIDENCE whose source.command is the exact "
-            "command string and whose result.exit_code is zero. If the TASK "
+            "Do not reinterpret its requirements. Runtime owns all verification: "
+            "do not execute task verification commands and do not generate "
+            "verification EVIDENCE. If the TASK "
             "requires repository changes, commit the final permitted implementation "
             "state before returning the ResultPackage; do not push. Bind result.head_sha "
-            "and all EVIDENCE subject_sha values to that final committed Git HEAD. "
-            "Return only one JSON object "
-            "with keys 'result' and 'evidence' matching the canonical contracts.\n"
+            "to that final committed Git HEAD. Return only one structural JSON object "
+            "with keys 'result' and 'evidence'. Set root evidence to [] and every "
+            "claim.evidence to []; Runtime will construct canonical EVIDENCE.\n"
             f"CANONICAL_INPUT:\n{canonical_input}"
         )
 
@@ -179,17 +180,19 @@ class CodexAdapter:
     def remediation_prompt_for(*, execution: RemediationExecution) -> str:
         """Serialize only the shared narrow remediation contract."""
 
-        canonical_input = json.dumps(asdict(execution), sort_keys=True)
+        execution_input = asdict(execution)
+        execution_input["remediation"].pop("affected_verification")
+        canonical_input = json.dumps(execution_input, sort_keys=True)
         return (
             "Execute exactly one canonical narrow REMEDIATION. Do not run or "
             "restart the original TASK, rediscover the repository, perform "
             "semantic review, or retry. Change only remediation.modification_scope. "
             "For CODE_FIX, commit the permitted remediation delta before returning; "
             "for EVIDENCE_ONLY, do not create a code commit. "
-            "Execute only every command in remediation.affected_verification "
-            "exactly as written and provide exact successful EVIDENCE for each. "
-            "Return one canonical ResultPackage with empty result.claims and "
-            "result.unresolved.\nREMEDIATION_INPUT:\n"
+            "Runtime owns affected verification: do not execute verification "
+            "commands and do not generate verification EVIDENCE. Return one "
+            "structural ResultPackage with empty root evidence, result.claims, "
+            "and result.unresolved.\nREMEDIATION_INPUT:\n"
             f"{canonical_input}"
         )
 
@@ -198,7 +201,7 @@ class CodexAdapter:
         try:
             payload = json.loads(stdout)
             root = _mapping(payload, "Codex output")
-            result = validate_result(root["result"])
+            result = validate_structural_result(root["result"])
             evidence_data = root["evidence"]
             if not isinstance(evidence_data, list):
                 raise TypeError("evidence must be a list")

@@ -9,6 +9,12 @@ from aios_renew import (
     parse_task,
     validate_result_package,
 )
+from aios_renew.artifacts import (
+    Claim,
+    Result,
+    validate_structural_result,
+    validate_structural_result_package,
+)
 
 
 TASK_SOURCE = """
@@ -241,3 +247,47 @@ def test_verification_evidence_need_not_be_referenced_by_claim() -> None:
     )
 
     assert package.result == result
+
+
+def test_structural_result_accepts_empty_claim_and_package_evidence() -> None:
+    task, run, _, _ = make_contracts()
+    result = validate_structural_result(
+        {
+            "head_sha": "def456",
+            "claims": [
+                {
+                    "id": "C1",
+                    "satisfies": ["AC1"],
+                    "claim": "Structural semantic claim.",
+                    "evidence": [],
+                }
+            ],
+            "changed_files": ["src/aios_renew/artifacts.py"],
+            "unresolved": [],
+        }
+    )
+
+    package = validate_structural_result_package(
+        task=task, run=run, result=result, evidence=[]
+    )
+
+    assert package.result.claims[0].evidence == ()
+    assert package.evidence == ()
+
+
+def test_canonical_package_still_rejects_structural_empty_claim_evidence() -> None:
+    task, run, _, evidence = make_contracts()
+    structural = Result(
+        head_sha="def456",
+        claims=(Claim("C1", ("AC1",), "Structural claim.", ()),),
+        changed_files=("src/aios_renew/artifacts.py",),
+        unresolved=(),
+    )
+
+    with pytest.raises(ArtifactValidationError, match="evidence must not be empty"):
+        validate_result_package(
+            task=task,
+            run=run,
+            result=structural,
+            evidence=[evidence],
+        )

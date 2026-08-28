@@ -69,6 +69,18 @@ def parse_result(source: str) -> Result:
 def validate_result(data: Any) -> Result:
     """Validate decoded RESULT data."""
 
+    return _validate_result(data, require_claim_evidence=True)
+
+
+def validate_structural_result(data: Any) -> Result:
+    """Validate executor-produced RESULT structure before Runtime verification."""
+
+    return _validate_result(data, require_claim_evidence=False)
+
+
+def _validate_result(data: Any, *, require_claim_evidence: bool) -> Result:
+    """Validate RESULT data at either the structural or canonical stage."""
+
     root = _mapping(data, "RESULT")
     claims_data = _list(_required(root, "claims", "RESULT"), "claims")
     claims: list[Claim] = []
@@ -90,7 +102,7 @@ def validate_result(data: Any) -> Result:
         )
         if not satisfies:
             raise ArtifactValidationError(f"{path}.satisfies must not be empty")
-        if not evidence:
+        if require_claim_evidence and not evidence:
             raise ArtifactValidationError(f"{path}.evidence must not be empty")
 
         claims.append(
@@ -194,6 +206,14 @@ def validate_result_package(
 
     acceptance_ids = {criterion.id for criterion in task.acceptance}
     for claim in result.claims:
+        if not claim.satisfies:
+            raise ArtifactValidationError(
+                f"claim {claim.id} satisfies must not be empty"
+            )
+        if not claim.evidence:
+            raise ArtifactValidationError(
+                f"claim {claim.id} evidence must not be empty"
+            )
         unknown_acceptance = set(claim.satisfies) - acceptance_ids
         if unknown_acceptance:
             unknown = ", ".join(sorted(unknown_acceptance))
@@ -216,6 +236,59 @@ def validate_result_package(
         if not any(item.result.exit_code == 0 for item in matching):
             raise ArtifactValidationError(
                 f"required verification command has no successful evidence: {command}"
+            )
+
+    return ResultPackage(result=result, evidence=items)
+
+
+def validate_structural_result_package(
+    *,
+    task: Task,
+    run: Run,
+    result: Result,
+    evidence: Iterable[Evidence],
+) -> ResultPackage:
+    """Bind executor structure to TASK/RUN without accepting it as canonical proof."""
+
+    if not isinstance(result, Result):
+        raise ArtifactValidationError("result must be a Result")
+    items = tuple(evidence)
+    if not all(isinstance(item, Evidence) for item in items):
+        raise ArtifactValidationError("evidence must contain only Evidence")
+    if run.task.id != task.task_id or run.task.revision != task.revision:
+        raise ArtifactValidationError("RUN does not reference the supplied TASK")
+    if run.head_sha is not None and run.head_sha != result.head_sha:
+        raise ArtifactValidationError("RESULT head_sha does not match RUN head_sha")
+
+    evidence_by_id: dict[str, Evidence] = {}
+    for item in items:
+        if item.evidence_id in evidence_by_id:
+            raise ArtifactValidationError(
+                f"duplicate evidence_id: {item.evidence_id}"
+            )
+        evidence_by_id[item.evidence_id] = item
+        if item.run_id != run.run_id:
+            raise ArtifactValidationError(
+                f"{item.evidence_id} does not reference RUN {run.run_id}"
+            )
+        if item.subject_sha != result.head_sha:
+            raise ArtifactValidationError(
+                f"{item.evidence_id} subject_sha does not match RESULT head_sha"
+            )
+
+    acceptance_ids = {criterion.id for criterion in task.acceptance}
+    for claim in result.claims:
+        unknown_acceptance = set(claim.satisfies) - acceptance_ids
+        if unknown_acceptance:
+            unknown = ", ".join(sorted(unknown_acceptance))
+            raise ArtifactValidationError(
+                f"{claim.id} references unknown acceptance criteria: {unknown}"
+            )
+        missing_evidence = set(claim.evidence) - evidence_by_id.keys()
+        if missing_evidence:
+            missing = ", ".join(sorted(missing_evidence))
+            raise ArtifactValidationError(
+                f"{claim.id} references missing evidence: {missing}"
             )
 
     return ResultPackage(result=result, evidence=items)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .artifacts import ResultPackage, validate_result_package
+from .artifacts import ResultPackage, validate_structural_result_package
 from .run import ACTIVE, Run, RunLease, RunLeaseRegistry
 from .task import Task
 
@@ -56,9 +56,9 @@ class ExecutorBoundary:
         package = adapter.execute(task=task, run=run)
         if not isinstance(package, ResultPackage):
             raise ExecutorBoundaryError(
-                "adapter must return a canonical ResultPackage"
+                "adapter must return a structural ResultPackage"
             )
-        return validate_result_package(
+        return validate_structural_result_package(
             task=task,
             run=run,
             result=package.result,

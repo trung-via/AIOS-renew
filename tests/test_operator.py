@@ -103,23 +103,13 @@ def result_payload(
                     "id": "C1",
                     "satisfies": ["AC1"],
                     "claim": "The operator output was committed.",
-                    "evidence": ["E1"],
+                    "evidence": [],
                 }
             ],
             "changed_files": files,
             "unresolved": [],
         },
-        "evidence": [
-            {
-                "evidence_id": "E1",
-                "run_id": run_id,
-                "subject_sha": head_sha,
-                "type": "TEST",
-                "source": {"command": "git status --porcelain"},
-                "result": {"exit_code": 0, "summary": "verified"},
-                "raw": {"path": ".ai/evidence/E1.log"},
-            }
-        ],
+        "evidence": [],
     }
 
 
@@ -210,7 +200,7 @@ class FakeAntigravityRunner:
             (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
         )
         handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
-        result_path = Path(handoff["result_package_path"])
+        result_path = Path(handoff["structural_result_path"])
         if self.mode == "invalid":
             result_path.write_text("{}", encoding="utf-8")
         else:
@@ -244,7 +234,7 @@ class StaticResultRunner:
             )
             handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
             run_id = handoff["run"]["run_id"]
-            result_path = Path(handoff["result_package_path"])
+            result_path = Path(handoff["structural_result_path"])
             payload["result"]["head_sha"] = git(self.repo, "rev-parse", "HEAD")
             for item in payload["evidence"]:
                 item["run_id"] = run_id
@@ -288,7 +278,7 @@ class CommitResultRunner:
             )
             handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
             run_id = handoff["run"]["run_id"]
-            result_path = Path(handoff["result_package_path"])
+            result_path = Path(handoff["structural_result_path"])
         else:
             canonical = json.loads(
                 kwargs["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
@@ -327,24 +317,14 @@ def static_payload(
 ) -> dict:
     criteria = ["AC1"] if satisfies is None else satisfies
     claims = []
-    evidence = [
-        {
-            "evidence_id": "E1",
-            "run_id": "replaced-by-runner",
-            "subject_sha": "replaced-by-runner",
-            "type": "TEST",
-            "source": {"command": "git status --porcelain"},
-            "result": {"exit_code": 0, "summary": "verified"},
-            "raw": {"path": ".ai/evidence/E1.log"},
-        }
-    ]
+    evidence = []
     if criteria:
         claims.append(
             {
                 "id": "C1",
                 "satisfies": criteria,
                 "claim": "The stated acceptance criteria are satisfied.",
-                "evidence": ["E1"],
+                "evidence": [],
             }
         )
     return {
@@ -384,8 +364,18 @@ def remediation_contract(
         )
         payload = static_payload()
         payload["result"]["head_sha"] = sha
-        payload["evidence"][0]["run_id"] = run_id
-        payload["evidence"][0]["subject_sha"] = sha
+        payload["result"]["claims"][0]["evidence"] = ["E1"]
+        payload["evidence"] = [
+            {
+                "evidence_id": "E1",
+                "run_id": run_id,
+                "subject_sha": sha,
+                "type": "TEST",
+                "source": {"command": "git status --porcelain"},
+                "result": {"exit_code": 0, "summary": "verified"},
+                "raw": {"path": ".ai/evidence/E1.log"},
+            }
+        ]
         (state.results / f"{run_id}.json").write_text(
             json.dumps(payload), encoding="utf-8"
         )
@@ -433,7 +423,7 @@ class RemediationRunner:
             )
             handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
             execution = handoff["remediation_execution"]
-            result_path = Path(handoff["result_package_path"])
+            result_path = Path(handoff["structural_result_path"])
         else:
             execution = json.loads(
                 kwargs["input"].decode("utf-8").split("REMEDIATION_INPUT:\n", 1)[1]
@@ -451,17 +441,7 @@ class RemediationRunner:
                 "changed_files": ["OUTPUT.txt"],
                 "unresolved": [],
             },
-            "evidence": [
-                {
-                    "evidence_id": "ER1",
-                    "run_id": execution["run"]["run_id"],
-                    "subject_sha": head_sha,
-                    "type": "TEST",
-                    "source": {"command": "git diff --check"},
-                    "result": {"exit_code": 0, "summary": "clean diff"},
-                    "raw": {"path": ".ai/evidence/ER1.log"},
-                }
-            ],
+            "evidence": [],
         }
         if result_path is not None:
             result_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -500,6 +480,19 @@ def test_narrow_remediation_uses_shared_completion_policy(
         instruction = runner.calls[0][0][runner.calls[0][0].index("--print") + 1]
         assert "CODE_FIX, commit the permitted remediation delta" in instruction
         assert "EVIDENCE_ONLY, do not create a code commit" in instruction
+        handoff = json.loads(
+            next((repo / ".git" / "aios" / "handoffs").glob("*.json")).read_text(
+                encoding="utf-8"
+            )
+        )
+        serialized = json.dumps(handoff)
+        assert "affected_verification" not in serialized
+        assert "git diff --check" not in serialized
+        assert handoff["remediation_execution"]["finding"]["issue"]
+        assert handoff["remediation_execution"]["remediation"][
+            "modification_scope"
+        ] == ["OUTPUT.txt"]
+        assert remediation.affected_verification == ("git diff --check",)
 
 
 def test_persisted_remediation_result_is_authoritative_lineage(
@@ -948,7 +941,7 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert "--model" not in command
 
 
-def test_antigravity_instruction_defines_canonical_result_package(
+def test_antigravity_instruction_defines_structural_staging_package(
     tmp_path: Path,
 ) -> None:
     repo = make_repo(tmp_path)
@@ -978,31 +971,114 @@ def test_antigravity_instruction_defines_canonical_result_package(
         "raw.path",
     ):
         assert field in instruction
-    assert "evidence.run_id must reference the current RUN" in instruction
-    assert "evidence.subject_sha must equal result.head_sha" in instruction
     assert "known TASK acceptance ID" in instruction
-    assert "existing evidence_id" in instruction
-    assert "task.verification.required exactly as written" in instruction
-    assert "evidence.source.command must exactly equal" in instruction
-    assert "evidence.result.exit_code must be zero" in instruction
+    assert "structural_result_path" in instruction
+    assert "staging, not the canonical results store" in instruction
+    assert "Runtime owns canonical verification" in instruction
+    assert "do not execute verification commands" in instruction
+    handoff = json.loads(
+        next((repo / ".git" / "aios" / "handoffs").glob("*.json")).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "verification" not in handoff["task"]
+    assert "git status --porcelain" not in json.dumps(handoff)
+    assert handoff["task"]["acceptance"][0]["id"] == "AC1"
+    assert handoff["task"]["scope"]["modify"] == ["OUTPUT.txt"]
+    assert handoff["task"]["constraints"]["hard"] == ["Commit the output."]
 
 
 @pytest.mark.parametrize("executor", ["codex", "antigravity"])
-def test_missing_verification_evidence_fails_shared_boundary(
+def test_empty_executor_verification_evidence_succeeds_via_runtime(
     tmp_path: Path,
     executor: str,
 ) -> None:
     repo = make_repo(tmp_path)
-    payload = static_payload()
-    payload["evidence"][0]["source"]["command"] = "git diff --check"
+    summary = run_task(
+        "TASK-101",
+        executor=executor,
+        repo=repo,
+        native_runner=StaticResultRunner(repo, static_payload()),
+    )
+    stored = json.loads(summary.result_path.read_text(encoding="utf-8"))
 
-    with pytest.raises(OperatorError, match="missing verification evidence"):
+    assert stored["evidence"][0]["source"]["command"] == (
+        "git status --porcelain"
+    )
+    assert stored["result"]["claims"][0]["evidence"] == [
+        f"{summary.run_id}-V001"
+    ]
+
+
+def test_preverification_gate_failure_executes_no_commands(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    payload = static_payload(unresolved=["not complete"])
+    calls = []
+
+    with pytest.raises(OperatorError, match="unresolved"):
         run_task(
             "TASK-101",
-            executor=executor,
+            executor="codex",
             repo=repo,
             native_runner=StaticResultRunner(repo, payload),
+            verification_runner=lambda *args, **kwargs: calls.append(args),
         )
+
+    assert calls == []
+    assert list((repo / ".git" / "aios" / "results").glob("*.json")) == []
+
+
+def test_first_runtime_verification_failure_stops_and_persists_no_result(
+    tmp_path: Path,
+) -> None:
+    task_source = TASK_SOURCE.replace(
+        "    - git status --porcelain",
+        "    - first-command\n    - never-command",
+    )
+    repo = make_repo(tmp_path, task_source=task_source)
+    calls = []
+
+    def failing_verification(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command, returncode=9, stdout=b"", stderr=b"failed\n"
+        )
+
+    with pytest.raises(OperatorError, match="exit code 9"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=StaticResultRunner(repo, static_payload()),
+            verification_runner=failing_verification,
+        )
+
+    assert len(calls) == 1
+    state = runtime_paths(repo)
+    assert (state.verification / "RUN-101-001" / "RUN-101-001-V001.raw").is_file()
+    assert list(state.results.glob("*.json")) == []
+
+
+def test_runtime_verification_decode_failure_persists_no_result(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+
+    def invalid_utf8(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=b"\xff", stderr=b""
+        )
+
+    with pytest.raises(OperatorError, match="strict UTF-8"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=StaticResultRunner(repo, static_payload()),
+            verification_runner=invalid_utf8,
+        )
+
+    assert list(runtime_paths(repo).results.glob("*.json")) == []
 
 
 def test_missing_agy_executable_fails_clearly(tmp_path: Path) -> None:
@@ -1085,13 +1161,14 @@ def test_invalid_antigravity_result_fails_canonical_validation(
 ) -> None:
     repo = make_repo(tmp_path)
 
-    with pytest.raises(OperatorError, match="invalid canonical ResultPackage"):
+    with pytest.raises(OperatorError, match="invalid structural ResultPackage"):
         run_task(
             "TASK-101",
             executor="antigravity",
             repo=repo,
             native_runner=FakeAntigravityRunner(repo, mode="invalid"),
         )
+    assert list(runtime_paths(repo).results.glob("*.json")) == []
 
 
 def test_result_head_sha_mismatch_fails(tmp_path: Path) -> None:
@@ -1104,6 +1181,7 @@ def test_result_head_sha_mismatch_fails(tmp_path: Path) -> None:
             repo=repo,
             native_runner=FakeCodexRunner(repo, reported_head="deadbeef"),
         )
+    assert list(runtime_paths(repo).results.glob("*.json")) == []
 
 
 def test_dirty_post_execution_worktree_fails(tmp_path: Path) -> None:
@@ -1116,6 +1194,7 @@ def test_dirty_post_execution_worktree_fails(tmp_path: Path) -> None:
             repo=repo,
             native_runner=FakeCodexRunner(repo, dirty_after=True),
         )
+    assert list(runtime_paths(repo).results.glob("*.json")) == []
 
 
 @pytest.mark.parametrize("executor", ["codex", "antigravity"])
@@ -1285,18 +1364,7 @@ def test_acceptance_coverage_is_union_of_claim_satisfies(tmp_path: Path) -> None
             "id": "C2",
             "satisfies": ["AC2"],
             "claim": "The second criterion is satisfied.",
-            "evidence": ["E2"],
-        }
-    )
-    payload["evidence"].append(
-        {
-            "evidence_id": "E2",
-            "run_id": "replaced-by-runner",
-            "subject_sha": "replaced-by-runner",
-            "type": "TEST",
-            "source": {"command": "git status --porcelain"},
-            "result": {"exit_code": 0, "summary": "verified"},
-            "raw": {"path": ".ai/evidence/E2.log"},
+            "evidence": [],
         }
     )
 
@@ -1341,7 +1409,10 @@ def test_successful_codex_execution_stores_result_package(tmp_path: Path) -> Non
     stored = json.loads(summary.result_path.read_text(encoding="utf-8"))
 
     assert stored["result"]["head_sha"] == summary.head_sha
-    assert stored["evidence"][0]["raw"]["path"] == ".ai/evidence/E1.log"
+    assert stored["evidence"][0]["source"]["command"] == "git status --porcelain"
+    assert Path(stored["evidence"][0]["raw"]["path"]).is_relative_to(
+        repo / ".git" / "aios" / "verification"
+    )
     assert summary.result_path.parent == repo / ".git" / "aios" / "results"
 
 
@@ -1351,18 +1422,34 @@ def test_successful_antigravity_execution_stores_canonical_result_package(
     repo = make_repo(tmp_path)
     payload = static_payload()
     payload["result"]["claims"][0]["satisfies"] = "AC1"
+    observed_preverification_state = []
+
+    def verification_runner(command, **kwargs):
+        state = runtime_paths(repo)
+        observed_preverification_state.append(
+            (
+                list(state.staging.glob("*.json")),
+                list(state.results.glob("*.json")),
+            )
+        )
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=b"", stderr=b""
+        )
 
     summary = run_task(
         "TASK-101",
         executor="antigravity",
         repo=repo,
         native_runner=StaticResultRunner(repo, payload),
+        verification_runner=verification_runner,
     )
     stored = json.loads(summary.result_path.read_text(encoding="utf-8"))
 
     assert stored["result"]["head_sha"] == summary.head_sha
     assert stored["result"]["claims"][0]["satisfies"] == ["AC1"]
-    assert stored["evidence"][0]["raw"]["path"] == ".ai/evidence/E1.log"
+    assert stored["evidence"][0]["source"]["command"] == "git status --porcelain"
+    assert len(observed_preverification_state[0][0]) == 1
+    assert observed_preverification_state[0][1] == []
 
 
 def test_antigravity_result_is_not_canonically_rewritten_before_completion_gate(
@@ -1390,6 +1477,8 @@ def test_antigravity_result_is_not_canonically_rewritten_before_completion_gate(
         )
 
     assert canonical_result_writes == []
+    assert list((repo / ".git" / "aios" / "staging").glob("*.json"))
+    assert list((repo / ".git" / "aios" / "results").glob("*.json")) == []
 
 
 def test_successful_antigravity_execution_returns_pass_summary(

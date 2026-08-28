@@ -25,6 +25,7 @@ from .artifacts import (
     validate_evidence,
     validate_result,
     validate_result_package,
+    validate_structural_result,
 )
 from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
 from .executor import ExecutorBoundary, ExecutorBoundaryError
@@ -41,6 +42,12 @@ from .review import (
     validate_review,
 )
 from .task import Task, TaskValidationError, parse_task
+from .verification import (
+    RuntimeVerificationError,
+    VerificationRunner,
+    attach_verification_evidence,
+    execute_verification,
+)
 
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
@@ -49,6 +56,34 @@ CODEX_SANDBOXES = ("workspace-write", "danger-full-access")
 
 class OperatorError(RuntimeError):
     """Raised for a clear operator-level failure."""
+
+
+class _StructuralAntigravityAdapter(AntigravityAdapter):
+    """Operator-local Antigravity normalization for pre-verification output."""
+
+    @staticmethod
+    def _normalize(output: Any) -> ResultPackage:
+        try:
+            payload = json.loads(output) if isinstance(output, str) else output
+            if not isinstance(payload, Mapping):
+                raise TypeError("Antigravity output must be a mapping")
+            result = validate_structural_result(
+                _normalize_structural_satisfies(payload["result"])
+            )
+            evidence_data = payload["evidence"]
+            if not isinstance(evidence_data, list):
+                raise TypeError("evidence must be a list")
+            evidence = tuple(validate_evidence(item) for item in evidence_data)
+        except (
+            ArtifactValidationError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+        ) as exc:
+            raise AntigravityOutputError(
+                f"Antigravity returned invalid structural output: {exc}"
+            ) from exc
+        return ResultPackage(result=result, evidence=evidence)
 
 
 class RepositoryLock:
@@ -120,6 +155,8 @@ class RuntimePaths:
     root: Path
     runs: Path
     handoffs: Path
+    staging: Path
+    verification: Path
     results: Path
     lock: Path
 
@@ -262,10 +299,18 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         root=state_root,
         runs=state_root / "runs",
         handoffs=state_root / "handoffs",
+        staging=state_root / "staging",
+        verification=state_root / "verification",
         results=state_root / "results",
         lock=state_root / "operator.lock",
     )
-    for path in (paths.runs, paths.handoffs, paths.results):
+    for path in (
+        paths.runs,
+        paths.handoffs,
+        paths.staging,
+        paths.verification,
+        paths.results,
+    ):
         path.mkdir(parents=True, exist_ok=True)
     return paths
 
@@ -439,6 +484,7 @@ def run_task(
     repo: str | Path | None = None,
     codex_sandbox: str = "workspace-write",
     native_runner: NativeRunner = subprocess.run,
+    verification_runner: VerificationRunner = subprocess.run,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
 
@@ -462,6 +508,7 @@ def run_task(
             workspace=str(root),
         )
         result_path = state.results / f"{run_id}.json"
+        staging_path = state.staging / f"{run_id}.json"
         _write_json(state.runs / f"{run_id}.json", asdict(run))
 
         if executor == "codex":
@@ -473,16 +520,16 @@ def run_task(
             _write_json(
                 handoff_path,
                 {
-                    "task": asdict(task),
+                    "task": _executor_task_data(task),
                     "run": asdict(run),
-                    "result_package_path": str(result_path),
+                    "structural_result_path": str(staging_path),
                 },
             )
-            selected_adapter = AntigravityAdapter(
+            selected_adapter = _StructuralAntigravityAdapter(
                 transport=_antigravity_transport(
                     repo=root,
                     handoff_path=handoff_path,
-                    result_path=result_path,
+                    result_path=staging_path,
                     native_runner=native_runner,
                 )
             )
@@ -497,7 +544,7 @@ def run_task(
                 adapter=selected_adapter,
             )
         except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
-            raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
+            raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
         except CodexExecutionError as exc:
             raise OperatorError(f"Codex invocation failed: {exc}") from exc
         except AntigravityExecutionError as exc:
@@ -505,6 +552,7 @@ def run_task(
         except ExecutorBoundaryError as exc:
             raise OperatorError(f"executor boundary failed: {exc}") from exc
 
+        _require_executor_structure(package)
         actual_head = _git(root, "rev-parse", "HEAD")
         if package.result.head_sha != actual_head:
             raise OperatorError("RESULT.head_sha mismatch")
@@ -524,7 +572,31 @@ def run_task(
 
         _require_complete_result(task, package)
 
-        _write_json(result_path, result_package_data(package))
+        try:
+            runtime_evidence = execute_verification(
+                task.verification.required,
+                run_id=run_id,
+                subject_sha=actual_head,
+                repository=root,
+                raw_directory=state.verification / run_id,
+                runner=verification_runner,
+            )
+        except RuntimeVerificationError as exc:
+            raise OperatorError(str(exc)) from exc
+        canonical_result = attach_verification_evidence(
+            package.result, runtime_evidence
+        )
+        try:
+            canonical_package = validate_result_package(
+                task=task,
+                run=run,
+                result=canonical_result,
+                evidence=runtime_evidence,
+            )
+        except ArtifactValidationError as exc:
+            raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
+
+        _write_json(result_path, result_package_data(canonical_package))
 
         return RunSummary(
             task_id=task_id,
@@ -623,6 +695,7 @@ def run_remediation(
     repo: str | Path | None = None,
     codex_sandbox: str = "workspace-write",
     native_runner: NativeRunner = subprocess.run,
+    verification_runner: VerificationRunner = subprocess.run,
 ) -> RemediationSummary:
     """Execute one bound remediation without entering the TASK execution path."""
 
@@ -709,6 +782,7 @@ def run_remediation(
             original_constraints=canonical_remediation.constraints,
         )
         result_path = state.results / f"{run_id}.json"
+        staging_path = state.staging / f"{run_id}.json"
         _write_json(
             state.runs / f"{run_id}.json",
             {"kind": "REMEDIATION", "execution": asdict(execution)},
@@ -723,15 +797,15 @@ def run_remediation(
             _write_json(
                 handoff_path,
                 {
-                    "remediation_execution": asdict(execution),
-                    "result_package_path": str(result_path),
+                    "remediation_execution": _executor_remediation_data(execution),
+                    "structural_result_path": str(staging_path),
                 },
             )
-            selected_adapter = AntigravityAdapter(
+            selected_adapter = _StructuralAntigravityAdapter(
                 transport=_antigravity_remediation_transport(
                     repo=root,
                     handoff_path=handoff_path,
-                    result_path=result_path,
+                    result_path=staging_path,
                     native_runner=native_runner,
                 )
             )
@@ -739,21 +813,40 @@ def run_remediation(
         try:
             package = selected_adapter.execute_remediation(execution=execution)
         except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
-            raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
+            raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
         except CodexExecutionError as exc:
             raise OperatorError(f"Codex invocation failed: {exc}") from exc
         except AntigravityExecutionError as exc:
             raise OperatorError(str(exc)) from exc
 
+        _require_executor_structure(package)
         actual_head = _git(root, "rev-parse", "HEAD")
         if package.result.head_sha != actual_head:
             raise OperatorError("RESULT.head_sha mismatch")
         if _git(root, "status", "--porcelain"):
             raise OperatorError("working tree dirty after execution")
-        _require_remediation_result(
+        _require_remediation_repository_state(
             root, execution, package, actual_head=actual_head
         )
-        _write_json(result_path, result_package_data(package))
+        try:
+            runtime_evidence = execute_verification(
+                execution.remediation.affected_verification,
+                run_id=run_id,
+                subject_sha=actual_head,
+                repository=root,
+                raw_directory=state.verification / run_id,
+                runner=verification_runner,
+            )
+        except RuntimeVerificationError as exc:
+            raise OperatorError(str(exc)) from exc
+        canonical_package = ResultPackage(
+            result=package.result,
+            evidence=runtime_evidence,
+        )
+        _require_remediation_package_contract(
+            execution, canonical_package, actual_head=actual_head
+        )
+        _write_json(result_path, result_package_data(canonical_package))
         return RemediationSummary(
             task_id=task_id,
             review_id=canonical_review.review_id,
@@ -778,6 +871,25 @@ def _require_remediation_result(
     _require_remediation_package_contract(
         execution, package, actual_head=actual_head
     )
+
+    _require_remediation_repository_state(
+        repo, execution, package, actual_head=actual_head
+    )
+
+
+def _require_remediation_repository_state(
+    repo: Path,
+    execution: RemediationExecution,
+    package: ResultPackage,
+    *,
+    actual_head: str,
+) -> None:
+    """Validate remediation structure and committed scope before verification."""
+
+    if package.result.claims:
+        raise OperatorError("remediation RESULT claims must be empty")
+    if package.result.unresolved:
+        raise OperatorError("remediation RESULT has unresolved items")
 
     output = _git(
         repo,
@@ -900,6 +1012,54 @@ def _require_complete_result(task: Task, package: ResultPackage) -> None:
         )
 
 
+def _require_executor_structure(package: ResultPackage) -> None:
+    """Reject executor-side verification or evidence synthesis."""
+
+    if package.evidence:
+        raise OperatorError("executor structural output evidence must be empty")
+    if any(claim.evidence for claim in package.result.claims):
+        raise OperatorError(
+            "executor structural claim evidence references must be empty"
+        )
+
+
+def _executor_task_data(task: Task) -> dict[str, Any]:
+    data = asdict(task)
+    data.pop("verification")
+    return data
+
+
+def _executor_remediation_data(
+    execution: RemediationExecution,
+) -> dict[str, Any]:
+    data = asdict(execution)
+    data["remediation"].pop("affected_verification")
+    return data
+
+
+def _normalize_structural_satisfies(result: Any) -> Any:
+    """Preserve Antigravity's existing singleton-satisfies compatibility."""
+
+    if not isinstance(result, Mapping):
+        return result
+    claims = result.get("claims")
+    if not isinstance(claims, list):
+        return result
+    normalized = []
+    changed = False
+    for claim in claims:
+        if isinstance(claim, Mapping) and isinstance(claim.get("satisfies"), str):
+            claim = dict(claim)
+            claim["satisfies"] = [claim["satisfies"]]
+            changed = True
+        normalized.append(claim)
+    if not changed:
+        return result
+    output = dict(result)
+    output["claims"] = normalized
+    return output
+
+
 def result_package_data(package: ResultPackage) -> dict[str, Any]:
     """Serialize the canonical package using its public JSON field names."""
 
@@ -947,21 +1107,20 @@ def _antigravity_transport(
 ) -> Callable[..., str]:
     instruction = (
         f"Read the AIOS handoff JSON at {handoff_path}. "
-        "Execute its canonical TASK and RUN exactly within the supplied repository. "
+        "Execute its TASK implementation context and RUN exactly within the supplied "
+        "repository. Runtime owns canonical verification; do not execute verification "
+        "commands and do not generate verification evidence. "
         "Commit the final implementation state when required, obtain final Git HEAD, "
-        "and write canonical ResultPackage JSON to the result_package_path specified "
-        "in the handoff. The ResultPackage must be an object with result and evidence. "
+        "and write structural ResultPackage JSON to the structural_result_path "
+        "specified in the handoff. This is staging, not the canonical results store. "
+        "The ResultPackage must be an object with result and evidence. "
         "result must contain head_sha, claims, changed_files, and unresolved. Each "
         "claim must contain id, satisfies, claim, and evidence. Each evidence entry "
         "must contain evidence_id, run_id, subject_sha, type, source.command, "
-        "result.exit_code, result.summary, and raw.path. evidence.run_id must reference "
-        "the current RUN; evidence.subject_sha must equal result.head_sha; every "
-        "claim.satisfies entry must be a known TASK acceptance ID; and every claim "
-        "evidence reference must name an existing evidence_id. Execute every command "
-        "in task.verification.required exactly as written and include successful "
-        "evidence for each: evidence.source.command must exactly equal the required "
-        "command and evidence.result.exit_code must be zero. Finish only after the "
-        "ResultPackage file exists."
+        "result.exit_code, result.summary, and raw.path when present. Root evidence and "
+        "every claim.evidence must be empty; Runtime constructs canonical EVIDENCE. "
+        "Every claim.satisfies entry must be a known TASK acceptance ID. Finish only "
+        "after the structural ResultPackage file exists."
     )
 
     def transport(*, task: Task, run: Run) -> str:
@@ -1035,13 +1194,11 @@ def _antigravity_remediation_transport(
         "review or repeat unaffected verification. Change only paths in "
         "remediation.modification_scope. For CODE_FIX, commit the permitted "
         "remediation delta before returning; for EVIDENCE_ONLY, do not create a "
-        "code commit. Execute only commands in "
-        "remediation.affected_verification exactly as written. Write one canonical "
-        "ResultPackage to result_package_path with empty result.claims and "
-        "result.unresolved. Include exact successful evidence for every affected "
-        "command; bind evidence.run_id to the remediation RUN and both "
-        "evidence.subject_sha and result.head_sha to final Git HEAD. Finish only "
-        "after the ResultPackage file exists."
+        "code commit. Runtime owns affected verification; do not execute verification "
+        "commands and do not generate verification evidence. Write one structural "
+        "ResultPackage to structural_result_path in staging with empty root evidence, "
+        "result.claims, and result.unresolved. Bind result.head_sha to final Git HEAD. "
+        "Finish only after the structural ResultPackage file exists."
     )
 
     def transport(*, execution: RemediationExecution) -> str:

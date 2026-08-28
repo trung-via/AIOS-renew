@@ -181,14 +181,16 @@ def test_real_subprocess_malformed_utf8_fails_closed(
         )
 
 
-def test_prompt_requires_exact_successful_verification_evidence() -> None:
+def test_primary_prompt_excludes_runtime_verification_commands() -> None:
     task, run, _, _ = make_execution()
 
     prompt = CodexAdapter.prompt_for(task=task, run=run)
 
-    assert "task.verification.required exactly as written" in prompt
-    assert "source.command is the exact command string" in prompt
-    assert "result.exit_code is zero" in prompt
+    payload = json.loads(prompt.split("CANONICAL_INPUT:\n", 1)[1])
+    assert "verification" not in payload["task"]
+    assert task.verification.required[0] not in prompt
+    assert "Runtime owns all verification" in prompt
+    assert "do not generate verification EVIDENCE" in prompt
 
 
 def test_primary_prompt_requires_final_implementation_commit_without_push() -> None:
@@ -201,10 +203,7 @@ def test_primary_prompt_requires_final_implementation_commit_without_push() -> N
         "implementation state before returning the ResultPackage"
     ) in prompt
     assert "do not push" in prompt
-    assert (
-        "Bind result.head_sha and all EVIDENCE subject_sha values to that final "
-        "committed Git HEAD"
-    ) in prompt
+    assert "Bind result.head_sha to that final committed Git HEAD" in prompt
 
 
 def test_remediation_prompt_excludes_complete_original_task_contract() -> None:
@@ -245,13 +244,13 @@ affected_verification: [pytest tests/test_codex_adapter.py]
     payload = json.loads(prompt.split("REMEDIATION_INPUT:\n", 1)[1])
 
     assert payload["finding"]["issue"] == "Narrow issue."
-    assert payload["remediation"]["affected_verification"] == [
-        "pytest tests/test_codex_adapter.py"
-    ]
+    assert "affected_verification" not in payload["remediation"]
+    assert "pytest tests/test_codex_adapter.py" not in prompt
     assert "goal" not in json.dumps(payload)
     assert "acceptance" not in json.dumps(payload)
     assert "CODE_FIX, commit the permitted remediation delta" in prompt
     assert "EVIDENCE_ONLY, do not create a code commit" in prompt
+    assert "Runtime owns affected verification" in prompt
 
 
 def test_output_schema_is_passed() -> None:
@@ -301,7 +300,7 @@ def test_schema_represents_canonical_result_and_evidence_shape() -> None:
     claim_prop = claims_prop["items"]
     assert "minItems" not in claims_prop
     assert claim_prop["properties"]["satisfies"]["minItems"] == 1
-    assert claim_prop["properties"]["evidence"]["minItems"] == 1
+    assert "minItems" not in claim_prop["properties"]["evidence"]
 
     evidence_prop = schema["properties"]["evidence"]
     assert evidence_prop["type"] == "array"
@@ -330,8 +329,8 @@ def test_schema_represents_canonical_result_and_evidence_shape() -> None:
 
     empty_claim_evidence = json.loads(successful_output("RUN-007-001"))
     empty_claim_evidence["result"]["claims"][0]["evidence"] = []
-    with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate(instance=empty_claim_evidence, schema=schema)
+    empty_claim_evidence["evidence"] = []
+    jsonschema.validate(instance=empty_claim_evidence, schema=schema)
 
 
 @pytest.mark.parametrize(
@@ -447,7 +446,7 @@ def test_invalid_output_remains_explicit_failure_cases() -> None:
     registry.release(lease3)
 
 
-def test_hands_off_unchanged_canonical_task_and_run() -> None:
+def test_handoff_preserves_semantics_but_withholds_runtime_verification() -> None:
     task, run, registry, boundary = make_execution()
     lease = registry.acquire(run)
     captured = {}
@@ -469,8 +468,11 @@ def test_hands_off_unchanged_canonical_task_and_run() -> None:
     )
 
     payload = json.loads(captured["input"].split("CANONICAL_INPUT:\n", 1)[1])
-    expected = json.loads(json.dumps({"task": asdict(task), "run": asdict(run)}))
+    expected_task = asdict(task)
+    expected_task.pop("verification")
+    expected = json.loads(json.dumps({"task": expected_task, "run": asdict(run)}))
     assert payload == expected
+    assert task.verification.required == ("pytest tests/test_codex_adapter.py",)
 
 
 def test_success_normalizes_and_validates_result_package() -> None:

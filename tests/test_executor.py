@@ -1,9 +1,11 @@
 import pytest
 
 from aios_renew import (
+    Claim,
     ExecutorBoundary,
     ExecutorBoundaryError,
     ResultPackage,
+    Result,
     Run,
     RunLeaseRegistry,
     Task,
@@ -107,6 +109,35 @@ def test_invokes_adapter_with_unchanged_task_and_run() -> None:
     assert adapter.calls == [(task, run)]
     assert adapter.calls[0][0] is task
     assert adapter.calls[0][1] is run
+
+
+def test_boundary_accepts_structural_package_without_executor_evidence() -> None:
+    task, run, registry, boundary, _ = make_execution()
+    lease = registry.acquire(run)
+
+    class StructuralAdapter:
+        executor = "codex"
+
+        def execute(self, *, task: Task, run: Run) -> ResultPackage:
+            return ResultPackage(
+                result=Result(
+                    head_sha="def456",
+                    claims=(Claim("C1", ("AC1",), "Implemented.", ()),),
+                    changed_files=("src/aios_renew/executor.py",),
+                    unresolved=(),
+                ),
+                evidence=(),
+            )
+
+    package = boundary.invoke(
+        task=task,
+        run=run,
+        lease=lease,
+        adapter=StructuralAdapter(),
+    )
+
+    assert package.result.claims[0].evidence == ()
+    assert package.evidence == ()
 
 
 def test_rejects_run_for_different_task_revision() -> None:
