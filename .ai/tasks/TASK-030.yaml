@@ -1,0 +1,135 @@
+task_id: TASK-030
+revision: 1
+
+goal: >
+  Harden the canonical Brain-to-TASK boundary for the AIOS-renew v0.1.3
+  candidate so Brain-authored TASKs fail early on deterministic contract
+  mistakes, while documenting a compact executor-neutral Brain authoring
+  contract without adding any new reasoning agent or execution layer.
+
+problem: >
+  The current canonical TASK parser accepts several authoring states that can
+  parse successfully but are unsafe or impossible to complete canonically:
+  unknown mapping fields may be silently ignored, verification.required may be
+  empty, duplicate verification commands may repeat unchanged work, and
+  scope.modify does not explicitly encode the Runtime's exact repo-relative
+  mutation allow-list semantics. AIOS-renew also lacks one compact canonical
+  Brain authoring reference, increasing the risk that TASK identity, executor
+  neutrality, verification placement, scope, or remediation lineage is inferred
+  from conversation/UI state instead of canonical repository state.
+
+assumptions:
+  - Brain semantic judgment remains ChatGPT-owned; deterministic validation must not become a Brain validator agent.
+  - Existing Runtime, Executor, Review, REMEDIATION, ResultPackage, Git binding, verification, and publication semantics remain unchanged.
+  - scope.modify is an exact repo-relative mutation allow-list in the current Runtime; scope.inspect remains guidance for minimum relevant context.
+  - Existing canonical TASK-013 through TASK-029 are compatibility inputs and must continue to parse without modification.
+  - The frozen v0.1 specification remains an immutable historical record.
+
+scope:
+  inspect:
+    - src/aios_renew/task.py
+    - src/aios_renew/operator.py
+    - tests/test_task.py
+    - tests/test_operator.py
+    - .ai/tasks/
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-v0.1.3-ARCHITECTURE-AMENDMENT.md
+
+  modify:
+    - src/aios_renew/task.py
+    - tests/test_task.py
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+
+non_goals:
+  - Add a planner, Brain validator agent, semantic verifier agent, router, watcher, daemon, retry loop, or orchestration layer.
+  - Change CodexAdapter or AntigravityAdapter behavior.
+  - Change Runtime verification ownership or command execution semantics.
+  - Change ExecutorBoundary, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION contracts.
+  - Change primary synchronization, repository locking, SHA binding, changed-files enforcement, or publication behavior.
+  - Modify any existing canonical TASK file from TASK-013 through TASK-029.
+  - Modify docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md or rewrite historical freeze records.
+  - Add glob expansion or a new path-matching engine.
+  - Add executor identity, model-specific instructions, or implementation plans to the TASK contract.
+  - Perform v0.1.3 release metadata changes or create a release tag.
+
+constraints:
+  hard:
+    - Keep the change at the Brain/TASK contract boundary only.
+    - Use the existing parse_task/validate_task path as the deterministic TASK gate; do not create a second validation command or service.
+    - Reject unknown keys instead of silently ignoring them for canonical TASK mappings - top-level TASK, scope, constraints, verification, and each acceptance item.
+    - verification.required must contain at least one non-empty command.
+    - verification.required must reject exact duplicate commands while preserving the declared order of unique commands.
+    - scope.modify entries must represent safe exact repo-relative paths; reject absolute paths, parent traversal, Windows backslash separators, and glob/wildcard syntax rather than adding glob support.
+    - Do not tighten scope.inspect into a security boundary; it remains minimum-context guidance.
+    - Preserve all valid existing canonical TASK-013 through TASK-029 without modifying those files.
+    - Preserve current filename/internal task_id binding in operator.load_task without modifying operator.py.
+    - The new Brain authoring contract must be compact and must not duplicate the full frozen specification.
+    - The Brain authoring contract must require canonical repository identity before reasoning about TASK, REVIEW, REMEDIATION, or FIX lineage.
+    - The Brain authoring contract must state Brain owns WHAT/WHY/constraints/acceptance and must not prescribe HOW except true architectural constraints.
+    - The Brain authoring contract must require executor-neutral TASKs usable by either Codex or Antigravity.
+    - The Brain authoring contract must distinguish scope.inspect guidance from hard scope.modify mutation authority.
+    - The Brain authoring contract must require atomic, observable, complete acceptance criteria.
+    - The Brain authoring contract must require non-empty, unique, deterministic, non-interactive, minimum-sufficient canonical verification.
+    - Canonical verification commands belong only in verification.required and must not be duplicated into executor-visible goal, problem, assumptions, non_goals, or constraints as instructions to execute them.
+    - The Brain authoring contract must prohibit instructing the Executor to push; executor implementation ends at the permitted final local commit.
+    - The Brain authoring contract must state new Human intent is not a FIX and remediation lineage must be resolved from canonical artifacts and immutable SHA, never inferred from chat history, screenshots, or UI labels.
+    - Do not add redundant Git-cleanliness verification to Brain-authored TASK guidance because Runtime already owns repository-state integrity gates.
+    - Keep the implementation minimal and fail closed.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Canonical TASK validation rejects unknown fields at the top-level TASK
+      mapping, scope, constraints, verification, and acceptance-item mappings,
+      while all supported canonical fields continue to parse unchanged.
+
+  - id: AC2
+    condition: >
+      verification.required is rejected when empty and exact duplicate
+      verification commands are rejected deterministically.
+
+  - id: AC3
+    condition: >
+      scope.modify accepts safe exact repo-relative file paths and rejects
+      absolute paths, parent traversal, Windows backslash separators, and
+      glob/wildcard syntax without introducing glob expansion.
+
+  - id: AC4
+    condition: >
+      scope.inspect behavior remains unchanged as minimum-context guidance and
+      is not converted into a Runtime mutation or read-security boundary.
+
+  - id: AC5
+    condition: >
+      Existing canonical TASK-013 through TASK-029 parse successfully under the
+      hardened validator without modifying those TASK files.
+
+  - id: AC6
+    condition: >
+      A compact docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md exists and
+      records canonical identity before reasoning, Brain WHAT versus Executor
+      HOW, executor neutrality, exact minimal scope.modify, acceptance quality,
+      minimum-sufficient verification, no Executor push instruction, and
+      canonical REVIEW/REMEDIATION lineage rules.
+
+  - id: AC7
+    condition: >
+      The Brain authoring contract keeps canonical verification commands only
+      in verification.required and explicitly avoids redundant Runtime-owned
+      repository-integrity checks as default TASK verification.
+
+  - id: AC8
+    condition: >
+      No Codex, Antigravity, Runtime, ExecutorBoundary, REVIEW, REMEDIATION,
+      ResultPackage, Git synchronization, locking, publication, or frozen v0.1
+      specification semantics change.
+
+  - id: AC9
+    condition: >
+      Focused regression tests cover every new fail-closed TASK validation rule
+      and prove valid TASK parsing remains compatible with the canonical task
+      corpus.
+
+verification:
+  required:
+    - python -m pytest tests/test_task.py tests/test_operator.py -q
