@@ -467,8 +467,16 @@ def test_narrow_remediation_uses_shared_completion_policy(
         native_runner=runner,
     )
     stored = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    staged = json.loads(
+        (runtime_paths(repo).staging / f"{summary.run_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
     assert len(runner.calls) == 1
+    assert staged["result"]["claims"] == []
+    assert staged["result"]["unresolved"] == []
+    assert staged["evidence"] == []
     assert stored["result"]["claims"] == []
     assert stored["result"]["changed_files"] == ["OUTPUT.txt"]
     assert stored["evidence"][0]["source"]["command"] == "git diff --check"
@@ -1386,9 +1394,10 @@ def test_run_013_false_pass_shape_fails_closed(
 ) -> None:
     repo = make_repo(tmp_path)
     payload = static_payload(
-        satisfies=[],
         unresolved=["Codex could not complete execution."],
     )
+    if executor == "antigravity":
+        payload["result"]["claims"][0]["satisfies"] = "AC1"
 
     with pytest.raises(OperatorError, match="RESULT has unresolved items"):
         run_task(
@@ -1397,6 +1406,18 @@ def test_run_013_false_pass_shape_fails_closed(
             repo=repo,
             native_runner=StaticResultRunner(repo, payload),
         )
+
+    state = runtime_paths(repo)
+    staged = json.loads(
+        (state.staging / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert staged["result"]["unresolved"] == [
+        "Codex could not complete execution."
+    ]
+    assert staged["result"]["claims"][0]["satisfies"] == ["AC1"]
+    assert staged["result"]["claims"][0]["evidence"] == []
+    assert staged["evidence"] == []
+    assert not (state.results / "RUN-101-001.json").exists()
 
 
 @pytest.mark.parametrize("executor", ["codex", "antigravity"])

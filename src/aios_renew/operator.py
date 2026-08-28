@@ -552,6 +552,7 @@ def run_task(
         except ExecutorBoundaryError as exc:
             raise OperatorError(f"executor boundary failed: {exc}") from exc
 
+        _write_json(staging_path, result_package_data(package))
         _require_executor_structure(package)
         actual_head = _git(root, "rev-parse", "HEAD")
         if package.result.head_sha != actual_head:
@@ -822,6 +823,7 @@ def run_remediation(
         except AntigravityExecutionError as exc:
             raise OperatorError(str(exc)) from exc
 
+        _write_json(staging_path, result_package_data(package))
         _require_executor_structure(package)
         actual_head = _git(root, "rev-parse", "HEAD")
         if package.result.head_sha != actual_head:
