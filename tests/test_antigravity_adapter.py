@@ -56,6 +56,40 @@ def make_execution():
     return task, run, registry, ExecutorBoundary(registry)
 
 
+def make_remediation_execution() -> RemediationExecution:
+    task, run, _, _ = make_execution()
+    review = parse_review(
+        """
+review_id: REVIEW-008-001
+reviewed_sha: abc123
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {AC1: FAIL}
+findings:
+  - id: R1
+    basis: AC1
+    action: EVIDENCE_ONLY
+    location: tests/test_antigravity_adapter.py
+    issue: Evidence missing.
+    expected: Supply evidence.
+"""
+    )
+    return RemediationExecution(
+        review_id=review.review_id,
+        finding=review.findings[0],
+        remediation=parse_remediation(
+            """
+finding_id: R1
+action: EVIDENCE_ONLY
+reviewed_sha: abc123
+modification_scope: []
+affected_verification: [pytest tests/test_antigravity_adapter.py]
+"""
+        ),
+        run=run,
+    )
+
+
 def successful_output(run_id: str) -> dict:
     return {
         "result": {
@@ -117,37 +151,8 @@ def test_hands_off_unchanged_task_and_run() -> None:
 
 
 def test_hands_off_one_narrow_remediation_execution() -> None:
-    task, run, _, _ = make_execution()
-    review = parse_review(
-        """
-review_id: REVIEW-008-001
-reviewed_sha: abc123
-mode: PRIMARY
-verdict: CHANGES_REQUIRED
-acceptance: {AC1: FAIL}
-findings:
-  - id: R1
-    basis: AC1
-    action: EVIDENCE_ONLY
-    location: tests/test_antigravity_adapter.py
-    issue: Evidence missing.
-    expected: Supply evidence.
-"""
-    )
-    execution = RemediationExecution(
-        review_id=review.review_id,
-        finding=review.findings[0],
-        remediation=parse_remediation(
-            """
-finding_id: R1
-action: EVIDENCE_ONLY
-reviewed_sha: abc123
-modification_scope: []
-affected_verification: [pytest tests/test_antigravity_adapter.py]
-"""
-        ),
-        run=run,
-    )
+    execution = make_remediation_execution()
+    run = execution.run
     captured = []
     output = successful_output(run.run_id)
     output["result"]["claims"] = []
@@ -236,6 +241,43 @@ def test_structural_output_accepts_empty_runtime_owned_evidence() -> None:
     assert package.result.claims[0].satisfies == ("AC1",)
     assert package.result.claims[0].evidence == ()
     assert package.evidence == ()
+
+
+def test_structural_remediation_accepts_one_leading_bom() -> None:
+    execution = make_remediation_execution()
+    output = successful_output(execution.run.run_id)
+    output["result"]["claims"][0]["evidence"] = []
+    output["evidence"] = []
+    serialized = json.dumps(output)
+
+    bom_package = AntigravityAdapter(
+        transport=lambda **kwargs: "\ufeff" + serialized,
+        structural_output=True,
+    ).execute_remediation(execution=execution)
+    plain_package = AntigravityAdapter(
+        transport=lambda **kwargs: serialized,
+        structural_output=True,
+    ).execute_remediation(execution=execution)
+    mapping_package = AntigravityAdapter(
+        transport=lambda **kwargs: output,
+        structural_output=True,
+    ).execute_remediation(execution=execution)
+
+    assert bom_package == plain_package == mapping_package
+
+
+@pytest.mark.parametrize("malformed", ["{", "\ufeff{", "\ufeff\ufeff{}"])
+def test_structural_remediation_malformed_json_remains_fail_closed(
+    malformed: str,
+) -> None:
+    execution = make_remediation_execution()
+    adapter = AntigravityAdapter(
+        transport=lambda **kwargs: malformed,
+        structural_output=True,
+    )
+
+    with pytest.raises(AntigravityOutputError, match="invalid structural output"):
+        adapter.execute_remediation(execution=execution)
 
 
 def test_canonical_output_still_requires_claim_evidence() -> None:

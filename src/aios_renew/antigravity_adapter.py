@@ -74,7 +74,11 @@ class AntigravityAdapter:
         output: Any, *, structural: bool = False
     ) -> ResultPackage:
         try:
-            payload = json.loads(output) if isinstance(output, str) else output
+            payload = (
+                json.loads(output.removeprefix("\ufeff"))
+                if isinstance(output, str)
+                else output
+            )
             root = _mapping(payload, "Antigravity output")
             validate = validate_structural_result if structural else validate_result
             result = validate(_normalize_satisfies(root["result"]))
