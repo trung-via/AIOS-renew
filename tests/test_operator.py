@@ -488,6 +488,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
         instruction = runner.calls[0][0][runner.calls[0][0].index("--print") + 1]
         assert "CODE_FIX, commit the permitted remediation delta" in instruction
         assert "EVIDENCE_ONLY, do not create a code commit" in instruction
+        assert "Do not push" in instruction
         handoff = json.loads(
             next((repo / ".git" / "aios" / "handoffs").glob("*.json")).read_text(
                 encoding="utf-8"
@@ -984,6 +985,8 @@ def test_antigravity_instruction_defines_structural_staging_package(
     assert "staging, not the canonical results store" in instruction
     assert "Runtime owns canonical verification" in instruction
     assert "do not execute verification commands" in instruction
+    assert "Commit the final implementation state when required" in instruction
+    assert "do not push" in instruction
     handoff = json.loads(
         next((repo / ".git" / "aios" / "handoffs").glob("*.json")).read_text(
             encoding="utf-8"

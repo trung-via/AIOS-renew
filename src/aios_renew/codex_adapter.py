@@ -188,7 +188,7 @@ class CodexAdapter:
             "restart the original TASK, rediscover the repository, perform "
             "semantic review, or retry. Change only remediation.modification_scope. "
             "For CODE_FIX, commit the permitted remediation delta before returning; "
-            "for EVIDENCE_ONLY, do not create a code commit. "
+            "for EVIDENCE_ONLY, do not create a code commit. Do not push. "
             "Runtime owns affected verification: do not execute verification "
             "commands and do not generate verification EVIDENCE. Return one "
             "structural ResultPackage with empty root evidence, result.claims, "
