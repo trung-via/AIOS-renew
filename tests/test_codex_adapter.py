@@ -191,6 +191,22 @@ def test_prompt_requires_exact_successful_verification_evidence() -> None:
     assert "result.exit_code is zero" in prompt
 
 
+def test_primary_prompt_requires_final_implementation_commit_without_push() -> None:
+    task, run, _, _ = make_execution()
+
+    prompt = CodexAdapter.prompt_for(task=task, run=run)
+
+    assert (
+        "If the TASK requires repository changes, commit the final permitted "
+        "implementation state before returning the ResultPackage"
+    ) in prompt
+    assert "do not push" in prompt
+    assert (
+        "Bind result.head_sha and all EVIDENCE subject_sha values to that final "
+        "committed Git HEAD"
+    ) in prompt
+
+
 def test_remediation_prompt_excludes_complete_original_task_contract() -> None:
     task, run, _, _ = make_execution()
     review = parse_review(

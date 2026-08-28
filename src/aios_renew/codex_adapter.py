@@ -166,8 +166,11 @@ class CodexAdapter:
             "Do not reinterpret its requirements. Execute every command in "
             "task.verification.required exactly as written and represent each "
             "required command with EVIDENCE whose source.command is the exact "
-            "command string and whose result.exit_code is zero. Return only one "
-            "JSON object "
+            "command string and whose result.exit_code is zero. If the TASK "
+            "requires repository changes, commit the final permitted implementation "
+            "state before returning the ResultPackage; do not push. Bind result.head_sha "
+            "and all EVIDENCE subject_sha values to that final committed Git HEAD. "
+            "Return only one JSON object "
             "with keys 'result' and 'evidence' matching the canonical contracts.\n"
             f"CANONICAL_INPUT:\n{canonical_input}"
         )
