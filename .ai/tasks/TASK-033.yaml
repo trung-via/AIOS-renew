@@ -1,0 +1,70 @@
+task_id: TASK-033
+revision: 1
+
+goal: >
+  Finalize AIOS-renew v0.1.3 release metadata by aligning the Python project
+  version with the already-established v0.1.3 candidate, without changing
+  kernel, executor, Runtime, review, remediation, or publication behavior.
+
+problem: >
+  The canonical repository is at the v0.1.3 release-candidate stage and already
+  contains the v0.1.3 architecture amendment plus completed Brain/executor
+  hardening and live executor conformance, but pyproject.toml still declares
+  project version 0.1.0. Tagging v0.1.3 while package metadata remains 0.1.0
+  would create an inconsistent release identity.
+
+assumptions:
+  - TASK-030 Brain/TASK hardening, TASK-031 executor publication-boundary parity, and TASK-032 live Codex/Antigravity conformance are complete.
+  - pyproject.toml is the authoritative Python package version source for this repository.
+  - No additional release-facing source file currently requires a version change for v0.1.3.
+  - The final full-suite, CLI/package sanity, repository synchronization, and tag creation gates occur only after this TASK passes semantic review and is published.
+
+scope:
+  inspect:
+    - pyproject.toml
+    - README.md
+    - docs/AIOS-RENEW-v0.1.3-ARCHITECTURE-AMENDMENT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+
+  modify:
+    - pyproject.toml
+
+non_goals:
+  - Change any Python source, test, schema, script, or existing documentation file.
+  - Change package name, dependencies, build backend, Python requirement, package discovery, package data, pytest settings, or the aios console-script entry point.
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, executor, Runtime, Git binding, verification, or publication semantics.
+  - Rewrite the frozen v0.1 specification, freeze record, or v0.1.3 architecture amendment.
+  - Add release automation, changelog machinery, CI, packaging infrastructure, or a new release framework.
+  - Run the final release gate, create a Git tag, create a GitHub release, or publish a package as part of this TASK.
+
+constraints:
+  hard:
+    - Keep the implementation to the minimum release-metadata delta in pyproject.toml.
+    - Set project.version to exactly 0.1.3.
+    - Preserve every other pyproject.toml project, build-system, setuptools, script, and pytest setting unchanged.
+    - Do not modify any file outside scope.modify.
+    - Do not add implementation behavior, tests, release scripts, or documentation for a metadata-only change.
+    - Preserve the aios console-script entry point exactly as aios_renew.operator:main.
+    - Final release gating and tag creation remain outside Executor implementation authority.
+    - Keep the change executor-neutral and fail closed.
+
+acceptance:
+  - id: AC1
+    condition: >
+      pyproject.toml declares project.version exactly as 0.1.3.
+
+  - id: AC2
+    condition: >
+      The aios console-script entry point remains exactly
+      aios_renew.operator:main and all non-version pyproject.toml settings are
+      unchanged from the bound base SHA.
+
+  - id: AC3
+    condition: >
+      The committed implementation delta contains only pyproject.toml and makes
+      no kernel, executor, Runtime, test, schema, documentation, release
+      automation, or publication change.
+
+verification:
+  required:
+    - python -c "import pathlib,tomllib; d=tomllib.loads(pathlib.Path('pyproject.toml').read_text(encoding='utf-8')); assert d['project']['version']=='0.1.3'; assert d['project']['scripts']['aios']=='aios_renew.operator:main'"
