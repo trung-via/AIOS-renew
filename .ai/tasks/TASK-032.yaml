@@ -1,0 +1,84 @@
+task_id: TASK-032
+revision: 1
+
+goal: >
+  Provide one read-only canonical conformance probe for the AIOS-renew v0.1.3
+  candidate that can be executed independently by either Codex or Antigravity
+  from the same immutable repository state, without producing an implementation
+  delta.
+
+problem: >
+  Unit and regression tests establish shared executor semantics, but the final
+  v0.1.3 gate still needs live proof that the same executor-neutral TASK can be
+  accepted by Codex and Antigravity through the canonical Runtime path. A
+  mutation-bearing TASK would create competing implementation deltas and would
+  no longer bind both executions to the same repository state, so this probe
+  must require no repository changes.
+
+assumptions:
+  - TASK-030 Brain/TASK hardening and TASK-031 executor publication-boundary parity are already published on main.
+  - The current v0.1.3 candidate already satisfies the invariants inspected by this probe.
+  - Runtime permits a completed PRIMARY TASK whose committed delta is empty when no repository modification is required.
+  - Live conformance is evaluated by running this same canonical TASK sequentially with one active executor at a time and comparing the two canonical results outside the TASK itself.
+
+scope:
+  inspect:
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - src/aios_renew/operator.py
+    - src/aios_renew/codex_adapter.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+
+  modify: []
+
+non_goals:
+  - Modify, format, regenerate, or commit any repository file.
+  - Create an implementation commit.
+  - Push, tag, publish, or change any remote reference.
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, Runtime, adapter, or publication semantics.
+  - Add a new conformance framework, script, fixture, executor router, retry, fallback, branch, worktree, or orchestration layer.
+  - Make executor-specific changes to this TASK.
+  - Perform release metadata changes or create the v0.1.3 tag.
+
+constraints:
+  hard:
+    - This is a read-only semantic conformance probe; no repository modification is authorized or required.
+    - The same canonical TASK contract must be used unchanged for both executor executions.
+    - Execute the two live runs sequentially with exactly one active executor at a time.
+    - Each live run must remain bound to the same canonical base Git SHA and must finish at that same Git SHA.
+    - Each live result must declare an empty changed_files set and no unresolved items.
+    - Do not create an implementation commit for this no-change TASK.
+    - Preserve Runtime ownership of canonical verification and EVIDENCE construction.
+    - Do not add executor identity, model-specific instructions, or adapter-specific workflow to this TASK.
+    - Do not infer conformance from one executor on behalf of the other; each executor must produce its own canonical RUN and RESULT.
+    - Keep the probe minimal and fail closed.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The published Brain TASK Authoring Contract establishes canonical identity
+      before reasoning, separates Brain WHAT/WHY from Executor HOW, requires
+      executor-neutral TASKs, and keeps publication outside Executor authority.
+
+  - id: AC2
+    condition: >
+      The current Codex and Antigravity PRIMARY executor-facing surfaces keep
+      Runtime-owned verification outside executor input and explicitly prohibit
+      push while allowing the permitted final local commit only when a TASK
+      actually requires repository changes.
+
+  - id: AC3
+    condition: >
+      The current Codex and Antigravity REMEDIATION executor-facing surfaces
+      preserve narrow CODE_FIX/EVIDENCE_ONLY semantics, exclude Runtime-owned
+      affected verification from executor input, and explicitly prohibit push.
+
+  - id: AC4
+    condition: >
+      This TASK is satisfied without modifying the repository: result.head_sha
+      remains equal to the bound base SHA, result.changed_files is empty, and
+      result.unresolved is empty.
+
+verification:
+  required:
+    - python -m pytest tests/test_codex_adapter.py::test_primary_prompt_requires_final_implementation_commit_without_push tests/test_codex_adapter.py::test_remediation_prompt_excludes_complete_original_task_contract tests/test_operator.py::test_antigravity_instruction_defines_structural_staging_package tests/test_operator.py::test_narrow_remediation_uses_shared_completion_policy -q
