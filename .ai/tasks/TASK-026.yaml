@@ -1,0 +1,84 @@
+﻿task_id: TASK-026
+revision: 1
+
+goal: >
+  Restore primary execution parity between Codex and Antigravity by requiring
+  Codex to commit the final permitted implementation state before returning its
+  canonical ResultPackage when a PRIMARY TASK changes repository files.
+
+problem: >
+  A real TASK-095 primary run through Codex produced the complete in-scope
+  implementation in the working tree but returned without committing it.
+  AIOS then correctly failed closed with working tree dirty after execution.
+  The Codex primary prompt does not explicitly require a final commit, while
+  the Antigravity primary transport does.
+
+assumptions:
+  - Runtime remains authoritative for Git cleanliness, HEAD binding, scope,
+    changed_files, ResultPackage, and evidence validation.
+  - Codex remediation already explicitly requires CODE_FIX commits.
+  - Antigravity primary already requires the final implementation commit.
+
+scope:
+  inspect:
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_operator.py
+
+  modify:
+    - src/aios_renew/codex_adapter.py
+    - tests/test_codex_adapter.py
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Change Runtime Git validation or upstream synchronization.
+  - Add automatic push.
+  - Add retry, recovery, stash, reset, or dirty-worktree salvage behavior.
+  - Change Antigravity production transport.
+  - Re-execute or modify Python Agent TASK-095.
+
+constraints:
+  hard:
+    - Fix only the evidenced Codex PRIMARY commit-parity defect.
+    - Codex PRIMARY must explicitly require committing the final permitted implementation state before returning when repository changes are required.
+    - The commit requirement must not weaken TASK scope, verification, ResultPackage, clean-tree, HEAD, or changed_files enforcement.
+    - Codex PRIMARY must not push automatically.
+    - EVIDENCE must remain bound to the final committed HEAD.
+    - Codex remediation semantics must remain unchanged.
+    - Antigravity primary semantics must remain unchanged.
+    - Preserve one executor invocation and minimum necessary context.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Codex PRIMARY prompt explicitly requires committing the final permitted
+      implementation state before returning its ResultPackage when the TASK
+      changes files.
+
+  - id: AC2
+    condition: >
+      Codex PRIMARY instructions bind final Git HEAD and ResultPackage evidence
+      to the committed implementation state and do not instruct automatic push.
+
+  - id: AC3
+    condition: >
+      Existing primary verification, scope, ResultPackage, and Runtime
+      post-execution enforcement remain unchanged.
+
+  - id: AC4
+    condition: >
+      Tests prove the Codex PRIMARY prompt contains the commit requirement while
+      remediation behavior and command construction remain unchanged.
+
+  - id: AC5
+    condition: >
+      Codex and Antigravity PRIMARY contracts are semantically aligned on final
+      implementation commit responsibility.
+
+verification:
+  required:
+    - '$env:PYTHONPATH = ".;src"; pytest tests/test_codex_adapter.py -q'
+    - '$env:PYTHONPATH = ".;src"; pytest tests/test_operator.py -q'
+    - git diff --check
+    - git status --porcelain
