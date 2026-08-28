@@ -1,5 +1,5 @@
 task_id: TASK-027
-revision: 1
+revision: 2
 
 goal: >
   Move PRIMARY task.verification.required and REMEDIATION
@@ -80,6 +80,19 @@ constraints:
     - Preserve PRIMARY upstream synchronization, REMEDIATION no-sync reviewed_sha lineage, RepositoryLock coverage, scope and exact changed-files enforcement, clean final HEAD, CODE_FIX and EVIDENCE_ONLY semantics, and semantic ChatGPT Review unchanged.
     - Existing v0.1.2 persisted ResultPackage files must remain readable and valid.
     - No automatic retry or executor rerouting is permitted.
+    - Executor-produced structural ResultPackage output must never be written to the canonical Git-dir .git/aios/results location before all Runtime verification passes.
+    - Codex may return structural ResultPackage output through stdout, while Antigravity must write structural output only to a dedicated Git-dir AIOS staging or handoff path that is not the canonical results location.
+    - Only Runtime may write the canonical results/RUN-xxx.json ResultPackage, and only after structural, repository-state, and all Runtime verification checks succeed.
+    - Verification failure, strict UTF-8 decode failure, structural validation failure, or repository-state failure must leave no canonical ResultPackage in .git/aios/results.
+    - PRIMARY executor-facing input must exclude task.verification.required while Runtime retains the unchanged canonical Task.
+    - REMEDIATION executor-facing input must exclude affected_verification while Runtime retains the unchanged canonical Remediation.
+    - Codex and Antigravity must not receive exact canonical verification command strings; acceptance, scope, constraints, finding and modification scope, and implementation information remain available as applicable.
+    - Runtime is the sole holder and executor of canonical PRIMARY and REMEDIATION verification command strings.
+    - Each Runtime verification item executes through exactly one deterministic shell subprocess with the repository root as cwd.
+    - On Windows the deterministic shell is non-interactive PowerShell executing the exact canonical command string; on POSIX it is /bin/sh -c executing the exact canonical command string.
+    - The shell wrapper is transport only and Evidence.source.command remains byte-for-text equivalent to the original canonical TASK or REMEDIATION command string, never the wrapper command.
+    - Shell subprocess stdout and stderr are captured as bytes and decoded with strict UTF-8.
+    - Runtime verification permits no alternate-shell fallback, retry, command reconstruction, normalization, reordering, or deduplication.
     - Keep implementation deterministic, minimal, and confined to the permitted scope.
 
 acceptance:
@@ -162,6 +175,35 @@ acceptance:
       PRIMARY upstream sync, REMEDIATION no-sync lineage, locking, scope,
       changed-files, clean HEAD, semantic Review, and both executor pathways
       retain their existing behavior apart from Runtime-owned verification.
+
+  - id: AC14
+    condition: >
+      Executor structural output is staged outside canonical .git/aios/results:
+      Codex uses stdout and Antigravity uses a dedicated Git-dir AIOS staging or
+      handoff path. Only Runtime writes results/RUN-xxx.json after every Runtime
+      check and verification command passes. Regression coverage proves an
+      Antigravity structural package never appears in canonical results before
+      verification PASS and every verification, decode, structural, or
+      repository-state failure leaves no canonical ResultPackage.
+
+  - id: AC15
+    condition: >
+      PRIMARY executor-facing serialization excludes task.verification.required
+      and REMEDIATION serialization excludes affected_verification without
+      mutating Runtime's canonical Task or Remediation. Regression coverage
+      proves neither Codex nor Antigravity input contains the exact canonical
+      verification strings while acceptance, scope, constraints, finding or
+      modification scope, and implementation information remain available.
+
+  - id: AC16
+    condition: >
+      Every Runtime verification item invokes exactly one deterministic shell
+      subprocess from repository-root cwd: non-interactive PowerShell on
+      Windows or /bin/sh -c on POSIX, carrying the exact canonical command
+      string. Regression coverage proves stdout/stderr byte capture with strict
+      UTF-8 decoding, Evidence.source.command preserves the original string
+      rather than the wrapper, and no fallback shell, retry, reconstruction,
+      normalization, reordering, or deduplication occurs.
 
 verification:
   required:
