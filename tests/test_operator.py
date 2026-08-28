@@ -1081,6 +1081,69 @@ def test_runtime_verification_decode_failure_persists_no_result(
     assert list(runtime_paths(repo).results.glob("*.json")) == []
 
 
+@pytest.mark.parametrize("flow", ["primary", "remediation"])
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("dirty", "verification dirtied working tree"),
+        ("head", "verification changed Git HEAD"),
+    ],
+)
+def test_successful_verification_repository_mutation_fails_closed(
+    tmp_path: Path,
+    flow: str,
+    mutation: str,
+    message: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    heads_before_mutation = []
+
+    def mutating_verification(command, **kwargs):
+        heads_before_mutation.append(git(repo, "rev-parse", "HEAD"))
+        if mutation == "dirty":
+            (repo / "VERIFICATION_DIRTY.txt").write_text(
+                "verification mutation\n", encoding="utf-8"
+            )
+        else:
+            (repo / "VERIFICATION_COMMIT.txt").write_text(
+                "verification mutation\n", encoding="utf-8"
+            )
+            git(repo, "add", "VERIFICATION_COMMIT.txt")
+            git(repo, "commit", "--quiet", "-m", "verification mutation")
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=b"passed\n", stderr=b""
+        )
+
+    with pytest.raises(OperatorError, match=message):
+        if flow == "primary":
+            run_task(
+                "TASK-101",
+                executor="codex",
+                repo=repo,
+                native_runner=StaticResultRunner(repo, static_payload()),
+                verification_runner=mutating_verification,
+            )
+        else:
+            review, remediation = remediation_contract(repo)
+            run_remediation(
+                "TASK-101",
+                review=review,
+                remediation=remediation,
+                executor="codex",
+                repo=repo,
+                native_runner=RemediationRunner(repo),
+                verification_runner=mutating_verification,
+            )
+
+    assert not (state.results / "RUN-101-001.json").exists()
+    if mutation == "dirty":
+        assert (repo / "VERIFICATION_DIRTY.txt").is_file()
+        assert git(repo, "status", "--porcelain")
+    else:
+        assert git(repo, "rev-parse", "HEAD") != heads_before_mutation[0]
+
+
 def test_missing_agy_executable_fails_clearly(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
 

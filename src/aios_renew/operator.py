@@ -583,6 +583,9 @@ def run_task(
             )
         except RuntimeVerificationError as exc:
             raise OperatorError(str(exc)) from exc
+        _require_post_verification_repository_state(
+            root, expected_head=actual_head
+        )
         canonical_result = attach_verification_evidence(
             package.result, runtime_evidence
         )
@@ -839,6 +842,9 @@ def run_remediation(
             )
         except RuntimeVerificationError as exc:
             raise OperatorError(str(exc)) from exc
+        _require_post_verification_repository_state(
+            root, expected_head=actual_head
+        )
         canonical_package = ResultPackage(
             result=package.result,
             evidence=runtime_evidence,
@@ -1021,6 +1027,17 @@ def _require_executor_structure(package: ResultPackage) -> None:
         raise OperatorError(
             "executor structural claim evidence references must be empty"
         )
+
+
+def _require_post_verification_repository_state(
+    repo: Path, *, expected_head: str
+) -> None:
+    """Fail closed if successful verification mutated repository state."""
+
+    if _git(repo, "rev-parse", "HEAD") != expected_head:
+        raise OperatorError("verification changed Git HEAD")
+    if _git(repo, "status", "--porcelain"):
+        raise OperatorError("verification dirtied working tree")
 
 
 def _executor_task_data(task: Task) -> dict[str, Any]:
