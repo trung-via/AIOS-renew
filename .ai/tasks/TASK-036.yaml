@@ -1,0 +1,100 @@
+task_id: TASK-036
+revision: 1
+
+goal: >
+  Make Windows canonical verification propagate the exact native verification
+  command exit code through the PowerShell wrapper so Runtime fails closed on
+  nonzero verification results, while preserving the strict UTF-8 output
+  boundary established by TASK-034.
+
+problem: >
+  RUN-035-001 produced canonical EVIDENCE whose summary contained pytest output
+  reporting 14 failed tests while the same evidence recorded exit_code 0. The
+  current Windows verification wrapper invokes the canonical command inside a
+  PowerShell script block but does not explicitly propagate the native command's
+  LASTEXITCODE to the outer powershell.exe process. Runtime therefore can treat
+  a failing native verification command as successful. This must be repaired at
+  the deterministic Windows verification boundary without changing semantic
+  review, executor behavior, or the TASK-035 no-op guard candidate.
+
+assumptions:
+  - The current published AIOS-renew kernel before this task is based on commit f68ea27583ec6dcd4324e77d6b29a36a246be745, with TASK-035 artifact materialized on main at 264ccf77ea0872f02afbc0549a8b98a1d56c21de.
+  - TASK-034 intentionally retained only Console.OutputEncoding and PYTHONIOENCODING=utf-8 for Windows verification output handling.
+  - RuntimeVerificationError already fails closed when the captured subprocess return code is nonzero.
+  - RUN-035-001 is preserved only as observed evidence for this defect and its implementation candidate is not part of this task's modification scope.
+
+scope:
+  inspect:
+    - src/aios_renew/verification.py
+    - tests/test_verification.py
+    - src/aios_renew/operator.py
+    - .ai/tasks/TASK-034.yaml
+    - .ai/tasks/TASK-035.yaml
+
+  modify:
+    - src/aios_renew/verification.py
+    - tests/test_verification.py
+
+non_goals:
+  - Modify src/aios_renew/operator.py or the TASK-035 implementation candidate.
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Parse verification stdout/stderr semantically to infer success or failure.
+  - Change verification command ordering, retry behavior, or stop-on-first-failure semantics.
+  - Change POSIX verification behavior.
+  - Reintroduce PSDefaultParameterValues, OutputEncoding, Console.InputEncoding, PYTHONUTF8, or any broader PowerShell encoding policy removed by TASK-034.
+  - Change executor, adapter, publication, synchronization, review, remediation, or legacy Bridge semantics.
+  - Add retry, reroute, fallback, watcher, daemon, or another orchestration layer.
+  - Run, fix, publish, or otherwise advance TASK-035 from within this task.
+
+constraints:
+  hard:
+    - The Windows PowerShell wrapper must cause the outer powershell.exe process return code to equal the native canonical verification command exit code.
+    - A native canonical verification command returning nonzero must produce canonical Runtime failure through the existing RuntimeVerificationError path; output text must never be used as a substitute success/failure signal.
+    - A successful native canonical verification command must continue to return zero and preserve existing EVIDENCE construction.
+    - The canonical EvidenceSource.command value must remain the original TASK verification command, not the internal PowerShell wrapper text.
+    - Preserve strict UTF-8 decoding of captured stdout and stderr and preserve raw-byte evidence persistence before decode or exit-code failure handling.
+    - Preserve the TASK-034 Windows encoding boundary: Console.OutputEncoding may remain UTF-8 without BOM and PYTHONIOENCODING may remain utf-8, with no broader encoding mutations.
+    - The fix must not alter the caller environment mapping in place.
+    - The POSIX shell command path and behavior must remain unchanged.
+    - Add deterministic unit coverage for the exact Windows wrapper shape and real Windows subprocess coverage proving propagation of a native nonzero exit code.
+    - Preserve the existing real Windows UTF-8 Unicode subprocess regression test.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      On Windows, a native canonical verification command that exits with a
+      nonzero code causes powershell.exe to return that same nonzero code to
+      execute_verification.
+
+  - id: AC2
+    condition: >
+      execute_verification records the propagated nonzero exit code in canonical
+      EVIDENCE and raises RuntimeVerificationError through the existing
+      stop-on-first-failure path rather than returning successful verification.
+
+  - id: AC3
+    condition: >
+      On Windows, a successful native canonical verification command continues
+      to produce exit_code 0, strict UTF-8 decoded summaries, and raw evidence
+      bound to the original canonical command.
+
+  - id: AC4
+    condition: >
+      The Windows wrapper preserves the narrow TASK-034 encoding boundary and
+      does not reintroduce PSDefaultParameterValues, OutputEncoding,
+      Console.InputEncoding, PYTHONUTF8, or semantic output parsing.
+
+  - id: AC5
+    condition: >
+      POSIX verification construction and behavior remain unchanged.
+
+  - id: AC6
+    condition: >
+      Deterministic tests include a real Windows subprocess regression proving a
+      native command exit code is propagated, while the existing real Windows
+      non-ASCII UTF-8 regression continues to pass.
+
+verification:
+  required:
+    - 'python -m pytest tests/test_verification.py -q'
