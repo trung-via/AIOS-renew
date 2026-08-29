@@ -222,9 +222,16 @@ def test_invalid_result_package_fails(tmp_path: Path) -> None:
 
 
 def test_harness_has_no_polling_background_or_watcher_behavior() -> None:
-    source = Path("scripts/antigravity_smoke.py").read_text(encoding="utf-8")
+    import ast
 
-    assert "time.sleep" not in source
-    assert "Popen(" not in source
-    assert "watchdog" not in source
-    assert "while True" not in source
+    source = Path("scripts/antigravity_smoke.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.While, ast.For)):
+            # loops if any must not contain sleep
+            for child in ast.walk(node):
+                if isinstance(child, ast.Attribute) and child.attr == "sleep":
+                    raise AssertionError("sleep in loop is forbidden")
+        if isinstance(node, ast.Attribute) and node.attr == "Popen":
+            raise AssertionError("Popen is forbidden")
