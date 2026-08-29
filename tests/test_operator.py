@@ -1472,12 +1472,18 @@ def test_acceptance_coverage_is_union_of_claim_satisfies(tmp_path: Path) -> None
     assert summary.render().startswith("AIOS RUN PASS\n")
 
 
+READONLY_TASK_SOURCE = TASK_SOURCE.replace(
+    "  modify:\n    - OUTPUT.txt\n",
+    "  modify: []\n",
+)
+
+
 @pytest.mark.parametrize("executor", ["codex", "antigravity"])
-def test_complete_result_retains_pass_without_head_advancement(
+def test_readonly_task_retains_pass_without_head_advancement(
     tmp_path: Path,
     executor: str,
 ) -> None:
-    repo = make_repo(tmp_path)
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
     initial_head = git(repo, "rev-parse", "HEAD")
 
     summary = run_task(
@@ -1489,6 +1495,22 @@ def test_complete_result_retains_pass_without_head_advancement(
 
     assert summary.head_sha == initial_head
     assert summary.render().startswith("AIOS RUN PASS\n")
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_mutation_bearing_task_without_head_advancement_fails_closed(
+    tmp_path: Path,
+    executor: str,
+) -> None:
+    repo = make_repo(tmp_path)
+
+    with pytest.raises(OperatorError, match="final Git HEAD did not advance"):
+        run_task(
+            "TASK-101",
+            executor=executor,
+            repo=repo,
+            native_runner=StaticResultRunner(repo, static_payload()),
+        )
 
 
 def test_successful_codex_execution_stores_result_package(tmp_path: Path) -> None:

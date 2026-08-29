@@ -532,7 +532,7 @@ def run_task(
         post_status = _git(root, "status", "--porcelain")
         if post_status:
             raise OperatorError("working tree dirty after execution")
-        if package.result.changed_files and actual_head == base_sha:
+        if (package.result.changed_files or task.scope.modify) and actual_head == base_sha:
             raise OperatorError("final Git HEAD did not advance")
 
         _require_changed_files(
