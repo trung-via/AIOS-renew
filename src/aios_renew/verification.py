@@ -127,7 +127,7 @@ def _shell_command(command: str, *, platform: str) -> tuple[str, ...]:
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            f"{_WINDOWS_POWERSHELL_UTF8_PREAMBLE}& {{ {command} }}",
+            f"{_WINDOWS_POWERSHELL_UTF8_PREAMBLE}& {{ {command} }}; exit $LASTEXITCODE",
         )
     return ("/bin/sh", "-c", command)
 

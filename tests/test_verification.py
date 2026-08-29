@@ -95,7 +95,7 @@ def test_windows_uses_one_noninteractive_powershell_wrapper_with_utf8_preamble(
         "-NonInteractive",
         "-Command",
         "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
-        f"& {{ {command} }}",
+        f"& {{ {command} }}; exit $LASTEXITCODE",
     )
     assert runner.calls[0][1]["env"]["PYTHONIOENCODING"] == "utf-8"
     assert "PYTHONUTF8" not in runner.calls[0][1]["env"]
@@ -239,3 +239,29 @@ def test_windows_real_subprocess_captures_non_ascii_unicode_as_utf8(
     assert "Tést Unicode: 🚀 — こんにちは" in evidence[0].result.summary
     raw_content = (raw / "RUN-034-REG-V001.raw").read_bytes()
     assert "Tést Unicode: 🚀 — こんにちは".encode("utf-8") in raw_content
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows PowerShell integration test")
+def test_windows_real_subprocess_propagates_native_nonzero_exit_code(
+    tmp_path: Path,
+) -> None:
+    command = "python -c \"import sys; sys.stderr.write('fatal boom\\n'); sys.exit(42)\""
+    raw = tmp_path / ".git" / "aios" / "verification"
+
+    with pytest.raises(RuntimeVerificationError) as caught:
+        execute_verification(
+            (command,),
+            run_id="RUN-036-REG",
+            subject_sha="abc123",
+            repository=tmp_path,
+            raw_directory=raw,
+            platform="nt",
+        )
+
+    assert "exit code 42" in str(caught.value)
+    assert len(caught.value.evidence) == 1
+    assert caught.value.evidence[0].result.exit_code == 42
+    assert caught.value.evidence[0].source.command == command
+    assert "fatal boom" in caught.value.evidence[0].result.summary
+    raw_content = (raw / "RUN-036-REG-V001.raw").read_bytes()
+    assert b"fatal boom" in raw_content
