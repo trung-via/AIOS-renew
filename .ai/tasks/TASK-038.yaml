@@ -1,0 +1,94 @@
+task_id: TASK-038
+revision: 1
+
+goal: >
+  Reduce avoidable Executor-caused implementation and test-fixture failures by
+  giving Codex and Antigravity the same small executor-neutral implementation
+  discipline, without changing frozen kernel authority, canonical verification,
+  or narrow remediation semantics.
+
+problem: >
+  TASK-037 showed repeated failures caused by Executor HOW rather than TASK
+  contract defects: circular imports, semantic identity implemented as incidental
+  commit identity, error-boundary leakage, unrequested remote fallback, and test
+  fixtures that assumed branch/remote/ref behavior incorrectly. The correction
+  should improve Executor implementation quality without making TASKs more
+  prescriptive or adding another orchestration subsystem.
+
+assumptions:
+  - AIOS-renew main already contains published TASK-037 post-PASS review transport.
+  - Brain continues to own WHAT/WHY/constraints and Executor continues to own HOW.
+  - Runtime remains the only canonical verification and EVIDENCE authority.
+  - Codex and Antigravity must receive equivalent semantic execution discipline.
+
+scope:
+  inspect:
+    - src/aios_renew/executor.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/operator.py
+    - tests/test_executor.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_antigravity_smoke.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/executor.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/operator.py
+    - tests/test_executor.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_antigravity_smoke.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Add a pre-verification engine, planner, watcher, retry layer, rerouter, fallback, or new orchestration phase.
+  - Move canonical verification authority from Runtime to Executor.
+  - Require a specific helper name, class layout, module decomposition, or source spelling.
+  - Make Executor rerun broad canonical verification before returning.
+  - Change post-PASS GitHub review transport behavior from TASK-037.
+  - Modify or revive legacy AIOS Bridge semantics.
+
+constraints:
+  hard:
+    - Both Codex and Antigravity PRIMARY execution must receive the same semantic implementation discipline.
+    - Both Codex and Antigravity REMEDIATION execution must preserve the same discipline while remaining narrow to the active finding.
+    - Executor must implement only the requested contract and must not invent fallback, retry, reroute, convenience behavior, or unrelated features not authorized by canonical input.
+    - Executor must preserve existing authority and error boundaries and must avoid introducing dependency cycles across the changed surface.
+    - Executor must not assume repository facts such as branch name, remote name, platform-specific state, or Git ref semantics when those facts can be resolved from actual repository state.
+    - Executor-authored tests must prove observable behavior or real repository state rather than source spelling, literal layout, or invalid synthetic preconditions.
+    - Before returning, Executor may perform only minimum implementation-local sanity checks needed for the changed surface; it must not execute canonical task verification commands, generate canonical EVIDENCE, or duplicate broad Runtime verification.
+    - Runtime verification and canonical EVIDENCE remain unchanged and authoritative.
+    - Executor still commits the final permitted implementation delta and never pushes.
+    - The discipline must remain executor-neutral; no Codex-only or Antigravity-only semantic policy may be introduced.
+
+acceptance:
+  - id: AC1
+    condition: >
+      PRIMARY execution for both Codex and Antigravity receives equivalent guidance
+      to implement only the requested contract, preserve existing boundaries, avoid
+      unrequested fallback/retry/reroute, and resolve repository facts from actual state.
+  - id: AC2
+    condition: >
+      REMEDIATION execution for both executors receives the same discipline without
+      widening beyond the active finding or original remediation scope.
+  - id: AC3
+    condition: >
+      Executor guidance explicitly preserves Runtime ownership of canonical
+      verification/EVIDENCE and permits only minimum implementation-local sanity
+      checks that do not run canonical verification commands or broad duplicate suites.
+  - id: AC4
+    condition: >
+      Deterministic tests prove Codex/Antigravity parity and the behavioral guidance
+      contract without asserting exact helper names, source layout, or implementation spelling.
+  - id: AC5
+    condition: >
+      Existing executor boundary, push-free behavior, TASK-037 transport behavior,
+      and canonical verification authority remain unchanged.
+
+verification:
+  required:
+    - python -m pytest tests/test_executor.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py tests/test_antigravity_smoke.py tests/test_operator.py -q
