@@ -1,5 +1,5 @@
 task_id: TASK-038
-revision: 1
+revision: 2
 
 goal: >
   Reduce avoidable Executor-caused implementation and test-fixture failures by
@@ -11,15 +11,25 @@ problem: >
   TASK-037 showed repeated failures caused by Executor HOW rather than TASK
   contract defects: circular imports, semantic identity implemented as incidental
   commit identity, error-boundary leakage, unrequested remote fallback, and test
-  fixtures that assumed branch/remote/ref behavior incorrectly. The correction
-  should improve Executor implementation quality without making TASKs more
-  prescriptive or adding another orchestration subsystem.
+  fixtures that assumed branch/remote/ref behavior incorrectly. TASK-038 revision 1
+  then exposed a verification-contract defect: it asked deterministic pytest checks
+  to prove the semantic meaning of natural-language Executor guidance while also
+  forbidding exact wording/source-spelling assertions. Failed candidates therefore
+  introduced literal prompt assertions, a source-spelling test, and an unnecessary
+  package-root export outside TASK scope. Runtime correctly rejected those candidates.
+  The semantic discipline remains required, but its meaning belongs to ChatGPT
+  semantic review; Runtime tests should prove only deterministic authority,
+  handoff, scope, and regression behavior.
 
 assumptions:
   - AIOS-renew main already contains published TASK-037 post-PASS review transport.
   - Brain continues to own WHAT/WHY/constraints and Executor continues to own HOW.
   - Runtime remains the only canonical verification and EVIDENCE authority.
+  - ChatGPT semantic review remains responsible for judging whether the implemented
+    Executor guidance actually expresses the required discipline.
   - Codex and Antigravity must receive equivalent semantic execution discipline.
+  - Failed TASK-038 revision 1 candidates produced no canonical PASS and are not
+    eligible for review, remediation, transplant, or publication.
 
 scope:
   inspect:
@@ -47,47 +57,57 @@ non_goals:
   - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
   - Add a pre-verification engine, planner, watcher, retry layer, rerouter, fallback, or new orchestration phase.
   - Move canonical verification authority from Runtime to Executor.
-  - Require a specific helper name, class layout, module decomposition, or source spelling.
+  - Require a specific helper name, constant name, class layout, module decomposition, delimiter, source spelling, or exact natural-language wording.
+  - Make deterministic tests infer or prove semantic equivalence between differently worded natural-language guidance.
+  - Add or change package-root public API solely to expose implementation discipline to tests or callers.
   - Make Executor rerun broad canonical verification before returning.
   - Change post-PASS GitHub review transport behavior from TASK-037.
   - Modify or revive legacy AIOS Bridge semantics.
+  - Preserve, transplant, or repair a failed TASK-038 revision 1 candidate outside a fresh canonical PRIMARY execution.
 
 constraints:
   hard:
-    - Both Codex and Antigravity PRIMARY execution must receive the same semantic implementation discipline.
+    - Both Codex and Antigravity PRIMARY execution must receive equivalent semantic implementation discipline.
     - Both Codex and Antigravity REMEDIATION execution must preserve the same discipline while remaining narrow to the active finding.
-    - Executor must implement only the requested contract and must not invent fallback, retry, reroute, convenience behavior, or unrelated features not authorized by canonical input.
-    - Executor must preserve existing authority and error boundaries and must avoid introducing dependency cycles across the changed surface.
-    - Executor must not assume repository facts such as branch name, remote name, platform-specific state, or Git ref semantics when those facts can be resolved from actual repository state.
-    - Executor-authored tests must prove observable behavior or real repository state rather than source spelling, literal layout, or invalid synthetic preconditions.
-    - Before returning, Executor may perform only minimum implementation-local sanity checks needed for the changed surface; it must not execute canonical task verification commands, generate canonical EVIDENCE, or duplicate broad Runtime verification.
+    - The semantic discipline must require Executor to implement only the requested contract and not invent fallback, retry, reroute, convenience behavior, or unrelated features not authorized by canonical input.
+    - The semantic discipline must require Executor to preserve existing authority and error boundaries and avoid dependency cycles across the changed surface.
+    - The semantic discipline must require Executor not to assume repository facts such as branch name, remote name, platform-specific state, or Git ref semantics when those facts can be resolved from actual repository state.
+    - The semantic discipline must require Executor-authored tests to prove observable behavior or real repository state rather than source spelling, literal layout, or invalid synthetic preconditions.
+    - The semantic discipline must permit only minimum implementation-local sanity checks needed for the changed surface before return; it must not authorize canonical task verification commands, canonical EVIDENCE generation, or broad duplicate Runtime verification.
     - Runtime verification and canonical EVIDENCE remain unchanged and authoritative.
     - Executor still commits the final permitted implementation delta and never pushes.
     - The discipline must remain executor-neutral; no Codex-only or Antigravity-only semantic policy may be introduced.
+    - Deterministic verification must test observable authority, scope, handoff, and regression behavior only; it must not assert exact guidance wording, inspect source text for forbidden words, or require a particular helper/export solely to prove semantic content.
 
 acceptance:
   - id: AC1
     condition: >
-      PRIMARY execution for both Codex and Antigravity receives equivalent guidance
-      to implement only the requested contract, preserve existing boundaries, avoid
-      unrequested fallback/retry/reroute, and resolve repository facts from actual state.
+      PRIMARY execution for both Codex and Antigravity receives equivalent semantic
+      guidance requiring only the requested contract, preservation of existing
+      boundaries, no invented fallback/retry/reroute, and repository facts resolved
+      from actual state rather than assumption.
   - id: AC2
     condition: >
-      REMEDIATION execution for both executors receives the same discipline without
-      widening beyond the active finding or original remediation scope.
+      REMEDIATION execution for both executors receives the same semantic discipline
+      without widening beyond the active finding or original remediation scope.
   - id: AC3
     condition: >
-      Executor guidance explicitly preserves Runtime ownership of canonical
-      verification/EVIDENCE and permits only minimum implementation-local sanity
-      checks that do not run canonical verification commands or broad duplicate suites.
+      Executor guidance preserves Runtime ownership of canonical verification and
+      EVIDENCE and permits only minimum implementation-local sanity checks rather
+      than canonical verification commands or broad duplicate suites.
   - id: AC4
     condition: >
-      Deterministic tests prove Codex/Antigravity parity and the behavioral guidance
-      contract without asserting exact helper names, source layout, or implementation spelling.
+      Deterministic tests prove the existing executor paths remain operational and
+      preserve observable authority boundaries: Runtime verification is withheld
+      from Executor context, remediation remains narrow, Executor remains push-free,
+      repository scope gates remain authoritative, and existing Codex/Antigravity
+      handoff behavior is not regressed. Tests do not assert exact semantic guidance
+      wording, source spelling, helper names, package-root exports, or implementation layout.
   - id: AC5
     condition: >
-      Existing executor boundary, push-free behavior, TASK-037 transport behavior,
-      and canonical verification authority remain unchanged.
+      Existing executor boundary, TASK-037 post-PASS transport behavior, canonical
+      verification authority, and package public surface remain unchanged except for
+      the minimum executor-neutral guidance needed to satisfy AC1-AC3.
 
 verification:
   required:
