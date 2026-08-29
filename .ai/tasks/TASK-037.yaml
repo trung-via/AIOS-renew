@@ -1,5 +1,5 @@
 task_id: TASK-037
-revision: 3
+revision: 4
 
 goal: >
   Add reusable operator-layer post-PASS GitHub review transport to AIOS-renew so
@@ -13,20 +13,21 @@ problem: >
   and narrow remediation already work, but successful review candidates and
   Runtime artifacts remain local. TASK-035 and TASK-036 demonstrated that the
   Human must currently transport those outputs before ChatGPT can review them.
-  RUN-037-001 reached canonical verification but failed during pytest collection
-  because its candidate introduced a circular package import. RUN-037-002 fixed
-  that importability failure and reached 84 passing focused tests, but one test
-  intended to prove fail-closed conflicting-remote behavior did not actually
-  create a conflicting remote ref: it used an all-zero Git object id, which
-  represents ref deletion rather than an existing different target. The required
-  transport behavior is unchanged; verification must exercise a real conflict.
+  RUN-037-001 exposed a circular-import implementation defect. RUN-037-002 then
+  exposed an invalid conflicting-ref test precondition. RUN-037-003 reached 84
+  passing focused tests and one failing idempotency test: the candidate review
+  ref was correct, but recreating an artifacts commit from the same byte-exact
+  RUN and ResultPackage produced a different commit identity, so commit-SHA
+  equality incorrectly classified identical transported content as a conflict.
+  The transport contract is unchanged; idempotency must be based on the semantic
+  transport state rather than incidental commit metadata.
 
 assumptions:
   - Current AIOS-renew canonical baseline before TASK-037 implementation is the latest main containing this TASK revision.
   - The frozen v0.1 kernel contracts remain unchanged; this capability belongs to the reusable operator layer after canonical PASS.
   - The existing aios CLI entry point is the shared operator surface used by product repositories.
   - GitHub is transport and storage only; ChatGPT remains the semantic Reviewer and publication remains separate.
-  - RUN-037-001 and RUN-037-002 did not produce canonical PASS and are not eligible for REVIEW, REMEDIATION, transport, or publication.
+  - RUN-037-001, RUN-037-002, and RUN-037-003 did not produce canonical PASS and are not eligible for REVIEW, REMEDIATION, transport, or publication.
 
 scope:
   inspect:
@@ -51,13 +52,14 @@ non_goals:
   - Let Codex or Antigravity push or become transport authority.
   - Add retry, reroute, fallback, watcher, daemon, polling, planner, reviewer agent, or another orchestration layer.
   - Modify or revive legacy AIOS Bridge code or semantics.
-  - Preserve, transplant, or repair either failed TASK-037 candidate outside a fresh canonical PRIMARY execution.
+  - Preserve, transplant, or repair a failed TASK-037 candidate outside a fresh canonical PRIMARY execution.
+  - Require any particular helper name, source layout, commit-construction technique, or implementation decomposition.
 
 constraints:
   hard:
     - Post-PASS transport belongs to the shared AIOS-renew operator layer and may run only after the existing canonical RUN or REMEDIATION path has completed successfully and persisted its canonical ResultPackage.
     - Transport must not participate in deciding Runtime PASS and must not weaken, replace, or duplicate any existing kernel gate.
-    - The AIOS-renew package and operator entry point must remain normally importable after the transport integration; the implementation must not introduce a circular module dependency that prevents test collection or operator startup.
+    - The AIOS-renew package and operator entry point must remain normally importable after the transport integration.
     - For each passed RUN, expose refs/heads/aios/review/<RUN_ID> pointing exactly to that canonical head_sha.
     - Expose the exact persisted RUN JSON and exact persisted canonical ResultPackage JSON on refs/heads/aios/artifacts/<RUN_ID> at fixed paths .ai/transport/run.json and .ai/transport/result.json.
     - The operator must bind transport to the exact passed RUN identity and its persisted paths; it must not guess a RUN, select the newest artifact, or ask an Executor to rewrite or summarize canonical artifacts.
@@ -66,11 +68,13 @@ constraints:
     - Codex and Antigravity remain push-free. Only deterministic post-PASS operator transport may publish the namespaced non-publication review and artifact refs.
     - PRIMARY and REMEDIATION PASS use the same transport contract. STATUS and every non-PASS path perform no transport.
     - ChatGPT review readiness requires both the exact candidate ref and the matching exact RUN and ResultPackage artifacts. Missing or conflicting transport state is not reviewable and must fail closed.
-    - A conflicting-remote test must establish that the remote review identity actually exists and points to a valid target different from the candidate before invoking transport; an absent or deleted ref is not a conflict.
-    - An identical already-present transport state may be treated as already complete; different existing remote content or target must fail closed without force-push, rebase, automatic retry, fallback, or conflict resolution.
+    - An existing transport state is identical when the review ref points to the same canonical head_sha and the artifact ref exposes byte-exact copies of the same persisted RUN and ResultPackage at the fixed paths. Incidental Git commit metadata is not semantic transport identity.
+    - Repeating transport for an identical existing state must succeed idempotently without rewriting canonical artifacts, moving product HEAD/main, rerunning execution, or rerunning verification.
+    - A genuinely different existing candidate target or different transported RUN/ResultPackage content must fail closed without force-push, rebase, automatic retry, fallback, or conflict resolution.
+    - A conflicting-remote test must establish a real existing different target or different artifact content; an absent or deleted ref is not a conflict.
     - If transport fails after canonical PASS, preserve that canonical PASS and its local artifacts, report transport failure separately, and do not rerun the Executor, TASK, REMEDIATION, or canonical verification.
     - Once this capability is published in AIOS-renew, product repositories use it through their pinned AIOS-renew runtime rather than implementing a second post-PASS transport path.
-    - Verification must prove observable transport behavior and authority boundaries without requiring a particular helper name, source literal, decomposition, or implementation technique.
+    - Verification must prove observable transport behavior and authority boundaries without source-spelling assertions.
 
 acceptance:
   - id: AC1
@@ -94,17 +98,17 @@ acceptance:
       selected Executor to push, and never runs for STATUS or non-PASS execution.
   - id: AC5
     condition: >
-      Missing, mismatched, or genuinely conflicting remote transport state fails
-      closed; identical existing state is safe, and a post-PASS transport failure
-      does not rerun execution or verification or invalidate the persisted
-      canonical PASS.
+      Repeating transport for the same canonical head_sha and byte-exact RUN and
+      ResultPackage is idempotent even if a newly constructed Git artifacts
+      commit would have different non-semantic metadata; genuinely different
+      remote candidate or artifact content fails closed.
   - id: AC6
     condition: >
       Focused deterministic tests cover PRIMARY and REMEDIATION transport,
       exact candidate and artifact binding, reusable remote selection, unchanged
-      repository state, no transport on non-PASS paths, a real existing conflicting
-      remote ref with a different valid target, and successful package/operator
-      import without source-spelling assertions.
+      repository state, no transport on non-PASS paths, identical-state
+      idempotency by transported content, real conflicting remote state, and
+      successful package/operator import without source-spelling assertions.
 
 verification:
   required:
