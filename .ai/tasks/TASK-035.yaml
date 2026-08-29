@@ -1,0 +1,102 @@
+task_id: TASK-035
+revision: 1
+
+goal: >
+  Make PRIMARY execution fail closed when a mutation-bearing TASK completes with
+  no implementation delta, while preserving valid no-change PRIMARY execution
+  for explicitly read-only TASKs whose scope.modify is empty.
+
+problem: >
+  Observed Python Agent RUNs for TASK-104 repeatedly returned canonical Runtime
+  PASS with head_sha equal to base_sha even though TASK-104 authorized and
+  required repository mutation through a non-empty scope.modify. The current
+  PRIMARY completion path rejects an unchanged HEAD only when the executor also
+  declares changed_files, so an executor can return an empty changed_files set,
+  claim all acceptance criteria, and pass Runtime verification without producing
+  the implementation delta required by a mutation-bearing TASK. AIOS-renew must
+  distinguish deterministic read-only TASKs from mutation-bearing TASKs using
+  the existing canonical scope.modify contract and reject the latter when HEAD
+  does not advance.
+
+assumptions:
+  - The current canonical AIOS-renew baseline is f68ea27583ec6dcd4324e77d6b29a36a246be745.
+  - scope.modify is already the hard mutation authority in the Brain TASK Authoring Contract.
+  - A TASK with scope.modify empty may legitimately complete with head_sha equal to base_sha.
+  - TASK-032 is an existing canonical example of a valid read-only PRIMARY TASK with scope.modify empty.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-032.yaml
+
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Add a requires_change field or any new TASK field.
+  - Change Codex or Antigravity adapter semantics.
+  - Change canonical verification ownership or EVIDENCE construction.
+  - Change remediation/FIX behavior.
+  - Change publication, push, branch, tag, or remote-reference behavior.
+  - Change primary synchronization behavior.
+  - Reject legitimate read-only PRIMARY TASKs whose scope.modify is empty.
+  - Add retry, reroute, fallback, planner, reviewer, transport, or orchestration layers.
+  - Modify legacy AIOS Bridge code or semantics.
+
+constraints:
+  hard:
+    - Use the existing canonical scope.modify contract as the only deterministic distinction between read-only and mutation-bearing PRIMARY TASKs.
+    - A PRIMARY TASK with a non-empty scope.modify must fail closed when final Git HEAD equals its bound base_sha.
+    - A PRIMARY TASK with an empty scope.modify must remain eligible to complete with final Git HEAD equal to base_sha when all existing completion requirements are satisfied.
+    - The new guard must apply identically to Codex and Antigravity through the shared Runtime path.
+    - Do not infer required mutation from goal text, acceptance wording, claims, executor identity, or model reasoning.
+    - Preserve all existing changed_files, scope, cleanliness, verification, ResultPackage, and evidence validation gates.
+    - Preserve TASK-032-style read-only conformance semantics.
+    - Keep the repair narrow to PRIMARY completion behavior and its deterministic regression coverage.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      PRIMARY execution deterministically rejects a TASK whose scope.modify is
+      non-empty when final Git HEAD is unchanged from the bound base_sha, even
+      when the executor declares changed_files empty, unresolved empty, and
+      claims covering every acceptance criterion.
+
+  - id: AC2
+    condition: >
+      PRIMARY execution continues to permit an unchanged final Git HEAD for a
+      TASK whose scope.modify is empty when all other existing structural,
+      completion, repository-state, and verification requirements are satisfied.
+
+  - id: AC3
+    condition: >
+      A mutation-bearing PRIMARY TASK with a valid committed in-scope delta
+      continues through the existing completion and verification path without
+      being rejected by the new no-op guard.
+
+  - id: AC4
+    condition: >
+      The no-op mutation guard is executor-neutral and resides in the shared
+      PRIMARY Runtime/operator path rather than Codex-specific or
+      Antigravity-specific logic.
+
+  - id: AC5
+    condition: >
+      Deterministic regression tests prove the three required cases: valid
+      read-only no-change PRIMARY completion, rejected mutation-bearing no-change
+      PRIMARY completion, and accepted mutation-bearing PRIMARY completion with
+      a valid delta.
+
+  - id: AC6
+    condition: >
+      No TASK schema, adapter, remediation, verification ownership, publication,
+      synchronization, or legacy Bridge semantics are changed by this repair.
+
+verification:
+  required:
+    - 'python -m pytest tests/test_operator.py -q'
