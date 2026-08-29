@@ -545,6 +545,9 @@ def run_task(
 
         _require_complete_result(task, package)
 
+        if task.scope.modify and actual_head == base_sha:
+            raise OperatorError("final Git HEAD did not advance")
+
         try:
             runtime_evidence = execute_verification(
                 task.verification.required,

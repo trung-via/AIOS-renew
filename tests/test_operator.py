@@ -54,6 +54,16 @@ MULTI_ACCEPTANCE_TASK_SOURCE = TASK_SOURCE.replace(
     "  - id: AC2\n    condition: The second criterion is satisfied.\nverification:\n",
 )
 
+READONLY_TASK_SOURCE = TASK_SOURCE.replace(
+    "  modify:\n    - OUTPUT.txt\n",
+    "  modify: []\n",
+)
+
+READONLY_MULTI_ACCEPTANCE_TASK_SOURCE = MULTI_ACCEPTANCE_TASK_SOURCE.replace(
+    "  modify:\n    - OUTPUT.txt\n",
+    "  modify: []\n",
+)
+
 
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(
@@ -1011,7 +1021,7 @@ def test_empty_executor_verification_evidence_succeeds_via_runtime(
     tmp_path: Path,
     executor: str,
 ) -> None:
-    repo = make_repo(tmp_path)
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
     summary = run_task(
         "TASK-101",
         executor=executor,
@@ -1049,7 +1059,7 @@ def test_preverification_gate_failure_executes_no_commands(tmp_path: Path) -> No
 def test_first_runtime_verification_failure_stops_and_persists_no_result(
     tmp_path: Path,
 ) -> None:
-    task_source = TASK_SOURCE.replace(
+    task_source = READONLY_TASK_SOURCE.replace(
         "    - git status --porcelain",
         "    - first-command\n    - never-command",
     )
@@ -1080,7 +1090,7 @@ def test_first_runtime_verification_failure_stops_and_persists_no_result(
 def test_runtime_verification_decode_failure_persists_no_result(
     tmp_path: Path,
 ) -> None:
-    repo = make_repo(tmp_path)
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
 
     def invalid_utf8(command, **kwargs):
         return subprocess.CompletedProcess(
@@ -1113,7 +1123,10 @@ def test_successful_verification_repository_mutation_fails_closed(
     mutation: str,
     message: str,
 ) -> None:
-    repo = make_repo(tmp_path)
+    repo = make_repo(
+        tmp_path,
+        task_source=READONLY_TASK_SOURCE if flow == "primary" else TASK_SOURCE,
+    )
     state = runtime_paths(repo)
     heads_before_mutation = []
 
@@ -1451,7 +1464,7 @@ def test_missing_acceptance_coverage_fails_closed(
 
 
 def test_acceptance_coverage_is_union_of_claim_satisfies(tmp_path: Path) -> None:
-    repo = make_repo(tmp_path, task_source=MULTI_ACCEPTANCE_TASK_SOURCE)
+    repo = make_repo(tmp_path, task_source=READONLY_MULTI_ACCEPTANCE_TASK_SOURCE)
     payload = static_payload(satisfies=["AC1"])
     payload["result"]["claims"].append(
         {
@@ -1477,7 +1490,7 @@ def test_complete_result_retains_pass_without_head_advancement(
     tmp_path: Path,
     executor: str,
 ) -> None:
-    repo = make_repo(tmp_path)
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
     initial_head = git(repo, "rev-parse", "HEAD")
 
     summary = run_task(
@@ -1489,6 +1502,27 @@ def test_complete_result_retains_pass_without_head_advancement(
 
     assert summary.head_sha == initial_head
     assert summary.render().startswith("AIOS RUN PASS\n")
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_mutation_bearing_primary_without_head_advancement_fails_closed(
+    tmp_path: Path,
+    executor: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    verification_calls = []
+
+    with pytest.raises(OperatorError, match="final Git HEAD did not advance"):
+        run_task(
+            "TASK-101",
+            executor=executor,
+            repo=repo,
+            native_runner=StaticResultRunner(repo, static_payload()),
+            verification_runner=lambda *args, **kwargs: verification_calls.append(args),
+        )
+
+    assert verification_calls == []
+    assert not list(runtime_paths(repo).results.glob("*.json"))
 
 
 def test_successful_codex_execution_stores_result_package(tmp_path: Path) -> None:
@@ -1513,7 +1547,7 @@ def test_successful_codex_execution_stores_result_package(tmp_path: Path) -> Non
 def test_successful_antigravity_execution_stores_canonical_result_package(
     tmp_path: Path,
 ) -> None:
-    repo = make_repo(tmp_path)
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
     payload = static_payload()
     payload["result"]["claims"][0]["satisfies"] = "AC1"
     observed_preverification_state = []
