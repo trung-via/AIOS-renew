@@ -1,0 +1,89 @@
+task_id: TASK-039
+revision: 1
+
+goal: >
+  Clarify the existing Codex and Antigravity executor handoff contract so both
+  executors understand that Runtime-owned canonical verification is forbidden to
+  Executor, while minimum implementation-local sanity checks on the changed
+  surface are permitted and expected when useful to avoid handing obviously
+  regressed code back to Runtime.
+
+problem: >
+  TASK-038 revision 2 repeatedly reached the same Runtime verification failure:
+  the implementation introduced executor guidance containing a word rejected by
+  an old source-spelling regression test, while the Executor left that brittle
+  test unchanged. Diagnostic repair proved the candidate passed when that test
+  was replaced by behavioral coverage. The canonical TASK already allowed minimum
+  local sanity checks, but the current native handoff wording emphasizes only the
+  prohibition on Runtime verification and does not make the distinction operationally
+  clear enough to the Executor. This task refines only that existing handoff
+  contract; it does not add another phase, checker, or verification authority.
+
+assumptions:
+  - Runtime remains the sole canonical verification and EVIDENCE authority.
+  - Executor still owns HOW and may choose the smallest useful local sanity check.
+  - Codex and Antigravity must receive equivalent semantics.
+  - TASK-038 remains paused until this handoff refinement is published.
+
+scope:
+  inspect:
+    - src/aios_renew/executor.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/operator.py
+    - tests/test_executor.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_smoke.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/executor.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/operator.py
+    - tests/test_executor.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_smoke.py
+    - tests/test_operator.py
+
+non_goals:
+  - Add a pre-verification engine, repair runner, retry loop, watcher, planner, or new orchestration phase.
+  - Let Executor run canonical TASK verification commands or generate canonical EVIDENCE.
+  - Require Executor to run a broad duplicate suite before returning.
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Change TASK-037 post-PASS transport behavior.
+  - Change package-root public API.
+  - Prescribe a helper name, constant name, wording, or module layout.
+  - Modify or revive legacy AIOS Bridge semantics.
+
+constraints:
+  hard:
+    - PRIMARY and REMEDIATION handoffs for both Codex and Antigravity must preserve Runtime ownership of canonical verification and EVIDENCE.
+    - The executor-facing contract must clearly distinguish forbidden canonical verification from permitted implementation-local sanity checks.
+    - Permitted local sanity checks must remain focused on the changed surface and must not become a broad duplicate Runtime verification suite.
+    - Local sanity checks must never be promoted to canonical EVIDENCE.
+    - The same semantic policy must apply to Codex and Antigravity; no executor-specific authority difference is allowed.
+    - Existing push-free behavior, scope gates, error boundaries, and narrow remediation semantics must remain unchanged.
+    - Deterministic tests must prove observable handoff/authority behavior and regressions without asserting exact natural-language wording or source spelling.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Codex PRIMARY and REMEDIATION executor-facing context clearly preserves
+      Runtime-owned canonical verification while permitting minimum focused
+      implementation-local sanity checks that are not canonical verification or EVIDENCE.
+  - id: AC2
+    condition: >
+      Antigravity PRIMARY and REMEDIATION executor-facing context carries the same
+      semantic distinction and authority boundaries as Codex.
+  - id: AC3
+    condition: >
+      No new execution phase, retry/repair mechanism, background process, or
+      verification authority is introduced; Runtime remains the only canonical
+      verifier and Executor remains push-free.
+  - id: AC4
+    condition: >
+      Deterministic tests preserve existing Codex/Antigravity handoff, scope,
+      push-free, remediation-narrowness, and Runtime-verification-withholding
+      behavior without exact wording/source-spelling assertions.
+
+verification:
+  required:
+    - python -m pytest tests/test_executor.py tests/test_codex_adapter.py tests/test_antigravity_smoke.py tests/test_operator.py -q
