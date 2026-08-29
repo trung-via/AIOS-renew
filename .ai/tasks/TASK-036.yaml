@@ -53,7 +53,10 @@ constraints:
     - A successful native canonical verification command must continue to return zero and preserve existing EVIDENCE construction.
     - The canonical EvidenceSource.command value must remain the original TASK verification command, not the internal PowerShell wrapper text.
     - Preserve strict UTF-8 decoding of captured stdout and stderr and preserve raw-byte evidence persistence before decode or exit-code failure handling.
-    - Preserve the TASK-034 Windows encoding boundary: Console.OutputEncoding may remain UTF-8 without BOM and PYTHONIOENCODING may remain utf-8, with no broader encoding mutations.
+    - >
+      Preserve the TASK-034 Windows encoding boundary: Console.OutputEncoding may
+      remain UTF-8 without BOM and PYTHONIOENCODING may remain utf-8, with no
+      broader encoding mutations.
     - The fix must not alter the caller environment mapping in place.
     - The POSIX shell command path and behavior must remain unchanged.
     - Add deterministic unit coverage for the exact Windows wrapper shape and real Windows subprocess coverage proving propagation of a native nonzero exit code.
