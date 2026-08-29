@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 
@@ -12,6 +12,12 @@ from .artifacts import Claim, Evidence, EvidenceOutcome, EvidenceSource, Result
 
 
 VerificationRunner = Callable[..., subprocess.CompletedProcess[bytes]]
+_WINDOWS_POWERSHELL_UTF8_PREAMBLE = (
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+    "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); "
+    "$PSDefaultParameterValues['*:Encoding'] = 'utf8'; "
+)
 
 
 class RuntimeVerificationError(RuntimeError):
@@ -31,12 +37,14 @@ def execute_verification(
     raw_directory: Path,
     runner: VerificationRunner = subprocess.run,
     platform: str = os.name,
+    environment: Mapping[str, str] | None = None,
 ) -> tuple[Evidence, ...]:
     """Execute each canonical command once, in order, stopping at first failure."""
 
     repository = repository.resolve()
     raw_directory.mkdir(parents=True, exist_ok=True)
     evidence: list[Evidence] = []
+    env = _verification_environment(environment=environment, platform=platform)
     for order, command in enumerate(commands, start=1):
         exact_command = _strict_utf8_command(command)
         evidence_id = f"{run_id}-V{order:03d}"
@@ -46,6 +54,7 @@ def execute_verification(
             completed = runner(
                 shell_command,
                 cwd=repository,
+                env=env,
                 capture_output=True,
                 text=False,
                 check=False,
@@ -121,9 +130,19 @@ def _shell_command(command: str, *, platform: str) -> tuple[str, ...]:
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            command,
+            f"{_WINDOWS_POWERSHELL_UTF8_PREAMBLE}& {{ {command} }}",
         )
     return ("/bin/sh", "-c", command)
+
+
+def _verification_environment(
+    *, environment: Mapping[str, str] | None, platform: str
+) -> dict[str, str]:
+    env = dict(os.environ if environment is None else environment)
+    if platform == "nt":
+        env["PYTHONUTF8"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+    return env
 
 
 def _require_bytes(value: bytes | str, stream: str) -> bytes:

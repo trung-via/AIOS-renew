@@ -70,7 +70,9 @@ def test_executes_posix_commands_once_in_exact_order_and_builds_evidence(
     assert all(Path(item.raw_path).is_relative_to(raw) for item in evidence)
 
 
-def test_windows_uses_one_noninteractive_powershell_wrapper(tmp_path: Path) -> None:
+def test_windows_uses_one_noninteractive_powershell_wrapper_with_utf8_preamble(
+    tmp_path: Path,
+) -> None:
     command = "git diff --check"
     runner = RecordingRunner([completed()])
 
@@ -82,6 +84,7 @@ def test_windows_uses_one_noninteractive_powershell_wrapper(tmp_path: Path) -> N
         raw_directory=tmp_path / ".git" / "aios" / "verification",
         runner=runner,
         platform="nt",
+        environment={"EXISTING_VAR": "val"},
     )
 
     assert runner.calls[0][0] == (
@@ -90,9 +93,37 @@ def test_windows_uses_one_noninteractive_powershell_wrapper(tmp_path: Path) -> N
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        command,
+        "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+        "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+        "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); "
+        "$PSDefaultParameterValues['*:Encoding'] = 'utf8'; "
+        f"& {{ {command} }}",
     )
+    assert runner.calls[0][1]["env"]["PYTHONUTF8"] == "1"
+    assert runner.calls[0][1]["env"]["PYTHONIOENCODING"] == "utf-8"
+    assert runner.calls[0][1]["env"]["EXISTING_VAR"] == "val"
     assert evidence[0].source.command == command
+
+
+def test_posix_environment_not_mutated_with_windows_encoding(
+    tmp_path: Path,
+) -> None:
+    command = "git diff --check"
+    runner = RecordingRunner([completed()])
+
+    execute_verification(
+        (command,),
+        run_id="RUN-027-007",
+        subject_sha="def456",
+        repository=tmp_path,
+        raw_directory=tmp_path / ".git" / "aios" / "verification",
+        runner=runner,
+        platform="posix",
+        environment={"CUSTOM": "123"},
+    )
+
+    assert runner.calls[0][0] == ("/bin/sh", "-c", command)
+    assert runner.calls[0][1]["env"] == {"CUSTOM": "123"}
 
 
 def test_first_nonzero_records_raw_evidence_and_stops(tmp_path: Path) -> None:
