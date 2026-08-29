@@ -1,5 +1,5 @@
 task_id: TASK-037
-revision: 2
+revision: 3
 
 goal: >
   Add reusable operator-layer post-PASS GitHub review transport to AIOS-renew so
@@ -13,19 +13,20 @@ problem: >
   and narrow remediation already work, but successful review candidates and
   Runtime artifacts remain local. TASK-035 and TASK-036 demonstrated that the
   Human must currently transport those outputs before ChatGPT can review them.
-  RUN-037-001 then reached canonical verification but failed during pytest
-  collection because its candidate introduced a circular package import between
-  operator and review_transport. That candidate is failed evidence only; the
-  required transport behavior remains unchanged and the next implementation
-  must preserve normal package importability without prescribing its internal
-  decomposition.
+  RUN-037-001 reached canonical verification but failed during pytest collection
+  because its candidate introduced a circular package import. RUN-037-002 fixed
+  that importability failure and reached 84 passing focused tests, but one test
+  intended to prove fail-closed conflicting-remote behavior did not actually
+  create a conflicting remote ref: it used an all-zero Git object id, which
+  represents ref deletion rather than an existing different target. The required
+  transport behavior is unchanged; verification must exercise a real conflict.
 
 assumptions:
   - Current AIOS-renew canonical baseline before TASK-037 implementation is the latest main containing this TASK revision.
   - The frozen v0.1 kernel contracts remain unchanged; this capability belongs to the reusable operator layer after canonical PASS.
   - The existing aios CLI entry point is the shared operator surface used by product repositories.
   - GitHub is transport and storage only; ChatGPT remains the semantic Reviewer and publication remains separate.
-  - RUN-037-001 did not produce a canonical PASS and is not eligible for REVIEW, REMEDIATION, transport, or publication.
+  - RUN-037-001 and RUN-037-002 did not produce canonical PASS and are not eligible for REVIEW, REMEDIATION, transport, or publication.
 
 scope:
   inspect:
@@ -50,7 +51,7 @@ non_goals:
   - Let Codex or Antigravity push or become transport authority.
   - Add retry, reroute, fallback, watcher, daemon, polling, planner, reviewer agent, or another orchestration layer.
   - Modify or revive legacy AIOS Bridge code or semantics.
-  - Preserve, transplant, or repair the failed RUN-037-001 candidate outside a fresh canonical PRIMARY execution.
+  - Preserve, transplant, or repair either failed TASK-037 candidate outside a fresh canonical PRIMARY execution.
 
 constraints:
   hard:
@@ -65,6 +66,7 @@ constraints:
     - Codex and Antigravity remain push-free. Only deterministic post-PASS operator transport may publish the namespaced non-publication review and artifact refs.
     - PRIMARY and REMEDIATION PASS use the same transport contract. STATUS and every non-PASS path perform no transport.
     - ChatGPT review readiness requires both the exact candidate ref and the matching exact RUN and ResultPackage artifacts. Missing or conflicting transport state is not reviewable and must fail closed.
+    - A conflicting-remote test must establish that the remote review identity actually exists and points to a valid target different from the candidate before invoking transport; an absent or deleted ref is not a conflict.
     - An identical already-present transport state may be treated as already complete; different existing remote content or target must fail closed without force-push, rebase, automatic retry, fallback, or conflict resolution.
     - If transport fails after canonical PASS, preserve that canonical PASS and its local artifacts, report transport failure separately, and do not rerun the Executor, TASK, REMEDIATION, or canonical verification.
     - Once this capability is published in AIOS-renew, product repositories use it through their pinned AIOS-renew runtime rather than implementing a second post-PASS transport path.
@@ -92,17 +94,17 @@ acceptance:
       selected Executor to push, and never runs for STATUS or non-PASS execution.
   - id: AC5
     condition: >
-      Missing, mismatched, or conflicting remote transport state fails closed;
-      identical existing state is safe, and a post-PASS transport failure does
-      not rerun execution or verification or invalidate the persisted canonical
-      PASS.
+      Missing, mismatched, or genuinely conflicting remote transport state fails
+      closed; identical existing state is safe, and a post-PASS transport failure
+      does not rerun execution or verification or invalidate the persisted
+      canonical PASS.
   - id: AC6
     condition: >
       Focused deterministic tests cover PRIMARY and REMEDIATION transport,
       exact candidate and artifact binding, reusable remote selection, unchanged
-      repository state, no transport on non-PASS paths, fail-closed conflict
-      behavior, and successful package/operator import without source-spelling
-      assertions.
+      repository state, no transport on non-PASS paths, a real existing conflicting
+      remote ref with a different valid target, and successful package/operator
+      import without source-spelling assertions.
 
 verification:
   required:
