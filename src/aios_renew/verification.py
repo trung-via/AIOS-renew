@@ -16,7 +16,6 @@ _WINDOWS_POWERSHELL_UTF8_PREAMBLE = (
     "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
     "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
     "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); "
-    "$PSDefaultParameterValues['*:Encoding'] = 'utf8'; "
 )
 
 

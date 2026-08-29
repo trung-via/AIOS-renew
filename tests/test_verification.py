@@ -1,3 +1,4 @@
+import os
 import subprocess
 from pathlib import Path
 
@@ -96,7 +97,6 @@ def test_windows_uses_one_noninteractive_powershell_wrapper_with_utf8_preamble(
         "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
         "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
         "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); "
-        "$PSDefaultParameterValues['*:Encoding'] = 'utf8'; "
         f"& {{ {command} }}",
     )
     assert runner.calls[0][1]["env"]["PYTHONUTF8"] == "1"
@@ -218,3 +218,26 @@ def test_attaches_complete_evidence_set_without_changing_claim_semantics(
         "RUN-027-005-V001",
         "RUN-027-005-V002",
     )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows PowerShell integration test")
+def test_windows_real_subprocess_captures_non_ascii_unicode_as_utf8(
+    tmp_path: Path,
+) -> None:
+    command = "python -c \"print('Tést Unicode: 🚀 — こんにちは')\""
+    raw = tmp_path / ".git" / "aios" / "verification"
+
+    evidence = execute_verification(
+        (command,),
+        run_id="RUN-034-REG",
+        subject_sha="abc123",
+        repository=tmp_path,
+        raw_directory=raw,
+        platform="nt",
+    )
+
+    assert len(evidence) == 1
+    assert evidence[0].result.exit_code == 0
+    assert "Tést Unicode: 🚀 — こんにちは" in evidence[0].result.summary
+    raw_content = (raw / "RUN-034-REG-V001.raw").read_bytes()
+    assert "Tést Unicode: 🚀 — こんにちは".encode("utf-8") in raw_content
