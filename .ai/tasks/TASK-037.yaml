@@ -1,0 +1,100 @@
+task_id: TASK-037
+revision: 1
+
+goal: >
+  Add reusable operator-layer post-PASS GitHub review transport to AIOS-renew so
+  any product repository using AIOS-renew can automatically expose the exact
+  implementation candidate, persisted RUN, and canonical ResultPackage to
+  ChatGPT after canonical RUN or REMEDIATION PASS, without project-specific
+  transport logic or Human copy/paste.
+
+problem: >
+  Canonical execution, verification, ResultPackage persistence, semantic review,
+  and narrow remediation already work, but successful review candidates and
+  Runtime artifacts remain local. TASK-035 and TASK-036 demonstrated that the
+  Human must currently transport those outputs before ChatGPT can review them.
+  This is a reusable AIOS operator concern, not product-project behavior.
+
+assumptions:
+  - Current AIOS-renew main baseline is 3e69e499de692bc6d1dde426d27247da07e6404f.
+  - The frozen v0.1 kernel contracts remain unchanged; this capability belongs to the reusable operator layer after canonical PASS.
+  - The existing aios CLI entry point is the shared operator surface used by product repositories.
+  - GitHub is transport and storage only; ChatGPT remains the semantic Reviewer and publication remains separate.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - src/aios_renew/run.py
+    - src/aios_renew/artifacts.py
+    - tests/test_operator.py
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-RENEW-v0.1.3-ARCHITECTURE-AMENDMENT.md
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change canonical TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas or validation semantics.
+  - Change executor adapters, executor-facing context, Runtime verification, or narrow-remediation execution semantics.
+  - Add project-owned transport implementations or require product repositories to duplicate this capability.
+  - Import REVIEW or REMEDIATION from GitHub.
+  - Transport raw verification output by default or add a new manifest or semantic artifact schema.
+  - Update, merge, or publish product main.
+  - Let Codex or Antigravity push or become transport authority.
+  - Add retry, reroute, fallback, watcher, daemon, polling, planner, reviewer agent, or another orchestration layer.
+  - Modify or revive legacy AIOS Bridge code or semantics.
+
+constraints:
+  hard:
+    - Post-PASS transport belongs to the shared AIOS-renew operator layer and may run only after the existing canonical RUN or REMEDIATION path has completed successfully and persisted its canonical ResultPackage.
+    - Transport must not participate in deciding Runtime PASS and must not weaken, replace, or duplicate any existing kernel gate.
+    - For each passed RUN, expose refs/heads/aios/review/<RUN_ID> pointing exactly to that canonical head_sha.
+    - Expose the exact persisted RUN JSON and exact persisted canonical ResultPackage JSON on refs/heads/aios/artifacts/<RUN_ID> at fixed paths .ai/transport/run.json and .ai/transport/result.json.
+    - The operator must bind transport to the exact passed RUN identity and its persisted paths; it must not guess a RUN, select the newest artifact, or ask an Executor to rewrite or summarize canonical artifacts.
+    - The transport target is the current product repository's configured upstream remote; no product-specific repository name or executor-specific path may be hard-coded.
+    - Transport must not modify product HEAD, product worktree contents, canonical local artifacts, or product main.
+    - Codex and Antigravity remain push-free. Only deterministic post-PASS operator transport may publish the namespaced non-publication review and artifact refs.
+    - PRIMARY and REMEDIATION PASS use the same transport contract. STATUS and every non-PASS path perform no transport.
+    - ChatGPT review readiness requires both the exact candidate ref and the matching exact RUN and ResultPackage artifacts. Missing or conflicting transport state is not reviewable and must fail closed.
+    - An identical already-present transport state may be treated as already complete; different existing remote content or target must fail closed without force-push, rebase, automatic retry, fallback, or conflict resolution.
+    - If transport fails after canonical PASS, preserve that canonical PASS and its local artifacts, report transport failure separately, and do not rerun the Executor, TASK, REMEDIATION, or canonical verification.
+    - Once this capability is published in AIOS-renew, product repositories use it through their pinned AIOS-renew runtime rather than implementing a second post-PASS transport path.
+    - Verification must prove observable transport behavior and authority boundaries without requiring a particular helper name, source literal, decomposition, or implementation technique.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A successful PRIMARY RUN automatically exposes aios/review/<RUN_ID> at the
+      exact canonical head_sha and aios/artifacts/<RUN_ID> containing byte-exact
+      persisted run.json and result.json at the fixed transport paths.
+  - id: AC2
+    condition: >
+      A successful REMEDIATION run uses the same reusable post-PASS transport
+      contract and transports only that remediation RUN identity and canonical
+      ResultPackage.
+  - id: AC3
+    condition: >
+      The capability is owned by AIOS-renew operator code and works from the
+      current repository/upstream configuration without product-repository or
+      executor-specific transport implementations.
+  - id: AC4
+    condition: >
+      Transport never changes product HEAD, worktree, or main, never allows the
+      selected Executor to push, and never runs for STATUS or non-PASS execution.
+  - id: AC5
+    condition: >
+      Missing, mismatched, or conflicting remote transport state fails closed;
+      identical existing state is safe, and a post-PASS transport failure does
+      not rerun execution or verification or invalidate the persisted canonical
+      PASS.
+  - id: AC6
+    condition: >
+      Focused deterministic tests cover PRIMARY and REMEDIATION transport,
+      exact candidate and artifact binding, reusable remote selection, unchanged
+      repository state, no transport on non-PASS paths, and fail-closed conflict
+      behavior without source-spelling assertions.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
