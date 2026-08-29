@@ -994,7 +994,7 @@ def test_antigravity_instruction_defines_structural_staging_package(
     assert "structural_result_path" in instruction
     assert "staging, not the canonical results store" in instruction
     assert "Runtime owns canonical verification" in instruction
-    assert "do not execute verification commands" in instruction
+    assert "do not execute canonical verification commands" in instruction
     assert "Commit the final implementation state when required" in instruction
     assert "do not push" in instruction
     handoff = json.loads(
