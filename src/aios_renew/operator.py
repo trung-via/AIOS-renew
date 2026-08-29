@@ -28,6 +28,7 @@ from .artifacts import (
 )
 from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
 from .executor import ExecutorBoundary, ExecutorBoundaryError
+from .review_transport import ReviewTransportError, transport_post_pass
 from .run import Run, RunLeaseRegistry, RunTaskReference
 from .review import (
     Finding,
@@ -577,6 +578,17 @@ def run_task(
 
         _write_json(result_path, result_package_data(canonical_package))
 
+        try:
+            transport_post_pass(
+                root,
+                run_id=run_id,
+                head_sha=actual_head,
+                run_path=state.runs / f"{run_id}.json",
+                result_path=result_path,
+            )
+        except ReviewTransportError as exc:
+            raise OperatorError(f"review transport failed: {exc}") from exc
+
         return RunSummary(
             task_id=task_id,
             run_id=run_id,
@@ -831,6 +843,18 @@ def run_remediation(
             execution, canonical_package, actual_head=actual_head
         )
         _write_json(result_path, result_package_data(canonical_package))
+
+        try:
+            transport_post_pass(
+                root,
+                run_id=run_id,
+                head_sha=actual_head,
+                run_path=state.runs / f"{run_id}.json",
+                result_path=result_path,
+            )
+        except ReviewTransportError as exc:
+            raise OperatorError(f"review transport failed: {exc}") from exc
+
         return RemediationSummary(
             task_id=task_id,
             review_id=canonical_review.review_id,

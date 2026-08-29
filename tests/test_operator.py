@@ -1831,3 +1831,165 @@ def test_aios_task_remains_readonly_and_does_not_require_lock(tmp_path: Path) ->
 
     summary = describe_task("TASK-101", repo=repo)
     assert summary.task.task_id == "TASK-101"
+
+
+def test_primary_run_transports_review_and_artifacts_refs(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=runner,
+    )
+    upstream = tmp_path / "upstream.git"
+    review_ref = f"refs/heads/aios/review/{summary.run_id}"
+    artifacts_ref = f"refs/heads/aios/artifacts/{summary.run_id}"
+
+    # Verify review ref points exactly to head_sha on upstream
+    assert git(upstream, "rev-parse", review_ref) == summary.head_sha
+
+    # Verify artifacts ref contains byte-exact run.json and result.json
+    remote_run_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/run.json")
+    remote_result_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/result.json")
+
+    local_run_json = (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(encoding="utf-8")
+    local_result_json = summary.result_path.read_text(encoding="utf-8")
+
+    assert remote_run_json == local_run_json
+    assert remote_result_json == local_result_json
+
+
+def test_remediation_run_transports_review_and_artifacts_refs(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo)
+    runner = RemediationRunner(repo)
+    summary = run_remediation(
+        "TASK-101",
+        review=review,
+        remediation=remediation,
+        executor="codex",
+        repo=repo,
+        native_runner=runner,
+    )
+    upstream = tmp_path / "upstream.git"
+    review_ref = f"refs/heads/aios/review/{summary.run_id}"
+    artifacts_ref = f"refs/heads/aios/artifacts/{summary.run_id}"
+
+    assert git(upstream, "rev-parse", review_ref) == summary.head_sha
+
+    remote_run_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/run.json")
+    remote_result_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/result.json")
+
+    local_run_json = (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(encoding="utf-8")
+    local_result_json = summary.result_path.read_text(encoding="utf-8")
+
+    assert remote_run_json == local_run_json
+    assert remote_result_json == local_result_json
+
+
+def test_transport_does_not_modify_product_head_worktree_or_main(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+    head_before_run = git(repo, "rev-parse", "HEAD")
+
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=runner,
+    )
+
+    # Worktree clean
+    assert git(repo, "status", "--porcelain") == ""
+    # HEAD is at the executor commit
+    assert git(repo, "rev-parse", "HEAD") == summary.head_sha
+    assert summary.head_sha != head_before_run
+
+    # Main branch (or active branch) points to HEAD
+    current_branch = git(repo, "symbolic-ref", "--short", "HEAD")
+    assert git(repo, "rev-parse", current_branch) == summary.head_sha
+
+
+def test_transport_does_not_run_on_verification_failure(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+
+    def failing_verifier(command, **kwargs):
+        return subprocess.CompletedProcess(command, returncode=1, stdout=b"", stderr=b"verification failed")
+
+    with pytest.raises(OperatorError):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=runner,
+            verification_runner=failing_verifier,
+        )
+
+    upstream = tmp_path / "upstream.git"
+    # Neither review ref nor artifacts ref should exist on upstream
+    assert "refs/heads/aios/review" not in git(upstream, "show-ref", "--heads") if (upstream / "refs" / "heads" / "aios").exists() else True
+
+
+def test_identical_existing_remote_transport_state_is_idempotent(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+    first = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=runner,
+    )
+
+    # Transport again explicitly for the exact same run
+    from aios_renew.review_transport import transport_post_pass
+    transport_post_pass(
+        repo,
+        run_id=first.run_id,
+        head_sha=first.head_sha,
+        run_path=runtime_paths(repo).runs / f"{first.run_id}.json",
+        result_path=first.result_path,
+    )
+
+
+def test_transport_fails_closed_on_conflicting_remote_review_target(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    upstream = tmp_path / "upstream.git"
+    initial_commit = git(repo, "rev-parse", "HEAD")
+    git(upstream, "update-ref", "refs/heads/aios/review/RUN-101-001", initial_commit)
+
+    runner = FakeCodexRunner(repo)
+    with pytest.raises(OperatorError, match="review transport failed"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=runner,
+        )
+
+
+def test_transport_fails_closed_on_conflicting_remote_artifact_content(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+    first = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=runner,
+    )
+    upstream = tmp_path / "upstream.git"
+    # Overwrite the artifacts ref with a commit containing different content
+    diff_commit = git(repo, "rev-parse", "HEAD~1")
+    git(upstream, "update-ref", f"refs/heads/aios/artifacts/{first.run_id}", diff_commit)
+
+    from aios_renew.review_transport import ReviewTransportError, transport_post_pass
+    with pytest.raises(ReviewTransportError, match="different artifact content"):
+        transport_post_pass(
+            repo,
+            run_id=first.run_id,
+            head_sha=first.head_sha,
+            run_path=runtime_paths(repo).runs / f"{first.run_id}.json",
+            result_path=first.result_path,
+        )
+
