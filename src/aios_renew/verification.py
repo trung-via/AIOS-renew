@@ -13,9 +13,7 @@ from .artifacts import Claim, Evidence, EvidenceOutcome, EvidenceSource, Result
 
 VerificationRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 _WINDOWS_POWERSHELL_UTF8_PREAMBLE = (
-    "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
     "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
-    "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); "
 )
 
 
@@ -139,7 +137,6 @@ def _verification_environment(
 ) -> dict[str, str]:
     env = dict(os.environ if environment is None else environment)
     if platform == "nt":
-        env["PYTHONUTF8"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
     return env
 

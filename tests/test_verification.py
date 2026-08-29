@@ -94,13 +94,11 @@ def test_windows_uses_one_noninteractive_powershell_wrapper_with_utf8_preamble(
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
         "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
-        "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); "
         f"& {{ {command} }}",
     )
-    assert runner.calls[0][1]["env"]["PYTHONUTF8"] == "1"
     assert runner.calls[0][1]["env"]["PYTHONIOENCODING"] == "utf-8"
+    assert "PYTHONUTF8" not in runner.calls[0][1]["env"]
     assert runner.calls[0][1]["env"]["EXISTING_VAR"] == "val"
     assert evidence[0].source.command == command
 
