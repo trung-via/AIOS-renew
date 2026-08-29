@@ -1,5 +1,5 @@
 task_id: TASK-035
-revision: 2
+revision: 3
 
 goal: >
   Make PRIMARY execution fail closed when a mutation-bearing TASK completes with
@@ -9,21 +9,22 @@ goal: >
 problem: >
   Observed Python Agent RUNs for TASK-104 repeatedly returned Runtime PASS with
   head_sha equal to base_sha even though TASK-104 had a non-empty scope.modify.
-  TASK-035 revision 1 demonstrated the intended guard but its candidate was
-  BLOCKED because the then-current Windows verification wrapper reported a
-  failing pytest process as exit_code 0. TASK-036 repaired and published that
-  verification boundary. Revision 2 now re-runs the same narrow no-op mutation
-  repair on the corrected Runtime and must preserve existing structural and
-  completion gate semantics while preventing a structurally complete mutation
-  TASK from reaching canonical verification without an implementation delta.
+  TASK-035 revision 1 demonstrated the intended guard but was blocked by the
+  Windows verification exit-code defect later repaired by TASK-036. Revision 2
+  then reached canonical verification correctly, but two remediation-path tests
+  failed because a read-only PRIMARY fixture was applied to the remediation
+  branch as well, making its existing OUTPUT.txt remediation scope invalid before
+  the verification-mutation behavior under test could run. Revision 3 preserves
+  that remediation fixture semantics while keeping the no-op guard strictly in
+  the PRIMARY path.
 
 assumptions:
-  - The current canonical AIOS-renew baseline is 203da01226eeb4749e754c6293a9afb58d233247.
-  - TASK-036 has corrected Windows native verification exit-code propagation.
+  - The current canonical AIOS-renew baseline includes TASK-036 at 203da01226eeb4749e754c6293a9afb58d233247.
+  - TASK-036 corrected Windows native verification exit-code propagation.
   - scope.modify is already the hard mutation authority in the Brain TASK Authoring Contract.
   - A TASK with scope.modify empty may legitimately complete with head_sha equal to base_sha.
   - TASK-032 is an existing canonical example of a valid read-only PRIMARY TASK with scope.modify empty.
-  - RUN-035-001 and candidate b5da7493b1a093781cb4f22d0c41b63ef7a37801 are historical blocked evidence only and must not be transplanted or published.
+  - RUN-035-001 and RUN-035-002 are historical blocked/failed evidence only and must not be transplanted or published.
 
 scope:
   inspect:
@@ -57,10 +58,11 @@ constraints:
     - A PRIMARY TASK with empty scope.modify must remain eligible to complete with final Git HEAD equal to base_sha when all other existing requirements are satisfied.
     - Preserve existing RESULT.head_sha binding, worktree cleanliness, changed-files scope validation, unresolved-item rejection, and acceptance-coverage validation.
     - Existing structural or completion failures must not be replaced by the new no-op mutation error when those failures already make the RESULT incomplete.
-    - After structural and completion gates succeed, a mutation-bearing no-op must be rejected before canonical verification is executed.
-    - Verification-focused tests that need to reach Runtime verification must establish a valid pre-verification state by using either a read-only TASK or a valid committed in-scope mutation; they must not rely on an invalid mutation-bearing no-op fixture.
+    - After structural and completion gates succeed, a mutation-bearing PRIMARY no-op must be rejected before canonical verification is executed.
+    - Verification-focused PRIMARY tests that need to reach Runtime verification may use a read-only TASK or a valid committed in-scope mutation rather than an invalid mutation-bearing no-op fixture.
+    - Existing remediation-path verification tests must retain a TASK scope compatible with their canonical remediation modification_scope; do not reuse a read-only PRIMARY fixture when that would invalidate remediation lineage before the behavior under test.
     - A mutation-bearing PRIMARY TASK with a valid committed in-scope delta must continue into the unchanged canonical verification path.
-    - The new guard must apply identically to Codex and Antigravity through the shared Runtime path.
+    - The new guard must apply identically to Codex and Antigravity through the shared PRIMARY Runtime path.
     - Do not infer required mutation from goal text, acceptance wording, claims, executor identity, or model reasoning.
     - Preserve TASK-032-style read-only conformance semantics.
     - Keep the repair narrow to PRIMARY completion behavior and deterministic regression coverage in tests/test_operator.py.
@@ -94,22 +96,23 @@ acceptance:
 
   - id: AC5
     condition: >
-      A structurally complete mutation-bearing no-op is rejected before any
-      canonical verification command is executed.
+      A structurally complete mutation-bearing PRIMARY no-op is rejected before
+      any canonical verification command is executed.
 
   - id: AC6
     condition: >
-      Deterministic regression tests prove valid read-only no-change completion,
-      rejected mutation-bearing no-change completion for both Codex and
-      Antigravity, accepted mutation-bearing completion with a valid delta, and
-      preserved access to verification-specific behavior from valid
-      pre-verification states.
+      Deterministic regression tests prove valid read-only no-change PRIMARY
+      completion, rejected mutation-bearing no-change PRIMARY completion for both
+      Codex and Antigravity, accepted mutation-bearing PRIMARY completion with a
+      valid delta, preserved access to verification-specific PRIMARY behavior
+      from valid pre-verification states, and unchanged remediation-path
+      verification-mutation behavior with compatible remediation scope.
 
   - id: AC7
     condition: >
       No TASK schema, adapter, verification implementation or ownership,
-      remediation, publication, synchronization, or legacy Bridge semantics are
-      changed by this repair.
+      remediation semantics, publication, synchronization, or legacy Bridge
+      semantics are changed by this repair.
 
 verification:
   required:
