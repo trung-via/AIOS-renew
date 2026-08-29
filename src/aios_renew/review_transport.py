@@ -31,19 +31,13 @@ def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = Fals
 
 
 def resolve_transport_remote(repo: Path) -> str:
-    """Resolve configured upstream remote for the current branch or fallback to origin."""
+    """Resolve configured upstream remote for the current branch or fail closed."""
     code, branch, _ = _git_cmd(repo, "symbolic-ref", "--quiet", "--short", "HEAD", allow_fail=True)
     if code == 0 and branch:
         code, remote, _ = _git_cmd(repo, "config", "--get", f"branch.{branch}.remote", allow_fail=True)
         if code == 0 and remote:
             return remote
-    code, remotes, _ = _git_cmd(repo, "remote", allow_fail=True)
-    remote_list = [r.strip() for r in remotes.splitlines() if r.strip()]
-    if "origin" in remote_list:
-        return "origin"
-    if remote_list:
-        return remote_list[0]
-    raise ReviewTransportError("no Git remote configured for review transport")
+    raise ReviewTransportError("no configured upstream Git remote for current branch")
 
 
 def _read_remote_blob(repo: Path, remote: str, commit_sha: str, rel_path: str) -> bytes | None:

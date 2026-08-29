@@ -1993,3 +1993,19 @@ def test_transport_fails_closed_on_conflicting_remote_artifact_content(tmp_path:
             result_path=first.result_path,
         )
 
+
+def test_transport_remote_resolution_fails_closed_without_remote_fallback(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    from aios_renew.review_transport import ReviewTransportError, resolve_transport_remote
+
+    # Unset upstream tracking on current branch
+    branch = git(repo, "symbolic-ref", "--short", "HEAD")
+    git(repo, "config", "--unset", f"branch.{branch}.remote")
+
+    # Ensure remotes (e.g. origin or another remote) exist in repo
+    assert git(repo, "remote") != ""
+
+    with pytest.raises(ReviewTransportError, match="no configured upstream Git remote for current branch"):
+        resolve_transport_remote(repo)
+
+
