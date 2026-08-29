@@ -1,5 +1,5 @@
 task_id: TASK-035
-revision: 3
+revision: 4
 
 goal: >
   Make PRIMARY execution fail closed when a mutation-bearing TASK completes with
@@ -9,14 +9,17 @@ goal: >
 problem: >
   Observed Python Agent RUNs for TASK-104 repeatedly returned Runtime PASS with
   head_sha equal to base_sha even though TASK-104 had a non-empty scope.modify.
-  TASK-035 revision 1 demonstrated the intended guard but was blocked by the
-  Windows verification exit-code defect later repaired by TASK-036. Revision 2
-  then reached canonical verification correctly, but two remediation-path tests
-  failed because a read-only PRIMARY fixture was applied to the remediation
-  branch as well, making its existing OUTPUT.txt remediation scope invalid before
-  the verification-mutation behavior under test could run. Revision 3 preserves
-  that remediation fixture semantics while keeping the no-op guard strictly in
-  the PRIMARY path.
+  TASK-035 revision 1 was blocked by the Windows verification exit-code defect
+  repaired by TASK-036. Revision 2 then exposed fixture incompatibilities.
+  Revision 3 correctly placed the new PRIMARY no-op guard after existing
+  structural/completion gates and before canonical verification, but canonical
+  verification still found three test-fixture failures: the parameterized
+  remediation cases still reused a read-only PRIMARY task whose scope.modify was
+  incompatible with the existing remediation modification_scope, and the
+  positive multi-claim acceptance-union test remained a mutation-bearing no-op
+  even though that test is intended to exercise acceptance coverage rather than
+  mutation enforcement. Revision 4 must repair only those remaining test
+  preconditions while preserving the narrow PRIMARY Runtime guard semantics.
 
 assumptions:
   - The current canonical AIOS-renew baseline includes TASK-036 at 203da01226eeb4749e754c6293a9afb58d233247.
@@ -24,7 +27,8 @@ assumptions:
   - scope.modify is already the hard mutation authority in the Brain TASK Authoring Contract.
   - A TASK with scope.modify empty may legitimately complete with head_sha equal to base_sha.
   - TASK-032 is an existing canonical example of a valid read-only PRIMARY TASK with scope.modify empty.
-  - RUN-035-001 and RUN-035-002 are historical blocked/failed evidence only and must not be transplanted or published.
+  - RUN-035-001, RUN-035-002, and RUN-035-003 are historical blocked/failed evidence only and must not be transplanted or published.
+  - RUN-035-003 demonstrated that the candidate PRIMARY guard is reached only after existing completion checks and before canonical verification for a structurally complete mutation-bearing no-op.
 
 scope:
   inspect:
@@ -44,7 +48,7 @@ non_goals:
   - Change Codex or Antigravity adapter semantics.
   - Change canonical verification ownership or EVIDENCE construction.
   - Change Windows or POSIX verification implementation repaired by TASK-036.
-  - Change remediation/FIX behavior.
+  - Change remediation/FIX behavior or remediation scope validation.
   - Change publication, push, branch, tag, or remote-reference behavior.
   - Change primary synchronization behavior.
   - Reject legitimate read-only PRIMARY TASKs whose scope.modify is empty.
@@ -58,9 +62,11 @@ constraints:
     - A PRIMARY TASK with empty scope.modify must remain eligible to complete with final Git HEAD equal to base_sha when all other existing requirements are satisfied.
     - Preserve existing RESULT.head_sha binding, worktree cleanliness, changed-files scope validation, unresolved-item rejection, and acceptance-coverage validation.
     - Existing structural or completion failures must not be replaced by the new no-op mutation error when those failures already make the RESULT incomplete.
-    - After structural and completion gates succeed, a mutation-bearing PRIMARY no-op must be rejected before canonical verification is executed.
+    - The no-op mutation guard must remain after existing structural/completion validation and before canonical verification is executed.
     - Verification-focused PRIMARY tests that need to reach Runtime verification may use a read-only TASK or a valid committed in-scope mutation rather than an invalid mutation-bearing no-op fixture.
-    - Existing remediation-path verification tests must retain a TASK scope compatible with their canonical remediation modification_scope; do not reuse a read-only PRIMARY fixture when that would invalidate remediation lineage before the behavior under test.
+    - In the parameterized verification-repository-mutation test, the PRIMARY branch may use a read-only TASK so it can reach verification without an implementation delta, but the REMEDIATION branch must retain a TASK scope compatible with the existing remediation modification_scope so remediation validation is not changed or bypassed.
+    - The positive multi-claim acceptance-union test must use a valid pre-verification state, such as an equivalent read-only multi-acceptance TASK fixture or a valid committed in-scope delta, so the test continues to prove union-of-claim acceptance semantics rather than relying on a mutation-bearing no-op.
+    - Negative unresolved-item and missing-acceptance tests must continue to prove their existing completion errors and must not be rewritten to expect the new no-op mutation error.
     - A mutation-bearing PRIMARY TASK with a valid committed in-scope delta must continue into the unchanged canonical verification path.
     - The new guard must apply identically to Codex and Antigravity through the shared PRIMARY Runtime path.
     - Do not infer required mutation from goal text, acceptance wording, claims, executor identity, or model reasoning.
@@ -104,9 +110,10 @@ acceptance:
       Deterministic regression tests prove valid read-only no-change PRIMARY
       completion, rejected mutation-bearing no-change PRIMARY completion for both
       Codex and Antigravity, accepted mutation-bearing PRIMARY completion with a
-      valid delta, preserved access to verification-specific PRIMARY behavior
-      from valid pre-verification states, and unchanged remediation-path
-      verification-mutation behavior with compatible remediation scope.
+      valid delta, preserved acceptance-union semantics from a valid
+      pre-verification state, preserved verification-specific PRIMARY behavior,
+      and unchanged remediation-path verification-mutation behavior with
+      compatible remediation scope.
 
   - id: AC7
     condition: >
