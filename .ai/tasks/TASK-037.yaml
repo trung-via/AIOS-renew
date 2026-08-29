@@ -1,5 +1,5 @@
 task_id: TASK-037
-revision: 1
+revision: 2
 
 goal: >
   Add reusable operator-layer post-PASS GitHub review transport to AIOS-renew so
@@ -13,13 +13,19 @@ problem: >
   and narrow remediation already work, but successful review candidates and
   Runtime artifacts remain local. TASK-035 and TASK-036 demonstrated that the
   Human must currently transport those outputs before ChatGPT can review them.
-  This is a reusable AIOS operator concern, not product-project behavior.
+  RUN-037-001 then reached canonical verification but failed during pytest
+  collection because its candidate introduced a circular package import between
+  operator and review_transport. That candidate is failed evidence only; the
+  required transport behavior remains unchanged and the next implementation
+  must preserve normal package importability without prescribing its internal
+  decomposition.
 
 assumptions:
-  - Current AIOS-renew main baseline is 3e69e499de692bc6d1dde426d27247da07e6404f.
+  - Current AIOS-renew canonical baseline before TASK-037 implementation is the latest main containing this TASK revision.
   - The frozen v0.1 kernel contracts remain unchanged; this capability belongs to the reusable operator layer after canonical PASS.
   - The existing aios CLI entry point is the shared operator surface used by product repositories.
   - GitHub is transport and storage only; ChatGPT remains the semantic Reviewer and publication remains separate.
+  - RUN-037-001 did not produce a canonical PASS and is not eligible for REVIEW, REMEDIATION, transport, or publication.
 
 scope:
   inspect:
@@ -44,11 +50,13 @@ non_goals:
   - Let Codex or Antigravity push or become transport authority.
   - Add retry, reroute, fallback, watcher, daemon, polling, planner, reviewer agent, or another orchestration layer.
   - Modify or revive legacy AIOS Bridge code or semantics.
+  - Preserve, transplant, or repair the failed RUN-037-001 candidate outside a fresh canonical PRIMARY execution.
 
 constraints:
   hard:
     - Post-PASS transport belongs to the shared AIOS-renew operator layer and may run only after the existing canonical RUN or REMEDIATION path has completed successfully and persisted its canonical ResultPackage.
     - Transport must not participate in deciding Runtime PASS and must not weaken, replace, or duplicate any existing kernel gate.
+    - The AIOS-renew package and operator entry point must remain normally importable after the transport integration; the implementation must not introduce a circular module dependency that prevents test collection or operator startup.
     - For each passed RUN, expose refs/heads/aios/review/<RUN_ID> pointing exactly to that canonical head_sha.
     - Expose the exact persisted RUN JSON and exact persisted canonical ResultPackage JSON on refs/heads/aios/artifacts/<RUN_ID> at fixed paths .ai/transport/run.json and .ai/transport/result.json.
     - The operator must bind transport to the exact passed RUN identity and its persisted paths; it must not guess a RUN, select the newest artifact, or ask an Executor to rewrite or summarize canonical artifacts.
@@ -92,8 +100,9 @@ acceptance:
     condition: >
       Focused deterministic tests cover PRIMARY and REMEDIATION transport,
       exact candidate and artifact binding, reusable remote selection, unchanged
-      repository state, no transport on non-PASS paths, and fail-closed conflict
-      behavior without source-spelling assertions.
+      repository state, no transport on non-PASS paths, fail-closed conflict
+      behavior, and successful package/operator import without source-spelling
+      assertions.
 
 verification:
   required:
