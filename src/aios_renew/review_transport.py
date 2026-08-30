@@ -3,11 +3,24 @@
 from __future__ import annotations
 
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 
 class ReviewTransportError(RuntimeError):
     """Raised when post-PASS review or artifact transport fails."""
+
+
+@dataclass(frozen=True)
+class RemoteRemediationLineage:
+    """Immutable canonical inputs resolved from one remote remediation ref."""
+
+    ref: str
+    source_run_id: str
+    review: bytes
+    remediation: bytes
+    run: bytes
+    result: bytes
 
 
 def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = False) -> tuple[int, str, str]:
@@ -47,6 +60,103 @@ def _read_remote_blob(repo: Path, remote: str, commit_sha: str, rel_path: str) -
     if code == 0:
         return content.encode("utf-8")
     return None
+
+
+def resolve_remote_remediation_lineages(
+    repo: Path, *, finding_id: str
+) -> tuple[RemoteRemediationLineage, ...]:
+    """Resolve all structurally complete remote lineages for one finding id.
+
+    TASK binding and frozen-contract validation are deliberately performed by the
+    operator, which then requires exactly one matching lineage.
+    """
+
+    if not finding_id or "/" in finding_id or "\\" in finding_id:
+        raise ReviewTransportError(f"invalid finding id: {finding_id!r}")
+    remote = resolve_transport_remote(repo)
+    pattern = f"refs/heads/aios/remediation/*-{finding_id}"
+    code, output, _ = _git_cmd(
+        repo, "ls-remote", "--refs", remote, pattern, allow_fail=True
+    )
+    if code:
+        raise ReviewTransportError(
+            f"failed to query canonical REMEDIATION refs from {remote}"
+        )
+
+    resolved: list[RemoteRemediationLineage] = []
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            raise ReviewTransportError("malformed canonical REMEDIATION ref result")
+        commit_sha, ref = parts
+        prefix = "refs/heads/aios/remediation/"
+        suffix = f"-{finding_id}"
+        if not ref.startswith(prefix) or not ref.endswith(suffix):
+            raise ReviewTransportError("canonical REMEDIATION ref name mismatch")
+        source_run_id = ref[len(prefix) : -len(suffix)]
+        if not source_run_id:
+            raise ReviewTransportError("canonical REMEDIATION ref has no source RUN")
+
+        _git_cmd(repo, "fetch", "--no-tags", remote, commit_sha, allow_fail=True)
+        tree_code, tree_output, _ = _git_cmd(
+            repo,
+            "ls-tree",
+            "-r",
+            "--name-only",
+            commit_sha,
+            "--",
+            ".ai/reviews",
+            ".ai/remediations",
+            allow_fail=True,
+        )
+        if tree_code:
+            raise ReviewTransportError(f"cannot inspect canonical lineage at {ref}")
+        review_paths = [
+            path for path in tree_output.splitlines()
+            if path.startswith(".ai/reviews/") and path.endswith((".yaml", ".yml"))
+        ]
+        remediation_paths = [
+            path for path in tree_output.splitlines()
+            if path.startswith(".ai/remediations/") and path.endswith((".yaml", ".yml"))
+        ]
+        if len(review_paths) != 1 or len(remediation_paths) != 1:
+            raise ReviewTransportError(
+                f"canonical lineage at {ref} must contain exactly one REVIEW and REMEDIATION"
+            )
+        review = _read_remote_blob(repo, remote, commit_sha, review_paths[0])
+        remediation = _read_remote_blob(
+            repo, remote, commit_sha, remediation_paths[0]
+        )
+
+        artifacts_ref = f"refs/heads/aios/artifacts/{source_run_id}"
+        artifacts_code, artifacts_output, _ = _git_cmd(
+            repo, "ls-remote", "--refs", remote, artifacts_ref, allow_fail=True
+        )
+        artifact_lines = [item.split() for item in artifacts_output.splitlines()]
+        if artifacts_code or len(artifact_lines) != 1 or len(artifact_lines[0]) != 2:
+            raise ReviewTransportError(
+                f"canonical source artifacts missing or ambiguous for {source_run_id}"
+            )
+        artifacts_sha = artifact_lines[0][0]
+        run = _read_remote_blob(
+            repo, remote, artifacts_sha, ".ai/transport/run.json"
+        )
+        result = _read_remote_blob(
+            repo, remote, artifacts_sha, ".ai/transport/result.json"
+        )
+        if None in (review, remediation, run, result):
+            raise ReviewTransportError(f"canonical lineage content missing at {ref}")
+        resolved.append(
+            RemoteRemediationLineage(
+                ref=ref,
+                source_run_id=source_run_id,
+                review=review,
+                remediation=remediation,
+                run=run,
+                result=result,
+            )
+        )
+    return tuple(resolved)
 
 
 def _create_artifacts_commit(

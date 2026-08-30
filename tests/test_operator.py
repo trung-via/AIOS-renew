@@ -11,6 +11,7 @@ import aios_renew.operator as operator_module
 from aios_renew.operator import (
     OperatorError,
     RepositoryLock,
+    accept_candidate,
     describe_task,
     load_task,
     resolve_repository,
@@ -442,6 +443,71 @@ constraints:
     return review, remediation
 
 
+def publish_direct_candidate_lineage(repo: Path, root: Path) -> None:
+    """Publish the canonical remote artifacts and REVIEW/REMEDIATION branch."""
+
+    from aios_renew.review_transport import transport_post_pass
+
+    state = runtime_paths(repo)
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    transport_post_pass(
+        repo,
+        run_id="RUN-101-000",
+        head_sha=reviewed_sha,
+        run_path=state.runs / "RUN-101-000.json",
+        result_path=state.results / "RUN-101-000.json",
+    )
+    author = root / "review-author"
+    subprocess.run(
+        ("git", "clone", "--quiet", str(root / "upstream.git"), str(author)),
+        check=True,
+    )
+    git(author, "config", "user.name", "AIOS Reviewer Test")
+    git(author, "config", "user.email", "reviewer@example.invalid")
+    review_dir = author / ".ai" / "reviews"
+    remediation_dir = author / ".ai" / "remediations"
+    review_dir.mkdir(parents=True)
+    remediation_dir.mkdir(parents=True)
+    (review_dir / "REVIEW-101-001.yaml").write_text(
+        f"""review_id: REVIEW-101-001
+reviewed_sha: {reviewed_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The output is absent.
+    expected: Commit only the output.
+""",
+        encoding="utf-8",
+    )
+    git(author, "add", ".ai/reviews")
+    git(author, "commit", "--quiet", "-m", "canonical review")
+    (remediation_dir / "REMEDIATION-101-001-R1.yaml").write_text(
+        f"""finding_id: R1
+action: CODE_FIX
+reviewed_sha: {reviewed_sha}
+modification_scope: [OUTPUT.txt]
+affected_verification: [git diff --check]
+constraints:
+  hard: [Commit the output.]
+""",
+        encoding="utf-8",
+    )
+    git(author, "add", ".ai/remediations")
+    git(author, "commit", "--quiet", "-m", "canonical remediation")
+    git(
+        author,
+        "push",
+        "--quiet",
+        "origin",
+        "HEAD:refs/heads/aios/remediation/RUN-101-000-R1",
+    )
+
+
 class RemediationRunner:
     def __init__(self, repo: Path) -> None:
         self.repo = repo
@@ -535,6 +601,88 @@ def test_narrow_remediation_uses_shared_completion_policy(
             "modification_scope"
         ] == ["OUTPUT.txt"]
         assert remediation.affected_verification == ("git diff --check",)
+
+
+def test_direct_candidate_acceptance_resolves_remote_lineage_without_executor(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    remediation_contract(repo)
+    publish_direct_candidate_lineage(repo, tmp_path)
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("direct candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "human-selected executor candidate")
+    candidate_head = git(repo, "rev-parse", "HEAD")
+    verification_calls = []
+
+    def verification_runner(command, **kwargs):
+        verification_calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, stdout=b"affected pass\n", stderr=b"")
+
+    summary = accept_candidate(
+        "TASK-101",
+        finding_id="R1",
+        executor="codex",
+        repo=repo,
+        verification_runner=verification_runner,
+    )
+    stored = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    run_data = json.loads(
+        (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert summary.reviewed_sha == reviewed_sha
+    assert summary.head_sha == candidate_head
+    assert run_data["acceptance"] == {
+        "mode": "DIRECT_CANDIDATE",
+        "candidate_head": candidate_head,
+    }
+    assert run_data["execution"]["run"]["executor"] == "codex"
+    assert stored["result"] == {
+        "head_sha": candidate_head,
+        "claims": [],
+        "changed_files": ["OUTPUT.txt"],
+        "unresolved": [],
+    }
+    assert [item["source"]["command"] for item in stored["evidence"]] == [
+        "git diff --check"
+    ]
+    assert len(verification_calls) == 1
+
+    repeated = accept_candidate(
+        "TASK-101",
+        finding_id="R1",
+        executor="codex",
+        repo=repo,
+        verification_runner=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("idempotent acceptance must not rerun verification")
+        ),
+    )
+    assert repeated.run_id == summary.run_id
+
+
+def test_direct_candidate_rejection_precedes_canonical_admission(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    remediation_contract(repo)
+    publish_direct_candidate_lineage(repo, tmp_path)
+    (repo / "README.md").write_text("outside authority\n", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "commit", "--quiet", "-m", "outside direct scope")
+    state = runtime_paths(repo)
+    before = {path.name for path in state.runs.glob("*.json")}
+
+    with pytest.raises(OperatorError, match="REMEDIATION modification scope"):
+        accept_candidate(
+            "TASK-101", finding_id="R1", executor="antigravity", repo=repo
+        )
+
+    assert {path.name for path in state.runs.glob("*.json")} == before
+    assert not list(state.failures.glob("*.json"))
 
 
 def test_persisted_remediation_result_is_authoritative_lineage(

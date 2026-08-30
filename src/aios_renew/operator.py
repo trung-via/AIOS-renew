@@ -29,8 +29,10 @@ from .artifacts import (
 from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
 from .executor import ExecutorBoundary, ExecutorBoundaryError
 from .review_transport import (
+    RemoteRemediationLineage,
     ReviewTransportError,
     read_remote_repair,
+    resolve_remote_remediation_lineages,
     transport_failure,
     transport_post_pass,
 )
@@ -674,7 +676,12 @@ def _persist_and_transport_failure(
     state = runtime_paths(root)
     try:
         run_data = json.loads(run_path.read_text(encoding="utf-8"))
-        run = _run_from_data(run_data)
+        run = (
+            _remediation_execution_from_data(run_data["execution"]).run
+            if isinstance(run_data, Mapping)
+            and run_data.get("kind") == "REMEDIATION"
+            else _run_from_data(run_data)
+        )
         task = load_task(root, task_id)
         head_sha = _git(root, "rev-parse", "HEAD")
         dirty = bool(_git(root, "status", "--porcelain"))
@@ -1285,6 +1292,369 @@ def run_remediation(
         )
 
 
+def accept_candidate(
+    task_id: str,
+    *,
+    finding_id: str,
+    executor: str,
+    repo: str | Path | None = None,
+    verification_runner: VerificationRunner = subprocess.run,
+) -> RemediationSummary:
+    """Admit an already committed CODE_FIX candidate without invoking an Executor."""
+
+    root = resolve_repository(repo)
+    state = runtime_paths(root)
+    existing = {path.name for path in state.runs.glob("*.json")}
+    try:
+        return _accept_candidate_impl(
+            task_id,
+            finding_id=finding_id,
+            executor=executor,
+            repo=root,
+            verification_runner=verification_runner,
+        )
+    except Exception as original:
+        created = [
+            path for path in state.runs.glob("*.json") if path.name not in existing
+        ]
+        if len(created) == 1 and not (state.results / created[0].name).is_file():
+            _persist_and_transport_failure(
+                root, task_id=task_id, run_path=created[0], failure=original
+            )
+        raise
+
+
+def _accept_candidate_impl(
+    task_id: str,
+    *,
+    finding_id: str,
+    executor: str,
+    repo: Path,
+    verification_runner: VerificationRunner,
+) -> RemediationSummary:
+    if executor not in ("codex", "antigravity"):
+        raise OperatorError(f"unsupported executor: {executor}")
+    task = load_task(repo, task_id)
+    state = runtime_paths(repo)
+
+    with RepositoryLock(state.lock):
+        if _git(repo, "status", "--porcelain"):
+            raise OperatorError("repository dirty")
+        candidate_head = _git(repo, "rev-parse", "HEAD")
+        review, remediation, prior_result, prior_review = _resolve_direct_lineage(
+            repo, task=task, finding_id=finding_id
+        )
+        try:
+            validate_review(
+                task=task,
+                result=prior_result,
+                review=review,
+                prior_review=prior_review,
+            )
+            validate_remediation(review=review, remediation=remediation, task=task)
+        except ReviewValidationError as exc:
+            raise OperatorError(f"invalid direct candidate lineage: {exc}") from exc
+        if review.verdict != "CHANGES_REQUIRED":
+            raise OperatorError("direct candidate REVIEW is not CHANGES_REQUIRED")
+        if remediation.action != "CODE_FIX":
+            raise OperatorError("direct candidate requires CODE_FIX remediation")
+        if not remediation.modification_scope:
+            raise OperatorError("CODE_FIX remediation modification scope is empty")
+        if not remediation.affected_verification:
+            raise OperatorError("REMEDIATION affected verification is empty")
+        if candidate_head == remediation.reviewed_sha:
+            raise OperatorError("CODE_FIX candidate did not advance HEAD")
+        if not _git_is_ancestor(repo, remediation.reviewed_sha, candidate_head):
+            raise OperatorError("candidate HEAD does not descend from reviewed_sha")
+
+        changed_files = _committed_changed_files(
+            repo, remediation.reviewed_sha, candidate_head
+        )
+        outside_remediation = changed_files.difference(
+            remediation.modification_scope
+        )
+        if outside_remediation:
+            raise OperatorError(
+                "committed changed paths outside REMEDIATION modification scope: "
+                + ", ".join(sorted(outside_remediation))
+            )
+        outside_task = changed_files.difference(task.scope.modify)
+        if outside_task:
+            raise OperatorError(
+                "committed changed paths outside TASK.scope.modify: "
+                + ", ".join(sorted(outside_task))
+            )
+        _require_post_verification_repository_state(
+            repo, expected_head=candidate_head
+        )
+
+        existing_summary = _accepted_candidate_summary(
+            state,
+            repo=repo,
+            task=task,
+            review=review,
+            finding_id=finding_id,
+            candidate_head=candidate_head,
+            executor=executor,
+        )
+        if existing_summary is not None:
+            return existing_summary
+
+        run_id = next_run_id(task_id, state.runs)
+        run = Run.from_task(
+            run_id=run_id,
+            task=task,
+            executor=executor,
+            base_sha=remediation.reviewed_sha,
+            workspace=str(repo),
+        )
+        finding = next(item for item in review.findings if item.id == finding_id)
+        execution = RemediationExecution(
+            review_id=review.review_id,
+            finding=finding,
+            remediation=remediation,
+            run=run,
+            original_constraints=remediation.constraints,
+        )
+        run_path = state.runs / f"{run_id}.json"
+        result_path = state.results / f"{run_id}.json"
+        _write_json(
+            run_path,
+            {
+                "kind": "REMEDIATION",
+                "acceptance": {
+                    "mode": "DIRECT_CANDIDATE",
+                    "candidate_head": candidate_head,
+                },
+                "execution": asdict(execution),
+            },
+        )
+
+        structural_result = Result(
+            head_sha=candidate_head,
+            claims=(),
+            changed_files=tuple(sorted(changed_files)),
+            unresolved=(),
+        )
+        structural_package = ResultPackage(result=structural_result, evidence=())
+        _require_remediation_repository_state(
+            repo, execution, structural_package, actual_head=candidate_head
+        )
+        try:
+            runtime_evidence = execute_verification(
+                remediation.affected_verification,
+                run_id=run_id,
+                subject_sha=candidate_head,
+                repository=repo,
+                raw_directory=state.verification / run_id,
+                runner=verification_runner,
+            )
+        except RuntimeVerificationError as exc:
+            raise OperatorError(str(exc)) from exc
+        _require_post_verification_repository_state(
+            repo, expected_head=candidate_head
+        )
+        canonical_package = ResultPackage(
+            result=structural_result, evidence=runtime_evidence
+        )
+        _require_remediation_package_contract(
+            execution, canonical_package, actual_head=candidate_head
+        )
+        _write_json(result_path, result_package_data(canonical_package))
+        try:
+            transport_post_pass(
+                repo,
+                run_id=run_id,
+                head_sha=candidate_head,
+                run_path=run_path,
+                result_path=result_path,
+            )
+        except ReviewTransportError as exc:
+            raise OperatorError(f"review transport failed: {exc}") from exc
+        return RemediationSummary(
+            task_id=task_id,
+            review_id=review.review_id,
+            finding_id=finding_id,
+            run_id=run_id,
+            executor=executor,
+            reviewed_sha=remediation.reviewed_sha,
+            head_sha=candidate_head,
+            result_path=result_path,
+        )
+
+
+def _resolve_direct_lineage(
+    repo: Path, *, task: Task, finding_id: str
+) -> tuple[Review, Remediation, Result, Review | None]:
+    try:
+        remote_lineages = resolve_remote_remediation_lineages(
+            repo, finding_id=finding_id
+        )
+    except ReviewTransportError as exc:
+        raise OperatorError(f"direct candidate lineage resolution failed: {exc}") from exc
+
+    matches: list[tuple[Review, Remediation, Result, Review | None]] = []
+    for remote in remote_lineages:
+        parsed = _parse_remote_direct_lineage(repo, task=task, remote=remote)
+        if parsed is not None:
+            matches.append(parsed)
+    if not matches:
+        raise OperatorError("canonical CODE_FIX REVIEW/REMEDIATION lineage not found")
+    if len(matches) != 1:
+        raise OperatorError("canonical CODE_FIX REVIEW/REMEDIATION lineage is ambiguous")
+    return matches[0]
+
+
+def _parse_remote_direct_lineage(
+    repo: Path, *, task: Task, remote: RemoteRemediationLineage
+) -> tuple[Review, Remediation, Result, Review | None] | None:
+    try:
+        run_data = json.loads(remote.run.decode("utf-8", errors="strict"))
+        if not isinstance(run_data, Mapping):
+            raise TypeError("RUN must be a mapping")
+        if run_data.get("kind") == "REMEDIATION":
+            prior_execution = _remediation_execution_from_data(run_data["execution"])
+            source_run = prior_execution.run
+        elif "kind" not in run_data:
+            prior_execution = None
+            source_run = _run_from_data(run_data)
+        else:
+            raise ValueError("unknown source RUN kind")
+        if source_run.run_id != remote.source_run_id:
+            raise ValueError("remote ref source RUN mismatch")
+        if source_run.task.id != task.task_id:
+            return None
+        if source_run.task.revision != task.revision:
+            raise ValueError("source RUN TASK revision mismatch")
+
+        review = parse_review(remote.review.decode("utf-8", errors="strict"))
+        remediation = parse_remediation(
+            remote.remediation.decode("utf-8", errors="strict")
+        )
+        result_data = json.loads(remote.result.decode("utf-8", errors="strict"))
+        if not isinstance(result_data, Mapping):
+            raise TypeError("ResultPackage must be a mapping")
+        result = validate_result(result_data["result"])
+        evidence_data = result_data["evidence"]
+        if not isinstance(evidence_data, list):
+            raise TypeError("evidence must be a list")
+        evidence = tuple(validate_evidence(item) for item in evidence_data)
+        package = ResultPackage(result=result, evidence=evidence)
+        if prior_execution is None:
+            validate_result_package(
+                task=task, run=source_run, result=result, evidence=evidence
+            )
+        else:
+            _validate_persisted_remediation_result(
+                repo=repo, task=task, execution=prior_execution, package=package
+            )
+        if result.head_sha != review.reviewed_sha:
+            raise ValueError("REVIEW does not bind to authoritative source RESULT")
+        if remediation.finding_id not in {item.id for item in review.findings}:
+            raise ValueError("REMEDIATION finding is absent from REVIEW")
+        if remediation.action != "CODE_FIX":
+            raise ValueError("REMEDIATION is not CODE_FIX")
+
+        prior_review = None
+        if review.prior_finding_id is not None:
+            if prior_execution is None:
+                raise ValueError("DELTA REVIEW source is not a REMEDIATION RUN")
+            if review.prior_finding_id != prior_execution.finding.id:
+                raise ValueError("DELTA REVIEW prior finding lineage mismatch")
+            prior_review = Review(
+                review_id=prior_execution.review_id,
+                reviewed_sha=prior_execution.remediation.reviewed_sha,
+                mode="PRIMARY",
+                verdict="CHANGES_REQUIRED",
+                acceptance={},
+                findings=(prior_execution.finding,),
+            )
+        return review, remediation, result, prior_review
+    except (
+        ArtifactValidationError,
+        KeyError,
+        TypeError,
+        ValueError,
+        UnicodeError,
+        json.JSONDecodeError,
+        ReviewValidationError,
+    ) as exc:
+        raise OperatorError(
+            f"contract-invalid canonical lineage at {remote.ref}: {exc}"
+        ) from exc
+
+
+def _committed_changed_files(repo: Path, base_sha: str, head_sha: str) -> set[str]:
+    output = _git(
+        repo,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        base_sha,
+        head_sha,
+        strip_stdout=False,
+    )
+    return {path for path in output.split("\0") if path}
+
+
+def _accepted_candidate_summary(
+    state: RuntimePaths,
+    *,
+    repo: Path,
+    task: Task,
+    review: Review,
+    finding_id: str,
+    candidate_head: str,
+    executor: str,
+) -> RemediationSummary | None:
+    for run_path in sorted(state.runs.glob("*.json")):
+        try:
+            data = json.loads(run_path.read_text(encoding="utf-8"))
+            acceptance = data.get("acceptance", {})
+            execution = _remediation_execution_from_data(data["execution"])
+        except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+            continue
+        if (
+            data.get("kind") != "REMEDIATION"
+            or acceptance.get("mode") != "DIRECT_CANDIDATE"
+            or acceptance.get("candidate_head") != candidate_head
+            or execution.review_id != review.review_id
+            or execution.finding.id != finding_id
+        ):
+            continue
+        if execution.run.executor != executor:
+            raise OperatorError(
+                "candidate was already accepted for a different Executor identity"
+            )
+        result_path = state.results / run_path.name
+        if not result_path.is_file():
+            raise OperatorError("matching direct candidate RUN has no canonical RESULT")
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+            result = validate_result(payload["result"])
+            evidence = tuple(validate_evidence(item) for item in payload["evidence"])
+            _validate_persisted_remediation_result(
+                repo=repo,
+                task=task,
+                execution=execution,
+                package=ResultPackage(result=result, evidence=evidence),
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise OperatorError(f"invalid accepted direct candidate state: {exc}") from exc
+        return RemediationSummary(
+            task_id=task.task_id,
+            review_id=review.review_id,
+            finding_id=finding_id,
+            run_id=execution.run.run_id,
+            executor=execution.run.executor,
+            reviewed_sha=execution.remediation.reviewed_sha,
+            head_sha=candidate_head,
+            result_path=result_path,
+        )
+    return None
+
+
 def _require_remediation_result(
     repo: Path,
     execution: RemediationExecution,
@@ -1783,6 +2153,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     remediation_parser.add_argument("--repo")
     remediation_parser.add_argument("--codex-sandbox", choices=CODEX_SANDBOXES)
+    candidate_parser = commands.add_parser(
+        "accept-candidate",
+        help="Accept one already committed CODE_FIX candidate",
+    )
+    candidate_parser.add_argument("task_id")
+    candidate_parser.add_argument("--finding", required=True)
+    candidate_parser.add_argument(
+        "--executor", required=True, choices=("codex", "antigravity")
+    )
+    candidate_parser.add_argument("--repo")
     repair_parser = commands.add_parser(
         "repair", help="Execute one GitHub-authored pre-PASS REPAIR"
     )
@@ -1827,6 +2207,14 @@ def main(argv: list[str] | None = None) -> int:
                 executor=args.executor,
                 repo=args.repo,
                 codex_sandbox=args.codex_sandbox or "workspace-write",
+            )
+            print(summary.render())
+        elif args.command == "accept-candidate":
+            summary = accept_candidate(
+                args.task_id,
+                finding_id=args.finding,
+                executor=args.executor,
+                repo=args.repo,
             )
             print(summary.render())
         elif args.command == "repair":
