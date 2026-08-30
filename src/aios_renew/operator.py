@@ -28,7 +28,12 @@ from .artifacts import (
 )
 from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
 from .executor import ExecutorBoundary, ExecutorBoundaryError
-from .review_transport import ReviewTransportError, transport_post_pass
+from .review_transport import (
+    ReviewTransportError,
+    read_remote_repair,
+    transport_failure,
+    transport_post_pass,
+)
 from .run import Run, RunLeaseRegistry, RunTaskReference
 from .review import (
     Finding,
@@ -130,6 +135,8 @@ class RuntimePaths:
     staging: Path
     verification: Path
     results: Path
+    failures: Path
+    repairs: Path
     lock: Path
 
 
@@ -194,6 +201,26 @@ class RemediationSummary:
             f"executor: {self.executor}\n"
             f"reviewed_sha: {self.reviewed_sha}\n"
             f"head_sha: {self.head_sha}\n"
+            f"result: {self.result_path}"
+        )
+
+
+@dataclass(frozen=True)
+class RepairSummary:
+    task_id: str
+    failed_run_id: str
+    run_id: str
+    executor: str
+    failed_head_sha: str
+    head_sha: str
+    result_path: Path
+
+    def render(self) -> str:
+        return (
+            "AIOS REPAIR PASS\n"
+            f"task: {self.task_id}\nfailed_run: {self.failed_run_id}\n"
+            f"run: {self.run_id}\nexecutor: {self.executor}\n"
+            f"failed_head_sha: {self.failed_head_sha}\nhead_sha: {self.head_sha}\n"
             f"result: {self.result_path}"
         )
 
@@ -274,6 +301,8 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         staging=state_root / "staging",
         verification=state_root / "verification",
         results=state_root / "results",
+        failures=state_root / "failures",
+        repairs=state_root / "repairs",
         lock=state_root / "operator.lock",
     )
     for path in (
@@ -282,6 +311,8 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         paths.staging,
         paths.verification,
         paths.results,
+        paths.failures,
+        paths.repairs,
     ):
         path.mkdir(parents=True, exist_ok=True)
     return paths
@@ -458,6 +489,42 @@ def run_task(
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
 ) -> RunSummary:
+    """Execute a TASK and persist/transport deterministic pre-PASS failure facts."""
+
+    root = resolve_repository(repo)
+    state = runtime_paths(root)
+    existing = {path.name for path in state.runs.glob("*.json")}
+    try:
+        return _run_task_impl(
+            task_id, executor=executor, repo=root, codex_sandbox=codex_sandbox,
+            native_runner=native_runner, verification_runner=verification_runner,
+        )
+    except Exception as original:
+        created = sorted(
+            (path for path in state.runs.glob("*.json") if path.name not in existing),
+            key=lambda path: path.name,
+        )
+        if len(created) == 1:
+            run_path = created[0]
+            run_id = run_path.stem
+            # A canonical RESULT means implementation and verification already passed;
+            # only its transport failed, so it is not rewritten as an execution failure.
+            if not (state.results / f"{run_id}.json").is_file():
+                _persist_and_transport_failure(
+                    root, task_id=task_id, run_path=run_path, failure=original
+                )
+        raise
+
+
+def _run_task_impl(
+    task_id: str,
+    *,
+    executor: str,
+    repo: str | Path | None = None,
+    codex_sandbox: str = "workspace-write",
+    native_runner: NativeRunner = subprocess.run,
+    verification_runner: VerificationRunner = subprocess.run,
+) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
 
     root = resolve_repository(repo)
@@ -596,6 +663,333 @@ def run_task(
             base_sha=base_sha,
             head_sha=actual_head,
             result_path=result_path,
+        )
+
+
+def _persist_and_transport_failure(
+    root: Path, *, task_id: str, run_path: Path, failure: Exception
+) -> None:
+    """Record the original failure, then best-effort its independent transport."""
+
+    state = runtime_paths(root)
+    try:
+        run_data = json.loads(run_path.read_text(encoding="utf-8"))
+        run = _run_from_data(run_data)
+        task = load_task(root, task_id)
+        head_sha = _git(root, "rev-parse", "HEAD")
+        dirty = bool(_git(root, "status", "--porcelain"))
+        descendant = _git_is_ancestor(root, run.base_sha, head_sha)
+        changed = set(
+            path for path in _git(
+                root, "diff", "--name-only", "--no-renames", "-z",
+                run.base_sha, head_sha, strip_stdout=False,
+            ).split("\0") if path
+        ) if descendant else set()
+        outside_scope = changed.difference(task.scope.modify)
+        repairable = not dirty and descendant
+        transportable = repairable and not outside_scope
+        cause = failure.__cause__
+        error_message = str(failure)
+        if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
+            # Executor stdout/stderr remains local; transport only the stable boundary fact.
+            error_message = error_message.split(":", 1)[0]
+        if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
+            phase = "EXECUTION"
+        elif isinstance(cause, RuntimeVerificationError):
+            phase = "VERIFICATION"
+        else:
+            phase = "COMPLETION_GATE"
+        record: dict[str, Any] = {
+            "kind": "FAILURE",
+            "run_id": run.run_id,
+            "task": {"id": run.task.id, "revision": run.task.revision},
+            "executor": run.executor,
+            "base_sha": run.base_sha,
+            "failed_head_sha": head_sha,
+            "phase": phase,
+            "error": {
+                "type": type(cause or failure).__name__,
+                "message": error_message,
+            },
+            "candidate": {
+                "transportable": transportable,
+                "repairable": repairable,
+                "dirty": dirty,
+                "descends_from_base": descendant,
+                "changed_files": sorted(changed),
+                "outside_task_scope": sorted(outside_scope),
+            },
+        }
+        repair_execution = state.repairs / f"{run.run_id}.json"
+        if repair_execution.is_file():
+            record["continuation_of"] = json.loads(
+                repair_execution.read_text(encoding="utf-8")
+            ).get("failed_run_id")
+        if isinstance(cause, CodexExecutionError):
+            record["error"]["exit_code"] = cause.exit_code
+        failure_path = state.failures / f"{run.run_id}.json"
+        _write_json(failure_path, record)
+        try:
+            transport_failure(
+                root, run_id=run.run_id, head_sha=head_sha,
+                run_path=run_path, failure_path=failure_path,
+                publish_candidate=transportable,
+            )
+        except ReviewTransportError as transport_error:
+            # Preserve the original exception as primary and persist the secondary
+            # fact separately so transport can be retried without execution.
+            _write_json(
+                state.failures / f"{run.run_id}.transport.json",
+                {"run_id": run.run_id, "error": str(transport_error)},
+            )
+    except Exception:
+        # Failure recording must never replace the execution failure.
+        return
+
+
+def run_repair(
+    failed_run_id: str, *, executor: str, repo: str | Path | None = None,
+    repair: Mapping[str, Any] | str | Path | None = None,
+    codex_sandbox: str = "workspace-write",
+    native_runner: NativeRunner = subprocess.run,
+    verification_runner: VerificationRunner = subprocess.run,
+) -> RepairSummary:
+    """Accept and execute one GitHub-authored REPAIR as a continuation RUN."""
+
+    root = resolve_repository(repo)
+    state = runtime_paths(root)
+    existing = {path.name for path in state.runs.glob("*.json")}
+    try:
+        return _run_repair_impl(
+            failed_run_id, executor=executor, repo=root, repair=repair,
+            codex_sandbox=codex_sandbox, native_runner=native_runner,
+            verification_runner=verification_runner,
+        )
+    except Exception as original:
+        created = [path for path in state.runs.glob("*.json") if path.name not in existing]
+        if len(created) == 1 and not (state.results / created[0].name).is_file():
+            try:
+                run_data = json.loads(created[0].read_text(encoding="utf-8"))
+                _persist_and_transport_failure(
+                    root, task_id=run_data["task"]["id"],
+                    run_path=created[0], failure=original,
+                )
+            except Exception:
+                pass
+        raise
+
+
+def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
+    """Retry GitHub transport for persisted terminal state without execution."""
+
+    root = resolve_repository(repo)
+    state = runtime_paths(root)
+    run_path = state.runs / f"{run_id}.json"
+    result_path = state.results / f"{run_id}.json"
+    failure_path = state.failures / f"{run_id}.json"
+    if result_path.is_file() and failure_path.is_file():
+        raise OperatorError("RUN has conflicting terminal state")
+    try:
+        if result_path.is_file():
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+            transport_post_pass(
+                root, run_id=run_id, head_sha=payload["result"]["head_sha"],
+                run_path=run_path, result_path=result_path,
+                lineage_path=(state.repairs / f"{run_id}.json")
+                if (state.repairs / f"{run_id}.json").is_file() else None,
+            )
+        elif failure_path.is_file():
+            payload = json.loads(failure_path.read_text(encoding="utf-8"))
+            publish_candidate = payload.get("candidate", {}).get("transportable") is True
+            transport_failure(
+                root, run_id=run_id, head_sha=payload["failed_head_sha"],
+                run_path=run_path, failure_path=failure_path,
+                publish_candidate=publish_candidate,
+            )
+        else:
+            raise OperatorError(f"persisted terminal state not found: {run_id}")
+    except (ReviewTransportError, OSError, UnicodeError, json.JSONDecodeError, KeyError) as exc:
+        if isinstance(exc, OperatorError):
+            raise
+        raise OperatorError(f"transport retry failed: {exc}") from exc
+
+
+def _run_repair_impl(
+    failed_run_id: str, *, executor: str, repo: Path,
+    repair: Mapping[str, Any] | str | Path | None,
+    codex_sandbox: str, native_runner: NativeRunner,
+    verification_runner: VerificationRunner,
+) -> RepairSummary:
+    if executor not in ("codex", "antigravity"):
+        raise OperatorError(f"unsupported executor: {executor}")
+    if executor == "codex" and codex_sandbox not in CODEX_SANDBOXES:
+        raise OperatorError(f"unsupported Codex sandbox: {codex_sandbox}")
+    state = runtime_paths(repo)
+    failure_path = state.failures / f"{failed_run_id}.json"
+    if not failure_path.is_file():
+        raise OperatorError(f"persisted FAILURE not found: {failed_run_id}")
+    failure = json.loads(failure_path.read_text(encoding="utf-8"))
+    if failure.get("kind") != "FAILURE" or failure.get("run_id") != failed_run_id:
+        raise OperatorError("invalid persisted FAILURE lineage")
+    if failure.get("continuation_of") is not None:
+        raise OperatorError("recursive REPAIR is not allowed")
+    candidate = failure.get("candidate")
+    if not isinstance(candidate, Mapping) or candidate.get("repairable") is not True:
+        raise OperatorError("failed candidate is not safely bound for REPAIR")
+    if any(
+        json.loads(path.read_text(encoding="utf-8")).get("failed_run_id") == failed_run_id
+        for path in state.repairs.glob("*.json")
+    ):
+        raise OperatorError("REPAIR has already been accepted for failed RUN")
+
+    if repair is None:
+        try:
+            repair_data: Any = json.loads(read_remote_repair(repo, failed_run_id))
+        except (ReviewTransportError, json.JSONDecodeError, UnicodeError) as exc:
+            raise OperatorError(f"invalid remote REPAIR: {exc}") from exc
+    elif isinstance(repair, Mapping):
+        repair_data = dict(repair)
+    else:
+        try:
+            repair_data = json.loads(Path(repair).read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise OperatorError(f"invalid REPAIR: {exc}") from exc
+    if not isinstance(repair_data, Mapping):
+        raise OperatorError("REPAIR must be a mapping")
+    task_ref = repair_data.get("task")
+    required = {"repair_id", "failed_run_id", "failed_head_sha", "task", "action", "modification_scope", "instructions", "constraints"}
+    if set(repair_data) != required:
+        raise OperatorError("REPAIR fields do not match the authorized contract")
+    if repair_data.get("failed_run_id") != failed_run_id:
+        raise OperatorError("REPAIR does not match failed RUN")
+    if repair_data.get("failed_head_sha") != failure.get("failed_head_sha"):
+        raise OperatorError("REPAIR does not match failed committed state")
+    if not isinstance(task_ref, Mapping) or dict(task_ref) != dict(failure["task"]):
+        raise OperatorError("REPAIR does not match original TASK lineage")
+    task = load_task(repo, failure["task"]["id"])
+    if task.revision != failure["task"]["revision"]:
+        raise OperatorError("current TASK revision does not match failed RUN")
+    action = repair_data.get("action")
+    if action not in ("CODE_FIX", "NO_CHANGE"):
+        raise OperatorError("REPAIR action must be CODE_FIX or NO_CHANGE")
+    scope = repair_data.get("modification_scope")
+    instructions = repair_data.get("instructions")
+    constraints = repair_data.get("constraints")
+    if not isinstance(scope, list) or not all(isinstance(item, str) and item for item in scope):
+        raise OperatorError("REPAIR modification_scope must be a string list")
+    if not isinstance(instructions, list) or not instructions or not all(isinstance(item, str) and item for item in instructions):
+        raise OperatorError("REPAIR instructions must be a non-empty string list")
+    if not isinstance(constraints, list) or not all(isinstance(item, str) and item for item in constraints):
+        raise OperatorError("REPAIR constraints must be a string list")
+    failed_changed = set(candidate.get("changed_files", ()))
+    correction_authority = set(task.scope.modify).union(failed_changed)
+    if set(scope).difference(correction_authority):
+        raise OperatorError("REPAIR modification scope exceeds correction authority")
+    if set(constraints).difference(task.constraints.hard):
+        raise OperatorError("REPAIR constraints introduce new Human intent")
+    if action == "NO_CHANGE" and scope:
+        raise OperatorError("NO_CHANGE REPAIR modification scope must be empty")
+
+    with RepositoryLock(state.lock):
+        if _git(repo, "status", "--porcelain"):
+            raise OperatorError("repository dirty")
+        failed_head = failure["failed_head_sha"]
+        if _git(repo, "rev-parse", "HEAD") != failed_head:
+            raise OperatorError("current HEAD does not match failed committed state")
+        run_id = next_run_id(task.task_id, state.runs)
+        run = Run.from_task(
+            run_id=run_id, task=task, executor=executor,
+            base_sha=failed_head, workspace=str(repo),
+        )
+        run_path = state.runs / f"{run_id}.json"
+        result_path = state.results / f"{run_id}.json"
+        staging_path = state.staging / f"{run_id}.json"
+        execution = {
+            "failed_run_id": failed_run_id,
+            "root_base_sha": failure["base_sha"],
+            "failed_head_sha": failed_head,
+            "failure": failure,
+            "task": _executor_task_data(task),
+            "repair": dict(repair_data),
+            "run": run,
+        }
+        _write_json(run_path, asdict(run))
+        persisted_execution = dict(execution)
+        persisted_execution["run"] = asdict(run)
+        _write_json(state.repairs / f"{run_id}.json", persisted_execution)
+
+        if executor == "codex":
+            adapter: Any = CodexAdapter(runner=_codex_runner(native_runner, codex_sandbox))
+        else:
+            handoff_path = state.handoffs / f"{run_id}.json"
+            handoff = dict(persisted_execution)
+            handoff["structural_result_path"] = str(staging_path)
+            _write_json(handoff_path, handoff)
+            adapter = AntigravityAdapter(
+                transport=_antigravity_repair_transport(
+                    repo=repo, handoff_path=handoff_path,
+                    result_path=staging_path, native_runner=native_runner,
+                ), structural_output=True,
+            )
+        try:
+            package = adapter.execute_repair(execution=execution)
+        except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
+            raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
+        except CodexExecutionError as exc:
+            raise OperatorError(f"Codex invocation failed: {exc}") from exc
+        except AntigravityExecutionError as exc:
+            raise OperatorError(str(exc)) from exc
+
+        _write_json(staging_path, result_package_data(package))
+        _require_executor_structure(package)
+        actual_head = _git(repo, "rev-parse", "HEAD")
+        if package.result.head_sha != actual_head:
+            raise OperatorError("RESULT.head_sha mismatch")
+        if _git(repo, "status", "--porcelain"):
+            raise OperatorError("working tree dirty after REPAIR")
+        repair_changed = set(path for path in _git(
+            repo, "diff", "--name-only", "--no-renames", "-z",
+            failed_head, actual_head, strip_stdout=False,
+        ).split("\0") if path)
+        if repair_changed.difference(scope):
+            raise OperatorError("REPAIR committed paths outside authorized correction scope")
+        if action == "CODE_FIX" and actual_head == failed_head:
+            raise OperatorError("CODE_FIX REPAIR did not advance HEAD")
+        if action == "NO_CHANGE" and actual_head != failed_head:
+            raise OperatorError("NO_CHANGE REPAIR changed HEAD")
+        _require_changed_files(
+            repo, task, package, base_sha=failure["base_sha"], actual_head=actual_head
+        )
+        _require_complete_result(task, package)
+        try:
+            runtime_evidence = execute_verification(
+                task.verification.required, run_id=run_id, subject_sha=actual_head,
+                repository=repo, raw_directory=state.verification / run_id,
+                runner=verification_runner,
+            )
+        except RuntimeVerificationError as exc:
+            raise OperatorError(str(exc)) from exc
+        _require_post_verification_repository_state(repo, expected_head=actual_head)
+        canonical_result = attach_verification_evidence(package.result, runtime_evidence)
+        try:
+            canonical_package = validate_result_package(
+                task=task, run=run, result=canonical_result, evidence=runtime_evidence
+            )
+        except ArtifactValidationError as exc:
+            raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
+        _write_json(result_path, result_package_data(canonical_package))
+        try:
+            transport_post_pass(
+                repo, run_id=run_id, head_sha=actual_head,
+                run_path=run_path, result_path=result_path,
+                lineage_path=state.repairs / f"{run_id}.json",
+            )
+        except ReviewTransportError as exc:
+            raise OperatorError(f"review transport failed: {exc}") from exc
+        return RepairSummary(
+            task_id=task.task_id, failed_run_id=failed_run_id, run_id=run_id,
+            executor=executor, failed_head_sha=failed_head,
+            head_sha=actual_head, result_path=result_path,
         )
 
 
@@ -1259,6 +1653,55 @@ def _antigravity_remediation_transport(
     return transport
 
 
+def _antigravity_repair_transport(
+    *, repo: Path, handoff_path: Path, result_path: Path,
+    native_runner: NativeRunner,
+) -> Callable[..., str]:
+    instruction = (
+        f"Read the AIOS REPAIR handoff JSON at {handoff_path}. Execute exactly its "
+        "single bound continuation. Do not restart PRIMARY discovery, synchronize, "
+        "retry, review, or widen the original TASK. Change only repair.modification_scope. "
+        "For CODE_FIX commit the final permitted state; for NO_CHANGE do not mutate it. "
+        "Do not push. Runtime owns complete original TASK verification; do not execute "
+        "canonical verification commands or construct EVIDENCE. Write one structural "
+        "ResultPackage for the complete original TASK delta to structural_result_path, "
+        "with empty root evidence and every claim.evidence empty."
+    )
+
+    def transport(*, execution: Mapping[str, Any]) -> str:
+        del execution
+        try:
+            completed = native_runner(
+                (
+                    "agy", "--print", instruction, "--add-dir", str(repo),
+                    "--effort", "low", "--mode", "accept-edits",
+                    "--disable-slash-commands", "--output-format", "json",
+                    "--print-timeout", "5m",
+                ), cwd=str(repo), capture_output=True, text=False, check=False,
+            )
+            stdout = _decode_utf8(completed.stdout)
+            stderr = _decode_utf8(completed.stderr)
+        except FileNotFoundError as exc:
+            raise AntigravityExecutionError("Antigravity CLI not found: agy") from exc
+        except (OSError, UnicodeError) as exc:
+            raise AntigravityExecutionError(f"Antigravity CLI invocation failed: {exc}") from exc
+        if completed.returncode != 0:
+            raise AntigravityExecutionError(
+                f"Antigravity CLI returned nonzero ({completed.returncode})"
+            )
+        if not result_path.is_file():
+            detail = stderr.strip() or stdout.strip()
+            raise AntigravityExecutionError(
+                "Antigravity ResultPackage missing" + (f": {detail}" if detail else "")
+            )
+        try:
+            return result_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise AntigravityExecutionError(f"Antigravity ResultPackage unreadable: {exc}") from exc
+
+    return transport
+
+
 def _git(repo: Path, *args: str, strip_stdout: bool = True) -> str:
     try:
         completed = subprocess.run(
@@ -1316,6 +1759,21 @@ def _parser() -> argparse.ArgumentParser:
     )
     remediation_parser.add_argument("--repo")
     remediation_parser.add_argument("--codex-sandbox", choices=CODEX_SANDBOXES)
+    repair_parser = commands.add_parser(
+        "repair", help="Execute one GitHub-authored pre-PASS REPAIR"
+    )
+    repair_parser.add_argument("failed_run_id")
+    repair_parser.add_argument("--repair")
+    repair_parser.add_argument(
+        "--executor", required=True, choices=("codex", "antigravity")
+    )
+    repair_parser.add_argument("--repo")
+    repair_parser.add_argument("--codex-sandbox", choices=CODEX_SANDBOXES)
+    transport_parser = commands.add_parser(
+        "transport", help="Retry transport of one persisted terminal RUN"
+    )
+    transport_parser.add_argument("run_id")
+    transport_parser.add_argument("--repo")
     return parser
 
 
@@ -1334,7 +1792,7 @@ def main(argv: list[str] | None = None) -> int:
                 codex_sandbox=args.codex_sandbox or "workspace-write",
             )
             print(summary.render())
-        else:
+        elif args.command == "remediate":
             if args.executor != "codex" and args.codex_sandbox is not None:
                 raise OperatorError("--codex-sandbox is only valid for Codex")
             summary = run_remediation(
@@ -1347,6 +1805,18 @@ def main(argv: list[str] | None = None) -> int:
                 codex_sandbox=args.codex_sandbox or "workspace-write",
             )
             print(summary.render())
+        elif args.command == "repair":
+            if args.executor != "codex" and args.codex_sandbox is not None:
+                raise OperatorError("--codex-sandbox is only valid for Codex")
+            summary = run_repair(
+                args.failed_run_id, executor=args.executor, repo=args.repo,
+                repair=args.repair,
+                codex_sandbox=args.codex_sandbox or "workspace-write",
+            )
+            print(summary.render())
+        else:
+            retry_transport(args.run_id, repo=args.repo)
+            print(f"AIOS TRANSPORT PASS\nrun: {args.run_id}")
     except OperatorError as exc:
         print(f"AIOS ERROR: {exc}", file=sys.stderr)
         return 1

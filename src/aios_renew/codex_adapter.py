@@ -132,6 +132,32 @@ class CodexAdapter:
             )
         return self._normalize(stdout, stderr=stderr)
 
+    def execute_repair(self, *, execution: Mapping[str, Any]) -> ResultPackage:
+        """Execute one bound pre-PASS continuation through one Codex process."""
+
+        run = execution.get("run")
+        if not isinstance(run, Run):
+            raise CodexExecutionError("REPAIR execution has no bound RUN", exit_code=None)
+        command = self.command_for(run, schema_path=self._schema_path)
+        prompt = self.repair_prompt_for(execution=execution)
+        try:
+            completed = self._runner(
+                command, input=prompt.encode("utf-8", errors="strict"),
+                capture_output=True, text=False, check=False,
+            )
+            stdout = _decode_utf8(completed.stdout)
+            stderr = _decode_utf8(completed.stderr)
+        except (OSError, UnicodeError) as exc:
+            raise CodexExecutionError(
+                f"Codex CLI invocation failed: {exc}", exit_code=None
+            ) from exc
+        if completed.returncode != 0:
+            raise CodexExecutionError(
+                f"Codex CLI exited with code {completed.returncode}",
+                exit_code=completed.returncode, stdout=stdout, stderr=stderr,
+            )
+        return self._normalize(stdout, stderr=stderr)
+
     @staticmethod
     def command_for(
         run: Run,
@@ -198,6 +224,27 @@ class CodexAdapter:
             "one structural ResultPackage with empty root evidence, result.claims, "
             "and result.unresolved.\nREMEDIATION_INPUT:\n"
             f"{canonical_input}"
+        )
+
+    @staticmethod
+    def repair_prompt_for(*, execution: Mapping[str, Any]) -> str:
+        """Serialize the shared REPAIR contract without Runtime verification."""
+
+        data = dict(execution)
+        run = data.get("run")
+        if isinstance(run, Run):
+            data["run"] = asdict(run)
+        canonical_input = json.dumps(data, sort_keys=True)
+        return (
+            "Execute exactly one canonical REPAIR continuation bound to the failed RUN. "
+            "Do not restart PRIMARY discovery, synchronize with upstream, retry, review, "
+            "or widen the original TASK. Follow repair.instructions and change only "
+            "repair.modification_scope. For CODE_FIX commit the final permitted state; "
+            "for NO_CHANGE do not mutate the repository. Do not push. Runtime owns the "
+            "complete original TASK verification: do not execute canonical verification "
+            "commands or construct EVIDENCE. Return one structural ResultPackage for the "
+            "complete original TASK delta with empty root evidence and every claim.evidence "
+            "empty.\nREPAIR_INPUT:\n" + canonical_input
         )
 
     @staticmethod

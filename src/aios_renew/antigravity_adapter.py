@@ -69,6 +69,19 @@ class AntigravityAdapter:
             ) from exc
         return self._normalize(output, structural=self._structural_output)
 
+    def execute_repair(self, *, execution: Mapping[str, Any]) -> ResultPackage:
+        """Hand off the same bound continuation contract used by Codex."""
+
+        try:
+            output = self._transport(execution=execution)
+        except AntigravityExecutionError:
+            raise
+        except Exception as exc:
+            raise AntigravityExecutionError(
+                f"Antigravity native invocation failed: {exc}"
+            ) from exc
+        return self._normalize(output, structural=self._structural_output)
+
     @staticmethod
     def _normalize(
         output: Any, *, structural: bool = False
