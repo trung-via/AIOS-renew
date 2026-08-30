@@ -1085,6 +1085,53 @@ def test_first_runtime_verification_failure_stops_and_persists_no_result(
     state = runtime_paths(repo)
     assert (state.verification / "RUN-101-001" / "RUN-101-001-V001.raw").is_file()
     assert list(state.results.glob("*.json")) == []
+    failure = json.loads(
+        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert failure["phase"] == "VERIFICATION"
+    assert failure["error"]["verification"] == [
+        {
+            "command": "first-command",
+            "exit_code": 9,
+            "summary": "failed",
+        }
+    ]
+    assert "raw_path" not in failure["error"]["verification"][0]
+
+
+def test_executor_failure_transports_compact_boundary_diagnostic(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+
+    def timed_out_executor(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            returncode=124,
+            stdout=b"",
+            stderr=b"request timed out after 300s\nraw executor transcript\n",
+        )
+
+    with pytest.raises(OperatorError, match="request timed out after 300s"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=timed_out_executor,
+        )
+
+    failure = json.loads(
+        (
+            runtime_paths(repo).failures / "RUN-101-001.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert failure["phase"] == "EXECUTION"
+    assert failure["error"] == {
+        "type": "CodexExecutionError",
+        "message": "Codex CLI exited with code 124: request timed out after 300s",
+        "exit_code": 124,
+    }
+    assert "raw executor transcript" not in json.dumps(failure)
 
 
 def test_runtime_verification_decode_failure_persists_no_result(

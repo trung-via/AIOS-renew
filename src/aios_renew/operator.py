@@ -691,8 +691,10 @@ def _persist_and_transport_failure(
         cause = failure.__cause__
         error_message = str(failure)
         if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
-            # Executor stdout/stderr remains local; transport only the stable boundary fact.
-            error_message = error_message.split(":", 1)[0]
+            # Preserve the actionable boundary diagnostic without transporting the
+            # executor's complete stdout/stderr payload. The first diagnostic line is
+            # deterministic and bounded; full streams remain local on the exception.
+            error_message = str(cause).splitlines()[0][:512]
         if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
             phase = "EXECUTION"
         elif isinstance(cause, RuntimeVerificationError):
@@ -727,6 +729,15 @@ def _persist_and_transport_failure(
             ).get("failed_run_id")
         if isinstance(cause, CodexExecutionError):
             record["error"]["exit_code"] = cause.exit_code
+        if isinstance(cause, RuntimeVerificationError):
+            record["error"]["verification"] = [
+                {
+                    "command": item.source.command,
+                    "exit_code": item.result.exit_code,
+                    "summary": item.result.summary,
+                }
+                for item in cause.evidence
+            ]
         failure_path = state.failures / f"{run.run_id}.json"
         _write_json(failure_path, record)
         try:
