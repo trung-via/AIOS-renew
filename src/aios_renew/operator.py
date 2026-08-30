@@ -1919,7 +1919,7 @@ def _antigravity_command(
     command = [
         "agy", "--print", instruction, "--add-dir", str(repo),
         "--effort", "low", "--mode", capability.antigravity_mode,
-        "--disable-slash-commands", "--output-format", "text",
+        "--disable-slash-commands", "--output-format", "json",
         "--json-schema", str(RESULT_PACKAGE_SCHEMA_PATH),
         "--print-timeout", "5m",
     ]
@@ -1981,13 +1981,7 @@ def _antigravity_transport(
             if detail:
                 message = f"{message}: {detail}"
             raise AntigravityExecutionError(message)
-        if not stdout.strip():
-            detail = stderr.strip() or stdout.strip()
-            message = "Antigravity ResultPackage missing"
-            if detail:
-                message = f"{message}: {detail}"
-            raise AntigravityExecutionError(message)
-        return stdout
+        return _antigravity_structured_output(stdout, stderr=stderr)
 
     return transport
 
@@ -2041,13 +2035,7 @@ def _antigravity_remediation_transport(
             if detail:
                 message = f"{message}: {detail}"
             raise AntigravityExecutionError(message)
-        if not stdout.strip():
-            detail = stderr.strip() or stdout.strip()
-            message = "Antigravity ResultPackage missing"
-            if detail:
-                message = f"{message}: {detail}"
-            raise AntigravityExecutionError(message)
-        return stdout
+        return _antigravity_structured_output(stdout, stderr=stderr)
 
     return transport
 
@@ -2082,17 +2070,78 @@ def _antigravity_repair_transport(
         except (OSError, UnicodeError) as exc:
             raise AntigravityExecutionError(f"Antigravity CLI invocation failed: {exc}") from exc
         if completed.returncode != 0:
-            raise AntigravityExecutionError(
-                f"Antigravity CLI returned nonzero ({completed.returncode})"
-            )
-        if not stdout.strip():
             detail = stderr.strip() or stdout.strip()
-            raise AntigravityExecutionError(
-                "Antigravity ResultPackage missing" + (f": {detail}" if detail else "")
-            )
-        return stdout
+            message = f"Antigravity CLI returned nonzero ({completed.returncode})"
+            if detail:
+                message = f"{message}: {detail}"
+            raise AntigravityExecutionError(message)
+        return _antigravity_structured_output(stdout, stderr=stderr)
 
     return transport
+
+
+def _antigravity_structured_output(
+    stdout: str, *, stderr: str
+) -> Mapping[str, Any]:
+    """Extract one schema-constrained payload from the native JSON envelope."""
+
+    if not stdout.strip():
+        detail = stderr.strip()
+        raise AntigravityExecutionError(
+            "Antigravity ResultPackage missing" + (f": {detail}" if detail else "")
+        )
+    try:
+        envelope = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        detail = stderr.strip()
+        message = f"Antigravity CLI returned malformed terminal JSON: {exc}"
+        if detail:
+            message = f"{message}: {detail}"
+        raise AntigravityExecutionError(message) from exc
+    if not isinstance(envelope, Mapping):
+        raise AntigravityExecutionError(
+            "Antigravity CLI returned malformed terminal metadata: "
+            "response envelope must be a mapping"
+        )
+
+    status = envelope.get("status")
+    if not isinstance(status, str) or not status:
+        raise AntigravityExecutionError(
+            "Antigravity CLI returned malformed terminal metadata: "
+            "status must be a non-empty string"
+        )
+    response = envelope.get("response")
+    if response is not None and not isinstance(response, str):
+        raise AntigravityExecutionError(
+            "Antigravity CLI returned malformed terminal metadata: "
+            "response must be a string"
+        )
+    error = envelope.get("error")
+    if error is not None and not isinstance(error, str):
+        raise AntigravityExecutionError(
+            "Antigravity CLI returned malformed terminal metadata: "
+            "error must be a string"
+        )
+    if status != "SUCCESS":
+        detail = (error or "").strip() or stderr.strip() or (response or "").strip()
+        message = f"Antigravity CLI terminal status is {status}"
+        if detail:
+            message = f"{message}: {detail}"
+        raise AntigravityExecutionError(message)
+
+    if "structured_output" not in envelope:
+        detail = stderr.strip() or (error or "").strip() or (response or "").strip()
+        message = "Antigravity ResultPackage missing"
+        if detail:
+            message = f"{message}: {detail}"
+        raise AntigravityExecutionError(message)
+    payload = envelope["structured_output"]
+    if not isinstance(payload, Mapping):
+        raise AntigravityExecutionError(
+            "Antigravity CLI returned malformed terminal metadata: "
+            "structured_output must be a mapping"
+        )
+    return payload
 
 
 def _git(repo: Path, *args: str, strip_stdout: bool = True) -> str:

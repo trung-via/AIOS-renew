@@ -125,6 +125,29 @@ def result_payload(
     }
 
 
+def antigravity_envelope(
+    payload: object | None = None,
+    *,
+    status: object = "SUCCESS",
+    response: object = "",
+    error: object | None = None,
+) -> str:
+    envelope = {
+        "conversation_id": "conversation-test",
+        "status": status,
+        "response": response,
+        "duration_seconds": 1.0,
+        "num_turns": 1,
+        "usage": {"total_tokens": 1},
+    }
+    if error is not None:
+        envelope["error"] = error
+    if payload is not None:
+        envelope["structured_output"] = payload
+        envelope["json_schema"] = {"type": "object"}
+    return json.dumps(envelope)
+
+
 class FakeCodexRunner:
     def __init__(
         self,
@@ -212,14 +235,14 @@ class FakeAntigravityRunner:
             return subprocess.CompletedProcess(
                 command,
                 returncode=0,
-                stdout="done",
+                stdout=antigravity_envelope(response="done"),
                 stderr="",
             )
         if self.mode == "no-result-stderr":
             return subprocess.CompletedProcess(
                 command,
                 returncode=0,
-                stdout="less useful stdout",
+                stdout=antigravity_envelope(),
                 stderr="headless tool action denied",
             )
         if self.mode == "no-result-empty":
@@ -234,8 +257,16 @@ class FakeAntigravityRunner:
             (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
         )
         handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
-        if self.mode == "invalid":
-            stdout = "{}"
+        if self.mode == "malformed-json":
+            stdout = "not JSON"
+        elif self.mode == "unsuccessful":
+            stdout = antigravity_envelope(status="ERROR", error="native failure")
+        elif self.mode == "malformed-metadata":
+            stdout = antigravity_envelope(status=7)
+        elif self.mode == "malformed-payload":
+            stdout = antigravity_envelope([])
+        elif self.mode == "invalid":
+            stdout = antigravity_envelope({})
         else:
             (self.repo / "OUTPUT.txt").write_text(
                 "antigravity output\n",
@@ -245,7 +276,7 @@ class FakeAntigravityRunner:
             git(self.repo, "commit", "--quiet", "-m", "antigravity executor")
             head_sha = git(self.repo, "rev-parse", "HEAD")
             payload = result_payload(handoff["run"]["run_id"], head_sha)
-            stdout = json.dumps(payload)
+            stdout = antigravity_envelope(payload)
         return subprocess.CompletedProcess(
             command,
             returncode=0,
@@ -280,10 +311,15 @@ class StaticResultRunner:
             for item in payload["evidence"]:
                 item["run_id"] = run_id
                 item["subject_sha"] = payload["result"]["head_sha"]
+        stdout = (
+            antigravity_envelope(payload)
+            if command[0] == "agy"
+            else json.dumps(payload)
+        )
         return subprocess.CompletedProcess(
             command,
             returncode=0,
-            stdout=json.dumps(payload),
+            stdout=stdout,
             stderr="",
         )
 
@@ -329,10 +365,15 @@ class CommitResultRunner:
             head_sha,
             changed_files=self.changed_files,
         )
+        stdout = (
+            antigravity_envelope(payload)
+            if command[0] == "agy"
+            else json.dumps(payload)
+        )
         return subprocess.CompletedProcess(
             command,
             returncode=0,
-            stdout=json.dumps(payload),
+            stdout=stdout,
             stderr="",
         )
 
@@ -533,8 +574,13 @@ class RemediationRunner:
             },
             "evidence": [],
         }
+        stdout = (
+            antigravity_envelope(payload)
+            if command[0] == "agy"
+            else json.dumps(payload)
+        )
         return subprocess.CompletedProcess(
-            command, returncode=0, stdout=json.dumps(payload), stderr=""
+            command, returncode=0, stdout=stdout, stderr=""
         )
 
 
@@ -1114,7 +1160,7 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert command[command.index("--effort") + 1] == "low"
     assert command[command.index("--mode") + 1] == "accept-edits"
     assert "--disable-slash-commands" in command
-    assert command[command.index("--output-format") + 1] == "text"
+    assert command[command.index("--output-format") + 1] == "json"
     assert "--json-schema" in command
     assert command[command.index("--print-timeout") + 1] == "5m"
     assert kwargs["cwd"] == workspace
@@ -1449,7 +1495,8 @@ def test_non_structural_antigravity_stdout_fails_closed(
             native_runner=FakeAntigravityRunner(repo, mode="no-result-stderr"),
         )
 
-    assert "invalid structural ResultPackage" in str(captured.value)
+    assert "Antigravity ResultPackage missing" in str(captured.value)
+    assert "headless tool action denied" in str(captured.value)
 
 
 def test_prose_antigravity_result_fails_structural_validation(
@@ -1465,7 +1512,8 @@ def test_prose_antigravity_result_fails_structural_validation(
             native_runner=FakeAntigravityRunner(repo, mode="no-result"),
         )
 
-    assert "invalid structural ResultPackage" in str(captured.value)
+    assert "Antigravity ResultPackage missing" in str(captured.value)
+    assert "done" in str(captured.value)
 
 
 def test_missing_antigravity_result_without_diagnostic_is_generic(
@@ -1497,6 +1545,70 @@ def test_invalid_antigravity_result_fails_canonical_validation(
             native_runner=FakeAntigravityRunner(repo, mode="invalid"),
         )
     assert list(runtime_paths(repo).results.glob("*.json")) == []
+
+
+@pytest.mark.parametrize(
+    ("mode", "diagnostic"),
+    [
+        ("malformed-json", "malformed terminal JSON"),
+        ("unsuccessful", "terminal status is ERROR: native failure"),
+        ("malformed-metadata", "status must be a non-empty string"),
+        ("malformed-payload", "structured_output must be a mapping"),
+    ],
+)
+def test_invalid_antigravity_terminal_envelope_fails_once(
+    tmp_path: Path, mode: str, diagnostic: str
+) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeAntigravityRunner(repo, mode=mode)
+
+    with pytest.raises(OperatorError, match=diagnostic):
+        run_task(
+            "TASK-101",
+            executor="antigravity",
+            repo=repo,
+            native_runner=runner,
+        )
+
+    assert len(runner.calls) == 1
+    assert list(runtime_paths(repo).results.glob("*.json")) == []
+
+
+def test_antigravity_terminal_envelope_extracts_payload_without_rewriting() -> None:
+    payload = {
+        "result": {
+            "head_sha": "executor-head",
+            "claims": [
+                {
+                    "id": "executor-claim",
+                    "satisfies": ["AC2", "AC1"],
+                    "claim": "Executor-authored claim.",
+                    "evidence": [],
+                }
+            ],
+            "changed_files": ["z.txt", "a.txt"],
+            "unresolved": ["executor-authored unresolved item"],
+        },
+        "evidence": [],
+    }
+
+    extracted = operator_module._antigravity_structured_output(
+        antigravity_envelope(payload), stderr=""
+    )
+
+    assert extracted == payload
+    assert list(extracted["result"]) == [
+        "head_sha",
+        "claims",
+        "changed_files",
+        "unresolved",
+    ]
+
+
+def test_all_antigravity_execution_paths_share_terminal_normalizer() -> None:
+    source = inspect.getsource(operator_module)
+
+    assert source.count("return _antigravity_structured_output(stdout, stderr=stderr)") == 3
 
 
 def test_result_head_sha_mismatch_fails(tmp_path: Path) -> None:
