@@ -21,7 +21,8 @@ problem: >
 assumptions:
   - The frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, and REMEDIATION contracts remain authoritative.
   - Exactly one Human-selected supported Executor holds canonical mutation authority during an execution.
-  - Native process capability and canonical mutation authority are distinct: a native process may require broader technical capability while AIOS remains the authority over the permitted committed repository delta.
+  - >
+    Native process capability and canonical mutation authority are distinct: a native process may require broader technical capability while AIOS remains the authority over the permitted committed repository delta.
   - Canonical execution paths that do not authorize repository mutation do not require mutation capability.
   - Direct Candidate Acceptance invokes no Executor and is outside this change.
 
