@@ -1,0 +1,134 @@
+task_id: TASK-041
+revision: 1
+
+goal: >
+  Add Direct Candidate Acceptance for CODE_FIX remediation so that a candidate
+  commit produced directly by one Human-selected Executor can enter the existing
+  canonical AIOS remediation acceptance path without AIOS launching an Executor
+  again, while preserving deterministic lineage, scope, verification, evidence,
+  review transport, and publication safety.
+
+problem: >
+  Real remediation use has shown unnecessary Human ceremony after ChatGPT has
+  already produced a canonical REVIEW finding and narrow REMEDIATION. The Human
+  currently must relay paths or terminal instructions so AIOS can materialize
+  those artifacts and invoke an Executor, even when the Human could select that
+  same Executor directly. This duplicates handoff work without adding semantic
+  authority or verification value. AIOS needs a narrow way to accept an already
+  committed remediation candidate and apply the same canonical deterministic
+  gates before DELTA review.
+
+assumptions:
+  - The frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, and REMEDIATION contracts remain authoritative.
+  - Direct Candidate Acceptance v1 applies only to CODE_FIX remediation after a canonical CHANGES_REQUIRED review.
+  - The Human explicitly selects one Executor and is responsible for one-active-mutation-authority exclusivity before AIOS acceptance begins.
+  - Runtime does not claim to prove pre-acceptance Executor exclusivity in Direct Candidate mode.
+  - From the acceptance boundary onward Runtime remains deterministic and fail-closed.
+  - Existing remediation modification_scope and affected_verification remain canonical internal controls rather than Human-entered command arguments.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/review.py
+    - src/aios_renew/run.py
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/verification.py
+    - tests/test_operator.py
+    - README.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-v0.1.3-ARCHITECTURE-AMENDMENT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+    - README.md
+    - docs/AIOS-RENEW-v0.1.4-DIRECT-CANDIDATE-ACCEPTANCE.md
+
+non_goals:
+  - Change the frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Replace or weaken reviewed_sha binding, canonical remediation scope, affected verification, or DELTA review continuity.
+  - Add Direct Candidate Acceptance for PRIMARY execution, EVIDENCE_ONLY remediation, or REPAIR.
+  - Invoke Codex, Antigravity, or any other model during candidate acceptance.
+  - Add automatic retry, reroute, fallback, planner, router, watcher, polling, queue, database, persistent external lease, or session attachment.
+  - Reintroduce legacy AIOS Bridge behavior.
+  - Automatically publish an accepted candidate.
+  - Infer semantic correctness inside Runtime.
+  - Prescribe implementation helper names, class layout, module decomposition, or source spelling.
+
+constraints:
+  hard:
+    - Direct Candidate Acceptance must consume an already committed candidate at the current repository HEAD and must not mutate implementation files.
+    - Canonical REVIEW and REMEDIATION must be resolved deterministically from the configured Git remote without Human-provided review path, remediation path, reviewed SHA, scope, or verification command.
+    - Missing or ambiguous canonical REVIEW or REMEDIATION resolution must fail closed rather than guess.
+    - The resolved REMEDIATION must bind to its canonical REVIEW, finding, authoritative prior RESULT, and exact reviewed_sha using the existing contracts.
+    - Before canonical acceptance begins, the repository worktree must be clean, the candidate HEAD must differ from reviewed_sha for CODE_FIX, and reviewed_sha must be an ancestor of candidate HEAD.
+    - The actual committed delta from reviewed_sha to candidate HEAD must remain within the canonical REMEDIATION modification_scope and original TASK authority.
+    - Candidate acceptance must never invoke an Executor or require an Executor-generated structural ResultPackage for the already committed candidate.
+    - Runtime remains the sole canonical affected-verification and EVIDENCE authority and executes only the canonical remediation affected verification for this path.
+    - Successful verification must be followed by immutable HEAD and clean-worktree revalidation before canonical success is persisted.
+    - A successfully accepted candidate must enter the existing post-PASS result and GitHub review transport used by remediation, preserving DELTA review continuity.
+    - The same canonical review, finding, and candidate SHA must be idempotent; an already accepted unchanged candidate must reuse its canonical result without rerunning verification or implementation.
+    - Rejection before canonical admission must not create a misleading execution RUN or FAILURE; failures after canonical admission remain eligible for the existing pre-PASS failure handling.
+    - Existing aios run, aios remediate, aios repair, and terminal transport retry behavior must remain unchanged.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A Human can request Direct Candidate Acceptance for a TASK finding using
+      only the TASK identifier, finding identifier, and selected Executor identity;
+      no REVIEW path, REMEDIATION path, reviewed SHA, modification scope, or
+      verification command is required from the Human.
+  - id: AC2
+    condition: >
+      AIOS resolves exactly one canonical CODE_FIX REVIEW/REMEDIATION lineage from
+      the configured Git remote and rejects missing, conflicting, ambiguous, or
+      contract-invalid lineage without invoking any Executor.
+  - id: AC3
+    condition: >
+      A direct candidate is rejected before canonical admission when the worktree
+      is dirty, HEAD does not descend from the canonical reviewed_sha, CODE_FIX did
+      not advance HEAD, or the committed delta exceeds remediation or TASK mutation
+      authority; such rejection does not create a canonical execution failure.
+  - id: AC4
+    condition: >
+      An admissible direct candidate enters one canonical remediation execution
+      record bound to the original TASK, REVIEW, finding, reviewed_sha, selected
+      Executor identity, and current immutable candidate HEAD without launching
+      that Executor.
+  - id: AC5
+    condition: >
+      For an admitted candidate, Runtime derives the candidate head and exact
+      changed-file delta from Git rather than trusting model-authored result facts,
+      and the canonical remediation result requires no Executor-generated claims
+      or verification evidence.
+  - id: AC6
+    condition: >
+      Runtime executes only the canonical affected_verification for the admitted
+      candidate, binds generated EVIDENCE to that candidate SHA, and does not rerun
+      unaffected original verification merely because acceptance used Direct mode.
+  - id: AC7
+    condition: >
+      After successful affected verification, AIOS confirms that HEAD and worktree
+      state remain unchanged, persists the canonical remediation result, and uses
+      the existing post-PASS GitHub transport so ChatGPT can perform DELTA review.
+  - id: AC8
+    condition: >
+      Repeating Direct Candidate Acceptance for the same canonical REVIEW, finding,
+      and unchanged candidate SHA returns the already accepted canonical outcome
+      without invoking an Executor or rerunning canonical verification.
+  - id: AC9
+    condition: >
+      Direct Candidate mode is documented as Human-attested for one-active mutation
+      authority before acceptance and Runtime-enforced from the acceptance boundary
+      onward, without claiming equivalent pre-acceptance lease enforcement.
+  - id: AC10
+    condition: >
+      Existing canonical PRIMARY execution, normal REMEDIATION execution, REPAIR,
+      failure handling, and publication behavior remain unchanged.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
