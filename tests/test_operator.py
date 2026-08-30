@@ -14,6 +14,7 @@ from aios_renew.operator import (
     describe_task,
     load_task,
     resolve_repository,
+    run_repair,
     run_remediation,
     run_task,
     runtime_paths,
@@ -159,6 +160,28 @@ class FakeCodexRunner:
             returncode=0,
             stdout=json.dumps(payload),
             stderr="",
+        )
+
+
+class RepairRunner:
+    def __init__(self, repo: Path) -> None:
+        self.repo = repo
+        self.executions = []
+
+    def __call__(self, command, **kwargs):
+        execution = json.loads(
+            kwargs["input"].decode("utf-8").split("REPAIR_INPUT:\n", 1)[1]
+        )
+        self.executions.append(execution)
+        (self.repo / "OUTPUT.txt").write_text(
+            f"repaired by {execution['repair']['repair_id']}\n", encoding="utf-8"
+        )
+        git(self.repo, "add", "OUTPUT.txt")
+        git(self.repo, "commit", "--quiet", "-m", execution["repair"]["repair_id"])
+        head_sha = git(self.repo, "rev-parse", "HEAD")
+        payload = result_payload(execution["run"]["run_id"], head_sha)
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=json.dumps(payload), stderr=""
         )
 
 
@@ -2052,5 +2075,110 @@ def test_transport_remote_resolution_fails_closed_without_remote_fallback(tmp_pa
 
     with pytest.raises(ReviewTransportError, match="no configured upstream Git remote for current branch"):
         resolve_transport_remote(repo)
+
+
+def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    root_base_sha = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("failed candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "failed candidate")
+    first_failed_head = git(repo, "rev-parse", "HEAD")
+    first_run_id = "RUN-101-001"
+    (state.runs / f"{first_run_id}.json").write_text(
+        json.dumps(
+            {
+                "run_id": first_run_id,
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "codex",
+                "base_sha": root_base_sha,
+                "workspace": str(repo),
+                "head_sha": None,
+                "status": "ACTIVE",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (state.failures / f"{first_run_id}.json").write_text(
+        json.dumps(
+            {
+                "kind": "FAILURE",
+                "run_id": first_run_id,
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "codex",
+                "base_sha": root_base_sha,
+                "failed_head_sha": first_failed_head,
+                "candidate": {
+                    "repairable": True,
+                    "changed_files": ["OUTPUT.txt"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def repair(repair_id: str, failed_run_id: str, failed_head_sha: str) -> dict:
+        return {
+            "repair_id": repair_id,
+            "failed_run_id": failed_run_id,
+            "failed_head_sha": failed_head_sha,
+            "task": {"id": "TASK-101", "revision": 1},
+            "action": "CODE_FIX",
+            "modification_scope": ["OUTPUT.txt"],
+            "instructions": [f"Apply semantic decision {repair_id}."],
+            "constraints": ["Commit the output."],
+        }
+
+    runner = RepairRunner(repo)
+
+    def failing_verifier(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, returncode=1, stdout=b"", stderr=b"still failing"
+        )
+
+    with pytest.raises(OperatorError):
+        run_repair(
+            first_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair("REPAIR-1", first_run_id, first_failed_head),
+            native_runner=runner,
+            verification_runner=failing_verifier,
+        )
+
+    continuation_run_id = "RUN-101-002"
+    continuation_failure = json.loads(
+        (state.failures / f"{continuation_run_id}.json").read_text(encoding="utf-8")
+    )
+    continuation_head = continuation_failure["failed_head_sha"]
+    assert continuation_failure["continuation_of"] == first_run_id
+
+    summary = run_repair(
+        continuation_run_id,
+        executor="codex",
+        repo=repo,
+        repair=repair("REPAIR-2", continuation_run_id, continuation_head),
+        native_runner=runner,
+    )
+
+    lineage = json.loads(
+        (state.repairs / f"{summary.run_id}.json").read_text(encoding="utf-8")
+    )
+    assert summary.run_id == "RUN-101-003"
+    assert lineage["failed_run_id"] == continuation_run_id
+    assert lineage["root_base_sha"] == root_base_sha
+    assert runner.executions[-1]["root_base_sha"] == root_base_sha
+
+    with pytest.raises(OperatorError, match="already been accepted"):
+        run_repair(
+            continuation_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair("REPAIR-3", continuation_run_id, continuation_head),
+            native_runner=runner,
+        )
 
 

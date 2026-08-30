@@ -842,8 +842,21 @@ def _run_repair_impl(
     failure = json.loads(failure_path.read_text(encoding="utf-8"))
     if failure.get("kind") != "FAILURE" or failure.get("run_id") != failed_run_id:
         raise OperatorError("invalid persisted FAILURE lineage")
-    if failure.get("continuation_of") is not None:
-        raise OperatorError("recursive REPAIR is not allowed")
+    continuation_of = failure.get("continuation_of")
+    if continuation_of is None:
+        root_base_sha = failure.get("base_sha")
+    else:
+        prior_execution_path = state.repairs / f"{failed_run_id}.json"
+        if not prior_execution_path.is_file():
+            raise OperatorError("persisted REPAIR lineage not found")
+        prior_execution = json.loads(
+            prior_execution_path.read_text(encoding="utf-8")
+        )
+        if prior_execution.get("failed_run_id") != continuation_of:
+            raise OperatorError("invalid persisted REPAIR lineage")
+        root_base_sha = prior_execution.get("root_base_sha")
+    if not isinstance(root_base_sha, str) or not root_base_sha:
+        raise OperatorError("invalid original TASK root lineage")
     candidate = failure.get("candidate")
     if not isinstance(candidate, Mapping) or candidate.get("repairable") is not True:
         raise OperatorError("failed candidate is not safely bound for REPAIR")
@@ -917,7 +930,7 @@ def _run_repair_impl(
         staging_path = state.staging / f"{run_id}.json"
         execution = {
             "failed_run_id": failed_run_id,
-            "root_base_sha": failure["base_sha"],
+            "root_base_sha": root_base_sha,
             "failed_head_sha": failed_head,
             "failure": failure,
             "task": _executor_task_data(task),
@@ -969,7 +982,7 @@ def _run_repair_impl(
         if action == "NO_CHANGE" and actual_head != failed_head:
             raise OperatorError("NO_CHANGE REPAIR changed HEAD")
         _require_changed_files(
-            repo, task, package, base_sha=failure["base_sha"], actual_head=actual_head
+            repo, task, package, base_sha=root_base_sha, actual_head=actual_head
         )
         _require_complete_result(task, package)
         try:
