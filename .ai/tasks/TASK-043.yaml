@@ -1,0 +1,164 @@
+task_id: TASK-043
+revision: 1
+
+goal: >
+  Repair the supported native schema-bearing structured-output transport so a
+  canonical AIOS execution can obtain the Executor's structural ResultPackage
+  through a CLI-valid non-interactive response contract, normalize any
+  transport-owned response envelope before canonical structural validation, and
+  fail closed on invalid native output without retrying or changing downstream
+  TASK, verification, review, or publication semantics.
+
+problem: >
+  The current schema-bearing native transport combines a structured-output schema
+  option with an output mode that the native CLI rejects during argument
+  validation. The Executor therefore never starts. Existing operator tests encode
+  that invalid command combination and fake a bare ResultPackage on stdout, so
+  they can pass without exercising the native response shape. AIOS needs a narrow
+  transport correction that uses a CLI-valid schema/output contract and converts
+  the native terminal response into the same structural ResultPackage already
+  expected by Runtime.
+
+assumptions:
+  - >
+    Current canonical repository baseline is
+    2d9cfc123b5019ebd846721ee8c0875bc939413e.
+  - >
+    TASK-042 mutation-capability, Runtime-state ownership, and single-Executor
+    semantics remain authoritative and are not being redesigned.
+  - >
+    src/aios_renew/schemas/result_package.json remains the structural output
+    schema required from a PRIMARY Executor result.
+  - >
+    Runtime already owns downstream structural ResultPackage validation,
+    canonical verification, EVIDENCE construction, repository gates, and
+    post-PASS review transport.
+  - >
+    A native structured-output CLI may return transport metadata around the
+    schema-constrained model payload; that transport metadata is not itself the
+    canonical structural ResultPackage.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-042.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/schemas/result_package.json
+    - tests/test_operator.py
+    - docs/AIOS-RENEW-v0.1.3-ARCHITECTURE-AMENDMENT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change native mutation-capability selection introduced by TASK-042.
+  - Change the frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Change canonical verification commands, EVIDENCE generation, repository
+    integrity gates, semantic review, remediation, repair, or publication behavior.
+  - Introduce automatic Executor retry, reroute, fallback, or a second model invocation.
+  - Restore direct Executor persistence of Runtime-owned operational state.
+  - Add a new Executor, planner, router, semantic verifier, or execution layer.
+  - Redesign all executor transports or perform unrelated operator refactoring.
+  - Require a new Human-supplied native output, permission, or sandbox argument.
+
+constraints:
+  hard:
+    - >
+      Any native invocation that supplies a structured-output schema must use an
+      output contract accepted by that CLI; AIOS must not knowingly combine the
+      schema option with an incompatible output mode.
+    - >
+      The selected Executor must still be invoked at most once for one canonical
+      execution attempt; native output parsing or transport failure must not
+      trigger automatic retry, reroute, fallback, or another model call.
+    - >
+      Runtime must distinguish transport-owned response metadata from the
+      schema-constrained structural payload and pass only the structural payload
+      into the existing ResultPackage validation path.
+    - >
+      A successful native structured response must normalize to the same bare
+      structural ResultPackage contract already consumed downstream; no new
+      executor-specific fields may enter the canonical structural contract.
+    - >
+      Nonzero native exit, malformed terminal output, malformed transport
+      metadata, an explicitly unsuccessful native terminal response, missing
+      structured payload, or a payload that cannot satisfy the existing
+      structural contract must fail closed with preserved diagnostics.
+    - >
+      Transport normalization must not manufacture missing ResultPackage fields,
+      claims, acceptance IDs, changed files, unresolved items, or evidence.
+    - >
+      PRIMARY, REMEDIATION, and REPAIR execution paths that use the affected
+      native structured-output transport must obey the same corrected native
+      output and fail-closed normalization rule appropriate to their existing
+      structural contracts.
+    - >
+      Runtime remains responsible for persistence of Runtime-owned staging and
+      canonical state after capturing Executor output; the Executor must not be
+      required to write Runtime-owned operational state solely to return its
+      structural result.
+    - >
+      TASK-042 mutation capability, scope enforcement, final local commit
+      boundary, no-push rule, canonical verification, and review/publication
+      lineage must otherwise remain unchanged.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A canonical execution using the affected schema-bearing native transport
+      constructs a CLI invocation whose output mode and schema options are
+      mutually valid, so native argument validation does not reject the command
+      solely because structured schema output was requested.
+
+  - id: AC2
+    condition: >
+      A successful native terminal structured response is deterministically
+      normalized so downstream AIOS receives exactly the existing structural
+      ResultPackage payload rather than transport-owned envelope metadata.
+
+  - id: AC3
+    condition: >
+      The normalized structural payload preserves the Executor-authored
+      head_sha, claims, changed_files, unresolved items, and structural evidence
+      fields exactly as supplied and does not fabricate or reinterpret them.
+
+  - id: AC4
+    condition: >
+      Nonzero exit, malformed terminal JSON or equivalent native response,
+      malformed or explicitly unsuccessful terminal metadata, missing structured
+      payload, and invalid structural payload all fail closed with useful native
+      diagnostics and without a second Executor invocation.
+
+  - id: AC5
+    condition: >
+      PRIMARY, REMEDIATION, and REPAIR paths using the affected native transport
+      retain their existing semantic and structural contracts while sharing the
+      corrected native output-normalization boundary rather than maintaining
+      incompatible response assumptions.
+
+  - id: AC6
+    condition: >
+      Focused operator tests model the native terminal response shape used by the
+      corrected structured-output transport, prove extraction of the structural
+      payload, cover malformed and unsuccessful terminal responses, and include
+      regression coverage preventing the previously rejected schema/output-mode
+      combination from returning.
+
+  - id: AC7
+    condition: >
+      Correcting structured-output transport does not change mutation-capability
+      selection, TASK or continuation scope authority, repository gates,
+      canonical verification, Runtime-generated EVIDENCE, review transport,
+      remediation, repair, or publication semantics.
+
+  - id: AC8
+    condition: >
+      The Executor still returns structural output through Runtime capture rather
+      than direct persistence of Runtime-owned operational state, and one
+      canonical execution attempt invokes no more than one Executor process.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
