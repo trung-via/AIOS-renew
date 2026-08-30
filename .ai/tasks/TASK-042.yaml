@@ -1,0 +1,128 @@
+task_id: TASK-042
+revision: 1
+
+goal: >
+  Make every canonical AIOS execution path that authorizes repository mutation
+  establish sufficient non-interactive native mutation capability before the
+  single selected Executor is invoked, so the Human does not need to supply
+  executor-native permission or sandbox arguments while canonical mutation
+  authority, Runtime ownership, and all downstream semantics remain unchanged.
+
+problem: >
+  Current native execution can begin with a capability mode that is insufficient
+  to perform an otherwise authorized repository mutation, causing an Executor to
+  read the repository but fail to edit, stage, or commit unless the Human supplies
+  backend-specific permission arguments. The current structural return path also
+  requires an Executor to persist Runtime-owned staging state solely to return its
+  execution result. These behaviors create avoidable execution failures and Human
+  ceremony at the executor boundary even though canonical scope, mutation
+  authority, and deterministic post-execution gates are already owned by AIOS.
+
+assumptions:
+  - The frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, and REMEDIATION contracts remain authoritative.
+  - Exactly one Human-selected supported Executor holds canonical mutation authority during an execution.
+  - Native process capability and canonical mutation authority are distinct: a native process may require broader technical capability while AIOS remains the authority over the permitted committed repository delta.
+  - Canonical execution paths that do not authorize repository mutation do not require mutation capability.
+  - Direct Candidate Acceptance invokes no Executor and is outside this change.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - README.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-v0.1.3-ARCHITECTURE-AMENDMENT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - README.md
+
+non_goals:
+  - Change the frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Broaden TASK.scope.modify, REMEDIATION modification_scope, or REPAIR correction authority.
+  - Introduce automatic Executor retry, reroute, fallback, or a second model invocation after a permission failure.
+  - Add a planner, router, semantic verifier, additional execution layer, or new Executor.
+  - Redesign host-wide sandboxing or claim machine-wide confinement of an Executor.
+  - Require a new Human-supplied per-run executor-native permission or sandbox argument.
+  - Change Direct Candidate Acceptance.
+  - Change canonical verification, evidence generation, semantic review, remediation, failure transport, or publication semantics.
+  - Perform a general executor transport refactor beyond the minimum required to remove unnecessary Executor persistence of Runtime-owned state.
+
+constraints:
+  hard:
+    - Native execution capability must be resolved deterministically before the selected Executor process is invoked and without using another AI model or semantic reasoning layer.
+    - A canonical mutation-authorizing execution must receive sufficient non-interactive native capability to perform its permitted repository mutations and the final local Git commit required by its existing contract.
+    - A canonical execution that does not authorize repository mutation must not gain mutation capability solely because mutation-capable execution is supported.
+    - Capability resolution must preserve exactly one active Executor invocation and must not retry, reroute, or invoke another model after a permission or capability failure.
+    - Native technical capability must never be treated as canonical mutation authority; existing committed-delta, scope, HEAD, and worktree gates remain authoritative.
+    - The same semantic TASK or continuation contract and the same structural ResultPackage contract must remain usable by every supported Executor.
+    - Executor-facing semantic contracts must not contain executor-native permission policy, sandbox arguments, or backend-specific workflow.
+    - Returning structural execution output must not require an Executor to directly persist Runtime-owned operational state solely for transport; Runtime remains responsible for persistence of its own operational state after capturing Executor output.
+    - Runtime remains the sole canonical verification and EVIDENCE authority, and canonical verification commands remain excluded from Executor-facing input.
+    - Executor implementation still ends at the permitted final local commit and must not push.
+    - Existing PRIMARY, REMEDIATION, REPAIR, failure, review-transport, and publication lineage semantics must otherwise remain unchanged.
+
+acceptance:
+  - id: AC1
+    condition: >
+      For every canonical execution path that authorizes repository mutation,
+      the Human can invoke AIOS using the existing canonical semantic arguments
+      and selected Executor without supplying an executor-native permission or
+      sandbox argument and without an interactive permission prompt being
+      required for the authorized mutation lifecycle.
+
+  - id: AC2
+    condition: >
+      Before the single Executor process starts, AIOS deterministically resolves
+      whether the canonical execution authorizes mutation and selects native
+      execution capability sufficient for that authority; non-mutating execution
+      does not receive mutation capability solely because mutating execution is
+      supported.
+
+  - id: AC3
+    condition: >
+      Permission or capability handling never causes automatic Executor retry,
+      reroute, fallback, or a second model invocation; inability to establish the
+      required execution capability fails closed without duplicating Executor work.
+
+  - id: AC4
+    condition: >
+      A mutation-authorizing Executor invocation can perform the existing local
+      implementation lifecycle required by its canonical contract, including
+      permitted file mutation and final local Git commit, without additional
+      Human permission ceremony.
+
+  - id: AC5
+    condition: >
+      Native execution capability does not broaden canonical mutation authority:
+      committed changes outside TASK.scope.modify or the applicable continuation
+      scope remain rejected by the existing Runtime repository gates.
+
+  - id: AC6
+    condition: >
+      Executor-facing handoff or instructions no longer require direct persistence
+      of Runtime-owned operational state solely to return structural execution
+      output, while Runtime continues to persist its own staging and canonical
+      state after capturing that output.
+
+  - id: AC7
+    condition: >
+      Every supported Executor continues to receive the same semantic execution
+      contract and produce the same structural ResultPackage contract, with
+      executor-native capability differences confined to the existing native
+      execution boundary.
+
+  - id: AC8
+    condition: >
+      Canonical verification, Runtime-generated EVIDENCE, immutable SHA binding,
+      semantic review, narrow remediation, REPAIR, failure handling, review
+      transport, and publication behavior remain unchanged.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
