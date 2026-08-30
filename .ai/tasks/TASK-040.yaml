@@ -1,0 +1,139 @@
+task_id: TASK-040
+revision: 1
+
+goal: >
+  Complete the missing pre-PASS feedback path so that a failed canonical RUN
+  can expose minimum-sufficient deterministic failure facts through GitHub,
+  receive one ChatGPT-authored narrow REPAIR bound to that failed state,
+  and continue execution without restarting the original TASK.
+
+problem: >
+  AIOS currently transports successful canonical ResultPackages for ChatGPT
+  review, but failures after a RUN is created remain local Operator errors.
+  This forces the Human to manually relay terminal output and repair instructions
+  between AIOS, ChatGPT, and the Executor. The missing path also makes a
+  post-PASS transport failure look operationally similar to an implementation
+  failure even though implementation and canonical verification may already
+  have succeeded.
+
+assumptions:
+  - The frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, and REMEDIATION contracts remain authoritative.
+  - Existing post-PASS GitHub transport remains the review transport for successful runs.
+  - Runtime remains deterministic and does not diagnose root cause.
+  - ChatGPT remains the semantic authority that decides whether a failed RUN warrants REPAIR, TASK revision, AIOS work, or environment/operator action.
+  - Exactly one Executor remains the mutation authority for an execution.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/executor.py
+    - src/aios_renew/run.py
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/review.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+
+non_goals:
+  - Change the frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Turn FAILURE into REVIEW or REPAIR into REMEDIATION.
+  - Add automatic retry, reroute, fallback, watcher, polling, planner, verifier agent, queue, database, or orchestration layer.
+  - Reintroduce legacy AIOS Bridge behavior.
+  - Diagnose root cause inside Runtime.
+  - Automatically repair dirty or otherwise non-bindable repository state.
+  - Restart the original TASK during REPAIR.
+  - Automatically publish a failed candidate that has not passed repository authority gates.
+  - Upload raw executor or verification logs by default.
+  - Prescribe implementation helper names, class layout, module decomposition, prompt wording, or source spelling.
+
+constraints:
+  hard:
+    - FAILURE handling begins only after a canonical RUN has been persisted.
+    - Runtime records deterministic failure facts; ChatGPT owns semantic diagnosis.
+    - A REPAIR must bind to the exact failed RUN and failed committed state before execution.
+    - REPAIR must preserve the original TASK semantic contract and must not introduce new Human intent.
+    - REPAIR must not synchronize away from its bound failed state before execution.
+    - Exactly one Executor may execute one authorized REPAIR at a time.
+    - Codex and Antigravity must receive equivalent semantic REPAIR contracts while retaining native execution behavior.
+    - Runtime remains the sole canonical verification and canonical EVIDENCE authority.
+    - A successful repaired candidate must be validated as the complete original TASK outcome from the original TASK base to the final HEAD.
+    - Post-PASS transport failure must not rerun Executor implementation or canonical verification.
+
+acceptance:
+  - id: AC1
+    condition: >
+      When a RUN fails after being persisted but before canonical PASS, AIOS
+      persists minimum-sufficient deterministic failure facts and can transport
+      them through GitHub without requiring Human copy/paste.
+  - id: AC2
+    condition: >
+      Failure transport preserves the original execution failure as primary;
+      a failure of the transport itself does not replace the original failure
+      and does not invoke the Executor again.
+  - id: AC3
+    condition: >
+      A failed candidate is exposed as an immutable Git candidate only when its
+      committed repository state is safe for transport; dirty, unbound, or
+      authority-violating candidate content is not automatically published.
+  - id: AC4
+    condition: >
+      One ChatGPT-authored REPAIR can be obtained through GitHub and is accepted
+      only when it matches the failed RUN, failed committed state, original TASK
+      lineage, clean current repository state, and authorized correction scope.
+  - id: AC5
+    condition: >
+      An accepted REPAIR creates a continuation execution rather than restarting
+      PRIMARY discovery or synchronizing back to upstream, and invokes exactly
+      one explicitly selected Executor.
+  - id: AC6
+    condition: >
+      Both Codex and Antigravity can execute the same semantic REPAIR contract
+      without receiving Runtime-owned canonical verification commands or
+      constructing canonical verification EVIDENCE.
+  - id: AC7
+    condition: >
+      REPAIR supports both a code correction that advances HEAD and a correction
+      requiring no repository mutation when the failed committed state itself
+      does not need code changes.
+  - id: AC8
+    condition: >
+      After REPAIR, Runtime validates the final candidate against the complete
+      original TASK delta from the root TASK base to final HEAD, including
+      original TASK scope and completion, rather than treating only the repair
+      delta as the TASK result.
+  - id: AC9
+    condition: >
+      A previous unauthorized committed delta may be removed during correction
+      only if the final original-base-to-final-HEAD state contains no unauthorized
+      TASK changes; REPAIR does not grant new intended product scope.
+  - id: AC10
+    condition: >
+      Canonical verification remains Runtime-owned. Verification failure on the
+      repaired candidate produces another failure outcome rather than an
+      automatic retry, reroute, or recursive repair.
+  - id: AC11
+    condition: >
+      A successful repaired candidate enters the existing post-PASS ResultPackage
+      and ChatGPT review path, and its PRIMARY review lineage represents the
+      complete original TASK implementation rather than only the final repair delta.
+  - id: AC12
+    condition: >
+      An already persisted terminal PASS or FAILURE can have its GitHub transport
+      retried independently without rerunning Executor implementation or canonical
+      verification.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py -q
