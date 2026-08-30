@@ -1137,42 +1137,67 @@ def _git_is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
 def run_remediation(
     task_id: str,
     *,
-    review: Review | str | Path,
-    remediation: Remediation | str | Path,
+    review: Review | str | Path | None = None,
+    remediation: Remediation | str | Path | None = None,
     prior_review: Review | str | Path | None = None,
+    finding_id: str | None = None,
     executor: str,
     repo: str | Path | None = None,
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
 ) -> RemediationSummary:
-    """Execute one bound remediation without entering the TASK execution path."""
+    """Execute one bound remediation without entering the TASK execution path.
+
+    Explicit artifact mode accepts REVIEW and REMEDIATION inputs. Remote canonical
+    mode accepts a finding id and resolves those inputs from immutable remote refs.
+    """
 
     root = resolve_repository(repo)
     task = load_task(root, task_id)
-    canonical_review = (
-        review if isinstance(review, Review) else load_review(review)
+    explicit_mode = (
+        review is not None or remediation is not None or prior_review is not None
     )
-    canonical_remediation = (
-        remediation
-        if isinstance(remediation, Remediation)
-        else load_remediation(remediation)
-    )
-    canonical_prior_review = (
-        None
-        if prior_review is None
-        else (
-            prior_review
-            if isinstance(prior_review, Review)
-            else load_review(prior_review)
+    remote_mode = finding_id is not None
+    if explicit_mode and remote_mode:
+        raise OperatorError(
+            "remote finding mode cannot be mixed with explicit REVIEW/REMEDIATION artifacts"
         )
-    )
+    if remote_mode:
+        canonical_review, canonical_remediation, prior_result, canonical_prior_review = (
+            _resolve_remote_remediation_lineage(
+                root, task=task, finding_id=finding_id
+            )
+        )
+    else:
+        if review is None or remediation is None:
+            raise OperatorError(
+                "remediation requires either --finding or both --review and --remediation"
+            )
+        canonical_review = (
+            review if isinstance(review, Review) else load_review(review)
+        )
+        canonical_remediation = (
+            remediation
+            if isinstance(remediation, Remediation)
+            else load_remediation(remediation)
+        )
+        canonical_prior_review = (
+            None
+            if prior_review is None
+            else (
+                prior_review
+                if isinstance(prior_review, Review)
+                else load_review(prior_review)
+            )
+        )
+        state = runtime_paths(root)
+        prior_result = _load_authoritative_prior_result(
+            state,
+            task,
+            canonical_review.reviewed_sha,
+            repo=root,
+        )
     state = runtime_paths(root)
-    prior_result = _load_authoritative_prior_result(
-        state,
-        task,
-        canonical_review.reviewed_sha,
-        repo=root,
-    )
     try:
         validate_review(
             task=task,
@@ -1518,22 +1543,41 @@ def _accept_candidate_impl(
 def _resolve_direct_lineage(
     repo: Path, *, task: Task, finding_id: str
 ) -> tuple[Review, Remediation, Result, Review | None]:
+    return _resolve_remote_remediation_lineage(
+        repo, task=task, finding_id=finding_id, context="direct candidate"
+    )
+
+
+def _resolve_remote_remediation_lineage(
+    repo: Path,
+    *,
+    task: Task,
+    finding_id: str,
+    context: str = "remote remediation",
+) -> tuple[Review, Remediation, Result, Review | None]:
+    """Resolve exactly one contract-valid remote lineage without heuristics."""
+
     try:
         remote_lineages = resolve_remote_remediation_lineages(
             repo, finding_id=finding_id
         )
     except ReviewTransportError as exc:
-        raise OperatorError(f"direct candidate lineage resolution failed: {exc}") from exc
+        raise OperatorError(f"{context} lineage resolution failed: {exc}") from exc
 
     matches: list[tuple[Review, Remediation, Result, Review | None]] = []
     for remote in remote_lineages:
         parsed = _parse_remote_direct_lineage(repo, task=task, remote=remote)
         if parsed is not None:
+            if parsed[1].finding_id != finding_id:
+                raise OperatorError(
+                    f"contract-invalid canonical lineage at {remote.ref}: "
+                    "REMEDIATION finding does not match requested finding"
+                )
             matches.append(parsed)
     if not matches:
-        raise OperatorError("canonical CODE_FIX REVIEW/REMEDIATION lineage not found")
+        raise OperatorError(f"canonical {context} lineage not found")
     if len(matches) != 1:
-        raise OperatorError("canonical CODE_FIX REVIEW/REMEDIATION lineage is ambiguous")
+        raise OperatorError(f"canonical {context} lineage is ambiguous")
     return matches[0]
 
 
@@ -1584,9 +1628,6 @@ def _parse_remote_direct_lineage(
             raise ValueError("REVIEW does not bind to authoritative source RESULT")
         if remediation.finding_id not in {item.id for item in review.findings}:
             raise ValueError("REMEDIATION finding is absent from REVIEW")
-        if remediation.action != "CODE_FIX":
-            raise ValueError("REMEDIATION is not CODE_FIX")
-
         prior_review = None
         if review.prior_finding_id is not None:
             if prior_execution is None:
@@ -2192,8 +2233,9 @@ def _parser() -> argparse.ArgumentParser:
         "remediate", help="Execute one canonical narrow REMEDIATION"
     )
     remediation_parser.add_argument("task_id")
-    remediation_parser.add_argument("--review", required=True)
-    remediation_parser.add_argument("--remediation", required=True)
+    remediation_parser.add_argument("--finding")
+    remediation_parser.add_argument("--review")
+    remediation_parser.add_argument("--remediation")
     remediation_parser.add_argument("--prior-review")
     remediation_parser.add_argument(
         "--executor", required=True, choices=("codex", "antigravity")
@@ -2244,6 +2286,7 @@ def main(argv: list[str] | None = None) -> int:
                 review=args.review,
                 remediation=args.remediation,
                 prior_review=args.prior_review,
+                finding_id=args.finding,
                 executor=args.executor,
                 repo=args.repo,
             )

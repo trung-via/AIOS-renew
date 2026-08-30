@@ -24,6 +24,35 @@ aios run TASK-101 --executor antigravity
 
 Use `--repo PATH` to target a repository other than the current Git repository.
 
+## Canonical remediation
+
+After reviewing a canonical `CHANGES_REQUIRED` finding, a Human authorizes one
+normal remediation and selects its sole Executor with no local artifact courier:
+
+```powershell
+aios remediate TASK-101 --finding F1 --executor codex
+```
+
+AIOS resolves exactly one immutable, contract-valid REVIEW, REMEDIATION, source
+RUN/RESULT, reviewed SHA, and any prior-review continuity from the configured Git
+remote. Missing, invalid, mismatched, or ambiguous lineage fails before RUN
+admission or Executor invocation. Resolution reads Git objects without checking
+out review or remediation branches. The resolved artifacts then enter the same
+normal REMEDIATION boundary, including canonical scope, affected verification,
+Runtime-owned evidence, repository gates, and post-PASS DELTA-review transport.
+
+Callers that deliberately materialize canonical artifacts may retain the explicit
+mode (and add `--prior-review` when a DELTA REVIEW requires it):
+
+```powershell
+aios remediate TASK-101 --review .ai/reviews/REVIEW-101-001.yaml `
+  --remediation .ai/remediations/REMEDIATION-101-001-F1.yaml --executor codex
+```
+
+`--finding` cannot be mixed with `--review`, `--remediation`, or
+`--prior-review`. In either mode, the command is the Human execution-authorization
+boundary and AIOS invokes only the selected Executor, with no retry or fallback.
+
 ## Direct Candidate Acceptance
 
 For a committed candidate produced directly by one Human-selected Executor in

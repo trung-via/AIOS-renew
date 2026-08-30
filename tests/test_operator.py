@@ -638,6 +638,79 @@ def test_narrow_remediation_uses_shared_completion_policy(
         assert remediation.affected_verification == ("git diff --check",)
 
 
+def test_remote_remediation_resolves_lineage_and_uses_normal_boundary(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    remediation_contract(repo)
+    publish_direct_candidate_lineage(repo, tmp_path)
+    baseline = git(repo, "rev-parse", "HEAD")
+    runner = RemediationRunner(repo)
+
+    summary = run_remediation(
+        "TASK-101",
+        finding_id="R1",
+        executor="codex",
+        repo=repo,
+        native_runner=runner,
+    )
+    run_data = json.loads(
+        (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert summary.review_id == "REVIEW-101-001"
+    assert summary.finding_id == "R1"
+    assert summary.reviewed_sha == baseline
+    assert summary.head_sha != baseline
+    assert len(runner.calls) == 1
+    assert run_data["kind"] == "REMEDIATION"
+    assert run_data["execution"]["run"]["executor"] == "codex"
+    assert git(repo, "status", "--porcelain") == ""
+
+
+def test_remote_remediation_resolution_failure_invokes_no_executor(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    calls = []
+    state = runtime_paths(repo)
+
+    with pytest.raises(OperatorError, match="lineage not found"):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+            native_runner=lambda *args, **kwargs: calls.append((args, kwargs)),
+        )
+
+    assert calls == []
+    assert list(state.runs.glob("*.json")) == []
+
+
+def test_remediation_rejects_mixed_remote_and_explicit_modes(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo)
+    calls = []
+
+    with pytest.raises(OperatorError, match="cannot be mixed"):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            review=review,
+            remediation=remediation,
+            executor="codex",
+            repo=repo,
+            native_runner=lambda *args, **kwargs: calls.append((args, kwargs)),
+        )
+
+    assert calls == []
+
+
 def test_direct_candidate_acceptance_resolves_remote_lineage_without_executor(
     tmp_path: Path,
 ) -> None:
