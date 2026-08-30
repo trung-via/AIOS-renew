@@ -1,0 +1,11 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: d33404d019927928ac708fce3ea7a5f55b067b6e
+modification_scope:
+  - src/aios_renew/operator.py
+  - tests/test_operator.py
+  - docs/AIOS-RENEW-v0.1.4-DIRECT-CANDIDATE-ACCEPTANCE.md
+affected_verification:
+  - python -m pytest tests/test_operator.py -q
+  - git diff --check
+constraints: []
