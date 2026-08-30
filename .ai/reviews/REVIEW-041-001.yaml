@@ -1,0 +1,37 @@
+review_id: REVIEW-041-001
+reviewed_sha: d33404d019927928ac708fce3ea7a5f55b067b6e
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: FAIL
+  AC9: PASS
+  AC10: PASS
+findings:
+  - id: F1
+    basis: AC8
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_accepted_candidate_summary
+    issue: >
+      Direct Candidate Acceptance is not idempotent for the contract-defined
+      key of canonical REVIEW, finding, and unchanged candidate SHA when a
+      repeated request supplies a different Executor identity. The existing
+      accepted direct-candidate RUN is found, but _accepted_candidate_summary
+      raises "candidate was already accepted for a different Executor identity"
+      instead of returning that already accepted canonical outcome. TASK-041 AC8
+      and its hard idempotency constraint do not include Executor identity in the
+      idempotency key. The v0.1.4 document also narrows idempotency by adding the
+      selected Executor to the repeated-request identity.
+    expected: >
+      Once a canonical direct-candidate outcome exists for the same REVIEW,
+      finding, and candidate SHA, any repeated acceptance request for that
+      unchanged candidate returns the existing accepted outcome without invoking
+      an Executor or rerunning affected verification. Preserve the Executor
+      identity recorded by the original accepted RUN; do not rewrite it from the
+      repeated request. Align the v0.1.4 documentation with that contract.
