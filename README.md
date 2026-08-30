@@ -44,15 +44,19 @@ canonical affected verification. Successful candidates use the existing
 post-PASS review transport for ChatGPT DELTA review. See
 `docs/AIOS-RENEW-v0.1.4-DIRECT-CANDIDATE-ACCEPTANCE.md`.
 
-### Explicit unsafe Windows Codex opt-in
+## Native execution capability
 
-The Codex sandbox defaults to `workspace-write`. Where the documented native
-Windows ACL limitation prevents execution, a Human may explicitly opt into:
+The Human supplies only the canonical command arguments shown above. Before the
+single selected Executor process starts, AIOS deterministically derives native
+capability from the canonical contract: mutation-authorizing PRIMARY,
+`CODE_FIX` REMEDIATION, and `CODE_FIX` REPAIR executions receive non-interactive
+mutation capability; read-only PRIMARY, `EVIDENCE_ONLY` REMEDIATION, and
+`NO_CHANGE` REPAIR executions remain read-only. Permission or capability
+failure does not trigger retry, reroute, fallback, or another model invocation.
 
-```powershell
-aios run TASK-101 --executor codex `
-  --codex-sandbox danger-full-access
-```
-
-`danger-full-access` is unsafe and is never selected automatically or used as
-the production default.
+Native capability is only a process prerequisite. TASK modification scope and
+the applicable REMEDIATION or REPAIR scope remain canonical authority, and the
+existing Runtime committed-delta, clean-worktree, and HEAD gates reject changes
+outside that authority. Executors return the structural ResultPackage through
+their native output; Runtime persists staging and all canonical operational
+state after capturing it.

@@ -26,7 +26,12 @@ from .artifacts import (
     validate_result,
     validate_result_package,
 )
-from .codex_adapter import CodexAdapter, CodexExecutionError, CodexOutputError
+from .codex_adapter import (
+    RESULT_PACKAGE_SCHEMA_PATH,
+    CodexAdapter,
+    CodexExecutionError,
+    CodexOutputError,
+)
 from .executor import ExecutorBoundary, ExecutorBoundaryError
 from .review_transport import (
     RemoteRemediationLineage,
@@ -58,7 +63,36 @@ from .verification import (
 
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
-CODEX_SANDBOXES = ("workspace-write", "danger-full-access")
+
+
+@dataclass(frozen=True)
+class NativeExecutionCapability:
+    """Executor-native capability selected from canonical mutation authority."""
+
+    authorizes_mutation: bool
+    codex_sandbox: str
+    antigravity_mode: str
+    antigravity_skip_permissions: bool
+
+
+def _resolve_native_execution_capability(
+    *, authorizes_mutation: bool
+) -> NativeExecutionCapability:
+    """Resolve one fail-closed native profile before invoking an Executor."""
+
+    if authorizes_mutation:
+        return NativeExecutionCapability(
+            authorizes_mutation=True,
+            codex_sandbox="danger-full-access",
+            antigravity_mode="accept-edits",
+            antigravity_skip_permissions=True,
+        )
+    return NativeExecutionCapability(
+        authorizes_mutation=False,
+        codex_sandbox="read-only",
+        antigravity_mode="plan",
+        antigravity_skip_permissions=False,
+    )
 
 
 class OperatorError(RuntimeError):
@@ -487,7 +521,6 @@ def run_task(
     *,
     executor: str,
     repo: str | Path | None = None,
-    codex_sandbox: str = "workspace-write",
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
 ) -> RunSummary:
@@ -498,7 +531,7 @@ def run_task(
     existing = {path.name for path in state.runs.glob("*.json")}
     try:
         return _run_task_impl(
-            task_id, executor=executor, repo=root, codex_sandbox=codex_sandbox,
+            task_id, executor=executor, repo=root,
             native_runner=native_runner, verification_runner=verification_runner,
         )
     except Exception as original:
@@ -523,7 +556,6 @@ def _run_task_impl(
     *,
     executor: str,
     repo: str | Path | None = None,
-    codex_sandbox: str = "workspace-write",
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
 ) -> RunSummary:
@@ -532,8 +564,6 @@ def _run_task_impl(
     root = resolve_repository(repo)
     if executor not in ("codex", "antigravity"):
         raise OperatorError(f"unsupported executor: {executor}")
-    if executor == "codex" and codex_sandbox not in CODEX_SANDBOXES:
-        raise OperatorError(f"unsupported Codex sandbox: {codex_sandbox}")
     state = runtime_paths(root)
 
     with RepositoryLock(state.lock):
@@ -552,9 +582,13 @@ def _run_task_impl(
         staging_path = state.staging / f"{run_id}.json"
         _write_json(state.runs / f"{run_id}.json", asdict(run))
 
+        capability = _resolve_native_execution_capability(
+            authorizes_mutation=bool(task.scope.modify)
+        )
+
         if executor == "codex":
             selected_adapter = CodexAdapter(
-                runner=_codex_runner(native_runner, codex_sandbox)
+                runner=_codex_runner(native_runner, capability)
             )
         else:
             handoff_path = state.handoffs / f"{run_id}.json"
@@ -563,14 +597,13 @@ def _run_task_impl(
                 {
                     "task": _executor_task_data(task),
                     "run": asdict(run),
-                    "structural_result_path": str(staging_path),
                 },
             )
             selected_adapter = AntigravityAdapter(
                 transport=_antigravity_transport(
                     repo=root,
                     handoff_path=handoff_path,
-                    result_path=staging_path,
+                    capability=capability,
                     native_runner=native_runner,
                 ),
                 structural_output=True,
@@ -768,7 +801,6 @@ def _persist_and_transport_failure(
 def run_repair(
     failed_run_id: str, *, executor: str, repo: str | Path | None = None,
     repair: Mapping[str, Any] | str | Path | None = None,
-    codex_sandbox: str = "workspace-write",
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
 ) -> RepairSummary:
@@ -780,7 +812,7 @@ def run_repair(
     try:
         return _run_repair_impl(
             failed_run_id, executor=executor, repo=root, repair=repair,
-            codex_sandbox=codex_sandbox, native_runner=native_runner,
+            native_runner=native_runner,
             verification_runner=verification_runner,
         )
     except Exception as original:
@@ -835,13 +867,11 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
 def _run_repair_impl(
     failed_run_id: str, *, executor: str, repo: Path,
     repair: Mapping[str, Any] | str | Path | None,
-    codex_sandbox: str, native_runner: NativeRunner,
+    native_runner: NativeRunner,
     verification_runner: VerificationRunner,
 ) -> RepairSummary:
     if executor not in ("codex", "antigravity"):
         raise OperatorError(f"unsupported executor: {executor}")
-    if executor == "codex" and codex_sandbox not in CODEX_SANDBOXES:
-        raise OperatorError(f"unsupported Codex sandbox: {codex_sandbox}")
     state = runtime_paths(repo)
     failure_path = state.failures / f"{failed_run_id}.json"
     if not failure_path.is_file():
@@ -949,17 +979,20 @@ def _run_repair_impl(
         persisted_execution["run"] = asdict(run)
         _write_json(state.repairs / f"{run_id}.json", persisted_execution)
 
+        capability = _resolve_native_execution_capability(
+            authorizes_mutation=action == "CODE_FIX"
+        )
+
         if executor == "codex":
-            adapter: Any = CodexAdapter(runner=_codex_runner(native_runner, codex_sandbox))
+            adapter: Any = CodexAdapter(runner=_codex_runner(native_runner, capability))
         else:
             handoff_path = state.handoffs / f"{run_id}.json"
             handoff = dict(persisted_execution)
-            handoff["structural_result_path"] = str(staging_path)
             _write_json(handoff_path, handoff)
             adapter = AntigravityAdapter(
                 transport=_antigravity_repair_transport(
                     repo=repo, handoff_path=handoff_path,
-                    result_path=staging_path, native_runner=native_runner,
+                    capability=capability, native_runner=native_runner,
                 ), structural_output=True,
             )
         try:
@@ -1109,7 +1142,6 @@ def run_remediation(
     prior_review: Review | str | Path | None = None,
     executor: str,
     repo: str | Path | None = None,
-    codex_sandbox: str = "workspace-write",
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
 ) -> RemediationSummary:
@@ -1160,8 +1192,6 @@ def run_remediation(
         raise OperatorError(f"invalid REMEDIATION: {exc}") from exc
     if executor not in ("codex", "antigravity"):
         raise OperatorError(f"unsupported executor: {executor}")
-    if executor == "codex" and codex_sandbox not in CODEX_SANDBOXES:
-        raise OperatorError(f"unsupported Codex sandbox: {codex_sandbox}")
     if (
         canonical_remediation.action == "CODE_FIX"
         and not canonical_remediation.modification_scope
@@ -1204,9 +1234,13 @@ def run_remediation(
             {"kind": "REMEDIATION", "execution": asdict(execution)},
         )
 
+        capability = _resolve_native_execution_capability(
+            authorizes_mutation=canonical_remediation.action == "CODE_FIX"
+        )
+
         if executor == "codex":
             selected_adapter = CodexAdapter(
-                runner=_codex_runner(native_runner, codex_sandbox)
+                runner=_codex_runner(native_runner, capability)
             )
         else:
             handoff_path = state.handoffs / f"{run_id}.json"
@@ -1214,14 +1248,13 @@ def run_remediation(
                 handoff_path,
                 {
                     "remediation_execution": _executor_remediation_data(execution),
-                    "structural_result_path": str(staging_path),
                 },
             )
             selected_adapter = AntigravityAdapter(
                 transport=_antigravity_remediation_transport(
                     repo=root,
                     handoff_path=handoff_path,
-                    result_path=staging_path,
+                    capability=capability,
                     native_runner=native_runner,
                 ),
                 structural_output=True,
@@ -1863,24 +1896,43 @@ def result_package_data(package: ResultPackage) -> dict[str, Any]:
     }
 
 
-def _codex_runner(native_runner: NativeRunner, sandbox: str) -> NativeRunner:
+def _codex_runner(
+    native_runner: NativeRunner, capability: NativeExecutionCapability
+) -> NativeRunner:
     def run(command: tuple[str, ...], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
         updated = list(command)
         try:
             index = updated.index("--sandbox")
         except ValueError as exc:
             raise OperatorError("Codex command has no sandbox option") from exc
-        updated[index + 1] = sandbox
+        updated[index + 1] = capability.codex_sandbox
         return native_runner(tuple(updated), **kwargs)
 
     return run
+
+
+def _antigravity_command(
+    repo: Path,
+    instruction: str,
+    capability: NativeExecutionCapability,
+) -> tuple[str, ...]:
+    command = [
+        "agy", "--print", instruction, "--add-dir", str(repo),
+        "--effort", "low", "--mode", capability.antigravity_mode,
+        "--disable-slash-commands", "--output-format", "text",
+        "--json-schema", str(RESULT_PACKAGE_SCHEMA_PATH),
+        "--print-timeout", "5m",
+    ]
+    if capability.antigravity_skip_permissions:
+        command.append("--dangerously-skip-permissions")
+    return tuple(command)
 
 
 def _antigravity_transport(
     *,
     repo: Path,
     handoff_path: Path,
-    result_path: Path,
+    capability: NativeExecutionCapability,
     native_runner: NativeRunner,
 ) -> Callable[..., str]:
     instruction = (
@@ -1892,38 +1944,22 @@ def _antigravity_transport(
         "verification or EVIDENCE. "
         "Commit the final implementation state when required; do not push. Obtain "
         "final Git HEAD, "
-        "and write structural ResultPackage JSON to the structural_result_path "
-        "specified in the handoff. This is staging, not the canonical results store. "
+        "and return the structural ResultPackage as the only response. Runtime captures "
+        "and persists this response; do not write Runtime-owned operational state. "
         "The ResultPackage must be an object with result and evidence. "
         "result must contain head_sha, claims, changed_files, and unresolved. Each "
         "claim must contain id, satisfies, claim, and evidence. Each evidence entry "
         "must contain evidence_id, run_id, subject_sha, type, source.command, "
         "result.exit_code, result.summary, and raw.path when present. Root evidence and "
         "every claim.evidence must be empty; Runtime constructs canonical EVIDENCE. "
-        "Every claim.satisfies entry must be a known TASK acceptance ID. Finish only "
-        "after the structural ResultPackage file exists."
+        "Every claim.satisfies entry must be a known TASK acceptance ID."
     )
 
     def transport(*, task: Task, run: Run) -> str:
         del task, run
         try:
             completed = native_runner(
-                (
-                    "agy",
-                    "--print",
-                    instruction,
-                    "--add-dir",
-                    str(repo),
-                    "--effort",
-                    "low",
-                    "--mode",
-                    "accept-edits",
-                    "--disable-slash-commands",
-                    "--output-format",
-                    "json",
-                    "--print-timeout",
-                    "5m",
-                ),
+                _antigravity_command(repo, instruction, capability),
                 cwd=str(repo),
                 capture_output=True,
                 text=False,
@@ -1945,18 +1981,13 @@ def _antigravity_transport(
             if detail:
                 message = f"{message}: {detail}"
             raise AntigravityExecutionError(message)
-        if not result_path.is_file():
+        if not stdout.strip():
             detail = stderr.strip() or stdout.strip()
             message = "Antigravity ResultPackage missing"
             if detail:
                 message = f"{message}: {detail}"
             raise AntigravityExecutionError(message)
-        try:
-            return result_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeError) as exc:
-            raise AntigravityExecutionError(
-                f"Antigravity ResultPackage unreadable: {exc}"
-            ) from exc
+        return stdout
 
     return transport
 
@@ -1965,7 +1996,7 @@ def _antigravity_remediation_transport(
     *,
     repo: Path,
     handoff_path: Path,
-    result_path: Path,
+    capability: NativeExecutionCapability,
     native_runner: NativeRunner,
 ) -> Callable[..., str]:
     instruction = (
@@ -1978,32 +2009,17 @@ def _antigravity_remediation_transport(
         "code commit. Do not push. Runtime owns affected verification; do not execute "
         "verification commands and do not generate verification evidence. Minimum "
         "implementation-local sanity checks on the changed surface are permitted when "
-        "useful, but they are not canonical verification or EVIDENCE. Write one structural "
-        "ResultPackage to structural_result_path in staging with empty root evidence, "
+        "useful, but they are not canonical verification or EVIDENCE. Return one structural "
+        "ResultPackage as the only response with empty root evidence, "
         "result.claims, and result.unresolved. Bind result.head_sha to final Git HEAD. "
-        "Finish only after the structural ResultPackage file exists."
+        "Runtime captures and persists the response; do not write Runtime-owned operational state."
     )
 
     def transport(*, execution: RemediationExecution) -> str:
         del execution
         try:
             completed = native_runner(
-                (
-                    "agy",
-                    "--print",
-                    instruction,
-                    "--add-dir",
-                    str(repo),
-                    "--effort",
-                    "low",
-                    "--mode",
-                    "accept-edits",
-                    "--disable-slash-commands",
-                    "--output-format",
-                    "json",
-                    "--print-timeout",
-                    "5m",
-                ),
+                _antigravity_command(repo, instruction, capability),
                 cwd=str(repo),
                 capture_output=True,
                 text=False,
@@ -2025,24 +2041,19 @@ def _antigravity_remediation_transport(
             if detail:
                 message = f"{message}: {detail}"
             raise AntigravityExecutionError(message)
-        if not result_path.is_file():
+        if not stdout.strip():
             detail = stderr.strip() or stdout.strip()
             message = "Antigravity ResultPackage missing"
             if detail:
                 message = f"{message}: {detail}"
             raise AntigravityExecutionError(message)
-        try:
-            return result_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeError) as exc:
-            raise AntigravityExecutionError(
-                f"Antigravity ResultPackage unreadable: {exc}"
-            ) from exc
+        return stdout
 
     return transport
 
 
 def _antigravity_repair_transport(
-    *, repo: Path, handoff_path: Path, result_path: Path,
+    *, repo: Path, handoff_path: Path, capability: NativeExecutionCapability,
     native_runner: NativeRunner,
 ) -> Callable[..., str]:
     instruction = (
@@ -2051,21 +2062,18 @@ def _antigravity_repair_transport(
         "retry, review, or widen the original TASK. Change only repair.modification_scope. "
         "For CODE_FIX commit the final permitted state; for NO_CHANGE do not mutate it. "
         "Do not push. Runtime owns complete original TASK verification; do not execute "
-        "canonical verification commands or construct EVIDENCE. Write one structural "
-        "ResultPackage for the complete original TASK delta to structural_result_path, "
-        "with empty root evidence and every claim.evidence empty."
+        "canonical verification commands or construct EVIDENCE. Return one structural "
+        "ResultPackage for the complete original TASK delta as the only response, "
+        "with empty root evidence and every claim.evidence empty. Runtime captures and "
+        "persists the response; do not write Runtime-owned operational state."
     )
 
     def transport(*, execution: Mapping[str, Any]) -> str:
         del execution
         try:
             completed = native_runner(
-                (
-                    "agy", "--print", instruction, "--add-dir", str(repo),
-                    "--effort", "low", "--mode", "accept-edits",
-                    "--disable-slash-commands", "--output-format", "json",
-                    "--print-timeout", "5m",
-                ), cwd=str(repo), capture_output=True, text=False, check=False,
+                _antigravity_command(repo, instruction, capability),
+                cwd=str(repo), capture_output=True, text=False, check=False,
             )
             stdout = _decode_utf8(completed.stdout)
             stderr = _decode_utf8(completed.stderr)
@@ -2077,15 +2085,12 @@ def _antigravity_repair_transport(
             raise AntigravityExecutionError(
                 f"Antigravity CLI returned nonzero ({completed.returncode})"
             )
-        if not result_path.is_file():
+        if not stdout.strip():
             detail = stderr.strip() or stdout.strip()
             raise AntigravityExecutionError(
                 "Antigravity ResultPackage missing" + (f": {detail}" if detail else "")
             )
-        try:
-            return result_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeError) as exc:
-            raise AntigravityExecutionError(f"Antigravity ResultPackage unreadable: {exc}") from exc
+        return stdout
 
     return transport
 
@@ -2134,7 +2139,6 @@ def _parser() -> argparse.ArgumentParser:
     run_parser.add_argument("task_id")
     run_parser.add_argument("--executor", required=True, choices=("codex", "antigravity"))
     run_parser.add_argument("--repo")
-    run_parser.add_argument("--codex-sandbox", choices=CODEX_SANDBOXES)
     remediation_parser = commands.add_parser(
         "remediate", help="Execute one canonical narrow REMEDIATION"
     )
@@ -2146,7 +2150,6 @@ def _parser() -> argparse.ArgumentParser:
         "--executor", required=True, choices=("codex", "antigravity")
     )
     remediation_parser.add_argument("--repo")
-    remediation_parser.add_argument("--codex-sandbox", choices=CODEX_SANDBOXES)
     candidate_parser = commands.add_parser(
         "accept-candidate",
         help="Accept one already committed CODE_FIX candidate",
@@ -2166,7 +2169,6 @@ def _parser() -> argparse.ArgumentParser:
         "--executor", required=True, choices=("codex", "antigravity")
     )
     repair_parser.add_argument("--repo")
-    repair_parser.add_argument("--codex-sandbox", choices=CODEX_SANDBOXES)
     transport_parser = commands.add_parser(
         "transport", help="Retry transport of one persisted terminal RUN"
     )
@@ -2181,18 +2183,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "task":
             print(describe_task(args.task_id, repo=args.repo).render())
         elif args.command == "run":
-            if args.executor != "codex" and args.codex_sandbox is not None:
-                raise OperatorError("--codex-sandbox is only valid for Codex")
             summary = run_task(
                 args.task_id,
                 executor=args.executor,
                 repo=args.repo,
-                codex_sandbox=args.codex_sandbox or "workspace-write",
             )
             print(summary.render())
         elif args.command == "remediate":
-            if args.executor != "codex" and args.codex_sandbox is not None:
-                raise OperatorError("--codex-sandbox is only valid for Codex")
             summary = run_remediation(
                 args.task_id,
                 review=args.review,
@@ -2200,7 +2197,6 @@ def main(argv: list[str] | None = None) -> int:
                 prior_review=args.prior_review,
                 executor=args.executor,
                 repo=args.repo,
-                codex_sandbox=args.codex_sandbox or "workspace-write",
             )
             print(summary.render())
         elif args.command == "accept-candidate":
@@ -2212,12 +2208,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(summary.render())
         elif args.command == "repair":
-            if args.executor != "codex" and args.codex_sandbox is not None:
-                raise OperatorError("--codex-sandbox is only valid for Codex")
             summary = run_repair(
                 args.failed_run_id, executor=args.executor, repo=args.repo,
                 repair=args.repair,
-                codex_sandbox=args.codex_sandbox or "workspace-write",
             )
             print(summary.render())
         else:

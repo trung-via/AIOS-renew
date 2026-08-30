@@ -234,9 +234,8 @@ class FakeAntigravityRunner:
             (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
         )
         handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
-        result_path = Path(handoff["structural_result_path"])
         if self.mode == "invalid":
-            result_path.write_text("{}", encoding="utf-8")
+            stdout = "{}"
         else:
             (self.repo / "OUTPUT.txt").write_text(
                 "antigravity output\n",
@@ -246,11 +245,11 @@ class FakeAntigravityRunner:
             git(self.repo, "commit", "--quiet", "-m", "antigravity executor")
             head_sha = git(self.repo, "rev-parse", "HEAD")
             payload = result_payload(handoff["run"]["run_id"], head_sha)
-            result_path.write_text(json.dumps(payload), encoding="utf-8")
+            stdout = json.dumps(payload)
         return subprocess.CompletedProcess(
             command,
             returncode=0,
-            stdout="operator prose is not authoritative",
+            stdout=stdout,
             stderr="",
         )
 
@@ -268,12 +267,10 @@ class StaticResultRunner:
             )
             handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
             run_id = handoff["run"]["run_id"]
-            result_path = Path(handoff["structural_result_path"])
             payload["result"]["head_sha"] = git(self.repo, "rev-parse", "HEAD")
             for item in payload["evidence"]:
                 item["run_id"] = run_id
                 item["subject_sha"] = payload["result"]["head_sha"]
-            result_path.write_text(json.dumps(payload), encoding="utf-8")
         else:
             canonical = json.loads(
                 kwargs["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
@@ -312,13 +309,11 @@ class CommitResultRunner:
             )
             handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
             run_id = handoff["run"]["run_id"]
-            result_path = Path(handoff["structural_result_path"])
         else:
             canonical = json.loads(
                 kwargs["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
             )
             run_id = canonical["run"]["run_id"]
-            result_path = None
 
         for source, destination in self.renames.items():
             (self.repo / source).rename(self.repo / destination)
@@ -334,8 +329,6 @@ class CommitResultRunner:
             head_sha,
             changed_files=self.changed_files,
         )
-        if result_path is not None:
-            result_path.write_text(json.dumps(payload), encoding="utf-8")
         return subprocess.CompletedProcess(
             command,
             returncode=0,
@@ -515,14 +508,12 @@ class RemediationRunner:
 
     def __call__(self, command, **kwargs):
         self.calls.append((command, kwargs))
-        result_path = None
         if command[0] == "agy":
             handoff_path = next(
                 (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
             )
             handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
             execution = handoff["remediation_execution"]
-            result_path = Path(handoff["structural_result_path"])
         else:
             execution = json.loads(
                 kwargs["input"].decode("utf-8").split("REMEDIATION_INPUT:\n", 1)[1]
@@ -542,8 +533,6 @@ class RemediationRunner:
             },
             "evidence": [],
         }
-        if result_path is not None:
-            result_path.write_text(json.dumps(payload), encoding="utf-8")
         return subprocess.CompletedProcess(
             command, returncode=0, stdout=json.dumps(payload), stderr=""
         )
@@ -1075,31 +1064,35 @@ def test_codex_path_uses_executor_boundary(
     assert calls[0]["lease"] is not None
 
 
-def test_default_codex_sandbox_is_workspace_write(tmp_path: Path) -> None:
+def test_mutating_codex_capability_is_resolved_before_invocation(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     runner = FakeCodexRunner(repo)
 
     run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
 
     command = runner.calls[0][0]
-    assert command[command.index("--sandbox") + 1] == "workspace-write"
-    assert "danger-full-access" not in command
+    assert command[command.index("--sandbox") + 1] == "danger-full-access"
+    assert len(runner.calls) == 1
 
 
-def test_danger_full_access_requires_explicit_request(tmp_path: Path) -> None:
-    repo = make_repo(tmp_path)
-    runner = FakeCodexRunner(repo)
+def test_read_only_codex_execution_remains_read_only(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
+    delegate = StaticResultRunner(repo, static_payload())
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return delegate(command, **kwargs)
 
     run_task(
         "TASK-101",
         executor="codex",
         repo=repo,
-        codex_sandbox="danger-full-access",
         native_runner=runner,
     )
 
-    command = runner.calls[0][0]
-    assert command[command.index("--sandbox") + 1] == "danger-full-access"
+    assert calls[0][calls[0].index("--sandbox") + 1] == "read-only"
+    assert len(calls) == 1
 
 
 def test_antigravity_invocation_contract(tmp_path: Path) -> None:
@@ -1121,7 +1114,8 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert command[command.index("--effort") + 1] == "low"
     assert command[command.index("--mode") + 1] == "accept-edits"
     assert "--disable-slash-commands" in command
-    assert command[command.index("--output-format") + 1] == "json"
+    assert command[command.index("--output-format") + 1] == "text"
+    assert "--json-schema" in command
     assert command[command.index("--print-timeout") + 1] == "5m"
     assert kwargs["cwd"] == workspace
     assert kwargs["text"] is False
@@ -1129,11 +1123,11 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert "errors" not in kwargs
     assert ".git" in instruction and "handoff" in instruction
     assert "Create one deterministic operator test output" not in instruction
-    assert "--dangerously-skip-permissions" not in command
+    assert "--dangerously-skip-permissions" in command
     assert "--model" not in command
 
 
-def test_antigravity_instruction_defines_structural_staging_package(
+def test_antigravity_instruction_returns_structural_package_to_runtime(
     tmp_path: Path,
 ) -> None:
     repo = make_repo(tmp_path)
@@ -1164,8 +1158,9 @@ def test_antigravity_instruction_defines_structural_staging_package(
     ):
         assert field in instruction
     assert "known TASK acceptance ID" in instruction
-    assert "structural_result_path" in instruction
-    assert "staging, not the canonical results store" in instruction
+    assert "only response" in instruction
+    assert "Runtime captures" in instruction
+    assert "Runtime-owned operational state" in instruction
     assert "Runtime owns canonical verification" in instruction
     assert "do not execute canonical verification commands" in instruction
     assert "Commit the final implementation state when required" in instruction
@@ -1180,6 +1175,28 @@ def test_antigravity_instruction_defines_structural_staging_package(
     assert handoff["task"]["acceptance"][0]["id"] == "AC1"
     assert handoff["task"]["scope"]["modify"] == ["OUTPUT.txt"]
     assert handoff["task"]["constraints"]["hard"] == ["Commit the output."]
+    assert "structural_result_path" not in handoff
+
+
+def test_read_only_antigravity_execution_has_no_mutation_capability(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
+    delegate = StaticResultRunner(repo, static_payload())
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return delegate(command, **kwargs)
+
+    run_task(
+        "TASK-101", executor="antigravity", repo=repo,
+        native_runner=runner,
+    )
+
+    command = calls[0]
+    assert command[command.index("--mode") + 1] == "plan"
+    assert "--dangerously-skip-permissions" not in command
 
 
 def test_operator_contains_no_antigravity_structural_normalizer() -> None:
@@ -1419,7 +1436,7 @@ def test_nonzero_agy_exit_fails_clearly(tmp_path: Path) -> None:
         )
 
 
-def test_headless_soft_denial_preserves_stderr_when_result_missing(
+def test_non_structural_antigravity_stdout_fails_closed(
     tmp_path: Path,
 ) -> None:
     repo = make_repo(tmp_path)
@@ -1432,13 +1449,10 @@ def test_headless_soft_denial_preserves_stderr_when_result_missing(
             native_runner=FakeAntigravityRunner(repo, mode="no-result-stderr"),
         )
 
-    assert str(captured.value) == (
-        "Antigravity ResultPackage missing: headless tool action denied"
-    )
-    assert "less useful stdout" not in str(captured.value)
+    assert "invalid structural ResultPackage" in str(captured.value)
 
 
-def test_missing_antigravity_result_preserves_stdout_fallback(
+def test_prose_antigravity_result_fails_structural_validation(
     tmp_path: Path,
 ) -> None:
     repo = make_repo(tmp_path)
@@ -1451,7 +1465,7 @@ def test_missing_antigravity_result_preserves_stdout_fallback(
             native_runner=FakeAntigravityRunner(repo, mode="no-result"),
         )
 
-    assert str(captured.value) == "Antigravity ResultPackage missing: done"
+    assert "invalid structural ResultPackage" in str(captured.value)
 
 
 def test_missing_antigravity_result_without_diagnostic_is_generic(
