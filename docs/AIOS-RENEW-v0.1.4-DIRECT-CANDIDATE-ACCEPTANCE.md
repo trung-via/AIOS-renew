@@ -72,9 +72,11 @@ retry.
 
 ## Idempotency and exclusions
 
-A repeated request for the same canonical REVIEW, finding, selected Executor,
-and unchanged candidate SHA returns the existing accepted remediation outcome.
-It neither invokes an Executor nor reruns affected verification.
+A repeated request for the same canonical REVIEW, finding, and unchanged
+candidate SHA returns the existing accepted remediation outcome, independent of
+the Executor identity supplied by the repeated request. The outcome preserves
+the Executor identity recorded by the original accepted RUN; it neither invokes
+an Executor nor reruns affected verification.
 
 Direct Candidate Acceptance does not apply to PRIMARY execution, EVIDENCE_ONLY
 remediation, REPAIR, automatic publication, retry, reroute, fallback, planning,

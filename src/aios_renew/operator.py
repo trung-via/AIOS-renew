@@ -1395,7 +1395,6 @@ def _accept_candidate_impl(
             review=review,
             finding_id=finding_id,
             candidate_head=candidate_head,
-            executor=executor,
         )
         if existing_summary is not None:
             return existing_summary
@@ -1606,7 +1605,6 @@ def _accepted_candidate_summary(
     review: Review,
     finding_id: str,
     candidate_head: str,
-    executor: str,
 ) -> RemediationSummary | None:
     for run_path in sorted(state.runs.glob("*.json")):
         try:
@@ -1623,10 +1621,6 @@ def _accepted_candidate_summary(
             or execution.finding.id != finding_id
         ):
             continue
-        if execution.run.executor != executor:
-            raise OperatorError(
-                "candidate was already accepted for a different Executor identity"
-            )
         result_path = state.results / run_path.name
         if not result_path.is_file():
             raise OperatorError("matching direct candidate RUN has no canonical RESULT")

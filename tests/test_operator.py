@@ -655,13 +655,15 @@ def test_direct_candidate_acceptance_resolves_remote_lineage_without_executor(
     repeated = accept_candidate(
         "TASK-101",
         finding_id="R1",
-        executor="codex",
+        executor="antigravity",
         repo=repo,
         verification_runner=lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("idempotent acceptance must not rerun verification")
         ),
     )
     assert repeated.run_id == summary.run_id
+    assert repeated.executor == "codex"
+    assert run_data["execution"]["run"]["executor"] == "codex"
 
 
 def test_direct_candidate_rejection_precedes_canonical_admission(
