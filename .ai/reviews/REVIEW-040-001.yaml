@@ -1,0 +1,48 @@
+review_id: REVIEW-040-001
+reviewed_sha: 67e3303fbc8978b737d9fb0a886627b0cef73af9
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: FAIL
+  AC11: PASS
+  AC12: PASS
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_persist_and_transport_failure
+    issue: >
+      FAILURE transport does not preserve minimum-sufficient deterministic diagnostics
+      for ChatGPT diagnosis. Executor failures are reduced to the text before the first
+      colon, which can discard the actionable boundary fact such as a timeout reason.
+      Runtime verification failures likewise do not expose their already-captured compact
+      command, exit-code, and summary facts through the transported FAILURE artifact.
+      This can still require Human relay of local diagnostics.
+    expected: >
+      Transported FAILURE facts preserve the compact deterministic diagnostics already
+      available at the failing boundary, sufficient for ChatGPT to identify the observed
+      failure without default raw-log upload. Raw executor or verification logs remain
+      local unless later evidence escalation is required.
+  - id: F2
+    basis: AC10
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_run_repair_impl
+    issue: >
+      A failed continuation RUN is persisted and transported, but any FAILURE carrying
+      continuation_of is rejected from receiving a later ChatGPT-authored REPAIR. This
+      terminates the approved feedback loop after one repair attempt even though each
+      subsequent repair would still require a new semantic ChatGPT decision.
+    expected: >
+      A continuation RUN that fails may expose a new terminal FAILURE and later accept
+      one new state-bound ChatGPT-authored REPAIR for that new failed RUN, while preserving
+      one-active-repair authority and prohibiting automatic retry, reroute, or recursive
+      execution without a new semantic decision.
