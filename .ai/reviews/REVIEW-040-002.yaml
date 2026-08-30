@@ -1,0 +1,25 @@
+review_id: REVIEW-040-002
+reviewed_sha: 83a288a734c72979fbc93c98d86861b64b174db7
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC10: FAIL
+findings:
+  - id: F2
+    basis: AC10
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_run_repair_impl
+    issue: >
+      R1 resolves F1: transported executor and Runtime-verification failures now preserve
+      compact deterministic diagnostics while raw logs remain local. The unaffected F2
+      remains: a failed continuation RUN cannot receive a later ChatGPT-authored REPAIR,
+      and continuation failure lineage must continue to represent the original TASK root
+      state rather than collapsing to only the immediately preceding repair base.
+    expected: >
+      A failed continuation RUN may accept one new state-bound ChatGPT-authored REPAIR
+      after a new semantic decision, without automatic retry, reroute, or recursive
+      execution. Each failed RUN still has at most one accepted REPAIR, and repeated
+      continuation preserves the original TASK root lineage so final TASK scope,
+      completion, verification, and review remain bound to the complete original TASK
+      delta.
