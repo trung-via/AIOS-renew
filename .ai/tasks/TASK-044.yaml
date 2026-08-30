@@ -1,0 +1,213 @@
+task_id: TASK-044
+revision: 1
+
+goal: >
+  Allow normal canonical REMEDIATION execution to resolve its REVIEW,
+  REMEDIATION, authoritative source RUN/RESULT, and prior-review continuity
+  deterministically from the configured Git remote when the Human supplies the
+  TASK identifier and finding identifier, while preserving the existing
+  explicit-file remediation mode, one-Executor authority, fail-closed lineage
+  validation, affected verification, DELTA review continuity, and publication
+  semantics.
+
+problem: >
+  Canonical REVIEW and REMEDIATION artifacts are already published to Git refs,
+  and AIOS already contains a remote remediation-lineage resolver used by Direct
+  Candidate Acceptance. Normal `aios remediate`, however, still requires the
+  Human to materialize REVIEW and REMEDIATION files locally and pass both paths
+  on the command line. This makes the Human act as an artifact courier even
+  though the artifacts and immutable source lineage already exist in canonical
+  remote state. AIOS should deterministically resolve that state itself after
+  the Human explicitly authorizes one finding and one Executor.
+
+assumptions:
+  - >
+    Current canonical repository baseline is
+    6169bd162eb4dc68bdb406e656d4c340fdce8261.
+  - >
+    Frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, and REMEDIATION contracts remain
+    authoritative and are not being revised.
+  - >
+    Canonical remediation refs and source RUN/RESULT artifacts remain available
+    through the existing configured-remote transport conventions.
+  - >
+    resolve_remote_remediation_lineages already provides transport-level
+    discovery of structurally complete remote remediation lineages.
+  - >
+    Existing Operator validation remains responsible for TASK binding,
+    REVIEW/REMEDIATION contract validation, immutable reviewed_sha continuity,
+    authoritative prior RESULT binding, and prior-review continuity.
+  - >
+    Existing normal REMEDIATION execution already owns modification-scope gates,
+    selected-Executor invocation, affected verification, Runtime EVIDENCE,
+    repository gates, post-PASS review transport, and DELTA review continuity.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-041.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/review.py
+    - src/aios_renew/artifacts.py
+    - tests/test_operator.py
+    - README.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - README.md
+
+non_goals:
+  - Change the frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Change REVIEW semantic authority or allow Runtime to author findings.
+  - Change REMEDIATION action, modification_scope, constraints, or affected_verification semantics.
+  - Automatically execute remediation after a CHANGES_REQUIRED review.
+  - Automatically select an Executor.
+  - Automatically choose a newest, latest, highest-numbered, or otherwise preferred remediation lineage.
+  - Run or restart the original PRIMARY TASK during remediation.
+  - Change Direct Candidate Acceptance semantics.
+  - Change REPAIR semantics.
+  - Change native Executor mutation-capability selection.
+  - Change canonical verification, EVIDENCE generation, DELTA review, or publication behavior.
+  - Add retry, reroute, fallback, planner, router, watcher, polling, queue, database, or another execution layer.
+  - Require checkout of canonical REVIEW or REMEDIATION branches into the working tree.
+  - Reintroduce legacy AIOS Bridge behavior.
+
+constraints:
+  hard:
+    - >
+      Remote canonical remediation mode must require an explicit Human TASK
+      identifier, finding identifier, and selected Executor before execution.
+    - >
+      Remote resolution must use canonical Git remote artifacts and immutable
+      lineage bindings; Human-provided reviewed SHA, REVIEW path, REMEDIATION
+      path, modification scope, or verification commands must not be required
+      in this mode.
+    - >
+      A candidate remote lineage is eligible only when its TASK identity and
+      revision, finding, REVIEW, REMEDIATION, authoritative source RUN/RESULT,
+      reviewed_sha, and any required prior-review continuity satisfy the
+      existing canonical contracts.
+    - >
+      Remote resolution must yield exactly one valid lineage. Zero valid
+      lineages or more than one valid lineage must fail closed before any
+      Executor invocation, repository mutation, remediation RUN admission, or
+      affected verification.
+    - >
+      Runtime must not resolve ambiguity by branch ordering, timestamp,
+      lexical order, RUN number, commit date, or latest/newest heuristics.
+    - >
+      Existing explicit-file remediation must remain supported for callers that
+      deliberately provide REVIEW and REMEDIATION artifacts.
+    - >
+      Remote canonical mode and explicit-file mode must be unambiguous. A
+      command must not silently mix Human-provided artifact paths with remote
+      finding-based lineage discovery or guess precedence between them.
+    - >
+      Once one canonical remote lineage has been resolved, execution must enter
+      the same existing normal REMEDIATION validation and execution boundary
+      rather than creating a second remediation semantics or weaker path.
+    - >
+      Exactly one Human-selected Executor may be invoked for one admitted
+      remediation execution. Resolution or validation failure must never cause
+      an Executor retry, reroute, fallback, or second invocation.
+    - >
+      CODE_FIX and EVIDENCE_ONLY behavior must retain their existing mutation
+      authority and execution semantics.
+    - >
+      Runtime must continue to execute only canonical affected_verification for
+      normal remediation and construct canonical EVIDENCE itself.
+    - >
+      Successful remediation must retain existing immutable HEAD, clean-worktree,
+      scope, ResultPackage, post-PASS transport, and DELTA-review continuity.
+    - >
+      Remote lineage discovery must not require checkout or mutation of the
+      target repository working tree solely to obtain REVIEW or REMEDIATION
+      artifacts.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A Human can execute one canonical remote remediation using only the TASK
+      identifier, finding identifier, selected Executor, and optional repository
+      location; no local REVIEW or REMEDIATION file path, reviewed SHA, scope,
+      or verification command is required.
+
+  - id: AC2
+    condition: >
+      Remote remediation resolution deterministically binds the requested TASK
+      and finding to a canonical REVIEW, REMEDIATION, authoritative source
+      RUN/RESULT, exact reviewed_sha, and required prior-review continuity using
+      the existing frozen contracts.
+
+  - id: AC3
+    condition: >
+      Missing canonical lineage, contract-invalid lineage, wrong TASK or
+      revision, wrong finding binding, source RUN/RESULT mismatch, reviewed_sha
+      mismatch, or ambiguous multiple valid lineages fails closed before any
+      Executor invocation or canonical remediation RUN admission.
+
+  - id: AC4
+    condition: >
+      When multiple remote remediation refs contain the same finding identifier,
+      AIOS selects a lineage only through canonical TASK and immutable lineage
+      validation and never through newest/latest, branch order, commit time, RUN
+      numbering, or equivalent heuristic selection.
+
+  - id: AC5
+    condition: >
+      After exactly one remote lineage is resolved, execution uses the existing
+      canonical normal REMEDIATION boundary, including REVIEW validation,
+      remediation scope and constraint authority, one selected Executor,
+      structural result validation, affected verification, Runtime EVIDENCE,
+      and repository integrity gates.
+
+  - id: AC6
+    condition: >
+      Existing explicit-file remediation remains supported and produces the
+      existing behavior when REVIEW and REMEDIATION paths are deliberately
+      supplied.
+
+  - id: AC7
+    condition: >
+      The command interface rejects ambiguous mixing of remote finding-based
+      lineage resolution with explicit REVIEW/REMEDIATION artifact mode rather
+      than silently choosing precedence.
+
+  - id: AC8
+    condition: >
+      Remote lineage lookup does not checkout remediation or review branches,
+      copy canonical artifacts into the target working tree, or otherwise dirty
+      or advance repository implementation state before remediation execution.
+
+  - id: AC9
+    condition: >
+      Resolution or validation failure invokes zero Executors; an admitted
+      remediation invokes no more than the one Human-selected Executor and
+      preserves existing mutation-capability rules without retry, reroute, or
+      fallback.
+
+  - id: AC10
+    condition: >
+      Successful remote remediation runs only its canonical affected
+      verification, creates Runtime-owned EVIDENCE bound to the resulting SHA,
+      and follows the existing post-PASS transport for ChatGPT DELTA review
+      without rerunning the original PRIMARY TASK.
+
+  - id: AC11
+    condition: >
+      Existing Direct Candidate Acceptance, PRIMARY execution, explicit normal
+      REMEDIATION, REPAIR, transport retry, failure handling, review, and
+      publication behavior remain unchanged except for the documented optional
+      remote canonical remediation entry mode.
+
+  - id: AC12
+    condition: >
+      Operator documentation shows the normal zero-courier remediation command
+      based on TASK, finding, and Executor while clearly retaining the explicit
+      artifact mode and Human execution-authorization boundary.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
