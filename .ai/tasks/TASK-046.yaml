@@ -1,0 +1,207 @@
+task_id: TASK-046
+revision: 1
+
+goal: >
+  Add bounded Runtime-owned executor execution telemetry to future canonical
+  ResultPackages so successful PRIMARY, REMEDIATION, and REPAIR runs record the
+  native executor start time, finish time, monotonic wall-clock duration, and
+  adapter-observed token usage when reliably available, without changing TASK
+  semantics, canonical verification authority, executor reasoning authority, or
+  compatibility with existing persisted ResultPackages.
+
+problem: >
+  Canonical ResultPackages currently preserve implementation claims and Runtime
+  verification evidence but contain no direct executor timing or token-usage
+  observations. Human-visible completion time can therefore be compared only by
+  external timestamps, and Codex quota/token cost cannot be grounded in the
+  canonical run artifact even though modern codex exec JSONL can expose
+  input_tokens, cached_input_tokens, and output_tokens. Observability must be
+  added at the native execution boundary without letting the Executor author its
+  own telemetry, without making optional usage counters a completion gate, and
+  without invalidating historical ResultPackages.
+
+assumptions:
+  - Current canonical AIOS-renew main baseline is 59b31ede597d4a27b848771522672705a021abe4.
+  - Existing persisted ResultPackages containing only result and evidence are compatibility inputs and must remain readable and valid.
+  - The executor-facing structural ResultPackage remains exactly result plus evidence; execution telemetry is Runtime/adapter-owned and is not model-authored output.
+  - UTC wall-clock timestamps are useful observability facts, while elapsed duration must come from a monotonic clock so system-clock adjustment does not corrupt wall_clock_seconds.
+  - Current Codex non-interactive JSONL output can expose turn.completed usage containing input_tokens, cached_input_tokens, and output_tokens when the CLI/provider supplies them.
+  - Antigravity token counters are not currently a trusted portable contract; absent trusted usage must be represented as unavailable rather than inferred.
+  - Direct Candidate Acceptance does not invoke an Executor and therefore is not required to fabricate executor execution telemetry.
+
+scope:
+  inspect:
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/executor.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/schemas/result_package.json
+    - tests/test_artifacts.py
+    - tests/test_executor.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - README.md
+
+  modify:
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/executor.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_artifacts.py
+    - tests/test_executor.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - README.md
+
+non_goals:
+  - Change TASK, RUN, CLAIM, EVIDENCE, REVIEW, REMEDIATION, REPAIR, publication, Git binding, verification command, or semantic-review contracts.
+  - Make wall-clock or token telemetry part of acceptance satisfaction, verification evidence, or semantic PASS criteria.
+  - Expose Runtime-owned verification duration, transport duration, total Human wait time, queueing time, or repository synchronization time in this task.
+  - Infer quota percentage, rate-limit percentage, monetary cost, model identity, context-window percentage, reasoning-token counts, or token usage from prose, timestamps, pricing tables, or heuristics.
+  - Require Antigravity token telemetry when its native transport does not expose a trusted machine-readable usage contract.
+  - Read private Codex session/rollout files from the user profile as the primary telemetry source.
+  - Add network calls, analytics services, databases, metrics daemons, background collectors, retry, reroute, fallback, or a second executor invocation.
+  - Let Codex or Antigravity populate executor_started_at, executor_finished_at, wall_clock_seconds, or token counters in their model-authored structural ResultPackage.
+  - Break or rewrite historical ResultPackages that do not contain execution telemetry.
+  - Change Direct Candidate Acceptance semantics or fabricate an Executor invocation for that path.
+
+constraints:
+  hard:
+    - >
+      Add one optional Runtime-authored top-level execution block to the in-memory
+      and persisted canonical ResultPackage representation. Existing persisted
+      packages with no execution block must remain valid compatibility inputs.
+    - >
+      For every new successful native PRIMARY, REMEDIATION, and REPAIR execution,
+      execution must contain executor_started_at, executor_finished_at, and
+      wall_clock_seconds. These fields are observation metadata only and must not
+      alter completion, verification, review, remediation, or publication truth.
+    - >
+      executor_started_at and executor_finished_at must be Runtime/adapter-observed
+      UTC timestamps serialized in one strict, documented RFC3339 form with an
+      explicit Z suffix; the Executor/model must never author these values.
+    - >
+      wall_clock_seconds must be derived from a monotonic elapsed-time source,
+      must be finite and non-negative, and must not be computed only by subtracting
+      the two wall-clock timestamps.
+    - >
+      The execution block must expose input_tokens, cached_input_tokens, and
+      output_tokens as one all-or-none trusted usage observation: when available,
+      each is an exact non-negative integer, bool is invalid, and
+      cached_input_tokens must not exceed input_tokens; when reliable usage is not
+      available all three must remain unavailable rather than inferred.
+    - >
+      Codex usage may be populated only from machine-readable native Codex usage
+      emitted by the same invocation. If codex exec JSONL is used, the adapter must
+      preserve the existing --output-schema structural contract for the final
+      ResultPackage while extracting usage from the corresponding completed-turn
+      event. Missing usage must not turn an otherwise valid completed execution
+      into failure.
+    - >
+      Codex JSONL parsing must fail closed for malformed machine-readable output
+      needed to recover the final structured ResultPackage, while optional missing
+      or unavailable usage fields alone remain an observability absence rather than
+      an execution failure.
+    - >
+      Antigravity must receive the same execution timing fields, but token counters
+      remain unavailable unless its existing native transport already provides a
+      trusted machine-readable usage observation without widening semantic or
+      permission boundaries. Do not scrape or infer counters from free-form text.
+    - >
+      Keep src/aios_renew/schemas/result_package.json as the executor-facing
+      structural output contract unless a change is strictly required for native
+      structured-output compatibility; the Executor must continue returning only
+      model-authored result and evidence, with empty structural evidence as already
+      required by Runtime.
+    - >
+      Runtime canonicalization must preserve adapter-observed execution telemetry
+      when verification evidence is attached. Staging may retain the observation,
+      and canonical result persistence must serialize it without allowing it to be
+      rewritten by verification or transport.
+    - >
+      Validation of execution telemetry must be deterministic and bounded. New
+      Runtime-produced packages must be validated before persistence, while old
+      packages without execution remain accepted by existing lineage/review readers.
+    - >
+      PRIMARY, REMEDIATION, and REPAIR must use the same telemetry semantics for
+      both executors. No path may perform a second executor call solely to obtain
+      usage or timing information.
+    - >
+      Do not change canonical verification timing, command execution count,
+      stop-on-first-failure behavior, Git cleanliness/HEAD gates, one-active-executor
+      authority, or ResultPackage semantic claim/evidence binding.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      New successful PRIMARY ResultPackages produced through both Codex and
+      Antigravity contain Runtime-owned executor_started_at,
+      executor_finished_at, and finite non-negative wall_clock_seconds while the
+      executor-authored structural payload remains limited to result and evidence.
+
+  - id: AC2
+    condition: >
+      The same execution timing telemetry is preserved in successful native
+      REMEDIATION and REPAIR ResultPackages without changing their existing
+      completion, verification, Git, lineage, or publication semantics.
+
+  - id: AC3
+    condition: >
+      Timestamp validation is strict and documented, elapsed time is measured by
+      a monotonic source, and deterministic tests can inject/control clocks
+      without sleeping or depending on real elapsed time.
+
+  - id: AC4
+    condition: >
+      Codex native execution captures input_tokens, cached_input_tokens, and
+      output_tokens from trusted machine-readable usage emitted by the same
+      invocation when present, preserving the structured final ResultPackage
+      contract and making no second model/executor request.
+
+  - id: AC5
+    condition: >
+      Missing Codex usage or unavailable Antigravity usage leaves the three token
+      counters unavailable without failing an otherwise valid successful run,
+      while malformed token values are never normalized, guessed, or accepted as
+      trusted counters.
+
+  - id: AC6
+    condition: >
+      Existing persisted canonical ResultPackages without an execution block
+      remain valid inputs to authoritative prior-result, review, remediation,
+      repair, and transport lineage behavior without migration or rewrite.
+
+  - id: AC7
+    condition: >
+      Runtime verification EVIDENCE, claims, changed_files, unresolved, HEAD
+      binding, scope enforcement, one-active-executor behavior, and semantic
+      review authority remain unchanged; telemetry is never used to satisfy an
+      acceptance criterion or declare semantic PASS.
+
+  - id: AC8
+    condition: >
+      Direct Candidate Acceptance remains a no-executor path and is not forced to
+      fabricate executor timing or token counters by the new compatibility model.
+
+  - id: AC9
+    condition: >
+      Focused regression tests cover Codex and Antigravity PRIMARY timing,
+      REMEDIATION/REPAIR preservation, controlled monotonic duration, Codex usage
+      present/missing/malformed cases, old-package compatibility, serialization,
+      and unchanged executor structural-output authority.
+
+  - id: AC10
+    condition: >
+      README documents the exact meaning of executor timing versus total RUN time,
+      token-counter availability, and the rule that quota/rate-limit percentage or
+      monetary cost is not inferred by AIOS-renew.
+
+verification:
+  required:
+    - python -m pytest tests/test_artifacts.py tests/test_executor.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py tests/test_operator.py -q
+    - git diff --check
