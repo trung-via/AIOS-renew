@@ -86,6 +86,17 @@ failure does not trigger retry, reroute, fallback, or another model invocation.
 Native capability is only a process prerequisite. TASK modification scope and
 the applicable REMEDIATION or REPAIR scope remain canonical authority, and the
 existing Runtime committed-delta, clean-worktree, and HEAD gates reject changes
-outside that authority. Executors return the structural ResultPackage through
-their native output; Runtime persists staging and all canonical operational
-state after capturing it.
+outside that authority. Every `CODE_FIX` completion path also requires an
+advanced HEAD with a non-empty committed delta inside its authorized correction
+scope; unchanged states and empty commits fail before affected verification or
+post-PASS review transport. `EVIDENCE_ONLY` and `NO_CHANGE` retain their
+zero-mutation contracts.
+
+Executors return the structural ResultPackage through their native output;
+Runtime persists staging and all canonical operational state after capturing it.
+If a later completion gate fails, Runtime revalidates that bounded staging
+package and preserves any exact `result.unresolved` strings as structured
+`error.executor_diagnostics.unresolved` facts in the canonical FAILURE artifact.
+Missing or invalid staging adds no executor diagnostics and never replaces the
+original failure. Failure transport publishes that Runtime-authored artifact
+without parsing Executor output.

@@ -477,6 +477,51 @@ constraints:
     return review, remediation
 
 
+def repair_contract(
+    repo: Path, *, action: str = "CODE_FIX"
+) -> tuple[str, dict]:
+    state = runtime_paths(repo)
+    failed_run_id = "RUN-101-000"
+    failed_head = git(repo, "rev-parse", "HEAD")
+    run_data = {
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": failed_head,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    (state.runs / f"{failed_run_id}.json").write_text(
+        json.dumps(run_data), encoding="utf-8"
+    )
+    (state.failures / f"{failed_run_id}.json").write_text(
+        json.dumps(
+            {
+                "kind": "FAILURE",
+                "run_id": failed_run_id,
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "codex",
+                "base_sha": failed_head,
+                "failed_head_sha": failed_head,
+                "candidate": {"repairable": True, "changed_files": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+    repair = {
+        "repair_id": f"REPAIR-101-{action}",
+        "failed_run_id": failed_run_id,
+        "failed_head_sha": failed_head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": action,
+        "modification_scope": ["OUTPUT.txt"] if action == "CODE_FIX" else [],
+        "instructions": ["Apply only the authorized correction."],
+        "constraints": ["Commit the output."],
+    }
+    return failed_run_id, repair
+
+
 def publish_direct_candidate_lineage(repo: Path, root: Path) -> None:
     """Publish the canonical remote artifacts and REVIEW/REMEDIATION branch."""
 
@@ -584,6 +629,94 @@ class RemediationRunner:
         )
 
 
+class StaticRemediationRunner:
+    def __init__(
+        self,
+        repo: Path,
+        *,
+        empty_commit: bool = False,
+        unresolved: list[str] | None = None,
+    ) -> None:
+        self.repo = repo
+        self.empty_commit = empty_commit
+        self.unresolved = [] if unresolved is None else unresolved
+        self.calls = []
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        if command[0] == "agy":
+            handoff_path = next(
+                (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
+            )
+            execution = json.loads(
+                handoff_path.read_text(encoding="utf-8")
+            )["remediation_execution"]
+        else:
+            execution = json.loads(
+                kwargs["input"].decode("utf-8").split("REMEDIATION_INPUT:\n", 1)[1]
+            )
+        if self.empty_commit:
+            git(self.repo, "commit", "--quiet", "--allow-empty", "-m", "empty correction")
+        payload = {
+            "result": {
+                "head_sha": git(self.repo, "rev-parse", "HEAD"),
+                "claims": [],
+                "changed_files": [],
+                "unresolved": self.unresolved,
+            },
+            "evidence": [],
+        }
+        stdout = (
+            antigravity_envelope(payload)
+            if command[0] == "agy"
+            else json.dumps(payload)
+        )
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=stdout, stderr=""
+        )
+
+
+class StaticRepairRunner:
+    def __init__(
+        self,
+        repo: Path,
+        *,
+        empty_commit: bool = False,
+        unresolved: list[str] | None = None,
+    ) -> None:
+        self.repo = repo
+        self.empty_commit = empty_commit
+        self.unresolved = [] if unresolved is None else unresolved
+        self.calls = []
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        execution = json.loads(
+            kwargs["input"].decode("utf-8").split("REPAIR_INPUT:\n", 1)[1]
+        )
+        if self.empty_commit:
+            git(self.repo, "commit", "--quiet", "--allow-empty", "-m", "empty repair")
+        head_sha = git(self.repo, "rev-parse", "HEAD")
+        changed_files = sorted(
+            path
+            for path in git(
+                self.repo,
+                "diff",
+                "--name-only",
+                execution["root_base_sha"],
+                head_sha,
+            ).splitlines()
+            if path
+        )
+        payload = result_payload(
+            execution["run"]["run_id"], head_sha, changed_files=changed_files
+        )
+        payload["result"]["unresolved"] = self.unresolved
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=json.dumps(payload), stderr=""
+        )
+
+
 @pytest.mark.parametrize("executor", ["codex", "antigravity"])
 def test_narrow_remediation_uses_shared_completion_policy(
     tmp_path: Path, executor: str
@@ -636,6 +769,116 @@ def test_narrow_remediation_uses_shared_completion_policy(
             "modification_scope"
         ] == ["OUTPUT.txt"]
         assert remediation.affected_verification == ("git diff --check",)
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_remediation_failure_preserves_exact_staged_unresolved(
+    tmp_path: Path, executor: str
+) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo)
+    unresolved = ["first bounded fact", "second bounded fact"]
+    runner = StaticRemediationRunner(repo, unresolved=unresolved)
+    verification_calls = []
+
+    with pytest.raises(OperatorError, match="unresolved"):
+        run_remediation(
+            "TASK-101",
+            review=review,
+            remediation=remediation,
+            executor=executor,
+            repo=repo,
+            native_runner=runner,
+            verification_runner=lambda *args, **kwargs: verification_calls.append(args),
+        )
+
+    failure = json.loads(
+        (runtime_paths(repo).failures / "RUN-101-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert failure["error"]["executor_diagnostics"] == {
+        "unresolved": unresolved
+    }
+    assert len(runner.calls) == 1
+    assert verification_calls == []
+
+
+@pytest.mark.parametrize("empty_commit", [False, True])
+def test_code_fix_remediation_rejects_noop_and_empty_commit_before_verification(
+    tmp_path: Path, empty_commit: bool
+) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo)
+    runner = StaticRemediationRunner(repo, empty_commit=empty_commit)
+    verification_calls = []
+    message = "committed delta is empty" if empty_commit else "did not advance HEAD"
+
+    with pytest.raises(OperatorError, match=message):
+        run_remediation(
+            "TASK-101",
+            review=review,
+            remediation=remediation,
+            executor="codex",
+            repo=repo,
+            native_runner=runner,
+            verification_runner=lambda *args, **kwargs: verification_calls.append(args),
+        )
+
+    assert len(runner.calls) == 1
+    assert verification_calls == []
+    assert not (runtime_paths(repo).results / "RUN-101-001.json").exists()
+
+
+def test_evidence_only_remediation_retains_zero_mutation_contract(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    remediation_contract(repo)
+    review = operator_module.parse_review(
+        f"""
+review_id: REVIEW-101-002
+reviewed_sha: {reviewed_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: E1
+    basis: AC1
+    action: EVIDENCE_ONLY
+    location: OUTPUT.txt
+    issue: The evidence is incomplete.
+    expected: Re-run only affected verification.
+"""
+    )
+    remediation = operator_module.parse_remediation(
+        f"""
+finding_id: E1
+action: EVIDENCE_ONLY
+reviewed_sha: {reviewed_sha}
+modification_scope: []
+affected_verification: [git diff --check]
+constraints:
+  hard: [Commit the output.]
+"""
+    )
+    runner = StaticRemediationRunner(repo)
+
+    summary = run_remediation(
+        "TASK-101",
+        review=review,
+        remediation=remediation,
+        executor="codex",
+        repo=repo,
+        native_runner=runner,
+    )
+
+    assert summary.head_sha == reviewed_sha
+    assert len(runner.calls) == 1
+    assert json.loads(summary.result_path.read_text(encoding="utf-8"))["result"][
+        "changed_files"
+    ] == []
 
 
 def test_remote_remediation_resolves_lineage_and_uses_normal_boundary(
@@ -793,6 +1036,31 @@ def test_direct_candidate_rejection_precedes_canonical_admission(
 
     assert {path.name for path in state.runs.glob("*.json")} == before
     assert not list(state.failures.glob("*.json"))
+
+
+@pytest.mark.parametrize("empty_commit", [False, True])
+def test_direct_candidate_rejects_unchanged_and_empty_commit(
+    tmp_path: Path, empty_commit: bool
+) -> None:
+    repo = make_repo(tmp_path)
+    remediation_contract(repo)
+    publish_direct_candidate_lineage(repo, tmp_path)
+    if empty_commit:
+        git(repo, "commit", "--quiet", "--allow-empty", "-m", "empty candidate")
+    verification_calls = []
+    message = "committed delta is empty" if empty_commit else "did not advance HEAD"
+
+    with pytest.raises(OperatorError, match=message):
+        accept_candidate(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+            verification_runner=lambda *args, **kwargs: verification_calls.append(args),
+        )
+
+    assert verification_calls == []
+    assert not (runtime_paths(repo).runs / "RUN-101-001.json").exists()
 
 
 def test_persisted_remediation_result_is_authoritative_lineage(
@@ -1441,6 +1709,49 @@ def test_executor_failure_transports_compact_boundary_diagnostic(
         "exit_code": 124,
     }
     assert "raw executor transcript" not in json.dumps(failure)
+    assert "executor_diagnostics" not in failure["error"]
+
+
+@pytest.mark.parametrize("staged_content", [None, "{malformed"])
+def test_failure_persistence_falls_back_without_staged_diagnostics(
+    tmp_path: Path, staged_content: str | None
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    run_path = state.runs / "RUN-101-001.json"
+    run_path.write_text(
+        json.dumps(
+            {
+                "run_id": "RUN-101-001",
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "codex",
+                "base_sha": git(repo, "rev-parse", "HEAD"),
+                "workspace": str(repo),
+                "head_sha": None,
+                "status": "ACTIVE",
+            }
+        ),
+        encoding="utf-8",
+    )
+    if staged_content is not None:
+        (state.staging / "RUN-101-001.json").write_text(
+            staged_content, encoding="utf-8"
+        )
+
+    operator_module._persist_and_transport_failure(
+        repo,
+        task_id="TASK-101",
+        run_path=run_path,
+        failure=OperatorError("original completion failure"),
+    )
+
+    failure = json.loads(
+        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert failure["error"] == {
+        "type": "OperatorError",
+        "message": "original completion failure",
+    }
 
 
 def test_runtime_verification_decode_failure_persists_no_result(
@@ -1859,6 +2170,12 @@ def test_run_013_false_pass_shape_fails_closed(
     assert staged["result"]["claims"][0]["satisfies"] == ["AC1"]
     assert staged["result"]["claims"][0]["evidence"] == []
     assert staged["evidence"] == []
+    failure = json.loads(
+        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert failure["error"]["executor_diagnostics"] == {
+        "unresolved": ["Codex could not complete execution."]
+    }
     assert not (state.results / "RUN-101-001.json").exists()
 
 
@@ -2424,6 +2741,82 @@ def test_transport_remote_resolution_fails_closed_without_remote_fallback(tmp_pa
 
     with pytest.raises(ReviewTransportError, match="no configured upstream Git remote for current branch"):
         resolve_transport_remote(repo)
+
+
+@pytest.mark.parametrize("empty_commit", [False, True])
+def test_code_fix_repair_rejects_noop_and_empty_correction_before_verification(
+    tmp_path: Path, empty_commit: bool
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(repo)
+    runner = StaticRepairRunner(repo, empty_commit=empty_commit)
+    verification_calls = []
+    message = (
+        "committed correction delta is empty"
+        if empty_commit
+        else "did not advance HEAD"
+    )
+
+    with pytest.raises(OperatorError, match=message):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair,
+            native_runner=runner,
+            verification_runner=lambda *args, **kwargs: verification_calls.append(args),
+        )
+
+    assert len(runner.calls) == 1
+    assert verification_calls == []
+    assert not list(runtime_paths(repo).results.glob("RUN-101-001.json"))
+
+
+def test_repair_failure_preserves_exact_staged_unresolved(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(repo, action="NO_CHANGE")
+    unresolved = ["repair fact one", "repair fact two"]
+    runner = StaticRepairRunner(repo, unresolved=unresolved)
+
+    with pytest.raises(OperatorError, match="unresolved"):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair,
+            native_runner=runner,
+        )
+
+    failure = json.loads(
+        (runtime_paths(repo).failures / "RUN-101-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert failure["error"]["executor_diagnostics"] == {
+        "unresolved": unresolved
+    }
+    assert len(runner.calls) == 1
+
+
+def test_no_change_repair_retains_zero_mutation_contract(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(repo, action="NO_CHANGE")
+    failed_head = git(repo, "rev-parse", "HEAD")
+    runner = StaticRepairRunner(repo)
+
+    summary = run_repair(
+        failed_run_id,
+        executor="codex",
+        repo=repo,
+        repair=repair,
+        native_runner=runner,
+    )
+
+    assert summary.head_sha == failed_head
+    assert len(runner.calls) == 1
+    assert json.loads(summary.result_path.read_text(encoding="utf-8"))["result"][
+        "changed_files"
+    ] == []
 
 
 def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(

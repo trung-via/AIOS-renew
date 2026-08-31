@@ -25,6 +25,8 @@ from .artifacts import (
     validate_evidence,
     validate_result,
     validate_result_package,
+    validate_structural_result,
+    validate_structural_result_package,
 )
 from .codex_adapter import (
     RESULT_PACKAGE_SCHEMA_PATH,
@@ -778,6 +780,13 @@ def _persist_and_transport_failure(
                 }
                 for item in cause.evidence
             ]
+        executor_unresolved = _read_staged_executor_unresolved(
+            state, task=task, run=run
+        )
+        if executor_unresolved:
+            record["error"]["executor_diagnostics"] = {
+                "unresolved": executor_unresolved,
+            }
         failure_path = state.failures / f"{run.run_id}.json"
         _write_json(failure_path, record)
         try:
@@ -796,6 +805,33 @@ def _persist_and_transport_failure(
     except Exception:
         # Failure recording must never replace the execution failure.
         return
+
+
+def _read_staged_executor_unresolved(
+    state: RuntimePaths, *, task: Task, run: Run
+) -> list[str] | None:
+    """Read bounded diagnostics only from a valid Runtime staging package."""
+
+    try:
+        payload = json.loads(
+            (state.staging / f"{run.run_id}.json").read_text(encoding="utf-8")
+        )
+        if not isinstance(payload, Mapping):
+            return None
+        evidence_data = payload["evidence"]
+        if not isinstance(evidence_data, list):
+            return None
+        package = validate_structural_result_package(
+            task=task,
+            run=run,
+            result=validate_structural_result(payload["result"]),
+            evidence=tuple(validate_evidence(item) for item in evidence_data),
+        )
+        return list(package.result.unresolved)
+    except Exception:
+        # Staging is diagnostic enrichment only and can never replace the
+        # original execution failure or prevent its best-effort persistence.
+        return None
 
 
 def run_repair(
@@ -1019,6 +1055,8 @@ def _run_repair_impl(
             raise OperatorError("REPAIR committed paths outside authorized correction scope")
         if action == "CODE_FIX" and actual_head == failed_head:
             raise OperatorError("CODE_FIX REPAIR did not advance HEAD")
+        if action == "CODE_FIX" and not repair_changed:
+            raise OperatorError("CODE_FIX REPAIR committed correction delta is empty")
         if action == "NO_CHANGE" and actual_head != failed_head:
             raise OperatorError("NO_CHANGE REPAIR changed HEAD")
         _require_changed_files(
@@ -1135,6 +1173,46 @@ def _git_is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
 
 
 def run_remediation(
+    task_id: str,
+    *,
+    review: Review | str | Path | None = None,
+    remediation: Remediation | str | Path | None = None,
+    prior_review: Review | str | Path | None = None,
+    finding_id: str | None = None,
+    executor: str,
+    repo: str | Path | None = None,
+    native_runner: NativeRunner = subprocess.run,
+    verification_runner: VerificationRunner = subprocess.run,
+) -> RemediationSummary:
+    """Execute one remediation and persist deterministic pre-PASS failures."""
+
+    root = resolve_repository(repo)
+    state = runtime_paths(root)
+    existing = {path.name for path in state.runs.glob("*.json")}
+    try:
+        return _run_remediation_impl(
+            task_id,
+            review=review,
+            remediation=remediation,
+            prior_review=prior_review,
+            finding_id=finding_id,
+            executor=executor,
+            repo=root,
+            native_runner=native_runner,
+            verification_runner=verification_runner,
+        )
+    except Exception as original:
+        created = [
+            path for path in state.runs.glob("*.json") if path.name not in existing
+        ]
+        if len(created) == 1 and not (state.results / created[0].name).is_file():
+            _persist_and_transport_failure(
+                root, task_id=task_id, run_path=created[0], failure=original
+            )
+        raise
+
+
+def _run_remediation_impl(
     task_id: str,
     *,
     review: Review | str | Path | None = None,
@@ -1428,6 +1506,8 @@ def _accept_candidate_impl(
         changed_files = _committed_changed_files(
             repo, remediation.reviewed_sha, candidate_head
         )
+        if not changed_files:
+            raise OperatorError("CODE_FIX candidate committed delta is empty")
         outside_remediation = changed_files.difference(
             remediation.modification_scope
         )
@@ -1779,8 +1859,11 @@ def _require_remediation_repository_state(
     if execution.remediation.action == "EVIDENCE_ONLY":
         if actual_head != execution.remediation.reviewed_sha or actual_changed:
             raise OperatorError("EVIDENCE_ONLY remediation changed repository HEAD")
-    elif actual_changed and actual_head == execution.remediation.reviewed_sha:
-        raise OperatorError("CODE_FIX committed changes did not advance HEAD")
+    else:
+        if actual_head == execution.remediation.reviewed_sha:
+            raise OperatorError("CODE_FIX remediation did not advance HEAD")
+        if not actual_changed:
+            raise OperatorError("CODE_FIX remediation committed delta is empty")
 
 
 def _require_remediation_package_contract(
