@@ -1,0 +1,216 @@
+task_id: TASK-045
+revision: 1
+
+goal: >
+  Harden AIOS-renew failure observability and correction completion gates so
+  Runtime preserves bounded structured executor unresolved diagnostics when a
+  structurally valid ResultPackage fails before PASS, and every canonical
+  CODE_FIX path requires a real authorized committed correction delta instead
+  of accepting a no-op or empty commit, while preserving one-Executor authority,
+  fail-closed completion, semantic-review ownership, and existing publication
+  behavior.
+
+problem: >
+  Two control-plane gaps were exposed by a real TASK execution. First, Runtime
+  can already persist a structurally parsed ResultPackage before completion
+  gates run, but when non-empty result.unresolved causes failure the transported
+  FAILURE records only the generic completion error and loses the exact bounded
+  unresolved items that explain why the Executor did not complete. Second,
+  normal CODE_FIX REMEDIATION currently rejects some invalid repository states
+  but can still accept an unchanged reviewed SHA with zero committed changed
+  paths when affected verification passes; equivalent no-op or empty-commit
+  correction states must not satisfy CODE_FIX semantics. Runtime should preserve
+  the diagnostic facts it already owns and enforce mutation truth, without
+  deciding whether a semantic finding was actually fixed.
+
+assumptions:
+  - >
+    Current canonical repository baseline is
+    b5ce283232587c66144a68f842e3b196d7cf2601.
+  - >
+    Frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, and REMEDIATION contracts remain
+    authoritative and are not being revised.
+  - >
+    Structurally valid executor ResultPackages are persisted in Runtime staging
+    before completion gates that can reject unresolved items.
+  - >
+    Existing FAILURE transport publishes the persisted Runtime-authored
+    failure artifact and must remain transport-only rather than becoming a
+    diagnostic or semantic authority.
+  - >
+    Existing normal REMEDIATION actions are CODE_FIX and EVIDENCE_ONLY; existing
+    pre-PASS REPAIR actions are CODE_FIX and NO_CHANGE.
+  - >
+    ChatGPT semantic review remains solely responsible for deciding whether a
+    produced correction actually resolves the finding.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-044.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/review.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+    - README.md
+
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - README.md
+
+non_goals:
+  - Change the frozen TASK, RUN, RESULT, EVIDENCE, REVIEW, or REMEDIATION schemas.
+  - Add or change the repository-owned RUN/FIX/STATUS/REPAIR worker surface.
+  - Change Codex or Antigravity adapter prompting, model selection, sandbox, or native capability policy.
+  - Transport complete Executor stdout or stderr streams as canonical diagnostics.
+  - Treat raw free-form Executor text as authoritative structured diagnostics.
+  - Allow non-empty unresolved items to pass completion gates.
+  - Let Runtime decide whether a semantic finding has actually been fixed.
+  - Require both implementation and test files to change for every CODE_FIX.
+  - Add retry, reroute, fallback, automatic repair, automatic remediation, planner, watcher, or queue behavior.
+  - Change affected verification authority, Runtime EVIDENCE construction, review transport, DELTA review, or publication semantics.
+  - Change EVIDENCE_ONLY or NO_CHANGE into mutation-capable actions.
+  - Add a cross-repository dependency update for python_complete_agent.
+
+constraints:
+  hard:
+    - >
+      A structurally valid staged ResultPackage with non-empty unresolved items
+      must still fail closed before canonical PASS; preserving diagnostics must
+      never weaken completion requirements.
+    - >
+      When Runtime already owns a structurally parsed staged ResultPackage for a
+      failed execution, the canonical FAILURE artifact must preserve its exact
+      unresolved items as bounded structured executor diagnostics rather than
+      reducing them to only a generic error message.
+    - >
+      Structured diagnostics must be derived only from Runtime-owned parsed
+      state. Full stdout/stderr payloads, arbitrary prose scraping, or new
+      Executor-authored operational artifacts must not become canonical failure
+      diagnostics.
+    - >
+      Failure persistence remains best-effort and must never replace, mask, or
+      mutate the original execution failure if staged state is absent,
+      malformed, unreadable, or otherwise unavailable.
+    - >
+      Existing bounded execution diagnostics, exit-code diagnostics,
+      verification diagnostics, candidate facts, and transport behavior must be
+      preserved unless this TASK explicitly strengthens them.
+    - >
+      Normal REMEDIATION with action CODE_FIX must finish only when Git HEAD
+      advances from reviewed_sha and the committed delta from reviewed_sha is
+      non-empty, exactly matches declared changed_files, and remains within the
+      authorized remediation modification_scope before affected verification is
+      accepted as a successful correction run.
+    - >
+      An empty commit that advances HEAD but changes zero committed paths must
+      not satisfy CODE_FIX semantics.
+    - >
+      Direct Candidate Acceptance for a CODE_FIX finding must obey the same
+      non-empty authorized committed-delta invariant rather than admitting an
+      unchanged or empty-commit candidate.
+    - >
+      Pre-PASS REPAIR with action CODE_FIX must likewise require a non-empty
+      authorized committed correction delta in addition to any existing HEAD
+      advancement and scope gates; REPAIR NO_CHANGE must remain a zero-mutation
+      path.
+    - >
+      REMEDIATION EVIDENCE_ONLY must continue to require no repository mutation.
+    - >
+      Rejecting an unresolved or no-op correction state must invoke no retry,
+      reroute, fallback, second Executor, or semantic review inside Runtime.
+    - >
+      Runtime may prove only structural and repository facts such as unresolved
+      presence, HEAD movement, committed changed paths, declaration equality,
+      and authorized scope. ChatGPT Reviewer retains semantic authority over
+      whether the actual delta resolves the finding.
+    - >
+      The implementation must remain Executor-neutral: Codex and Antigravity
+      executions pass through the same Runtime failure and correction gates.
+
+acceptance:
+  - id: AC1
+    condition: >
+      When PRIMARY execution produces a structurally valid staged ResultPackage
+      with one or more unresolved items, execution remains failed before PASS and
+      the persisted canonical FAILURE artifact contains the exact unresolved
+      items as bounded structured executor diagnostics.
+
+  - id: AC2
+    condition: >
+      The same unresolved-diagnostic preservation applies to canonical
+      REMEDIATION and REPAIR executions whenever Runtime has a structurally valid
+      staged ResultPackage before the failing completion gate.
+
+  - id: AC3
+    condition: >
+      If no valid staged ResultPackage can be read for a failure, failure
+      persistence still records and transports the original failure facts
+      best-effort without raising a replacement error or inventing unresolved
+      diagnostics.
+
+  - id: AC4
+    condition: >
+      Failure diagnostics remain bounded and structured: complete Executor
+      stdout/stderr streams are not added to canonical FAILURE artifacts, and
+      existing execution exit-code, verification, candidate, and transport facts
+      remain available with their current fail-closed behavior.
+
+  - id: AC5
+    condition: >
+      Failure transport publishes the Runtime-authored FAILURE artifact without
+      independently parsing Executor output or becoming a second diagnostic or
+      semantic authority.
+
+  - id: AC6
+    condition: >
+      A normal CODE_FIX REMEDIATION with unchanged reviewed SHA and zero committed
+      changed paths fails closed before successful affected-verification
+      completion and before post-PASS review transport.
+
+  - id: AC7
+    condition: >
+      A CODE_FIX REMEDIATION empty commit that advances HEAD but has zero
+      committed changed paths also fails closed; a valid non-empty committed
+      delta wholly inside modification_scope continues through the existing
+      affected verification and canonical result path.
+
+  - id: AC8
+    condition: >
+      EVIDENCE_ONLY REMEDIATION retains its existing zero-mutation contract and
+      is not forced to create a code delta by the new CODE_FIX gate.
+
+  - id: AC9
+    condition: >
+      Direct Candidate Acceptance for CODE_FIX rejects an unchanged or
+      empty-commit candidate and accepts only a non-empty committed candidate
+      delta that satisfies the existing lineage, scope, repository, and affected
+      verification gates.
+
+  - id: AC10
+    condition: >
+      REPAIR CODE_FIX rejects both unchanged state and empty commits with zero
+      correction paths, while a valid non-empty correction delta inside the
+      authorized repair scope preserves the existing full original TASK
+      completion and verification path; REPAIR NO_CHANGE remains zero mutation.
+
+  - id: AC11
+    condition: >
+      Any unresolved-diagnostic or no-op CODE_FIX rejection invokes at most the
+      originally selected Executor once and introduces no retry, reroute,
+      fallback, second execution, Runtime semantic finding decision, or automatic
+      remediation/repair.
+
+  - id: AC12
+    condition: >
+      Regression coverage proves exact unresolved preservation, missing or
+      malformed staged-state fallback, no full-stream diagnostic transport,
+      no-op and empty-commit CODE_FIX rejection across normal remediation,
+      Direct Candidate Acceptance, and REPAIR, plus successful valid CODE_FIX,
+      EVIDENCE_ONLY, and NO_CHANGE behavior without regression of existing
+      failure transport and review flow.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
