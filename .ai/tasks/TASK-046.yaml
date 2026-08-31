@@ -1,207 +1,251 @@
 task_id: TASK-046
-revision: 1
+revision: 2
 
 goal: >
-  Add bounded Runtime-owned executor execution telemetry to future canonical
-  ResultPackages so successful PRIMARY, REMEDIATION, and REPAIR runs record the
-  native executor start time, finish time, monotonic wall-clock duration, and
-  adapter-observed token usage when reliably available, without changing TASK
-  semantics, canonical verification authority, executor reasoning authority, or
-  compatibility with existing persisted ResultPackages.
+  Add a bounded Runtime-owned per-RUN observation sidecar for future canonical
+  PRIMARY, REMEDIATION, and REPAIR executions so AIOS-renew records enough
+  operational facts to explain where execution time is spent and to compare
+  executor behavior over time, without changing the frozen TASK, RUN, RESULT,
+  EVIDENCE, REVIEW, REMEDIATION, or REPAIR contracts and without allowing
+  telemetry to participate in semantic PASS/FIX decisions.
 
 problem: >
-  Canonical ResultPackages currently preserve implementation claims and Runtime
-  verification evidence but contain no direct executor timing or token-usage
-  observations. Human-visible completion time can therefore be compared only by
-  external timestamps, and Codex quota/token cost cannot be grounded in the
-  canonical run artifact even though modern codex exec JSONL can expose
-  input_tokens, cached_input_tokens, and output_tokens. Observability must be
-  added at the native execution boundary without letting the Executor author its
-  own telemetry, without making optional usage counters a completion gate, and
-  without invalidating historical ResultPackages.
+  AIOS-renew can currently prove what changed and whether canonical verification
+  passed, but it cannot directly answer operational questions such as whether a
+  slow task spent its time in the native Executor or in Runtime verification.
+  TASK-046 revision 1 attempted to solve this by adding execution telemetry to
+  canonical ResultPackage. That couples operational measurement to the semantic
+  RESULT/EVIDENCE package, expands a frozen kernel-facing contract, records only
+  successful executions, and still does not provide the phase timing needed to
+  explain Human wait time. The measurement boundary should instead be a thin
+  Runtime sidecar keyed to an admitted RUN, reusable for both successful and
+  failed executions, and remotely discoverable without becoming semantic proof.
 
 assumptions:
-  - Current canonical AIOS-renew main baseline is 59b31ede597d4a27b848771522672705a021abe4.
-  - Existing persisted ResultPackages containing only result and evidence are compatibility inputs and must remain readable and valid.
-  - The executor-facing structural ResultPackage remains exactly result plus evidence; execution telemetry is Runtime/adapter-owned and is not model-authored output.
-  - UTC wall-clock timestamps are useful observability facts, while elapsed duration must come from a monotonic clock so system-clock adjustment does not corrupt wall_clock_seconds.
-  - Current Codex non-interactive JSONL output can expose turn.completed usage containing input_tokens, cached_input_tokens, and output_tokens when the CLI/provider supplies them.
-  - Antigravity token counters are not currently a trusted portable contract; absent trusted usage must be represented as unavailable rather than inferred.
-  - Direct Candidate Acceptance does not invoke an Executor and therefore is not required to fabricate executor execution telemetry.
+  - >
+    Current canonical AIOS-renew main baseline after TASK-047 publication is
+    982b269319c2c3fe12d969591849b0f04a686325.
+  - >
+    The frozen v0.1 TASK, RUN, RESULT, EVIDENCE, REVIEW, and REMEDIATION
+    contracts remain authoritative and unchanged.
+  - >
+    TASK-047 established the acceptable pattern that bounded Runtime operational
+    observations may live under repository Git runtime state without becoming a
+    new kernel artifact or semantic evidence type.
+  - >
+    A RUN already provides the stable join key for task id/revision, selected
+    Executor, base SHA, and one operational execution instance; observation data
+    should reference that RUN rather than copy TASK semantic content.
+  - >
+    Historical RUNs with no observation sidecar remain valid and require no
+    migration or backfill.
+  - >
+    Admission failures occur before a RUN exists and remain owned by TASK-047
+    ADMISSION_FAILURE; TASK-046 must not fabricate RUN observations for them.
+  - >
+    Runtime can measure elapsed time with a monotonic clock independently of
+    executor/model output.
+  - >
+    Trusted native token usage is not currently a portable common contract
+    across Codex and Antigravity. Any future usage counters may be recorded only
+    when they are machine-readable observations from the same native invocation;
+    absence is valid and must never be inferred.
 
 scope:
   inspect:
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-045.yaml
+    - .ai/tasks/TASK-047.yaml
+    - src/aios_renew/run.py
     - src/aios_renew/artifacts.py
-    - src/aios_renew/executor.py
     - src/aios_renew/operator.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/review_transport.py
     - src/aios_renew/codex_adapter.py
     - src/aios_renew/antigravity_adapter.py
     - src/aios_renew/schemas/result_package.json
-    - tests/test_artifacts.py
-    - tests/test_executor.py
     - tests/test_operator.py
-    - tests/test_codex_adapter.py
-    - tests/test_antigravity_adapter.py
+    - tests/test_verification.py
     - README.md
 
   modify:
-    - src/aios_renew/artifacts.py
-    - src/aios_renew/executor.py
+    - src/aios_renew/run_observation.py
     - src/aios_renew/operator.py
-    - src/aios_renew/codex_adapter.py
-    - src/aios_renew/antigravity_adapter.py
-    - tests/test_artifacts.py
-    - tests/test_executor.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/review_transport.py
+    - tests/test_run_observation.py
     - tests/test_operator.py
-    - tests/test_codex_adapter.py
-    - tests/test_antigravity_adapter.py
+    - tests/test_verification.py
     - README.md
 
 non_goals:
-  - Change TASK, RUN, CLAIM, EVIDENCE, REVIEW, REMEDIATION, REPAIR, publication, Git binding, verification command, or semantic-review contracts.
-  - Make wall-clock or token telemetry part of acceptance satisfaction, verification evidence, or semantic PASS criteria.
-  - Expose Runtime-owned verification duration, transport duration, total Human wait time, queueing time, or repository synchronization time in this task.
-  - Infer quota percentage, rate-limit percentage, monetary cost, model identity, context-window percentage, reasoning-token counts, or token usage from prose, timestamps, pricing tables, or heuristics.
-  - Require Antigravity token telemetry when its native transport does not expose a trusted machine-readable usage contract.
-  - Read private Codex session/rollout files from the user profile as the primary telemetry source.
-  - Add network calls, analytics services, databases, metrics daemons, background collectors, retry, reroute, fallback, or a second executor invocation.
-  - Let Codex or Antigravity populate executor_started_at, executor_finished_at, wall_clock_seconds, or token counters in their model-authored structural ResultPackage.
-  - Break or rewrite historical ResultPackages that do not contain execution telemetry.
-  - Change Direct Candidate Acceptance semantics or fabricate an Executor invocation for that path.
+  - Change or unfreeze TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, or REPAIR schemas or semantics.
+  - Add any execution or telemetry field to canonical ResultPackage or src/aios_renew/schemas/result_package.json.
+  - Treat a RUN observation as EVIDENCE, a completion claim, acceptance satisfaction, semantic review input, or proof that a finding was fixed.
+  - Record or infer Brain reasoning, Executor reasoning, prompts, source contents, stdout/stderr streams, chat history, secrets, credentials, or environment values.
+  - Measure pre-RUN repository synchronization, Human think time, queue time, post-result ChatGPT review time, or end-to-end Human wait time in this task.
+  - Create a mutable per-TASK statistics database, analytics service, metrics daemon, background collector, event bus, queue, or long-term learning engine.
+  - Add model scoring, automatic executor selection, routing, retry, fallback, quota budgeting, or dispatch policy based on the recorded data.
+  - Backfill historical RUNs or rewrite historical RESULT, FAILURE, artifact, or review refs.
+  - Make telemetry persistence or publication a prerequisite for a successful RESULT or the primary cause of an execution FAILURE.
+  - Change Codex or Antigravity native invocation flags or structural-output protocol solely to obtain token counters.
+  - Infer token usage, context percentage, quota percentage, monetary cost, model identity, or rate limits from prose, elapsed time, pricing tables, session files, or heuristics.
+  - Require token counters to be present for either Executor in this revision.
+  - Fabricate a RUN observation for Direct Candidate Acceptance or a TASK-047 pre-RUN ADMISSION_FAILURE.
 
 constraints:
   hard:
     - >
-      Add one optional Runtime-authored top-level execution block to the in-memory
-      and persisted canonical ResultPackage representation. Existing persisted
-      packages with no execution block must remain valid compatibility inputs.
+      Implement one Runtime-owned RUN_OBSERVATION sidecar per new admitted RUN,
+      stored under the repository Git runtime state rather than the tracked
+      worktree. The observation must be keyed by the exact RUN id and bind the
+      exact TASK id/revision, operation kind, selected Executor, and base SHA
+      already known from Runtime state.
     - >
-      For every new successful native PRIMARY, REMEDIATION, and REPAIR execution,
-      execution must contain executor_started_at, executor_finished_at, and
-      wall_clock_seconds. These fields are observation metadata only and must not
-      alter completion, verification, review, remediation, or publication truth.
+      operation must be one bounded value from PRIMARY, REMEDIATION, or REPAIR.
+      The observation must not copy TASK goal, acceptance prose, REVIEW findings,
+      REMEDIATION instructions, REPAIR instructions, model prose, or repository
+      source content.
     - >
-      executor_started_at and executor_finished_at must be Runtime/adapter-observed
-      UTC timestamps serialized in one strict, documented RFC3339 form with an
-      explicit Z suffix; the Executor/model must never author these values.
+      The observation must distinguish Runtime terminal state from semantic
+      review. Its terminal kind may report only RESULT or FAILURE for the RUN;
+      it must never call a Runtime-completed RESULT a semantic PASS and must not
+      predict the later ChatGPT review verdict.
     - >
-      wall_clock_seconds must be derived from a monotonic elapsed-time source,
-      must be finite and non-negative, and must not be computed only by subtracting
-      the two wall-clock timestamps.
+      Every observation must record admitted-run elapsed time and native-executor
+      elapsed time when the Executor was invoked. Successful or attempted
+      canonical verification must also expose bounded Runtime verification
+      elapsed time sufficient to distinguish Executor time from verification
+      time. Elapsed durations must be finite, non-negative, and derived from a
+      monotonic clock rather than subtraction of wall-clock timestamps.
     - >
-      The execution block must expose input_tokens, cached_input_tokens, and
-      output_tokens as one all-or-none trusted usage observation: when available,
-      each is an exact non-negative integer, bool is invalid, and
-      cached_input_tokens must not exceed input_tokens; when reliable usage is not
-      available all three must remain unavailable rather than inferred.
+      The observation may include strict UTC timestamps for human correlation,
+      but timestamps are descriptive only. If included, serialize them in one
+      documented RFC3339 UTC form with an explicit Z suffix and never use them
+      to calculate authoritative elapsed durations.
     - >
-      Codex usage may be populated only from machine-readable native Codex usage
-      emitted by the same invocation. If codex exec JSONL is used, the adapter must
-      preserve the existing --output-schema structural contract for the final
-      ResultPackage while extracting usage from the corresponding completed-turn
-      event. Missing usage must not turn an otherwise valid completed execution
-      into failure.
+      executor_invoked must be an exact Runtime fact. A RUN that fails after RUN
+      admission but before native Executor invocation may record false; once the
+      native invocation begins it must record true even if the Executor times
+      out, exits nonzero, or returns invalid structural output.
     - >
-      Codex JSONL parsing must fail closed for malformed machine-readable output
-      needed to recover the final structured ResultPackage, while optional missing
-      or unavailable usage fields alone remain an observability absence rather than
-      an execution failure.
+      Record observations for both successful and failed PRIMARY, REMEDIATION,
+      and REPAIR RUNs. A timeout such as RUN-047-001 must therefore be measurable
+      rather than disappearing because no canonical RESULT was produced.
     - >
-      Antigravity must receive the same execution timing fields, but token counters
-      remain unavailable unless its existing native transport already provides a
-      trusted machine-readable usage observation without widening semantic or
-      permission boundaries. Do not scrape or infer counters from free-form text.
+      If trusted token usage is available from machine-readable data emitted by
+      the same already-authorized native invocation, the sidecar may record
+      input_tokens, cached_input_tokens, and output_tokens as an all-or-none
+      group of exact non-negative integers with bool rejected and
+      cached_input_tokens not exceeding input_tokens. If such data is not
+      available, usage must be null/absent rather than inferred. Do not perform a
+      second Executor call and do not change native invocation mode solely to
+      obtain usage in this revision.
     - >
-      Keep src/aios_renew/schemas/result_package.json as the executor-facing
-      structural output contract unless a change is strictly required for native
-      structured-output compatibility; the Executor must continue returning only
-      model-authored result and evidence, with empty structural evidence as already
-      required by Runtime.
+      RUN_OBSERVATION is Runtime operational state only. Do not modify
+      ResultPackage dataclasses, validators, src/aios_renew/schemas/result_package.json,
+      canonical EVIDENCE, claim binding, REVIEW validation, or completion gates
+      to carry or require observation data.
     - >
-      Runtime canonicalization must preserve adapter-observed execution telemetry
-      when verification evidence is attached. Staging may retain the observation,
-      and canonical result persistence must serialize it without allowing it to be
-      rewritten by verification or transport.
+      Observation recording must not change one-active-executor authority,
+      executor mutation capability, repository locks, HEAD/scope gates,
+      stop-on-first-verification-failure behavior, verification command count,
+      remediation continuity, repair continuity, or Direct Candidate Acceptance.
     - >
-      Validation of execution telemetry must be deterministic and bounded. New
-      Runtime-produced packages must be validated before persistence, while old
-      packages without execution remain accepted by existing lineage/review readers.
+      A local observation must be immutable for one RUN id once its terminal
+      state is finalized. Re-observing or retrying transport for the same RUN may
+      accept byte-identical content but must fail closed on conflicting
+      observation content rather than overwrite it.
     - >
-      PRIMARY, REMEDIATION, and REPAIR must use the same telemetry semantics for
-      both executors. No path may perform a second executor call solely to obtain
-      usage or timing information.
+      Remote discoverability must reuse the existing RUN artifact transport
+      families rather than create a new branch/ref family solely for metrics.
+      New successful artifact refs and failed-run artifact refs may carry one
+      optional byte-exact observation.json sidecar alongside their existing
+      canonical files. Existing historical refs without observation.json remain
+      valid.
     - >
-      Do not change canonical verification timing, command execution count,
-      stop-on-first-failure behavior, Git cleanliness/HEAD gates, one-active-executor
-      authority, or ResultPackage semantic claim/evidence binding.
+      retry-transport must preserve the same optional observation sidecar when it
+      exists. Missing observation data must not invalidate or rewrite an
+      otherwise authoritative historical RESULT/FAILURE transport.
+    - >
+      Observation persistence or publication failure must never mask the
+      original execution/completion/verification error, convert a successful RUN
+      into semantic failure, invoke another Executor, retry the Executor, or
+      create a replacement RUN. Observability is subordinate to execution truth.
+    - >
+      Tests must use injected/controlled clocks; do not add sleeps or depend on
+      real elapsed time to prove timing behavior.
     - Do not push from executor execution.
 
 acceptance:
   - id: AC1
     condition: >
-      New successful PRIMARY ResultPackages produced through both Codex and
-      Antigravity contain Runtime-owned executor_started_at,
-      executor_finished_at, and finite non-negative wall_clock_seconds while the
-      executor-authored structural payload remains limited to result and evidence.
+      A new successful PRIMARY RUN through either Codex or Antigravity produces
+      one bounded local RUN_OBSERVATION bound to the exact RUN/TASK/executor/base
+      SHA, with terminal kind RESULT, executor_invoked=true, finite non-negative
+      admitted-run/executor/verification elapsed durations, while the canonical
+      ResultPackage remains byte/schema-compatible with the pre-TASK-046 contract.
 
   - id: AC2
     condition: >
-      The same execution timing telemetry is preserved in successful native
-      REMEDIATION and REPAIR ResultPackages without changing their existing
-      completion, verification, Git, lineage, or publication semantics.
+      Successful REMEDIATION and REPAIR RUNs use the same observation semantics
+      without changing their existing lineage, mutation scope, verification,
+      ResultPackage, or publication behavior.
 
   - id: AC3
     condition: >
-      Timestamp validation is strict and documented, elapsed time is measured by
-      a monotonic source, and deterministic tests can inject/control clocks
-      without sleeping or depending on real elapsed time.
+      Post-admission failures are observed as terminal kind FAILURE. Regression
+      coverage includes at least native Executor failure/timeout or invalid
+      output and Runtime verification failure, proving executor_invoked and the
+      available phase durations remain truthful without fabricating RESULT.
 
   - id: AC4
     condition: >
-      Codex native execution captures input_tokens, cached_input_tokens, and
-      output_tokens from trusted machine-readable usage emitted by the same
-      invocation when present, preserving the structured final ResultPackage
-      contract and making no second model/executor request.
+      A pre-RUN REMEDIATION admission rejection continues exclusively through
+      TASK-047 ADMISSION_FAILURE and creates no RUN_OBSERVATION, proving the two
+      operational sidecars do not blur RUN admission semantics.
 
   - id: AC5
     condition: >
-      Missing Codex usage or unavailable Antigravity usage leaves the three token
-      counters unavailable without failing an otherwise valid successful run,
-      while malformed token values are never normalized, guessed, or accepted as
-      trusted counters.
+      Controlled monotonic-clock tests prove admitted-run, Executor, and
+      verification durations are derived from monotonic elapsed time, are finite
+      and non-negative, and do not depend on real sleep or wall-clock subtraction.
 
   - id: AC6
     condition: >
-      Existing persisted canonical ResultPackages without an execution block
-      remain valid inputs to authoritative prior-result, review, remediation,
-      repair, and transport lineage behavior without migration or rewrite.
+      New success and failure artifact transports include the byte-exact optional
+      observation.json when present, retry-transport preserves it, and old remote
+      artifact refs without observation.json remain valid compatibility inputs.
 
   - id: AC7
     condition: >
-      Runtime verification EVIDENCE, claims, changed_files, unresolved, HEAD
-      binding, scope enforcement, one-active-executor behavior, and semantic
-      review authority remain unchanged; telemetry is never used to satisfy an
-      acceptance criterion or declare semantic PASS.
+      Observation persistence/transport failure leaves original RESULT or
+      FAILURE authority unchanged, performs no retry/reroute/fallback, and never
+      causes a second native Executor invocation or replacement RUN.
 
   - id: AC8
     condition: >
-      Direct Candidate Acceptance remains a no-executor path and is not forced to
-      fabricate executor timing or token counters by the new compatibility model.
+      canonical ResultPackage, result_package.json, RESULT/EVIDENCE validation,
+      claim/evidence binding, semantic REVIEW authority, and Direct Candidate
+      Acceptance remain unchanged and contain no RUN_OBSERVATION fields.
 
   - id: AC9
     condition: >
-      Focused regression tests cover Codex and Antigravity PRIMARY timing,
-      REMEDIATION/REPAIR preservation, controlled monotonic duration, Codex usage
-      present/missing/malformed cases, old-package compatibility, serialization,
-      and unchanged executor structural-output authority.
+      Optional trusted token usage, when supplied by the same native invocation,
+      validates exactly; absent usage remains unavailable without failure, and
+      malformed/partial/heuristically inferred counters are rejected or omitted
+      as untrusted without changing execution truth.
 
   - id: AC10
     condition: >
-      README documents the exact meaning of executor timing versus total RUN time,
-      token-counter availability, and the rule that quota/rate-limit percentage or
-      monetary cost is not inferred by AIOS-renew.
+      README documents what RUN_OBSERVATION measures, especially the distinction
+      among admitted-run elapsed time, native Executor time, Runtime verification
+      time, terminal RESULT/FAILURE, later semantic review outcome, and total
+      Human wait time. It also states that the recorded data is observation only
+      and is not yet used for automatic executor scoring or routing.
 
 verification:
   required:
-    - python -m pytest tests/test_artifacts.py tests/test_executor.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py tests/test_operator.py -q
+    - python -m pytest tests/test_run_observation.py tests/test_verification.py tests/test_operator.py -q
     - git diff --check
