@@ -3,6 +3,7 @@ import json
 import multiprocessing
 import subprocess
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -477,6 +478,32 @@ constraints:
     return review, remediation
 
 
+def admission_failure_records(repo: Path) -> list[dict]:
+    return [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(runtime_paths(repo).admission_failures.glob("*.json"))
+    ]
+
+
+def remote_admission_failure_records(upstream: Path) -> list[dict]:
+    refs = git(
+        upstream,
+        "for-each-ref",
+        "--format=%(objectname)",
+        "refs/heads/aios/admission-failure/",
+    ).splitlines()
+    return [
+        json.loads(
+            git(
+                upstream,
+                "show",
+                f"{commit}:.ai/transport/admission-failure.json",
+            )
+        )
+        for commit in refs
+    ]
+
+
 def repair_contract(
     repo: Path, *, action: str = "CODE_FIX"
 ) -> tuple[str, dict]:
@@ -748,6 +775,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     assert stored["result"]["changed_files"] == ["OUTPUT.txt"]
     assert stored["evidence"][0]["source"]["command"] == "git diff --check"
     assert "git status --porcelain" not in json.dumps(stored)
+    assert not admission_failure_records(repo)
     assert runner.calls[0][1]["text"] is False
     assert "encoding" not in runner.calls[0][1]
     assert "errors" not in runner.calls[0][1]
@@ -800,6 +828,7 @@ def test_remediation_failure_preserves_exact_staged_unresolved(
     assert failure["error"]["executor_diagnostics"] == {
         "unresolved": unresolved
     }
+    assert not admission_failure_records(repo)
     assert len(runner.calls) == 1
     assert verification_calls == []
 
@@ -1140,6 +1169,218 @@ def test_remediation_sha_mismatch_fails_before_executor(tmp_path: Path) -> None:
         )
 
     assert calls == []
+
+
+def test_remote_remediation_lineage_failure_publishes_bounded_admission_diagnostic(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    calls = []
+
+    with pytest.raises(
+        OperatorError, match="canonical remote remediation lineage not found"
+    ) as raised:
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+            native_runner=lambda *args, **kwargs: calls.append(args),
+        )
+
+    expected = {
+        "kind": "ADMISSION_FAILURE",
+        "operation": "REMEDIATION",
+        "task": {"id": "TASK-101", "revision": 1},
+        "requested_executor": "codex",
+        "executor_invoked": False,
+        "phase": "REMOTE_LINEAGE_RESOLUTION",
+        "finding_id": "R1",
+        "error": {
+            "type": "OperatorError",
+            "message": str(raised.value),
+        },
+    }
+    assert calls == []
+    assert admission_failure_records(repo) == [expected]
+    assert remote_admission_failure_records(tmp_path / "upstream.git") == [expected]
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("scope", "CODE_FIX remediation modification scope is empty"),
+        ("verification", "REMEDIATION affected verification is empty"),
+        ("binding", "invalid REMEDIATION: REMEDIATION reviewed_sha"),
+    ],
+)
+def test_contract_admission_failures_are_executor_neutral_and_exact(
+    tmp_path: Path, executor: str, change: str, message: str
+) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo)
+    if change == "scope":
+        remediation = replace(remediation, modification_scope=())
+    elif change == "verification":
+        remediation = replace(remediation, affected_verification=())
+    else:
+        remediation = replace(remediation, reviewed_sha="deadbeef")
+    calls = []
+
+    with pytest.raises(OperatorError, match=message) as raised:
+        run_remediation(
+            "TASK-101",
+            review=review,
+            remediation=remediation,
+            executor=executor,
+            repo=repo,
+            native_runner=lambda *args, **kwargs: calls.append(args),
+        )
+
+    records = admission_failure_records(repo)
+    assert calls == []
+    assert len(records) == 1
+    assert records[0] == {
+        "kind": "ADMISSION_FAILURE",
+        "operation": "REMEDIATION",
+        "task": {"id": "TASK-101", "revision": 1},
+        "requested_executor": executor,
+        "executor_invoked": False,
+        "phase": "CANONICAL_CONTRACT_ADMISSION",
+        "finding_id": remediation.finding_id,
+        "review_id": review.review_id,
+        "reviewed_sha": remediation.reviewed_sha,
+        "error": {
+            "type": "OperatorError",
+            "message": str(raised.value),
+        },
+    }
+    assert not list(runtime_paths(repo).runs.glob("RUN-101-001.json"))
+
+
+@pytest.mark.parametrize("repository_failure", ["dirty", "reviewed-sha"])
+def test_repository_admission_failure_creates_no_execution_state(
+    tmp_path: Path, repository_failure: str
+) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo)
+    if repository_failure == "dirty":
+        (repo / "README.md").write_text("dirty\n", encoding="utf-8")
+        message = "repository dirty"
+    else:
+        review, remediation = remediation_contract(repo, reviewed_sha="deadbeef")
+        message = "current HEAD does not match REMEDIATION reviewed_sha"
+    calls = []
+    state = runtime_paths(repo)
+
+    with pytest.raises(OperatorError, match=message) as raised:
+        run_remediation(
+            "TASK-101",
+            review=review,
+            remediation=remediation,
+            executor="antigravity",
+            repo=repo,
+            native_runner=lambda *args, **kwargs: calls.append(args),
+        )
+
+    record = admission_failure_records(repo)[0]
+    assert record["phase"] == "REPOSITORY_ADMISSION"
+    assert record["current_head_sha"] == git(repo, "rev-parse", "HEAD")
+    assert record["error"] == {
+        "type": "OperatorError",
+        "message": str(raised.value),
+    }
+    assert calls == []
+    assert not list(state.runs.glob("RUN-101-001.json"))
+    assert not list(state.handoffs.glob("*.json"))
+    assert not list(state.staging.glob("*.json"))
+    assert not list(state.results.glob("RUN-101-001.json"))
+    assert not list(state.verification.rglob("*"))
+
+
+def test_admission_diagnostic_is_content_addressed_idempotent_and_immutable(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+
+    for finding_id in ("R1", "R1", "R2"):
+        with pytest.raises(OperatorError):
+            run_remediation(
+                "TASK-101",
+                finding_id=finding_id,
+                executor="codex",
+                repo=repo,
+                native_runner=lambda *args, **kwargs: (_ for _ in ()).throw(
+                    AssertionError("executor must not run")
+                ),
+            )
+
+    local = admission_failure_records(repo)
+    remote = remote_admission_failure_records(tmp_path / "upstream.git")
+    assert len(local) == len(remote) == 2
+    assert local == remote
+    assert {record["finding_id"] for record in local} == {"R1", "R2"}
+
+
+def test_admission_transport_failure_preserves_original_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+
+    def fail_transport(*args, **kwargs):
+        raise operator_module.ReviewTransportError("transport unavailable")
+
+    monkeypatch.setattr(operator_module, "transport_admission_failure", fail_transport)
+
+    with pytest.raises(
+        OperatorError, match="canonical remote remediation lineage not found"
+    ) as raised:
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+            native_runner=lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("executor must not run")
+            ),
+        )
+
+    assert admission_failure_records(repo)[0]["error"]["message"] == str(
+        raised.value
+    )
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_unavailable_admission_remote_does_not_mask_local_error(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    branch = git(repo, "symbolic-ref", "--short", "HEAD")
+    git(repo, "config", "--unset", f"branch.{branch}.remote")
+
+    with pytest.raises(
+        OperatorError,
+        match="remote remediation lineage resolution failed: no configured upstream",
+    ) as raised:
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="antigravity",
+            repo=repo,
+            native_runner=lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("executor must not run")
+            ),
+        )
+
+    record = admission_failure_records(repo)[0]
+    assert record["error"] == {
+        "type": "OperatorError",
+        "message": str(raised.value),
+    }
+    assert record["executor_invoked"] is False
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
 
 
 def test_remediation_missing_prior_result_fails_before_executor(

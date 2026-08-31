@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -352,6 +353,114 @@ def transport_failure(
         code, _, stderr = _git_cmd(repo, "push", "--no-tags", remote, *specs, allow_fail=True)
         if code:
             raise ReviewTransportError(f"failed to push transport refs to {remote}: {stderr}")
+
+
+def transport_admission_failure(
+    repo: Path, *, identity: str, diagnostic_path: Path
+) -> None:
+    """Publish one immutable, content-addressed pre-RUN diagnostic."""
+
+    if len(identity) != 64 or any(
+        character not in "0123456789abcdef" for character in identity
+    ):
+        raise ReviewTransportError("invalid admission-failure identity")
+    if not diagnostic_path.is_file():
+        raise ReviewTransportError(
+            f"persisted admission-failure JSON missing: {diagnostic_path}"
+        )
+    if hashlib.sha256(diagnostic_path.read_bytes()).hexdigest() != identity:
+        raise ReviewTransportError(
+            "admission-failure identity does not match diagnostic content"
+        )
+    remote = resolve_transport_remote(repo)
+    ref = f"refs/heads/aios/admission-failure/{identity}"
+    code, output, _ = _git_cmd(
+        repo, "ls-remote", "--refs", remote, ref, allow_fail=True
+    )
+    if code:
+        raise ReviewTransportError(f"failed to query remote refs from {remote}")
+    lines = [line.split() for line in output.splitlines() if line.strip()]
+    if lines:
+        if len(lines) != 1 or len(lines[0]) != 2 or lines[0][1] != ref:
+            raise ReviewTransportError("malformed admission-failure ref result")
+        remote_content = _read_remote_blob(
+            repo,
+            remote,
+            lines[0][0],
+            ".ai/transport/admission-failure.json",
+        )
+        if remote_content != diagnostic_path.read_bytes():
+            raise ReviewTransportError(
+                f"remote admission-failure ref {ref} exists with different content"
+            )
+        return
+
+    commit = _create_admission_failure_commit(
+        repo, identity=identity, diagnostic_path=diagnostic_path
+    )
+    code, _, stderr = _git_cmd(
+        repo,
+        "push",
+        "--no-tags",
+        remote,
+        f"{commit}:{ref}",
+        allow_fail=True,
+    )
+    if code:
+        raise ReviewTransportError(
+            f"failed to push admission-failure ref to {remote}: {stderr}"
+        )
+
+
+def _create_admission_failure_commit(
+    repo: Path, *, identity: str, diagnostic_path: Path
+) -> str:
+    """Create an isolated diagnostic commit without touching the worktree."""
+
+    try:
+        blob = subprocess.run(
+            ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
+            input=diagnostic_path.read_bytes(),
+            capture_output=True,
+            check=True,
+        ).stdout.decode("utf-8", errors="strict").strip()
+        transport_tree = subprocess.run(
+            ("git", "-C", str(repo), "mktree"),
+            input=(
+                f"100644 blob {blob}\tadmission-failure.json\n"
+            ).encode("utf-8"),
+            capture_output=True,
+            check=True,
+        ).stdout.decode("utf-8", errors="strict").strip()
+        ai_tree = subprocess.run(
+            ("git", "-C", str(repo), "mktree"),
+            input=f"040000 tree {transport_tree}\ttransport\n".encode("utf-8"),
+            capture_output=True,
+            check=True,
+        ).stdout.decode("utf-8", errors="strict").strip()
+        root_tree = subprocess.run(
+            ("git", "-C", str(repo), "mktree"),
+            input=f"040000 tree {ai_tree}\t.ai\n".encode("utf-8"),
+            capture_output=True,
+            check=True,
+        ).stdout.decode("utf-8", errors="strict").strip()
+        return subprocess.run(
+            (
+                "git",
+                "-C",
+                str(repo),
+                "commit-tree",
+                root_tree,
+                "-m",
+                f"AIOS admission failure {identity}",
+            ),
+            capture_output=True,
+            check=True,
+        ).stdout.decode("utf-8", errors="strict").strip()
+    except (OSError, UnicodeError, subprocess.CalledProcessError) as exc:
+        raise ReviewTransportError(
+            f"failed to create admission-failure commit: {exc}"
+        ) from exc
 
 
 def read_remote_repair(repo: Path, run_id: str) -> bytes:

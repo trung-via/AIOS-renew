@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -40,6 +41,7 @@ from .review_transport import (
     ReviewTransportError,
     read_remote_repair,
     resolve_remote_remediation_lineages,
+    transport_admission_failure,
     transport_failure,
     transport_post_pass,
 )
@@ -174,6 +176,7 @@ class RuntimePaths:
     verification: Path
     results: Path
     failures: Path
+    admission_failures: Path
     repairs: Path
     lock: Path
 
@@ -340,6 +343,7 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         verification=state_root / "verification",
         results=state_root / "results",
         failures=state_root / "failures",
+        admission_failures=state_root / "admission-failures",
         repairs=state_root / "repairs",
         lock=state_root / "operator.lock",
     )
@@ -350,6 +354,7 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         paths.verification,
         paths.results,
         paths.failures,
+        paths.admission_failures,
         paths.repairs,
     ):
         path.mkdir(parents=True, exist_ok=True)
@@ -1188,7 +1193,17 @@ def run_remediation(
 
     root = resolve_repository(repo)
     state = runtime_paths(root)
+    task = load_task(root, task_id)
     existing = {path.name for path in state.runs.glob("*.json")}
+    admission: dict[str, Any] = {
+        "phase": (
+            "REMOTE_LINEAGE_RESOLUTION"
+            if finding_id is not None
+            else "CANONICAL_CONTRACT_ADMISSION"
+        ),
+    }
+    if finding_id is not None:
+        admission["finding_id"] = finding_id
     try:
         return _run_remediation_impl(
             task_id,
@@ -1200,16 +1215,83 @@ def run_remediation(
             repo=root,
             native_runner=native_runner,
             verification_runner=verification_runner,
+            resolved_task=task,
+            admission=admission,
         )
     except Exception as original:
         created = [
             path for path in state.runs.glob("*.json") if path.name not in existing
         ]
-        if len(created) == 1 and not (state.results / created[0].name).is_file():
-            _persist_and_transport_failure(
-                root, task_id=task_id, run_path=created[0], failure=original
+        if len(created) == 1:
+            if not (state.results / created[0].name).is_file():
+                _persist_and_transport_failure(
+                    root, task_id=task_id, run_path=created[0], failure=original
+                )
+        elif not created:
+            _persist_and_transport_admission_failure(
+                root,
+                task=task,
+                executor=executor,
+                admission=admission,
+                failure=original,
             )
         raise
+
+
+def _persist_and_transport_admission_failure(
+    root: Path,
+    *,
+    task: Task,
+    executor: str,
+    admission: Mapping[str, Any],
+    failure: Exception,
+) -> None:
+    """Best-effort one bounded pre-RUN diagnostic without changing authority."""
+
+    try:
+        message = str(failure).splitlines()[0][:512]
+        record: dict[str, Any] = {
+            "kind": "ADMISSION_FAILURE",
+            "operation": "REMEDIATION",
+            "task": {"id": task.task_id, "revision": task.revision},
+            "requested_executor": executor,
+            "executor_invoked": False,
+            "phase": admission["phase"],
+            "error": {
+                "type": type(failure).__name__,
+                "message": message,
+            },
+        }
+        for name in (
+            "finding_id",
+            "review_id",
+            "reviewed_sha",
+            "current_head_sha",
+        ):
+            value = admission.get(name)
+            if isinstance(value, str):
+                record[name] = value
+        content = json.dumps(
+            record, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        identity = hashlib.sha256(content).hexdigest()
+        path = runtime_paths(root).admission_failures / f"{identity}.json"
+        if path.exists():
+            if path.read_bytes() != content:
+                return
+        else:
+            path.write_bytes(content)
+        try:
+            transport_admission_failure(
+                root,
+                identity=identity,
+                diagnostic_path=path,
+            )
+        except ReviewTransportError:
+            pass
+    except Exception:
+        # Diagnostic state can never replace or mask the admission exception.
+        return
 
 
 def _run_remediation_impl(
@@ -1223,6 +1305,8 @@ def _run_remediation_impl(
     repo: str | Path | None = None,
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
+    resolved_task: Task | None = None,
+    admission: dict[str, Any] | None = None,
 ) -> RemediationSummary:
     """Execute one bound remediation without entering the TASK execution path.
 
@@ -1231,19 +1315,24 @@ def _run_remediation_impl(
     """
 
     root = resolve_repository(repo)
-    task = load_task(root, task_id)
+    task = resolved_task or load_task(root, task_id)
+    admission = admission if admission is not None else {}
     explicit_mode = (
         review is not None or remediation is not None or prior_review is not None
     )
     remote_mode = finding_id is not None
     if explicit_mode and remote_mode:
+        admission["phase"] = "CANONICAL_CONTRACT_ADMISSION"
         raise OperatorError(
             "remote finding mode cannot be mixed with explicit REVIEW/REMEDIATION artifacts"
         )
     if remote_mode:
         canonical_review, canonical_remediation, prior_result, canonical_prior_review = (
             _resolve_remote_remediation_lineage(
-                root, task=task, finding_id=finding_id
+                root,
+                task=task,
+                finding_id=finding_id,
+                admission=admission,
             )
         )
     else:
@@ -1254,10 +1343,19 @@ def _run_remediation_impl(
         canonical_review = (
             review if isinstance(review, Review) else load_review(review)
         )
+        admission.update(
+            {
+                "review_id": canonical_review.review_id,
+                "reviewed_sha": canonical_review.reviewed_sha,
+            }
+        )
         canonical_remediation = (
             remediation
             if isinstance(remediation, Remediation)
             else load_remediation(remediation)
+        )
+        _record_admission_artifact_facts(
+            admission, canonical_review, canonical_remediation
         )
         canonical_prior_review = (
             None
@@ -1275,6 +1373,10 @@ def _run_remediation_impl(
             canonical_review.reviewed_sha,
             repo=root,
         )
+    _record_admission_artifact_facts(
+        admission, canonical_review, canonical_remediation
+    )
+    admission["phase"] = "CANONICAL_CONTRACT_ADMISSION"
     state = runtime_paths(root)
     try:
         validate_review(
@@ -1303,10 +1405,12 @@ def _run_remediation_impl(
     if not canonical_remediation.affected_verification:
         raise OperatorError("REMEDIATION affected verification is empty")
 
+    admission["phase"] = "REPOSITORY_ADMISSION"
     with RepositoryLock(state.lock):
+        actual_baseline = _git(root, "rev-parse", "HEAD")
+        admission["current_head_sha"] = actual_baseline
         if _git(root, "status", "--porcelain"):
             raise OperatorError("repository dirty")
-        actual_baseline = _git(root, "rev-parse", "HEAD")
         if actual_baseline != canonical_remediation.reviewed_sha:
             raise OperatorError("current HEAD does not match REMEDIATION reviewed_sha")
 
@@ -1634,6 +1738,7 @@ def _resolve_remote_remediation_lineage(
     task: Task,
     finding_id: str,
     context: str = "remote remediation",
+    admission: dict[str, Any] | None = None,
 ) -> tuple[Review, Remediation, Result, Review | None]:
     """Resolve exactly one contract-valid remote lineage without heuristics."""
 
@@ -1646,7 +1751,9 @@ def _resolve_remote_remediation_lineage(
 
     matches: list[tuple[Review, Remediation, Result, Review | None]] = []
     for remote in remote_lineages:
-        parsed = _parse_remote_direct_lineage(repo, task=task, remote=remote)
+        parsed = _parse_remote_direct_lineage(
+            repo, task=task, remote=remote, admission=admission
+        )
         if parsed is not None:
             if parsed[1].finding_id != finding_id:
                 raise OperatorError(
@@ -1662,7 +1769,11 @@ def _resolve_remote_remediation_lineage(
 
 
 def _parse_remote_direct_lineage(
-    repo: Path, *, task: Task, remote: RemoteRemediationLineage
+    repo: Path,
+    *,
+    task: Task,
+    remote: RemoteRemediationLineage,
+    admission: dict[str, Any] | None = None,
 ) -> tuple[Review, Remediation, Result, Review | None] | None:
     try:
         run_data = json.loads(remote.run.decode("utf-8", errors="strict"))
@@ -1683,10 +1794,21 @@ def _parse_remote_direct_lineage(
         if source_run.task.revision != task.revision:
             raise ValueError("source RUN TASK revision mismatch")
 
+        if admission is not None:
+            admission["phase"] = "CANONICAL_CONTRACT_ADMISSION"
         review = parse_review(remote.review.decode("utf-8", errors="strict"))
+        if admission is not None:
+            admission.update(
+                {
+                    "review_id": review.review_id,
+                    "reviewed_sha": review.reviewed_sha,
+                }
+            )
         remediation = parse_remediation(
             remote.remediation.decode("utf-8", errors="strict")
         )
+        if admission is not None:
+            _record_admission_artifact_facts(admission, review, remediation)
         result_data = json.loads(remote.result.decode("utf-8", errors="strict"))
         if not isinstance(result_data, Mapping):
             raise TypeError("ResultPackage must be a mapping")
@@ -1735,6 +1857,20 @@ def _parse_remote_direct_lineage(
         raise OperatorError(
             f"contract-invalid canonical lineage at {remote.ref}: {exc}"
         ) from exc
+
+
+def _record_admission_artifact_facts(
+    admission: dict[str, Any], review: Review, remediation: Remediation
+) -> None:
+    """Retain only authoritative, allowlisted facts known at admission time."""
+
+    admission.update(
+        {
+            "finding_id": remediation.finding_id,
+            "review_id": review.review_id,
+            "reviewed_sha": remediation.reviewed_sha,
+        }
+    )
 
 
 def _committed_changed_files(repo: Path, base_sha: str, head_sha: str) -> set[str]:

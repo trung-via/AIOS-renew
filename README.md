@@ -53,6 +53,25 @@ aios remediate TASK-101 --review .ai/reviews/REVIEW-101-001.yaml `
 `--prior-review`. In either mode, the command is the Human execution-authorization
 boundary and AIOS invokes only the selected Executor, with no retry or fallback.
 
+### Remediation outcome boundaries
+
+A remediation admission failure is a Runtime-owned rejection before a RUN exists.
+It means the requested Executor never ran. Runtime keeps one bounded, allowlisted
+diagnostic under the repository's Git runtime state and best-effort publishes the
+byte-identical artifact under `refs/heads/aios/admission-failure/`. This diagnostic
+records operational facts only; it is not RESULT, EVIDENCE, or proof that a finding
+was fixed. Repeated byte-identical rejections resolve to the same content-addressed
+artifact, and unavailable diagnostic transport never replaces the local admission
+error.
+
+A RUN failure occurs only after admission created a RUN and the selected Executor
+or a later completion or verification gate failed. It remains represented by the
+existing RUN-keyed FAILURE path. A post-PASS review outcome is later still: the RUN
+and canonical ResultPackage passed Runtime gates and were transported for semantic
+review, which may return PASS or authorize a new narrow REMEDIATION. These three
+states are distinct and an admission diagnostic is never treated as a RUN failure
+or a review judgment.
+
 ## Direct Candidate Acceptance
 
 For a committed candidate produced directly by one Human-selected Executor in
