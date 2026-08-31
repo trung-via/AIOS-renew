@@ -1,0 +1,190 @@
+task_id: TASK-047
+revision: 1
+
+goal: >
+  Close the observed AIOS-renew REMEDIATION pre-dispatch observability gap by
+  preserving and publishing a bounded Runtime-owned admission-failure diagnostic
+  when a valid Human-authorized remediation command fails before RUN admission and
+  before any Executor invocation. The diagnostic must let ChatGPT distinguish
+  "remediation was rejected before execution" from an Executor or completion
+  failure without creating a fake RUN, weakening fail-closed validation, adding
+  retries, or changing the frozen kernel contracts.
+
+problem: >
+  Normal REMEDIATION now persists and transports failures once a RUN has been
+  created, but several authoritative checks still occur before RUN creation:
+  remote REVIEW/REMEDIATION lineage resolution, contract validation, executor and
+  correction-scope admission, affected-verification admission, repository
+  cleanliness, and reviewed-SHA binding. If one of these checks fails, the local
+  Operator/Antigravity UI reports the error but no canonical remote diagnostic is
+  available to ChatGPT because the existing failure path is keyed to a created RUN.
+  This leaves execution semantics correct and fail-closed while creating a control-
+  plane blind spot that can cause the Human or Reviewer to misread the state and
+  repeat a fix that was never admitted. TASK-047 must close only that observed
+  REMEDIATION admission gap in the Operator/Runtime layer.
+
+assumptions:
+  - Current canonical AIOS-renew main baseline before TASK-047 authoring is 66a092f7341ab03519c3a463dd65caf5a6b16257.
+  - The frozen v0.1 TASK, RUN, RESULT, EVIDENCE, REVIEW, and REMEDIATION contracts remain authoritative and unchanged.
+  - A RUN must continue to mean an execution instance that passed admission far enough to receive canonical RUN state; pre-RUN rejection must not be represented as a RUN failure.
+  - Existing post-RUN FAILURE persistence and transport remain the authority for failures after RUN creation.
+  - Existing TASK-045 structured executor-diagnostic preservation and TASK-046 execution telemetry remain unchanged concerns.
+  - Admission diagnostics are deterministic Runtime/Operator facts, not Executor claims, semantic REVIEW judgments, or a new kernel artifact family.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-045.yaml
+    - .ai/tasks/TASK-046.yaml
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/review.py
+    - tests/test_operator.py
+    - README.md
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+    - README.md
+
+non_goals:
+  - Change or unfreeze TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, or REPAIR schemas or semantics.
+  - Create a RUN, RESULT, staging ResultPackage, handoff, lease, or Executor invocation for a remediation rejected before admission.
+  - Generalize this task to PRIMARY, REPAIR, Direct Candidate Acceptance, task authoring, queues, watchers, or every possible Operator command.
+  - Change remote canonical remediation lineage semantics, finding semantics, reviewed-SHA authority, repository gates, affected verification, or post-PASS DELTA review.
+  - Add retry, reroute, fallback, automatic remediation, automatic repair, another Executor, planner, supervisor, background worker, database, metrics service, or analytics pipeline.
+  - Transport full stdout, stderr, stack traces, model transcripts, chat history, arbitrary UI text, or free-form Executor prose as admission diagnostics.
+  - Let Runtime decide whether the semantic finding is fixed, suggest implementation changes, or reinterpret REVIEW/REMEDIATION content.
+  - Make remote diagnostic publication a prerequisite that can replace or mask the original admission failure when Git transport is unavailable.
+  - Add clock-, random-, UUID-, or process-global identity solely to name admission-failure artifacts.
+
+constraints:
+  hard:
+    - >
+      Preserve current REMEDIATION execution semantics: all existing pre-RUN
+      lineage, contract, executor, scope, verification, repository-cleanliness,
+      and reviewed-SHA checks remain fail-closed, and a rejected remediation must
+      invoke zero Executors and create zero RUNs.
+    - >
+      When a remediation fails after the repository and TASK are validly resolved
+      but before RUN creation, Runtime must best-effort persist one bounded local
+      operational diagnostic under the Git runtime state and, when the configured
+      Git remote is usable, publish the byte-exact diagnostic through an isolated
+      remote artifact ref discoverable under refs/heads/aios/admission-failure/.
+    - >
+      The admission diagnostic is Operator/Runtime operational state only. It must
+      not be added to the frozen kernel schemas, must not masquerade as RESULT or
+      EVIDENCE, and must never be consumed as semantic proof that a finding was or
+      was not fixed.
+    - >
+      A published diagnostic must state at minimum: kind=ADMISSION_FAILURE,
+      operation=REMEDIATION, exact TASK id and revision, requested executor,
+      executor_invoked=false, a bounded admission phase, and the original bounded
+      error type/message. When already authoritatively resolved before the failure,
+      include finding_id, review_id, reviewed_sha, and current_head_sha as exact
+      facts rather than inferred placeholders.
+    - >
+      Admission phase classification must remain bounded and deterministic. It may
+      distinguish only the Runtime-owned boundaries needed to explain this flow,
+      such as remote lineage resolution, canonical contract admission, and
+      repository admission. It must not classify semantic root cause using a model
+      or parse arbitrary Executor/UI prose.
+    - >
+      Remote publication must be immutable and idempotent. Repeating the same
+      byte-exact admission failure must not create an unbounded sequence of duplicate
+      remote artifacts, while a materially different diagnostic must not overwrite
+      or mutate an earlier one. Any remote-ref suffix or local identity used for
+      this purpose must be derived deterministically from bounded diagnostic state,
+      not clock, random, UUID, or model output.
+    - >
+      Admission-failure persistence and publication are diagnostic side effects only.
+      If local diagnostic persistence or remote transport itself fails, preserve the
+      original remediation admission exception as primary, do not fabricate a RUN,
+      do not invoke an Executor, and do not retry or replace the original error.
+    - >
+      Do not publish secrets or unrestricted repository state. Diagnostic content
+      must be an allowlisted bounded structure; do not include environment values,
+      credentials, tokens, complete Git status output, complete REVIEW/REMEDIATION
+      documents, stdout/stderr streams, or source-code contents.
+    - >
+      Existing post-RUN FAILURE transport must remain unchanged in authority and
+      discoverability. Once a RUN exists, failures continue through the existing
+      RUN-keyed failure path rather than also producing an ADMISSION_FAILURE.
+    - >
+      The implementation must be Executor-neutral. A pre-RUN rejection requested
+      with Codex or Antigravity must have the same admission-diagnostic semantics and
+      must record that neither Executor was invoked.
+    - >
+      Successful REMEDIATION behavior must remain unchanged: exactly one admitted
+      RUN, exactly one selected Executor invocation, existing completion and affected
+      verification gates, existing ResultPackage persistence, and existing post-PASS
+      DELTA-review transport.
+    - >
+      README must explain the semantic distinction among admission failure, RUN
+      failure, and post-PASS review outcome, including that an admission failure
+      means the requested Executor never ran.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A remote-lineage resolution error occurring after valid repository/TASK
+      resolution but before REMEDIATION RUN creation produces a bounded local
+      ADMISSION_FAILURE diagnostic, invokes no Executor, creates no RUN, and
+      best-effort publishes the same diagnostic under the admission-failure remote
+      namespace when transport is available.
+  - id: AC2
+    condition: >
+      Pre-RUN canonical validation failures such as invalid REVIEW/REMEDIATION
+      lineage binding, unsupported correction admission, empty CODE_FIX scope, or
+      empty affected verification retain the original fail-closed error while
+      exposing the same bounded admission diagnostic with executor_invoked=false.
+  - id: AC3
+    condition: >
+      Repository-admission failures including dirty working tree or current HEAD not
+      matching reviewed_sha produce the diagnostic without creating a RUN, handoff,
+      lease, staging/result artifact, verification execution, or Executor invocation.
+  - id: AC4
+    condition: >
+      Published diagnostics contain only the allowlisted Runtime facts, preserve the
+      exact bounded original error type/message, include already-known finding/review/
+      SHA facts when available, and never contain full stdout/stderr, secrets, source
+      content, model prose, or semantic repair advice.
+  - id: AC5
+    condition: >
+      Admission diagnostic publication is immutable and idempotent for byte-identical
+      failures; repeating the same rejected remediation does not create unbounded
+      duplicate refs, and a different diagnostic cannot overwrite an earlier artifact.
+  - id: AC6
+    condition: >
+      Missing/unusable remote or a diagnostic transport failure never replaces or
+      masks the original local admission error, never creates a RUN, and never causes
+      retry, reroute, fallback, or an Executor call.
+  - id: AC7
+    condition: >
+      Once a REMEDIATION RUN has been created, subsequent execution/completion/
+      verification failures continue exclusively through the existing RUN-keyed
+      FAILURE path and do not also emit a pre-RUN ADMISSION_FAILURE.
+  - id: AC8
+    condition: >
+      Codex and Antigravity requested remediation paths have identical pre-RUN
+      admission-failure behavior and prove zero native executor calls for rejected
+      admission.
+  - id: AC9
+    condition: >
+      A successful REMEDIATION retains the existing one-RUN/one-Executor path,
+      affected verification, canonical ResultPackage, and post-PASS review transport
+      without added duplicate execution or semantic reasoning.
+  - id: AC10
+    condition: >
+      Regression coverage proves remote-lineage, contract, dirty-repository, and
+      reviewed-SHA admission failures; exact bounded diagnostic content; no RUN or
+      Executor call; immutable/idempotent remote publication; unavailable/failed
+      transport fallback; unchanged post-RUN failure transport; Executor neutrality;
+      and unchanged successful REMEDIATION behavior.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
