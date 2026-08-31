@@ -69,6 +69,18 @@ from .verification import (
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 
 
+@dataclass
+class _RemediationAttempt:
+    """Failure owner for one run_remediation invocation."""
+
+    run_path: Path | None = None
+
+    def bind_run(self, run_path: Path) -> None:
+        if self.run_path is not None:
+            raise OperatorError("remediation attempt already owns a RUN")
+        self.run_path = run_path
+
+
 @dataclass(frozen=True)
 class NativeExecutionCapability:
     """Executor-native capability selected from canonical mutation authority."""
@@ -1194,7 +1206,7 @@ def run_remediation(
     root = resolve_repository(repo)
     state = runtime_paths(root)
     task = load_task(root, task_id)
-    existing = {path.name for path in state.runs.glob("*.json")}
+    attempt = _RemediationAttempt()
     admission: dict[str, Any] = {
         "phase": (
             "REMOTE_LINEAGE_RESOLUTION"
@@ -1217,17 +1229,18 @@ def run_remediation(
             verification_runner=verification_runner,
             resolved_task=task,
             admission=admission,
+            attempt=attempt,
         )
     except Exception as original:
-        created = [
-            path for path in state.runs.glob("*.json") if path.name not in existing
-        ]
-        if len(created) == 1:
-            if not (state.results / created[0].name).is_file():
+        if attempt.run_path is not None:
+            if not (state.results / attempt.run_path.name).is_file():
                 _persist_and_transport_failure(
-                    root, task_id=task_id, run_path=created[0], failure=original
+                    root,
+                    task_id=task_id,
+                    run_path=attempt.run_path,
+                    failure=original,
                 )
-        elif not created:
+        else:
             _persist_and_transport_admission_failure(
                 root,
                 task=task,
@@ -1307,6 +1320,7 @@ def _run_remediation_impl(
     verification_runner: VerificationRunner = subprocess.run,
     resolved_task: Task | None = None,
     admission: dict[str, Any] | None = None,
+    attempt: _RemediationAttempt | None = None,
 ) -> RemediationSummary:
     """Execute one bound remediation without entering the TASK execution path.
 
@@ -1436,10 +1450,13 @@ def _run_remediation_impl(
         )
         result_path = state.results / f"{run_id}.json"
         staging_path = state.staging / f"{run_id}.json"
+        run_path = state.runs / f"{run_id}.json"
         _write_json(
-            state.runs / f"{run_id}.json",
+            run_path,
             {"kind": "REMEDIATION", "execution": asdict(execution)},
         )
+        if attempt is not None:
+            attempt.bind_run(run_path)
 
         capability = _resolve_native_execution_capability(
             authorizes_mutation=canonical_remediation.action == "CODE_FIX"

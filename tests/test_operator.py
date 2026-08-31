@@ -1300,6 +1300,101 @@ def test_repository_admission_failure_creates_no_execution_state(
     assert not list(state.verification.rglob("*"))
 
 
+def test_foreign_run_during_admission_failure_is_not_claimed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    foreign_run = state.runs / "RUN-999-001.json"
+    baseline = git(repo, "rev-parse", "HEAD")
+
+    def fail_after_foreign_run(*args, **kwargs):
+        assert kwargs["attempt"].run_path is None
+        foreign_run.write_text(
+            json.dumps(
+                {
+                    "run_id": "RUN-999-001",
+                    "task": {"id": "TASK-999", "revision": 1},
+                    "executor": "codex",
+                    "base_sha": baseline,
+                    "workspace": str(repo),
+                    "head_sha": None,
+                    "status": "ACTIVE",
+                }
+            ),
+            encoding="utf-8",
+        )
+        raise OperatorError("current remediation rejected before RUN creation")
+
+    monkeypatch.setattr(
+        operator_module, "_run_remediation_impl", fail_after_foreign_run
+    )
+
+    with pytest.raises(
+        OperatorError, match="current remediation rejected before RUN creation"
+    ):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+        )
+
+    records = admission_failure_records(repo)
+    assert len(records) == 1
+    assert records[0]["phase"] == "REMOTE_LINEAGE_RESOLUTION"
+    assert records[0]["finding_id"] == "R1"
+    assert records[0]["executor_invoked"] is False
+    assert foreign_run.is_file()
+    assert not list(state.failures.glob("RUN-999-001*.json"))
+
+
+def test_foreign_run_during_owned_run_failure_does_not_suppress_failure(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo)
+    state = runtime_paths(repo)
+    foreign_run = state.runs / "RUN-999-001.json"
+    baseline = git(repo, "rev-parse", "HEAD")
+    calls = []
+
+    def fail_with_foreign_run(command, **kwargs):
+        calls.append(command)
+        foreign_run.write_text(
+            json.dumps(
+                {
+                    "run_id": "RUN-999-001",
+                    "task": {"id": "TASK-999", "revision": 1},
+                    "executor": "codex",
+                    "base_sha": baseline,
+                    "workspace": str(repo),
+                    "head_sha": None,
+                    "status": "ACTIVE",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=b"not-json", stderr=b""
+        )
+
+    with pytest.raises(OperatorError, match="invalid structural ResultPackage"):
+        run_remediation(
+            "TASK-101",
+            review=review,
+            remediation=remediation,
+            executor="codex",
+            repo=repo,
+            native_runner=fail_with_foreign_run,
+        )
+
+    assert len(calls) == 1
+    assert (state.failures / "RUN-101-001.json").is_file()
+    assert not list(state.failures.glob("RUN-999-001*.json"))
+    assert admission_failure_records(repo) == []
+
+
 def test_admission_diagnostic_is_content_addressed_idempotent_and_immutable(
     tmp_path: Path,
 ) -> None:
