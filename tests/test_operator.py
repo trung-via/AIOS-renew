@@ -550,6 +550,40 @@ def repair_contract(
     return failed_run_id, repair
 
 
+def write_foreign_run(repo: Path) -> Path:
+    state = runtime_paths(repo)
+    foreign_run = state.runs / "RUN-999-001.json"
+    foreign_run.write_text(
+        json.dumps(
+            {
+                "run_id": "RUN-999-001",
+                "task": {"id": "TASK-999", "revision": 1},
+                "executor": "codex",
+                "base_sha": git(repo, "rev-parse", "HEAD"),
+                "workspace": str(repo),
+                "head_sha": None,
+                "status": "ACTIVE",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return foreign_run
+
+
+def inject_foreign_run_on_lock_release(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_lock = operator_module.RepositoryLock
+
+    class InterleavingRepositoryLock(real_lock):
+        def __exit__(self, *args):
+            result = super().__exit__(*args)
+            write_foreign_run(repo)
+            return result
+
+    monkeypatch.setattr(operator_module, "RepositoryLock", InterleavingRepositoryLock)
+
+
 def publish_direct_candidate_lineage(repo: Path, root: Path) -> None:
     """Publish the canonical remote artifacts and REVIEW/REMEDIATION branch."""
 
@@ -1402,6 +1436,116 @@ def test_foreign_run_during_owned_run_failure_does_not_suppress_failure(
     assert (state.failures / "RUN-101-001.json").is_file()
     assert not list(state.failures.glob("RUN-999-001*.json"))
     assert admission_failure_records(repo) == []
+
+
+def test_primary_pre_run_failure_does_not_claim_foreign_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+
+    def fail_before_owned_run(*args, **kwargs):
+        assert kwargs["attempt"].run_path is None
+        write_foreign_run(repo)
+        raise OperatorError("PRIMARY rejected before RUN creation")
+
+    monkeypatch.setattr(operator_module, "_run_task_impl", fail_before_owned_run)
+
+    with pytest.raises(OperatorError, match="PRIMARY rejected before RUN creation"):
+        run_task("TASK-101", executor="codex", repo=repo)
+
+    assert (state.runs / "RUN-999-001.json").is_file()
+    assert not (state.failures / "RUN-999-001.json").exists()
+    assert not (state.observations / "RUN-999-001.json").exists()
+
+
+def test_primary_owned_run_failure_survives_foreign_run_interleaving(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    inject_foreign_run_on_lock_release(repo, monkeypatch)
+
+    def fail_with_foreign_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=b"not-json", stderr=b""
+        )
+
+    with pytest.raises(OperatorError, match="invalid structural ResultPackage"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=fail_with_foreign_run,
+        )
+
+    observation = json.loads(
+        (state.observations / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert (state.failures / "RUN-101-001.json").is_file()
+    assert observation["operation"] == "PRIMARY"
+    assert observation["terminal_kind"] == "FAILURE"
+    assert not (state.failures / "RUN-999-001.json").exists()
+    assert not (state.observations / "RUN-999-001.json").exists()
+
+
+def test_repair_pre_run_failure_does_not_claim_foreign_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(repo)
+    state = runtime_paths(repo)
+
+    def fail_before_owned_run(*args, **kwargs):
+        assert kwargs["attempt"].run_path is None
+        write_foreign_run(repo)
+        raise OperatorError("REPAIR rejected before RUN creation")
+
+    monkeypatch.setattr(operator_module, "_run_repair_impl", fail_before_owned_run)
+
+    with pytest.raises(OperatorError, match="REPAIR rejected before RUN creation"):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair,
+        )
+
+    assert (state.runs / "RUN-999-001.json").is_file()
+    assert not (state.failures / "RUN-999-001.json").exists()
+    assert not (state.observations / "RUN-999-001.json").exists()
+
+
+def test_repair_owned_run_failure_survives_foreign_run_interleaving(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(repo)
+    state = runtime_paths(repo)
+    inject_foreign_run_on_lock_release(repo, monkeypatch)
+
+    def fail_with_foreign_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=b"not-json", stderr=b""
+        )
+
+    with pytest.raises(OperatorError, match="invalid structural ResultPackage"):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair,
+            native_runner=fail_with_foreign_run,
+        )
+
+    observation = json.loads(
+        (state.observations / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert (state.failures / "RUN-101-001.json").is_file()
+    assert observation["operation"] == "REPAIR"
+    assert observation["terminal_kind"] == "FAILURE"
+    assert not (state.failures / "RUN-999-001.json").exists()
+    assert not (state.observations / "RUN-999-001.json").exists()
 
 
 def test_admission_diagnostic_is_content_addressed_idempotent_and_immutable(

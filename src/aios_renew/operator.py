@@ -76,14 +76,14 @@ NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 
 
 @dataclass
-class _RemediationAttempt:
-    """Failure owner for one run_remediation invocation."""
+class _RunAttempt:
+    """Invocation-local owner of one persisted RUN."""
 
     run_path: Path | None = None
 
     def bind_run(self, run_path: Path) -> None:
         if self.run_path is not None:
-            raise OperatorError("remediation attempt already owns a RUN")
+            raise OperatorError("invocation attempt already owns a RUN")
         self.run_path = run_path
 
 
@@ -579,20 +579,17 @@ def run_task(
     observation_tracker = RunObservationTracker(
         "PRIMARY", monotonic_clock=monotonic_clock
     )
-    existing = {path.name for path in state.runs.glob("*.json")}
+    attempt = _RunAttempt()
     try:
         return _run_task_impl(
             task_id, executor=executor, repo=root,
             native_runner=native_runner, verification_runner=verification_runner,
+            attempt=attempt,
             observation_tracker=observation_tracker,
         )
     except Exception as original:
-        created = sorted(
-            (path for path in state.runs.glob("*.json") if path.name not in existing),
-            key=lambda path: path.name,
-        )
-        if len(created) == 1:
-            run_path = created[0]
+        if attempt.run_path is not None:
+            run_path = attempt.run_path
             run_id = run_path.stem
             # A canonical RESULT means implementation and verification already passed;
             # only its transport failed, so it is not rewritten as an execution failure.
@@ -617,6 +614,7 @@ def _run_task_impl(
     repo: str | Path | None = None,
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
+    attempt: _RunAttempt,
     observation_tracker: RunObservationTracker,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
@@ -640,7 +638,9 @@ def _run_task_impl(
         )
         result_path = state.results / f"{run_id}.json"
         staging_path = state.staging / f"{run_id}.json"
-        _write_json(state.runs / f"{run_id}.json", asdict(run))
+        run_path = state.runs / f"{run_id}.json"
+        _write_json(run_path, asdict(run))
+        attempt.bind_run(run_path)
         observation_tracker.admit(run)
         observed_native_runner = observation_tracker.wrap_native_runner(
             native_runner
@@ -755,7 +755,7 @@ def _run_task_impl(
                 root,
                 run_id=run_id,
                 head_sha=actual_head,
-                run_path=state.runs / f"{run_id}.json",
+                run_path=run_path,
                 result_path=result_path,
                 observation_path=observation_path,
             )
@@ -923,25 +923,28 @@ def run_repair(
     observation_tracker = RunObservationTracker(
         "REPAIR", monotonic_clock=monotonic_clock
     )
-    existing = {path.name for path in state.runs.glob("*.json")}
+    attempt = _RunAttempt()
     try:
         return _run_repair_impl(
             failed_run_id, executor=executor, repo=root, repair=repair,
             native_runner=native_runner,
             verification_runner=verification_runner,
+            attempt=attempt,
             observation_tracker=observation_tracker,
         )
     except Exception as original:
-        created = [path for path in state.runs.glob("*.json") if path.name not in existing]
-        if len(created) == 1 and not (state.results / created[0].name).is_file():
+        if (
+            attempt.run_path is not None
+            and not (state.results / attempt.run_path.name).is_file()
+        ):
             try:
-                run_data = json.loads(created[0].read_text(encoding="utf-8"))
+                run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
                 observation_path = _persist_terminal_observation(
                     state, observation_tracker, "FAILURE"
                 )
                 _persist_and_transport_failure(
                     root, task_id=run_data["task"]["id"],
-                    run_path=created[0], failure=original,
+                    run_path=attempt.run_path, failure=original,
                     observation_path=observation_path,
                 )
             except Exception:
@@ -993,6 +996,7 @@ def _run_repair_impl(
     repair: Mapping[str, Any] | str | Path | None,
     native_runner: NativeRunner,
     verification_runner: VerificationRunner,
+    attempt: _RunAttempt,
     observation_tracker: RunObservationTracker,
 ) -> RepairSummary:
     if executor not in ("codex", "antigravity"):
@@ -1100,6 +1104,7 @@ def _run_repair_impl(
             "run": run,
         }
         _write_json(run_path, asdict(run))
+        attempt.bind_run(run_path)
         observation_tracker.admit(run)
         observed_native_runner = observation_tracker.wrap_native_runner(
             native_runner
@@ -1296,7 +1301,7 @@ def run_remediation(
         "REMEDIATION", monotonic_clock=monotonic_clock
     )
     task = load_task(root, task_id)
-    attempt = _RemediationAttempt()
+    attempt = _RunAttempt()
     admission: dict[str, Any] = {
         "phase": (
             "REMOTE_LINEAGE_RESOLUTION"
@@ -1415,7 +1420,7 @@ def _run_remediation_impl(
     verification_runner: VerificationRunner = subprocess.run,
     resolved_task: Task | None = None,
     admission: dict[str, Any] | None = None,
-    attempt: _RemediationAttempt | None = None,
+    attempt: _RunAttempt | None = None,
     observation_tracker: RunObservationTracker,
 ) -> RemediationSummary:
     """Execute one bound remediation without entering the TASK execution path.
