@@ -1,0 +1,11 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: 5c837a57f3d745b07e1df1787757d380ab7842bb
+modification_scope:
+  - src/aios_renew/operator.py
+  - tests/test_operator.py
+affected_verification:
+  - python -m pytest tests/test_operator.py -q
+  - git diff --check
+constraints:
+  hard: []
