@@ -16,6 +16,7 @@ from aios_renew.operator import (
     describe_task,
     load_task,
     resolve_repository,
+    retry_transport,
     run_repair,
     run_remediation,
     run_task,
@@ -908,6 +909,13 @@ constraints:
     assert json.loads(summary.result_path.read_text(encoding="utf-8"))["result"][
         "changed_files"
     ] == []
+    observation = json.loads(
+        (
+            runtime_paths(repo).observations / f"{summary.run_id}.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert observation["operation"] == "REPAIR"
+    assert observation["terminal_kind"] == "RESULT"
 
 
 def test_remote_remediation_resolves_lineage_and_uses_normal_boundary(
@@ -1205,6 +1213,7 @@ def test_remote_remediation_lineage_failure_publishes_bounded_admission_diagnost
     assert admission_failure_records(repo) == [expected]
     assert remote_admission_failure_records(tmp_path / "upstream.git") == [expected]
     assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list(runtime_paths(repo).observations.glob("*.json"))
 
 
 @pytest.mark.parametrize("executor", ["codex", "antigravity"])
@@ -2046,6 +2055,18 @@ def test_executor_failure_transports_compact_boundary_diagnostic(
     }
     assert "raw executor transcript" not in json.dumps(failure)
     assert "executor_diagnostics" not in failure["error"]
+    observation_path = runtime_paths(repo).observations / "RUN-101-001.json"
+    observation = json.loads(observation_path.read_text(encoding="utf-8"))
+    assert observation["terminal_kind"] == "FAILURE"
+    assert observation["executor_invoked"] is True
+    remote = tmp_path / "upstream.git"
+    remote_observation = git(
+        remote,
+        "show",
+        "refs/heads/aios/failure-artifacts/RUN-101-001:"
+        ".ai/transport/observation.json",
+    )
+    assert remote_observation == observation_path.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("staged_content", [None, "{malformed"])
@@ -2922,12 +2943,19 @@ def test_primary_run_transports_review_and_artifacts_refs(tmp_path: Path) -> Non
     # Verify artifacts ref contains byte-exact run.json and result.json
     remote_run_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/run.json")
     remote_result_json = git(upstream, "show", f"{artifacts_ref}:.ai/transport/result.json")
+    remote_observation_json = git(
+        upstream, "show", f"{artifacts_ref}:.ai/transport/observation.json"
+    )
 
     local_run_json = (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(encoding="utf-8")
     local_result_json = summary.result_path.read_text(encoding="utf-8")
+    local_observation_json = (
+        runtime_paths(repo).observations / f"{summary.run_id}.json"
+    ).read_text(encoding="utf-8")
 
     assert remote_run_json == local_run_json
     assert remote_result_json == local_result_json
+    assert remote_observation_json == local_observation_json
 
 
 def test_remediation_run_transports_review_and_artifacts_refs(tmp_path: Path) -> None:
@@ -2953,9 +2981,17 @@ def test_remediation_run_transports_review_and_artifacts_refs(tmp_path: Path) ->
 
     local_run_json = (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(encoding="utf-8")
     local_result_json = summary.result_path.read_text(encoding="utf-8")
+    local_observation_json = (
+        runtime_paths(repo).observations / f"{summary.run_id}.json"
+    ).read_text(encoding="utf-8")
+    remote_observation_json = git(
+        upstream, "show", f"{artifacts_ref}:.ai/transport/observation.json"
+    )
 
     assert remote_run_json == local_run_json
     assert remote_result_json == local_result_json
+    assert remote_observation_json == local_observation_json
+    assert json.loads(local_observation_json)["operation"] == "REMEDIATION"
 
 
 def test_transport_does_not_modify_product_head_worktree_or_main(tmp_path: Path) -> None:
@@ -3258,5 +3294,236 @@ def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(
             repair=repair("REPAIR-3", continuation_run_id, continuation_head),
             native_runner=runner,
         )
+
+
+class ObservationClock:
+    def __init__(self, *values: float) -> None:
+        self.values = iter(values)
+
+    def __call__(self) -> float:
+        return next(self.values)
+
+
+def test_primary_observation_uses_controlled_monotonic_phase_durations(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=FakeCodexRunner(repo),
+        monotonic_clock=ObservationClock(10.0, 12.0, 19.0, 21.0, 24.0, 30.0),
+    )
+
+    state = runtime_paths(repo)
+    observation = json.loads(
+        (state.observations / f"{summary.run_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert observation["operation"] == "PRIMARY"
+    assert observation["terminal_kind"] == "RESULT"
+    assert observation["executor_invoked"] is True
+    assert observation["durations"] == {
+        "admitted_run_seconds": 20.0,
+        "executor_seconds": 7.0,
+        "verification_seconds": 3.0,
+    }
+    canonical = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    assert set(canonical) == {"result", "evidence"}
+    assert "observation" not in json.dumps(canonical).lower()
+
+
+def test_verification_failure_observation_retains_both_available_phase_times(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
+
+    def failing_verifier(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, returncode=7, stdout=b"", stderr=b"failed\n"
+        )
+
+    with pytest.raises(OperatorError, match="exit code 7"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=StaticResultRunner(repo, static_payload()),
+            verification_runner=failing_verifier,
+            monotonic_clock=ObservationClock(1.0, 2.0, 5.0, 6.0, 10.0, 12.0),
+        )
+
+    observation = json.loads(
+        (runtime_paths(repo).observations / "RUN-101-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert observation["terminal_kind"] == "FAILURE"
+    assert observation["executor_invoked"] is True
+    assert observation["durations"] == {
+        "admitted_run_seconds": 11.0,
+        "executor_seconds": 3.0,
+        "verification_seconds": 4.0,
+    }
+
+
+def test_post_admission_pre_executor_failure_records_not_invoked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    calls = []
+
+    def reject_capability(*args, **kwargs):
+        raise OperatorError("capability resolution failed")
+
+    def native_runner(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("native Executor must not run")
+
+    monkeypatch.setattr(
+        operator_module, "_resolve_native_execution_capability", reject_capability
+    )
+    with pytest.raises(OperatorError, match="capability resolution failed"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=native_runner,
+            monotonic_clock=ObservationClock(3.0, 8.0),
+        )
+
+    observation = json.loads(
+        (runtime_paths(repo).observations / "RUN-101-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert calls == []
+    assert observation["terminal_kind"] == "FAILURE"
+    assert observation["executor_invoked"] is False
+    assert observation["durations"] == {
+        "admitted_run_seconds": 5.0,
+        "executor_seconds": None,
+        "verification_seconds": None,
+    }
+
+
+def test_observation_persistence_failure_does_not_repeat_executor_or_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+
+    def fail_observation(*args, **kwargs):
+        raise OSError("observation store unavailable")
+
+    monkeypatch.setattr(operator_module, "persist_observation", fail_observation)
+    summary = run_task(
+        "TASK-101", executor="codex", repo=repo, native_runner=runner
+    )
+
+    assert runner.count == 1
+    assert summary.result_path.is_file()
+    assert not list(runtime_paths(repo).observations.glob("*.json"))
+
+
+def test_observation_transport_failure_preserves_result_and_does_not_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+    calls = []
+
+    def fail_observation_transport(*args, **kwargs):
+        calls.append(kwargs.get("observation_path"))
+        raise operator_module.ReviewTransportError("observation publish failed")
+
+    monkeypatch.setattr(
+        operator_module, "transport_post_pass", fail_observation_transport
+    )
+    with pytest.raises(OperatorError, match="review transport failed"):
+        run_task(
+            "TASK-101", executor="codex", repo=repo, native_runner=runner
+        )
+
+    state = runtime_paths(repo)
+    assert runner.count == 1
+    assert (state.results / "RUN-101-001.json").is_file()
+    assert not (state.failures / "RUN-101-001.json").exists()
+    assert calls == [state.observations / "RUN-101-001.json"]
+
+
+def test_retry_transport_preserves_optional_observation_sidecar(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=FakeCodexRunner(repo),
+    )
+    upstream = tmp_path / "upstream.git"
+    artifacts_ref = f"refs/heads/aios/artifacts/{summary.run_id}"
+    git(upstream, "update-ref", "-d", artifacts_ref)
+
+    retry_transport(summary.run_id, repo=repo)
+
+    remote_observation = git(
+        upstream, "show", f"{artifacts_ref}:.ai/transport/observation.json"
+    )
+    local_observation = (
+        runtime_paths(repo).observations / f"{summary.run_id}.json"
+    ).read_text(encoding="utf-8")
+    assert remote_observation == local_observation
+
+
+def test_historical_remote_artifact_without_observation_remains_compatible(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=FakeCodexRunner(repo),
+    )
+    state = runtime_paths(repo)
+    upstream = tmp_path / "upstream.git"
+    artifacts_ref = f"refs/heads/aios/artifacts/{summary.run_id}"
+    from aios_renew.review_transport import (
+        _create_artifacts_commit,
+        transport_post_pass,
+    )
+
+    legacy_commit = _create_artifacts_commit(
+        repo,
+        run_path=state.runs / f"{summary.run_id}.json",
+        result_path=summary.result_path,
+        run_id=summary.run_id,
+    )
+    git(
+        repo,
+        "push",
+        "--quiet",
+        "--force",
+        "origin",
+        f"{legacy_commit}:{artifacts_ref}",
+    )
+
+    transport_post_pass(
+        repo,
+        run_id=summary.run_id,
+        head_sha=summary.head_sha,
+        run_path=state.runs / f"{summary.run_id}.json",
+        result_path=summary.result_path,
+        observation_path=state.observations / f"{summary.run_id}.json",
+    )
+
+    assert git(upstream, "rev-parse", artifacts_ref) == legacy_commit
 
 

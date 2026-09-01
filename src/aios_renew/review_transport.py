@@ -167,8 +167,9 @@ def _create_artifacts_commit(
     result_path: Path,
     run_id: str,
     lineage_path: Path | None = None,
+    observation_path: Path | None = None,
 ) -> str:
-    """Create a Git tree and commit containing .ai/transport/run.json and .ai/transport/result.json."""
+    """Create an isolated success artifact tree with optional operational state."""
     if not run_path.is_file():
         raise ReviewTransportError(f"persisted RUN JSON missing: {run_path}")
     if not result_path.is_file():
@@ -212,10 +213,31 @@ def _create_artifacts_commit(
         except (OSError, UnicodeError, subprocess.CalledProcessError) as exc:
             raise ReviewTransportError(f"failed to hash repair.json: {exc}") from exc
 
+    observation_entry = ""
+    if observation_path is not None:
+        if not observation_path.is_file():
+            raise ReviewTransportError(
+                f"persisted RUN_OBSERVATION JSON missing: {observation_path}"
+            )
+        try:
+            proc = subprocess.run(
+                ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
+                input=observation_path.read_bytes(), capture_output=True, check=True,
+            )
+            observation_sha = proc.stdout.decode("utf-8", errors="strict").strip()
+            observation_entry = (
+                f"100644 blob {observation_sha}\tobservation.json\n"
+            )
+        except (OSError, UnicodeError, subprocess.CalledProcessError) as exc:
+            raise ReviewTransportError(
+                f"failed to hash observation.json: {exc}"
+            ) from exc
+
     tree_input = (
         f"100644 blob {run_blob_sha}\trun.json\n"
         f"100644 blob {result_blob_sha}\tresult.json\n"
         f"{lineage_entry}"
+        f"{observation_entry}"
     )
     try:
         proc = subprocess.run(
@@ -267,7 +289,13 @@ def _create_artifacts_commit(
 
 
 def _create_named_artifacts_commit(
-    repo: Path, *, run_path: Path, artifact_path: Path, artifact_name: str, run_id: str
+    repo: Path,
+    *,
+    run_path: Path,
+    artifact_path: Path,
+    artifact_name: str,
+    run_id: str,
+    observation_path: Path | None = None,
 ) -> str:
     """Create an isolated artifacts commit without touching the worktree."""
 
@@ -277,7 +305,14 @@ def _create_named_artifacts_commit(
         raise ReviewTransportError(f"persisted {artifact_name} JSON missing: {artifact_path}")
 
     blobs: dict[str, str] = {}
-    for name, path in (("run.json", run_path), (artifact_name, artifact_path)):
+    inputs = [("run.json", run_path), (artifact_name, artifact_path)]
+    if observation_path is not None:
+        if not observation_path.is_file():
+            raise ReviewTransportError(
+                f"persisted RUN_OBSERVATION JSON missing: {observation_path}"
+            )
+        inputs.append(("observation.json", observation_path))
+    for name, path in inputs:
         try:
             proc = subprocess.run(
                 ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
@@ -315,6 +350,7 @@ def _create_named_artifacts_commit(
 def transport_failure(
     repo: Path, *, run_id: str, head_sha: str, run_path: Path, failure_path: Path,
     publish_candidate: bool = True,
+    observation_path: Path | None = None,
 ) -> None:
     """Publish an immutable, authority-checked failed candidate and its facts."""
 
@@ -325,6 +361,9 @@ def transport_failure(
         ".ai/transport/run.json": run_path.read_bytes(),
         ".ai/transport/failure.json": failure_path.read_bytes(),
     }
+    expected_observation = (
+        observation_path.read_bytes() if observation_path is not None else None
+    )
     queried_refs = (candidate_ref, artifacts_ref) if publish_candidate else (artifacts_ref,)
     code, output, _ = _git_cmd(repo, "ls-remote", remote, *queried_refs, allow_fail=True)
     if code:
@@ -343,10 +382,21 @@ def transport_failure(
                 raise ReviewTransportError(
                     f"remote failure artifacts ref {artifacts_ref} exists with different artifact content"
                 )
+        remote_observation = _read_remote_blob(
+            repo, remote, refs[artifacts_ref], ".ai/transport/observation.json"
+        )
+        if (
+            expected_observation is not None
+            and remote_observation not in (None, expected_observation)
+        ):
+            raise ReviewTransportError(
+                f"remote failure artifacts ref {artifacts_ref} exists with different observation content"
+            )
     else:
         commit = _create_named_artifacts_commit(
             repo, run_path=run_path, artifact_path=failure_path,
             artifact_name="failure.json", run_id=run_id,
+            observation_path=observation_path,
         )
         specs.append(f"{commit}:{artifacts_ref}")
     if specs:
@@ -488,6 +538,7 @@ def transport_post_pass(
     run_path: Path,
     result_path: Path,
     lineage_path: Path | None = None,
+    observation_path: Path | None = None,
 ) -> None:
     """Publish aios/review/<RUN_ID> and aios/artifacts/<RUN_ID> to upstream remote."""
     remote = resolve_transport_remote(repo)
@@ -502,6 +553,9 @@ def transport_post_pass(
     expected_run_bytes = run_path.read_bytes()
     expected_result_bytes = result_path.read_bytes()
     expected_lineage_bytes = lineage_path.read_bytes() if lineage_path is not None else None
+    expected_observation_bytes = (
+        observation_path.read_bytes() if observation_path is not None else None
+    )
 
     code, ls_out, _ = _git_cmd(repo, "ls-remote", remote, review_ref, artifacts_ref, allow_fail=True)
     if code != 0:
@@ -531,11 +585,18 @@ def transport_post_pass(
         remote_lineage_bytes = _read_remote_blob(
             repo, remote, existing_artifacts_sha, ".ai/transport/repair.json"
         )
+        remote_observation_bytes = _read_remote_blob(
+            repo, remote, existing_artifacts_sha, ".ai/transport/observation.json"
+        )
 
         if (
             remote_run_bytes == expected_run_bytes
             and remote_result_bytes == expected_result_bytes
             and remote_lineage_bytes == expected_lineage_bytes
+            and (
+                expected_observation_bytes is None
+                or remote_observation_bytes in (None, expected_observation_bytes)
+            )
         ):
             push_artifacts = False
         else:
@@ -552,6 +613,7 @@ def transport_post_pass(
         result_path=result_path,
         run_id=run_id,
         lineage_path=lineage_path,
+        observation_path=observation_path,
     )
 
     push_specs: list[str] = []

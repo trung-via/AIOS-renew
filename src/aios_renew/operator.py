@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -46,6 +47,11 @@ from .review_transport import (
     transport_post_pass,
 )
 from .run import Run, RunLeaseRegistry, RunTaskReference
+from .run_observation import (
+    MonotonicClock,
+    RunObservationTracker,
+    persist_observation,
+)
 from .review import (
     Finding,
     Remediation,
@@ -188,6 +194,7 @@ class RuntimePaths:
     verification: Path
     results: Path
     failures: Path
+    observations: Path
     admission_failures: Path
     repairs: Path
     lock: Path
@@ -355,6 +362,7 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         verification=state_root / "verification",
         results=state_root / "results",
         failures=state_root / "failures",
+        observations=state_root / "observations",
         admission_failures=state_root / "admission-failures",
         repairs=state_root / "repairs",
         lock=state_root / "operator.lock",
@@ -366,6 +374,7 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         paths.verification,
         paths.results,
         paths.failures,
+        paths.observations,
         paths.admission_failures,
         paths.repairs,
     ):
@@ -385,6 +394,25 @@ def next_run_id(task_id: str, runs_path: Path) -> str:
         if match:
             numbers.append(int(match.group(1)))
     return f"{prefix}{max(numbers, default=0) + 1:03d}"
+
+
+def _persist_terminal_observation(
+    state: RuntimePaths,
+    tracker: RunObservationTracker,
+    terminal_kind: str,
+) -> Path | None:
+    """Best-effort one immutable sidecar without changing terminal authority."""
+
+    try:
+        observation = tracker.finalize(terminal_kind)
+        if observation is None:
+            return None
+        path = state.observations / f"{observation.run_id}.json"
+        persist_observation(path, observation)
+        return path
+    except Exception:
+        # Operational observation can never replace RESULT or FAILURE truth.
+        return None
 
 
 def _load_authoritative_prior_result(
@@ -542,16 +570,21 @@ def run_task(
     repo: str | Path | None = None,
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
+    monotonic_clock: MonotonicClock = time.monotonic,
 ) -> RunSummary:
     """Execute a TASK and persist/transport deterministic pre-PASS failure facts."""
 
     root = resolve_repository(repo)
     state = runtime_paths(root)
+    observation_tracker = RunObservationTracker(
+        "PRIMARY", monotonic_clock=monotonic_clock
+    )
     existing = {path.name for path in state.runs.glob("*.json")}
     try:
         return _run_task_impl(
             task_id, executor=executor, repo=root,
             native_runner=native_runner, verification_runner=verification_runner,
+            observation_tracker=observation_tracker,
         )
     except Exception as original:
         created = sorted(
@@ -564,8 +597,15 @@ def run_task(
             # A canonical RESULT means implementation and verification already passed;
             # only its transport failed, so it is not rewritten as an execution failure.
             if not (state.results / f"{run_id}.json").is_file():
+                observation_path = _persist_terminal_observation(
+                    state, observation_tracker, "FAILURE"
+                )
                 _persist_and_transport_failure(
-                    root, task_id=task_id, run_path=run_path, failure=original
+                    root,
+                    task_id=task_id,
+                    run_path=run_path,
+                    failure=original,
+                    observation_path=observation_path,
                 )
         raise
 
@@ -577,6 +617,7 @@ def _run_task_impl(
     repo: str | Path | None = None,
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
+    observation_tracker: RunObservationTracker,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
 
@@ -600,6 +641,10 @@ def _run_task_impl(
         result_path = state.results / f"{run_id}.json"
         staging_path = state.staging / f"{run_id}.json"
         _write_json(state.runs / f"{run_id}.json", asdict(run))
+        observation_tracker.admit(run)
+        observed_native_runner = observation_tracker.wrap_native_runner(
+            native_runner
+        )
 
         capability = _resolve_native_execution_capability(
             authorizes_mutation=bool(task.scope.modify)
@@ -607,7 +652,7 @@ def _run_task_impl(
 
         if executor == "codex":
             selected_adapter = CodexAdapter(
-                runner=_codex_runner(native_runner, capability)
+                runner=_codex_runner(observed_native_runner, capability)
             )
         else:
             handoff_path = state.handoffs / f"{run_id}.json"
@@ -623,7 +668,7 @@ def _run_task_impl(
                     repo=root,
                     handoff_path=handoff_path,
                     capability=capability,
-                    native_runner=native_runner,
+                    native_runner=observed_native_runner,
                 ),
                 structural_output=True,
             )
@@ -670,6 +715,7 @@ def _run_task_impl(
         if task.scope.modify and actual_head == base_sha:
             raise OperatorError("final Git HEAD did not advance")
 
+        verification_started = observation_tracker.begin_verification()
         try:
             runtime_evidence = execute_verification(
                 task.verification.required,
@@ -681,6 +727,8 @@ def _run_task_impl(
             )
         except RuntimeVerificationError as exc:
             raise OperatorError(str(exc)) from exc
+        finally:
+            observation_tracker.end_verification(verification_started)
         _require_post_verification_repository_state(
             root, expected_head=actual_head
         )
@@ -698,6 +746,9 @@ def _run_task_impl(
             raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
 
         _write_json(result_path, result_package_data(canonical_package))
+        observation_path = _persist_terminal_observation(
+            state, observation_tracker, "RESULT"
+        )
 
         try:
             transport_post_pass(
@@ -706,6 +757,7 @@ def _run_task_impl(
                 head_sha=actual_head,
                 run_path=state.runs / f"{run_id}.json",
                 result_path=result_path,
+                observation_path=observation_path,
             )
         except ReviewTransportError as exc:
             raise OperatorError(f"review transport failed: {exc}") from exc
@@ -721,7 +773,12 @@ def _run_task_impl(
 
 
 def _persist_and_transport_failure(
-    root: Path, *, task_id: str, run_path: Path, failure: Exception
+    root: Path,
+    *,
+    task_id: str,
+    run_path: Path,
+    failure: Exception,
+    observation_path: Path | None = None,
 ) -> None:
     """Record the original failure, then best-effort its independent transport."""
 
@@ -811,6 +868,7 @@ def _persist_and_transport_failure(
                 root, run_id=run.run_id, head_sha=head_sha,
                 run_path=run_path, failure_path=failure_path,
                 publish_candidate=transportable,
+                observation_path=observation_path,
             )
         except ReviewTransportError as transport_error:
             # Preserve the original exception as primary and persist the secondary
@@ -856,26 +914,35 @@ def run_repair(
     repair: Mapping[str, Any] | str | Path | None = None,
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
+    monotonic_clock: MonotonicClock = time.monotonic,
 ) -> RepairSummary:
     """Accept and execute one GitHub-authored REPAIR as a continuation RUN."""
 
     root = resolve_repository(repo)
     state = runtime_paths(root)
+    observation_tracker = RunObservationTracker(
+        "REPAIR", monotonic_clock=monotonic_clock
+    )
     existing = {path.name for path in state.runs.glob("*.json")}
     try:
         return _run_repair_impl(
             failed_run_id, executor=executor, repo=root, repair=repair,
             native_runner=native_runner,
             verification_runner=verification_runner,
+            observation_tracker=observation_tracker,
         )
     except Exception as original:
         created = [path for path in state.runs.glob("*.json") if path.name not in existing]
         if len(created) == 1 and not (state.results / created[0].name).is_file():
             try:
                 run_data = json.loads(created[0].read_text(encoding="utf-8"))
+                observation_path = _persist_terminal_observation(
+                    state, observation_tracker, "FAILURE"
+                )
                 _persist_and_transport_failure(
                     root, task_id=run_data["task"]["id"],
                     run_path=created[0], failure=original,
+                    observation_path=observation_path,
                 )
             except Exception:
                 pass
@@ -890,6 +957,8 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
     run_path = state.runs / f"{run_id}.json"
     result_path = state.results / f"{run_id}.json"
     failure_path = state.failures / f"{run_id}.json"
+    observation_path = state.observations / f"{run_id}.json"
+    optional_observation = observation_path if observation_path.is_file() else None
     if result_path.is_file() and failure_path.is_file():
         raise OperatorError("RUN has conflicting terminal state")
     try:
@@ -900,6 +969,7 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
                 run_path=run_path, result_path=result_path,
                 lineage_path=(state.repairs / f"{run_id}.json")
                 if (state.repairs / f"{run_id}.json").is_file() else None,
+                observation_path=optional_observation,
             )
         elif failure_path.is_file():
             payload = json.loads(failure_path.read_text(encoding="utf-8"))
@@ -908,6 +978,7 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
                 root, run_id=run_id, head_sha=payload["failed_head_sha"],
                 run_path=run_path, failure_path=failure_path,
                 publish_candidate=publish_candidate,
+                observation_path=optional_observation,
             )
         else:
             raise OperatorError(f"persisted terminal state not found: {run_id}")
@@ -922,6 +993,7 @@ def _run_repair_impl(
     repair: Mapping[str, Any] | str | Path | None,
     native_runner: NativeRunner,
     verification_runner: VerificationRunner,
+    observation_tracker: RunObservationTracker,
 ) -> RepairSummary:
     if executor not in ("codex", "antigravity"):
         raise OperatorError(f"unsupported executor: {executor}")
@@ -1028,6 +1100,10 @@ def _run_repair_impl(
             "run": run,
         }
         _write_json(run_path, asdict(run))
+        observation_tracker.admit(run)
+        observed_native_runner = observation_tracker.wrap_native_runner(
+            native_runner
+        )
         persisted_execution = dict(execution)
         persisted_execution["run"] = asdict(run)
         _write_json(state.repairs / f"{run_id}.json", persisted_execution)
@@ -1037,7 +1113,9 @@ def _run_repair_impl(
         )
 
         if executor == "codex":
-            adapter: Any = CodexAdapter(runner=_codex_runner(native_runner, capability))
+            adapter: Any = CodexAdapter(
+                runner=_codex_runner(observed_native_runner, capability)
+            )
         else:
             handoff_path = state.handoffs / f"{run_id}.json"
             handoff = dict(persisted_execution)
@@ -1045,7 +1123,8 @@ def _run_repair_impl(
             adapter = AntigravityAdapter(
                 transport=_antigravity_repair_transport(
                     repo=repo, handoff_path=handoff_path,
-                    capability=capability, native_runner=native_runner,
+                    capability=capability,
+                    native_runner=observed_native_runner,
                 ), structural_output=True,
             )
         try:
@@ -1080,6 +1159,7 @@ def _run_repair_impl(
             repo, task, package, base_sha=root_base_sha, actual_head=actual_head
         )
         _require_complete_result(task, package)
+        verification_started = observation_tracker.begin_verification()
         try:
             runtime_evidence = execute_verification(
                 task.verification.required, run_id=run_id, subject_sha=actual_head,
@@ -1088,6 +1168,8 @@ def _run_repair_impl(
             )
         except RuntimeVerificationError as exc:
             raise OperatorError(str(exc)) from exc
+        finally:
+            observation_tracker.end_verification(verification_started)
         _require_post_verification_repository_state(repo, expected_head=actual_head)
         canonical_result = attach_verification_evidence(package.result, runtime_evidence)
         try:
@@ -1097,11 +1179,15 @@ def _run_repair_impl(
         except ArtifactValidationError as exc:
             raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
         _write_json(result_path, result_package_data(canonical_package))
+        observation_path = _persist_terminal_observation(
+            state, observation_tracker, "RESULT"
+        )
         try:
             transport_post_pass(
                 repo, run_id=run_id, head_sha=actual_head,
                 run_path=run_path, result_path=result_path,
                 lineage_path=state.repairs / f"{run_id}.json",
+                observation_path=observation_path,
             )
         except ReviewTransportError as exc:
             raise OperatorError(f"review transport failed: {exc}") from exc
@@ -1200,11 +1286,15 @@ def run_remediation(
     repo: str | Path | None = None,
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
+    monotonic_clock: MonotonicClock = time.monotonic,
 ) -> RemediationSummary:
     """Execute one remediation and persist deterministic pre-PASS failures."""
 
     root = resolve_repository(repo)
     state = runtime_paths(root)
+    observation_tracker = RunObservationTracker(
+        "REMEDIATION", monotonic_clock=monotonic_clock
+    )
     task = load_task(root, task_id)
     attempt = _RemediationAttempt()
     admission: dict[str, Any] = {
@@ -1230,15 +1320,20 @@ def run_remediation(
             resolved_task=task,
             admission=admission,
             attempt=attempt,
+            observation_tracker=observation_tracker,
         )
     except Exception as original:
         if attempt.run_path is not None:
             if not (state.results / attempt.run_path.name).is_file():
+                observation_path = _persist_terminal_observation(
+                    state, observation_tracker, "FAILURE"
+                )
                 _persist_and_transport_failure(
                     root,
                     task_id=task_id,
                     run_path=attempt.run_path,
                     failure=original,
+                    observation_path=observation_path,
                 )
         else:
             _persist_and_transport_admission_failure(
@@ -1321,6 +1416,7 @@ def _run_remediation_impl(
     resolved_task: Task | None = None,
     admission: dict[str, Any] | None = None,
     attempt: _RemediationAttempt | None = None,
+    observation_tracker: RunObservationTracker,
 ) -> RemediationSummary:
     """Execute one bound remediation without entering the TASK execution path.
 
@@ -1455,6 +1551,10 @@ def _run_remediation_impl(
             run_path,
             {"kind": "REMEDIATION", "execution": asdict(execution)},
         )
+        observation_tracker.admit(run)
+        observed_native_runner = observation_tracker.wrap_native_runner(
+            native_runner
+        )
         if attempt is not None:
             attempt.bind_run(run_path)
 
@@ -1464,7 +1564,7 @@ def _run_remediation_impl(
 
         if executor == "codex":
             selected_adapter = CodexAdapter(
-                runner=_codex_runner(native_runner, capability)
+                runner=_codex_runner(observed_native_runner, capability)
             )
         else:
             handoff_path = state.handoffs / f"{run_id}.json"
@@ -1479,7 +1579,7 @@ def _run_remediation_impl(
                     repo=root,
                     handoff_path=handoff_path,
                     capability=capability,
-                    native_runner=native_runner,
+                    native_runner=observed_native_runner,
                 ),
                 structural_output=True,
             )
@@ -1503,6 +1603,7 @@ def _run_remediation_impl(
         _require_remediation_repository_state(
             root, execution, package, actual_head=actual_head
         )
+        verification_started = observation_tracker.begin_verification()
         try:
             runtime_evidence = execute_verification(
                 execution.remediation.affected_verification,
@@ -1514,6 +1615,8 @@ def _run_remediation_impl(
             )
         except RuntimeVerificationError as exc:
             raise OperatorError(str(exc)) from exc
+        finally:
+            observation_tracker.end_verification(verification_started)
         _require_post_verification_repository_state(
             root, expected_head=actual_head
         )
@@ -1525,6 +1628,9 @@ def _run_remediation_impl(
             execution, canonical_package, actual_head=actual_head
         )
         _write_json(result_path, result_package_data(canonical_package))
+        observation_path = _persist_terminal_observation(
+            state, observation_tracker, "RESULT"
+        )
 
         try:
             transport_post_pass(
@@ -1533,6 +1639,7 @@ def _run_remediation_impl(
                 head_sha=actual_head,
                 run_path=state.runs / f"{run_id}.json",
                 result_path=result_path,
+                observation_path=observation_path,
             )
         except ReviewTransportError as exc:
             raise OperatorError(f"review transport failed: {exc}") from exc

@@ -72,6 +72,36 @@ review, which may return PASS or authorize a new narrow REMEDIATION. These three
 states are distinct and an admission diagnostic is never treated as a RUN failure
 or a review judgment.
 
+### RUN observations
+
+For each newly admitted PRIMARY, REMEDIATION, or REPAIR RUN, Runtime best-effort
+stores one immutable `RUN_OBSERVATION` under the repository's Git runtime state.
+It binds the exact RUN id, TASK id/revision, operation, selected Executor, and base
+SHA. Its terminal kind is only `RESULT` or `FAILURE`: it reports Runtime execution
+truth and never predicts or records the later semantic REVIEW outcome.
+
+The sidecar separates three monotonic elapsed durations. Admitted-run elapsed time
+runs from persisted RUN admission through Runtime's terminal RESULT or FAILURE.
+Native Executor time covers the already-authorized native invocation, including a
+timeout, nonzero exit, or invalid output. Runtime verification time covers the
+canonical verification attempt on both success and failure. These durations do not
+include pre-RUN synchronization or admission work, later semantic review, Human
+thinking, queueing, or total Human wait time. They are finite non-negative values
+derived from a monotonic clock, not from wall-clock timestamp subtraction.
+
+`executor_invoked` remains an exact fact even when native execution fails. Optional
+token counters are recorded only as a complete, exact machine-readable group from
+that same native invocation; missing, partial, malformed, or inferred usage remains
+unavailable. The observation is operational state, not RESULT, EVIDENCE, acceptance
+proof, or review authority. It is not yet used for automatic Executor scoring,
+selection, routing, retry, or fallback.
+
+When present, transports place the byte-exact sidecar at
+`.ai/transport/observation.json` on the existing success or failure artifact ref.
+Historical refs without this optional file remain valid, and `retry-transport`
+preserves a locally persisted sidecar. Persistence or publication trouble is
+subordinate to the original RESULT or FAILURE and never invokes another Executor.
+
 ## Direct Candidate Acceptance
 
 For a committed candidate produced directly by one Human-selected Executor in
