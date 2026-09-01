@@ -1,0 +1,188 @@
+task_id: TASK-048
+revision: 1
+
+goal: >
+  Restore TASK-044 remote canonical REMEDIATION semantics so one Human-authorized
+  `aios remediate TASK-x --finding Fx --executor ...` resolves only lineages
+  relevant to the requested TASK before strict lineage-shape validation can be
+  disrupted by unrelated TASK refs that reuse the same finding identifier. Keep
+  exact TASK/revision/content validation, ambiguity fail-closed behavior, explicit
+  artifact mode, Direct Candidate Acceptance, one-Executor authority, and frozen
+  kernel contracts unchanged.
+
+problem: >
+  Remote remediation discovery currently queries the global remediation namespace
+  by finding suffix (for example `*-F1`) and strictly inspects every matching ref
+  for exactly one REVIEW and REMEDIATION before the Operator can inspect the
+  authoritative source RUN and discard lineages belonging to another TASK. An
+  unrelated stale or malformed ref from a different TASK can therefore abort a
+  valid remediation for the requested TASK. This violates TASK-044 AC4: same
+  finding identifiers across TASKs must be disambiguated through canonical TASK
+  identity and immutable lineage validation rather than global suffix collision.
+  The observed failure is control-plane discovery only; execution, repository,
+  verification, REVIEW authority, and Executor semantics are otherwise correct.
+
+assumptions:
+  - >
+    Current canonical AIOS-renew main baseline after TASK-046 publication is
+    b1e9266113ba72e123f0d4a77e4cb737a763e35f.
+  - >
+    TASK-044 remains the canonical contract for zero-courier remote REMEDIATION
+    resolution and explicitly requires TASK-scoped immutable lineage selection.
+  - >
+    Canonical remediation refs remain named from their source RUN and finding id,
+    and source RUN/RESULT artifacts remain the authoritative semantic binding.
+  - >
+    Finding identifiers such as F1 are local review identifiers and are not
+    globally unique across TASKs.
+  - >
+    TASK-047 admission diagnostics remain authoritative for REMEDIATION failures
+    that genuinely occur before RUN admission; TASK-048 must not redesign that
+    diagnostic family.
+  - >
+    Existing explicit REVIEW/REMEDIATION file mode remains a valid canonical
+    fallback and must not be removed or weakened.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-044.yaml
+    - .ai/tasks/TASK-047.yaml
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change or unfreeze TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, or REPAIR schemas or semantics.
+  - Introduce a new remote ref naming family, migrate historical refs, rename refs, or delete stale refs.
+  - Make finding ids globally unique or require Humans to choose a different finding id to avoid collisions.
+  - Change explicit-file REMEDIATION behavior or require local REVIEW/REMEDIATION materialization.
+  - Change Direct Candidate Acceptance semantics except to consume the same corrected deterministic resolver behavior.
+  - Generalize TASK-047 admission diagnostics to REPAIR, PRIMARY, or other commands.
+  - Change affected verification, Runtime EVIDENCE, repository integrity gates, mutation authority, ResultPackage, or semantic REVIEW authority.
+  - Add retry, reroute, fallback, automatic remediation, automatic executor selection, planner, watcher, queue, database, or another execution layer.
+  - Select a lineage by newest/latest ref, lexical order, RUN number, branch order, commit time, or any heuristic.
+  - Treat a ref name alone as authoritative proof of TASK identity or revision.
+  - Checkout remediation/review branches or mutate the implementation worktree solely for discovery.
+
+constraints:
+  hard:
+    - >
+      Remote discovery must use the Human-requested TASK identity together with the
+      finding id to prevent refs belonging to other TASK identities from blocking
+      or being selected for the requested remediation. Finding id alone is not a
+      sufficient discovery key.
+    - >
+      Any task-scoped ref-name or source-RUN namespace filtering is only a transport
+      prefilter. Exact source RUN TASK id/revision, REVIEW, REMEDIATION, source
+      RESULT, reviewed_sha, finding binding, and prior-review continuity must still
+      be validated from immutable canonical content before execution.
+    - >
+      An unrelated ref from another TASK must be ignorable even when that unrelated
+      ref is legacy, stale, missing expected canonical files, or contains multiple
+      REVIEW/REMEDIATION documents. It must not cause the requested TASK's remote
+      resolution to fail before that TASK can be evaluated.
+    - >
+      A malformed, incomplete, revision-mismatched, or contract-invalid candidate
+      that belongs to the requested TASK's own discovery namespace must remain
+      fail-closed. The implementation must not silently discard a same-TASK invalid
+      candidate in a way that could hide ambiguity or weaken immutable lineage
+      validation.
+    - >
+      After transport-level narrowing, Operator validation remains the semantic
+      authority. Exactly one contract-valid lineage for the requested TASK and
+      finding may proceed; zero valid lineages or more than one valid lineage must
+      fail before remediation RUN admission and before any Executor invocation.
+    - >
+      Ambiguity must never be resolved by branch order, timestamp, newest/latest,
+      source RUN number, lexical sorting, commit date, or other preference heuristic.
+    - >
+      The corrected resolver must remain shared by normal remote REMEDIATION and
+      Direct Candidate Acceptance without creating divergent lineage semantics.
+    - >
+      Existing explicit artifact mode must remain byte/behavior compatible and must
+      not be routed through remote discovery when REVIEW and REMEDIATION artifacts
+      are deliberately supplied.
+    - >
+      TASK-047 REMEDIATION ADMISSION_FAILURE behavior must remain unchanged. A real
+      failure of the requested TASK's remote lineage still emits the existing
+      bounded diagnostic; an irrelevant different-TASK ref must not fabricate a
+      failure for the requested TASK.
+    - >
+      Resolution must not create a RUN, handoff, lease, staging/result artifact,
+      verification execution, or native Executor call until exactly one requested-
+      TASK canonical lineage has passed existing admission validation.
+    - >
+      Successful remediation after resolution must enter the existing normal
+      REMEDIATION boundary unchanged: one Human-selected Executor, existing mutation
+      authority, affected verification, Runtime EVIDENCE, repository gates,
+      ResultPackage persistence, RUN_OBSERVATION, and post-PASS DELTA-review transport.
+    - >
+      Do not add model reasoning, transcript inspection, retry, fallback, polling,
+      external state, or background discovery to solve the namespace collision.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      With one valid canonical lineage for TASK-A/F1 and one unrelated TASK-B/F1
+      remediation ref whose REVIEW/REMEDIATION tree is malformed or contains
+      multiple documents, remote remediation of TASK-A/F1 resolves the TASK-A
+      lineage, admits one RUN, and invokes exactly the one Human-selected Executor;
+      the TASK-B ref does not block or participate.
+  - id: AC2
+    condition: >
+      The same cross-TASK finding-id collision is handled deterministically for
+      both Codex and Antigravity request paths without changing native invocation
+      count or capability semantics.
+  - id: AC3
+    condition: >
+      A ref in the requested TASK's own discovery namespace that is malformed,
+      incomplete, TASK-revision mismatched, source-RUN/RESULT mismatched, REVIEW/
+      REMEDIATION invalid, reviewed_sha mismatched, or finding-invalid fails closed
+      before RUN creation, verification, repository mutation, or Executor invocation.
+  - id: AC4
+    condition: >
+      Two contract-valid remote lineages for the same requested TASK/revision and
+      finding remain ambiguous and fail closed; no ordering or newest/latest
+      heuristic selects between them.
+  - id: AC5
+    condition: >
+      Zero contract-valid requested-TASK lineages still fails closed through the
+      existing REMEDIATION admission path and preserves TASK-047 bounded admission
+      diagnostic semantics without claiming an unrelated TASK ref.
+  - id: AC6
+    condition: >
+      Exact source RUN TASK id/revision and immutable REVIEW/REMEDIATION/RESULT
+      lineage content remain mandatory after any transport prefilter, proving ref
+      naming is not treated as semantic authority.
+  - id: AC7
+    condition: >
+      Existing explicit-file REMEDIATION remains unchanged and does not perform
+      remote finding-based discovery when explicit canonical artifacts are supplied.
+  - id: AC8
+    condition: >
+      Direct Candidate Acceptance uses the corrected shared resolver: unrelated
+      same-finding refs from other TASKs cannot block it, while same-requested-TASK
+      invalidity or ambiguity remains fail-closed.
+  - id: AC9
+    condition: >
+      Remote discovery performs no checkout or tracked-worktree mutation and creates
+      no additional Executor invocation, retry, reroute, fallback, or verification
+      command beyond existing canonical behavior.
+  - id: AC10
+    condition: >
+      Regression coverage reproduces the observed cross-TASK F1 collision, proves
+      unrelated malformed refs are ignored only by deterministic TASK scoping,
+      proves same-TASK malformed/ambiguous refs still fail closed, and proves normal
+      successful remote remediation and explicit mode remain unchanged.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
