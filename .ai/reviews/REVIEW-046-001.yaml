@@ -1,0 +1,36 @@
+review_id: REVIEW-046-001
+reviewed_sha: 5c837a57f3d745b07e1df1787757d380ab7842bb
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings:
+  - id: F1
+    basis: AC3
+    action: CODE_FIX
+    location: src/aios_renew/operator.py
+    issue: >
+      PRIMARY and REPAIR failure wrappers still infer ownership of the current
+      invocation's RUN by snapshotting the global runs directory before execution
+      and diffing it after the inner repository lock has unwound. Another process
+      can create a foreign RUN in that gap, causing the current post-admission
+      failure/observation to be suppressed when multiple new files are seen, or a
+      pre-RUN failure to claim a foreign RUN when it is the only new file. This is
+      the same ownership class already eliminated for REMEDIATION by binding an
+      invocation-local run_path.
+    expected: >
+      Bind the exact RUN path owned by each PRIMARY and REPAIR invocation at RUN
+      creation and use only that bound path for post-admission FAILURE and
+      RUN_OBSERVATION persistence. Foreign RUN creation must neither suppress nor
+      steal the current invocation's terminal operational state. Add deterministic
+      regression tests for PRIMARY and REPAIR race interleavings without widening
+      TASK-046 semantics or changing canonical contracts.
