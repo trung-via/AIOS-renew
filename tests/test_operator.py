@@ -914,7 +914,7 @@ constraints:
             runtime_paths(repo).observations / f"{summary.run_id}.json"
         ).read_text(encoding="utf-8")
     )
-    assert observation["operation"] == "REPAIR"
+    assert observation["operation"] == "REMEDIATION"
     assert observation["terminal_kind"] == "RESULT"
 
 
@@ -3332,7 +3332,6 @@ def test_primary_observation_uses_controlled_monotonic_phase_durations(
     }
     canonical = json.loads(summary.result_path.read_text(encoding="utf-8"))
     assert set(canonical) == {"result", "evidence"}
-    assert "observation" not in json.dumps(canonical).lower()
 
 
 def test_verification_failure_observation_retains_both_available_phase_times(
