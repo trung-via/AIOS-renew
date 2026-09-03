@@ -1,0 +1,221 @@
+task_id: TASK-050
+revision: 1
+
+goal: >
+  Establish AIOS Governance Baseline v1.0 as a documentation-only constitutional
+  layer above current engineering contracts by creating the canonical AIOS
+  Manifesto and AIOS Constitution, then minimally aligning the Human-facing README,
+  ChatGPT Project Contract, and Brain TASK Authoring Contract to reference that
+  governance without changing frozen Kernel v0.1 semantics, Runtime behavior,
+  execution flow, artifact schemas, verification authority, or publication mechanics.
+
+problem: >
+  AIOS-renew already operates with durable governance rules distributed across the
+  ChatGPT Project Instructions, docs/CHATGPT_PROJECT_CONTRACT.md, the Brain TASK
+  Authoring Contract, the frozen Kernel v0.1 specification, and exact TASK/RUN
+  lineages. Those rules have proven useful, but constitutional intent and
+  non-negotiable authority boundaries are not yet represented as first-class
+  canonical repository documents. The new roadmap requires a stable governance
+  baseline that states why AIOS exists, what it optimizes for, which principles are
+  constitutional, how constitutional authority differs from engineering-state truth,
+  and which transport or orchestration mechanisms remain subordinate and replaceable.
+
+assumptions:
+  - >
+    Current canonical AIOS-renew main baseline before TASK-050 authoring is
+    8f9dc574a0df201e17282646659f7a62aad5dd73, with TASK-049 published.
+  - >
+    docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md remains FROZEN and its historical record
+    must not be rewritten, reinterpreted, or retroactively governed by TASK-050.
+  - >
+    docs/CHATGPT_PROJECT_CONTRACT.md remains the durable Brain operating contract,
+    while ChatGPT Project Instructions remain a bootstrap layer until governance is
+    published; reducing those external Project Instructions is a post-publication
+    Human/project configuration action, not Executor work in TASK-050.
+  - >
+    The governance baseline is normative documentation, not executable enforcement.
+    Future governance validation, inventory, migration, or architecture cleanup
+    requires separate TASK authority.
+  - >
+    K0.1 will separately audit existing repository material and classify KEEP, THIN,
+    MOVE, or DELETE; TASK-050 must not absorb that inventory or cleanup authority.
+
+scope:
+  inspect:
+    - README.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-049.yaml
+
+  modify:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - README.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+
+non_goals:
+  - Change any file under src/.
+  - Change any test, schema, Runtime, operator, adapter, executor, review, remediation, repair, transport, or publication behavior.
+  - Add a governance engine, policy evaluator, runtime validator, linter, hook, CI gate, schema, or executable enforcement layer.
+  - Rewrite, unfreeze, supersede, or edit docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md or historical kernel records.
+  - Redesign TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, REPAIR, lease, or ExecutorBoundary semantics.
+  - Add router, planner, supervisor, multiple reviewers, retry, reroute, fallback, queue, broker, orchestration database, learning loop, or generalized DSL behavior.
+  - Perform K0.1 KEEP/THIN/MOVE/DELETE inventory or repository cleanup.
+  - Redesign Git refs, branches, handoff files, GitHub transport, or remote artifact mechanics.
+  - Modify any downstream Python Agent repository, dependency pin, worker contract, or downstream workflow.
+  - Copy a second independent Constitution into ChatGPT Project Instructions; those external instructions are intentionally left unchanged by this TASK.
+  - Push from executor execution.
+
+constraints:
+  hard:
+    - >
+      TASK-050 is governance-only. The implementation delta must remain confined to
+      the five documentation paths in scope.modify and must not change executable
+      behavior, schemas, tests, frozen records, or runtime flow.
+    - >
+      docs/AIOS-MANIFESTO.md must state the Human-approved purpose and optimization
+      direction using these source statements verbatim where they appear:
+      "Đúng việc. Đúng quyền. Đủ bằng chứng. Truy vết được. Không lãng phí.";
+      "AIOS tồn tại để biến ý định của con người thành kết quả kỹ thuật đã được kiểm
+      chứng với lượng thời gian, token, suy luận lặp lại và công sức con người thấp
+      nhất cần thiết.";
+      "Con người quyết định mục tiêu và phương hướng. AI có thể suy luận, đề xuất và
+      tối ưu, nhưng quyền thực thi phải rõ ràng, hữu hạn và có thể kiểm soát.";
+      "Không một tuyên bố hoàn thành nào được xem là sự thật chỉ vì một model đã nói
+      như vậy. Những tuyên bố quan trọng phải được gắn với bằng chứng thích hợp và
+      trạng thái có thể truy nguyên.";
+      "Không một agent, model hay lớp orchestration nào được âm thầm chiếm thêm quyền
+      hạn. Semantic authority, implementation authority, execution authority, review
+      authority và policy authority phải luôn được phân tách rõ ràng.";
+      "Không lặp lại reasoning, discovery, verification hoặc evidence vẫn còn giá trị.
+      Công việc đã được chứng minh đúng phải được tái sử dụng cho đến khi trạng thái
+      hỗ trợ nó thay đổi.";
+      and the closing sentence "Intelligence may evolve. Authority must remain
+      explicit. Evidence must remain verifiable. Work must remain purposeful."
+    - >
+      The Manifesto must present the North Star exactly as
+      "Verified Useful Work / (Time + Tokens + Human Effort)" and explicitly state
+      that more agents, calls, autonomy, reasoning, output, or activity are not goals
+      by themselves; they are justified only when they improve verified useful work
+      enough to justify total cost, risk, and coordination overhead.
+    - >
+      docs/AIOS-CONSTITUTION.md must contain exactly these ten constitutional
+      principle titles and English normative statements, without adding an eleventh
+      principle or paraphrasing the normative sentence:
+      1. Human Intent, Evidence Truth — "Human owns intent, priorities, risk acceptance
+      and constitutional change. Canonical engineering truth must be established by
+      state and evidence, not assertion."
+      2. Separation of Authority — "Semantic, implementation, execution, review and
+      policy authorities must remain explicitly separated."
+      3. Bounded Mutation Authority — "Every canonical mutation domain has exactly
+      one active authority at a time."
+      4. Sufficient Context, Reuse Until Invalidated — "Provide sufficient bounded
+      context, and never pay twice for valid knowledge, work or evidence without
+      relevant new information."
+      5. Probabilistic Intelligence, Deterministic Enforcement — "AI may reason,
+      recommend and optimize; canonical authority, identity, scope, permissions,
+      state and safety gates are enforced deterministically whenever possible."
+      6. Claims Require Evidence — "Every material completion claim requires
+      appropriately typed evidence bound to the state it supports; uncertainty must
+      remain explicit."
+      7. Reproducible Canonical State — "Execution, verification and review decisions
+      must bind to enough immutable state to reproduce or reliably explain the outcome."
+      8. Correction with Continuity; New Intent with New Contract — "Corrections
+      preserve lineage and address only explicitly authorized findings or causal
+      finding groups. New intent requires a revised or new semantic contract."
+      9. Observable, Attributable, Replayable Automation — "Every automation must be
+      observable, attributable, and replayable."
+      10. Bounded Autonomy, Maximum Useful Work — "Autonomy, loops, permissions, time,
+      tokens and resource consumption are bounded and measured. Optimization serves
+      verified useful work, not agent activity."
+    - >
+      Constitution must state that explicit Human constitutional change is the only
+      authority that may change constitutional principles. No Brain, Executor,
+      Reviewer, Runtime, Router, transport, or model may silently expand its own
+      authority or reinterpret constitutional boundaries into new authority.
+    - >
+      Constitution and aligned contracts must distinguish constitutional authority
+      from engineering-state truth. Constitution governs future authority and
+      architectural constraints; current canonical Git state, frozen specification,
+      and exact immutable TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR lineage
+      remain authoritative engineering truth within their applicable scopes.
+    - >
+      Constitution must not retroactively change frozen Kernel v0.1 semantics,
+      historical artifacts, or already-established engineering facts. A future
+      constitutional/kernel conflict or desired semantic change requires explicit
+      Human authority and a separate TASK rather than reinterpretation in place.
+    - >
+      Manifesto is a guiding purpose and optimization North Star, not execution-state
+      truth, completion evidence, or an artifact that can override exact canonical
+      lineage.
+    - >
+      README.md, docs/CHATGPT_PROJECT_CONTRACT.md, and
+      docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md must reference the new Manifesto
+      and Constitution with minimal duplication. The Project Contract must retain
+      BRAIN SYNC and canonical-state-over-chat-memory behavior. The Brain authoring
+      contract must add a constitutional preflight before new TASK authorship while
+      preserving Brain WHAT/WHY, Executor HOW, executor-neutral TASKs, minimum
+      sufficient scope, and Runtime-owned canonical verification.
+    - >
+      Git branches, refs, transport artifacts, handoff files, GitHub, operator
+      surfaces, and similar delivery mechanisms must be described as subordinate,
+      replaceable implementation/transport mechanisms. None of them becomes
+      constitutional authority merely because current AIOS uses it.
+    - >
+      Do not duplicate the full Constitution into README or the two existing
+      contracts. Those files should point to canonical governance documents and
+      state only the minimum local consequences needed for their own role.
+    - >
+      Preserve historical wording and status in the frozen Kernel v0.1 record by not
+      modifying that file. Governance Baseline v1.0 is additive and prospective.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      docs/AIOS-MANIFESTO.md exists as the canonical purpose document, contains the
+      Human-approved source statements, uses "Verified Useful Work / (Time + Tokens +
+      Human Effort)" as the North Star, and explicitly rejects optimizing agent count,
+      calls, autonomy, reasoning, output, or activity as goals by themselves.
+  - id: AC2
+    condition: >
+      docs/AIOS-CONSTITUTION.md exists and contains exactly the ten required principle
+      titles with their required English normative statements, including Human-owned
+      constitutional change and no extra constitutional principle.
+  - id: AC3
+    condition: >
+      Governance documents explicitly separate constitutional authority, Manifesto
+      intent, and engineering-state truth; current Git state, frozen specification,
+      and exact immutable lineage retain engineering authority in their scopes, and
+      frozen Kernel v0.1 is not retroactively changed.
+  - id: AC4
+    condition: >
+      README.md, docs/CHATGPT_PROJECT_CONTRACT.md, and
+      docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md minimally reference canonical
+      governance; BRAIN SYNC remains intact, and Brain TASK authoring gains a
+      constitutional preflight without changing Brain/Executor/Runtime/Reviewer role
+      separation or executor-neutral TASK semantics.
+  - id: AC5
+    condition: >
+      Governance explicitly makes Git refs, handoffs, transport, operator surfaces,
+      and current delivery mechanisms subordinate and replaceable rather than sources
+      of constitutional authority.
+  - id: AC6
+    condition: >
+      No executable source, tests, schema, Runtime behavior, verification semantics,
+      frozen record, historical artifact, downstream project, or current execution
+      flow is changed by TASK-050.
+  - id: AC7
+    condition: >
+      TASK-050 remains a narrow K0.0 governance baseline. K0.1 repository inventory,
+      governance enforcement, Project Instructions thinning, transport redesign, and
+      later architecture changes remain explicitly deferred to their proper separate
+      authority.
+
+verification:
+  required:
+    - 'python -c "from pathlib import Path; files=[Path(\"docs/AIOS-MANIFESTO.md\"),Path(\"docs/AIOS-CONSTITUTION.md\"),Path(\"README.md\"),Path(\"docs/CHATGPT_PROJECT_CONTRACT.md\"),Path(\"docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md\")]; texts=[p.read_text(encoding=\"utf-8\") for p in files]; assert all(t.strip() for t in texts)"'
+    - 'python -c "from pathlib import Path; m=Path(\"docs/AIOS-MANIFESTO.md\").read_text(encoding=\"utf-8\"); c=Path(\"docs/AIOS-CONSTITUTION.md\").read_text(encoding=\"utf-8\"); refs=Path(\"README.md\").read_text(encoding=\"utf-8\")+Path(\"docs/CHATGPT_PROJECT_CONTRACT.md\").read_text(encoding=\"utf-8\")+Path(\"docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md\").read_text(encoding=\"utf-8\"); assert \"Verified Useful Work / (Time + Tokens + Human Effort)\" in m; names=[\"Human Intent, Evidence Truth\",\"Separation of Authority\",\"Bounded Mutation Authority\",\"Sufficient Context, Reuse Until Invalidated\",\"Probabilistic Intelligence, Deterministic Enforcement\",\"Claims Require Evidence\",\"Reproducible Canonical State\",\"Correction with Continuity; New Intent with New Contract\",\"Observable, Attributable, Replayable Automation\",\"Bounded Autonomy, Maximum Useful Work\"]; assert all(n in c for n in names); assert refs.count(\"AIOS-CONSTITUTION.md\") >= 3; assert refs.count(\"AIOS-MANIFESTO.md\") >= 3"'
