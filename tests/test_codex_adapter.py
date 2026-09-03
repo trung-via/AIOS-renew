@@ -59,6 +59,16 @@ def make_execution():
     return task, run, registry, ExecutorBoundary(registry)
 
 
+def assert_native_executor_context(context: dict, *, operation: str) -> None:
+    assert context["role"] == "NATIVE_EXECUTOR"
+    assert context["selected_executor"] == "codex"
+    assert context["operation"] == operation
+    assert context["already_admitted"] is True
+    assert context["direct_implementation"] is True
+    assert context["operator_dispatch_authority"] is False
+    assert context["runtime_verification_authority"] is False
+
+
 def successful_output(run_id: str) -> str:
     return json.dumps(
         {
@@ -187,6 +197,7 @@ def test_primary_prompt_excludes_runtime_verification_commands() -> None:
     prompt = CodexAdapter.prompt_for(task=task, run=run)
 
     payload = json.loads(prompt.split("CANONICAL_INPUT:\n", 1)[1])
+    assert_native_executor_context(payload["execution_context"], operation="PRIMARY")
     assert "verification" not in payload["task"]
     assert task.verification.required[0] not in prompt
 
@@ -237,11 +248,33 @@ affected_verification: [pytest tests/test_codex_adapter.py]
     prompt = CodexAdapter.remediation_prompt_for(execution=execution)
     payload = json.loads(prompt.split("REMEDIATION_INPUT:\n", 1)[1])
 
+    assert_native_executor_context(
+        payload["execution_context"], operation="REMEDIATION"
+    )
     assert payload["finding"]["issue"] == "Narrow issue."
     assert "affected_verification" not in payload["remediation"]
     assert "pytest tests/test_codex_adapter.py" not in prompt
     assert "goal" not in json.dumps(payload)
     assert "acceptance" not in json.dumps(payload)
+
+
+def test_repair_prompt_marks_direct_already_admitted_executor_role() -> None:
+    _, run, _, _ = make_execution()
+
+    prompt = CodexAdapter.repair_prompt_for(
+        execution={
+            "run": run,
+            "repair": {
+                "action": "NO_CHANGE",
+                "instructions": ["Return the bound result directly."],
+                "modification_scope": [],
+            },
+        }
+    )
+    payload = json.loads(prompt.split("REPAIR_INPUT:\n", 1)[1])
+
+    assert_native_executor_context(payload["execution_context"], operation="REPAIR")
+    assert payload["repair"]["action"] == "NO_CHANGE"
 
 
 def test_output_schema_is_passed() -> None:
@@ -459,9 +492,11 @@ def test_handoff_preserves_semantics_but_withholds_runtime_verification() -> Non
     )
 
     payload = json.loads(captured["input"].split("CANONICAL_INPUT:\n", 1)[1])
+    context = payload.pop("execution_context")
     expected_task = asdict(task)
     expected_task.pop("verification")
     expected = json.loads(json.dumps({"task": expected_task, "run": asdict(run)}))
+    assert_native_executor_context(context, operation="PRIMARY")
     assert payload == expected
     assert task.verification.required == ("pytest tests/test_codex_adapter.py",)
 

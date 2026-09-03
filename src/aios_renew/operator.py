@@ -35,6 +35,8 @@ from .codex_adapter import (
     CodexAdapter,
     CodexExecutionError,
     CodexOutputError,
+    native_execution_context,
+    native_executor_instruction,
 )
 from .executor import ExecutorBoundary, ExecutorBoundaryError
 from .review_transport import (
@@ -659,6 +661,9 @@ def _run_task_impl(
             _write_json(
                 handoff_path,
                 {
+                    "execution_context": native_execution_context(
+                        run=run, operation="PRIMARY"
+                    ),
                     "task": _executor_task_data(task),
                     "run": asdict(run),
                 },
@@ -1124,6 +1129,9 @@ def _run_repair_impl(
         else:
             handoff_path = state.handoffs / f"{run_id}.json"
             handoff = dict(persisted_execution)
+            handoff["execution_context"] = native_execution_context(
+                run=run, operation="REPAIR"
+            )
             _write_json(handoff_path, handoff)
             adapter = AntigravityAdapter(
                 transport=_antigravity_repair_transport(
@@ -1576,6 +1584,9 @@ def _run_remediation_impl(
             _write_json(
                 handoff_path,
                 {
+                    "execution_context": native_execution_context(
+                        run=run, operation="REMEDIATION"
+                    ),
                     "remediation_execution": _executor_remediation_data(execution),
                 },
             )
@@ -2325,7 +2336,8 @@ def _antigravity_transport(
     native_runner: NativeRunner,
 ) -> Callable[..., str]:
     instruction = (
-        f"Read the AIOS handoff JSON at {handoff_path}. "
+        native_executor_instruction()
+        + f"Read the AIOS handoff JSON at {handoff_path}. "
         "Execute its TASK implementation context and RUN exactly within the supplied "
         "repository. Runtime owns canonical verification; do not execute canonical verification "
         "commands and do not generate verification evidence. Minimum implementation-local sanity "
@@ -2383,7 +2395,8 @@ def _antigravity_remediation_transport(
     native_runner: NativeRunner,
 ) -> Callable[..., str]:
     instruction = (
-        f"Read the AIOS remediation handoff JSON at {handoff_path}. "
+        native_executor_instruction()
+        + f"Read the AIOS remediation handoff JSON at {handoff_path}. "
         "Execute exactly its one remediation_execution contract. Do not run or "
         "restart the original TASK, scan for a different repository, perform semantic "
         "review or repeat unaffected verification. Change only paths in "
@@ -2434,7 +2447,8 @@ def _antigravity_repair_transport(
     native_runner: NativeRunner,
 ) -> Callable[..., str]:
     instruction = (
-        f"Read the AIOS REPAIR handoff JSON at {handoff_path}. Execute exactly its "
+        native_executor_instruction()
+        + f"Read the AIOS REPAIR handoff JSON at {handoff_path}. Execute exactly its "
         "single bound continuation. Do not restart PRIMARY discovery, synchronize, "
         "retry, review, or widen the original TASK. Change only repair.modification_scope. "
         "For CODE_FIX commit the final permitted state; for NO_CHANGE do not mutate it. "

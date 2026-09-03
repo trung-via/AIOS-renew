@@ -753,9 +753,15 @@ class StaticRepairRunner:
 
     def __call__(self, command, **kwargs):
         self.calls.append((command, kwargs))
-        execution = json.loads(
-            kwargs["input"].decode("utf-8").split("REPAIR_INPUT:\n", 1)[1]
-        )
+        if command[0] == "agy":
+            handoff_path = next(
+                (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
+            )
+            execution = json.loads(handoff_path.read_text(encoding="utf-8"))
+        else:
+            execution = json.loads(
+                kwargs["input"].decode("utf-8").split("REPAIR_INPUT:\n", 1)[1]
+            )
         if self.empty_commit:
             git(self.repo, "commit", "--quiet", "--allow-empty", "-m", "empty repair")
         head_sha = git(self.repo, "rev-parse", "HEAD")
@@ -774,9 +780,24 @@ class StaticRepairRunner:
             execution["run"]["run_id"], head_sha, changed_files=changed_files
         )
         payload["result"]["unresolved"] = self.unresolved
-        return subprocess.CompletedProcess(
-            command, returncode=0, stdout=json.dumps(payload), stderr=""
+        stdout = (
+            antigravity_envelope(payload)
+            if command[0] == "agy"
+            else json.dumps(payload)
         )
+        return subprocess.CompletedProcess(command, returncode=0, stdout=stdout, stderr="")
+
+
+def assert_native_executor_context(
+    context: dict, *, executor: str, operation: str
+) -> None:
+    assert context["role"] == "NATIVE_EXECUTOR"
+    assert context["selected_executor"] == executor
+    assert context["operation"] == operation
+    assert context["already_admitted"] is True
+    assert context["direct_implementation"] is True
+    assert context["operator_dispatch_authority"] is False
+    assert context["runtime_verification_authority"] is False
 
 
 @pytest.mark.parametrize("executor", ["codex", "antigravity"])
@@ -831,6 +852,11 @@ def test_narrow_remediation_uses_shared_completion_policy(
         assert handoff["remediation_execution"]["remediation"][
             "modification_scope"
         ] == ["OUTPUT.txt"]
+        assert_native_executor_context(
+            handoff["execution_context"],
+            executor="antigravity",
+            operation="REMEDIATION",
+        )
         assert remediation.affected_verification == ("git diff --check",)
 
 
@@ -868,9 +894,10 @@ def test_remediation_failure_preserves_exact_staged_unresolved(
     assert verification_calls == []
 
 
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
 @pytest.mark.parametrize("empty_commit", [False, True])
 def test_code_fix_remediation_rejects_noop_and_empty_commit_before_verification(
-    tmp_path: Path, empty_commit: bool
+    tmp_path: Path, empty_commit: bool, executor: str
 ) -> None:
     repo = make_repo(tmp_path)
     review, remediation = remediation_contract(repo)
@@ -883,7 +910,7 @@ def test_code_fix_remediation_rejects_noop_and_empty_commit_before_verification(
             "TASK-101",
             review=review,
             remediation=remediation,
-            executor="codex",
+            executor=executor,
             repo=repo,
             native_runner=runner,
             verification_runner=lambda *args, **kwargs: verification_calls.append(args),
@@ -894,8 +921,9 @@ def test_code_fix_remediation_rejects_noop_and_empty_commit_before_verification(
     assert not (runtime_paths(repo).results / "RUN-101-001.json").exists()
 
 
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
 def test_evidence_only_remediation_retains_zero_mutation_contract(
-    tmp_path: Path,
+    tmp_path: Path, executor: str
 ) -> None:
     repo = make_repo(tmp_path)
     reviewed_sha = git(repo, "rev-parse", "HEAD")
@@ -933,7 +961,7 @@ constraints:
         "TASK-101",
         review=review,
         remediation=remediation,
-        executor="codex",
+        executor=executor,
         repo=repo,
         native_runner=runner,
     )
@@ -2051,6 +2079,11 @@ def test_antigravity_instruction_returns_structural_package_to_runtime(
     assert handoff["task"]["acceptance"][0]["id"] == "AC1"
     assert handoff["task"]["scope"]["modify"] == ["OUTPUT.txt"]
     assert handoff["task"]["constraints"]["hard"] == ["Commit the output."]
+    assert_native_executor_context(
+        handoff["execution_context"],
+        executor="antigravity",
+        operation="PRIMARY",
+    )
     assert "structural_result_path" not in handoff
 
 
@@ -3259,9 +3292,10 @@ def test_transport_remote_resolution_fails_closed_without_remote_fallback(tmp_pa
         resolve_transport_remote(repo)
 
 
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
 @pytest.mark.parametrize("empty_commit", [False, True])
 def test_code_fix_repair_rejects_noop_and_empty_correction_before_verification(
-    tmp_path: Path, empty_commit: bool
+    tmp_path: Path, empty_commit: bool, executor: str
 ) -> None:
     repo = make_repo(tmp_path)
     failed_run_id, repair = repair_contract(repo)
@@ -3276,7 +3310,7 @@ def test_code_fix_repair_rejects_noop_and_empty_correction_before_verification(
     with pytest.raises(OperatorError, match=message):
         run_repair(
             failed_run_id,
-            executor="codex",
+            executor=executor,
             repo=repo,
             repair=repair,
             native_runner=runner,
@@ -3314,7 +3348,10 @@ def test_repair_failure_preserves_exact_staged_unresolved(tmp_path: Path) -> Non
     assert len(runner.calls) == 1
 
 
-def test_no_change_repair_retains_zero_mutation_contract(tmp_path: Path) -> None:
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_no_change_repair_retains_zero_mutation_contract(
+    tmp_path: Path, executor: str
+) -> None:
     repo = make_repo(tmp_path)
     failed_run_id, repair = repair_contract(repo, action="NO_CHANGE")
     failed_head = git(repo, "rev-parse", "HEAD")
@@ -3322,7 +3359,7 @@ def test_no_change_repair_retains_zero_mutation_contract(tmp_path: Path) -> None
 
     summary = run_repair(
         failed_run_id,
-        executor="codex",
+        executor=executor,
         repo=repo,
         repair=repair,
         native_runner=runner,
@@ -3333,6 +3370,17 @@ def test_no_change_repair_retains_zero_mutation_contract(tmp_path: Path) -> None
     assert json.loads(summary.result_path.read_text(encoding="utf-8"))["result"][
         "changed_files"
     ] == []
+    if executor == "antigravity":
+        handoff = json.loads(
+            next(runtime_paths(repo).handoffs.glob("*.json")).read_text(
+                encoding="utf-8"
+            )
+        )
+        assert_native_executor_context(
+            handoff["execution_context"],
+            executor="antigravity",
+            operation="REPAIR",
+        )
 
 
 def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(

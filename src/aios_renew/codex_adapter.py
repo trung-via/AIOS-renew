@@ -26,6 +26,36 @@ RESULT_PACKAGE_SCHEMA_PATH = (
     Path(__file__).parent / "schemas" / "result_package.json"
 ).resolve()
 
+_NATIVE_EXECUTOR_INSTRUCTION = (
+    "You are the already-selected native Executor inside an admitted AIOS execution. "
+    "Perform the authorized implementation work in the supplied input directly. "
+    "Repository-owned Human-facing worker surfaces and AIOS operator or dispatch "
+    "launchers are outside this execution role: do not invoke $aios-worker, "
+    "/aios-renew-worker, aios run, aios remediate, aios repair, or an equivalent "
+    "launcher to perform the work. Do not authorize, admit, dispatch, or launch "
+    "another AIOS execution. "
+)
+
+
+def native_execution_context(*, run: Run, operation: str) -> dict[str, Any]:
+    """Describe the already-admitted native role without changing kernel artifacts."""
+
+    return {
+        "role": "NATIVE_EXECUTOR",
+        "selected_executor": run.executor,
+        "operation": operation,
+        "already_admitted": True,
+        "direct_implementation": True,
+        "operator_dispatch_authority": False,
+        "runtime_verification_authority": False,
+    }
+
+
+def native_executor_instruction() -> str:
+    """Return the shared role boundary for native execution transports."""
+
+    return _NATIVE_EXECUTOR_INSTRUCTION
+
 
 class CodexExecutionError(RuntimeError):
     """Raised when the native Codex process cannot complete successfully."""
@@ -186,11 +216,18 @@ class CodexAdapter:
         task_input = asdict(task)
         task_input.pop("verification")
         canonical_input = json.dumps(
-            {"task": task_input, "run": asdict(run)},
+            {
+                "execution_context": native_execution_context(
+                    run=run, operation="PRIMARY"
+                ),
+                "task": task_input,
+                "run": asdict(run),
+            },
             sort_keys=True,
         )
         return (
-            "Execute the canonical TASK within its bound RUN. "
+            _NATIVE_EXECUTOR_INSTRUCTION
+            + "Execute the canonical TASK within its bound RUN. "
             "Do not reinterpret its requirements. Runtime owns all verification: "
             "do not execute canonical task verification commands and do not generate "
             "verification EVIDENCE. Minimum implementation-local sanity checks on the "
@@ -210,9 +247,13 @@ class CodexAdapter:
 
         execution_input = asdict(execution)
         execution_input["remediation"].pop("affected_verification")
+        execution_input["execution_context"] = native_execution_context(
+            run=execution.run, operation="REMEDIATION"
+        )
         canonical_input = json.dumps(execution_input, sort_keys=True)
         return (
-            "Execute exactly one canonical narrow REMEDIATION. Do not run or "
+            _NATIVE_EXECUTOR_INSTRUCTION
+            + "Execute exactly one canonical narrow REMEDIATION. Do not run or "
             "restart the original TASK, rediscover the repository, perform "
             "semantic review, or retry. Change only remediation.modification_scope. "
             "For CODE_FIX, commit the permitted remediation delta before returning; "
@@ -234,9 +275,13 @@ class CodexAdapter:
         run = data.get("run")
         if isinstance(run, Run):
             data["run"] = asdict(run)
+            data["execution_context"] = native_execution_context(
+                run=run, operation="REPAIR"
+            )
         canonical_input = json.dumps(data, sort_keys=True)
         return (
-            "Execute exactly one canonical REPAIR continuation bound to the failed RUN. "
+            _NATIVE_EXECUTOR_INSTRUCTION
+            + "Execute exactly one canonical REPAIR continuation bound to the failed RUN. "
             "Do not restart PRIMARY discovery, synchronize with upstream, retry, review, "
             "or widen the original TASK. Follow repair.instructions and change only "
             "repair.modification_scope. For CODE_FIX commit the final permitted state; "
