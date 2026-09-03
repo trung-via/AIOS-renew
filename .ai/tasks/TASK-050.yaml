@@ -1,5 +1,5 @@
 task_id: TASK-050
-revision: 1
+revision: 2
 
 goal: >
   Establish AIOS Governance Baseline v1.0 as a documentation-only constitutional
@@ -15,15 +15,36 @@ problem: >
   Authoring Contract, the frozen Kernel v0.1 specification, and exact TASK/RUN
   lineages. Those rules have proven useful, but constitutional intent and
   non-negotiable authority boundaries are not yet represented as first-class
-  canonical repository documents. The new roadmap requires a stable governance
-  baseline that states why AIOS exists, what it optimizes for, which principles are
-  constitutional, how constitutional authority differs from engineering-state truth,
-  and which transport or orchestration mechanisms remain subordinate and replaceable.
+  canonical repository documents. TASK-050 revision 1 produced a clean, in-scope,
+  repairable candidate in RUN-050-001, but Runtime verification failed because the
+  Brain-authored Python verification commands contained literal backslash-escaped
+  quotes that were not valid through the Windows PowerShell execution boundary.
+  Revision 2 preserves the governance intent and acceptance semantics and corrects
+  only that canonical verification-contract defect.
 
 assumptions:
   - >
-    Current canonical AIOS-renew main baseline before TASK-050 authoring is
-    8f9dc574a0df201e17282646659f7a62aad5dd73, with TASK-049 published.
+    Canonical main before revision-2 authoring contains TASK-050 revision 1 at
+    d8c9c0f3a38697d5d85a8c303db72ed55c94538c, with TASK-049 already published.
+  - >
+    RUN-050-001 produced committed candidate
+    82cab15c596fcdab3df5ea5009417b403bea1501 changing exactly the five authorized
+    documentation paths. Its FAILURE artifact records phase VERIFICATION,
+    descends_from_base true, dirty false, outside_task_scope empty, repairable true,
+    and transportable true. That candidate is reusable implementation material but
+    is not PASS evidence and is not publication-authorized until a revision-2 RUN
+    passes Runtime verification and semantic review.
+  - >
+    Revision 2 changes no Human governance intent, scope, non-goal, constitutional
+    principle, Manifesto source statement, or acceptance outcome from revision 1.
+    The prior implementation may be reused if still valid; reuse is an Executor HOW
+    choice, not a new authority or completion claim.
+  - >
+    A REPAIR of RUN-050-001 is not the continuation mechanism for this defect because
+    REPAIR is bound to the failed TASK revision and would execute the same invalid
+    revision-1 canonical verification commands. Revision 2 therefore requires a new
+    PRIMARY RUN while preserving valid prior implementation knowledge until
+    invalidated.
   - >
     docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md remains FROZEN and its historical record
     must not be rewritten, reinterpreted, or retroactively governed by TASK-050.
@@ -32,10 +53,6 @@ assumptions:
     while ChatGPT Project Instructions remain a bootstrap layer until governance is
     published; reducing those external Project Instructions is a post-publication
     Human/project configuration action, not Executor work in TASK-050.
-  - >
-    The governance baseline is normative documentation, not executable enforcement.
-    Future governance validation, inventory, migration, or architecture cleanup
-    requires separate TASK authority.
   - >
     K0.1 will separately audit existing repository material and classify KEEP, THIN,
     MOVE, or DELETE; TASK-050 must not absorb that inventory or cleanup authority.
@@ -67,6 +84,7 @@ non_goals:
   - Redesign Git refs, branches, handoff files, GitHub transport, or remote artifact mechanics.
   - Modify any downstream Python Agent repository, dependency pin, worker contract, or downstream workflow.
   - Copy a second independent Constitution into ChatGPT Project Instructions; those external instructions are intentionally left unchanged by this TASK.
+  - Treat RUN-050-001 or candidate 82cab15c596fcdab3df5ea5009417b403bea1501 as Runtime PASS, canonical EVIDENCE, or semantic PASS merely because its content appears valid.
   - Push from executor execution.
 
 constraints:
@@ -217,5 +235,7 @@ acceptance:
 
 verification:
   required:
-    - 'python -c "from pathlib import Path; files=[Path(\"docs/AIOS-MANIFESTO.md\"),Path(\"docs/AIOS-CONSTITUTION.md\"),Path(\"README.md\"),Path(\"docs/CHATGPT_PROJECT_CONTRACT.md\"),Path(\"docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md\")]; texts=[p.read_text(encoding=\"utf-8\") for p in files]; assert all(t.strip() for t in texts)"'
-    - 'python -c "from pathlib import Path; m=Path(\"docs/AIOS-MANIFESTO.md\").read_text(encoding=\"utf-8\"); c=Path(\"docs/AIOS-CONSTITUTION.md\").read_text(encoding=\"utf-8\"); refs=Path(\"README.md\").read_text(encoding=\"utf-8\")+Path(\"docs/CHATGPT_PROJECT_CONTRACT.md\").read_text(encoding=\"utf-8\")+Path(\"docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md\").read_text(encoding=\"utf-8\"); assert \"Verified Useful Work / (Time + Tokens + Human Effort)\" in m; names=[\"Human Intent, Evidence Truth\",\"Separation of Authority\",\"Bounded Mutation Authority\",\"Sufficient Context, Reuse Until Invalidated\",\"Probabilistic Intelligence, Deterministic Enforcement\",\"Claims Require Evidence\",\"Reproducible Canonical State\",\"Correction with Continuity; New Intent with New Contract\",\"Observable, Attributable, Replayable Automation\",\"Bounded Autonomy, Maximum Useful Work\"]; assert all(n in c for n in names); assert refs.count(\"AIOS-CONSTITUTION.md\") >= 3; assert refs.count(\"AIOS-MANIFESTO.md\") >= 3"'
+    - >-
+      python -c "from pathlib import Path; files=[Path('docs/AIOS-MANIFESTO.md'),Path('docs/AIOS-CONSTITUTION.md'),Path('README.md'),Path('docs/CHATGPT_PROJECT_CONTRACT.md'),Path('docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md')]; texts=[p.read_text(encoding='utf-8') for p in files]; assert all(t.strip() for t in texts)"
+    - >-
+      python -c "from pathlib import Path; m=Path('docs/AIOS-MANIFESTO.md').read_text(encoding='utf-8'); c=Path('docs/AIOS-CONSTITUTION.md').read_text(encoding='utf-8'); refs=Path('README.md').read_text(encoding='utf-8')+Path('docs/CHATGPT_PROJECT_CONTRACT.md').read_text(encoding='utf-8')+Path('docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md').read_text(encoding='utf-8'); assert 'Verified Useful Work / (Time + Tokens + Human Effort)' in m; names=['Human Intent, Evidence Truth','Separation of Authority','Bounded Mutation Authority','Sufficient Context, Reuse Until Invalidated','Probabilistic Intelligence, Deterministic Enforcement','Claims Require Evidence','Reproducible Canonical State','Correction with Continuity; New Intent with New Contract','Observable, Attributable, Replayable Automation','Bounded Autonomy, Maximum Useful Work']; assert all(n in c for n in names); assert refs.count('AIOS-CONSTITUTION.md') >= 3; assert refs.count('AIOS-MANIFESTO.md') >= 3"
