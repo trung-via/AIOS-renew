@@ -2,6 +2,12 @@
 
 This is the compact authoring boundary for canonical AIOS-renew TASKs. It supplements, and does not replace or revise, the frozen v0.1 specification.
 
+## Constitutional preflight
+
+Before drafting or revising a TASK, perform a constitutional preflight against the canonical governance baseline:
+- [AIOS Manifesto](AIOS-MANIFESTO.md) — Ensure the work serves verified useful work and the optimization North Star (`Verified Useful Work / (Time + Tokens + Human Effort)`), avoiding unneeded agents, calls, reasoning loops, or activity.
+- [AIOS Constitution](AIOS-CONSTITUTION.md) — Verify adherence to constitutional principles: Human intent ownership, separation of authority (Brain WHAT/WHY, Executor HOW, Runtime coordination, Reviewer judgment), bounded mutation authority, claims requiring evidence, reproducible canonical state, and correction continuity. Confirm that proposed delivery mechanisms remain subordinate and replaceable.
+
 ## Establish identity first
 
 Before reasoning about a TASK, REVIEW, REMEDIATION, or FIX lineage, establish the canonical repository and worktree, the relevant canonical artifact identifiers and revisions, and the immutable Git SHA to which they bind. Never infer identity or lineage from chat history, screenshots, UI labels, or remembered state.
