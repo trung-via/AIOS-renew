@@ -2,6 +2,15 @@
 
 AIOS-renew provides a thin Human-facing operator above the frozen v0.1 kernel.
 
+## Governance
+
+AIOS operates under canonical governance:
+- [AIOS Manifesto](docs/AIOS-MANIFESTO.md) defines core purpose, optimization philosophy, and the North Star metric (`Verified Useful Work / (Time + Tokens + Human Effort)`).
+- [AIOS Constitution](docs/AIOS-CONSTITUTION.md) defines the non-negotiable constitutional principles and authority hierarchy.
+
+Operational surfaces, transport mechanisms, Git refs, and handoffs are subordinate, replaceable mechanisms that serve canonical state rather than sources of constitutional authority.
+
+
 ## Install
 
 ```powershell

@@ -26,6 +26,10 @@ This repository develops the execution substrate itself.
 
 ## 2. Authority Hierarchy
 
+AIOS governance is established by [AIOS Manifesto](AIOS-MANIFESTO.md) (canonical purpose and optimization North Star) and [AIOS Constitution](AIOS-CONSTITUTION.md) (constitutional principles and authority boundaries).
+
+Constitutional authority governs future architectural and execution constraints. It is explicitly separated from engineering-state truth. Operational delivery mechanisms (Git refs, handoffs, transport, operator surfaces) are subordinate and replaceable.
+
 For current engineering truth use, in descending authority:
 
 1. Explicit current Human intent.
