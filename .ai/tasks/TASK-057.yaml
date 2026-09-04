@@ -1,0 +1,192 @@
+task_id: TASK-057
+revision: 1
+
+goal: >
+  Repair the observed REPAIR completion-boundary defect so canonical
+  Result.changed_files is established deterministically by Runtime from Git state,
+  while the selected Executor remains responsible only for the authorized narrow
+  REPAIR mutation. Preserve the existing canonical meaning that a successful REPAIR
+  RESULT describes the complete original TASK delta, without requiring Codex or
+  Antigravity to reconstruct or redeclare repository truth that Runtime can observe
+  directly.
+
+problem: >
+  Real downstream Python Agent TASK-125 exposed a reproducible kernel-boundary
+  failure. RUN-125-008 and RUN-125-009 both produced clean committed CODE_FIX repair
+  deltas inside the authorized narrow scope, but failed at COMPLETION_GATE with
+  RESULT.changed_files mismatch. The current REPAIR completion policy requires
+  Result.changed_files to equal git diff from the original TASK root_base_sha to the
+  final HEAD, while REPAIR mutation authority is separately checked from the failed
+  HEAD to final HEAD. Native repair executors therefore have to infer and redeclare a
+  full historical TASK file set unrelated to the narrow correction they just made.
+  That duplicates deterministic Runtime knowledge and makes a correct committed
+  repair fail because probabilistic structural output disagrees with repository
+  truth. Runtime already owns both Git comparisons and must become the sole authority
+  for canonical REPAIR changed_files.
+
+assumptions:
+  - >
+    Current canonical AIOS-renew main before TASK-057 authoring is
+    f2eac815de8c584e8ce9bc786ec20fde1e937903.
+  - >
+    TASK-056 / K0.4 has a PRIMARY semantic PASS on reviewed source SHA
+    f2eac815de8c584e8ce9bc786ec20fde1e937903; post-K0.4 kernel work is permitted
+    only because this TASK is backed by observed downstream kernel-boundary evidence.
+  - >
+    Downstream python_complete_agent main observed during incident audit is
+    d47ed9c048cacd152452cf2a7054c662e1043c82 and its exact pinned AIOS-renew
+    dependency is 59b31ede597d4a27b848771522672705a021abe4.
+  - >
+    Downstream RUN-125-008 FAILURE records failed head
+    1f7d63aefcb8bcc56b44a8df563a51518068ac2c and COMPLETION_GATE error
+    RESULT.changed_files mismatch after a clean repairable one-file committed delta.
+  - >
+    Downstream RUN-125-009 FAILURE records failed head
+    bde5ac1e781254920ec7bb6bdb3246e1a758ebb1 and the same COMPLETION_GATE error
+    after another clean repairable one-file committed delta.
+  - >
+    TASK-052 Runtime completion authority, TASK-051 Dispatcher authority, TASK-055
+    native adapter thinning, frozen RESULT schema, Runtime-owned verification, and
+    no-retry/no-fallback semantics remain authoritative except for the specific
+    REPAIR changed-files responsibility corrected by this TASK.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-ROADMAP.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-052.yaml
+    - .ai/tasks/TASK-055.yaml
+    - .ai/tasks/TASK-056.yaml
+    - src/aios_renew/runtime.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/artifacts.py
+    - tests/test_runtime.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+
+  modify:
+    - src/aios_renew/runtime.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_runtime.py
+    - tests/test_operator.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+
+non_goals:
+  - Change Python Agent TASK-125, its historical RUN/FAILURE/REPAIR artifacts, or its dependency pin in this TASK.
+  - Add an AIOS-specific workaround inside the downstream repository-owned worker.
+  - Change PRIMARY or REMEDIATION changed_files semantics merely for consistency or cleanup.
+  - Change the canonical RESULT, EVIDENCE, TASK, RUN, REVIEW, REMEDIATION, or REPAIR schemas.
+  - Change Brain, Reviewer, Dispatcher, publication, or Human authority.
+  - Change Executor selection, retry, fallback, reroute, failover, timeout, or lease behavior.
+  - Weaken repository HEAD, clean-worktree, ancestry, TASK scope, REPAIR modification-scope, CODE_FIX, NO_CHANGE, verification, or canonical ResultPackage gates.
+  - Re-run or repair downstream TASK-125 as part of AIOS-renew implementation.
+  - Add a new planner, verifier agent, repository scanner, changed-files model prompt, or other probabilistic mechanism for state Runtime can derive from Git.
+  - Perform unrelated adapter refactoring, transport extraction, roadmap cleanup, version bump, packaging cleanup, or K0 feature development.
+  - Push from executor execution.
+
+constraints:
+  hard:
+    - >
+      For REPAIR completion, Runtime is the sole canonical authority for the complete
+      Result.changed_files set. The canonical set must be derived deterministically
+      from committed Git state between the preserved original TASK root_base_sha and
+      the accepted final HEAD, not trusted from or compared against an Executor's
+      structural changed_files declaration.
+    - >
+      REPAIR narrow mutation safety remains independently bound to the committed Git
+      delta between failed_head_sha and final HEAD. That actual repair delta must stay
+      within repair.modification_scope; CODE_FIX must advance HEAD with a non-empty
+      committed correction delta; NO_CHANGE must not mutate HEAD.
+    - >
+      The complete root-base-to-final canonical changed_files set must still be checked
+      against TASK.scope.modify before canonical verification and persistence. Removing
+      Executor redeclaration must not remove or weaken the Runtime scope gate.
+    - >
+      A successful canonical REPAIR RESULT must persist the deterministic complete
+      original TASK changed_files set in stable ordering, regardless of whether the
+      structural Executor output supplied a narrow repair list, an empty list, or a
+      different structurally valid list. Git state, not model declaration, is truth.
+    - >
+      REPAIR structural output remains non-canonical until Runtime completion succeeds.
+      Executor-provided head_sha, claims, unresolved, and structural shape remain subject
+      to their existing gates; this TASK changes only changed_files authority for REPAIR.
+    - >
+      Codex and Antigravity REPAIR instructions must no longer require the native
+      Executor to reconstruct, enumerate, or guess the complete historical TASK file
+      delta. They must preserve narrow repair mutation instructions, no push, no Runtime
+      verification, and structural-output boundaries while making Runtime ownership of
+      canonical changed_files explicit.
+    - >
+      PRIMARY and REMEDIATION behavior must remain observably unchanged, including their
+      existing deterministic repository gates and current structural changed_files
+      contracts. This is a narrow observed-defect fix, not a general Result redesign.
+    - >
+      Runtime must continue to execute canonical verification at most once per REPAIR
+      completion attempt and bind EVIDENCE to the exact final accepted HEAD. The fix must
+      occur before verification so a valid repair is not rejected for probabilistic
+      changed_files redeclaration and invalid repository state still fails closed.
+    - >
+      The fix must remain executor-neutral and deterministic. No additional model call,
+      repository discovery by an Executor, retry, fallback, reroute, or Human-supplied
+      changed-file list may be introduced.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      REPAIR Runtime completion derives the canonical complete changed_files set from
+      original TASK root_base_sha to final HEAD and no longer fails solely because the
+      structural Executor changed_files declaration is narrow, empty, or otherwise
+      differs from that deterministic Git set.
+  - id: AC2
+    condition: >
+      REPAIR Runtime still independently derives failed_head_sha-to-final-HEAD mutation
+      truth and rejects any actual committed correction outside repair.modification_scope,
+      any CODE_FIX with no real committed correction, and any mutating NO_CHANGE repair.
+  - id: AC3
+    condition: >
+      The canonical persisted REPAIR ResultPackage contains Result.changed_files equal
+      to the complete deterministic root-base-to-final TASK delta in stable ordering and
+      continues to reject any actual complete delta outside TASK.scope.modify.
+  - id: AC4
+    condition: >
+      A deterministic regression reproducing the RUN-125-008/009 topology passes: an
+      original TASK has an existing multi-file committed delta, a later REPAIR commits
+      only one authorized narrow correction, the structural repair result reports only
+      that narrow delta, and Runtime accepts the candidate and persists the complete
+      original TASK changed_files set.
+  - id: AC5
+    condition: >
+      The same regression proves canonical verification executes once only after all
+      repository gates pass and remains bound to the final repaired HEAD.
+  - id: AC6
+    condition: >
+      Both Codex and Antigravity REPAIR native contracts stop asking the Executor to
+      reconstruct the complete original TASK changed_files set while preserving narrow
+      mutation scope, complete TASK claims, structural output, no verification evidence,
+      and no-push semantics.
+  - id: AC7
+    condition: >
+      Existing PRIMARY and REMEDIATION completion behavior remains unchanged and their
+      regression tests continue to enforce current HEAD, changed-files, scope, dirty-state,
+      verification, and terminalization semantics.
+  - id: AC8
+    condition: >
+      No canonical schema, authority boundary, retry/fallback behavior, publication rule,
+      or downstream Python Agent source is changed; the implementation is limited to the
+      observed REPAIR deterministic-boundary defect.
+
+verification:
+  required:
+    - python -m pytest tests/test_runtime.py tests/test_operator.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py -q
+    - git diff --check
