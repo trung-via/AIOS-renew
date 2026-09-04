@@ -826,6 +826,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     )
 
     assert len(runner.calls) == 1
+    assert runner.calls[0][1]["timeout"] == 15 * 60
     assert staged["result"]["claims"] == []
     assert staged["result"]["unresolved"] == []
     assert staged["evidence"] == []
@@ -838,6 +839,8 @@ def test_narrow_remediation_uses_shared_completion_policy(
     assert "encoding" not in runner.calls[0][1]
     assert "errors" not in runner.calls[0][1]
     if executor == "antigravity":
+        command = runner.calls[0][0]
+        assert command[command.index("--print-timeout") + 1] == "15m"
         instruction = runner.calls[0][0][runner.calls[0][0].index("--print") + 1]
         assert "CODE_FIX" in instruction
         assert "EVIDENCE_ONLY" in instruction
@@ -1982,6 +1985,7 @@ def test_mutating_codex_capability_is_resolved_before_invocation(tmp_path: Path)
 
     command = runner.calls[0][0]
     assert command[command.index("--sandbox") + 1] == "danger-full-access"
+    assert runner.calls[0][1]["timeout"] == 15 * 60
     assert len(runner.calls) == 1
 
 
@@ -2005,6 +2009,50 @@ def test_read_only_codex_execution_remains_read_only(tmp_path: Path) -> None:
     assert len(calls) == 1
 
 
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_native_watchdog_expiry_is_one_terminal_execution_failure(
+    tmp_path: Path, executor: str
+) -> None:
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
+    native_calls = []
+    verification_calls = []
+
+    def expire_immediately(command, **kwargs):
+        native_calls.append((command, kwargs))
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    with pytest.raises(
+        OperatorError, match="15-minute native response deadline"
+    ):
+        run_task(
+            "TASK-101",
+            executor=executor,
+            repo=repo,
+            native_runner=expire_immediately,
+            verification_runner=lambda *args, **kwargs: verification_calls.append(
+                (args, kwargs)
+            ),
+        )
+
+    assert len(native_calls) == 1
+    assert native_calls[0][1]["timeout"] == 15 * 60
+    assert native_calls[0][1]["timeout"] <= 16 * 60
+    assert verification_calls == []
+    state = runtime_paths(repo)
+    failure = json.loads(
+        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert failure["run_id"] == "RUN-101-001"
+    assert failure["executor"] == executor
+    assert failure["phase"] == "EXECUTION"
+    assert failure["error"]["type"] == (
+        "CodexExecutionError"
+        if executor == "codex"
+        else "AntigravityExecutionError"
+    )
+    assert not list(state.results.glob("RUN-101-001.json"))
+
+
 def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     runner = FakeAntigravityRunner(repo)
@@ -2026,7 +2074,8 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
     assert "--json-schema" in command
-    assert command[command.index("--print-timeout") + 1] == "5m"
+    assert command[command.index("--print-timeout") + 1] == "15m"
+    assert kwargs["timeout"] == 15 * 60
     assert kwargs["cwd"] == workspace
     assert kwargs["text"] is False
     assert "encoding" not in kwargs
@@ -3367,10 +3416,13 @@ def test_no_change_repair_retains_zero_mutation_contract(
 
     assert summary.head_sha == failed_head
     assert len(runner.calls) == 1
+    assert runner.calls[0][1]["timeout"] == 15 * 60
     assert json.loads(summary.result_path.read_text(encoding="utf-8"))["result"][
         "changed_files"
     ] == []
     if executor == "antigravity":
+        command = runner.calls[0][0]
+        assert command[command.index("--print-timeout") + 1] == "15m"
         handoff = json.loads(
             next(runtime_paths(repo).handoffs.glob("*.json")).read_text(
                 encoding="utf-8"

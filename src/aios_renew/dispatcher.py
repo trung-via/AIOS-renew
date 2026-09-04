@@ -14,6 +14,7 @@ from .artifacts import ResultPackage
 from .codex_adapter import (
     RESULT_PACKAGE_SCHEMA_PATH,
     CodexAdapter,
+    CodexExecutionError,
     native_execution_context,
     native_executor_instruction,
 )
@@ -25,6 +26,8 @@ from .task import Task
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 Operation = Literal["PRIMARY", "REMEDIATION", "REPAIR"]
+NATIVE_RESPONSE_BUDGET_MINUTES = 15
+NATIVE_PROCESS_WATCHDOG_SECONDS = NATIVE_RESPONSE_BUDGET_MINUTES * 60
 
 
 class DispatcherError(RuntimeError):
@@ -316,7 +319,17 @@ def _codex_runner(
         except ValueError as exc:
             raise DispatcherError("Codex command has no sandbox option") from exc
         updated[index + 1] = capability.codex_sandbox
-        return native_runner(tuple(updated), **kwargs)
+        try:
+            return native_runner(
+                tuple(updated),
+                timeout=NATIVE_PROCESS_WATCHDOG_SECONDS,
+                **kwargs,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise CodexExecutionError(
+                "Codex CLI exceeded the 15-minute native response deadline",
+                exit_code=None,
+            ) from exc
 
     return run
 
@@ -342,7 +355,7 @@ def _antigravity_command(
         "--json-schema",
         str(RESULT_PACKAGE_SCHEMA_PATH),
         "--print-timeout",
-        "5m",
+        f"{NATIVE_RESPONSE_BUDGET_MINUTES}m",
     ]
     if capability.antigravity_skip_permissions:
         command.append("--dangerously-skip-permissions")
@@ -370,12 +383,17 @@ def _antigravity_transport(
                 capture_output=True,
                 text=False,
                 check=False,
+                timeout=NATIVE_PROCESS_WATCHDOG_SECONDS,
             )
             stdout = _decode_utf8(completed.stdout)
             stderr = _decode_utf8(completed.stderr)
         except FileNotFoundError as exc:
             raise AntigravityExecutionError(
                 "Antigravity CLI not found: agy"
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise AntigravityExecutionError(
+                "Antigravity CLI exceeded the 15-minute native response deadline"
             ) from exc
         except (OSError, UnicodeError) as exc:
             raise AntigravityExecutionError(
