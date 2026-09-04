@@ -1,0 +1,1 @@
+{"base_sha":"5fa3fd8dce24b32e1f1b9bbb5ec27742fcd7e86b","durations":{"admitted_run_seconds":304.11742929999946,"executor_seconds":304.10449470000003,"verification_seconds":null},"executor":"antigravity","executor_invoked":true,"kind":"RUN_OBSERVATION","operation":"REPAIR","run_id":"RUN-051-002","task":{"id":"TASK-051","revision":1},"terminal_kind":"FAILURE","token_usage":null}
