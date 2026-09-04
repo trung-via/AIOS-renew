@@ -1,0 +1,186 @@
+task_id: TASK-056
+revision: 1
+
+goal: >
+  Complete the K0.4 Lean Kernel Conformance Gate with minimum-sufficient,
+  evidence-preserving validation of the post-K0.3 execution boundary. Exercise one
+  already-selected native Executor through the current adapter/runtime path without
+  repository mutation, add only deterministic conformance checks not already proven
+  on the unchanged implementation state, and preserve enough canonical observation
+  data for the Reviewer to decide whether default kernel development can stop and
+  work can return to the downstream Python Agent.
+
+problem: >
+  TASK-055 is semantically reviewed PASS and published, so the provider-neutral
+  Dispatcher and provider-specific adapter boundaries are now on canonical main.
+  RUN-055-003 already produced a successful native Codex continuation plus 213
+  targeted dispatcher/adapter/operator tests and git diff validation on implementation
+  SHA d205cafc4f136f6cceb83dcdc63eabe5b1412771. Repeating that unchanged work merely
+  for ceremony would violate Reuse Until Invalidated. The final K0.4 gate still needs
+  a current post-K0.3 native observation for the supported executor path not yet proven
+  after the adapter relocation, plus deterministic Runtime/verification/observation
+  checks that were not part of TASK-055 verification. The gate must gather this
+  evidence without opening another implementation/refactor cycle.
+
+assumptions:
+  - >
+    Canonical main immediately before TASK-056 authoring is
+    e282e7f04cedf7ea5461f8699f065c20fcf9915f. Its only commit after reviewed TASK-055
+    candidate d205cafc4f136f6cceb83dcdc63eabe5b1412771 updates docs/AIOS-ROADMAP.md;
+    no src/aios_renew or tests implementation state changed.
+  - >
+    TASK-050 Governance Baseline, the frozen Kernel v0.1 specification/freeze record,
+    and the active roadmap remain authoritative. K0.4 is the final required K0 gate;
+    transport extraction and A-Series automation are explicitly outside this gate.
+  - >
+    REVIEW-055-001 is PRIMARY PASS for d205cafc4f136f6cceb83dcdc63eabe5b1412771,
+    and RUN-055-003 canonical evidence records 213 targeted tests passing, git diff
+    validation passing, executor_seconds about 565.1, verification_seconds about
+    412.3, admitted_run_seconds about 977.6, and token_usage unavailable/null.
+  - >
+    Evidence bound to RUN-055-003 may be reused for unchanged relevant implementation
+    state once K0.4 deterministically proves that no src/aios_renew or tests changes
+    occurred after that reviewed SHA. Reuse does not mean treating unrelated roadmap
+    or TASK-authoring commits as implementation invalidation.
+  - >
+    The TASK remains executor-neutral. Human selection of the active Executor is an
+    operational RUN decision. To close K0.4 efficiently, the active RUN should cover
+    the supported native executor path that lacks successful post-K0.3 native evidence
+    rather than repeat an already-valid native path.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-ROADMAP.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-049.yaml
+    - .ai/tasks/TASK-051.yaml
+    - .ai/tasks/TASK-052.yaml
+    - .ai/tasks/TASK-053.yaml
+    - .ai/tasks/TASK-055.yaml
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/executor.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/run_observation.py
+    - src/aios_renew/operator.py
+    - tests/test_dispatcher.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_executor.py
+    - tests/test_runtime.py
+    - tests/test_verification.py
+    - tests/test_run_observation.py
+    - tests/test_operator.py
+
+  modify: []
+
+non_goals:
+  - Change any source, test, documentation, schema, package metadata, TASK semantics, or frozen Kernel contract.
+  - Add new conformance scripts, test files, smoke markers, telemetry machinery, dashboards, reports, adapters, wrappers, or orchestration layers solely for this gate.
+  - Repeat the TASK-055 213-test verification command or rerun an already-valid native executor path against unchanged relevant implementation state merely for ceremony.
+  - Redesign native permissions, sandbox/mode mapping, deadline policy, structural output, handoff format, Runtime completion, evidence construction, review, or publication behavior.
+  - Increase the 15-minute native budget, add retry, fallback, reroute, automatic failover, polling, persistent sessions, or another recovery mechanism.
+  - Extract review transport, begin A-Series automation, add H-Series capability, or resume retired M-Series work.
+  - Perform semantic review or declare K0.4/kernel completion from the Executor. Reviewer owns the final conformance judgment.
+  - Push or publish from executor execution.
+
+constraints:
+  hard:
+    - >
+      This is a read-only canonical TASK. scope.modify is empty, so the selected
+      Executor must not create, edit, delete, commit, stage, or publish repository
+      content. The successful result must remain bound to the admitted base HEAD with
+      no changed files.
+    - >
+      Exactly one Human-selected native Executor invocation is permitted for this RUN.
+      Native error, invalid output, or timeout is terminal to the invocation and must
+      not trigger retry, fallback, reroute, executor switch, or a second invocation.
+    - >
+      The current native invocation must use the post-K0.3 Dispatcher/adapter boundary
+      directly and return one structural ResultPackage. Runtime remains the only owner
+      of deterministic completion gates, canonical verification, canonical EVIDENCE,
+      RESULT/FAILURE truth, and run observation.
+    - >
+      Existing RUN-055-003 evidence must be reused if and only if the required
+      implementation-state comparison proves that src/aios_renew and tests remain
+      unchanged since d205cafc4f136f6cceb83dcdc63eabe5b1412771. If that comparison
+      fails, prior evidence is invalidated for this gate and the Reviewer must not
+      silently treat it as current.
+    - >
+      Do not rerun the canonical verification command from TASK-055 when the relevant
+      implementation state is unchanged. K0.4 canonical verification adds only the
+      executor/runtime/verification/observation test surfaces that were not included
+      in RUN-055-003 verification.
+    - >
+      Read-only and mutation authorization, exactly-one dispatch, timeout/no-retry,
+      structural output, scope/SHA/dirty-state completion gates, REMEDIATION/REPAIR
+      continuity, and no-push semantics may be established by the minimum sufficient
+      combination of current native evidence, unchanged-state proof, and reusable
+      deterministic evidence. Native execution need not be duplicated when a valid
+      immutable proof already exists for unchanged relevant state.
+    - >
+      Run observation must preserve measured execution and verification durations and
+      token usage when available. If native token usage is unavailable, record or
+      preserve null/unknown rather than inventing a value. Human effort may be noted
+      qualitatively by the Reviewer from the explicit operational lineage; no new
+      telemetry mechanism is authorized by this TASK.
+    - >
+      K0.4 PASS is a semantic Reviewer decision over the combined canonical evidence,
+      not a claim the Executor may self-authorize. A successful RUN-056 is necessary
+      evidence for the gate but does not by itself alter frozen Kernel semantics or
+      authorize new kernel work.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The TASK executes read-only: final Git HEAD equals admitted base HEAD,
+      changed_files is empty, the worktree remains clean, and no repository mutation,
+      commit, push, or publication occurs.
+  - id: AC2
+    condition: >
+      Exactly one selected native Executor is invoked through the current post-K0.3
+      adapter boundary, returns one structural ResultPackage or one explicit terminal
+      native failure, and no retry/fallback/reroute/second invocation occurs.
+  - id: AC3
+    condition: >
+      Canonical verification proves there are no src/aios_renew or tests changes since
+      reviewed TASK-055 implementation SHA d205cafc4f136f6cceb83dcdc63eabe5b1412771,
+      so relevant RUN-055-003 deterministic/native evidence is either explicitly
+      reusable or explicitly invalidated rather than silently repeated.
+  - id: AC4
+    condition: >
+      Deterministic tests not already present in TASK-055 verification pass for
+      ExecutorBoundary, Runtime completion, canonical verification, and run-observation
+      behavior, adding new evidence without rerunning the unchanged TASK-055 suite.
+  - id: AC5
+    condition: >
+      The combined current RUN plus valid reused evidence is sufficient for Reviewer
+      assessment of both supported executor boundaries and the required K0.4 semantics:
+      read-only/mutation authorization, exactly-one invocation, fail-closed completion,
+      REMEDIATION/REPAIR continuity, bounded timeout with no automatic recovery,
+      Runtime-owned verification/EVIDENCE, structural output, and no executor push.
+  - id: AC6
+    condition: >
+      Canonical run observation preserves the current run's executor/admitted/verification
+      durations and token_usage when available, while prior RUN-055-003 observation
+      remains available as a comparison baseline; unavailable token counts remain
+      explicitly null/unknown.
+  - id: AC7
+    condition: >
+      No new kernel capability, code cleanup, transport extraction, automation feature,
+      test infrastructure, or authority is introduced. The Reviewer can decide K0.4
+      PASS / CHANGES_REQUIRED / BLOCKED solely from existing architecture plus the
+      minimum new evidence gathered by this TASK.
+
+verification:
+  required:
+    - git diff --exit-code d205cafc4f136f6cceb83dcdc63eabe5b1412771 HEAD -- src/aios_renew tests
+    - python -m pytest tests/test_executor.py tests/test_runtime.py tests/test_verification.py tests/test_run_observation.py -q
