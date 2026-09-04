@@ -1,0 +1,116 @@
+task_id: TASK-060
+revision: 1
+
+goal: >
+  Bootstrap the native execution ceiling from 15 minutes to a 60-minute maximum
+  response budget with a bounded 65-minute outer process watchdog, while preserving
+  immediate completion when the selected Executor returns earlier and leaving all
+  other execution, verification, correction, and review semantics unchanged.
+
+problem: >
+  TASK-059 cannot implement its broader execution-efficiency changes through the
+  current self-hosting Runtime because RUN-059-001 was itself terminated by the
+  existing 15-minute native watchdog. A minimal bootstrap is required first so later
+  canonical TASKs can execute long enough to complete without repeated Human repair
+  churn. This TASK changes only the native time ceiling and its direct adapter tests;
+  it does not resolve RUN-059-001, TASK-058, interruption recovery, or diagnostics.
+
+assumptions:
+  - >
+    Current canonical AIOS-renew main before TASK-060 authoring is
+    ef90087b87bf081313f94a49ddfce6611689d8b8.
+  - >
+    RUN-059-001 is a canonical EXECUTION failure at the 15-minute Codex deadline and
+    is not repairable because its timed-out candidate left the worktree dirty.
+  - >
+    Human explicitly authorizes increasing the native execution ceiling so long as
+    completion returns immediately when work finishes before that ceiling.
+  - >
+    Exactly-one dispatch, Runtime-owned canonical verification, no retry/fallback,
+    and frozen artifact semantics remain authoritative.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - .ai/tasks/TASK-051.yaml
+    - .ai/tasks/TASK-059.yaml
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_dispatcher.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+
+  modify:
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_dispatcher.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+
+non_goals:
+  - Resolve, repair, rerun, or reinterpret RUN-059-001 or TASK-058.
+  - Implement Ctrl+C/interruption recovery or native progress diagnostics.
+  - Add retry, fallback, reroute, failover, executor substitution, adaptive timeout selection, or Planner authority.
+  - Change canonical verification ownership, RESULT/EVIDENCE semantics, correction semantics, or publication behavior.
+  - Change downstream repositories or dependency pins.
+  - Perform unrelated refactoring or cleanup.
+  - Push from executor execution.
+
+constraints:
+  hard:
+    - >
+      Provider-neutral admitted native response budget is exactly 60 minutes for
+      PRIMARY, REMEDIATION, and REPAIR operations.
+    - >
+      The outer process watchdog is exactly 65 minutes, providing only bounded
+      terminalization grace beyond the 60-minute semantic response budget.
+    - >
+      The 60-minute value is an upper bound, never a minimum wait: a native process
+      that returns earlier must be processed immediately with no added sleep, polling
+      delay, or forced budget consumption.
+    - >
+      Codex and Antigravity must consume the same provider-neutral policy. No hidden
+      15-minute admitted cutoff may remain in either adapter path.
+    - >
+      Timeout error reporting must reflect the admitted policy rather than retaining
+      a misleading hard-coded 15-minute message.
+    - >
+      Exactly-one dispatch, Runtime-owned verification, structural ResultPackage
+      handling, no-retry/no-fallback semantics, mutation authority, and no-push
+      behavior remain unchanged.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      resolve_native_execution_policy returns a 60-minute response budget and a
+      65-minute process watchdog for admitted mutation and read-only executions.
+  - id: AC2
+    condition: >
+      Antigravity native invocation receives a 60-minute native response deadline and
+      a 65-minute outer watchdog, with no retained hidden 15-minute admitted cutoff.
+  - id: AC3
+    condition: >
+      Codex admitted execution uses the same 65-minute outer watchdog and no retained
+      hard-coded 15-minute timeout behavior or message.
+  - id: AC4
+    condition: >
+      Deterministic regressions prove an early native return is accepted immediately;
+      the larger ceiling introduces no minimum-duration wait.
+  - id: AC5
+    condition: >
+      Existing exactly-one dispatch, PRIMARY/REMEDIATION/REPAIR semantics, Runtime
+      verification authority, and no-retry/no-fallback behavior remain unchanged.
+  - id: AC6
+    condition: >
+      No interruption recovery, diagnostic expansion, TASK-058 implementation,
+      downstream change, or unrelated refactor is introduced.
+
+verification:
+  required:
+    - python -m pytest tests/test_dispatcher.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py -q
+    - git diff --check
