@@ -10,6 +10,7 @@ import pytest
 
 import aios_renew.dispatcher as dispatcher_module
 import aios_renew.operator as operator_module
+import aios_renew.runtime as runtime_module
 from aios_renew.operator import (
     OperatorError,
     RepositoryLock,
@@ -2855,7 +2856,7 @@ def test_antigravity_result_is_not_canonically_rewritten_before_completion_gate(
 ) -> None:
     repo = make_repo(tmp_path)
     payload = static_payload(satisfies=[])
-    real_write_json = operator_module._write_json
+    real_write_json = runtime_module._write_json
     canonical_result_writes = []
 
     def tracking_write_json(path, data):
@@ -2863,7 +2864,7 @@ def test_antigravity_result_is_not_canonically_rewritten_before_completion_gate(
             canonical_result_writes.append(path)
         real_write_json(path, data)
 
-    monkeypatch.setattr(operator_module, "_write_json", tracking_write_json)
+    monkeypatch.setattr(runtime_module, "_write_json", tracking_write_json)
 
     with pytest.raises(OperatorError, match="does not satisfy acceptance criteria"):
         run_task(
@@ -3610,7 +3611,7 @@ def test_observation_persistence_failure_does_not_repeat_executor_or_result(
     def fail_observation(*args, **kwargs):
         raise OSError("observation store unavailable")
 
-    monkeypatch.setattr(operator_module, "persist_observation", fail_observation)
+    monkeypatch.setattr(runtime_module, "persist_observation", fail_observation)
     summary = run_task(
         "TASK-101", executor="codex", repo=repo, native_runner=runner
     )
@@ -3633,7 +3634,7 @@ def test_observation_transport_failure_preserves_result_and_does_not_fallback(
         raise operator_module.ReviewTransportError("observation publish failed")
 
     monkeypatch.setattr(
-        operator_module, "transport_post_pass", fail_observation_transport
+        runtime_module, "transport_post_pass", fail_observation_transport
     )
     with pytest.raises(OperatorError, match="review transport failed"):
         run_task(

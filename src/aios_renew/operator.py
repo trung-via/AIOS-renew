@@ -23,8 +23,6 @@ from .artifacts import (
     validate_evidence,
     validate_result,
     validate_result_package,
-    validate_structural_result,
-    validate_structural_result_package,
 )
 from .codex_adapter import (
     CodexExecutionError,
@@ -51,7 +49,13 @@ from .run import Run, RunLeaseRegistry, RunTaskReference
 from .run_observation import (
     MonotonicClock,
     RunObservationTracker,
-    persist_observation,
+)
+from .runtime import (
+    RuntimeCompletion,
+    persist_failure,
+    primary_completion_policy,
+    remediation_completion_policy,
+    repair_completion_policy,
 )
 from .review import (
     Finding,
@@ -65,12 +69,7 @@ from .review import (
     validate_review,
 )
 from .task import Task, TaskValidationError, parse_task
-from .verification import (
-    RuntimeVerificationError,
-    VerificationRunner,
-    attach_verification_evidence,
-    execute_verification,
-)
+from .verification import VerificationRunner
 
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
@@ -367,25 +366,6 @@ def next_run_id(task_id: str, runs_path: Path) -> str:
     return f"{prefix}{max(numbers, default=0) + 1:03d}"
 
 
-def _persist_terminal_observation(
-    state: RuntimePaths,
-    tracker: RunObservationTracker,
-    terminal_kind: str,
-) -> Path | None:
-    """Best-effort one immutable sidecar without changing terminal authority."""
-
-    try:
-        observation = tracker.finalize(terminal_kind)
-        if observation is None:
-            return None
-        path = state.observations / f"{observation.run_id}.json"
-        persist_observation(path, observation)
-        return path
-    except Exception:
-        # Operational observation can never replace RESULT or FAILURE truth.
-        return None
-
-
 def _load_authoritative_prior_result(
     state: RuntimePaths,
     task: Task,
@@ -565,15 +545,12 @@ def run_task(
             # A canonical RESULT means implementation and verification already passed;
             # only its transport failed, so it is not rewritten as an execution failure.
             if not (state.results / f"{run_id}.json").is_file():
-                observation_path = _persist_terminal_observation(
-                    state, observation_tracker, "FAILURE"
-                )
                 _persist_and_transport_failure(
                     root,
                     task_id=task_id,
                     run_path=run_path,
                     failure=original,
-                    observation_path=observation_path,
+                    observation_tracker=observation_tracker,
                 )
         raise
 
@@ -607,8 +584,6 @@ def _run_task_impl(
             base_sha=base_sha,
             workspace=str(root),
         )
-        result_path = state.results / f"{run_id}.json"
-        staging_path = state.staging / f"{run_id}.json"
         run_path = state.runs / f"{run_id}.json"
         _write_json(run_path, asdict(run))
         attempt.bind_run(run_path)
@@ -651,84 +626,24 @@ def _run_task_impl(
         except DispatcherError as exc:
             raise OperatorError(f"dispatcher failed: {exc}") from exc
 
-        _write_json(staging_path, result_package_data(package))
-        _require_executor_structure(package)
-        actual_head = _git(root, "rev-parse", "HEAD")
-        if package.result.head_sha != actual_head:
-            raise OperatorError("RESULT.head_sha mismatch")
-        post_status = _git(root, "status", "--porcelain")
-        if post_status:
-            raise OperatorError("working tree dirty after execution")
-        if package.result.changed_files and actual_head == base_sha:
-            raise OperatorError("final Git HEAD did not advance")
-
-        _require_changed_files(
-            root,
-            task,
-            package,
-            base_sha=base_sha,
-            actual_head=actual_head,
-        )
-
-        _require_complete_result(task, package)
-
-        if task.scope.modify and actual_head == base_sha:
-            raise OperatorError("final Git HEAD did not advance")
-
-        verification_started = observation_tracker.begin_verification()
-        try:
-            runtime_evidence = execute_verification(
-                task.verification.required,
-                run_id=run_id,
-                subject_sha=actual_head,
-                repository=root,
-                raw_directory=state.verification / run_id,
-                runner=verification_runner,
-            )
-        except RuntimeVerificationError as exc:
-            raise OperatorError(str(exc)) from exc
-        finally:
-            observation_tracker.end_verification(verification_started)
-        _require_post_verification_repository_state(
-            root, expected_head=actual_head
-        )
-        canonical_result = attach_verification_evidence(
-            package.result, runtime_evidence
-        )
-        try:
-            canonical_package = validate_result_package(
-                task=task,
-                run=run,
-                result=canonical_result,
-                evidence=runtime_evidence,
-            )
-        except ArtifactValidationError as exc:
-            raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
-
-        _write_json(result_path, result_package_data(canonical_package))
-        observation_path = _persist_terminal_observation(
-            state, observation_tracker, "RESULT"
-        )
-
-        try:
-            transport_post_pass(
-                root,
-                run_id=run_id,
-                head_sha=actual_head,
-                run_path=run_path,
-                result_path=result_path,
-                observation_path=observation_path,
-            )
-        except ReviewTransportError as exc:
-            raise OperatorError(f"review transport failed: {exc}") from exc
+        completion = RuntimeCompletion(
+            repo=root,
+            state=state,
+            task=task,
+            run=run,
+            run_path=run_path,
+            verification_runner=verification_runner,
+            observation_tracker=observation_tracker,
+            error_type=OperatorError,
+        ).complete(package, primary_completion_policy(task, base_sha=base_sha))
 
         return RunSummary(
             task_id=task_id,
             run_id=run_id,
             executor=executor,
             base_sha=base_sha,
-            head_sha=actual_head,
-            result_path=result_path,
+            head_sha=completion.head_sha,
+            result_path=completion.result_path,
         )
 
 
@@ -738,10 +653,10 @@ def _persist_and_transport_failure(
     task_id: str,
     run_path: Path,
     failure: Exception,
+    observation_tracker: RunObservationTracker | None = None,
     observation_path: Path | None = None,
 ) -> None:
-    """Record the original failure, then best-effort its independent transport."""
-
+    """Delegate admitted FAILURE terminalization to Runtime."""
     state = runtime_paths(root)
     try:
         run_data = json.loads(run_path.read_text(encoding="utf-8"))
@@ -751,122 +666,19 @@ def _persist_and_transport_failure(
             and run_data.get("kind") == "REMEDIATION"
             else _run_from_data(run_data)
         )
-        task = load_task(root, task_id)
-        head_sha = _git(root, "rev-parse", "HEAD")
-        dirty = bool(_git(root, "status", "--porcelain"))
-        descendant = _git_is_ancestor(root, run.base_sha, head_sha)
-        changed = set(
-            path for path in _git(
-                root, "diff", "--name-only", "--no-renames", "-z",
-                run.base_sha, head_sha, strip_stdout=False,
-            ).split("\0") if path
-        ) if descendant else set()
-        outside_scope = changed.difference(task.scope.modify)
-        repairable = not dirty and descendant
-        transportable = repairable and not outside_scope
-        cause = failure.__cause__
-        error_message = str(failure)
-        if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
-            # Preserve the actionable boundary diagnostic without transporting the
-            # executor's complete stdout/stderr payload. The first diagnostic line is
-            # deterministic and bounded; full streams remain local on the exception.
-            error_message = str(cause).splitlines()[0][:512]
-        if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
-            phase = "EXECUTION"
-        elif isinstance(cause, RuntimeVerificationError):
-            phase = "VERIFICATION"
-        else:
-            phase = "COMPLETION_GATE"
-        record: dict[str, Any] = {
-            "kind": "FAILURE",
-            "run_id": run.run_id,
-            "task": {"id": run.task.id, "revision": run.task.revision},
-            "executor": run.executor,
-            "base_sha": run.base_sha,
-            "failed_head_sha": head_sha,
-            "phase": phase,
-            "error": {
-                "type": type(cause or failure).__name__,
-                "message": error_message,
-            },
-            "candidate": {
-                "transportable": transportable,
-                "repairable": repairable,
-                "dirty": dirty,
-                "descends_from_base": descendant,
-                "changed_files": sorted(changed),
-                "outside_task_scope": sorted(outside_scope),
-            },
-        }
-        repair_execution = state.repairs / f"{run.run_id}.json"
-        if repair_execution.is_file():
-            record["continuation_of"] = json.loads(
-                repair_execution.read_text(encoding="utf-8")
-            ).get("failed_run_id")
-        if isinstance(cause, CodexExecutionError):
-            record["error"]["exit_code"] = cause.exit_code
-        if isinstance(cause, RuntimeVerificationError):
-            record["error"]["verification"] = [
-                {
-                    "command": item.source.command,
-                    "exit_code": item.result.exit_code,
-                    "summary": item.result.summary,
-                }
-                for item in cause.evidence
-            ]
-        executor_unresolved = _read_staged_executor_unresolved(
-            state, task=task, run=run
-        )
-        if executor_unresolved:
-            record["error"]["executor_diagnostics"] = {
-                "unresolved": executor_unresolved,
-            }
-        failure_path = state.failures / f"{run.run_id}.json"
-        _write_json(failure_path, record)
-        try:
-            transport_failure(
-                root, run_id=run.run_id, head_sha=head_sha,
-                run_path=run_path, failure_path=failure_path,
-                publish_candidate=transportable,
-                observation_path=observation_path,
-            )
-        except ReviewTransportError as transport_error:
-            # Preserve the original exception as primary and persist the secondary
-            # fact separately so transport can be retried without execution.
-            _write_json(
-                state.failures / f"{run.run_id}.transport.json",
-                {"run_id": run.run_id, "error": str(transport_error)},
-            )
-    except Exception:
-        # Failure recording must never replace the execution failure.
-        return
-
-
-def _read_staged_executor_unresolved(
-    state: RuntimePaths, *, task: Task, run: Run
-) -> list[str] | None:
-    """Read bounded diagnostics only from a valid Runtime staging package."""
-
-    try:
-        payload = json.loads(
-            (state.staging / f"{run.run_id}.json").read_text(encoding="utf-8")
-        )
-        if not isinstance(payload, Mapping):
-            return None
-        evidence_data = payload["evidence"]
-        if not isinstance(evidence_data, list):
-            return None
-        package = validate_structural_result_package(
-            task=task,
+        persist_failure(
+            root,
+            state=state,
+            task=load_task(root, task_id),
             run=run,
-            result=validate_structural_result(payload["result"]),
-            evidence=tuple(validate_evidence(item) for item in evidence_data),
+            run_path=run_path,
+            failure=failure,
+            observation_tracker=observation_tracker,
+            observation_path=observation_path,
         )
-        return list(package.result.unresolved)
     except Exception:
-        # Staging is diagnostic enrichment only and can never replace the
-        # original execution failure or prevent its best-effort persistence.
-        return None
+        # Delegation setup is also subordinate to the original failure.
+        return
 
 
 def run_repair(
@@ -899,13 +711,10 @@ def run_repair(
         ):
             try:
                 run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
-                observation_path = _persist_terminal_observation(
-                    state, observation_tracker, "FAILURE"
-                )
                 _persist_and_transport_failure(
                     root, task_id=run_data["task"]["id"],
                     run_path=attempt.run_path, failure=original,
-                    observation_path=observation_path,
+                    observation_tracker=observation_tracker,
                 )
             except Exception:
                 pass
@@ -1052,8 +861,6 @@ def _run_repair_impl(
             base_sha=failed_head, workspace=str(repo),
         )
         run_path = state.runs / f"{run_id}.json"
-        result_path = state.results / f"{run_id}.json"
-        staging_path = state.staging / f"{run_id}.json"
         execution = {
             "failed_run_id": failed_run_id,
             "root_base_sha": root_base_sha,
@@ -1095,65 +902,30 @@ def _run_repair_impl(
         except DispatcherError as exc:
             raise OperatorError(f"dispatcher failed: {exc}") from exc
 
-        _write_json(staging_path, result_package_data(package))
-        _require_executor_structure(package)
-        actual_head = _git(repo, "rev-parse", "HEAD")
-        if package.result.head_sha != actual_head:
-            raise OperatorError("RESULT.head_sha mismatch")
-        if _git(repo, "status", "--porcelain"):
-            raise OperatorError("working tree dirty after REPAIR")
-        repair_changed = set(path for path in _git(
-            repo, "diff", "--name-only", "--no-renames", "-z",
-            failed_head, actual_head, strip_stdout=False,
-        ).split("\0") if path)
-        if repair_changed.difference(scope):
-            raise OperatorError("REPAIR committed paths outside authorized correction scope")
-        if action == "CODE_FIX" and actual_head == failed_head:
-            raise OperatorError("CODE_FIX REPAIR did not advance HEAD")
-        if action == "CODE_FIX" and not repair_changed:
-            raise OperatorError("CODE_FIX REPAIR committed correction delta is empty")
-        if action == "NO_CHANGE" and actual_head != failed_head:
-            raise OperatorError("NO_CHANGE REPAIR changed HEAD")
-        _require_changed_files(
-            repo, task, package, base_sha=root_base_sha, actual_head=actual_head
-        )
-        _require_complete_result(task, package)
-        verification_started = observation_tracker.begin_verification()
-        try:
-            runtime_evidence = execute_verification(
-                task.verification.required, run_id=run_id, subject_sha=actual_head,
-                repository=repo, raw_directory=state.verification / run_id,
-                runner=verification_runner,
-            )
-        except RuntimeVerificationError as exc:
-            raise OperatorError(str(exc)) from exc
-        finally:
-            observation_tracker.end_verification(verification_started)
-        _require_post_verification_repository_state(repo, expected_head=actual_head)
-        canonical_result = attach_verification_evidence(package.result, runtime_evidence)
-        try:
-            canonical_package = validate_result_package(
-                task=task, run=run, result=canonical_result, evidence=runtime_evidence
-            )
-        except ArtifactValidationError as exc:
-            raise OperatorError(f"invalid canonical ResultPackage: {exc}") from exc
-        _write_json(result_path, result_package_data(canonical_package))
-        observation_path = _persist_terminal_observation(
-            state, observation_tracker, "RESULT"
-        )
-        try:
-            transport_post_pass(
-                repo, run_id=run_id, head_sha=actual_head,
-                run_path=run_path, result_path=result_path,
+        completion = RuntimeCompletion(
+            repo=repo,
+            state=state,
+            task=task,
+            run=run,
+            run_path=run_path,
+            verification_runner=verification_runner,
+            observation_tracker=observation_tracker,
+            error_type=OperatorError,
+        ).complete(
+            package,
+            repair_completion_policy(
+                task,
+                root_base_sha=root_base_sha,
+                failed_head_sha=failed_head,
+                action=action,
+                modification_scope=scope,
                 lineage_path=state.repairs / f"{run_id}.json",
-                observation_path=observation_path,
-            )
-        except ReviewTransportError as exc:
-            raise OperatorError(f"review transport failed: {exc}") from exc
+            ),
+        )
         return RepairSummary(
             task_id=task.task_id, failed_run_id=failed_run_id, run_id=run_id,
             executor=executor, failed_head_sha=failed_head,
-            head_sha=actual_head, result_path=result_path,
+            head_sha=completion.head_sha, result_path=completion.result_path,
         )
 
 
@@ -1284,15 +1056,12 @@ def run_remediation(
     except Exception as original:
         if attempt.run_path is not None:
             if not (state.results / attempt.run_path.name).is_file():
-                observation_path = _persist_terminal_observation(
-                    state, observation_tracker, "FAILURE"
-                )
                 _persist_and_transport_failure(
                     root,
                     task_id=task_id,
                     run_path=attempt.run_path,
                     failure=original,
-                    observation_path=observation_path,
+                    observation_tracker=observation_tracker,
                 )
         else:
             _persist_and_transport_admission_failure(
@@ -1503,8 +1272,6 @@ def _run_remediation_impl(
             run=run,
             original_constraints=canonical_remediation.constraints,
         )
-        result_path = state.results / f"{run_id}.json"
-        staging_path = state.staging / f"{run_id}.json"
         run_path = state.runs / f"{run_id}.json"
         _write_json(
             run_path,
@@ -1540,56 +1307,16 @@ def _run_remediation_impl(
         except DispatcherError as exc:
             raise OperatorError(f"dispatcher failed: {exc}") from exc
 
-        _write_json(staging_path, result_package_data(package))
-        _require_executor_structure(package)
-        actual_head = _git(root, "rev-parse", "HEAD")
-        if package.result.head_sha != actual_head:
-            raise OperatorError("RESULT.head_sha mismatch")
-        if _git(root, "status", "--porcelain"):
-            raise OperatorError("working tree dirty after execution")
-        _require_remediation_repository_state(
-            root, execution, package, actual_head=actual_head
-        )
-        verification_started = observation_tracker.begin_verification()
-        try:
-            runtime_evidence = execute_verification(
-                execution.remediation.affected_verification,
-                run_id=run_id,
-                subject_sha=actual_head,
-                repository=root,
-                raw_directory=state.verification / run_id,
-                runner=verification_runner,
-            )
-        except RuntimeVerificationError as exc:
-            raise OperatorError(str(exc)) from exc
-        finally:
-            observation_tracker.end_verification(verification_started)
-        _require_post_verification_repository_state(
-            root, expected_head=actual_head
-        )
-        canonical_package = ResultPackage(
-            result=package.result,
-            evidence=runtime_evidence,
-        )
-        _require_remediation_package_contract(
-            execution, canonical_package, actual_head=actual_head
-        )
-        _write_json(result_path, result_package_data(canonical_package))
-        observation_path = _persist_terminal_observation(
-            state, observation_tracker, "RESULT"
-        )
-
-        try:
-            transport_post_pass(
-                root,
-                run_id=run_id,
-                head_sha=actual_head,
-                run_path=state.runs / f"{run_id}.json",
-                result_path=result_path,
-                observation_path=observation_path,
-            )
-        except ReviewTransportError as exc:
-            raise OperatorError(f"review transport failed: {exc}") from exc
+        completion = RuntimeCompletion(
+            repo=root,
+            state=state,
+            task=task,
+            run=run,
+            run_path=run_path,
+            verification_runner=verification_runner,
+            observation_tracker=observation_tracker,
+            error_type=OperatorError,
+        ).complete(package, remediation_completion_policy(execution))
 
         return RemediationSummary(
             task_id=task_id,
@@ -1598,8 +1325,8 @@ def _run_remediation_impl(
             run_id=run_id,
             executor=executor,
             reviewed_sha=actual_baseline,
-            head_sha=actual_head,
-            result_path=result_path,
+            head_sha=completion.head_sha,
+            result_path=completion.result_path,
         )
 
 
@@ -1610,11 +1337,15 @@ def accept_candidate(
     executor: str,
     repo: str | Path | None = None,
     verification_runner: VerificationRunner = subprocess.run,
+    monotonic_clock: MonotonicClock = time.monotonic,
 ) -> RemediationSummary:
     """Admit an already committed CODE_FIX candidate without invoking an Executor."""
 
     root = resolve_repository(repo)
     state = runtime_paths(root)
+    observation_tracker = RunObservationTracker(
+        "REMEDIATION", monotonic_clock=monotonic_clock
+    )
     existing = {path.name for path in state.runs.glob("*.json")}
     try:
         return _accept_candidate_impl(
@@ -1623,6 +1354,7 @@ def accept_candidate(
             executor=executor,
             repo=root,
             verification_runner=verification_runner,
+            observation_tracker=observation_tracker,
         )
     except Exception as original:
         created = [
@@ -1630,7 +1362,11 @@ def accept_candidate(
         ]
         if len(created) == 1 and not (state.results / created[0].name).is_file():
             _persist_and_transport_failure(
-                root, task_id=task_id, run_path=created[0], failure=original
+                root,
+                task_id=task_id,
+                run_path=created[0],
+                failure=original,
+                observation_tracker=observation_tracker,
             )
         raise
 
@@ -1642,6 +1378,7 @@ def _accept_candidate_impl(
     executor: str,
     repo: Path,
     verification_runner: VerificationRunner,
+    observation_tracker: RunObservationTracker,
 ) -> RemediationSummary:
     if executor not in ("codex", "antigravity"):
         raise OperatorError(f"unsupported executor: {executor}")
@@ -1697,10 +1434,6 @@ def _accept_candidate_impl(
                 "committed changed paths outside TASK.scope.modify: "
                 + ", ".join(sorted(outside_task))
             )
-        _require_post_verification_repository_state(
-            repo, expected_head=candidate_head
-        )
-
         existing_summary = _accepted_candidate_summary(
             state,
             repo=repo,
@@ -1729,7 +1462,6 @@ def _accept_candidate_impl(
             original_constraints=remediation.constraints,
         )
         run_path = state.runs / f"{run_id}.json"
-        result_path = state.results / f"{run_id}.json"
         _write_json(
             run_path,
             {
@@ -1741,6 +1473,7 @@ def _accept_candidate_impl(
                 "execution": asdict(execution),
             },
         )
+        observation_tracker.admit(run)
 
         structural_result = Result(
             head_sha=candidate_head,
@@ -1749,40 +1482,19 @@ def _accept_candidate_impl(
             unresolved=(),
         )
         structural_package = ResultPackage(result=structural_result, evidence=())
-        _require_remediation_repository_state(
-            repo, execution, structural_package, actual_head=candidate_head
+        completion = RuntimeCompletion(
+            repo=repo,
+            state=state,
+            task=task,
+            run=run,
+            run_path=run_path,
+            verification_runner=verification_runner,
+            observation_tracker=observation_tracker,
+            error_type=OperatorError,
+        ).complete(
+            structural_package,
+            remediation_completion_policy(execution, direct_candidate=True),
         )
-        try:
-            runtime_evidence = execute_verification(
-                remediation.affected_verification,
-                run_id=run_id,
-                subject_sha=candidate_head,
-                repository=repo,
-                raw_directory=state.verification / run_id,
-                runner=verification_runner,
-            )
-        except RuntimeVerificationError as exc:
-            raise OperatorError(str(exc)) from exc
-        _require_post_verification_repository_state(
-            repo, expected_head=candidate_head
-        )
-        canonical_package = ResultPackage(
-            result=structural_result, evidence=runtime_evidence
-        )
-        _require_remediation_package_contract(
-            execution, canonical_package, actual_head=candidate_head
-        )
-        _write_json(result_path, result_package_data(canonical_package))
-        try:
-            transport_post_pass(
-                repo,
-                run_id=run_id,
-                head_sha=candidate_head,
-                run_path=run_path,
-                result_path=result_path,
-            )
-        except ReviewTransportError as exc:
-            raise OperatorError(f"review transport failed: {exc}") from exc
         return RemediationSummary(
             task_id=task_id,
             review_id=review.review_id,
@@ -1790,8 +1502,8 @@ def _accept_candidate_impl(
             run_id=run_id,
             executor=executor,
             reviewed_sha=remediation.reviewed_sha,
-            head_sha=candidate_head,
-            result_path=result_path,
+            head_sha=completion.head_sha,
+            result_path=completion.result_path,
         )
 
 
@@ -2115,108 +1827,10 @@ def _require_remediation_package_contract(
 
 
 
-def _require_changed_files(
-    repo: Path,
-    task: Task,
-    package: ResultPackage,
-    *,
-    base_sha: str,
-    actual_head: str,
-) -> None:
-    """Bind declared files to the committed delta and the exact TASK scope."""
-
-    output = _git(
-        repo,
-        "diff",
-        "--name-only",
-        "--no-renames",
-        "-z",
-        base_sha,
-        actual_head,
-        strip_stdout=False,
-    )
-    actual_changed_files = {path for path in output.split("\0") if path}
-    declared_changed_files = set(package.result.changed_files)
-    if declared_changed_files != actual_changed_files:
-        raise OperatorError("RESULT.changed_files mismatch")
-
-    out_of_scope = actual_changed_files.difference(task.scope.modify)
-    if out_of_scope:
-        raise OperatorError(
-            "committed changed paths outside TASK.scope.modify: "
-            + ", ".join(sorted(out_of_scope))
-        )
-
-
-def _require_complete_result(task: Task, package: ResultPackage) -> None:
-    """Reject canonical packages that do not establish TASK completion."""
-
-    if package.result.unresolved:
-        raise OperatorError("RESULT has unresolved items")
-
-    satisfied = {
-        acceptance_id
-        for claim in package.result.claims
-        for acceptance_id in claim.satisfies
-    }
-    missing = [item.id for item in task.acceptance if item.id not in satisfied]
-    if missing:
-        raise OperatorError(
-            "RESULT does not satisfy acceptance criteria: " + ", ".join(missing)
-        )
-
-
-def _require_executor_structure(package: ResultPackage) -> None:
-    """Reject executor-side verification or evidence synthesis."""
-
-    if package.evidence:
-        raise OperatorError("executor structural output evidence must be empty")
-    if any(claim.evidence for claim in package.result.claims):
-        raise OperatorError(
-            "executor structural claim evidence references must be empty"
-        )
-
-
-def _require_post_verification_repository_state(
-    repo: Path, *, expected_head: str
-) -> None:
-    """Fail closed if successful verification mutated repository state."""
-
-    if _git(repo, "rev-parse", "HEAD") != expected_head:
-        raise OperatorError("verification changed Git HEAD")
-    if _git(repo, "status", "--porcelain"):
-        raise OperatorError("verification dirtied working tree")
-
-
 def _executor_task_data(task: Task) -> dict[str, Any]:
     data = asdict(task)
     data.pop("verification")
     return data
-
-
-def result_package_data(package: ResultPackage) -> dict[str, Any]:
-    """Serialize the canonical package using its public JSON field names."""
-
-    return {
-        "result": {
-            "head_sha": package.result.head_sha,
-            "claims": [asdict(claim) for claim in package.result.claims],
-            "changed_files": list(package.result.changed_files),
-            "unresolved": list(package.result.unresolved),
-        },
-        "evidence": [
-            {
-                "evidence_id": item.evidence_id,
-                "run_id": item.run_id,
-                "subject_sha": item.subject_sha,
-                "type": item.type,
-                "source": asdict(item.source),
-                "result": asdict(item.result),
-                "raw": {"path": item.raw_path},
-            }
-            for item in package.evidence
-        ],
-    }
 
 
 def _git(repo: Path, *args: str, strip_stdout: bool = True) -> str:
