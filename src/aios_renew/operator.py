@@ -1062,18 +1062,35 @@ def _synchronize_primary_branch(
         if os.environ.get("AIOS_RESTART_ATTEMPTED") == "1":
             raise OperatorError("unsafe reload/restart condition")
 
+    tree_updated = False
+    ref_updated = False
     try:
-        _git(root, "read-tree", "-u", "-m", local_sha, upstream_sha)
-        _git(root, "update-ref", branch_ref, upstream_sha, local_sha)
-    except OperatorError as exc:
-        raise OperatorError(f"upstream fast-forward failed: {exc}") from exc
+        try:
+            _git(root, "read-tree", "-u", "-m", local_sha, upstream_sha)
+            tree_updated = True
+            _git(root, "update-ref", branch_ref, upstream_sha, local_sha)
+            ref_updated = True
+        except OperatorError as exc:
+            raise OperatorError(f"upstream fast-forward failed: {exc}") from exc
 
-    if _git(root, "status", "--porcelain"):
-        raise OperatorError("repository dirty after synchronization")
-    if _git(root, "rev-parse", "HEAD") != upstream_sha:
-        raise OperatorError(
-            "repository HEAD does not match upstream after synchronization"
-        )
+        if _git(root, "status", "--porcelain"):
+            raise OperatorError("repository dirty after synchronization")
+        if _git(root, "rev-parse", "HEAD") != upstream_sha:
+            raise OperatorError(
+                "repository HEAD does not match upstream after synchronization"
+            )
+    except Exception:
+        if ref_updated:
+            try:
+                _git(root, "update-ref", branch_ref, local_sha, upstream_sha)
+            except Exception:
+                pass
+        if tree_updated:
+            try:
+                _git(root, "read-tree", "-u", "-m", upstream_sha, local_sha)
+            except Exception:
+                pass
+        raise
 
     return kernel_changed
 

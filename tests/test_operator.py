@@ -2016,7 +2016,125 @@ def test_synchronization_failure_fails_closed_before_run_and_executor(
     with pytest.raises(OperatorError, match="upstream fast-forward failed"):
         run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
     assert git(repo, "rev-parse", "HEAD") == local_sha
+    assert git(repo, "status", "--porcelain") == ""
+    assert not (repo / ".ai/tasks/TASK-101.yaml").exists()
     assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_synchronization_update_ref_failure_rolls_back_and_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    (repo / "INITIAL.txt").write_text("initial content\n", encoding="utf-8")
+    git(repo, "add", "INITIAL.txt")
+    git(repo, "commit", "--quiet", "-m", "add initial file")
+    local_sha = git(repo, "rev-parse", "HEAD")
+    branch_ref = git(repo, "symbolic-ref", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    published_sha = publish_upstream(
+        repo,
+        {
+            ".ai/tasks/TASK-101.yaml": TASK_SOURCE,
+            "INITIAL.txt": "upstream modified content\n",
+            "NEW_REMOTE.txt": "remote content\n",
+        },
+        "publish upstream changes",
+    )
+
+    git_calls = []
+    real_git = operator_module._git
+
+    def failing_git(root, *args, **kwargs):
+        git_calls.append(args)
+        if args and args[0] == "update-ref":
+            raise OperatorError("simulated update-ref failure")
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", failing_git)
+    runner = FakeCodexRunner(repo)
+
+    def runner_wrapper(command, **kwargs):
+        return runner(command, **kwargs)
+
+    with pytest.raises(OperatorError, match="upstream fast-forward failed"):
+        run_task("TASK-101", executor="codex", repo=repo, native_runner=runner_wrapper)
+
+    assert git(repo, "rev-parse", "HEAD") == local_sha
+    assert git(repo, "symbolic-ref", "--short", "HEAD") == "main"
+    assert git(repo, "status", "--porcelain") == ""
+    assert (repo / "INITIAL.txt").read_text(encoding="utf-8") == "initial content\n"
+    assert not (repo / "NEW_REMOTE.txt").exists()
+    assert not (repo / ".ai/tasks/TASK-101.yaml").exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert len(runner.calls) == 0
+
+    assert ("read-tree", "-u", "-m", local_sha, published_sha) in git_calls
+    assert ("update-ref", branch_ref, published_sha, local_sha) in git_calls
+    assert ("read-tree", "-u", "-m", published_sha, local_sha) in git_calls
+    prohibited = {"merge", "rebase", "reset", "checkout", "stash", "clean", "pull", "push", "revert"}
+    assert not any(args and args[0] in prohibited for args in git_calls)
+
+
+def test_synchronization_post_update_failure_rolls_back_and_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    (repo / "INITIAL.txt").write_text("initial content\n", encoding="utf-8")
+    git(repo, "add", "INITIAL.txt")
+    git(repo, "commit", "--quiet", "-m", "add initial file")
+    local_sha = git(repo, "rev-parse", "HEAD")
+    branch_ref = git(repo, "symbolic-ref", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    published_sha = publish_upstream(
+        repo,
+        {
+            ".ai/tasks/TASK-101.yaml": TASK_SOURCE,
+            "INITIAL.txt": "upstream modified content\n",
+            "NEW_REMOTE.txt": "remote content\n",
+        },
+        "publish upstream changes",
+    )
+
+    git_calls = []
+    real_git = operator_module._git
+    status_checked_after_update = False
+
+    def failing_git(root, *args, **kwargs):
+        nonlocal status_checked_after_update
+        git_calls.append(args)
+        if (
+            args
+            and args[0] == "status"
+            and ("update-ref", branch_ref, published_sha, local_sha) in git_calls
+            and not status_checked_after_update
+        ):
+            status_checked_after_update = True
+            return "?? unexpected_untracked_file\n"
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", failing_git)
+    runner = FakeCodexRunner(repo)
+
+    with pytest.raises(OperatorError, match="repository dirty after synchronization"):
+        run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    assert git(repo, "rev-parse", "HEAD") == local_sha
+    assert git(repo, "symbolic-ref", "--short", "HEAD") == "main"
+    assert git(repo, "status", "--porcelain") == ""
+    assert (repo / "INITIAL.txt").read_text(encoding="utf-8") == "initial content\n"
+    assert not (repo / "NEW_REMOTE.txt").exists()
+    assert not (repo / ".ai/tasks/TASK-101.yaml").exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert len(runner.calls) == 0
+
+    assert ("read-tree", "-u", "-m", local_sha, published_sha) in git_calls
+    assert ("update-ref", branch_ref, published_sha, local_sha) in git_calls
+    assert ("update-ref", branch_ref, local_sha, published_sha) in git_calls
+    assert ("read-tree", "-u", "-m", published_sha, local_sha) in git_calls
+    prohibited = {"merge", "rebase", "reset", "checkout", "stash", "clean", "pull", "push", "revert"}
+    assert not any(args and args[0] in prohibited for args in git_calls)
 
 
 def test_primary_upstream_equal_is_noop_and_admission_proceeds(
