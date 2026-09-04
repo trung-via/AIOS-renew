@@ -1,0 +1,25 @@
+{
+  "repair_id": "REPAIR-058-001",
+  "failed_run_id": "RUN-058-001",
+  "failed_head_sha": "ce3096a490b9f10565ce9be3b5b67b0ec49aa446",
+  "task": {
+    "id": "TASK-058",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "src/aios_renew/runtime.py",
+    "src/aios_renew/operator.py",
+    "src/aios_renew/review_transport.py",
+    "tests/test_runtime.py",
+    "tests/test_operator.py",
+    "tests/test_review_transport.py"
+  ],
+  "instructions": [
+    "Continue the exact failed TASK-058 lineage from RUN-058-001 at failed HEAD ce3096a490b9f10565ce9be3b5b67b0ec49aa446. RUN-058-001 failed at EXECUTION before any committed implementation delta or canonical Runtime verification. Do not restart PRIMARY, create a replacement TASK, widen scope, add retry/fallback/reroute, or alter Executor selection.",
+    "Implement only the existing TASK-058 deterministic historical REPAIR recovery boundary. Preserve the separation between current control/runtime authority and the immutable historical subject workspace, exact failed_head_sha ancestry, immutable multi-hop lineage resolution, historical TASK binding, remote duplicate/collision protection, portable failed-REPAIR lineage transport, one-active mutation authority, and TASK-057 completion semantics defined by TASK-058.",
+    "Do not modify repository code to compensate for the external Antigravity/Gemini environment incident that caused the prior execution to terminate without a ResultPackage. The execution environment has been restored outside repository scope; no hook, plugin, timeout, launcher, adapter, retry, or provider-specific workaround is authorized by this REPAIR unless independently required by TASK-058 itself.",
+    "Change only paths in this REPAIR modification_scope. Commit one complete permitted implementation state and return one structural ResultPackage for the complete original TASK-058 contract. Runtime owns canonical TASK-058 verification and EVIDENCE; do not run the canonical verification commands, fabricate verification evidence, push, or write Runtime-owned operational state."
+  ],
+  "constraints": []
+}
