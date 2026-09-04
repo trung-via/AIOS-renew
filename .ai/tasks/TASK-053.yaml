@@ -1,0 +1,152 @@
+task_id: TASK-053
+revision: 1
+
+goal: >
+  Establish one executor-neutral, bounded native execution deadline contract for
+  every already-selected native Executor invocation. The deadline must be long
+  enough for realistic implementation work that can exceed the legacy five-minute
+  ceiling while remaining independently bounded so a native CLI process cannot
+  hang indefinitely. Preserve exactly-one invocation, Dispatcher authority,
+  Runtime completion/verification ownership, and Human-controlled executor choice.
+
+problem: >
+  The legacy native execution profile fixed a five-minute response ceiling. New
+  canonical evidence invalidates that assumption: three admitted native runs
+  terminated at roughly the same five-minute boundary without producing any
+  committed candidate, while the successful continuation of the same class of
+  work required about 809 seconds of native executor time before Runtime
+  verification. The Dispatcher currently relies on native CLI timeout behavior
+  and the injected subprocess runner has no independent outer process deadline.
+  This makes the execution budget too short for observed useful work and leaves
+  bounded-autonomy enforcement dependent on replaceable native transport behavior.
+
+assumptions:
+  - >
+    Current canonical main baseline before TASK-053 authoring is
+    5a19167048e3b3018236ec0174235a056a9c5ad1.
+  - >
+    TASK-051 and TASK-052 are semantically reviewed PASS and published; Dispatcher
+    owns exactly-one native invocation and Runtime owns deterministic completion,
+    canonical verification, EVIDENCE, terminal RESULT/FAILURE, and transport.
+  - >
+    The repeated timeout failures made no committed changes and therefore are
+    operational evidence, not implementation findings against their TASKs.
+  - >
+    Historical five-minute native response-budget assumptions are no longer valid
+    for the observed execution class and may be superseded prospectively without
+    changing frozen Kernel semantics.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-013.yaml
+    - .ai/tasks/TASK-016.yaml
+    - .ai/tasks/TASK-049.yaml
+    - .ai/tasks/TASK-051.yaml
+    - .ai/tasks/TASK-052.yaml
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/operator.py
+    - tests/test_dispatcher.py
+    - tests/test_operator.py
+
+  modify:
+    - src/aios_renew/dispatcher.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, or REPAIR semantics.
+  - Change Human-facing commands, executor selection, or authorization behavior.
+  - Add retry, reroute, fallback, automatic failover, automatic repair, planning, supervision, polling, or another execution layer.
+  - Add semantic review or implementation reasoning to Dispatcher or Runtime.
+  - Change Runtime verification commands, canonical EVIDENCE construction, review authority, or publication policy.
+  - Introduce persistent native sessions, conversation resumption, streaming orchestration, model selection, or model scoring.
+  - Change native permission, sandbox, workspace-binding, structural ResultPackage, or no-reentry semantics except as required to apply the shared deadline contract.
+  - Add a new user-facing configuration surface solely for this deadline correction.
+  - Perform Operator, Runtime, README, version, export, or repository cleanup.
+  - Push from executor execution.
+
+constraints:
+  hard:
+    - >
+      One already-selected native Executor invocation remains the sole implementation
+      authority for an admitted execution. A deadline expiry is terminal to that
+      invocation and must never trigger a second invocation, retry, reroute,
+      fallback, or executor change.
+    - >
+      The semantic native response budget is 15 minutes for PRIMARY, REMEDIATION,
+      and REPAIR. Any executor-specific native response ceiling used internally
+      must provide the same effective budget rather than retaining the legacy
+      five-minute ceiling.
+    - >
+      Every native process invocation must also have an independent deterministic
+      outer process watchdog. The watchdog may include bounded shutdown grace but
+      must terminate no later than 16 minutes after native invocation begins.
+    - >
+      A native process watchdog expiry must fail closed through the existing native
+      execution failure path and remain attributable to the same admitted RUN.
+      It must not be reported as successful structural output or Runtime
+      verification failure.
+    - >
+      The deadline contract applies equivalently regardless of which native
+      Executor is selected. Executor-specific mechanics may differ, but one path
+      must not be left unbounded or receive a weaker semantic budget.
+    - >
+      Existing selected-executor binding, one-dispatch guard, mutation capability,
+      workspace binding, native execution-role/no-reentry context, structural
+      ResultPackage contract, and push-free execution semantics remain unchanged.
+    - >
+      Runtime completion starts only after a structural ResultPackage is returned.
+      Native deadline handling must not move canonical verification, EVIDENCE,
+      RESULT, FAILURE, review, or publication authority into Dispatcher.
+    - >
+      Regression tests must prove the 15-minute semantic budget, the independent
+      bounded outer watchdog, terminal timeout behavior, exactly-one invocation,
+      and unchanged successful structural output without depending on one helper
+      name or source-code layout.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Every admitted PRIMARY, REMEDIATION, and REPAIR native invocation receives
+      the same 15-minute semantic response budget regardless of the selected
+      native Executor.
+  - id: AC2
+    condition: >
+      Every native process invocation is independently bounded by an outer process
+      watchdog that terminates no later than 16 minutes after invocation begins.
+  - id: AC3
+    condition: >
+      A native deadline expiry fails through the existing execution-failure path,
+      remains bound to the same RUN, and causes no retry, fallback, reroute,
+      executor switch, or second native invocation.
+  - id: AC4
+    condition: >
+      Successful native execution still returns exactly one structural
+      ResultPackage to Dispatcher and proceeds to the existing Runtime completion
+      boundary without any duplicated canonical verification or EVIDENCE work.
+  - id: AC5
+    condition: >
+      Existing native role/no-reentry, capability, workspace, permission/sandbox,
+      selected-executor, structural-output, and push-free semantics remain
+      observably unchanged apart from the deadline contract.
+  - id: AC6
+    condition: >
+      Human-facing command behavior, frozen Kernel contracts, TASK-051 Dispatcher
+      authority, TASK-052 Runtime authority, review authority, and publication
+      policy remain unchanged.
+  - id: AC7
+    condition: >
+      Deterministic regression tests cover successful execution and simulated
+      deadline expiry for the native boundary, proving bounded duration and
+      exactly-one invocation without real waiting.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py tests/test_dispatcher.py -q
+    - git diff --check
