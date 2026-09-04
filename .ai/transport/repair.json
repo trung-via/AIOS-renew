@@ -1,0 +1,20 @@
+{
+  "repair_id": "REPAIR-062-001",
+  "failed_run_id": "RUN-062-001",
+  "failed_head_sha": "9ede9f07ed85e67e3f80b2e4dc987b74fd80ced5",
+  "task": {
+    "id": "TASK-062",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "tests/test_operator.py"
+  ],
+  "instructions": [
+    "Continue the exact failed TASK-062 lineage from RUN-062-001 at failed HEAD 9ede9f07ed85e67e3f80b2e4dc987b74fd80ced5. Do not restart PRIMARY, redesign TASK-062, modify production implementation, widen scope, change executor selection, retry, fallback, reroute, or alter publication behavior.",
+    "RUN-062-001 reached Runtime verification with a clean, in-scope candidate and failed only because tests/test_operator.py::test_antigravity_invocation_contract still asserts the pre-TASK-061 Antigravity effort value `low`. TASK-061 is already canonical and published with deterministic Antigravity effort `high`.",
+    "Update only the stale operator regression expectation(s) in tests/test_operator.py that directly contradict the published TASK-061 model/effort default. Preserve the TASK-062 production candidate unchanged and preserve all existing TASK-062 synchronization semantics.",
+    "Commit the minimal permitted test correction and return one structural ResultPackage for the complete original TASK-062 contract. Runtime owns canonical TASK-062 verification and EVIDENCE; do not duplicate canonical verification for ceremony and do not push."
+  ],
+  "constraints": []
+}
