@@ -19,8 +19,8 @@ from .task import Task
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 Operation = Literal["PRIMARY", "REMEDIATION", "REPAIR"]
-NATIVE_RESPONSE_BUDGET_MINUTES = 15
-NATIVE_PROCESS_WATCHDOG_SECONDS = NATIVE_RESPONSE_BUDGET_MINUTES * 60
+NATIVE_RESPONSE_BUDGET_MINUTES = 60
+NATIVE_PROCESS_WATCHDOG_SECONDS = 65 * 60
 
 
 class DispatcherError(RuntimeError):

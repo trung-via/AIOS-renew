@@ -39,8 +39,8 @@ class ExecutionPolicy(Protocol):
 @dataclass(frozen=True)
 class _DefaultExecutionPolicy:
     authorizes_mutation: bool = True
-    response_budget_minutes: int = 15
-    process_watchdog_seconds: int = 15 * 60
+    response_budget_minutes: int = 60
+    process_watchdog_seconds: int = 65 * 60
 
 
 _NATIVE_EXECUTOR_INSTRUCTION = (
@@ -201,7 +201,9 @@ class AntigravityAdapter:
             ) from exc
         except subprocess.TimeoutExpired as exc:
             raise AntigravityExecutionError(
-                "Antigravity CLI exceeded the 15-minute native response deadline"
+                "Antigravity CLI exceeded the "
+                f"{self._execution_policy.response_budget_minutes}-minute "
+                "native response deadline"
             ) from exc
         except (OSError, UnicodeError) as exc:
             raise AntigravityExecutionError(

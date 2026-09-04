@@ -141,7 +141,7 @@ def test_constructs_and_invokes_native_codex_command() -> None:
     assert "errors" not in calls[0][1]
     assert isinstance(calls[0][1]["input"], bytes)
     assert calls[0][1]["check"] is False
-    assert calls[0][1]["timeout"] == 15 * 60
+    assert calls[0][1]["timeout"] == 65 * 60
 
 
 def test_codex_adapter_owns_read_only_sandbox_mapping() -> None:
@@ -177,11 +177,31 @@ def test_codex_timeout_is_terminal_to_one_native_invocation() -> None:
         raise subprocess.TimeoutExpired(command, kwargs["timeout"])
 
     adapter = CodexAdapter(runner=runner)
-    with pytest.raises(CodexExecutionError, match="15-minute"):
+    with pytest.raises(CodexExecutionError, match="60-minute"):
         adapter.execute(task=task, run=run)
 
     assert len(calls) == 1
-    assert calls[0][1]["timeout"] == 15 * 60
+    assert calls[0][1]["timeout"] == 65 * 60
+
+
+def test_codex_early_native_return_is_accepted_immediately() -> None:
+    task, run, _, _ = make_execution()
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=successful_output(run.run_id),
+            stderr="",
+        )
+
+    package = CodexAdapter(runner=runner).execute(task=task, run=run)
+
+    assert package.result.head_sha == "def456"
+    assert len(calls) == 1
+    assert calls[0][1]["timeout"] == 65 * 60
 
 
 def test_utf8_output_outside_cp1252_is_preserved() -> None:

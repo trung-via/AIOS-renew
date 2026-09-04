@@ -231,17 +231,24 @@ def test_mismatched_run_is_rejected_before_adapter_construction() -> None:
     assert factory_calls == []
 
 
-def test_execution_policy_is_provider_neutral_and_bounded() -> None:
-    policy = resolve_native_execution_policy(authorizes_mutation=True)
+@pytest.mark.parametrize("authorizes_mutation", [True, False])
+def test_execution_policy_is_provider_neutral_and_bounded(
+    authorizes_mutation: bool,
+) -> None:
+    policy = resolve_native_execution_policy(
+        authorizes_mutation=authorizes_mutation
+    )
 
-    assert policy == NativeExecutionPolicy(authorizes_mutation=True)
+    assert policy == NativeExecutionPolicy(
+        authorizes_mutation=authorizes_mutation
+    )
     assert {field.name for field in fields(policy)} == {
         "authorizes_mutation",
         "response_budget_minutes",
         "process_watchdog_seconds",
     }
-    assert policy.response_budget_minutes == 15
-    assert policy.process_watchdog_seconds <= 16 * 60
+    assert policy.response_budget_minutes == 60
+    assert policy.process_watchdog_seconds == 65 * 60
 
 
 def test_dispatcher_factory_surface_exposes_only_provider_neutral_policy() -> None:

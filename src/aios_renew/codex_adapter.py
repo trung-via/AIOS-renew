@@ -36,8 +36,8 @@ class _DefaultExecutionPolicy:
     # Preserve the standalone adapter's historical workspace-write default.
     # Admitted operator executions always provide an explicit boolean policy.
     authorizes_mutation: bool | None = None
-    response_budget_minutes: int = 15
-    process_watchdog_seconds: int = 15 * 60
+    response_budget_minutes: int = 60
+    process_watchdog_seconds: int = 65 * 60
 
 
 RESULT_PACKAGE_SCHEMA_PATH = (
@@ -128,7 +128,9 @@ class CodexAdapter:
             stderr = _decode_utf8(completed.stderr)
         except subprocess.TimeoutExpired as exc:
             raise CodexExecutionError(
-                "Codex CLI exceeded the 15-minute native response deadline",
+                "Codex CLI exceeded the "
+                f"{self._execution_policy.response_budget_minutes}-minute "
+                "native response deadline",
                 exit_code=None,
             ) from exc
         except (OSError, UnicodeError) as exc:
@@ -176,7 +178,9 @@ class CodexAdapter:
             stderr = _decode_utf8(completed.stderr)
         except subprocess.TimeoutExpired as exc:
             raise CodexExecutionError(
-                "Codex CLI exceeded the 15-minute native response deadline",
+                "Codex CLI exceeded the "
+                f"{self._execution_policy.response_budget_minutes}-minute "
+                "native response deadline",
                 exit_code=None,
             ) from exc
         except (OSError, UnicodeError) as exc:
@@ -218,7 +222,9 @@ class CodexAdapter:
             stderr = _decode_utf8(completed.stderr)
         except subprocess.TimeoutExpired as exc:
             raise CodexExecutionError(
-                "Codex CLI exceeded the 15-minute native response deadline",
+                "Codex CLI exceeded the "
+                f"{self._execution_policy.response_budget_minutes}-minute "
+                "native response deadline",
                 exit_code=None,
             ) from exc
         except (OSError, UnicodeError) as exc:

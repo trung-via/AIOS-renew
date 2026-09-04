@@ -407,8 +407,8 @@ def test_native_adapter_owns_read_only_command_handoff_and_envelope(
     command, kwargs = calls[0]
     assert command[command.index("--mode") + 1] == "plan"
     assert "--dangerously-skip-permissions" not in command
-    assert command[command.index("--print-timeout") + 1] == "15m"
-    assert kwargs["timeout"] == 15 * 60
+    assert command[command.index("--print-timeout") + 1] == "60m"
+    assert kwargs["timeout"] == 65 * 60
     handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
     assert "verification" not in handoff["task"]
     assert handoff["execution_context"]["operation"] == "PRIMARY"
@@ -484,8 +484,45 @@ def test_native_antigravity_timeout_is_terminal_to_one_invocation(
         repo=tmp_path,
         handoff_path=tmp_path / "handoff.json",
     )
-    with pytest.raises(AntigravityExecutionError, match="15-minute"):
+    with pytest.raises(AntigravityExecutionError, match="60-minute"):
         adapter.execute(task=task, run=run)
 
     assert len(calls) == 1
-    assert calls[0][1]["timeout"] == 15 * 60
+    assert calls[0][1]["timeout"] == 65 * 60
+
+
+def test_antigravity_early_native_return_is_accepted_immediately(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution()
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "status": "SUCCESS",
+                    "response": "",
+                    "structured_output": payload,
+                }
+            ),
+            stderr="",
+        )
+
+    package = AntigravityAdapter(
+        runner=runner,
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+    ).execute(task=task, run=run)
+
+    assert package.result.head_sha == "def456"
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert command[command.index("--print-timeout") + 1] == "60m"
+    assert kwargs["timeout"] == 65 * 60
