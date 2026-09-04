@@ -51,7 +51,11 @@ _NATIVE_EXECUTOR_INSTRUCTION = (
     "launchers are outside this execution role: do not invoke $aios-worker, "
     "/aios-renew-worker, aios run, aios remediate, aios repair, or an equivalent "
     "launcher to perform the work. Do not authorize, admit, dispatch, or launch "
-    "another AIOS execution. "
+    "another AIOS execution. Use the supplied bounded execution context to begin "
+    "the authorized implementation directly. Do not perform repository-wide "
+    "rediscovery when that context is sufficient. Runtime is the canonical "
+    "verification owner: do not spend execution time on baseline, full, or "
+    "canonical verification before implementation or duplicate it for ceremony. "
 )
 
 
@@ -77,8 +81,8 @@ class CodexExecutionError(RuntimeError):
         message: str,
         *,
         exit_code: int | None,
-        stdout: str = "",
-        stderr: str = "",
+        stdout: bytes | str | None = None,
+        stderr: bytes | str | None = None,
     ) -> None:
         super().__init__(message)
         self.exit_code = exit_code
@@ -132,6 +136,8 @@ class CodexAdapter:
                 f"{self._execution_policy.response_budget_minutes}-minute "
                 "native response deadline",
                 exit_code=None,
+                stdout=exc.stdout,
+                stderr=exc.stderr,
             ) from exc
         except (OSError, UnicodeError) as exc:
             raise CodexExecutionError(
@@ -182,6 +188,8 @@ class CodexAdapter:
                 f"{self._execution_policy.response_budget_minutes}-minute "
                 "native response deadline",
                 exit_code=None,
+                stdout=exc.stdout,
+                stderr=exc.stderr,
             ) from exc
         except (OSError, UnicodeError) as exc:
             raise CodexExecutionError(
@@ -226,6 +234,8 @@ class CodexAdapter:
                 f"{self._execution_policy.response_budget_minutes}-minute "
                 "native response deadline",
                 exit_code=None,
+                stdout=exc.stdout,
+                stderr=exc.stderr,
             ) from exc
         except (OSError, UnicodeError) as exc:
             raise CodexExecutionError(

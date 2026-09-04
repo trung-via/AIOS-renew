@@ -411,6 +411,9 @@ def test_native_adapter_owns_read_only_command_handoff_and_envelope(
     assert kwargs["timeout"] == 65 * 60
     handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
     assert "verification" not in handoff["task"]
+    assert "Runtime is the canonical verification owner" in command[2]
+    assert "baseline, full, or canonical verification" in command[2]
+    assert "repository-wide rediscovery" in command[2]
     assert handoff["execution_context"]["operation"] == "PRIMARY"
     assert package.result.head_sha == "def456"
 
@@ -489,6 +492,31 @@ def test_native_antigravity_timeout_is_terminal_to_one_invocation(
 
     assert len(calls) == 1
     assert calls[0][1]["timeout"] == 65 * 60
+
+
+def test_native_antigravity_timeout_preserves_process_supplied_partial_output(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution()
+
+    def runner(command, **kwargs):
+        raise subprocess.TimeoutExpired(
+            command,
+            kwargs["timeout"],
+            output=b"partial native progress",
+            stderr=b"provider deadline",
+        )
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+    )
+    with pytest.raises(AntigravityExecutionError) as captured:
+        adapter.execute(task=task, run=run)
+
+    assert captured.value.stdout == b"partial native progress"
+    assert captured.value.stderr == b"provider deadline"
 
 
 def test_antigravity_early_native_return_is_accepted_immediately(

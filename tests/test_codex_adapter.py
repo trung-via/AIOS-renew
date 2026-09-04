@@ -184,6 +184,24 @@ def test_codex_timeout_is_terminal_to_one_native_invocation() -> None:
     assert calls[0][1]["timeout"] == 65 * 60
 
 
+def test_codex_timeout_preserves_process_supplied_partial_output() -> None:
+    task, run, _, _ = make_execution()
+
+    def runner(command, **kwargs):
+        raise subprocess.TimeoutExpired(
+            command,
+            kwargs["timeout"],
+            output=b"partial native progress",
+            stderr=b"provider deadline",
+        )
+
+    with pytest.raises(CodexExecutionError) as captured:
+        CodexAdapter(runner=runner).execute(task=task, run=run)
+
+    assert captured.value.stdout == b"partial native progress"
+    assert captured.value.stderr == b"provider deadline"
+
+
 def test_codex_early_native_return_is_accepted_immediately() -> None:
     task, run, _, _ = make_execution()
     calls = []
@@ -262,6 +280,9 @@ def test_primary_prompt_excludes_runtime_verification_commands() -> None:
     assert_native_executor_context(payload["execution_context"], operation="PRIMARY")
     assert "verification" not in payload["task"]
     assert task.verification.required[0] not in prompt
+    assert "Runtime is the canonical verification owner" in prompt
+    assert "baseline, full, or canonical verification" in prompt
+    assert "repository-wide rediscovery" in prompt
 
 
 def test_primary_prompt_requires_final_implementation_commit_without_push() -> None:

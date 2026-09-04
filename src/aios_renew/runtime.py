@@ -45,6 +45,7 @@ class RuntimeState(Protocol):
 
 BoundaryError = type[Exception]
 CompletionKind = Literal["PRIMARY", "REMEDIATION", "REPAIR", "DIRECT_CANDIDATE"]
+NATIVE_DIAGNOSTIC_LIMIT = 4096
 
 
 @dataclass(frozen=True)
@@ -493,11 +494,12 @@ def persist_failure(
     task: Task,
     run: Run,
     run_path: Path,
-    failure: Exception,
+    failure: BaseException,
     observation_tracker: RunObservationTracker | None = None,
     observation_path: Path | None = None,
+    transport: bool = True,
 ) -> None:
-    """Persist and best-effort transport one admitted completion FAILURE."""
+    """Persist one admitted FAILURE and optionally best-effort transport it."""
 
     try:
         if observation_path is None:
@@ -519,7 +521,11 @@ def persist_failure(
         error_message = str(failure)
         if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
             error_message = str(cause).splitlines()[0][:512]
-        if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
+        elif isinstance(failure, KeyboardInterrupt):
+            error_message = "native execution interrupted by Human"
+        if isinstance(
+            cause, (CodexExecutionError, AntigravityExecutionError)
+        ) or isinstance(failure, KeyboardInterrupt):
             phase = "EXECUTION"
         elif isinstance(cause, RuntimeVerificationError):
             phase = "VERIFICATION"
@@ -553,6 +559,13 @@ def persist_failure(
             ).get("failed_run_id")
         if isinstance(cause, CodexExecutionError):
             record["error"]["exit_code"] = cause.exit_code
+        if _is_native_timeout(cause) or isinstance(failure, KeyboardInterrupt):
+            diagnostic_source: BaseException = cause or failure
+            record["error"]["native_diagnostics"] = {
+                "limit_chars": NATIVE_DIAGNOSTIC_LIMIT,
+                "stdout": _bounded_native_stream(diagnostic_source, "stdout"),
+                "stderr": _bounded_native_stream(diagnostic_source, "stderr"),
+            }
         if isinstance(cause, RuntimeVerificationError):
             record["error"]["verification"] = [
                 {
@@ -569,21 +582,22 @@ def persist_failure(
             }
         failure_path = state.failures / f"{run.run_id}.json"
         _write_json(failure_path, record)
-        try:
-            transport_failure(
-                root,
-                run_id=run.run_id,
-                head_sha=head_sha,
-                run_path=run_path,
-                failure_path=failure_path,
-                publish_candidate=transportable,
-                observation_path=observation_path,
-            )
-        except ReviewTransportError as transport_error:
-            _write_json(
-                state.failures / f"{run.run_id}.transport.json",
-                {"run_id": run.run_id, "error": str(transport_error)},
-            )
+        if transport:
+            try:
+                transport_failure(
+                    root,
+                    run_id=run.run_id,
+                    head_sha=head_sha,
+                    run_path=run_path,
+                    failure_path=failure_path,
+                    publish_candidate=transportable,
+                    observation_path=observation_path,
+                )
+            except ReviewTransportError as transport_error:
+                _write_json(
+                    state.failures / f"{run.run_id}.transport.json",
+                    {"run_id": run.run_id, "error": str(transport_error)},
+                )
     except Exception:
         # Failure recording is subordinate and never replaces the original failure.
         return
@@ -633,6 +647,45 @@ def _read_staged_executor_unresolved(
         return list(package.result.unresolved)
     except Exception:
         return None
+
+
+def _is_native_timeout(failure: BaseException | None) -> bool:
+    """Recognize the adapter's directly chained process timeout."""
+
+    return isinstance(
+        failure, (CodexExecutionError, AntigravityExecutionError)
+    ) and isinstance(failure.__cause__, subprocess.TimeoutExpired)
+
+
+def _bounded_native_stream(
+    failure: BaseException, stream: str
+) -> dict[str, Any]:
+    """Capture only one allowlisted native stream with explicit availability."""
+
+    missing = object()
+    value: Any = getattr(failure, stream, missing)
+    if value is missing and stream == "stdout":
+        value = getattr(failure, "output", missing)
+    if value is missing and failure.__cause__ is not None:
+        return _bounded_native_stream(failure.__cause__, stream)
+    if value is missing or value is None:
+        return {"availability": "unavailable"}
+    if isinstance(value, bytes):
+        try:
+            text = value.decode("utf-8", errors="strict")
+        except UnicodeError:
+            return {"availability": "unavailable", "reason": "invalid_utf8"}
+    elif isinstance(value, str):
+        text = value
+    else:
+        return {"availability": "unavailable", "reason": "unsupported_type"}
+    if not text:
+        return {"availability": "empty"}
+    return {
+        "availability": "captured",
+        "text": text[:NATIVE_DIAGNOSTIC_LIMIT],
+        "truncated": len(text) > NATIVE_DIAGNOSTIC_LIMIT,
+    }
 
 
 def _committed_changed_files(repo: Path, base_sha: str, head_sha: str) -> set[str]:

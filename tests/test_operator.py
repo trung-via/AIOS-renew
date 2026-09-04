@@ -190,6 +190,35 @@ class FakeCodexRunner:
         )
 
 
+class InterruptingRunner:
+    def __init__(
+        self,
+        repo: Path,
+        *,
+        dirty: bool = False,
+        stdout: bytes | None = None,
+        stderr: bytes | None = None,
+    ) -> None:
+        self.repo = repo
+        self.dirty = dirty
+        self.stdout = stdout
+        self.stderr = stderr
+        self.calls = []
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        if self.dirty:
+            (self.repo / "OUTPUT.txt").write_text(
+                "partial uncommitted work\n", encoding="utf-8"
+            )
+        interruption = KeyboardInterrupt()
+        if self.stdout is not None:
+            interruption.stdout = self.stdout
+        if self.stderr is not None:
+            interruption.stderr = self.stderr
+        raise interruption
+
+
 class RepairRunner:
     def __init__(self, repo: Path) -> None:
         self.repo = repo
@@ -825,7 +854,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     )
 
     assert len(runner.calls) == 1
-    assert runner.calls[0][1]["timeout"] == 15 * 60
+    assert runner.calls[0][1]["timeout"] == 65 * 60
     assert staged["result"]["claims"] == []
     assert staged["result"]["unresolved"] == []
     assert staged["evidence"] == []
@@ -839,7 +868,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     assert "errors" not in runner.calls[0][1]
     if executor == "antigravity":
         command = runner.calls[0][0]
-        assert command[command.index("--print-timeout") + 1] == "15m"
+        assert command[command.index("--print-timeout") + 1] == "60m"
         instruction = runner.calls[0][0][runner.calls[0][0].index("--print") + 1]
         assert "CODE_FIX" in instruction
         assert "EVIDENCE_ONLY" in instruction
@@ -1984,7 +2013,7 @@ def test_mutating_codex_capability_is_resolved_before_invocation(tmp_path: Path)
 
     command = runner.calls[0][0]
     assert command[command.index("--sandbox") + 1] == "danger-full-access"
-    assert runner.calls[0][1]["timeout"] == 15 * 60
+    assert runner.calls[0][1]["timeout"] == 65 * 60
     assert len(runner.calls) == 1
 
 
@@ -2021,7 +2050,7 @@ def test_native_watchdog_expiry_is_one_terminal_execution_failure(
         raise subprocess.TimeoutExpired(command, kwargs["timeout"])
 
     with pytest.raises(
-        OperatorError, match="15-minute native response deadline"
+        OperatorError, match="60-minute native response deadline"
     ):
         run_task(
             "TASK-101",
@@ -2034,8 +2063,8 @@ def test_native_watchdog_expiry_is_one_terminal_execution_failure(
         )
 
     assert len(native_calls) == 1
-    assert native_calls[0][1]["timeout"] == 15 * 60
-    assert native_calls[0][1]["timeout"] <= 16 * 60
+    assert native_calls[0][1]["timeout"] == 65 * 60
+    assert native_calls[0][1]["timeout"] <= 66 * 60
     assert verification_calls == []
     state = runtime_paths(repo)
     failure = json.loads(
@@ -2050,6 +2079,208 @@ def test_native_watchdog_expiry_is_one_terminal_execution_failure(
         else "AntigravityExecutionError"
     )
     assert not list(state.results.glob("RUN-101-001.json"))
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_primary_keyboard_interrupt_terminalizes_without_altering_candidate(
+    tmp_path: Path, executor: str
+) -> None:
+    repo = make_repo(tmp_path)
+    base_sha = git(repo, "rev-parse", "HEAD")
+    runner = InterruptingRunner(
+        repo,
+        dirty=True,
+        stdout=b"x" * 5000,
+        stderr=b"provider interrupted",
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        run_task(
+            "TASK-101",
+            executor=executor,
+            repo=repo,
+            native_runner=runner,
+            verification_runner=lambda *args, **kwargs: pytest.fail(
+                "interruption must not start Runtime verification"
+            ),
+        )
+
+    assert len(runner.calls) == 1
+    assert git(repo, "rev-parse", "HEAD") == base_sha
+    assert (repo / "OUTPUT.txt").read_text(encoding="utf-8") == (
+        "partial uncommitted work\n"
+    )
+    failure = json.loads(
+        (runtime_paths(repo).failures / "RUN-101-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert failure["run_id"] == "RUN-101-001"
+    assert failure["executor"] == executor
+    assert failure["base_sha"] == base_sha
+    assert failure["failed_head_sha"] == base_sha
+    assert failure["phase"] == "EXECUTION"
+    assert not (runtime_paths(repo).results / "RUN-101-001.json").exists()
+    assert failure["candidate"] == {
+        "transportable": False,
+        "repairable": False,
+        "dirty": True,
+        "descends_from_base": True,
+        "changed_files": [],
+        "outside_task_scope": [],
+    }
+    diagnostics = failure["error"]["native_diagnostics"]
+    assert diagnostics["limit_chars"] == 4096
+    assert diagnostics["stdout"] == {
+        "availability": "captured",
+        "text": "x" * 4096,
+        "truncated": True,
+    }
+    assert diagnostics["stderr"] == {
+        "availability": "captured",
+        "text": "provider interrupted",
+        "truncated": False,
+    }
+    assert not git(
+        tmp_path / "upstream.git",
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/heads/aios/failure",
+    )
+
+
+def test_remediation_keyboard_interrupt_preserves_exact_lineage(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    review, remediation = remediation_contract(repo)
+    base_sha = git(repo, "rev-parse", "HEAD")
+    runner = InterruptingRunner(repo)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_remediation(
+            "TASK-101",
+            review=review,
+            remediation=remediation,
+            executor="codex",
+            repo=repo,
+            native_runner=runner,
+            verification_runner=lambda *args, **kwargs: pytest.fail(
+                "interruption must not start Runtime verification"
+            ),
+        )
+
+    state = runtime_paths(repo)
+    run_record = json.loads(
+        (state.runs / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    failure = json.loads(
+        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert len(runner.calls) == 1
+    assert run_record["kind"] == "REMEDIATION"
+    assert run_record["execution"]["review_id"] == review.review_id
+    assert run_record["execution"]["remediation"]["finding_id"] == (
+        remediation.finding_id
+    )
+    assert failure["failed_head_sha"] == base_sha
+    assert failure["candidate"]["repairable"] is True
+    assert failure["error"]["native_diagnostics"] == {
+        "limit_chars": 4096,
+        "stdout": {"availability": "unavailable"},
+        "stderr": {"availability": "unavailable"},
+    }
+
+
+def test_repair_keyboard_interrupt_preserves_continuation_lineage(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(repo, action="NO_CHANGE")
+    base_sha = git(repo, "rev-parse", "HEAD")
+    runner = InterruptingRunner(repo)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair,
+            native_runner=runner,
+            verification_runner=lambda *args, **kwargs: pytest.fail(
+                "interruption must not start Runtime verification"
+            ),
+        )
+
+    state = runtime_paths(repo)
+    failure = json.loads(
+        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    repair_execution = json.loads(
+        (state.repairs / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert len(runner.calls) == 1
+    assert failure["continuation_of"] == failed_run_id
+    assert failure["failed_head_sha"] == base_sha
+    assert failure["candidate"]["repairable"] is True
+    assert repair_execution["failed_run_id"] == failed_run_id
+    assert repair_execution["repair"] == repair
+
+    continuation = dict(repair)
+    continuation.update(
+        {
+            "repair_id": "REPAIR-101-CONTINUATION",
+            "failed_run_id": "RUN-101-001",
+            "failed_head_sha": base_sha,
+        }
+    )
+    continuation_runner = StaticRepairRunner(repo)
+    summary = run_repair(
+        "RUN-101-001",
+        executor="codex",
+        repo=repo,
+        repair=continuation,
+        native_runner=continuation_runner,
+    )
+    assert summary.run_id == "RUN-101-002"
+    assert len(continuation_runner.calls) == 1
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_native_timeout_failure_retains_bounded_partial_diagnostics(
+    tmp_path: Path, executor: str
+) -> None:
+    repo = make_repo(tmp_path)
+
+    def expire(command, **kwargs):
+        raise subprocess.TimeoutExpired(
+            command,
+            kwargs["timeout"],
+            output=b"partial progress",
+            stderr=b"z" * 5000,
+        )
+
+    with pytest.raises(OperatorError, match="60-minute native response deadline"):
+        run_task(
+            "TASK-101",
+            executor=executor,
+            repo=repo,
+            native_runner=expire,
+        )
+
+    failure = json.loads(
+        (runtime_paths(repo).failures / "RUN-101-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    diagnostics = failure["error"]["native_diagnostics"]
+    assert diagnostics["stdout"] == {
+        "availability": "captured",
+        "text": "partial progress",
+        "truncated": False,
+    }
+    assert diagnostics["stderr"] == {
+        "availability": "captured",
+        "text": "z" * 4096,
+        "truncated": True,
+    }
+    assert not (runtime_paths(repo).results / "RUN-101-001.json").exists()
 
 
 def test_antigravity_invocation_contract(tmp_path: Path) -> None:
@@ -2073,8 +2304,8 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
     assert "--json-schema" in command
-    assert command[command.index("--print-timeout") + 1] == "15m"
-    assert kwargs["timeout"] == 15 * 60
+    assert command[command.index("--print-timeout") + 1] == "60m"
+    assert kwargs["timeout"] == 65 * 60
     assert kwargs["cwd"] == workspace
     assert kwargs["text"] is False
     assert "encoding" not in kwargs
@@ -3384,13 +3615,13 @@ def test_no_change_repair_retains_zero_mutation_contract(
 
     assert summary.head_sha == failed_head
     assert len(runner.calls) == 1
-    assert runner.calls[0][1]["timeout"] == 15 * 60
+    assert runner.calls[0][1]["timeout"] == 65 * 60
     assert json.loads(summary.result_path.read_text(encoding="utf-8"))["result"][
         "changed_files"
     ] == []
     if executor == "antigravity":
         command = runner.calls[0][0]
-        assert command[command.index("--print-timeout") + 1] == "15m"
+        assert command[command.index("--print-timeout") + 1] == "60m"
         handoff = json.loads(
             next(runtime_paths(repo).handoffs.glob("*.json")).read_text(
                 encoding="utf-8"

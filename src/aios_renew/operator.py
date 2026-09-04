@@ -538,6 +538,19 @@ def run_task(
             attempt=attempt,
             observation_tracker=observation_tracker,
         )
+    except KeyboardInterrupt as original:
+        if attempt.run_path is not None:
+            run_path = attempt.run_path
+            if not (state.results / run_path.name).is_file():
+                _persist_and_transport_failure(
+                    root,
+                    task_id=task_id,
+                    run_path=run_path,
+                    failure=original,
+                    observation_tracker=observation_tracker,
+                    transport=False,
+                )
+        raise
     except Exception as original:
         if attempt.run_path is not None:
             run_path = attempt.run_path
@@ -650,11 +663,12 @@ def _persist_and_transport_failure(
     *,
     task_id: str,
     run_path: Path,
-    failure: Exception,
+    failure: BaseException,
     observation_tracker: RunObservationTracker | None = None,
     observation_path: Path | None = None,
+    transport: bool = True,
 ) -> None:
-    """Delegate admitted FAILURE terminalization to Runtime."""
+    """Delegate admitted FAILURE terminalization and optional transport to Runtime."""
     state = runtime_paths(root)
     try:
         run_data = json.loads(run_path.read_text(encoding="utf-8"))
@@ -673,6 +687,7 @@ def _persist_and_transport_failure(
             failure=failure,
             observation_tracker=observation_tracker,
             observation_path=observation_path,
+            transport=transport,
         )
     except Exception:
         # Delegation setup is also subordinate to the original failure.
@@ -702,6 +717,21 @@ def run_repair(
             attempt=attempt,
             observation_tracker=observation_tracker,
         )
+    except KeyboardInterrupt as original:
+        if (
+            attempt.run_path is not None
+            and not (state.results / attempt.run_path.name).is_file()
+        ):
+            run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
+            _persist_and_transport_failure(
+                root,
+                task_id=run_data["task"]["id"],
+                run_path=attempt.run_path,
+                failure=original,
+                observation_tracker=observation_tracker,
+                transport=False,
+            )
+        raise
     except Exception as original:
         if (
             attempt.run_path is not None
@@ -1050,6 +1080,18 @@ def run_remediation(
             attempt=attempt,
             observation_tracker=observation_tracker,
         )
+    except KeyboardInterrupt as original:
+        if attempt.run_path is not None:
+            if not (state.results / attempt.run_path.name).is_file():
+                _persist_and_transport_failure(
+                    root,
+                    task_id=task_id,
+                    run_path=attempt.run_path,
+                    failure=original,
+                    observation_tracker=observation_tracker,
+                    transport=False,
+                )
+        raise
     except Exception as original:
         if attempt.run_path is not None:
             if not (state.results / attempt.run_path.name).is_file():
