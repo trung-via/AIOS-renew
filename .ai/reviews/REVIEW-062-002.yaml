@@ -1,0 +1,27 @@
+review_id: REVIEW-062-002
+reviewed_sha: 764139c9a56ef09ee566524556812f82831e041e
+mode: DELTA
+verdict: CHANGES_REQUIRED
+prior_finding_id: F1
+acceptance:
+  AC3: FAIL
+findings:
+  - id: F1
+    basis: AC3
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_synchronize_primary_branch
+    issue: >
+      The remediation now attempts to roll back branch/index/worktree state when the
+      fast-forward sequence fails, but rollback failures are silently ignored with
+      `except Exception: pass`. If rollback `update-ref` or rollback `read-tree` itself
+      fails, the original exception is re-raised while the repository may remain in a
+      mixed post-sync state. The candidate therefore still does not establish the
+      TASK-062 fail-closed invariant that a failed synchronization preserve the exact
+      pre-sync local branch, index, and worktree state.
+    expected: >
+      Close F1 completely: no rollback failure may be silently ignored, and every
+      synchronization failure path must deterministically establish the exact pre-sync
+      branch, index, and worktree state before returning control, with no RUN creation
+      and no Executor invocation. Add focused regression coverage for failure during
+      restoration itself and preserve the existing safe fast-forward, stale-kernel
+      restart, correction-flow, and no-merge/no-reset semantics.
