@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -278,6 +279,81 @@ def test_operation_policies_share_one_runtime_completion_lifecycle(
 
     assert calls == [(kind, ("verify-one", "verify-two"))]
     assert completion.result_path.is_file()
+
+
+@pytest.mark.parametrize(
+    "declared_changed_files",
+    (("SECOND.txt",), (), ("FIRST.txt",)),
+)
+def test_repair_persists_complete_root_delta_from_noncanonical_structural_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    declared_changed_files: tuple[str, ...],
+) -> None:
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    task = replace(
+        task,
+        scope=TaskScope(inspect=(), modify=("FIRST.txt", "SECOND.txt")),
+    )
+    package = replace(
+        package,
+        result=replace(
+            package.result,
+            changed_files=declared_changed_files,
+        ),
+    )
+    policy = repair_completion_policy(
+        task,
+        root_base_sha="base",
+        failed_head_sha="failed",
+        action="CODE_FIX",
+        modification_scope=("SECOND.txt",),
+        lineage_path=tmp_path / "repairs" / "RUN-052-000.json",
+    )
+    verification_calls = []
+
+    class RepairTopologyCompletion(StubRuntimeCompletion):
+        def _committed_changed_files(
+            self, base_sha: str, head_sha: str
+        ) -> set[str]:
+            return {
+                ("base", "head"): {"SECOND.txt", "FIRST.txt"},
+                ("failed", "head"): {"SECOND.txt"},
+            }[(base_sha, head_sha)]
+
+    monkeypatch.setattr(
+        runtime_module,
+        "execute_verification",
+        lambda commands, **kwargs: (
+            verification_calls.append((tuple(commands), kwargs["subject_sha"])),
+            evidence_for(kwargs["run_id"], kwargs["subject_sha"], tuple(commands)),
+        )[1],
+    )
+    monkeypatch.setattr(
+        runtime_module, "transport_post_pass", lambda *args, **kwargs: None
+    )
+
+    completion = RepairTopologyCompletion(
+        repo=tmp_path,
+        state=state,
+        task=task,
+        run=run,
+        run_path=run_path,
+        verification_runner=lambda *args, **kwargs: None,
+        observation_tracker=None,
+        error_type=BoundaryError,
+        head_sha="head",
+        changed_files=set(),
+    ).complete(package, policy)
+
+    staged = json.loads(
+        (state.staging / f"{run.run_id}.json").read_text(encoding="utf-8")
+    )
+    stored = json.loads(completion.result_path.read_text(encoding="utf-8"))
+    assert staged["result"]["changed_files"] == list(declared_changed_files)
+    assert stored["result"]["changed_files"] == ["FIRST.txt", "SECOND.txt"]
+    assert verification_calls == [(("verify-one", "verify-two"), "head")]
+    assert {item["subject_sha"] for item in stored["evidence"]} == {"head"}
 
 
 def test_transport_failure_after_result_does_not_erase_canonical_result(

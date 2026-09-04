@@ -317,6 +317,10 @@ def test_repair_prompt_marks_direct_already_admitted_executor_role() -> None:
 
     assert_native_executor_context(payload["execution_context"], operation="REPAIR")
     assert payload["repair"]["action"] == "NO_CHANGE"
+    assert "Runtime derives and persists canonical result.changed_files" in prompt
+    assert "do not reconstruct or enumerate that historical file set" in prompt
+    assert "only the narrow repair delta or be empty" in prompt
+    assert "complete original TASK delta" not in prompt
 
 
 def test_output_schema_is_passed() -> None:

@@ -334,10 +334,13 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
         "or widen the original TASK. Change only repair.modification_scope. For CODE_FIX "
         "commit the final permitted state; for NO_CHANGE do not mutate it. Do not push. "
         "Runtime owns complete original TASK verification; do not execute canonical "
-        "verification commands or construct EVIDENCE. Return one structural ResultPackage "
-        "for the complete original TASK delta as the only response, with empty root "
-        "evidence and every claim.evidence empty. Runtime captures and persists the "
-        "response; do not write Runtime-owned operational state."
+        "verification commands or construct EVIDENCE. Runtime derives and persists "
+        "canonical result.changed_files from the original TASK root base to final HEAD; "
+        "do not reconstruct or enumerate that historical file set. Return one structural "
+        "ResultPackage for the complete original TASK contract as the only response, with "
+        "empty root evidence and every claim.evidence empty. Structural "
+        "result.changed_files may contain only the narrow repair delta or be empty. Runtime "
+        "captures and persists the response; do not write Runtime-owned operational state."
     )
 
 

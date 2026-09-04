@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -175,6 +175,11 @@ class RuntimeCompletion:
         if self._git("status", "--porcelain"):
             self._raise(dirty_message)
 
+        if policy.kind == "REPAIR":
+            package = self._canonicalize_repair_changed_files(
+                package, policy, actual_head=actual_head
+            )
+
         if policy.kind in ("PRIMARY", "REPAIR"):
             self._require_task_result(package, policy, actual_head=actual_head)
         else:
@@ -241,6 +246,29 @@ class RuntimeCompletion:
         except ReviewTransportError as exc:
             self._raise(f"review transport failed: {exc}", cause=exc)
         return CompletionOutcome(actual_head, result_path, observation_path)
+
+    def _canonicalize_repair_changed_files(
+        self,
+        package: ResultPackage,
+        policy: CompletionPolicy,
+        *,
+        actual_head: str,
+    ) -> ResultPackage:
+        """Replace the structural REPAIR declaration with complete Git truth."""
+
+        actual_changed = self._committed_changed_files(
+            policy.result_base_sha, actual_head
+        )
+        outside_scope = actual_changed.difference(policy.result_scope)
+        if outside_scope:
+            self._raise(
+                "committed changed paths outside TASK.scope.modify: "
+                + ", ".join(sorted(outside_scope))
+            )
+        canonical_result = replace(
+            package.result, changed_files=tuple(sorted(actual_changed))
+        )
+        return replace(package, result=canonical_result)
 
     def _require_task_result(
         self,

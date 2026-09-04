@@ -415,6 +415,60 @@ def test_native_adapter_owns_read_only_command_handoff_and_envelope(
     assert package.result.head_sha == "def456"
 
 
+def test_native_repair_instruction_assigns_complete_changed_files_to_runtime(
+    tmp_path: Path,
+) -> None:
+    _, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    handoff_path = repo / ".git" / "aios" / "repair-handoff.json"
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "status": "SUCCESS",
+                    "response": "",
+                    "structured_output": payload,
+                }
+            ),
+            stderr="",
+        )
+
+    AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=handoff_path,
+    ).execute_repair(
+        execution={
+            "run": run,
+            "root_base_sha": "root",
+            "repair": {
+                "action": "CODE_FIX",
+                "instructions": ["Apply the narrow correction."],
+                "modification_scope": ["src/aios_renew/antigravity_adapter.py"],
+            },
+        }
+    )
+
+    command = calls[0][0]
+    instruction = command[command.index("--print") + 1]
+    assert (
+        "Runtime derives and persists canonical result.changed_files" in instruction
+    )
+    assert (
+        "do not reconstruct or enumerate that historical file set" in instruction
+    )
+    assert "only the narrow repair delta or be empty" in instruction
+    assert "complete original TASK delta" not in instruction
+
+
 def test_native_antigravity_timeout_is_terminal_to_one_invocation(
     tmp_path: Path,
 ) -> None:

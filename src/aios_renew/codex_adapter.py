@@ -339,9 +339,12 @@ class CodexAdapter:
             "repair.modification_scope. For CODE_FIX commit the final permitted state; "
             "for NO_CHANGE do not mutate the repository. Do not push. Runtime owns the "
             "complete original TASK verification: do not execute canonical verification "
-            "commands or construct EVIDENCE. Return one structural ResultPackage for the "
-            "complete original TASK delta with empty root evidence and every claim.evidence "
-            "empty.\nREPAIR_INPUT:\n" + canonical_input
+            "commands or construct EVIDENCE. Runtime derives and persists canonical "
+            "result.changed_files from the original TASK root base to final HEAD; do not "
+            "reconstruct or enumerate that historical file set. Return one structural "
+            "ResultPackage for the complete original TASK contract with empty root evidence "
+            "and every claim.evidence empty. Structural result.changed_files may contain "
+            "only the narrow repair delta or be empty.\nREPAIR_INPUT:\n" + canonical_input
         )
 
     @staticmethod
