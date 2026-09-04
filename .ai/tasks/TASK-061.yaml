@@ -1,0 +1,129 @@
+task_id: TASK-061
+revision: 1
+
+goal: >
+  Make AIOS native executor model selection deterministic by applying the Human-approved
+  default model and reasoning/effort profile on every native PRIMARY, REMEDIATION, and
+  REPAIR invocation, instead of inheriting machine-local model defaults. Preserve the
+  existing single-Executor contract, execution policy, verification authority, and all
+  correction semantics.
+
+problem: >
+  Current native invocation does not fully bind model choice to canonical AIOS behavior.
+  Codex does not pass an explicit model or reasoning effort and therefore can inherit
+  machine/user configuration, while Antigravity currently hard-codes low effort and does
+  not pass an explicit model. This makes two otherwise identical AIOS runs depend on
+  local workstation settings and prevents the Human-approved quality profile from being
+  the default execution behavior.
+
+assumptions:
+  - >
+    Current canonical AIOS-renew main before TASK-061 authoring is
+    a61e40b1d955f788a5f8a25d17cfebf574b0eb61.
+  - >
+    TASK-059 is semantically reviewed PASS and published at
+    a61e40b1d955f788a5f8a25d17cfebf574b0eb61.
+  - >
+    The Human-approved native defaults are Codex model `gpt-5.6-sol` with reasoning
+    effort `high`, and Antigravity model `gemini-3.8-flash` with effort `high`.
+  - >
+    The installed native CLIs and authenticated accounts are responsible for accepting
+    those provider model identifiers. If a requested model is unavailable, existing
+    native execution failure semantics remain authoritative.
+  - >
+    Existing 60-minute native response budget, 65-minute outer watchdog, exactly-one
+    dispatch, Runtime-owned canonical verification, no-retry/no-fallback semantics,
+    and frozen artifact authority remain unchanged.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-059.yaml
+    - .ai/tasks/TASK-060.yaml
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+
+  modify:
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+
+non_goals:
+  - Add automatic model routing, model scoring, adaptive model choice, fallback, failover, or retry.
+  - Add a Planner, second Executor, speculative execution, or executor substitution.
+  - Add a Human-facing per-RUN model override or change the `aios run`, `aios remediate`, or `aios repair` CLI contract.
+  - Modify user-level Codex or Antigravity configuration files outside the repository.
+  - Add native CLI installation, version-management, entitlement, quota, or account-management policy.
+  - Change the 60-minute response budget, 65-minute watchdog, sandbox/mutation authority, verification ownership, RESULT/EVIDENCE semantics, review semantics, or transport behavior.
+  - Implement or repair TASK-058 or the remote remediation finding-id collision defect.
+  - Change downstream repositories or dependency pins.
+  - Perform unrelated refactoring or cleanup.
+  - Push from executor execution.
+
+constraints:
+  hard:
+    - >
+      Every AIOS-native Codex invocation for PRIMARY, REMEDIATION, and REPAIR must
+      explicitly select `gpt-5.6-sol` and reasoning effort `high`; machine-local or
+      project-local Codex model/reasoning defaults must not silently replace those two
+      AIOS defaults.
+    - >
+      Every AIOS-native Antigravity invocation for PRIMARY, REMEDIATION, and REPAIR
+      must explicitly select `gemini-3.8-flash` and effort `high`; machine-local or
+      workspace-local Antigravity model/effort defaults must not silently replace those
+      two AIOS defaults.
+    - >
+      The defaults are deterministic adapter mechanics only. TASK semantic content,
+      RUN executor identity, Brain/Executor/Reviewer authority boundaries, and
+      exactly-one dispatch remain unchanged.
+    - >
+      An unavailable or rejected native model must fail through the existing execution
+      failure path. AIOS must not silently downgrade, substitute, reroute, retry, or
+      select another model.
+    - >
+      Existing TASK-059 direct-execution guidance and TASK-060 60-minute/65-minute
+      timing behavior must remain unchanged except for the explicit model/effort
+      selection required by this TASK.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Deterministic Codex command construction explicitly selects `gpt-5.6-sol` and
+      reasoning effort `high` for native execution.
+  - id: AC2
+    condition: >
+      Deterministic Antigravity command construction explicitly selects
+      `gemini-3.8-flash` and effort `high` for native execution.
+  - id: AC3
+    condition: >
+      PRIMARY, REMEDIATION, and REPAIR paths for each native adapter consume the same
+      approved default profile without creating operation-specific model drift.
+  - id: AC4
+    condition: >
+      Regression coverage proves explicit model/effort arguments take precedence over
+      ambient native defaults for the AIOS invocation while preserving all existing
+      sandbox, schema-output, timeout, and mutation/read-only command semantics.
+  - id: AC5
+    condition: >
+      Unsupported/unavailable native model behavior remains fail-closed through the
+      existing execution failure path; no fallback, retry, reroute, or executor/model
+      substitution is introduced.
+  - id: AC6
+    condition: >
+      No operator/dispatcher contract, Runtime verification semantics, TASK-058 work,
+      remote-remediation resolver change, downstream migration, user-global config
+      mutation, or unrelated repository change is introduced.
+
+verification:
+  required:
+    - python -m pytest tests/test_codex_adapter.py tests/test_antigravity_adapter.py -q
+    - git diff --check
