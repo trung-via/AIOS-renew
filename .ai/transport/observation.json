@@ -1,0 +1,1 @@
+{"base_sha":"23d3284e356ef15d95331878a07e5a3d47942cac","durations":{"admitted_run_seconds":784.6807386,"executor_seconds":526.7120314999993,"verification_seconds":257.8319244000013},"executor":"codex","executor_invoked":true,"kind":"RUN_OBSERVATION","operation":"PRIMARY","run_id":"RUN-059-002","task":{"id":"TASK-059","revision":2},"terminal_kind":"RESULT","token_usage":null}
