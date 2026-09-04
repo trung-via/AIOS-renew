@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import aios_renew.dispatcher as dispatcher_module
 import aios_renew.operator as operator_module
 from aios_renew.operator import (
     OperatorError,
@@ -1940,23 +1941,26 @@ def test_fetch_failure_fails_before_run_persistence(tmp_path: Path) -> None:
     assert not list(runtime_paths(repo).runs.glob("*.json"))
 
 
-def test_codex_path_uses_executor_boundary(
+def test_operator_delegates_one_primary_invocation_to_dispatcher(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = make_repo(tmp_path)
-    real_boundary = operator_module.ExecutorBoundary
+    real_factory = operator_module.primary_dispatcher
     calls = []
 
-    class SpyBoundary:
-        def __init__(self, leases):
-            self.inner = real_boundary(leases)
+    class SpyDispatcher:
+        def __init__(self, inner):
+            self.inner = inner
 
-        def invoke(self, **kwargs):
+        def dispatch_primary(self, **kwargs):
             calls.append(kwargs)
-            return self.inner.invoke(**kwargs)
+            return self.inner.dispatch_primary(**kwargs)
 
-    monkeypatch.setattr(operator_module, "ExecutorBoundary", SpyBoundary)
+    def factory(**kwargs):
+        return SpyDispatcher(real_factory(**kwargs))
+
+    monkeypatch.setattr(operator_module, "primary_dispatcher", factory)
     run_task(
         "TASK-101",
         executor="codex",
@@ -1966,6 +1970,7 @@ def test_codex_path_uses_executor_boundary(
 
     assert len(calls) == 1
     assert calls[0]["lease"] is not None
+    assert calls[0]["leases"] is not None
 
 
 def test_mutating_codex_capability_is_resolved_before_invocation(tmp_path: Path) -> None:
@@ -2510,7 +2515,7 @@ def test_antigravity_terminal_envelope_extracts_payload_without_rewriting() -> N
         "evidence": [],
     }
 
-    extracted = operator_module._antigravity_structured_output(
+    extracted = dispatcher_module._antigravity_structured_output(
         antigravity_envelope(payload), stderr=""
     )
 
@@ -2521,12 +2526,6 @@ def test_antigravity_terminal_envelope_extracts_payload_without_rewriting() -> N
         "changed_files",
         "unresolved",
     ]
-
-
-def test_all_antigravity_execution_paths_share_terminal_normalizer() -> None:
-    source = inspect.getsource(operator_module)
-
-    assert source.count("return _antigravity_structured_output(stdout, stderr=stderr)") == 3
 
 
 def test_result_head_sha_mismatch_fails(tmp_path: Path) -> None:
@@ -3575,7 +3574,7 @@ def test_post_admission_pre_executor_failure_records_not_invoked(
         raise AssertionError("native Executor must not run")
 
     monkeypatch.setattr(
-        operator_module, "_resolve_native_execution_capability", reject_capability
+        operator_module, "resolve_native_execution_capability", reject_capability
     )
     with pytest.raises(OperatorError, match="capability resolution failed"):
         run_task(

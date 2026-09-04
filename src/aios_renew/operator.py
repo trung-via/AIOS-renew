@@ -15,11 +15,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from .antigravity_adapter import (
-    AntigravityAdapter,
-    AntigravityExecutionError,
-    AntigravityOutputError,
-)
+from .antigravity_adapter import AntigravityExecutionError, AntigravityOutputError
 from .artifacts import (
     ArtifactValidationError,
     Result,
@@ -31,14 +27,17 @@ from .artifacts import (
     validate_structural_result_package,
 )
 from .codex_adapter import (
-    RESULT_PACKAGE_SCHEMA_PATH,
-    CodexAdapter,
     CodexExecutionError,
     CodexOutputError,
-    native_execution_context,
-    native_executor_instruction,
 )
-from .executor import ExecutorBoundary, ExecutorBoundaryError
+from .dispatcher import (
+    DispatcherError,
+    primary_dispatcher,
+    remediation_dispatcher,
+    repair_dispatcher,
+    resolve_native_execution_capability,
+)
+from .executor import ExecutorBoundaryError
 from .review_transport import (
     RemoteRemediationLineage,
     ReviewTransportError,
@@ -87,36 +86,6 @@ class _RunAttempt:
         if self.run_path is not None:
             raise OperatorError("invocation attempt already owns a RUN")
         self.run_path = run_path
-
-
-@dataclass(frozen=True)
-class NativeExecutionCapability:
-    """Executor-native capability selected from canonical mutation authority."""
-
-    authorizes_mutation: bool
-    codex_sandbox: str
-    antigravity_mode: str
-    antigravity_skip_permissions: bool
-
-
-def _resolve_native_execution_capability(
-    *, authorizes_mutation: bool
-) -> NativeExecutionCapability:
-    """Resolve one fail-closed native profile before invoking an Executor."""
-
-    if authorizes_mutation:
-        return NativeExecutionCapability(
-            authorizes_mutation=True,
-            codex_sandbox="danger-full-access",
-            antigravity_mode="accept-edits",
-            antigravity_skip_permissions=True,
-        )
-    return NativeExecutionCapability(
-        authorizes_mutation=False,
-        codex_sandbox="read-only",
-        antigravity_mode="plan",
-        antigravity_skip_permissions=False,
-    )
 
 
 class OperatorError(RuntimeError):
@@ -648,44 +617,28 @@ def _run_task_impl(
             native_runner
         )
 
-        capability = _resolve_native_execution_capability(
+        capability = resolve_native_execution_capability(
             authorizes_mutation=bool(task.scope.modify)
         )
 
-        if executor == "codex":
-            selected_adapter = CodexAdapter(
-                runner=_codex_runner(observed_native_runner, capability)
-            )
-        else:
-            handoff_path = state.handoffs / f"{run_id}.json"
-            _write_json(
-                handoff_path,
-                {
-                    "execution_context": native_execution_context(
-                        run=run, operation="PRIMARY"
-                    ),
-                    "task": _executor_task_data(task),
-                    "run": asdict(run),
-                },
-            )
-            selected_adapter = AntigravityAdapter(
-                transport=_antigravity_transport(
-                    repo=root,
-                    handoff_path=handoff_path,
-                    capability=capability,
-                    native_runner=observed_native_runner,
-                ),
-                structural_output=True,
-            )
+        dispatcher = primary_dispatcher(
+            selected_executor=executor,
+            repo=root,
+            handoff_path=state.handoffs / f"{run_id}.json",
+            capability=capability,
+            native_runner=observed_native_runner,
+            task=task,
+            run=run,
+        )
 
         leases = RunLeaseRegistry()
         lease = leases.acquire(run)
         try:
-            package = ExecutorBoundary(leases).invoke(
+            package = dispatcher.dispatch_primary(
                 task=task,
                 run=run,
                 lease=lease,
-                adapter=selected_adapter,
+                leases=leases,
             )
         except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
             raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
@@ -695,6 +648,8 @@ def _run_task_impl(
             raise OperatorError(str(exc)) from exc
         except ExecutorBoundaryError as exc:
             raise OperatorError(f"executor boundary failed: {exc}") from exc
+        except DispatcherError as exc:
+            raise OperatorError(f"dispatcher failed: {exc}") from exc
 
         _write_json(staging_path, result_package_data(package))
         _require_executor_structure(package)
@@ -1118,36 +1073,27 @@ def _run_repair_impl(
         persisted_execution["run"] = asdict(run)
         _write_json(state.repairs / f"{run_id}.json", persisted_execution)
 
-        capability = _resolve_native_execution_capability(
+        capability = resolve_native_execution_capability(
             authorizes_mutation=action == "CODE_FIX"
         )
-
-        if executor == "codex":
-            adapter: Any = CodexAdapter(
-                runner=_codex_runner(observed_native_runner, capability)
-            )
-        else:
-            handoff_path = state.handoffs / f"{run_id}.json"
-            handoff = dict(persisted_execution)
-            handoff["execution_context"] = native_execution_context(
-                run=run, operation="REPAIR"
-            )
-            _write_json(handoff_path, handoff)
-            adapter = AntigravityAdapter(
-                transport=_antigravity_repair_transport(
-                    repo=repo, handoff_path=handoff_path,
-                    capability=capability,
-                    native_runner=observed_native_runner,
-                ), structural_output=True,
-            )
+        dispatcher = repair_dispatcher(
+            selected_executor=executor,
+            repo=repo,
+            handoff_path=state.handoffs / f"{run_id}.json",
+            capability=capability,
+            native_runner=observed_native_runner,
+            execution=execution,
+        )
         try:
-            package = adapter.execute_repair(execution=execution)
+            package = dispatcher.dispatch_repair(execution=execution)
         except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
             raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
         except CodexExecutionError as exc:
             raise OperatorError(f"Codex invocation failed: {exc}") from exc
         except AntigravityExecutionError as exc:
             raise OperatorError(str(exc)) from exc
+        except DispatcherError as exc:
+            raise OperatorError(f"dispatcher failed: {exc}") from exc
 
         _write_json(staging_path, result_package_data(package))
         _require_executor_structure(package)
@@ -1571,43 +1517,28 @@ def _run_remediation_impl(
         if attempt is not None:
             attempt.bind_run(run_path)
 
-        capability = _resolve_native_execution_capability(
+        capability = resolve_native_execution_capability(
             authorizes_mutation=canonical_remediation.action == "CODE_FIX"
         )
-
-        if executor == "codex":
-            selected_adapter = CodexAdapter(
-                runner=_codex_runner(observed_native_runner, capability)
-            )
-        else:
-            handoff_path = state.handoffs / f"{run_id}.json"
-            _write_json(
-                handoff_path,
-                {
-                    "execution_context": native_execution_context(
-                        run=run, operation="REMEDIATION"
-                    ),
-                    "remediation_execution": _executor_remediation_data(execution),
-                },
-            )
-            selected_adapter = AntigravityAdapter(
-                transport=_antigravity_remediation_transport(
-                    repo=root,
-                    handoff_path=handoff_path,
-                    capability=capability,
-                    native_runner=observed_native_runner,
-                ),
-                structural_output=True,
-            )
+        dispatcher = remediation_dispatcher(
+            selected_executor=executor,
+            repo=root,
+            handoff_path=state.handoffs / f"{run_id}.json",
+            capability=capability,
+            native_runner=observed_native_runner,
+            execution=execution,
+        )
 
         try:
-            package = selected_adapter.execute_remediation(execution=execution)
+            package = dispatcher.dispatch_remediation(execution=execution)
         except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
             raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
         except CodexExecutionError as exc:
             raise OperatorError(f"Codex invocation failed: {exc}") from exc
         except AntigravityExecutionError as exc:
             raise OperatorError(str(exc)) from exc
+        except DispatcherError as exc:
+            raise OperatorError(f"dispatcher failed: {exc}") from exc
 
         _write_json(staging_path, result_package_data(package))
         _require_executor_structure(package)
@@ -2263,14 +2194,6 @@ def _executor_task_data(task: Task) -> dict[str, Any]:
     return data
 
 
-def _executor_remediation_data(
-    execution: RemediationExecution,
-) -> dict[str, Any]:
-    data = asdict(execution)
-    data["remediation"].pop("affected_verification")
-    return data
-
-
 def result_package_data(package: ResultPackage) -> dict[str, Any]:
     """Serialize the canonical package using its public JSON field names."""
 
@@ -2294,257 +2217,6 @@ def result_package_data(package: ResultPackage) -> dict[str, Any]:
             for item in package.evidence
         ],
     }
-
-
-def _codex_runner(
-    native_runner: NativeRunner, capability: NativeExecutionCapability
-) -> NativeRunner:
-    def run(command: tuple[str, ...], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
-        updated = list(command)
-        try:
-            index = updated.index("--sandbox")
-        except ValueError as exc:
-            raise OperatorError("Codex command has no sandbox option") from exc
-        updated[index + 1] = capability.codex_sandbox
-        return native_runner(tuple(updated), **kwargs)
-
-    return run
-
-
-def _antigravity_command(
-    repo: Path,
-    instruction: str,
-    capability: NativeExecutionCapability,
-) -> tuple[str, ...]:
-    command = [
-        "agy", "--print", instruction, "--add-dir", str(repo),
-        "--effort", "low", "--mode", capability.antigravity_mode,
-        "--disable-slash-commands", "--output-format", "json",
-        "--json-schema", str(RESULT_PACKAGE_SCHEMA_PATH),
-        "--print-timeout", "5m",
-    ]
-    if capability.antigravity_skip_permissions:
-        command.append("--dangerously-skip-permissions")
-    return tuple(command)
-
-
-def _antigravity_transport(
-    *,
-    repo: Path,
-    handoff_path: Path,
-    capability: NativeExecutionCapability,
-    native_runner: NativeRunner,
-) -> Callable[..., str]:
-    instruction = (
-        native_executor_instruction()
-        + f"Read the AIOS handoff JSON at {handoff_path}. "
-        "Execute its TASK implementation context and RUN exactly within the supplied "
-        "repository. Runtime owns canonical verification; do not execute canonical verification "
-        "commands and do not generate verification evidence. Minimum implementation-local sanity "
-        "checks on the changed surface are permitted when useful, but they are not canonical "
-        "verification or EVIDENCE. "
-        "Commit the final implementation state when required; do not push. Obtain "
-        "final Git HEAD, "
-        "and return the structural ResultPackage as the only response. Runtime captures "
-        "and persists this response; do not write Runtime-owned operational state. "
-        "The ResultPackage must be an object with result and evidence. "
-        "result must contain head_sha, claims, changed_files, and unresolved. Each "
-        "claim must contain id, satisfies, claim, and evidence. Each evidence entry "
-        "must contain evidence_id, run_id, subject_sha, type, source.command, "
-        "result.exit_code, result.summary, and raw.path when present. Root evidence and "
-        "every claim.evidence must be empty; Runtime constructs canonical EVIDENCE. "
-        "Every claim.satisfies entry must be a known TASK acceptance ID."
-    )
-
-    def transport(*, task: Task, run: Run) -> str:
-        del task, run
-        try:
-            completed = native_runner(
-                _antigravity_command(repo, instruction, capability),
-                cwd=str(repo),
-                capture_output=True,
-                text=False,
-                check=False,
-            )
-            stdout = _decode_utf8(completed.stdout)
-            stderr = _decode_utf8(completed.stderr)
-        except FileNotFoundError as exc:
-            raise AntigravityExecutionError("Antigravity CLI not found: agy") from exc
-        except (OSError, UnicodeError) as exc:
-            raise AntigravityExecutionError(
-                f"Antigravity CLI invocation failed: {exc}"
-            ) from exc
-        if completed.returncode != 0:
-            detail = stderr.strip() or stdout.strip()
-            message = (
-                f"Antigravity CLI returned nonzero ({completed.returncode})"
-            )
-            if detail:
-                message = f"{message}: {detail}"
-            raise AntigravityExecutionError(message)
-        return _antigravity_structured_output(stdout, stderr=stderr)
-
-    return transport
-
-
-def _antigravity_remediation_transport(
-    *,
-    repo: Path,
-    handoff_path: Path,
-    capability: NativeExecutionCapability,
-    native_runner: NativeRunner,
-) -> Callable[..., str]:
-    instruction = (
-        native_executor_instruction()
-        + f"Read the AIOS remediation handoff JSON at {handoff_path}. "
-        "Execute exactly its one remediation_execution contract. Do not run or "
-        "restart the original TASK, scan for a different repository, perform semantic "
-        "review or repeat unaffected verification. Change only paths in "
-        "remediation.modification_scope. For CODE_FIX, commit the permitted "
-        "remediation delta before returning; for EVIDENCE_ONLY, do not create a "
-        "code commit. Do not push. Runtime owns affected verification; do not execute "
-        "verification commands and do not generate verification evidence. Minimum "
-        "implementation-local sanity checks on the changed surface are permitted when "
-        "useful, but they are not canonical verification or EVIDENCE. Return one structural "
-        "ResultPackage as the only response with empty root evidence, "
-        "result.claims, and result.unresolved. Bind result.head_sha to final Git HEAD. "
-        "Runtime captures and persists the response; do not write Runtime-owned operational state."
-    )
-
-    def transport(*, execution: RemediationExecution) -> str:
-        del execution
-        try:
-            completed = native_runner(
-                _antigravity_command(repo, instruction, capability),
-                cwd=str(repo),
-                capture_output=True,
-                text=False,
-                check=False,
-            )
-            stdout = _decode_utf8(completed.stdout)
-            stderr = _decode_utf8(completed.stderr)
-        except FileNotFoundError as exc:
-            raise AntigravityExecutionError(
-                "Antigravity CLI not found: agy"
-            ) from exc
-        except (OSError, UnicodeError) as exc:
-            raise AntigravityExecutionError(
-                f"Antigravity CLI invocation failed: {exc}"
-            ) from exc
-        if completed.returncode != 0:
-            detail = stderr.strip() or stdout.strip()
-            message = f"Antigravity CLI returned nonzero ({completed.returncode})"
-            if detail:
-                message = f"{message}: {detail}"
-            raise AntigravityExecutionError(message)
-        return _antigravity_structured_output(stdout, stderr=stderr)
-
-    return transport
-
-
-def _antigravity_repair_transport(
-    *, repo: Path, handoff_path: Path, capability: NativeExecutionCapability,
-    native_runner: NativeRunner,
-) -> Callable[..., str]:
-    instruction = (
-        native_executor_instruction()
-        + f"Read the AIOS REPAIR handoff JSON at {handoff_path}. Execute exactly its "
-        "single bound continuation. Do not restart PRIMARY discovery, synchronize, "
-        "retry, review, or widen the original TASK. Change only repair.modification_scope. "
-        "For CODE_FIX commit the final permitted state; for NO_CHANGE do not mutate it. "
-        "Do not push. Runtime owns complete original TASK verification; do not execute "
-        "canonical verification commands or construct EVIDENCE. Return one structural "
-        "ResultPackage for the complete original TASK delta as the only response, "
-        "with empty root evidence and every claim.evidence empty. Runtime captures and "
-        "persists the response; do not write Runtime-owned operational state."
-    )
-
-    def transport(*, execution: Mapping[str, Any]) -> str:
-        del execution
-        try:
-            completed = native_runner(
-                _antigravity_command(repo, instruction, capability),
-                cwd=str(repo), capture_output=True, text=False, check=False,
-            )
-            stdout = _decode_utf8(completed.stdout)
-            stderr = _decode_utf8(completed.stderr)
-        except FileNotFoundError as exc:
-            raise AntigravityExecutionError("Antigravity CLI not found: agy") from exc
-        except (OSError, UnicodeError) as exc:
-            raise AntigravityExecutionError(f"Antigravity CLI invocation failed: {exc}") from exc
-        if completed.returncode != 0:
-            detail = stderr.strip() or stdout.strip()
-            message = f"Antigravity CLI returned nonzero ({completed.returncode})"
-            if detail:
-                message = f"{message}: {detail}"
-            raise AntigravityExecutionError(message)
-        return _antigravity_structured_output(stdout, stderr=stderr)
-
-    return transport
-
-
-def _antigravity_structured_output(
-    stdout: str, *, stderr: str
-) -> Mapping[str, Any]:
-    """Extract one schema-constrained payload from the native JSON envelope."""
-
-    if not stdout.strip():
-        detail = stderr.strip()
-        raise AntigravityExecutionError(
-            "Antigravity ResultPackage missing" + (f": {detail}" if detail else "")
-        )
-    try:
-        envelope = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        detail = stderr.strip()
-        message = f"Antigravity CLI returned malformed terminal JSON: {exc}"
-        if detail:
-            message = f"{message}: {detail}"
-        raise AntigravityExecutionError(message) from exc
-    if not isinstance(envelope, Mapping):
-        raise AntigravityExecutionError(
-            "Antigravity CLI returned malformed terminal metadata: "
-            "response envelope must be a mapping"
-        )
-
-    status = envelope.get("status")
-    if not isinstance(status, str) or not status:
-        raise AntigravityExecutionError(
-            "Antigravity CLI returned malformed terminal metadata: "
-            "status must be a non-empty string"
-        )
-    response = envelope.get("response")
-    if response is not None and not isinstance(response, str):
-        raise AntigravityExecutionError(
-            "Antigravity CLI returned malformed terminal metadata: "
-            "response must be a string"
-        )
-    error = envelope.get("error")
-    if error is not None and not isinstance(error, str):
-        raise AntigravityExecutionError(
-            "Antigravity CLI returned malformed terminal metadata: "
-            "error must be a string"
-        )
-    if status != "SUCCESS":
-        detail = (error or "").strip() or stderr.strip() or (response or "").strip()
-        message = f"Antigravity CLI terminal status is {status}"
-        if detail:
-            message = f"{message}: {detail}"
-        raise AntigravityExecutionError(message)
-
-    if "structured_output" not in envelope:
-        detail = stderr.strip() or (error or "").strip() or (response or "").strip()
-        message = "Antigravity ResultPackage missing"
-        if detail:
-            message = f"{message}: {detail}"
-        raise AntigravityExecutionError(message)
-    payload = envelope["structured_output"]
-    if not isinstance(payload, Mapping):
-        raise AntigravityExecutionError(
-            "Antigravity CLI returned malformed terminal metadata: "
-            "structured_output must be a mapping"
-        )
-    return payload
 
 
 def _git(repo: Path, *args: str, strip_stdout: bool = True) -> str:
