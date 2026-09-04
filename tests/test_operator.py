@@ -2141,12 +2141,58 @@ def test_primary_keyboard_interrupt_terminalizes_without_altering_candidate(
         "text": "provider interrupted",
         "truncated": False,
     }
+    remote_failure = json.loads(
+        git(
+            tmp_path / "upstream.git",
+            "show",
+            "refs/heads/aios/failure-artifacts/RUN-101-001:"
+            ".ai/transport/failure.json",
+        )
+    )
+    assert remote_failure == failure
     assert not git(
         tmp_path / "upstream.git",
         "for-each-ref",
         "--format=%(refname)",
-        "refs/heads/aios/failure",
+        "refs/heads/aios/failure/RUN-101-001",
     )
+
+
+def test_runtime_verification_interrupt_records_truthful_portable_failure(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=runner,
+            verification_runner=lambda *args, **kwargs: (_ for _ in ()).throw(
+                KeyboardInterrupt()
+            ),
+        )
+
+    state = runtime_paths(repo)
+    failure = json.loads(
+        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert runner.count == 1
+    assert failure["phase"] == "VERIFICATION"
+    assert failure["error"]["message"] == (
+        "Runtime verification interrupted by Human"
+    )
+    remote_failure = json.loads(
+        git(
+            tmp_path / "upstream.git",
+            "show",
+            "refs/heads/aios/failure-artifacts/RUN-101-001:"
+            ".ai/transport/failure.json",
+        )
+    )
+    assert remote_failure == failure
 
 
 def test_remediation_keyboard_interrupt_preserves_exact_lineage(tmp_path: Path) -> None:
@@ -2188,6 +2234,14 @@ def test_remediation_keyboard_interrupt_preserves_exact_lineage(tmp_path: Path) 
         "stdout": {"availability": "unavailable"},
         "stderr": {"availability": "unavailable"},
     }
+    assert json.loads(
+        git(
+            tmp_path / "upstream.git",
+            "show",
+            "refs/heads/aios/failure-artifacts/RUN-101-001:"
+            ".ai/transport/failure.json",
+        )
+    ) == failure
 
 
 def test_repair_keyboard_interrupt_preserves_continuation_lineage(tmp_path: Path) -> None:
@@ -2221,6 +2275,14 @@ def test_repair_keyboard_interrupt_preserves_continuation_lineage(tmp_path: Path
     assert failure["candidate"]["repairable"] is True
     assert repair_execution["failed_run_id"] == failed_run_id
     assert repair_execution["repair"] == repair
+    assert json.loads(
+        git(
+            tmp_path / "upstream.git",
+            "show",
+            "refs/heads/aios/failure-artifacts/RUN-101-001:"
+            ".ai/transport/failure.json",
+        )
+    ) == failure
 
     continuation = dict(repair)
     continuation.update(

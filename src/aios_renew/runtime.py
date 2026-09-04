@@ -151,6 +151,7 @@ class RuntimeCompletion:
         self.verification_runner = verification_runner
         self.observation_tracker = observation_tracker
         self.error_type = error_type
+        self.interruption_phase = "COMPLETION_GATE"
 
     def complete(
         self, package: ResultPackage, policy: CompletionPolicy
@@ -186,6 +187,7 @@ class RuntimeCompletion:
         else:
             self._require_remediation_result(package, policy, actual_head=actual_head)
 
+        self.interruption_phase = "VERIFICATION"
         verification_started = (
             None
             if self.observation_tracker is None
@@ -205,6 +207,7 @@ class RuntimeCompletion:
         finally:
             if self.observation_tracker is not None:
                 self.observation_tracker.end_verification(verification_started)
+        self.interruption_phase = "COMPLETION_GATE"
 
         self._require_post_verification_state(expected_head=actual_head)
         if policy.remediation_execution is None:
@@ -497,6 +500,7 @@ def persist_failure(
     failure: BaseException,
     observation_tracker: RunObservationTracker | None = None,
     observation_path: Path | None = None,
+    interruption_phase: str | None = None,
     transport: bool = True,
 ) -> None:
     """Persist one admitted FAILURE and optionally best-effort transport it."""
@@ -518,12 +522,9 @@ def persist_failure(
         repairable = not dirty and descendant
         transportable = repairable and not outside_scope
         cause = failure.__cause__
-        error_message = str(failure)
-        if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
-            error_message = str(cause).splitlines()[0][:512]
-        elif isinstance(failure, KeyboardInterrupt):
-            error_message = "native execution interrupted by Human"
-        if isinstance(
+        if isinstance(failure, KeyboardInterrupt) and interruption_phase is not None:
+            phase = interruption_phase
+        elif isinstance(
             cause, (CodexExecutionError, AntigravityExecutionError)
         ) or isinstance(failure, KeyboardInterrupt):
             phase = "EXECUTION"
@@ -531,6 +532,15 @@ def persist_failure(
             phase = "VERIFICATION"
         else:
             phase = "COMPLETION_GATE"
+        error_message = str(failure)
+        if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
+            error_message = str(cause).splitlines()[0][:512]
+        elif isinstance(failure, KeyboardInterrupt):
+            error_message = {
+                "EXECUTION": "native execution interrupted by Human",
+                "VERIFICATION": "Runtime verification interrupted by Human",
+                "COMPLETION_GATE": "Runtime completion interrupted by Human",
+            }.get(phase, "admitted run interrupted by Human")
         record: dict[str, Any] = {
             "kind": "FAILURE",
             "run_id": run.run_id,

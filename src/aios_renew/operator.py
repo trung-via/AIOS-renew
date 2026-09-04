@@ -80,11 +80,21 @@ class _RunAttempt:
     """Invocation-local owner of one persisted RUN."""
 
     run_path: Path | None = None
+    completion: RuntimeCompletion | None = None
 
     def bind_run(self, run_path: Path) -> None:
         if self.run_path is not None:
             raise OperatorError("invocation attempt already owns a RUN")
         self.run_path = run_path
+
+    def bind_completion(self, completion: RuntimeCompletion) -> None:
+        self.completion = completion
+
+    @property
+    def interruption_phase(self) -> str:
+        if self.completion is None:
+            return "EXECUTION"
+        return self.completion.interruption_phase
 
 
 class OperatorError(RuntimeError):
@@ -548,7 +558,7 @@ def run_task(
                     run_path=run_path,
                     failure=original,
                     observation_tracker=observation_tracker,
-                    transport=False,
+                    interruption_phase=attempt.interruption_phase,
                 )
         raise
     except Exception as original:
@@ -637,7 +647,7 @@ def _run_task_impl(
         except DispatcherError as exc:
             raise OperatorError(f"dispatcher failed: {exc}") from exc
 
-        completion = RuntimeCompletion(
+        runtime_completion = RuntimeCompletion(
             repo=root,
             state=state,
             task=task,
@@ -646,7 +656,11 @@ def _run_task_impl(
             verification_runner=verification_runner,
             observation_tracker=observation_tracker,
             error_type=OperatorError,
-        ).complete(package, primary_completion_policy(task, base_sha=base_sha))
+        )
+        attempt.bind_completion(runtime_completion)
+        completion = runtime_completion.complete(
+            package, primary_completion_policy(task, base_sha=base_sha)
+        )
 
         return RunSummary(
             task_id=task_id,
@@ -666,6 +680,7 @@ def _persist_and_transport_failure(
     failure: BaseException,
     observation_tracker: RunObservationTracker | None = None,
     observation_path: Path | None = None,
+    interruption_phase: str | None = None,
     transport: bool = True,
 ) -> None:
     """Delegate admitted FAILURE terminalization and optional transport to Runtime."""
@@ -687,6 +702,7 @@ def _persist_and_transport_failure(
             failure=failure,
             observation_tracker=observation_tracker,
             observation_path=observation_path,
+            interruption_phase=interruption_phase,
             transport=transport,
         )
     except Exception:
@@ -729,7 +745,7 @@ def run_repair(
                 run_path=attempt.run_path,
                 failure=original,
                 observation_tracker=observation_tracker,
-                transport=False,
+                interruption_phase=attempt.interruption_phase,
             )
         raise
     except Exception as original:
@@ -929,7 +945,7 @@ def _run_repair_impl(
         except DispatcherError as exc:
             raise OperatorError(f"dispatcher failed: {exc}") from exc
 
-        completion = RuntimeCompletion(
+        runtime_completion = RuntimeCompletion(
             repo=repo,
             state=state,
             task=task,
@@ -938,7 +954,9 @@ def _run_repair_impl(
             verification_runner=verification_runner,
             observation_tracker=observation_tracker,
             error_type=OperatorError,
-        ).complete(
+        )
+        attempt.bind_completion(runtime_completion)
+        completion = runtime_completion.complete(
             package,
             repair_completion_policy(
                 task,
@@ -1089,7 +1107,7 @@ def run_remediation(
                     run_path=attempt.run_path,
                     failure=original,
                     observation_tracker=observation_tracker,
-                    transport=False,
+                    interruption_phase=attempt.interruption_phase,
                 )
         raise
     except Exception as original:
@@ -1345,7 +1363,7 @@ def _run_remediation_impl(
         except DispatcherError as exc:
             raise OperatorError(f"dispatcher failed: {exc}") from exc
 
-        completion = RuntimeCompletion(
+        runtime_completion = RuntimeCompletion(
             repo=root,
             state=state,
             task=task,
@@ -1354,7 +1372,12 @@ def _run_remediation_impl(
             verification_runner=verification_runner,
             observation_tracker=observation_tracker,
             error_type=OperatorError,
-        ).complete(package, remediation_completion_policy(execution))
+        )
+        if attempt is not None:
+            attempt.bind_completion(runtime_completion)
+        completion = runtime_completion.complete(
+            package, remediation_completion_policy(execution)
+        )
 
         return RemediationSummary(
             task_id=task_id,

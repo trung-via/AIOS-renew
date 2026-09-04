@@ -193,6 +193,38 @@ def test_completion_gate_failure_runs_no_verification_or_transport(
         )
 
     assert calls == []
+    assert boundary.interruption_phase == "COMPLETION_GATE"
+    assert not (state.results / f"{run.run_id}.json").exists()
+
+
+def test_runtime_completion_exposes_verification_interruption_phase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    monkeypatch.setattr(
+        runtime_module,
+        "execute_verification",
+        lambda *args, **kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
+    )
+    boundary = StubRuntimeCompletion(
+        repo=tmp_path,
+        state=state,
+        task=task,
+        run=run,
+        run_path=run_path,
+        verification_runner=lambda *args, **kwargs: None,
+        observation_tracker=None,
+        error_type=BoundaryError,
+        head_sha="head",
+        changed_files={"OUTPUT.txt"},
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        boundary.complete(
+            package, primary_completion_policy(task, base_sha=run.base_sha)
+        )
+
+    assert boundary.interruption_phase == "VERIFICATION"
     assert not (state.results / f"{run.run_id}.json").exists()
 
 
