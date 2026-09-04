@@ -33,7 +33,7 @@ from .dispatcher import (
     primary_dispatcher,
     remediation_dispatcher,
     repair_dispatcher,
-    resolve_native_execution_capability,
+    resolve_native_execution_policy,
 )
 from .executor import ExecutorBoundaryError
 from .review_transport import (
@@ -592,7 +592,7 @@ def _run_task_impl(
             native_runner
         )
 
-        capability = resolve_native_execution_capability(
+        execution_policy = resolve_native_execution_policy(
             authorizes_mutation=bool(task.scope.modify)
         )
 
@@ -600,10 +600,8 @@ def _run_task_impl(
             selected_executor=executor,
             repo=root,
             handoff_path=state.handoffs / f"{run_id}.json",
-            capability=capability,
+            execution_policy=execution_policy,
             native_runner=observed_native_runner,
-            task=task,
-            run=run,
         )
 
         leases = RunLeaseRegistry()
@@ -880,16 +878,15 @@ def _run_repair_impl(
         persisted_execution["run"] = asdict(run)
         _write_json(state.repairs / f"{run_id}.json", persisted_execution)
 
-        capability = resolve_native_execution_capability(
+        execution_policy = resolve_native_execution_policy(
             authorizes_mutation=action == "CODE_FIX"
         )
         dispatcher = repair_dispatcher(
             selected_executor=executor,
             repo=repo,
             handoff_path=state.handoffs / f"{run_id}.json",
-            capability=capability,
+            execution_policy=execution_policy,
             native_runner=observed_native_runner,
-            execution=execution,
         )
         try:
             package = dispatcher.dispatch_repair(execution=execution)
@@ -1284,16 +1281,15 @@ def _run_remediation_impl(
         if attempt is not None:
             attempt.bind_run(run_path)
 
-        capability = resolve_native_execution_capability(
+        execution_policy = resolve_native_execution_policy(
             authorizes_mutation=canonical_remediation.action == "CODE_FIX"
         )
         dispatcher = remediation_dispatcher(
             selected_executor=executor,
             repo=root,
             handoff_path=state.handoffs / f"{run_id}.json",
-            capability=capability,
+            execution_policy=execution_policy,
             native_runner=observed_native_runner,
-            execution=execution,
         )
 
         try:

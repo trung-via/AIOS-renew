@@ -1,5 +1,7 @@
 import inspect
 import json
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +19,7 @@ from aios_renew import (
     parse_review,
 )
 from aios_renew.review import RemediationExecution
+from aios_renew.dispatcher import NativeExecutionPolicy
 
 
 TASK_SOURCE = """
@@ -366,3 +369,69 @@ def test_core_executor_boundary_does_not_require_antigravity_specific_logic() ->
     source = inspect.getsource(ExecutorBoundary)
 
     assert "antigravity" not in source.lower()
+
+
+def test_native_adapter_owns_read_only_command_handoff_and_envelope(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    handoff_path = repo / ".git" / "aios" / "handoff.json"
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "status": "SUCCESS",
+                    "response": "",
+                    "structured_output": payload,
+                }
+            ),
+            stderr="",
+        )
+
+    package = AntigravityAdapter(
+        runner=runner,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=False),
+        repo=repo,
+        handoff_path=handoff_path,
+    ).execute(task=task, run=run)
+
+    command, kwargs = calls[0]
+    assert command[command.index("--mode") + 1] == "plan"
+    assert "--dangerously-skip-permissions" not in command
+    assert command[command.index("--print-timeout") + 1] == "15m"
+    assert kwargs["timeout"] == 15 * 60
+    handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+    assert "verification" not in handoff["task"]
+    assert handoff["execution_context"]["operation"] == "PRIMARY"
+    assert package.result.head_sha == "def456"
+
+
+def test_native_antigravity_timeout_is_terminal_to_one_invocation(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution()
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+    )
+    with pytest.raises(AntigravityExecutionError, match="15-minute"):
+        adapter.execute(task=task, run=run)
+
+    assert len(calls) == 1
+    assert calls[0][1]["timeout"] == 15 * 60

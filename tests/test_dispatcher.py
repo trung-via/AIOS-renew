@@ -1,10 +1,20 @@
+import inspect
 from collections.abc import Mapping
+from dataclasses import fields
 from typing import Any
 
 import pytest
 
 from aios_renew.artifacts import Claim, Result, ResultPackage
-from aios_renew.dispatcher import Dispatcher, DispatcherError
+from aios_renew.dispatcher import (
+    Dispatcher,
+    DispatcherError,
+    NativeExecutionPolicy,
+    primary_dispatcher,
+    remediation_dispatcher,
+    repair_dispatcher,
+    resolve_native_execution_policy,
+)
 from aios_renew.review import Finding, Remediation, RemediationExecution
 from aios_renew.run import Run, RunLeaseRegistry
 from aios_renew.task import Task, parse_task
@@ -219,3 +229,31 @@ def test_mismatched_run_is_rejected_before_adapter_construction() -> None:
         )
 
     assert factory_calls == []
+
+
+def test_execution_policy_is_provider_neutral_and_bounded() -> None:
+    policy = resolve_native_execution_policy(authorizes_mutation=True)
+
+    assert policy == NativeExecutionPolicy(authorizes_mutation=True)
+    assert {field.name for field in fields(policy)} == {
+        "authorizes_mutation",
+        "response_budget_minutes",
+        "process_watchdog_seconds",
+    }
+    assert policy.response_budget_minutes == 15
+    assert policy.process_watchdog_seconds <= 16 * 60
+
+
+def test_dispatcher_factory_surface_exposes_only_provider_neutral_policy() -> None:
+    signatures = " ".join(
+        str(inspect.signature(factory))
+        for factory in (
+            primary_dispatcher,
+            remediation_dispatcher,
+            repair_dispatcher,
+        )
+    )
+
+    assert "execution_policy" in signatures
+    for provider_native_field in ("sandbox", "mode", "permission", "command"):
+        assert provider_native_field not in signatures.lower()

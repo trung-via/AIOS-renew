@@ -19,6 +19,7 @@ from aios_renew import (
     parse_review,
     parse_task,
 )
+from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.review import RemediationExecution
 
 
@@ -140,6 +141,47 @@ def test_constructs_and_invokes_native_codex_command() -> None:
     assert "errors" not in calls[0][1]
     assert isinstance(calls[0][1]["input"], bytes)
     assert calls[0][1]["check"] is False
+    assert calls[0][1]["timeout"] == 15 * 60
+
+
+def test_codex_adapter_owns_read_only_sandbox_mapping() -> None:
+    task, run, _, _ = make_execution()
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=successful_output(run.run_id),
+            stderr="",
+        )
+
+    adapter = CodexAdapter(
+        runner=runner,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=False)
+    )
+
+    adapter.execute(task=task, run=run)
+
+    command = calls[0][0]
+    assert command[command.index("--sandbox") + 1] == "read-only"
+
+
+def test_codex_timeout_is_terminal_to_one_native_invocation() -> None:
+    task, run, _, _ = make_execution()
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    adapter = CodexAdapter(runner=runner)
+    with pytest.raises(CodexExecutionError, match="15-minute"):
+        adapter.execute(task=task, run=run)
+
+    assert len(calls) == 1
+    assert calls[0][1]["timeout"] == 15 * 60
 
 
 def test_utf8_output_outside_cp1252_is_preserved() -> None:

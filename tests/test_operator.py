@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-import aios_renew.dispatcher as dispatcher_module
 import aios_renew.operator as operator_module
 import aios_renew.runtime as runtime_module
 from aios_renew.operator import (
@@ -2547,37 +2546,6 @@ def test_invalid_antigravity_terminal_envelope_fails_once(
     assert list(runtime_paths(repo).results.glob("*.json")) == []
 
 
-def test_antigravity_terminal_envelope_extracts_payload_without_rewriting() -> None:
-    payload = {
-        "result": {
-            "head_sha": "executor-head",
-            "claims": [
-                {
-                    "id": "executor-claim",
-                    "satisfies": ["AC2", "AC1"],
-                    "claim": "Executor-authored claim.",
-                    "evidence": [],
-                }
-            ],
-            "changed_files": ["z.txt", "a.txt"],
-            "unresolved": ["executor-authored unresolved item"],
-        },
-        "evidence": [],
-    }
-
-    extracted = dispatcher_module._antigravity_structured_output(
-        antigravity_envelope(payload), stderr=""
-    )
-
-    assert extracted == payload
-    assert list(extracted["result"]) == [
-        "head_sha",
-        "claims",
-        "changed_files",
-        "unresolved",
-    ]
-
-
 def test_result_head_sha_mismatch_fails(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
 
@@ -3619,17 +3587,17 @@ def test_post_admission_pre_executor_failure_records_not_invoked(
     repo = make_repo(tmp_path)
     calls = []
 
-    def reject_capability(*args, **kwargs):
-        raise OperatorError("capability resolution failed")
+    def reject_policy(*args, **kwargs):
+        raise OperatorError("policy resolution failed")
 
     def native_runner(*args, **kwargs):
         calls.append((args, kwargs))
         raise AssertionError("native Executor must not run")
 
     monkeypatch.setattr(
-        operator_module, "resolve_native_execution_capability", reject_capability
+        operator_module, "resolve_native_execution_policy", reject_policy
     )
-    with pytest.raises(OperatorError, match="capability resolution failed"):
+    with pytest.raises(OperatorError, match="policy resolution failed"):
         run_task(
             "TASK-101",
             executor="codex",

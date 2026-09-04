@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Callable, Mapping
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from .artifacts import (
     ArtifactValidationError,
@@ -21,6 +21,24 @@ from .task import Task
 
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[bytes]]
+
+
+class ExecutionPolicy(Protocol):
+    """Provider-neutral admitted policy consumed by native mechanics."""
+
+    authorizes_mutation: bool
+    response_budget_minutes: int
+    process_watchdog_seconds: int
+
+
+@dataclass(frozen=True)
+class _DefaultExecutionPolicy:
+    # Preserve the standalone adapter's historical workspace-write default.
+    # Admitted operator executions always provide an explicit boolean policy.
+    authorizes_mutation: bool | None = None
+    response_budget_minutes: int = 15
+    process_watchdog_seconds: int = 15 * 60
+
 
 RESULT_PACKAGE_SCHEMA_PATH = (
     Path(__file__).parent / "schemas" / "result_package.json"
@@ -49,12 +67,6 @@ def native_execution_context(*, run: Run, operation: str) -> dict[str, Any]:
         "operator_dispatch_authority": False,
         "runtime_verification_authority": False,
     }
-
-
-def native_executor_instruction() -> str:
-    """Return the shared role boundary for native execution transports."""
-
-    return _NATIVE_EXECUTOR_INSTRUCTION
 
 
 class CodexExecutionError(RuntimeError):
@@ -88,14 +100,20 @@ class CodexAdapter:
         *,
         runner: ProcessRunner = subprocess.run,
         schema_path: str | Path = RESULT_PACKAGE_SCHEMA_PATH,
+        execution_policy: ExecutionPolicy | None = None,
     ) -> None:
         self._runner = runner
         self._schema_path = Path(schema_path)
+        self._execution_policy = execution_policy or _DefaultExecutionPolicy()
 
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
         """Execute an unchanged TASK/RUN pair through native Codex CLI."""
 
-        command = self.command_for(run, schema_path=self._schema_path)
+        command = self.command_for(
+            run,
+            schema_path=self._schema_path,
+            authorizes_mutation=self._execution_policy.authorizes_mutation,
+        )
         prompt = self.prompt_for(task=task, run=run)
         try:
             completed = self._runner(
@@ -104,9 +122,15 @@ class CodexAdapter:
                 capture_output=True,
                 text=False,
                 check=False,
+                timeout=self._execution_policy.process_watchdog_seconds,
             )
             stdout = _decode_utf8(completed.stdout)
             stderr = _decode_utf8(completed.stderr)
+        except subprocess.TimeoutExpired as exc:
+            raise CodexExecutionError(
+                "Codex CLI exceeded the 15-minute native response deadline",
+                exit_code=None,
+            ) from exc
         except (OSError, UnicodeError) as exc:
             raise CodexExecutionError(
                 f"Codex CLI invocation failed: {exc}",
@@ -132,7 +156,11 @@ class CodexAdapter:
     ) -> ResultPackage:
         """Execute one narrow remediation through one native Codex process."""
 
-        command = self.command_for(execution.run, schema_path=self._schema_path)
+        command = self.command_for(
+            execution.run,
+            schema_path=self._schema_path,
+            authorizes_mutation=self._execution_policy.authorizes_mutation,
+        )
         try:
             completed = self._runner(
                 command,
@@ -142,9 +170,15 @@ class CodexAdapter:
                 capture_output=True,
                 text=False,
                 check=False,
+                timeout=self._execution_policy.process_watchdog_seconds,
             )
             stdout = _decode_utf8(completed.stdout)
             stderr = _decode_utf8(completed.stderr)
+        except subprocess.TimeoutExpired as exc:
+            raise CodexExecutionError(
+                "Codex CLI exceeded the 15-minute native response deadline",
+                exit_code=None,
+            ) from exc
         except (OSError, UnicodeError) as exc:
             raise CodexExecutionError(
                 f"Codex CLI invocation failed: {exc}", exit_code=None
@@ -168,15 +202,25 @@ class CodexAdapter:
         run = execution.get("run")
         if not isinstance(run, Run):
             raise CodexExecutionError("REPAIR execution has no bound RUN", exit_code=None)
-        command = self.command_for(run, schema_path=self._schema_path)
+        command = self.command_for(
+            run,
+            schema_path=self._schema_path,
+            authorizes_mutation=self._execution_policy.authorizes_mutation,
+        )
         prompt = self.repair_prompt_for(execution=execution)
         try:
             completed = self._runner(
                 command, input=prompt.encode("utf-8", errors="strict"),
                 capture_output=True, text=False, check=False,
+                timeout=self._execution_policy.process_watchdog_seconds,
             )
             stdout = _decode_utf8(completed.stdout)
             stderr = _decode_utf8(completed.stderr)
+        except subprocess.TimeoutExpired as exc:
+            raise CodexExecutionError(
+                "Codex CLI exceeded the 15-minute native response deadline",
+                exit_code=None,
+            ) from exc
         except (OSError, UnicodeError) as exc:
             raise CodexExecutionError(
                 f"Codex CLI invocation failed: {exc}", exit_code=None
@@ -192,6 +236,8 @@ class CodexAdapter:
     def command_for(
         run: Run,
         schema_path: str | Path = RESULT_PACKAGE_SCHEMA_PATH,
+        *,
+        authorizes_mutation: bool | None = None,
     ) -> tuple[str, ...]:
         """Build the native non-interactive Codex command."""
 
@@ -201,7 +247,13 @@ class CodexAdapter:
             "--cd",
             run.workspace,
             "--sandbox",
-            "workspace-write",
+            (
+                "danger-full-access"
+                if authorizes_mutation is True
+                else "read-only"
+                if authorizes_mutation is False
+                else "workspace-write"
+            ),
             "--output-schema",
             str(schema_path),
             "--color",
