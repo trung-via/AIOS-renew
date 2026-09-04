@@ -2562,7 +2562,7 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     workspace = command[command.index("--add-dir") + 1]
     assert command[0] == "agy"
     assert workspace == str(repo.resolve())
-    assert command[command.index("--effort") + 1] == "low"
+    assert command[command.index("--effort") + 1] == "high"
     assert command[command.index("--mode") + 1] == "accept-edits"
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
@@ -2576,7 +2576,7 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert ".git" in instruction and "handoff" in instruction
     assert "Create one deterministic operator test output" not in instruction
     assert "--dangerously-skip-permissions" in command
-    assert "--model" not in command
+    assert command[command.index("--model") + 1] == "gemini-3.8-flash"
 
 
 def test_antigravity_instruction_returns_structural_package_to_runtime(
