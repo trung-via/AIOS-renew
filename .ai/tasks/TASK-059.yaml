@@ -1,0 +1,200 @@
+task_id: TASK-059
+revision: 1
+
+goal: >
+  Reduce avoidable Human wait and failed-run churn in native Executor execution by
+  making the provider-neutral native response budget a true upper bound rather than
+  an overly short fixed cutoff, while preserving exactly-one dispatch, Runtime-owned
+  canonical verification, fail-closed completion, and immutable failure lineage.
+  Native execution that completes early must return immediately; larger legitimate
+  tasks may consume up to a 60-minute response budget before timeout.
+
+problem: >
+  Real AIOS-renew TASK-058 execution exposed two execution-efficiency defects. First,
+  native execution is currently hard-bounded to 15 minutes by Dispatcher policy and
+  adapter process watchdogs. RUN-058-002 and RUN-058-004 each consumed essentially the
+  full 900-second native budget and failed at EXECUTION with no committed candidate or
+  canonical verification, creating repeated Human repair cycles without useful work.
+  Second, interrupting admitted RUN-058-003 with Ctrl+C left local RUN/REPAIR state
+  ACTIVE and non-terminal because KeyboardInterrupt escaped the existing Exception
+  failure-terminalization path, causing later REPAIR admission to be blocked as
+  already accepted. The same operating model also lacks enough bounded timeout
+  diagnostics to distinguish useful native progress from tool/model stalls. These
+  behaviors reduce Verified Useful Work / (Time + Tokens + Human Effort).
+
+assumptions:
+  - >
+    Current canonical AIOS-renew main before TASK-059 authoring is
+    ce3096a490b9f10565ce9be3b5b67b0ec49aa446.
+  - >
+    TASK-058 remains unresolved and must not be redesigned, rerun, repaired, or
+    otherwise completed inside TASK-059.
+  - >
+    RUN-058-002 and RUN-058-004 are canonical EXECUTION failures caused by the
+    15-minute Antigravity native response deadline, with no committed candidate and
+    no Runtime verification.
+  - >
+    RUN-058-003 was locally admitted with executor codex and interrupted by Human
+    Ctrl+C before RESULT or FAILURE; the repository HEAD and worktree remained at the
+    failed TASK-058 state with no committed delta.
+  - >
+    TASK-051 exactly-one Dispatcher authority, TASK-052 Runtime completion authority,
+    TASK-055 native adapter thinning, TASK-057 REPAIR changed-files authority, and the
+    frozen one-active-executor/no-retry/no-fallback semantics remain authoritative.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-051.yaml
+    - .ai/tasks/TASK-055.yaml
+    - .ai/tasks/TASK-058.yaml
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/run_observation.py
+    - tests/test_dispatcher.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_operator.py
+    - tests/test_run_observation.py
+
+  modify:
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/run_observation.py
+    - tests/test_dispatcher.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_operator.py
+    - tests/test_run_observation.py
+
+non_goals:
+  - Implement, redesign, rerun, or repair TASK-058 inside this TASK.
+  - Change downstream Python Agent source or dependency pins.
+  - Add retry, fallback, reroute, failover, executor substitution, speculative execution, or autonomous recovery.
+  - Add adaptive/model-scored timeout selection, dynamic routing, or Planner authority.
+  - Change canonical TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, REPAIR, or verification semantics.
+  - Move canonical verification or EVIDENCE construction into native Executors or Dispatcher.
+  - Increase canonical verification scope or repeat unchanged verification for ceremony.
+  - Treat native timeout/progress diagnostics as completion evidence or semantic authority.
+  - Add background daemons, distributed watchdogs, message brokers, or external orchestration services.
+  - Perform unrelated refactoring, package/version changes, roadmap cleanup, or downstream migration.
+  - Push from executor execution.
+
+constraints:
+  hard:
+    - >
+      Native execution response budget must be 60 minutes maximum for admitted
+      PRIMARY, REMEDIATION, and REPAIR operations. This is an upper bound only: when
+      the selected native Executor process returns a structural outcome earlier,
+      Dispatcher/adapter processing must continue immediately without waiting for the
+      remaining budget.
+    - >
+      The outer process watchdog must remain bounded and may exceed the semantic
+      native response budget only by a small deterministic grace interval sufficient
+      to allow terminal output/cleanup; it must not create an unbounded process wait.
+    - >
+      Codex and Antigravity must consume the same provider-neutral admitted execution
+      policy while retaining their existing native mechanics. No executor receives a
+      hidden retry, longer autonomous loop, or different semantic authority.
+    - >
+      Native execution guidance must optimize for direct authorized implementation:
+      do not spend the native budget on baseline/full/canonical verification that
+      Runtime already owns, and do not require repo-wide rediscovery when bounded TASK
+      context and relevant files are already supplied. Narrow implementation-local
+      sanity checks remain permitted when materially useful.
+    - >
+      Runtime remains the sole owner of canonical verification. A successful native
+      Executor outcome proceeds to the existing Runtime verification path exactly once;
+      increasing the native response ceiling must not duplicate or move verification.
+    - >
+      An explicit Human interruption after RUN admission, including KeyboardInterrupt
+      from Ctrl+C during native execution, must not leave an orphan ACTIVE RUN or stale
+      accepted REPAIR/REMEDIATION state that permanently blocks canonical continuation.
+      The admitted attempt must be deterministically terminalized or otherwise moved
+      into an explicit recoverable terminal state before control returns to the Human.
+    - >
+      Interruption handling must preserve exact RUN identity, selected Executor,
+      base/failed lineage, candidate Git truth, and no-retry semantics. It must not
+      silently launch a replacement execution or reinterpret the interruption as PASS.
+    - >
+      Native timeout or interruption failure must preserve bounded diagnostic context
+      when the underlying process API provides it, sufficient to distinguish no-output,
+      partial native progress, and provider/tool failure. Diagnostic context is
+      operational observability only and must not become canonical verification or
+      completion evidence.
+    - >
+      Diagnostic persistence must remain size-bounded and safe for terminal artifacts;
+      unbounded stdout/stderr capture or secret-bearing environment dumps are not
+      authorized.
+    - >
+      Existing exactly-one dispatch, one-active mutation authority, clean-worktree,
+      SHA/diff/scope gates, fail-closed structural ResultPackage handling, transport,
+      and no-push behavior must remain unchanged.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Provider-neutral native execution policy exposes a 60-minute maximum response
+      budget for PRIMARY, REMEDIATION, and REPAIR, with a deterministic bounded outer
+      watchdog that is longer only by a small terminalization grace interval.
+  - id: AC2
+    condition: >
+      Deterministic adapter/dispatcher regressions prove that an Executor process that
+      returns before the maximum budget is accepted immediately and no minimum wait,
+      sleep, polling delay, or forced budget consumption is introduced.
+  - id: AC3
+    condition: >
+      Codex and Antigravity both consume the same admitted execution budget semantics;
+      Antigravity's native response deadline and each adapter's process watchdog are
+      consistent with the provider-neutral policy rather than retaining a hidden
+      15-minute cutoff.
+  - id: AC4
+    condition: >
+      Native execution contracts continue to assign canonical verification to Runtime
+      and discourage baseline/full/canonical verification or unnecessary repo-wide
+      rediscovery before direct implementation, while preserving narrowly useful
+      implementation-local sanity checks.
+  - id: AC5
+    condition: >
+      A successful native outcome still triggers existing Runtime canonical
+      verification exactly once and preserves current RESULT/EVIDENCE/completion gates.
+  - id: AC6
+    condition: >
+      A deterministic regression interrupts an already-admitted native execution with
+      KeyboardInterrupt and proves the RUN becomes explicit terminal/recoverable state,
+      preserving lineage and leaving no stale accepted correction state that blocks a
+      later properly authorized continuation.
+  - id: AC7
+    condition: >
+      Timeout and explicit-interruption failures preserve bounded native diagnostic
+      context when available, while no diagnostic field or message is accepted as
+      canonical verification evidence or completion truth.
+  - id: AC8
+    condition: >
+      Timeout, interruption, malformed output, and normal success paths still perform
+      at most one selected native Executor invocation with no retry, fallback, reroute,
+      failover, or executor substitution.
+  - id: AC9
+    condition: >
+      Existing PRIMARY, REMEDIATION, REPAIR, Dispatcher, Runtime verification,
+      transport, and one-active mutation semantics remain otherwise compatible.
+  - id: AC10
+    condition: >
+      No TASK-058 implementation delta, downstream migration, provider-specific retry
+      workaround, new autonomous authority, or unrelated repository change is
+      introduced.
+
+verification:
+  required:
+    - python -m pytest tests/test_dispatcher.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py tests/test_operator.py tests/test_run_observation.py -q
+    - git diff --check
