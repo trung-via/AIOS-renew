@@ -60,9 +60,9 @@ Implemented and published through the current lineage:
 
 The purpose of K0.2 was authority separation and de-duplication, not source-size minimization.
 
-### K0.3 — Native Adapter Thinning — NEXT
+### K0.3 — Native Adapter Thinning — DONE
 
-Goal: restore a provider-neutral Dispatcher and isolate provider-specific native execution mechanics behind the Codex and Antigravity adapter boundaries.
+Implemented and published by TASK-055. Dispatcher retains provider-neutral admitted execution policy and exactly-one dispatch authority, while Codex- and Antigravity-specific native mechanics are contained behind their corresponding adapter boundaries.
 
 AIOS keeps provider-neutral execution policy and authority semantics such as:
 
@@ -77,9 +77,9 @@ AIOS keeps provider-neutral execution policy and authority semantics such as:
 
 Provider-specific CLI flags, sandbox/mode mapping, native command construction, native response-envelope handling, and provider-specific execution instructions belong behind the corresponding native adapter boundary.
 
-K0.3 must preserve effective current behavior. It is not permission hardening, transport redesign, executor selection redesign, retry/failover work, or a new orchestration layer.
+K0.3 preserved effective current behavior. It did not redesign permissions, transport, executor selection, retry/failover, or add a new orchestration layer.
 
-### K0.4 — Lean Kernel Conformance Gate — FINAL REQUIRED K0 STEP
+### K0.4 — Lean Kernel Conformance Gate — NEXT / FINAL REQUIRED K0 STEP
 
 K0.4 is the final required AIOS gate before returning to Python Agent product work.
 
@@ -175,10 +175,9 @@ The active required sequence is intentionally short:
 DONE: K0.0 Governance
 DONE: K0.1 Responsibility Audit
 DONE: K0.2 Core Authority Extraction
+DONE: K0.3 Native Adapter Thinning
         ↓
-NEXT: K0.3 Native Adapter Thinning
-        ↓
-FINAL: K0.4 Lean Kernel Conformance Gate
+NEXT / FINAL: K0.4 Lean Kernel Conformance Gate
         ↓ PASS
 STOP DEFAULT KERNEL DEVELOPMENT
         ↓
