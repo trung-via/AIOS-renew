@@ -1,0 +1,39 @@
+review_id: REVIEW-059-001
+reviewed_sha: 330f56b3d8f25450eefda79341477bfe9f06f71d
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: FAIL
+  AC9: PASS
+findings:
+  - id: F1
+    basis: AC8
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::run_task/run_remediation/run_repair; src/aios_renew/runtime.py::persist_failure
+    issue: >
+      The new KeyboardInterrupt terminalization path does not preserve existing Runtime
+      transport semantics and does not preserve truthful failure phase. PRIMARY,
+      REMEDIATION, and REPAIR wrappers call failure persistence with transport disabled,
+      so an admitted interruption can become terminal only in local .git/aios state
+      without the normal portable remote failure lineage. In addition, persist_failure
+      classifies every direct KeyboardInterrupt as EXECUTION even though the outer
+      wrappers can also receive an interruption during Runtime verification, completion,
+      or terminal transport. This can leave a remotely invisible correction state and
+      can record false failure-phase truth, despite AC8 requiring interruption paths to
+      preserve existing Runtime completion/transport semantics.
+    expected: >
+      Preserve the already-added local terminalization and bounded diagnostics, but
+      restore normal best-effort canonical failure transport for admitted Human
+      interruption and bind interruption phase to the phase in which it actually
+      occurs. A native-execution Ctrl+C must terminalize as EXECUTION; an interruption
+      during Runtime verification/completion must not be mislabeled EXECUTION. Do not
+      clean, reset, stash, commit, retry, reroute, replace the Executor, or turn the
+      interruption into PASS. Add focused regressions covering portable failure
+      transport and truthful phase while preserving exactly one native invocation.
