@@ -1,0 +1,33 @@
+review_id: REVIEW-062-001
+reviewed_sha: 82e00b35cebc5337443d6a739f61725bd22af4a6
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings:
+  - id: F1
+    basis: AC3
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_synchronize_primary_branch
+    issue: >
+      The fast-forward sequence mutates the index/worktree with `read-tree -u -m`
+      before the guarded `update-ref`. If `read-tree` succeeds but `update-ref` then
+      fails (for example because of an intervening ref change or ref-lock failure),
+      the function raises an admission error but can leave the local checkout/index
+      partially synchronized while HEAD remains at the prior local commit. This
+      violates TASK-062's fail-closed requirement that synchronization failure leave
+      local repository state untouched apart from fetch metadata.
+    expected: >
+      A failed fast-forward attempt must deterministically preserve the exact pre-sync
+      local branch, index, and worktree state, create no RUN, and invoke no Executor.
+      Add regression coverage for a failure after the worktree/index update point
+      (including `update-ref` failure) that proves HEAD, cleanliness/content state, RUN
+      persistence, and Executor invocation remain unchanged. Preserve all existing
+      safe fast-forward, stale-kernel restart, correction-flow, and no-merge/no-reset
+      semantics.
