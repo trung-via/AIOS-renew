@@ -1,0 +1,162 @@
+task_id: TASK-051
+revision: 1
+
+goal: >
+  Establish an explicit thin Dispatcher boundary between admitted AIOS Runtime
+  execution authority and the selected native Executor. The Dispatcher must
+  perform only deterministic executor-boundary resolution and exactly-one native
+  invocation for the already-authorized execution, while preserving all existing
+  TASK/RUN/RESULT/EVIDENCE, lease, verification, correction, failure, and
+  publication semantics.
+
+problem: >
+  Current canonical AIOS-renew behavior is semantically aligned with the frozen
+  Kernel and Governance Baseline, but executor dispatch responsibility remains
+  embedded inside the increasingly broad Human-facing operator implementation.
+  This obscures the intended architecture in which AIOS Kernel admits one
+  execution authority, a thin Dispatcher invokes the already-selected native
+  Executor, and Runtime independently performs repository observation,
+  deterministic verification, canonical evidence construction, and completion
+  handling. The responsibility boundary should be made explicit without
+  redesigning execution semantics or performing a broad operator refactor.
+
+assumptions:
+  - >
+    Current canonical main baseline before TASK-051 authoring is
+    c1185be217fadf8d18f746b9747304eb8da73873.
+  - >
+    TASK-050 Governance Baseline v1.0 is published and remains authoritative.
+  - >
+    Frozen Kernel v0.1 TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION,
+    REPAIR, lease, and one-active-Executor semantics remain unchanged.
+  - >
+    TASK-049 remains authoritative for native Executor role separation:
+    once dispatched, the native Executor performs the authorized HOW directly
+    and does not re-enter Human-facing AIOS dispatch surfaces.
+  - >
+    Codex and Antigravity may retain different native mechanics while obeying
+    the same semantic execution contract.
+  - >
+    K0.1 classified the current primary repository debt as boundary debt:
+    thin semantic kernel with an overly broad operator implementation.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - .ai/tasks/TASK-049.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/executor.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_operator.py
+    - tests/test_executor.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+
+  modify:
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/operator.py
+    - tests/test_dispatcher.py
+    - tests/test_operator.py
+
+non_goals:
+  - Refactor the complete operator implementation.
+  - Change Kernel schemas or frozen semantic contracts.
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, or REPAIR semantics.
+  - Change Human authorization or Executor selection policy.
+  - Add intelligent routing, model scoring, planning, supervisor logic, or voting.
+  - Add retry, reroute, fallback, failover, or autonomous recovery.
+  - Move Runtime verification or canonical EVIDENCE construction into Dispatcher.
+  - Move semantic review into Runtime or Dispatcher.
+  - Change Codex or Antigravity native harness behavior except as required to
+    preserve the existing invocation contract through the new boundary.
+  - Change canonical verification commands.
+  - Change GitHub publication or post-PASS transport.
+  - Perform README, package-version, export-surface, or general repository cleanup.
+  - Delete historical TASKs, frozen specifications, smoke harnesses, or evidence.
+  - Push from executor execution.
+
+constraints:
+  hard:
+    - >
+      Dispatcher receives an already-authorized execution context. It must not
+      create Human intent, TASK semantics, RUN authority, findings, remediation
+      authority, or repair authority.
+    - >
+      Dispatcher must deterministically invoke exactly one already-selected
+      native Executor for one admitted execution.
+    - >
+      Dispatcher must not select among Executors using probabilistic reasoning,
+      scoring, fallback, retry, or autonomous routing.
+    - >
+      Executor-specific mechanics remain isolated behind their native execution
+      boundaries and must not leak into canonical TASK semantics.
+    - >
+      Codex and Antigravity must retain equivalent semantic behavior even though
+      their native invocation mechanics differ.
+    - >
+      Native structural ResultPackage or native failure is returned upward
+      without Dispatcher performing canonical verification or semantic review.
+    - >
+      Repository observation, SHA/diff/scope enforcement, deterministic
+      verification, canonical EVIDENCE attachment, and terminal Runtime handling
+      remain outside Dispatcher authority.
+    - >
+      Existing lease, repository lock, admission, completion, failure,
+      REMEDIATION, REPAIR, Direct Candidate Acceptance, and publication behavior
+      must remain observably unchanged.
+    - >
+      TASK-049 no-reentry behavior must remain intact for PRIMARY,
+      REMEDIATION, and REPAIR execution.
+    - >
+      The implementation must reduce responsibility coupling in operator.py;
+      it must not merely add a forwarding abstraction while leaving a duplicate
+      second dispatch authority in operator.py.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A distinct thin Dispatcher boundary exists between admitted Runtime work
+      and native Codex/Antigravity invocation.
+  - id: AC2
+    condition: >
+      For one already-selected executor and admitted execution, Dispatcher
+      deterministically invokes exactly one native Executor and returns its
+      structural outcome without retry, fallback, reroute, planning, or semantic
+      decision-making.
+  - id: AC3
+    condition: >
+      Codex and Antigravity preserve the same semantic dispatch contract while
+      retaining their native adapter-specific mechanics.
+  - id: AC4
+    condition: >
+      Dispatcher has no authority for canonical verification, EVIDENCE
+      construction, repository completion judgment, semantic review,
+      remediation decisions, repair decisions, or publication.
+  - id: AC5
+    condition: >
+      Existing PRIMARY, REMEDIATION, and REPAIR observable behavior including
+      TASK-049 native-role separation remains unchanged.
+  - id: AC6
+    condition: >
+      Operator no longer owns duplicate native dispatch decision/invocation
+      responsibility after delegation to the Dispatcher boundary.
+  - id: AC7
+    condition: >
+      Existing one-active-Executor lease, mutation authority, Runtime
+      verification, fail-closed completion behavior, and canonical artifact
+      semantics remain unchanged.
+  - id: AC8
+    condition: >
+      Deterministic regression tests prove boundary ownership and exactly-one
+      invocation behavior without asserting one particular internal function
+      decomposition or natural-language prompt wording.
+
+verification:
+  required:
+    - python -m pytest tests/test_dispatcher.py tests/test_operator.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py -q
+    - git diff --check
