@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from aios_renew import (
+    RESULT_PACKAGE_SCHEMA_PATH,
     AntigravityAdapter,
     AntigravityExecutionError,
     AntigravityOutputError,
@@ -405,6 +406,8 @@ def test_native_adapter_owns_read_only_command_handoff_and_envelope(
     ).execute(task=task, run=run)
 
     command, kwargs = calls[0]
+    assert command[command.index("--model") + 1] == "gemini-3.8-flash"
+    assert command[command.index("--effort") + 1] == "high"
     assert command[command.index("--mode") + 1] == "plan"
     assert "--dangerously-skip-permissions" not in command
     assert command[command.index("--print-timeout") + 1] == "60m"
@@ -554,3 +557,109 @@ def test_antigravity_early_native_return_is_accepted_immediately(
     command, kwargs = calls[0]
     assert command[command.index("--print-timeout") + 1] == "60m"
     assert kwargs["timeout"] == 65 * 60
+
+
+def test_antigravity_command_deterministic_model_and_effort_across_operations(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    remediation_exec = RemediationExecution(
+        review_id="REV-1",
+        finding=parse_review(
+            "review_id: REV-1\nreviewed_sha: '123456'\nmode: PRIMARY\nverdict: CHANGES_REQUIRED\nacceptance: {AC1: FAIL}\nfindings:\n  - id: F1\n    basis: AC1\n    action: CODE_FIX\n    location: f.py\n    issue: i\n    expected: e\n"
+        ).findings[0],
+        remediation=parse_remediation(
+            "finding_id: F1\naction: CODE_FIX\nreviewed_sha: '123456'\nmodification_scope: [src/aios_renew/antigravity_adapter.py]\naffected_verification: [pytest]\n"
+        ),
+        run=run,
+    )
+    repair_exec = {
+        "run": run,
+        "root_base_sha": "abc123",
+        "repair": {
+            "action": "CODE_FIX",
+            "instructions": ["Fix"],
+            "modification_scope": ["src/aios_renew/antigravity_adapter.py"],
+        },
+    }
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "status": "SUCCESS",
+                    "response": "",
+                    "structured_output": payload,
+                }
+            ),
+            stderr="",
+        )
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=repo / ".git" / "aios" / "handoff.json",
+    )
+
+    # 1. PRIMARY
+    adapter.execute(task=task, run=run)
+    cmd_primary = calls[-1][0]
+    assert cmd_primary[cmd_primary.index("--model") + 1] == "gemini-3.8-flash"
+    assert cmd_primary[cmd_primary.index("--effort") + 1] == "high"
+
+    # 2. REMEDIATION
+    adapter.execute_remediation(execution=remediation_exec)
+    cmd_remediation = calls[-1][0]
+    assert cmd_remediation[cmd_remediation.index("--model") + 1] == "gemini-3.8-flash"
+    assert cmd_remediation[cmd_remediation.index("--effort") + 1] == "high"
+
+    # 3. REPAIR
+    adapter.execute_repair(execution=repair_exec)
+    cmd_repair = calls[-1][0]
+    assert cmd_repair[cmd_repair.index("--model") + 1] == "gemini-3.8-flash"
+    assert cmd_repair[cmd_repair.index("--effort") + 1] == "high"
+
+    # Preserves other flags
+    assert "--disable-slash-commands" in cmd_primary
+    assert cmd_primary[cmd_primary.index("--mode") + 1] == "accept-edits"
+    assert "--dangerously-skip-permissions" in cmd_primary
+    assert cmd_primary[cmd_primary.index("--output-format") + 1] == "json"
+    assert cmd_primary[cmd_primary.index("--json-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
+
+
+def test_antigravity_unsupported_model_fails_closed_without_fallback_or_retry(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            returncode=1,
+            stdout="",
+            stderr="Error: model 'gemini-3.8-flash' not recognized or unavailable",
+        )
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=repo / ".git" / "aios" / "handoff.json",
+    )
+    with pytest.raises(
+        AntigravityExecutionError,
+        match="model 'gemini-3.8-flash' not recognized or unavailable",
+    ):
+        adapter.execute(task=task, run=run)
+
+    assert len(calls) == 1

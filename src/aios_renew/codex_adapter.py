@@ -73,6 +73,10 @@ def native_execution_context(*, run: Run, operation: str) -> dict[str, Any]:
     }
 
 
+CODEX_DEFAULT_MODEL = "gpt-5.6-sol"
+CODEX_DEFAULT_REASONING_EFFORT = "high"
+
+
 class CodexExecutionError(RuntimeError):
     """Raised when the native Codex process cannot complete successfully."""
 
@@ -262,6 +266,10 @@ class CodexAdapter:
             "exec",
             "--cd",
             run.workspace,
+            "-m",
+            CODEX_DEFAULT_MODEL,
+            "-c",
+            f'model_reasoning_effort="{CODEX_DEFAULT_REASONING_EFFORT}"',
             "--sandbox",
             (
                 "danger-full-access"

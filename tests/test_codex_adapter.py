@@ -127,6 +127,10 @@ def test_constructs_and_invokes_native_codex_command() -> None:
         "exec",
         "--cd",
         "C:/workspace",
+        "-m",
+        "gpt-5.6-sol",
+        "-c",
+        'model_reasoning_effort="high"',
         "--sandbox",
         "workspace-write",
         "--output-schema",
@@ -677,3 +681,83 @@ def test_boundary_rejects_inactive_lease_before_process_invocation() -> None:
         )
 
     assert calls == []
+
+
+def test_codex_command_deterministic_model_and_reasoning_across_operations() -> None:
+    task, run, _, _ = make_execution()
+    remediation_exec = RemediationExecution(
+        review_id="REV-1",
+        finding=parse_review(
+            "review_id: REV-1\nreviewed_sha: '123456'\nmode: PRIMARY\nverdict: CHANGES_REQUIRED\nacceptance: {AC1: FAIL}\nfindings:\n  - id: F1\n    basis: AC1\n    action: CODE_FIX\n    location: f.py\n    issue: i\n    expected: e\n"
+        ).findings[0],
+        remediation=parse_remediation(
+            "finding_id: F1\naction: CODE_FIX\nreviewed_sha: '123456'\nmodification_scope: [src/aios_renew/codex_adapter.py]\naffected_verification: [pytest]\n"
+        ),
+        run=run,
+    )
+    repair_exec = {
+        "run": run,
+        "root_base_sha": "abc123",
+        "repair": {
+            "action": "CODE_FIX",
+            "instructions": ["Fix"],
+            "modification_scope": ["src/aios_renew/codex_adapter.py"],
+        },
+    }
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=successful_output(run.run_id),
+            stderr="",
+        )
+
+    adapter = CodexAdapter(runner=runner)
+
+    # 1. PRIMARY
+    adapter.execute(task=task, run=run)
+    cmd_primary = calls[-1][0]
+    assert cmd_primary[cmd_primary.index("-m") + 1] == "gpt-5.6-sol"
+    assert cmd_primary[cmd_primary.index("-c") + 1] == 'model_reasoning_effort="high"'
+
+    # 2. REMEDIATION
+    adapter.execute_remediation(execution=remediation_exec)
+    cmd_remediation = calls[-1][0]
+    assert cmd_remediation[cmd_remediation.index("-m") + 1] == "gpt-5.6-sol"
+    assert cmd_remediation[cmd_remediation.index("-c") + 1] == 'model_reasoning_effort="high"'
+
+    # 3. REPAIR
+    adapter.execute_repair(execution=repair_exec)
+    cmd_repair = calls[-1][0]
+    assert cmd_repair[cmd_repair.index("-m") + 1] == "gpt-5.6-sol"
+    assert cmd_repair[cmd_repair.index("-c") + 1] == 'model_reasoning_effort="high"'
+
+    # Preserves sandbox, output-schema, color, cd
+    assert cmd_primary[cmd_primary.index("--cd") + 1] == "C:/workspace"
+    assert cmd_primary[cmd_primary.index("--sandbox") + 1] == "workspace-write"
+    assert cmd_primary[cmd_primary.index("--output-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
+    assert cmd_primary[cmd_primary.index("--color") + 1] == "never"
+
+
+def test_codex_unsupported_model_fails_closed_without_fallback_or_retry() -> None:
+    task, run, _, _ = make_execution()
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            returncode=1,
+            stdout="",
+            stderr="Error: model 'gpt-5.6-sol' not found or unsupported",
+        )
+
+    adapter = CodexAdapter(runner=runner)
+    with pytest.raises(CodexExecutionError, match="model 'gpt-5.6-sol' not found or unsupported") as exc_info:
+        adapter.execute(task=task, run=run)
+
+    assert len(calls) == 1
+    assert exc_info.value.exit_code == 1

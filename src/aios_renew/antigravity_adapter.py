@@ -58,6 +58,10 @@ _NATIVE_EXECUTOR_INSTRUCTION = (
 )
 
 
+ANTIGRAVITY_DEFAULT_MODEL = "gemini-3.8-flash"
+ANTIGRAVITY_DEFAULT_EFFORT = "high"
+
+
 class AntigravityExecutionError(RuntimeError):
     """Raised when the native Antigravity transport fails."""
 
@@ -247,8 +251,10 @@ class AntigravityAdapter:
             instruction,
             "--add-dir",
             str(repo),
+            "--model",
+            ANTIGRAVITY_DEFAULT_MODEL,
             "--effort",
-            "low",
+            ANTIGRAVITY_DEFAULT_EFFORT,
             "--mode",
             (
                 "accept-edits"
