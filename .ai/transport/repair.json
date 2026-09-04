@@ -1,0 +1,25 @@
+{
+  "repair_id": "REPAIR-058-002",
+  "failed_run_id": "RUN-058-002",
+  "failed_head_sha": "ce3096a490b9f10565ce9be3b5b67b0ec49aa446",
+  "task": {
+    "id": "TASK-058",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "src/aios_renew/runtime.py",
+    "src/aios_renew/operator.py",
+    "src/aios_renew/review_transport.py",
+    "tests/test_runtime.py",
+    "tests/test_operator.py",
+    "tests/test_review_transport.py"
+  ],
+  "instructions": [
+    "Continue the exact failed TASK-058 lineage from RUN-058-002 at failed HEAD ce3096a490b9f10565ce9be3b5b67b0ec49aa446. RUN-058-002 failed at EXECUTION after the selected Antigravity invocation consumed the full 15-minute native response budget without producing any committed delta or canonical Runtime verification. Do not restart PRIMARY, create a replacement TASK, change Executor selection, retry internally, widen scope, or change timeout policy inside this REPAIR.",
+    "Optimize this continuation for useful implementation work. Do not run baseline, full, or canonical verification before implementation; Runtime owns canonical TASK-058 verification. Do not perform repo-wide rediscovery or reread already supplied governance/TASK context. Inspect only the minimum source/test surfaces needed to implement TASK-058, then implement directly. Narrow implementation-local sanity checks are allowed only after or during concrete changes when they materially reduce implementation risk.",
+    "Implement only the existing TASK-058 historical REPAIR recovery boundary: current control/runtime authority separated from immutable historical subject workspace; exact failed_head_sha ancestry; immutable multi-hop lineage resolution; historical TASK binding; remote duplicate/continuation and RUN-id collision protection; portable failed-REPAIR lineage transport; existing one-active mutation authority; and unchanged TASK-057 completion semantics.",
+    "Do not modify repository code for the external Gemini/Antigravity hook incident and do not add provider-specific timeout, retry, fallback, reroute, or watchdog workarounds. Change only paths in this REPAIR modification_scope. Commit one complete permitted implementation state as soon as the TASK-058 implementation is complete and return one structural ResultPackage immediately; do not wait for the response budget to expire. Do not push or write Runtime-owned operational state."
+  ],
+  "constraints": []
+}
