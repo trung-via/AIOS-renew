@@ -1,0 +1,26 @@
+{
+  "repair_id": "REPAIR-057-001",
+  "failed_run_id": "RUN-057-001",
+  "failed_head_sha": "19688e23e035c507339cd080e7e79ca7d690882d",
+  "task": {
+    "id": "TASK-057",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "src/aios_renew/runtime.py",
+    "src/aios_renew/codex_adapter.py",
+    "src/aios_renew/antigravity_adapter.py",
+    "tests/test_runtime.py",
+    "tests/test_operator.py",
+    "tests/test_codex_adapter.py",
+    "tests/test_antigravity_adapter.py"
+  ],
+  "instructions": [
+    "Continue the exact failed TASK-057 lineage from RUN-057-001 at failed HEAD 19688e23e035c507339cd080e7e79ca7d690882d. RUN-057-001 failed only because the selected native Antigravity invocation exceeded the bounded 15-minute response deadline; it produced no committed implementation delta and Runtime verification did not start. Do not restart PRIMARY, redesign TASK-057, widen scope, change timeout policy, add retry/fallback/reroute, or modify downstream Python Agent.",
+    "Implement only the existing TASK-057 deterministic REPAIR changed-files authority correction. Runtime must derive and persist canonical complete Result.changed_files from the original TASK root base to final HEAD, while independently deriving failed-head-to-final-HEAD repair mutation truth for repair.modification_scope and CODE_FIX/NO_CHANGE gates. Preserve all other TASK-057 constraints and acceptance semantics.",
+    "Native Codex and Antigravity REPAIR instructions must no longer require the Executor to reconstruct or enumerate the full historical TASK changed-files set. Preserve narrow mutation authority, complete TASK claims, structural output, Runtime-owned canonical verification/EVIDENCE, and no-push semantics.",
+    "Add or update only the TASK-057 regression coverage necessary to prove the RUN-125-008/009 topology and unchanged PRIMARY/REMEDIATION behavior. Commit one complete permitted implementation state and return one structural ResultPackage for the complete original TASK-057 contract. Runtime owns canonical verification; do not run canonical TASK-057 verification commands or fabricate verification evidence."
+  ],
+  "constraints": []
+}
