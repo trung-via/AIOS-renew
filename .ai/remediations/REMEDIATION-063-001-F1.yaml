@@ -1,0 +1,16 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: 99c23575a6ff5ba3ed83f2908422b7059919981e
+scope:
+  modify:
+    - src/aios_renew/publication.py
+    - tests/test_publication.py
+verification:
+  affected:
+    - python -m pytest tests/test_publication.py -q
+    - git diff --check
+constraints:
+  hard:
+    - Publication must remain fast-forward-only and must never force, merge, rebase, retry, fallback, or synthesize an alternate candidate.
+    - The publication mutation must fail if remote main no longer equals the exact prior_main_sha established by the publication gate before mutation, including a compatible concurrent advance that remains an ancestor of the reviewed candidate.
+    - Preserve all previously passing TASK-063 acceptance behavior and do not modify the GitHub workflow unless strictly required by this finding.
