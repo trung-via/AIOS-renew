@@ -1081,28 +1081,40 @@ def _synchronize_primary_branch(
             )
     except Exception as exc:
         rollback_errors: list[str] = []
-        if ref_updated:
-            try:
-                _git(root, "update-ref", branch_ref, local_sha, upstream_sha)
-            except Exception as rollback_err:
-                rollback_errors.append(f"update-ref rollback failed: {rollback_err}")
-        if tree_updated:
-            try:
-                _git(root, "read-tree", "-u", "-m", upstream_sha, local_sha)
-            except Exception as rollback_err:
-                rollback_errors.append(f"read-tree rollback failed: {rollback_err}")
+        ref_restored = not ref_updated
+        tree_restored = not tree_updated
+        max_restoration_attempts = 3
 
-        if ref_updated or tree_updated:
-            if not rollback_errors:
+        for _ in range(max_restoration_attempts):
+            rollback_errors.clear()
+            if not ref_restored:
+                try:
+                    _git(root, "update-ref", branch_ref, local_sha, upstream_sha)
+                    ref_restored = True
+                except Exception as rollback_err:
+                    rollback_errors.append(f"update-ref rollback failed: {rollback_err}")
+            if not tree_restored:
+                try:
+                    _git(root, "read-tree", "-u", "-m", upstream_sha, local_sha)
+                    tree_restored = True
+                except Exception as rollback_err:
+                    rollback_errors.append(f"read-tree rollback failed: {rollback_err}")
+
+            if ref_restored and tree_restored:
                 try:
                     if _git(root, "rev-parse", "HEAD") != local_sha:
+                        ref_restored = False
                         rollback_errors.append("HEAD not restored to pre-sync state")
                     if _git(root, "symbolic-ref", "--quiet", "--short", "HEAD") != branch:
                         rollback_errors.append("branch not restored to pre-sync branch")
                     if _git(root, "status", "--porcelain"):
+                        tree_restored = False
                         rollback_errors.append("worktree or index dirty after rollback")
                 except Exception as verify_err:
                     rollback_errors.append(f"restoration verification failed: {verify_err}")
+
+            if not rollback_errors:
+                break
 
         if rollback_errors:
             details = "; ".join(rollback_errors)

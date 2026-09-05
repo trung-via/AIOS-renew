@@ -2160,29 +2160,41 @@ def test_synchronization_restoration_read_tree_failure_fails_closed(
 
     git_calls = []
     real_git = operator_module._git
+    read_tree_rollback_injected = False
 
     def failing_git(root, *args, **kwargs):
+        nonlocal read_tree_rollback_injected
         git_calls.append(args)
         if args and args[0] == "update-ref" and args[1:] == (branch_ref, published_sha, local_sha):
             raise OperatorError("simulated update-ref forward failure")
-        if args and args[0] == "read-tree" and args[1:] == ("-u", "-m", published_sha, local_sha):
+        if (
+            args
+            and args[0] == "read-tree"
+            and args[1:] == ("-u", "-m", published_sha, local_sha)
+            and not read_tree_rollback_injected
+        ):
+            read_tree_rollback_injected = True
             raise OperatorError("simulated read-tree rollback failure")
         return real_git(root, *args, **kwargs)
 
     monkeypatch.setattr(operator_module, "_git", failing_git)
     runner = FakeCodexRunner(repo)
 
-    with pytest.raises(
-        OperatorError, match="upstream synchronization restoration failed"
-    ):
+    with pytest.raises(OperatorError, match="upstream fast-forward failed"):
         run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
 
+    assert git(repo, "rev-parse", "HEAD") == local_sha
+    assert git(repo, "symbolic-ref", "--short", "HEAD") == "main"
+    assert git(repo, "status", "--porcelain") == ""
+    assert (repo / "INITIAL.txt").read_text(encoding="utf-8") == "initial content\n"
+    assert not (repo / "NEW_REMOTE.txt").exists()
+    assert not (repo / ".ai/tasks/TASK-101.yaml").exists()
     assert not list(runtime_paths(repo).runs.glob("*.json"))
     assert len(runner.calls) == 0
 
     assert ("read-tree", "-u", "-m", local_sha, published_sha) in git_calls
     assert ("update-ref", branch_ref, published_sha, local_sha) in git_calls
-    assert ("read-tree", "-u", "-m", published_sha, local_sha) in git_calls
+    assert git_calls.count(("read-tree", "-u", "-m", published_sha, local_sha)) >= 2
     prohibited = {"merge", "rebase", "reset", "checkout", "stash", "clean", "pull", "push", "revert"}
     assert not any(args and args[0] in prohibited for args in git_calls)
 
@@ -2211,9 +2223,10 @@ def test_synchronization_restoration_update_ref_failure_fails_closed(
     git_calls = []
     real_git = operator_module._git
     status_checked_after_update = False
+    update_ref_rollback_injected = False
 
     def failing_git(root, *args, **kwargs):
-        nonlocal status_checked_after_update
+        nonlocal status_checked_after_update, update_ref_rollback_injected
         git_calls.append(args)
         if (
             args
@@ -2223,8 +2236,69 @@ def test_synchronization_restoration_update_ref_failure_fails_closed(
         ):
             status_checked_after_update = True
             return "?? unexpected_untracked_file\n"
-        if args and args[0] == "update-ref" and args[1:] == (branch_ref, local_sha, published_sha):
+        if (
+            args
+            and args[0] == "update-ref"
+            and args[1:] == (branch_ref, local_sha, published_sha)
+            and not update_ref_rollback_injected
+        ):
+            update_ref_rollback_injected = True
             raise OperatorError("simulated update-ref rollback failure")
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", failing_git)
+    runner = FakeCodexRunner(repo)
+
+    with pytest.raises(OperatorError, match="repository dirty after synchronization"):
+        run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    assert git(repo, "rev-parse", "HEAD") == local_sha
+    assert git(repo, "symbolic-ref", "--short", "HEAD") == "main"
+    assert git(repo, "status", "--porcelain") == ""
+    assert (repo / "INITIAL.txt").read_text(encoding="utf-8") == "initial content\n"
+    assert not (repo / "NEW_REMOTE.txt").exists()
+    assert not (repo / ".ai/tasks/TASK-101.yaml").exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert len(runner.calls) == 0
+
+    assert ("read-tree", "-u", "-m", local_sha, published_sha) in git_calls
+    assert ("update-ref", branch_ref, published_sha, local_sha) in git_calls
+    assert git_calls.count(("update-ref", branch_ref, local_sha, published_sha)) >= 2
+    assert ("read-tree", "-u", "-m", published_sha, local_sha) in git_calls
+    prohibited = {"merge", "rebase", "reset", "checkout", "stash", "clean", "pull", "push", "revert"}
+    assert not any(args and args[0] in prohibited for args in git_calls)
+
+
+def test_synchronization_unrecoverable_restoration_failure_raises_restoration_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    (repo / "INITIAL.txt").write_text("initial content\n", encoding="utf-8")
+    git(repo, "add", "INITIAL.txt")
+    git(repo, "commit", "--quiet", "-m", "add initial file")
+    local_sha = git(repo, "rev-parse", "HEAD")
+    branch_ref = git(repo, "symbolic-ref", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    published_sha = publish_upstream(
+        repo,
+        {
+            ".ai/tasks/TASK-101.yaml": TASK_SOURCE,
+            "INITIAL.txt": "upstream modified content\n",
+            "NEW_REMOTE.txt": "remote content\n",
+        },
+        "publish upstream changes",
+    )
+
+    git_calls = []
+    real_git = operator_module._git
+
+    def failing_git(root, *args, **kwargs):
+        git_calls.append(args)
+        if args and args[0] == "update-ref" and args[1:] == (branch_ref, published_sha, local_sha):
+            raise OperatorError("simulated update-ref forward failure")
+        if args and args[0] == "read-tree" and args[1:] == ("-u", "-m", published_sha, local_sha):
+            raise OperatorError("unrecoverable read-tree rollback failure")
         return real_git(root, *args, **kwargs)
 
     monkeypatch.setattr(operator_module, "_git", failing_git)
@@ -2237,13 +2311,6 @@ def test_synchronization_restoration_update_ref_failure_fails_closed(
 
     assert not list(runtime_paths(repo).runs.glob("*.json"))
     assert len(runner.calls) == 0
-
-    assert ("read-tree", "-u", "-m", local_sha, published_sha) in git_calls
-    assert ("update-ref", branch_ref, published_sha, local_sha) in git_calls
-    assert ("update-ref", branch_ref, local_sha, published_sha) in git_calls
-    assert ("read-tree", "-u", "-m", published_sha, local_sha) in git_calls
-    prohibited = {"merge", "rebase", "reset", "checkout", "stash", "clean", "pull", "push", "revert"}
-    assert not any(args and args[0] in prohibited for args in git_calls)
 
 
 def test_primary_upstream_equal_is_noop_and_admission_proceeds(
