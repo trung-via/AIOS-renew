@@ -375,6 +375,7 @@ def publish_review_decision(
         "push",
         "--porcelain",
         "--no-tags",
+        f"--force-with-lease={main_ref}:{prior_main_sha}",
         remote,
         f"{reviewed_sha}:{main_ref}",
         allow_fail=True,

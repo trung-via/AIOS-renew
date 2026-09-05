@@ -101,6 +101,7 @@ def make_lineage(
     review_sha: str | None = None,
     verdict: str = "PASS",
     review_documents: int = 1,
+    intermediate_candidate: bool = False,
 ) -> dict[str, object]:
     repo = root / "repo"
     remote = root / "upstream.git"
@@ -120,6 +121,14 @@ def make_lineage(
     git(repo, "remote", "add", "origin", str(remote))
     git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
 
+    intermediate_sha = None
+    if intermediate_candidate:
+        (repo / "product.txt").write_text(
+            "intermediate candidate\n", encoding="utf-8"
+        )
+        git(repo, "add", "product.txt")
+        git(repo, "commit", "--quiet", "-m", "intermediate candidate")
+        intermediate_sha = git(repo, "rev-parse", "HEAD")
     (repo / "product.txt").write_text("candidate\n", encoding="utf-8")
     git(repo, "add", "product.txt")
     git(repo, "commit", "--quiet", "-m", "candidate")
@@ -181,6 +190,7 @@ def make_lineage(
         "remote": remote,
         "run_id": run_id,
         "base_sha": base_sha,
+        "intermediate_sha": intermediate_sha,
         "candidate_sha": candidate_sha,
         "decision_sha": decision_sha,
     }
@@ -367,6 +377,35 @@ def test_concurrent_main_update_is_not_overwritten(
 
     assert raced is True
     assert remote_main(lineage) == concurrent_sha
+
+
+def test_compatible_concurrent_main_update_fails_exact_sha_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lineage = make_lineage(tmp_path, intermediate_candidate=True)
+    real_git = publication_module._git
+    raced = False
+
+    def racing_git(repo_path, *args, **kwargs):
+        nonlocal raced
+        if args and args[0] == "push" and not raced:
+            raced = True
+            git(
+                lineage["remote"],
+                "update-ref",
+                "refs/heads/main",
+                lineage["intermediate_sha"],
+                lineage["base_sha"],
+            )
+        return real_git(repo_path, *args, **kwargs)
+
+    monkeypatch.setattr(publication_module, "_git", racing_git)
+
+    with pytest.raises(PublicationError, match="publication failed"):
+        publish(lineage)
+
+    assert raced is True
+    assert remote_main(lineage) == lineage["intermediate_sha"]
 
 
 def test_already_published_is_an_idempotent_no_op(tmp_path: Path) -> None:
