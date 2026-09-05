@@ -38,7 +38,12 @@ def git(repo: Path, *args: str, check: bool = True) -> str:
     ).stdout.strip()
 
 
-def review_source(reviewed_sha: str, verdict: str = "PASS") -> str:
+def review_source(
+    reviewed_sha: str,
+    verdict: str = "PASS",
+    *,
+    remediation: bool = False,
+) -> str:
     if verdict == "CHANGES_REQUIRED":
         acceptance = "{AC1: FAIL}"
         findings = """\
@@ -53,28 +58,33 @@ def review_source(reviewed_sha: str, verdict: str = "PASS") -> str:
     else:
         acceptance = "{AC1: PASS}"
         findings_value = "[]"
+    mode = "DELTA" if remediation else "PRIMARY"
+    prior_finding = "prior_finding_id: R1\n" if remediation else ""
     return f"""\
 review_id: REVIEW-063-001
 reviewed_sha: {reviewed_sha}
-mode: PRIMARY
+mode: {mode}
 verdict: {verdict}
 acceptance: {acceptance}
-findings: {findings_value}
+{prior_finding}findings: {findings_value}
 """
 
 
-def result_payload(run_id: str, head_sha: str) -> dict:
+def result_payload(
+    run_id: str, head_sha: str, *, remediation: bool = False
+) -> dict:
+    claims = [] if remediation else [
+        {
+            "id": "C1",
+            "satisfies": ["AC1"],
+            "claim": "The candidate is publishable.",
+            "evidence": ["E1"],
+        }
+    ]
     return {
         "result": {
             "head_sha": head_sha,
-            "claims": [
-                {
-                    "id": "C1",
-                    "satisfies": ["AC1"],
-                    "claim": "The candidate is publishable.",
-                    "evidence": ["E1"],
-                }
-            ],
+            "claims": claims,
             "changed_files": ["product.txt"],
             "unresolved": [],
         },
@@ -102,6 +112,8 @@ def make_lineage(
     verdict: str = "PASS",
     review_documents: int = 1,
     intermediate_candidate: bool = False,
+    remediation: bool = False,
+    remediation_scope: tuple[str, ...] = ("product.txt",),
 ) -> dict[str, object]:
     repo = root / "repo"
     remote = root / "upstream.git"
@@ -137,22 +149,50 @@ def make_lineage(
     state.mkdir()
     run_path = state / "run.json"
     result_path = state / "result.json"
-    run_path.write_text(
-        json.dumps(
-            {
-                "run_id": artifact_run_id or run_id,
-                "task": {"id": "TASK-063", "revision": 2},
-                "executor": "codex",
-                "base_sha": base_sha,
-                "workspace": str(repo),
-                "head_sha": None,
-                "status": "ACTIVE",
-            }
-        ),
-        encoding="utf-8",
-    )
+    operational_run = {
+        "run_id": artifact_run_id or run_id,
+        "task": {"id": "TASK-063", "revision": 2},
+        "executor": "codex",
+        "base_sha": base_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    run_payload = operational_run
+    if remediation:
+        run_payload = {
+            "kind": "REMEDIATION",
+            "execution": {
+                "review_id": "REVIEW-063-000",
+                "finding": {
+                    "id": "R1",
+                    "basis": "AC1",
+                    "action": "CODE_FIX",
+                    "location": "product.txt",
+                    "issue": "The prior candidate needs a narrow correction.",
+                    "expected": "Commit the corrected product.",
+                },
+                "remediation": {
+                    "finding_id": "R1",
+                    "action": "CODE_FIX",
+                    "reviewed_sha": base_sha,
+                    "modification_scope": list(remediation_scope),
+                    "affected_verification": ["git diff --check"],
+                    "constraints": [],
+                },
+                "run": operational_run,
+                "original_constraints": [],
+            },
+        }
+    run_path.write_text(json.dumps(run_payload), encoding="utf-8")
     result_path.write_text(
-        json.dumps(result_payload(run_id, result_sha or candidate_sha)),
+        json.dumps(
+            result_payload(
+                run_id,
+                result_sha or candidate_sha,
+                remediation=remediation,
+            )
+        ),
         encoding="utf-8",
     )
     transport_post_pass(
@@ -166,7 +206,11 @@ def make_lineage(
     review_dir = repo / ".ai" / "reviews"
     if review_documents:
         review_dir.mkdir(parents=True)
-        source = review_source(review_sha or candidate_sha, verdict)
+        source = review_source(
+            review_sha or candidate_sha,
+            verdict,
+            remediation=remediation,
+        )
         for index in range(review_documents):
             (review_dir / f"REVIEW-063-{index + 1:03}.yaml").write_text(
                 source, encoding="utf-8"
@@ -232,6 +276,20 @@ def test_pass_publication_moves_main_to_source_without_review_commit(
     )
 
 
+def test_pass_reviewed_remediation_publication_moves_main_to_exact_source(
+    tmp_path: Path,
+) -> None:
+    lineage = make_lineage(tmp_path, remediation=True)
+
+    report = publish(lineage)
+
+    assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert report.outcome == "PUBLISHED"
+    assert remote_main(lineage) == lineage["candidate_sha"]
+    assert remote_main(lineage) != lineage["decision_sha"]
+
+
 @pytest.mark.parametrize("verdict", ["CHANGES_REQUIRED", "BLOCKED"])
 def test_non_pass_decisions_do_not_mutate_main(
     tmp_path: Path, verdict: str
@@ -284,6 +342,32 @@ def test_run_id_mismatch_does_not_mutate_main(tmp_path: Path) -> None:
     lineage = make_lineage(tmp_path, artifact_run_id="RUN-063-999")
 
     with pytest.raises(PublicationError, match="RUN-ID mismatch"):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_remediation_run_id_mismatch_does_not_mutate_main(tmp_path: Path) -> None:
+    lineage = make_lineage(
+        tmp_path,
+        remediation=True,
+        artifact_run_id="RUN-063-999",
+    )
+
+    with pytest.raises(PublicationError, match="RUN-ID mismatch"):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_malformed_remediation_scope_does_not_mutate_main(tmp_path: Path) -> None:
+    lineage = make_lineage(
+        tmp_path,
+        remediation=True,
+        remediation_scope=(),
+    )
+
+    with pytest.raises(PublicationError, match="modification scope is empty"):
         publish(lineage)
 
     assert remote_main(lineage) == lineage["base_sha"]

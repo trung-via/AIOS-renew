@@ -18,7 +18,14 @@ from .artifacts import (
     validate_result,
     validate_result_package,
 )
-from .review import parse_review, validate_review
+from .review import (
+    Remediation,
+    Review,
+    parse_remediation,
+    parse_review,
+    validate_remediation,
+    validate_review,
+)
 from .run import ACTIVE, Run, RunTaskReference
 from .task import parse_task
 
@@ -145,6 +152,143 @@ def _mapping(value: Any, document: str) -> Mapping[str, Any]:
     return value
 
 
+def _run_from_data(data: Any, document: str) -> Run:
+    root = _mapping(data, document)
+    task_data = _mapping(root.get("task"), f"{document}.task")
+    return Run(
+        run_id=root["run_id"],
+        task=RunTaskReference(
+            id=task_data["id"], revision=task_data["revision"]
+        ),
+        executor=root["executor"],
+        base_sha=root["base_sha"],
+        workspace=root["workspace"],
+        head_sha=root.get("head_sha"),
+        status=root["status"],
+    )
+
+
+def _remediation_lineage(
+    run_data: Mapping[str, Any], *, run_id: str
+) -> tuple[Run, Remediation, Review]:
+    execution = _mapping(run_data.get("execution"), "REMEDIATION.execution")
+    run = _run_from_data(execution.get("run"), "REMEDIATION.execution.run")
+    if run.run_id != run_id:
+        raise ValueError("RUN-ID mismatch between decision ref and REMEDIATION RUN")
+
+    remediation_data = _mapping(
+        execution.get("remediation"), "REMEDIATION.execution.remediation"
+    )
+    remediation = parse_remediation(json.dumps(remediation_data))
+    finding_data = _mapping(
+        execution.get("finding"), "REMEDIATION.execution.finding"
+    )
+    prior_review = parse_review(
+        json.dumps(
+            {
+                "review_id": execution["review_id"],
+                "reviewed_sha": remediation.reviewed_sha,
+                "mode": "PRIMARY",
+                "verdict": "CHANGES_REQUIRED",
+                "acceptance": {finding_data["basis"]: "FAIL"},
+                "findings": [finding_data],
+            }
+        )
+    )
+    original_constraints = execution.get("original_constraints", [])
+    if (
+        not isinstance(original_constraints, list)
+        or not all(isinstance(item, str) for item in original_constraints)
+        or tuple(original_constraints) != remediation.constraints
+    ):
+        raise ValueError(
+            "REMEDIATION original_constraints do not match its constraints"
+        )
+    return run, remediation, prior_review
+
+
+def _validate_remediation_package(
+    repo: Path,
+    *,
+    source_sha: str,
+    task: Any,
+    run: Run,
+    remediation: Remediation,
+    prior_review: Review,
+    result: Any,
+    evidence: tuple[Any, ...],
+) -> ResultPackage:
+    if run.task.id != task.task_id or run.task.revision != task.revision:
+        raise ValueError("REMEDIATION RUN does not reference the supplied TASK")
+    if run.base_sha != remediation.reviewed_sha:
+        raise ValueError("REMEDIATION RUN base_sha does not match reviewed_sha")
+    validate_remediation(
+        review=prior_review, remediation=remediation, task=task
+    )
+    if remediation.action == "CODE_FIX" and not remediation.modification_scope:
+        raise ValueError("CODE_FIX remediation modification scope is empty")
+    if not remediation.affected_verification:
+        raise ValueError("REMEDIATION affected verification is empty")
+    if result.claims:
+        raise ValueError("remediation RESULT claims must be empty")
+    if result.unresolved:
+        raise ValueError("remediation RESULT has unresolved items")
+
+    evidence_by_id: set[str] = set()
+    for item in evidence:
+        if item.evidence_id in evidence_by_id:
+            raise ValueError(f"duplicate evidence_id: {item.evidence_id}")
+        evidence_by_id.add(item.evidence_id)
+        if item.run_id != run.run_id:
+            raise ValueError(
+                f"{item.evidence_id} does not reference RUN {run.run_id}"
+            )
+        if item.subject_sha != result.head_sha:
+            raise ValueError(
+                f"{item.evidence_id} subject_sha does not match RESULT head_sha"
+            )
+    for command in remediation.affected_verification:
+        matching = [item for item in evidence if item.source.command == command]
+        if not matching:
+            raise ValueError(
+                "missing affected verification evidence for required command: "
+                + command
+            )
+        if not any(item.result.exit_code == 0 for item in matching):
+            raise ValueError(
+                "affected verification command has no successful evidence: "
+                + command
+            )
+
+    code, changed_output, _ = _git(
+        repo,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        remediation.reviewed_sha,
+        source_sha,
+        allow_fail=True,
+    )
+    if code:
+        raise ValueError("cannot inspect REMEDIATION committed delta")
+    changed_files = {path for path in changed_output.split("\0") if path}
+    if set(result.changed_files) != changed_files:
+        raise ValueError("RESULT.changed_files mismatch")
+    outside_scope = changed_files.difference(remediation.modification_scope)
+    if outside_scope:
+        raise ValueError(
+            "committed changed paths outside REMEDIATION modification scope: "
+            + ", ".join(sorted(outside_scope))
+        )
+    if remediation.action == "EVIDENCE_ONLY":
+        if source_sha != remediation.reviewed_sha or changed_files:
+            raise ValueError("EVIDENCE_ONLY remediation changed repository HEAD")
+    elif source_sha == remediation.reviewed_sha or not changed_files:
+        raise ValueError("CODE_FIX remediation committed delta is empty")
+    return ResultPackage(result=result, evidence=evidence)
+
+
 def _load_success_lineage(
     repo: Path,
     *,
@@ -197,20 +341,18 @@ def _load_success_lineage(
         run_data = _mapping(
             _json_no_duplicates(run_bytes, document="RUN"), "RUN"
         )
-        if run_data.get("run_id") != run_id:
-            raise ValueError("RUN-ID mismatch between decision ref and RUN")
-        task_data = _mapping(run_data.get("task"), "RUN.task")
-        run = Run(
-            run_id=run_data["run_id"],
-            task=RunTaskReference(
-                id=task_data["id"], revision=task_data["revision"]
-            ),
-            executor=run_data["executor"],
-            base_sha=run_data["base_sha"],
-            workspace=run_data["workspace"],
-            head_sha=run_data.get("head_sha"),
-            status=run_data["status"],
-        )
+        remediation = None
+        prior_review = None
+        if "kind" not in run_data:
+            if run_data.get("run_id") != run_id:
+                raise ValueError("RUN-ID mismatch between decision ref and RUN")
+            run = _run_from_data(run_data, "RUN")
+        elif run_data.get("kind") == "REMEDIATION":
+            run, remediation, prior_review = _remediation_lineage(
+                run_data, run_id=run_id
+            )
+        else:
+            raise ValueError("unknown canonical RUN kind")
         if run.status != ACTIVE:
             raise ValueError("canonical successful RUN status is invalid")
         code, kind, _ = _git(
@@ -246,14 +388,41 @@ def _load_success_lineage(
             run_id=run_id,
         )
         task = parse_task(task_bytes.decode("utf-8", errors="strict"))
-        package = validate_result_package(
-            task=task, run=run, result=result, evidence=evidence
-        )
+        if remediation is None:
+            package = validate_result_package(
+                task=task, run=run, result=result, evidence=evidence
+            )
+        else:
+            assert prior_review is not None
+            package = _validate_remediation_package(
+                repo,
+                source_sha=source_sha,
+                task=task,
+                run=run,
+                remediation=remediation,
+                prior_review=prior_review,
+                result=result,
+                evidence=evidence,
+            )
         if package.result.unresolved:
             raise ValueError("successful RESULT contains unresolved items")
 
         review = parse_review(review_bytes.decode("utf-8", errors="strict"))
-        validate_review(task=task, result=result, review=review)
+        if remediation is None:
+            validate_review(task=task, result=result, review=review)
+        else:
+            if review.mode != "DELTA":
+                raise ValueError("REMEDIATION candidate requires a DELTA REVIEW")
+            if review.prior_finding_id != prior_review.findings[0].id:
+                raise ValueError(
+                    "DELTA REVIEW prior finding does not match REMEDIATION"
+                )
+            validate_review(
+                task=task,
+                result=result,
+                review=review,
+                prior_review=prior_review,
+            )
         if review.verdict != "PASS":
             raise ValueError(f"REVIEW verdict is {review.verdict}, not PASS")
         if review.reviewed_sha != source_sha:
@@ -446,4 +615,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
