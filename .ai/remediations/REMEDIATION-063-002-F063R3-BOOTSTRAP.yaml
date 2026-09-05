@@ -1,0 +1,11 @@
+finding_id: F063R3-BOOTSTRAP
+action: CODE_FIX
+reviewed_sha: f91916d61ed9f58dbe0c99860f299c791be08471
+scope:
+  modify:
+    - .github/workflows/aios-auto-publish.yml
+    - tests/test_publication.py
+verification:
+  affected:
+    - python -m pytest tests/test_publication.py -q
+    - git diff --check
