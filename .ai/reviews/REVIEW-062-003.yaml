@@ -1,0 +1,32 @@
+review_id: REVIEW-062-003
+reviewed_sha: b41fea079af50be55bab55312f7f74933d3d621c
+mode: DELTA
+verdict: CHANGES_REQUIRED
+prior_finding_id: F1
+acceptance:
+  AC3: FAIL
+findings:
+  - id: F1
+    basis: AC3
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_synchronize_primary_branch
+    issue: >
+      The remediation now surfaces rollback failures instead of swallowing them, but it
+      still does not establish the required exact pre-sync repository state when a
+      restoration command itself fails. In the read-tree restoration-failure regression,
+      forward read-tree has already changed index/worktree state and the forced rollback
+      read-tree failure leaves that mutation unrecovered. In the update-ref restoration-
+      failure regression, a forced ref rollback failure can leave HEAD at upstream while
+      index/worktree are restored toward local. Both tests assert only explicit failure,
+      no RUN creation, and no Executor invocation; they do not assert restored HEAD,
+      branch, cleanliness, file contents, or absence of upstream-only files. F1 therefore
+      remains unresolved against TASK-062's fail-closed exact pre-sync-state invariant.
+    expected: >
+      Close F1 completely. A synchronization path must not return after a recoverable
+      synchronization/restoration failure while branch, HEAD, index, or worktree differ
+      from the exact pre-sync state. Regression coverage must inject restoration-stage
+      failure and prove the exact pre-sync HEAD/branch, clean status, original tracked-file
+      contents, absence of upstream-only files, no RUN creation, and no Executor invocation.
+      Do not weaken TASK-062 by redefining fail-closed as error-reporting only. If exact
+      preservation cannot be established under the existing TASK constraints, surface
+      that as BLOCKED rather than claiming semantic completion.
