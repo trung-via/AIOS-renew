@@ -1,5 +1,5 @@
 task_id: TASK-063
-revision: 1
+revision: 2
 
 goal: >
   Remove the remaining Human publication handoff after semantic REVIEW PASS by making
@@ -18,8 +18,11 @@ problem: >
 
 assumptions:
   - >
-    Canonical main at TASK-063 authoring is
-    1a1bdf2f33014759298330437e073f8daab2c8e6 and includes published TASK-062 revision 2.
+    Canonical main at TASK-063 authoring includes published TASK-062 revision 2.
+  - >
+    Revision 2 corrects only the canonical regression-test path from revision 1;
+    the semantic goal, mutation scope, constraints, acceptance criteria, and publication
+    authority are unchanged.
   - >
     Human has explicitly authorized automatic publication after canonical semantic
     REVIEW PASS, provided deterministic publication gates succeed.
@@ -51,7 +54,7 @@ scope:
     - src/aios_renew/review.py
     - src/aios_renew/review_transport.py
     - tests/test_review.py
-    - tests/test_review_transport.py
+    - tests/test_operator.py
 
   modify:
     - src/aios_renew/publication.py
@@ -156,5 +159,5 @@ acceptance:
 
 verification:
   required:
-    - python -m pytest tests/test_publication.py tests/test_review.py tests/test_review_transport.py -q
+    - python -m pytest tests/test_publication.py tests/test_review.py tests/test_operator.py -q
     - git diff --check
