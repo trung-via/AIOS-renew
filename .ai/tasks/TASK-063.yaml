@@ -1,0 +1,160 @@
+task_id: TASK-063
+revision: 1
+
+goal: >
+  Remove the remaining Human publication handoff after semantic REVIEW PASS by making
+  canonical review-decision transport trigger a deterministic repository-native
+  publication gate that advances remote main to the exact reviewed source candidate,
+  without publishing review metadata or repeating unchanged verification.
+
+problem: >
+  TASK-062 removed the repeated Human pre-run sync step, but publication still depends
+  on the Brain manually moving main after it has already produced a canonical semantic
+  PASS review. That manual mutation is deterministic coordination work rather than
+  semantic reasoning. It should be owned by bounded repository automation that can
+  validate the canonical PASS lineage, preserve review/source separation, fail closed
+  on stale or conflicting state, and publish exactly once without adding another model
+  call or verification cycle.
+
+assumptions:
+  - >
+    Canonical main at TASK-063 authoring is
+    1a1bdf2f33014759298330437e073f8daab2c8e6 and includes published TASK-062 revision 2.
+  - >
+    Human has explicitly authorized automatic publication after canonical semantic
+    REVIEW PASS, provided deterministic publication gates succeed.
+  - >
+    Canonical semantic review decisions are transported on remote refs named
+    aios/review-decision/<RUN_ID>, while successful RUN source/evidence artifacts are
+    transported separately under aios/artifacts/<RUN_ID>.
+  - >
+    REVIEW remains Brain-owned semantic judgment. Repository automation may validate
+    identity, structure, lineage, ancestry, and mutation safety, but may not create,
+    reinterpret, or replace semantic review.
+  - >
+    Runtime verification evidence bound to the reviewed candidate remains valid until
+    relevant state changes and must not be rerun merely for publication.
+  - >
+    Existing TASK-062 pre-admission auto-sync, exactly-one Executor authority,
+    Runtime-owned verification, TASK-059 interruption behavior, TASK-060 timing, and
+    TASK-061 deterministic model defaults remain unchanged.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-062.yaml
+    - src/aios_renew/review.py
+    - src/aios_renew/review_transport.py
+    - tests/test_review.py
+    - tests/test_review_transport.py
+
+  modify:
+    - src/aios_renew/publication.py
+    - tests/test_publication.py
+    - .github/workflows/aios-auto-publish.yml
+
+non_goals:
+  - Automate semantic REVIEW generation or invoke any model as Reviewer.
+  - Publish CHANGES_REQUIRED, BLOCKED, malformed, missing, ambiguous, or unbound review decisions.
+  - Publish review-decision commits or review metadata as product implementation.
+  - Rerun unchanged Runtime verification, tests, or evidence merely to authorize publication.
+  - Add automatic Executor retry, fallback, reroute, remediation, repair, or task execution.
+  - Change TASK-062 synchronization semantics, Executor selection, model defaults, timing, or interruption behavior.
+  - Add merge commits, rebase, force-push, force-update, reset-based recovery, or conflict resolution.
+  - Change repository branch-protection settings, user-global Git configuration, or require external orchestration services.
+  - Change downstream repositories or dependency pins.
+  - Perform unrelated refactoring or cleanup.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Automatic publication may begin only from a canonical remote
+      aios/review-decision/<RUN_ID> event. It must require exactly one structurally valid
+      REVIEW decision for that RUN and must make no product-main mutation unless the
+      verdict is PASS.
+    - >
+      Publication must deterministically bind the review decision to the exact successful
+      RUN lineage for the same RUN_ID, including the transported RUN/RESULT facts and the
+      REVIEW.reviewed_sha. Missing, mismatched, malformed, conflicting, or ambiguous
+      lineage must fail closed before main mutation.
+    - >
+      The only source SHA eligible for publication is REVIEW.reviewed_sha, and it must
+      equal the immutable successful RESULT head SHA for the bound RUN. The review-decision
+      commit itself and all review metadata remain outside product main.
+    - >
+      Before mutation, current remote main must be equal to or an ancestor of the exact
+      reviewed candidate. If main has diverged, advanced incompatibly, or cannot be
+      established unambiguously, publication must fail closed. Publication must use
+      fast-forward semantics only and must never force, merge, rebase, or synthesize a
+      replacement candidate.
+    - >
+      A publication race must not overwrite a concurrently changed main. The mutation
+      attempt must fail rather than force through stale assumptions. No automatic retry,
+      fallback, or alternate publication path is allowed.
+    - >
+      If remote main already equals REVIEW.reviewed_sha, treat publication as an
+      idempotent no-op success without creating another product commit.
+    - >
+      Publication must not invoke Executor code, Runtime verification commands, semantic
+      review logic, or any model. It consumes already-established canonical PASS state
+      and performs deterministic coordination only.
+    - >
+      The repository-native trigger must require only minimum GitHub repository authority
+      needed to advance main and read canonical refs. It must not require unrelated
+      external credentials or broaden repository permissions beyond publication needs.
+    - >
+      The automation must emit enough deterministic outcome information to identify the
+      source RUN, reviewed SHA, prior main SHA, and final publication result so a failed
+      or successful attempt is attributable and replayable from canonical refs.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A deterministic integration regression for a canonical PASS review-decision event
+      proves repository automation publishes remote main to exactly REVIEW.reviewed_sha
+      with no Human publication command and without including the review-decision commit.
+  - id: AC2
+    condition: >
+      Deterministic regressions prove CHANGES_REQUIRED, BLOCKED, malformed review,
+      missing/ambiguous decision content, RUN-ID mismatch, missing successful artifacts,
+      or REVIEW/RESULT SHA mismatch produce no main mutation.
+  - id: AC3
+    condition: >
+      Publication lineage checks prove the review decision is bound to the same canonical
+      successful RUN and exact RESULT head, and that review metadata remains on its
+      metadata ref rather than entering product main.
+  - id: AC4
+    condition: >
+      Deterministic regressions for current-main divergence and a concurrent main update
+      prove publication fails closed with no force update, merge, rebase, fallback, or
+      automatic retry.
+  - id: AC5
+    condition: >
+      When main already equals the reviewed candidate, publication succeeds as an
+      idempotent no-op and creates no additional product commit or review-derived commit.
+  - id: AC6
+    condition: >
+      Publication regressions prove no Runtime verification command, Executor invocation,
+      or semantic model/review call is performed during publication.
+  - id: AC7
+    condition: >
+      The repository workflow is automatically triggered by canonical
+      aios/review-decision/** publication events, has only the minimum required repository
+      write authority, and reports source RUN, reviewed SHA, prior main SHA, and outcome.
+  - id: AC8
+    condition: >
+      Existing REVIEW parsing/validation and review-transport regression coverage remains
+      passing, and TASK-063 introduces no change to TASK-062 synchronization or normal
+      execution/correction flows.
+
+verification:
+  required:
+    - python -m pytest tests/test_publication.py tests/test_review.py tests/test_review_transport.py -q
+    - git diff --check
