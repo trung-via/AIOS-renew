@@ -533,6 +533,7 @@ def run_task(
     verification_runner: VerificationRunner = subprocess.run,
     monotonic_clock: MonotonicClock = time.monotonic,
     synchronize: bool = True,
+    preflight_sha: str | None = None,
 ) -> RunSummary:
     """Execute a TASK and persist/transport deterministic pre-PASS failure facts."""
 
@@ -549,6 +550,7 @@ def run_task(
             attempt=attempt,
             observation_tracker=observation_tracker,
             synchronize=synchronize,
+            preflight_sha=preflight_sha,
         )
     except KeyboardInterrupt as original:
         if attempt.run_path is not None:
@@ -590,6 +592,7 @@ def _run_task_impl(
     attempt: _RunAttempt,
     observation_tracker: RunObservationTracker,
     synchronize: bool = True,
+    preflight_sha: str | None = None,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
 
@@ -601,8 +604,20 @@ def _run_task_impl(
     with RepositoryLock(state.lock):
         if synchronize:
             _synchronize_primary_branch(root)
+        else:
+            if _git(root, "status", "--porcelain"):
+                raise OperatorError("repository dirty")
+            try:
+                branch = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+            except OperatorError as exc:
+                raise OperatorError("repository HEAD is detached") from exc
+            if branch != "main":
+                raise OperatorError("current branch is not main")
+        current_sha = _git(root, "rev-parse", "HEAD")
+        if preflight_sha is not None and current_sha != preflight_sha:
+            raise OperatorError("current HEAD does not match preflight state")
         task = load_task(root, task_id)
-        base_sha = _git(root, "rev-parse", "HEAD")
+        base_sha = current_sha
         run_id = next_run_id(task_id, state.runs)
         run = Run.from_task(
             run_id=run_id,
@@ -1122,20 +1137,29 @@ def _synchronize_primary_branch(
     return requires_restart
 
 
+@dataclass(frozen=True)
+class PreflightResult:
+    restart_code: int | None = None
+    preflight_sha: str | None = None
+
+
 def _preflight_primary_sync(
     root: Path,
     *,
     argv: list[str] | None = None,
     runner: NativeRunner = subprocess.run,
-) -> int | None:
+) -> PreflightResult:
     """Safely synchronize clean local main before TASK loading and admission."""
 
     state = runtime_paths(root)
     with RepositoryLock(state.lock):
         needs_restart = _synchronize_primary_branch(root, allow_restart=True)
+        preflight_sha = _git(root, "rev-parse", "HEAD")
     if needs_restart:
-        return _restart_primary_invocation(root, argv=argv, runner=runner)
-    return None
+        return PreflightResult(
+            restart_code=_restart_primary_invocation(root, argv=argv, runner=runner)
+        )
+    return PreflightResult(preflight_sha=preflight_sha)
 
 
 def _restart_primary_invocation(
@@ -2135,11 +2159,11 @@ def main(
             print(describe_task(args.task_id, repo=args.repo).render())
         elif args.command == "run":
             repo_root = resolve_repository(args.repo)
-            restart_code = _preflight_primary_sync(
+            preflight = _preflight_primary_sync(
                 repo_root, argv=argv, runner=native_runner
             )
-            if restart_code is not None:
-                return restart_code
+            if preflight.restart_code is not None:
+                return preflight.restart_code
             summary = run_task(
                 args.task_id,
                 executor=args.executor,
@@ -2148,6 +2172,7 @@ def main(
                 verification_runner=verification_runner,
                 monotonic_clock=monotonic_clock,
                 synchronize=False,
+                preflight_sha=preflight.preflight_sha,
             )
             print(summary.render())
         elif args.command == "remediate":

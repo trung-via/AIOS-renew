@@ -2008,6 +2008,57 @@ def test_primary_sync_upstream_race_between_preflight_and_admission_does_not_rei
     assert ("merge", "--ff-only", upstream) in git_calls
 
 
+@pytest.mark.parametrize(
+    ("mutation", "error_match"),
+    [
+        (
+            lambda repo: git(repo, "commit", "--allow-empty", "-m", "intervening local commit"),
+            "current HEAD does not match preflight state",
+        ),
+        (
+            lambda repo: (repo / "DIRTY.txt").write_text("dirty\n", encoding="utf-8"),
+            "repository dirty",
+        ),
+        (
+            lambda repo: git(repo, "checkout", "--detach"),
+            "repository HEAD is detached",
+        ),
+        (
+            lambda repo: git(repo, "checkout", "-b", "other-branch"),
+            "current branch is not main",
+        ),
+    ],
+)
+def test_primary_sync_local_mutation_between_preflight_and_admission_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mutation,
+    error_match: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    publish_upstream(
+        repo, {"UPSTREAM_DOC.txt": "upstream doc\n"}, "advance upstream"
+    )
+    runner = FakeCodexRunner(repo)
+    real_run_task = operator_module.run_task
+
+    def mutating_run_task(*args, **kwargs):
+        mutation(repo)
+        return real_run_task(*args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "run_task", mutating_run_task)
+
+    exit_code = operator_module.main(
+        ["run", "TASK-101", "--executor", "codex", "--repo", str(repo)],
+        native_runner=runner,
+    )
+    assert exit_code == 1
+    assert error_match in capsys.readouterr().err
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert len(runner.calls) == 0
+
+
 def test_primary_upstream_equal_is_noop_and_admission_proceeds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
