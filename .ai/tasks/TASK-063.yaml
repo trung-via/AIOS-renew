@@ -1,5 +1,5 @@
 task_id: TASK-063
-revision: 2
+revision: 3
 
 goal: >
   Remove the remaining Human publication handoff after semantic REVIEW PASS by making
@@ -8,21 +8,35 @@ goal: >
   without publishing review metadata or repeating unchanged verification.
 
 problem: >
-  TASK-062 removed the repeated Human pre-run sync step, but publication still depends
-  on the Brain manually moving main after it has already produced a canonical semantic
-  PASS review. That manual mutation is deterministic coordination work rather than
-  semantic reasoning. It should be owned by bounded repository automation that can
-  validate the canonical PASS lineage, preserve review/source separation, fail closed
-  on stale or conflicting state, and publish exactly once without adding another model
-  call or verification cycle.
+  TASK-063 revision 2 established the publication gate but left a contract tension in
+  concurrent-main protection. The gate must reject any remote-main change after it has
+  established prior_main_sha, including a compatible advance that remains an ancestor
+  of the reviewed candidate. A plain fast-forward push cannot detect that compatible
+  race, while an unrestricted force mechanism would exceed the intended publication
+  authority. Revision 3 therefore authorizes one exact-SHA lease only as a compare-and-
+  swap guard after normal fast-forward ancestry has already been proven.
 
 assumptions:
   - >
-    Canonical main at TASK-063 authoring includes published TASK-062 revision 2.
+    Canonical main at revision-3 authoring is
+    0b5efefffe5c02789193a837713a41ef7ed5a896 and contains TASK-063 revision 2 but no
+    published TASK-063 implementation.
   - >
-    Revision 2 corrects only the canonical regression-test path from revision 1;
-    the semantic goal, mutation scope, constraints, acceptance criteria, and publication
-    authority are unchanged.
+    REVIEW-063-001 reviewed candidate
+    99c23575a6ff5ba3ed83f2908422b7059919981e, marked only AC4 FAIL, and all other
+    TASK-063 revision-2 acceptance criteria PASS.
+  - >
+    RUN-063-004 was an admitted REMEDIATION from that reviewed SHA and failed at
+    COMPLETION_GATE because its remediation ResultPackage contained non-empty claims.
+    It nevertheless produced clean in-scope candidate
+    accc82dad3eebb27500a33355bbf702975a09960. That candidate may be reused if it
+    satisfies revision 3, but it is not completion evidence because canonical
+    verification did not run.
+  - >
+    Human explicitly authorizes the exact-SHA lease described in this revision as a
+    narrow exceptional publication authority solely to provide compare-and-swap race
+    protection. This does not authorize general force-push or non-fast-forward
+    publication.
   - >
     Human has explicitly authorized automatic publication after canonical semantic
     REVIEW PASS, provided deterministic publication gates succeed.
@@ -35,7 +49,7 @@ assumptions:
     identity, structure, lineage, ancestry, and mutation safety, but may not create,
     reinterpret, or replace semantic review.
   - >
-    Runtime verification evidence bound to the reviewed candidate remains valid until
+    Runtime verification evidence bound to a reviewed candidate remains valid until
     relevant state changes and must not be rerun merely for publication.
   - >
     Existing TASK-062 pre-admission auto-sync, exactly-one Executor authority,
@@ -68,7 +82,9 @@ non_goals:
   - Rerun unchanged Runtime verification, tests, or evidence merely to authorize publication.
   - Add automatic Executor retry, fallback, reroute, remediation, repair, or task execution.
   - Change TASK-062 synchronization semantics, Executor selection, model defaults, timing, or interruption behavior.
-  - Add merge commits, rebase, force-push, force-update, reset-based recovery, or conflict resolution.
+  - Add merge commits, rebase, reset-based recovery, conflict resolution, or synthesized replacement candidates.
+  - Authorize any force-push, force-update, lease form, or remote-main mutation other than the exact-SHA compare-and-swap lease explicitly bounded by this revision.
+  - Use the exact-SHA lease to publish a reviewed candidate that is not already proven to be a fast-forward descendant of the prechecked prior_main_sha.
   - Change repository branch-protection settings, user-global Git configuration, or require external orchestration services.
   - Change downstream repositories or dependency pins.
   - Perform unrelated refactoring or cleanup.
@@ -91,15 +107,27 @@ constraints:
       equal the immutable successful RESULT head SHA for the bound RUN. The review-decision
       commit itself and all review metadata remain outside product main.
     - >
-      Before mutation, current remote main must be equal to or an ancestor of the exact
-      reviewed candidate. If main has diverged, advanced incompatibly, or cannot be
-      established unambiguously, publication must fail closed. Publication must use
-      fast-forward semantics only and must never force, merge, rebase, or synthesize a
-      replacement candidate.
+      Before mutation, current remote main must be established as exactly prior_main_sha,
+      and prior_main_sha must be equal to or an ancestor of the exact reviewed candidate.
+      If ancestry is not a normal fast-forward relation, publication must fail closed
+      before any mutation attempt.
     - >
-      A publication race must not overwrite a concurrently changed main. The mutation
-      attempt must fail rather than force through stale assumptions. No automatic retry,
-      fallback, or alternate publication path is allowed.
+      After fast-forward ancestry is proven, the publication mutation may use exactly one
+      explicit expected-old-SHA lease for refs/heads/main whose expected value is the
+      already established prior_main_sha. The lease exists only as a compare-and-swap
+      guard so any intervening remote-main change causes rejection. It must not be used
+      to bypass ancestry, authorize a non-fast-forward update, or broaden publication
+      authority.
+    - >
+      A publication race must fail if remote main no longer equals the exact prechecked
+      prior_main_sha, including when the concurrent new main remains an ancestor of the
+      reviewed candidate and a normal fast-forward would otherwise succeed. No automatic
+      retry, fallback, alternate publication path, merge, rebase, or replacement
+      candidate is allowed.
+    - >
+      No other force flag, lease form, force update, or non-fast-forward publication is
+      authorized. The exact expected-old-SHA lease is the sole exceptional mechanism and
+      remains subordinate to the prior fast-forward ancestry proof.
     - >
       If remote main already equals REVIEW.reviewed_sha, treat publication as an
       idempotent no-op success without creating another product commit.
@@ -126,8 +154,8 @@ acceptance:
   - id: AC2
     condition: >
       Deterministic regressions prove CHANGES_REQUIRED, BLOCKED, malformed review,
-      missing/ambiguous decision content, RUN-ID mismatch, missing successful artifacts,
-      or REVIEW/RESULT SHA mismatch produce no main mutation.
+      missing or ambiguous decision content, RUN-ID mismatch, missing successful
+      artifacts, or REVIEW/RESULT SHA mismatch produce no main mutation.
   - id: AC3
     condition: >
       Publication lineage checks prove the review decision is bound to the same canonical
@@ -135,9 +163,13 @@ acceptance:
       metadata ref rather than entering product main.
   - id: AC4
     condition: >
-      Deterministic regressions for current-main divergence and a concurrent main update
-      prove publication fails closed with no force update, merge, rebase, fallback, or
-      automatic retry.
+      Deterministic regressions prove divergent main and both incompatible and compatible
+      concurrent-main changes fail closed. The compatible-race regression must show that
+      mutation is bound to the exact prechecked prior_main_sha even when the raced main is
+      still an ancestor of REVIEW.reviewed_sha. Separate coverage must prove the lease
+      cannot authorize a non-fast-forward candidate because ancestry is rejected before
+      mutation. No retry, fallback, merge, rebase, alternate candidate, or broader force
+      authority is exercised.
   - id: AC5
     condition: >
       When main already equals the reviewed candidate, publication succeeds as an
