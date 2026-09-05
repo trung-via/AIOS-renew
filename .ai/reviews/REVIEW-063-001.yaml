@@ -1,0 +1,31 @@
+review_id: REVIEW-063-001
+reviewed_sha: 99c23575a6ff5ba3ed83f2908422b7059919981e
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: FAIL
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings:
+  - id: F1
+    basis: AC4
+    action: CODE_FIX
+    location: src/aios_renew/publication.py
+    issue: >
+      Publication reads and validates prior_main_sha, then performs a plain fast-forward
+      push without binding the mutation to that exact previously observed main SHA.
+      If remote main advances concurrently to another commit that is still an ancestor
+      of REVIEW.reviewed_sha before the push begins, the plain push remains a legal
+      fast-forward and succeeds instead of failing closed. The current regression only
+      injects a divergent concurrent commit, which does not cover this compatible race.
+    expected: >
+      Publication mutation must fail if remote main changes from the exact prechecked
+      prior_main_sha before mutation, including when the concurrent new main is still an
+      ancestor of the reviewed candidate. Preserve fast-forward-only publication, no
+      force update, no retry/fallback, and add deterministic regression coverage for the
+      compatible concurrent-main race.
