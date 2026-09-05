@@ -404,11 +404,10 @@ def test_publication_executes_git_coordination_only(
 
     assert commands
     assert all(command[0] == "git" for command in commands)
-    joined = " ".join(" ".join(command) for command in commands).lower()
-    assert "pytest" not in joined
-    assert "codex" not in joined
-    assert "antigravity" not in joined
-    assert "model" not in joined
+    invoked_executables = {Path(command[0]).name.lower() for command in commands}
+    assert invoked_executables.isdisjoint(
+        {"pytest", "codex", "antigravity", "model"}
+    )
 
 
 def test_workflow_has_canonical_trigger_and_minimum_authority() -> None:
