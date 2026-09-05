@@ -1,0 +1,20 @@
+{
+  "repair_id": "REPAIR-062-002",
+  "failed_run_id": "RUN-062-007",
+  "failed_head_sha": "6e1efa5e0137737779cfded80e105b9d2727cc3a",
+  "task": {
+    "id": "TASK-062",
+    "revision": 2
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "tests/test_operator.py"
+  ],
+  "instructions": [
+    "Continue the exact failed TASK-062 revision-2 remediation lineage from RUN-062-007 at failed HEAD 6e1efa5e0137737779cfded80e105b9d2727cc3a. Do not restart PRIMARY, rerun REVIEW-062-005 remediation from its base, modify production implementation, widen scope, change executor selection, retry, fallback, reroute, or alter publication behavior.",
+    "RUN-062-007 failed only in Runtime verification. The remediation intentionally changed TASK-state advancement to require a restart before integration. Two existing synchronization-failure regressions still publish .ai/tasks/TASK-101.yaml merely to make upstream ahead, so they now correctly stop at the stale-pre-sync TASK-state guard before reaching the simulated native merge failure that those tests are meant to exercise.",
+    "Update only those stale test fixtures/expectations in tests/test_operator.py so the safe-state and unsafe-state native fast-forward failure regressions advance upstream using a non-kernel, non-TASK path and therefore continue to exercise exactly one native merge --ff-only failure. Preserve the new TASK-only restart semantics and preserve the TASK-062 production candidate unchanged.",
+    "Commit the minimal permitted test correction and return one structural ResultPackage for the complete TASK-062 revision-2 lineage. Runtime owns canonical verification and EVIDENCE; do not run a fresh PRIMARY or push."
+  ],
+  "constraints": []
+}
