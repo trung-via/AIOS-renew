@@ -1,0 +1,20 @@
+{
+  "repair_id": "REPAIR-058-006",
+  "failed_run_id": "RUN-058-006",
+  "failed_head_sha": "3968c1c4938d2e86be1582b514f841f52917bdb7",
+  "task": {
+    "id": "TASK-058",
+    "revision": 2
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "tests/test_review_transport.py"
+  ],
+  "instructions": [
+    "Continue the exact TASK-058 revision-2 correction lineage from RUN-058-006 at failed HEAD 3968c1c4938d2e86be1582b514f841f52917bdb7. Do not restart PRIMARY, reset to main, change TASK revision, broaden scope, reroute, retry internally, or modify implementation code.",
+    "RUN-058-006 has 187 passing tests and exactly one failing regression: test_reads_exact_historical_task_without_mutating_current_checkout. The failure is a platform-dependent line-ending assertion: the test captures expected bytes from the Windows worktree (CRLF) while read_remote_task correctly returns immutable Git blob content (LF). Correct the regression so its expected historical TASK content is derived from canonical committed Git state rather than mutable/platform-normalized worktree bytes.",
+    "Preserve the semantic assertion that read_remote_task returns the exact historical TASK from the requested commit and does not mutate the current checkout. Do not weaken the test to a partial string check, normalize both sides merely to hide differences, skip on Windows, or change read_remote_task/review_transport behavior.",
+    "Make only the smallest deterministic correction in tests/test_review_transport.py. After committing the correction, return the structural ResultPackage and let Runtime execute the unchanged TASK-058 canonical verification exactly once. Do not push or write Runtime-owned operational state manually."
+  ],
+  "constraints": []
+}
