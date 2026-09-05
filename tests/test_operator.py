@@ -85,21 +85,26 @@ def make_repo(
     task_source: str | None = TASK_SOURCE,
 ) -> Path:
     repo = root / "repo"
-    repo.mkdir()
+    repo.mkdir(parents=True, exist_ok=True)
     git(repo, "init", "--quiet")
     git(repo, "config", "user.name", "AIOS Operator Test")
     git(repo, "config", "user.email", "operator@example.invalid")
+    git(repo, "branch", "-M", "main")
     (repo / "README.md").write_text("# operator test\n", encoding="utf-8")
     if task_source is not None:
         task_dir = repo / ".ai" / "tasks"
-        task_dir.mkdir(parents=True)
+        task_dir.mkdir(parents=True, exist_ok=True)
         (task_dir / "TASK-101.yaml").write_text(task_source, encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "--quiet", "-m", "baseline")
     upstream = root / "upstream.git"
     subprocess.run(("git", "init", "--bare", "--quiet", str(upstream)), check=True)
     git(repo, "remote", "add", "origin", str(upstream))
-    git(repo, "push", "--quiet", "--set-upstream", "origin", "HEAD")
+    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
+    subprocess.run(
+        ("git", "-C", str(upstream), "symbolic-ref", "HEAD", "refs/heads/main"),
+        check=True,
+    )
     return repo
 
 
@@ -1901,7 +1906,9 @@ def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(
 ) -> None:
     repo = make_repo(tmp_path, task_source=None)
     local_sha = git(repo, "rev-parse", "HEAD")
-    branch_ref = git(repo, "symbolic-ref", "HEAD")
+    upstream = git(
+        repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"
+    )
     published_sha = publish_upstream(
         repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE}, "publish task"
     )
@@ -1923,23 +1930,80 @@ def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(
     assert summary.base_sha == published_sha
     assert canonical["run"]["base_sha"] == published_sha
     assert canonical["task"]["task_id"] == "TASK-101"
-    assert ("read-tree", "-u", "-m", local_sha, published_sha) in git_calls
-    assert ("update-ref", branch_ref, published_sha, local_sha) in git_calls
-    prohibited = {"merge", "rebase", "reset", "checkout", "stash", "clean"}
+    assert ("merge", "--ff-only", upstream) in git_calls
+    prohibited = {
+        "read-tree",
+        "update-ref",
+        "rebase",
+        "reset",
+        "checkout",
+        "stash",
+        "clean",
+        "pull",
+        "push",
+        "revert",
+    }
     assert not any(args and args[0] in prohibited for args in git_calls)
+    assert git(repo, "rev-list", "--merges", f"{local_sha}..HEAD") == ""
+
+
+def test_primary_upstream_equal_is_noop_and_admission_proceeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    local_sha = git(repo, "rev-parse", "HEAD")
+    git_calls = []
+    real_git = operator_module._git
+
+    def recording_git(root, *args, **kwargs):
+        git_calls.append(args)
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", recording_git)
+    runner = FakeCodexRunner(repo)
+    summary = run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    assert summary.base_sha == local_sha
+    assert not any(
+        args and args[0] in ("merge", "read-tree", "update-ref", "rebase", "reset")
+        for args in git_calls
+    )
+    assert git(repo, "status", "--porcelain") == ""
+    canonical = json.loads(
+        runner.calls[0][1]["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
+    )
+    assert canonical["run"]["base_sha"] == local_sha
 
 
 @pytest.mark.parametrize(
-    "state", ["detached", "missing-upstream", "ahead", "diverged"]
+    "state",
+    [
+        "detached",
+        "non-main",
+        "missing-upstream",
+        "ambiguous-upstream",
+        "upstream-not-main",
+        "dirty",
+        "ahead",
+        "diverged",
+    ],
 )
 def test_unsafe_primary_git_states_fail_before_executor(
-    tmp_path: Path, state: str
+    tmp_path: Path, state: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = make_repo(tmp_path)
     if state == "detached":
         git(repo, "checkout", "--quiet", "--detach")
+    elif state == "non-main":
+        git(repo, "checkout", "--quiet", "-b", "feature")
     elif state == "missing-upstream":
         git(repo, "branch", "--unset-upstream")
+    elif state == "ambiguous-upstream":
+        git(repo, "config", "--add", "branch.main.remote", "second-remote")
+    elif state == "upstream-not-main":
+        git(repo, "config", "branch.main.merge", "refs/heads/feature")
+    elif state == "dirty":
+        (repo / "DIRTY.txt").write_text("dirty\n", encoding="utf-8")
     elif state == "ahead":
         (repo / "LOCAL.txt").write_text("local\n", encoding="utf-8")
         git(repo, "add", "LOCAL.txt")
@@ -1950,27 +2014,282 @@ def test_unsafe_primary_git_states_fail_before_executor(
         git(repo, "add", "LOCAL.txt")
         git(repo, "commit", "--quiet", "-m", "local")
 
+    git_calls = []
+    real_git = operator_module._git
+
+    def recording_git(root, *args, **kwargs):
+        git_calls.append(args)
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", recording_git)
+
     def runner(command, **kwargs):
         raise AssertionError("executor must not be invoked")
 
     with pytest.raises(OperatorError):
         run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
     assert not list(runtime_paths(repo).runs.glob("*.json"))
+    prohibited = {
+        "merge",
+        "read-tree",
+        "update-ref",
+        "rebase",
+        "reset",
+        "checkout",
+        "stash",
+        "clean",
+    }
+    assert not any(args and args[0] in prohibited for args in git_calls)
 
 
 def test_fetch_failure_fails_before_run_persistence(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     git(repo, "remote", "set-url", "origin", str(tmp_path / "missing.git"))
 
+    def runner(command, **kwargs):
+        raise AssertionError("executor must not be invoked")
+
     with pytest.raises(OperatorError, match="upstream fetch failed"):
         run_task(
             "TASK-101",
             executor="codex",
             repo=repo,
-            native_runner=lambda *a, **k: None,
+            native_runner=runner,
         )
 
     assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_synchronization_failure_with_safe_state_produces_admission_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    local_sha = git(repo, "rev-parse", "HEAD")
+    published_sha = publish_upstream(
+        repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE}, "publish task"
+    )
+    git_calls = []
+    real_git = operator_module._git
+
+    def failing_git(root, *args, **kwargs):
+        git_calls.append(args)
+        if args and args[0] == "merge" and "--ff-only" in args:
+            raise OperatorError("simulated native fast-forward failure")
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", failing_git)
+    runner = FakeCodexRunner(repo)
+
+    with pytest.raises(OperatorError, match="upstream fast-forward failed"):
+        run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    assert git(repo, "rev-parse", "HEAD") == local_sha
+    assert git(repo, "symbolic-ref", "--short", "HEAD") == "main"
+    assert git(repo, "status", "--porcelain") == ""
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert len(runner.calls) == 0
+
+    ff_calls = [
+        args for args in git_calls if args and args[0] == "merge" and "--ff-only" in args
+    ]
+    assert len(ff_calls) == 1
+
+    prohibited = {
+        "read-tree",
+        "update-ref",
+        "rebase",
+        "reset",
+        "checkout",
+        "stash",
+        "clean",
+        "pull",
+        "push",
+        "revert",
+    }
+    assert not any(args and args[0] in prohibited for args in git_calls)
+
+
+def test_synchronization_failure_with_unsafe_state_produces_blocked_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    local_sha = git(repo, "rev-parse", "HEAD")
+    published_sha = publish_upstream(
+        repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE}, "publish task"
+    )
+    git_calls = []
+    real_git = operator_module._git
+
+    def failing_and_corrupting_git(root, *args, **kwargs):
+        git_calls.append(args)
+        if args and args[0] == "merge" and "--ff-only" in args:
+            (root / "CORRUPT.txt").write_text("corrupted\n", encoding="utf-8")
+            raise OperatorError("simulated partial merge failure")
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", failing_and_corrupting_git)
+    runner = FakeCodexRunner(repo)
+
+    with pytest.raises(OperatorError, match="repository-integrity BLOCKED"):
+        run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert len(runner.calls) == 0
+
+    ff_calls = [
+        args for args in git_calls if args and args[0] == "merge" and "--ff-only" in args
+    ]
+    assert len(ff_calls) == 1
+
+    prohibited = {
+        "read-tree",
+        "update-ref",
+        "rebase",
+        "reset",
+        "checkout",
+        "stash",
+        "clean",
+        "pull",
+        "push",
+        "revert",
+    }
+    assert not any(args and args[0] in prohibited for args in git_calls)
+
+
+def test_primary_sync_advancing_source_and_task_restarts_and_consumes_canonical_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    local_sha = git(repo, "rev-parse", "HEAD")
+    task_102_source = TASK_SOURCE.replace("TASK-101", "TASK-102")
+    published_sha = publish_upstream(
+        repo,
+        {
+            "src/aios_renew/marker.py": "# kernel updated\n",
+            ".ai/tasks/TASK-102.yaml": task_102_source,
+        },
+        "publish kernel update and task",
+    )
+    runner = FakeCodexRunner(repo)
+
+    with pytest.raises(
+        OperatorError, match="cannot continue under stale pre-sync kernel state"
+    ):
+        run_task("TASK-102", executor="codex", repo=repo, native_runner=runner)
+    assert git(repo, "rev-parse", "HEAD") == local_sha
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert len(runner.calls) == 0
+
+    restarts = []
+    real_restart = operator_module._restart_primary_invocation
+
+    def fake_restart(root, *, argv=None, runner=subprocess.run):
+        restarts.append((root, argv))
+        return 0
+
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", fake_restart)
+    exit_code = operator_module.main(
+        ["run", "TASK-102", "--executor", "codex", "--repo", str(repo)]
+    )
+    assert exit_code == 0
+    assert git(repo, "rev-parse", "HEAD") == published_sha
+    assert len(restarts) == 1
+
+    runner_calls = []
+
+    def fake_runner(cmd, **kwargs):
+        runner_calls.append((cmd, kwargs))
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    real_restart(
+        repo,
+        argv=["run", "TASK-102", "--executor", "codex", "--repo", str(repo)],
+        runner=fake_runner,
+    )
+    assert len(runner_calls) == 1
+    assert runner_calls[0][1]["env"]["AIOS_RESTART_ATTEMPTED"] == "1"
+
+    summary = run_task("TASK-102", executor="codex", repo=repo, native_runner=runner)
+    assert summary.base_sha == published_sha
+    assert summary.task_id == "TASK-102"
+    canonical = json.loads(
+        runner.calls[0][1]["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
+    )
+    assert canonical["run"]["base_sha"] == published_sha
+    assert canonical["task"]["task_id"] == "TASK-102"
+
+    repo_unsafe = make_repo(tmp_path / "unsafe", task_source=None)
+    local_unsafe_sha = git(repo_unsafe, "rev-parse", "HEAD")
+    publish_upstream(
+        repo_unsafe, {"src/aios_renew/marker.py": "# k\n"}, "k"
+    )
+    monkeypatch.setenv("AIOS_RESTART_ATTEMPTED", "1")
+    with pytest.raises(OperatorError, match="unsafe reload/restart condition"):
+        operator_module._preflight_primary_sync(
+            repo_unsafe,
+            argv=["run", "TASK-102", "--executor", "codex", "--repo", str(repo_unsafe)],
+        )
+    assert git(repo_unsafe, "rev-parse", "HEAD") == local_unsafe_sha
+
+
+def test_remediation_repair_and_candidate_do_not_auto_sync_upstream_main(
+    tmp_path: Path,
+) -> None:
+    repo_rem = make_repo(tmp_path / "rem")
+    review, remediation = remediation_contract(repo_rem)
+    reviewed_sha = remediation.reviewed_sha
+    upstream_rem_sha = publish_upstream(
+        repo_rem, {"ADVANCE.txt": "advance\n"}, "advance upstream main"
+    )
+    summary_rem = run_remediation(
+        "TASK-101",
+        review=review,
+        remediation=remediation,
+        executor="codex",
+        repo=repo_rem,
+        native_runner=RemediationRunner(repo_rem),
+    )
+    assert summary_rem.reviewed_sha == reviewed_sha
+    assert git(repo_rem, "rev-parse", "HEAD") != upstream_rem_sha
+
+    repo_rep = make_repo(tmp_path / "rep")
+    failed_run_id, repair = repair_contract(repo_rep, action="NO_CHANGE")
+    failed_head = git(repo_rep, "rev-parse", "HEAD")
+    upstream_rep_sha = publish_upstream(
+        repo_rep, {"ADVANCE.txt": "advance\n"}, "advance upstream main"
+    )
+    summary_rep = run_repair(
+        failed_run_id,
+        executor="codex",
+        repo=repo_rep,
+        repair=repair,
+        native_runner=StaticRepairRunner(repo_rep),
+    )
+    assert summary_rep.failed_head_sha == failed_head
+    assert git(repo_rep, "rev-parse", "HEAD") != upstream_rep_sha
+
+    repo_cand = make_repo(tmp_path / "cand")
+    remediation_contract(repo_cand)
+    publish_direct_candidate_lineage(repo_cand, tmp_path / "cand")
+    (repo_cand / "OUTPUT.txt").write_text("candidate fix\n", encoding="utf-8")
+    git(repo_cand, "add", "OUTPUT.txt")
+    git(repo_cand, "commit", "--quiet", "-m", "candidate commit")
+    cand_head = git(repo_cand, "rev-parse", "HEAD")
+    upstream_cand_sha = publish_upstream(
+        repo_cand, {"ADVANCE.txt": "advance\n"}, "advance upstream main"
+    )
+    summary_cand = accept_candidate(
+        "TASK-101",
+        finding_id="R1",
+        executor="codex",
+        repo=repo_cand,
+        verification_runner=lambda *a, **k: subprocess.CompletedProcess(
+            a, 0, stdout=b"pass", stderr=b""
+        ),
+    )
+    assert summary_cand.head_sha == cand_head
+    assert git(repo_cand, "rev-parse", "HEAD") != upstream_cand_sha
 
 
 def test_operator_delegates_one_primary_invocation_to_dispatcher(
@@ -2361,7 +2680,7 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     workspace = command[command.index("--add-dir") + 1]
     assert command[0] == "agy"
     assert workspace == str(repo.resolve())
-    assert command[command.index("--effort") + 1] == "low"
+    assert command[command.index("--effort") + 1] == "high"
     assert command[command.index("--mode") + 1] == "accept-edits"
     assert "--disable-slash-commands" in command
     assert command[command.index("--output-format") + 1] == "json"
@@ -2375,7 +2694,7 @@ def test_antigravity_invocation_contract(tmp_path: Path) -> None:
     assert ".git" in instruction and "handoff" in instruction
     assert "Create one deterministic operator test output" not in instruction
     assert "--dangerously-skip-permissions" in command
-    assert "--model" not in command
+    assert command[command.index("--model") + 1] == "gemini-3.8-flash"
 
 
 def test_antigravity_instruction_returns_structural_package_to_runtime(

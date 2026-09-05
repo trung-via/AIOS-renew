@@ -974,16 +974,29 @@ def _run_repair_impl(
         )
 
 
-def _synchronize_primary_branch(root: Path) -> None:
-    """Align a clean attached branch to its configured upstream by exact FF."""
+def _is_kernel_source(path: str) -> bool:
+    normalized = path.replace("\\", "/").strip()
+    return (
+        normalized == "pyproject.toml"
+        or normalized.startswith("src/")
+    )
+
+
+def _synchronize_primary_branch(
+    root: Path,
+    *,
+    allow_restart: bool = False,
+) -> bool:
+    """Align a clean attached main branch to its configured upstream main by exact native FF."""
 
     if _git(root, "status", "--porcelain"):
         raise OperatorError("repository dirty")
     try:
-        branch_ref = _git(root, "symbolic-ref", "--quiet", "HEAD")
         branch = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
     except OperatorError as exc:
         raise OperatorError("repository HEAD is detached") from exc
+    if branch != "main":
+        raise OperatorError("current branch is not main")
     try:
         upstream = _git(
             root,
@@ -992,10 +1005,26 @@ def _synchronize_primary_branch(root: Path) -> None:
             "--symbolic-full-name",
             "@{upstream}",
         )
-        remote = _git(root, "config", "--get", f"branch.{branch}.remote")
-        merge_ref = _git(root, "config", "--get", f"branch.{branch}.merge")
     except OperatorError as exc:
         raise OperatorError("current branch has no resolved upstream") from exc
+    try:
+        remotes = _git(
+            root, "config", "--get-all", f"branch.{branch}.remote"
+        ).splitlines()
+        merge_refs = _git(
+            root, "config", "--get-all", f"branch.{branch}.merge"
+        ).splitlines()
+    except OperatorError as exc:
+        raise OperatorError("current branch has no resolved upstream") from exc
+
+    if len(remotes) != 1 or len(merge_refs) != 1:
+        raise OperatorError("configured upstream is ambiguous")
+    remote = remotes[0].strip()
+    merge_ref = merge_refs[0].strip()
+    if not remote or not merge_ref:
+        raise OperatorError("current branch has no resolved upstream")
+    if merge_ref != "refs/heads/main" or not upstream.endswith("/main"):
+        raise OperatorError("configured upstream does not resolve to main")
 
     try:
         _git(root, "fetch", "--no-tags", remote, merge_ref)
@@ -1004,24 +1033,123 @@ def _synchronize_primary_branch(root: Path) -> None:
 
     local_sha = _git(root, "rev-parse", "HEAD")
     upstream_sha = _git(root, "rev-parse", upstream)
-    if local_sha != upstream_sha:
-        if _git_is_ancestor(root, local_sha, upstream_sha):
-            try:
-                _git(root, "read-tree", "-u", "-m", local_sha, upstream_sha)
-                _git(root, "update-ref", branch_ref, upstream_sha, local_sha)
-            except OperatorError as exc:
-                raise OperatorError(f"upstream fast-forward failed: {exc}") from exc
-        elif _git_is_ancestor(root, upstream_sha, local_sha):
-            raise OperatorError("local branch is ahead of upstream")
-        else:
-            raise OperatorError("local branch has diverged from upstream")
+    if local_sha == upstream_sha:
+        return False
 
-    if _git(root, "status", "--porcelain"):
-        raise OperatorError("repository dirty after synchronization")
-    if _git(root, "rev-parse", "HEAD") != upstream_sha:
+    if _git_is_ancestor(root, upstream_sha, local_sha):
+        raise OperatorError("local branch is ahead of upstream")
+    if not _git_is_ancestor(root, local_sha, upstream_sha):
+        raise OperatorError("local branch has diverged from upstream")
+
+    diff_output = _git(
+        root,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        local_sha,
+        upstream_sha,
+        strip_stdout=False,
+    )
+    changed_paths = {p for p in diff_output.split("\0") if p}
+    kernel_changed = any(_is_kernel_source(p) for p in changed_paths)
+
+    if kernel_changed and not allow_restart:
+        raise OperatorError("cannot continue under stale pre-sync kernel state")
+
+    if kernel_changed and allow_restart:
+        if os.environ.get("AIOS_RESTART_ATTEMPTED") == "1":
+            raise OperatorError("unsafe reload/restart condition")
+
+    try:
+        _git(root, "merge", "--ff-only", upstream)
+        if _git(root, "status", "--porcelain"):
+            raise OperatorError("repository dirty after synchronization")
+        if _git(root, "rev-parse", "HEAD") != upstream_sha:
+            raise OperatorError(
+                "repository HEAD does not match upstream after synchronization"
+            )
+        try:
+            current_branch = _git(
+                root, "symbolic-ref", "--quiet", "--short", "HEAD"
+            )
+        except OperatorError as exc:
+            raise OperatorError(
+                "repository HEAD is detached after synchronization"
+            ) from exc
+        if current_branch != "main":
+            raise OperatorError(
+                "repository branch is not main after synchronization"
+            )
+    except OperatorError as exc:
+        try:
+            current_sha = _git(root, "rev-parse", "HEAD")
+            current_branch = _git(
+                root, "symbolic-ref", "--quiet", "--short", "HEAD"
+            )
+            is_dirty = bool(_git(root, "status", "--porcelain"))
+            is_safe = (
+                current_sha == local_sha
+                and current_branch == "main"
+                and not is_dirty
+            )
+        except Exception:
+            is_safe = False
+
+        if is_safe:
+            raise OperatorError(f"upstream fast-forward failed: {exc}") from exc
         raise OperatorError(
-            "repository HEAD does not match upstream after synchronization"
+            f"repository-integrity BLOCKED: safe pre-sync state lost after fast-forward failure: {exc}"
+        ) from exc
+
+    return kernel_changed
+
+
+def _preflight_primary_sync(
+    root: Path,
+    *,
+    argv: list[str] | None = None,
+    runner: NativeRunner = subprocess.run,
+) -> int | None:
+    """Safely synchronize clean local main before TASK loading and admission."""
+
+    state = runtime_paths(root)
+    with RepositoryLock(state.lock):
+        needs_restart = _synchronize_primary_branch(root, allow_restart=True)
+    if needs_restart:
+        return _restart_primary_invocation(root, argv=argv, runner=runner)
+    return None
+
+
+def _restart_primary_invocation(
+    root: Path,
+    *,
+    argv: list[str] | None = None,
+    runner: NativeRunner = subprocess.run,
+) -> int:
+    """Re-invoke the Human-facing command under synchronized kernel code."""
+
+    env = dict(os.environ)
+    env["AIOS_RESTART_ATTEMPTED"] = "1"
+    pythonpath = env.get("PYTHONPATH", "")
+    src_str = str(root / "src")
+    if src_str not in pythonpath:
+        env["PYTHONPATH"] = (
+            f"{src_str}{os.pathsep}{pythonpath}" if pythonpath else src_str
         )
+    cmd = [sys.executable, "-m", "aios_renew.operator"]
+    if argv is not None:
+        cmd.extend(argv)
+    else:
+        cmd.extend(sys.argv[1:])
+    if "--repo" not in cmd:
+        cmd.extend(["--repo", str(root)])
+    try:
+        completed = runner(cmd, env=env)
+    except (OSError, UnicodeError) as exc:
+        raise OperatorError(f"unsafe reload/restart condition: {exc}") from exc
+    return completed.returncode
+
 
 
 def _git_is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
@@ -1983,10 +2111,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "task":
             print(describe_task(args.task_id, repo=args.repo).render())
         elif args.command == "run":
+            repo_root = resolve_repository(args.repo)
+            restart_code = _preflight_primary_sync(repo_root, argv=argv)
+            if restart_code is not None:
+                return restart_code
             summary = run_task(
                 args.task_id,
                 executor=args.executor,
-                repo=args.repo,
+                repo=repo_root,
             )
             print(summary.render())
         elif args.command == "remediate":
