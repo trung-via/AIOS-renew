@@ -1,0 +1,38 @@
+review_id: REVIEW-063-004
+reviewed_sha: 380f091d4f251cb62eeb620c91363d502f381808
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings:
+  - id: F063R3-REM-LINEAGE
+    basis: AC1
+    action: CODE_FIX
+    location: src/aios_renew/publication.py
+    issue: >
+      The live repository-native publication attempt for the canonical PASS decision on
+      RUN-063-006 reached the event-bound publication gate successfully, but the gate
+      rejected the valid successful REMEDIATION artifacts with
+      "RUN-ID mismatch between decision ref and RUN". publication.py assumes the
+      transported run.json is always a PRIMARY RUN with run_id at the top level, while
+      canonical successful REMEDIATION artifacts wrap the operational RUN under
+      execution.run. As a result, a valid PASS-reviewed remediation candidate cannot be
+      published even though the same TASK requires publication after canonical semantic
+      PASS regardless of whether the successful candidate came from PRIMARY or narrow
+      correction lineage.
+    expected: >
+      The publication gate must deterministically accept and validate canonical successful
+      REMEDIATION lineage as well as PRIMARY lineage, bind the decision RUN_ID and exact
+      reviewed/result head through the operation-appropriate canonical structure, and
+      publish exactly the reviewed candidate when all existing gates pass. Preserve all
+      fail-closed behavior, review/source separation, exact-SHA CAS protection, no retry
+      or fallback, and do not weaken PRIMARY lineage validation. Add deterministic
+      regression coverage proving a PASS-reviewed successful REMEDIATION candidate can
+      publish while malformed or mismatched remediation lineage cannot.
