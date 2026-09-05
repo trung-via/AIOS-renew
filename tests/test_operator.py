@@ -1879,16 +1879,19 @@ def publish_upstream(
     repo: Path, files: dict[str, str], message: str = "publish"
 ) -> str:
     publisher = repo.parent / "publisher"
-    subprocess.run(
-        (
-            "git",
-            "clone",
-            "--quiet",
-            git(repo, "remote", "get-url", "origin"),
-            str(publisher),
-        ),
-        check=True,
-    )
+    if not publisher.exists():
+        subprocess.run(
+            (
+                "git",
+                "clone",
+                "--quiet",
+                git(repo, "remote", "get-url", "origin"),
+                str(publisher),
+            ),
+            check=True,
+        )
+    else:
+        git(publisher, "pull", "--quiet")
     git(publisher, "config", "user.name", "AIOS Publisher")
     git(publisher, "config", "user.email", "publisher@example.invalid")
     for name, content in files.items():
@@ -1904,13 +1907,13 @@ def publish_upstream(
 def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    repo = make_repo(tmp_path, task_source=None)
+    repo = make_repo(tmp_path)
     local_sha = git(repo, "rev-parse", "HEAD")
     upstream = git(
         repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"
     )
     published_sha = publish_upstream(
-        repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE}, "publish task"
+        repo, {"UPSTREAM_DOC.txt": "upstream doc\n"}, "advance upstream"
     )
     runner = FakeCodexRunner(repo)
     git_calls = []
@@ -1922,14 +1925,21 @@ def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(
 
     monkeypatch.setattr(operator_module, "_git", recording_git)
 
-    summary = run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+    exit_code = operator_module.main(
+        ["run", "TASK-101", "--executor", "codex", "--repo", str(repo)],
+        native_runner=runner,
+    )
+    assert exit_code == 0
 
     canonical = json.loads(
         runner.calls[0][1]["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
     )
-    assert summary.base_sha == published_sha
     assert canonical["run"]["base_sha"] == published_sha
     assert canonical["task"]["task_id"] == "TASK-101"
+    ff_calls = [
+        args for args in git_calls if args and args[0] == "merge" and "--ff-only" in args
+    ]
+    assert len(ff_calls) == 1
     assert ("merge", "--ff-only", upstream) in git_calls
     prohibited = {
         "read-tree",
@@ -1945,6 +1955,57 @@ def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(
     }
     assert not any(args and args[0] in prohibited for args in git_calls)
     assert git(repo, "rev-list", "--merges", f"{local_sha}..HEAD") == ""
+
+
+def test_primary_sync_upstream_race_between_preflight_and_admission_does_not_reintegrate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    local_sha = git(repo, "rev-parse", "HEAD")
+    upstream = git(
+        repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"
+    )
+    published_sha_1 = publish_upstream(
+        repo, {"NOTE1.txt": "first upstream note\n"}, "publish upstream 1"
+    )
+    runner = FakeCodexRunner(repo)
+    git_calls = []
+    real_git = operator_module._git
+
+    def recording_git(root, *args, **kwargs):
+        git_calls.append(args)
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", recording_git)
+
+    raced_sha = None
+    real_run_task = operator_module.run_task
+
+    def racing_run_task(*args, **kwargs):
+        nonlocal raced_sha
+        raced_sha = publish_upstream(
+            repo, {"NOTE2.txt": "second upstream note (race)\n"}, "publish upstream 2 (race)"
+        )
+        return real_run_task(*args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "run_task", racing_run_task)
+
+    exit_code = operator_module.main(
+        ["run", "TASK-101", "--executor", "codex", "--repo", str(repo)],
+        native_runner=runner,
+    )
+    assert exit_code == 0
+    assert raced_sha is not None
+    canonical = json.loads(
+        runner.calls[0][1]["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
+    )
+    assert canonical["run"]["base_sha"] == published_sha_1
+    assert canonical["run"]["base_sha"] != raced_sha
+    ff_calls = [
+        args for args in git_calls if args and args[0] == "merge" and "--ff-only" in args
+    ]
+    assert len(ff_calls) == 1
+    assert ("merge", "--ff-only", upstream) in git_calls
 
 
 def test_primary_upstream_equal_is_noop_and_admission_proceeds(
@@ -2231,6 +2292,53 @@ def test_primary_sync_advancing_source_and_task_restarts_and_consumes_canonical_
             argv=["run", "TASK-102", "--executor", "codex", "--repo", str(repo_unsafe)],
         )
     assert git(repo_unsafe, "rev-parse", "HEAD") == local_unsafe_sha
+
+
+def test_primary_sync_advancing_task_only_restarts_and_consumes_canonical_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    local_sha = git(repo, "rev-parse", "HEAD")
+    task_103_source = TASK_SOURCE.replace("TASK-101", "TASK-103")
+    published_sha = publish_upstream(
+        repo,
+        {
+            ".ai/tasks/TASK-103.yaml": task_103_source,
+        },
+        "publish task only",
+    )
+    runner = FakeCodexRunner(repo)
+
+    with pytest.raises(
+        OperatorError, match="cannot continue under stale pre-sync kernel state"
+    ):
+        run_task("TASK-103", executor="codex", repo=repo, native_runner=runner)
+    assert git(repo, "rev-parse", "HEAD") == local_sha
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert len(runner.calls) == 0
+
+    restarts = []
+
+    def fake_restart(root, *, argv=None, runner=subprocess.run):
+        restarts.append((root, argv))
+        return 0
+
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", fake_restart)
+    exit_code = operator_module.main(
+        ["run", "TASK-103", "--executor", "codex", "--repo", str(repo)]
+    )
+    assert exit_code == 0
+    assert git(repo, "rev-parse", "HEAD") == published_sha
+    assert len(restarts) == 1
+
+    summary = run_task("TASK-103", executor="codex", repo=repo, native_runner=runner)
+    assert summary.base_sha == published_sha
+    assert summary.task_id == "TASK-103"
+    canonical = json.loads(
+        runner.calls[0][1]["input"].decode("utf-8").split("CANONICAL_INPUT:\n", 1)[1]
+    )
+    assert canonical["run"]["base_sha"] == published_sha
+    assert canonical["task"]["task_id"] == "TASK-103"
 
 
 def test_remediation_repair_and_candidate_do_not_auto_sync_upstream_main(

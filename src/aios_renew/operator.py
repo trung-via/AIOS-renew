@@ -532,6 +532,7 @@ def run_task(
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
     monotonic_clock: MonotonicClock = time.monotonic,
+    synchronize: bool = True,
 ) -> RunSummary:
     """Execute a TASK and persist/transport deterministic pre-PASS failure facts."""
 
@@ -547,6 +548,7 @@ def run_task(
             native_runner=native_runner, verification_runner=verification_runner,
             attempt=attempt,
             observation_tracker=observation_tracker,
+            synchronize=synchronize,
         )
     except KeyboardInterrupt as original:
         if attempt.run_path is not None:
@@ -587,6 +589,7 @@ def _run_task_impl(
     verification_runner: VerificationRunner = subprocess.run,
     attempt: _RunAttempt,
     observation_tracker: RunObservationTracker,
+    synchronize: bool = True,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
 
@@ -596,7 +599,8 @@ def _run_task_impl(
     state = runtime_paths(root)
 
     with RepositoryLock(state.lock):
-        _synchronize_primary_branch(root)
+        if synchronize:
+            _synchronize_primary_branch(root)
         task = load_task(root, task_id)
         base_sha = _git(root, "rev-parse", "HEAD")
         run_id = next_run_id(task_id, state.runs)
@@ -982,6 +986,14 @@ def _is_kernel_source(path: str) -> bool:
     )
 
 
+def _is_kernel_source_or_task_state(path: str) -> bool:
+    normalized = path.replace("\\", "/").strip()
+    return (
+        _is_kernel_source(normalized)
+        or normalized.startswith(".ai/tasks/")
+    )
+
+
 def _synchronize_primary_branch(
     root: Path,
     *,
@@ -1036,6 +1048,9 @@ def _synchronize_primary_branch(
     if local_sha == upstream_sha:
         return False
 
+    if os.environ.get("AIOS_RESTART_ATTEMPTED") == "1":
+        raise OperatorError("unsafe reload/restart condition")
+
     if _git_is_ancestor(root, upstream_sha, local_sha):
         raise OperatorError("local branch is ahead of upstream")
     if not _git_is_ancestor(root, local_sha, upstream_sha):
@@ -1052,12 +1067,14 @@ def _synchronize_primary_branch(
         strip_stdout=False,
     )
     changed_paths = {p for p in diff_output.split("\0") if p}
-    kernel_changed = any(_is_kernel_source(p) for p in changed_paths)
+    requires_restart = any(
+        _is_kernel_source_or_task_state(p) for p in changed_paths
+    )
 
-    if kernel_changed and not allow_restart:
+    if requires_restart and not allow_restart:
         raise OperatorError("cannot continue under stale pre-sync kernel state")
 
-    if kernel_changed and allow_restart:
+    if requires_restart and allow_restart:
         if os.environ.get("AIOS_RESTART_ATTEMPTED") == "1":
             raise OperatorError("unsafe reload/restart condition")
 
@@ -1102,7 +1119,7 @@ def _synchronize_primary_branch(
             f"repository-integrity BLOCKED: safe pre-sync state lost after fast-forward failure: {exc}"
         ) from exc
 
-    return kernel_changed
+    return requires_restart
 
 
 def _preflight_primary_sync(
@@ -2105,20 +2122,32 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    native_runner: NativeRunner = subprocess.run,
+    verification_runner: VerificationRunner = subprocess.run,
+    monotonic_clock: MonotonicClock = time.monotonic,
+) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "task":
             print(describe_task(args.task_id, repo=args.repo).render())
         elif args.command == "run":
             repo_root = resolve_repository(args.repo)
-            restart_code = _preflight_primary_sync(repo_root, argv=argv)
+            restart_code = _preflight_primary_sync(
+                repo_root, argv=argv, runner=native_runner
+            )
             if restart_code is not None:
                 return restart_code
             summary = run_task(
                 args.task_id,
                 executor=args.executor,
                 repo=repo_root,
+                native_runner=native_runner,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
+                synchronize=False,
             )
             print(summary.render())
         elif args.command == "remediate":
@@ -2130,6 +2159,9 @@ def main(argv: list[str] | None = None) -> int:
                 finding_id=args.finding,
                 executor=args.executor,
                 repo=args.repo,
+                native_runner=native_runner,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
             )
             print(summary.render())
         elif args.command == "accept-candidate":
@@ -2138,12 +2170,19 @@ def main(argv: list[str] | None = None) -> int:
                 finding_id=args.finding,
                 executor=args.executor,
                 repo=args.repo,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
             )
             print(summary.render())
         elif args.command == "repair":
             summary = run_repair(
-                args.failed_run_id, executor=args.executor, repo=args.repo,
+                args.failed_run_id,
+                executor=args.executor,
+                repo=args.repo,
                 repair=args.repair,
+                native_runner=native_runner,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
             )
             print(summary.render())
         else:
