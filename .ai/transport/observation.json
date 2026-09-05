@@ -1,0 +1,1 @@
+{"base_sha":"99c23575a6ff5ba3ed83f2908422b7059919981e","durations":{"admitted_run_seconds":68.72534659999656,"executor_seconds":68.60017940000398,"verification_seconds":null},"executor":"codex","executor_invoked":true,"kind":"RUN_OBSERVATION","operation":"REMEDIATION","run_id":"RUN-063-004","task":{"id":"TASK-063","revision":2},"terminal_kind":"FAILURE","token_usage":null}
