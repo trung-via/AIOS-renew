@@ -1,0 +1,20 @@
+{
+  "repair_id": "REPAIR-063-001",
+  "failed_run_id": "RUN-063-002",
+  "failed_head_sha": "1b4250e6a81d618db5d6bcc9a97dd5aa6a88c263",
+  "task": {
+    "id": "TASK-063",
+    "revision": 2
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "tests/test_publication.py"
+  ],
+  "instructions": [
+    "Continue the exact failed TASK-063 revision-2 lineage from RUN-063-002 at failed HEAD 1b4250e6a81d618db5d6bcc9a97dd5aa6a88c263. Do not restart PRIMARY, alter production publication code or workflow, widen scope, change executor selection, retry, fallback, reroute, or rerun unrelated work.",
+    "RUN-063-002 failed only in Runtime verification. The sole failing regression test_publication_executes_git_coordination_only already records that every publication subprocess command starts with git, but then searches the full joined command strings for the substring pytest. On Windows the pytest-provided temporary repository path itself contains pytest (for example pytest-of-TRUNG/pytest-1369), causing a false positive even though publication executed only Git commands.",
+    "Correct only the brittle test assertion in tests/test_publication.py so it verifies absence of pytest/Codex/Antigravity/model execution semantically without treating incidental repository-path text as an invoked executable or tool. Preserve the production candidate, workflow behavior, and AC6 requirement unchanged.",
+    "Commit the minimal permitted test correction and return one structural ResultPackage for the complete TASK-063 revision-2 lineage. Runtime owns affected verification and EVIDENCE; do not run a fresh PRIMARY or push."
+  ],
+  "constraints": []
+}
