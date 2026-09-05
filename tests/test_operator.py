@@ -2125,10 +2125,10 @@ def test_fetch_failure_fails_before_run_persistence(tmp_path: Path) -> None:
 def test_synchronization_failure_with_safe_state_produces_admission_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    repo = make_repo(tmp_path, task_source=None)
+    repo = make_repo(tmp_path)
     local_sha = git(repo, "rev-parse", "HEAD")
     published_sha = publish_upstream(
-        repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE}, "publish task"
+        repo, {"UPSTREAM_DOC.txt": "upstream doc\n"}, "advance upstream"
     )
     git_calls = []
     real_git = operator_module._git
@@ -2174,10 +2174,10 @@ def test_synchronization_failure_with_safe_state_produces_admission_error(
 def test_synchronization_failure_with_unsafe_state_produces_blocked_diagnostic(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    repo = make_repo(tmp_path, task_source=None)
+    repo = make_repo(tmp_path)
     local_sha = git(repo, "rev-parse", "HEAD")
     published_sha = publish_upstream(
-        repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE}, "publish task"
+        repo, {"UPSTREAM_DOC.txt": "upstream doc\n"}, "advance upstream"
     )
     git_calls = []
     real_git = operator_module._git
