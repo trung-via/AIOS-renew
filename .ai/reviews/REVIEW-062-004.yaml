@@ -1,0 +1,9 @@
+review_id: REVIEW-062-004
+reviewed_sha: 994a7c63ad76763f371c528ddff19f69b24ac6f8
+mode: DELTA
+verdict: BLOCKED
+prior_finding_id: F1
+acceptance:
+  AC3: FAIL
+  AC6: FAIL
+findings: []
