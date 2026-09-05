@@ -1,0 +1,50 @@
+name: AIOS automatic reviewed publication
+
+on:
+  push:
+    branches:
+      - "aios/review-decision/**"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-reviewed-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out canonical publisher
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Publish exact reviewed RUN source
+        env:
+          DECISION_REF: ${{ github.ref }}
+          DECISION_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          prefix="refs/heads/aios/review-decision/"
+          if [[ "$DECISION_REF" != "$prefix"* ]]; then
+            printf '{"outcome":"FAILED","detail":"invalid review-decision event ref"}\n' | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          run_id="${DECISION_REF#"$prefix"}"
+          set +e
+          publication="$({ PYTHONPATH=src python -m aios_renew.publication \
+            --repo . \
+            --remote origin \
+            --run-id "$run_id" \
+            --decision-sha "$DECISION_SHA"; } 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$publication"
+          {
+            printf '### AIOS reviewed publication\n\n'
+            printf -- '- Source RUN: `%s`\n' "$run_id"
+            printf -- '- Decision SHA: `%s`\n' "$DECISION_SHA"
+            printf '\n```json\n%s\n```\n' "$publication"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
