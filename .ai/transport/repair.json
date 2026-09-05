@@ -1,0 +1,22 @@
+{
+  "repair_id": "REPAIR-058-005",
+  "failed_run_id": "RUN-058-005",
+  "failed_head_sha": "6cac47df6209d1be0cc42080351be2acde3329d2",
+  "task": {
+    "id": "TASK-058",
+    "revision": 2
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "src/aios_renew/review_transport.py",
+    "tests/test_review_transport.py"
+  ],
+  "instructions": [
+    "Continue the exact TASK-058 revision-2 candidate from RUN-058-005 at failed HEAD 6cac47df6209d1be0cc42080351be2acde3329d2. Do not restart PRIMARY, replace TASK-058, reset to current main, reroute, retry internally, or alter the already-created operator/runtime implementation unless a new canonical failure later authorizes it.",
+    "RUN-058-005 failed only at Runtime VERIFICATION because the canonical command references tests/test_review_transport.py and that file does not exist in either the TASK-058 r2 base or the failed candidate. TASK-058 r2 explicitly includes tests/test_review_transport.py in scope.modify, so correct this as an implementation omission: create substantive deterministic regression coverage for the new review_transport historical-recovery and portable failed-REPAIR transport behavior. Do not create an empty placeholder, skip-only file, path shim, or test whose purpose is merely to make pytest collect.",
+    "Cover the review_transport responsibilities introduced by the failed candidate that are material to TASK-058: canonical remote failed-correction-chain retrieval, failed-head/ref identity checks, remote RUN namespace and duplicate-continuation detection, exact historical TASK retrieval, and preservation/reading of transported REPAIR execution lineage for failed corrections. Prefer direct deterministic unit/regression coverage in tests/test_review_transport.py rather than duplicating the already-added operator-level historical subject tests.",
+    "If and only if those new review_transport regressions expose an implementation defect in src/aios_renew/review_transport.py, correct that defect narrowly in the same REPAIR. Do not redesign lineage semantics, add retry/fallback/reroute behavior, change schemas, modify downstream Python Agent, or broaden to operator.py/runtime.py merely for cleanup.",
+    "Do not rerun the unchanged canonical verification before implementing the missing regression file. After the correction is committed, return the structural ResultPackage and let Runtime execute TASK-058 canonical verification exactly once. Do not push or write Runtime-owned operational state manually."
+  ],
+  "constraints": []
+}
