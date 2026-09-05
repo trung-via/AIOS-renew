@@ -9,8 +9,3 @@ verification:
   affected:
     - python -m pytest tests/test_publication.py -q
     - git diff --check
-constraints:
-  hard:
-    - Publication must remain fast-forward-only and must never force, merge, rebase, retry, fallback, or synthesize an alternate candidate.
-    - The publication mutation must fail if remote main no longer equals the exact prior_main_sha established by the publication gate before mutation, including a compatible concurrent advance that remains an ancestor of the reviewed candidate.
-    - Preserve all previously passing TASK-063 acceptance behavior and do not modify the GitHub workflow unless strictly required by this finding.
