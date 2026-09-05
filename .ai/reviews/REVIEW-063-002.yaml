@@ -1,0 +1,33 @@
+review_id: REVIEW-063-002
+reviewed_sha: f91916d61ed9f58dbe0c99860f299c791be08471
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: FAIL
+  AC8: PASS
+findings:
+  - id: F063R3-BOOTSTRAP
+    basis: AC1
+    action: CODE_FIX
+    location: .github/workflows/aios-auto-publish.yml
+    issue: >
+      The first repository-native publication cannot bootstrap itself. The review-decision
+      push is handled by the workflow carried on the reviewed candidate, but the workflow
+      explicitly checks out ref main before invoking python -m aios_renew.publication.
+      At this TASK-063 revision-3 boundary, canonical main contains only the TASK contract
+      and does not contain src/aios_renew/publication.py. Therefore the first PASS event
+      would fail before the deterministic publication gate can run, so AC1 is not achieved
+      and the same root cause prevents AC7's attributable publication report on bootstrap.
+    expected: >
+      Make the review-decision workflow executable on the first TASK-063 publication event
+      without requiring TASK-063 implementation to already exist on main. The executable
+      publication logic must remain bound to the reviewed canonical lineage/event, preserve
+      review-metadata separation, exact reviewed_sha publication, minimum repository
+      authority, exact-SHA CAS protection, no verification/model/Executor invocation, and
+      must not introduce a Human/manual bootstrap publication step.
