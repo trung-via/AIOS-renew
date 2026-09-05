@@ -1,42 +1,45 @@
 task_id: TASK-062
-revision: 1
+revision: 2
 
 goal: >
-  Remove the repeated Human `git pull --ff-only origin main` handoff before PRIMARY
-  execution by making the Human-facing `aios run` path safely synchronize a clean local
-  `main` to its configured upstream `main` before TASK loading and RUN admission. The
-  admitted RUN must bind to the synchronized repository state and must never continue
-  under stale pre-sync kernel code.
+  Remove the repeated Human manual fast-forward handoff before a new PRIMARY run by
+  making the Human-facing AIOS launch synchronize a safe local main to its configured
+  upstream main before TASK loading and RUN admission, while delegating repository
+  integration to one native Git fast-forward-only operation instead of reimplementing
+  Git ref/index/worktree transactions inside AIOS.
 
 problem: >
-  After Brain publishes a TASK or reviewed implementation, the Human currently has to
-  manually fast-forward the local AIOS-renew checkout before starting the next PRIMARY
-  RUN. This is repetitive coordination work with no semantic value. Simply inserting a
-  pull inside an already-loaded operator is not sufficient, because a fast-forward can
-  update the kernel source itself while the current Python process still holds stale
-  imported code. The Human-facing launch path therefore needs a deterministic,
-  fail-closed pre-admission synchronization boundary that removes the manual pull while
-  preserving exact SHA binding and one-active-execution authority.
+  TASK-062 revision 1 attempted to provide safe pre-admission synchronization with a
+  hand-built read-tree/update-ref transaction plus rollback. The admitted lineage
+  reached REVIEW-062-004 BLOCKED because the contract simultaneously required exact
+  restoration after restoration itself failed and prohibited retry/fallback/recovery;
+  later candidate logic introduced restoration retries and therefore violated AC6 while
+  still being unable to guarantee exact pre-sync state after unrecoverable lower-level
+  failure. The Human goal remains valid: remove the manual pull step without creating
+  retry loops or letting a PRIMARY RUN admit under stale or uncertain repository state.
 
 assumptions:
   - >
-    Current canonical AIOS-renew main before TASK-062 authoring is
-    d6d8945e4b6ce7422cf6422fa3b3b87340925638.
+    Canonical main at revision-2 authoring is
+    49ee38b94d7100367d3e50d9c3ac101b07440bf0 and contains the TASK-062 revision-1
+    contract but no published TASK-062 implementation.
   - >
-    TASK-061 is semantically reviewed PASS and published at
-    d6d8945e4b6ce7422cf6422fa3b3b87340925638.
+    RUN-062-005 candidate 994a7c63ad76763f371c528ddff19f69b24ac6f8 is not published;
+    REVIEW-062-004 is canonical BLOCKED with AC3 and AC6 failed.
   - >
-    Human explicitly authorizes automatic safe fast-forward synchronization before a
-    new PRIMARY `aios run` so that a separate manual pull command is unnecessary.
+    Human explicitly approved revising TASK-062 rather than continuing the blocked
+    revision-1 remediation loop.
   - >
-    Human separately authorizes automatic publication after semantic PASS; durable
-    repo-native PASS publication is intentionally deferred to a separate TASK because
-    it owns a different post-review mutation authority.
+    Native Git is the deterministic repository authority for fast-forward-only branch
+    integration. AIOS must validate and observe that operation, not recreate its
+    internal transaction or promise recovery from arbitrary filesystem/ref corruption.
   - >
-    Existing exactly-one Executor authority, Runtime-owned verification, 60-minute
-    native response budget, 65-minute watchdog, deterministic executor model defaults,
-    no-retry/no-fallback semantics, correction lineage, and frozen artifact authority
-    remain unchanged.
+    Existing exactly-one Executor authority, Runtime-owned verification, TASK-059
+    interruption semantics, TASK-060 timing policy, TASK-061 deterministic model
+    defaults, correction lineage, transport, and frozen artifact authority remain
+    unchanged.
+  - >
+    Automatic post-review publication remains deferred to a separate TASK.
 
 scope:
   inspect:
@@ -48,6 +51,7 @@ scope:
     - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
     - .ai/tasks/TASK-059.yaml
     - .ai/tasks/TASK-061.yaml
+    - .ai/tasks/TASK-062.yaml
     - src/aios_renew/operator.py
     - tests/test_operator.py
 
@@ -56,91 +60,107 @@ scope:
     - tests/test_operator.py
 
 non_goals:
-  - Implement automatic post-review publication or mutate remote `main`.
-  - Change REVIEW semantics, semantic review authority, or publication eligibility rules.
+  - Implement automatic post-review publication or mutate remote main.
   - Auto-sync REMEDIATION, REPAIR, direct-candidate acceptance, or any correction flow whose required HEAD is not current main.
-  - Infer or change the selected Executor when the Human-facing command reaches canonical operator admission.
-  - Add automatic merge, rebase, reset, stash, checkout recovery, conflict resolution, retry, fallback, reroute, or force-update behavior.
+  - Implement a custom read-tree/update-ref synchronization transaction or custom rollback protocol.
+  - Add automatic retry of fetch, fast-forward integration, restoration, Executor execution, fallback, reroute, or force-update behavior.
+  - Add automatic merge commits, rebase, reset, stash, checkout recovery, conflict resolution, or destructive cleanup.
+  - Infer or change the selected Executor.
   - Add background polling, daemons, schedulers, GitHub Actions, or external orchestration services.
-  - Change downstream repositories, downstream dependency pins, or user-global Git configuration.
-  - Change TASK-058 or the remote remediation finding-id collision defect.
+  - Change TASK-058, remote remediation finding-id resolution, downstream repositories, downstream pins, or user-global Git configuration.
   - Perform unrelated refactoring or cleanup.
-  - Push from executor execution.
+  - Push from Executor execution.
 
 constraints:
   hard:
     - >
-      Automatic synchronization applies only to a new PRIMARY `aios run` and must
-      complete before TASK loading, RUN creation, base SHA binding, or native Executor
-      invocation. No network synchronization may mutate repository state after the RUN
-      has been admitted.
+      Synchronization applies only to a new PRIMARY Human-facing launch and must finish
+      before TASK loading, RUN creation, base-SHA binding, or native Executor invocation.
+      No network or branch synchronization may mutate repository state after admission.
     - >
-      Automatic synchronization may advance the local checkout only when the worktree
-      is clean, the current branch is `main`, a unique configured upstream for that
-      branch resolves to upstream `main`, and the upstream commit is either equal to or
-      a descendant of local HEAD. If any condition is false, admission must fail closed
-      before a RUN exists and before an Executor is invoked.
+      Before any integrating mutation, AIOS must deterministically require a clean
+      worktree, attached local branch main, exactly one configured upstream resolving to
+      upstream main, and ancestry that is either equal or local-behind-upstream. Dirty,
+      detached, non-main, missing/ambiguous upstream, local-ahead, or diverged states
+      must fail before RUN creation and before Executor invocation.
     - >
-      When upstream `main` is ahead, synchronization must be fast-forward-only. AIOS
-      must never merge, rebase, reset, stash, discard, overwrite, force-update, or
-      otherwise reinterpret local repository work in order to synchronize.
+      When local main is behind, AIOS may perform exactly one native Git
+      fast-forward-only integration attempt under the repository mutation lock. AIOS
+      must not implement the integration with direct ref/index/worktree plumbing and
+      must not retry the integration if it fails.
     - >
-      If synchronization advances kernel source or TASK state, the invocation that
-      proceeds to admission must execute the synchronized kernel code and load the TASK
-      from the synchronized checkout. Continuing a PRIMARY RUN with stale pre-sync
-      imported code is forbidden; if safe continuation under synchronized code cannot
-      be established, fail closed before RUN admission.
+      Successful synchronization is established only when the native Git operation
+      succeeds and postconditions prove HEAD equals the resolved upstream commit, main
+      remains attached, and the worktree/index are clean. The base SHA admitted to the
+      RUN must equal that synchronized HEAD.
     - >
-      Synchronization must respect one-active-mutation authority. It must not mutate the
-      checkout while another AIOS operation owns the repository, and the base SHA bound
-      at admission must still equal the successfully synchronized main state; any race
-      or intervening state change must fail closed.
+      If the native fast-forward operation does not complete successfully, no RUN may
+      be created and no Executor may be invoked. AIOS may inspect repository state but
+      must not automatically restore, reset, retry, force-update, stash, merge, rebase,
+      or otherwise reinterpret the checkout. If the exact safe pre-sync state is no
+      longer established after the failed native operation, surface an explicit
+      repository-integrity BLOCKED admission diagnostic and stop further mutation.
     - >
-      A local `main` that is ahead of or diverged from upstream, a detached/non-main
-      checkout, dirty worktree, missing/ambiguous upstream, fetch failure, or unsafe
-      reload/restart condition must remain untouched except for non-mutating fetch
-      metadata and must produce an explicit admission error with no RUN and no native
-      invocation.
+      If successful synchronization changes kernel source or TASK state, the invocation
+      that proceeds toward admission must transfer control exactly once to synchronized
+      kernel code before TASK loading/admission. Stale pre-sync imported code may not
+      create a RUN. Guard against process-reentry loops; this control transfer is not an
+      Executor retry or a second canonical execution.
     - >
-      Existing PRIMARY execution semantics after successful admission remain unchanged,
-      including exact one Executor invocation, Runtime verification, RESULT/FAILURE
-      handling, TASK-059 interruption behavior, TASK-060 timing policy, TASK-061 model
-      defaults, transport, and no-push behavior.
-    - Do not push from executor execution.
+      Synchronization must respect one-active-mutation authority. Fetch/integration and
+      admission state checks must be protected so an intervening local mutation or ref
+      race cannot silently change the base SHA selected for the RUN.
+    - >
+      Existing PRIMARY semantics after successful admission remain unchanged, including
+      exactly one Executor invocation, Runtime verification/evidence, 60/65 timing,
+      interruption terminalization, TASK-061 deterministic model defaults, transport,
+      and no-push behavior.
+    - Do not push from Executor execution.
 
 acceptance:
   - id: AC1
     condition: >
-      A deterministic regression with clean local `main` strictly behind its configured
-      upstream proves Human-facing PRIMARY launch fast-forwards before TASK loading and
-      admission, and the resulting RUN base SHA equals the synchronized upstream main SHA.
+      A deterministic regression with clean local main strictly behind its unique
+      configured upstream main proves the Human-facing PRIMARY launch performs one
+      native fast-forward-only synchronization before TASK loading/admission and binds
+      the resulting synchronized upstream SHA as RUN base_sha.
   - id: AC2
     condition: >
-      A deterministic regression with local `main` already equal to upstream proves the
-      preflight is a no-op on committed repository state and PRIMARY admission proceeds normally.
+      A deterministic regression with local main already equal to upstream proves the
+      synchronization preflight makes no committed/worktree change and PRIMARY
+      admission proceeds normally.
   - id: AC3
     condition: >
-      Deterministic regressions for dirty worktree, local-ahead, diverged, detached or
-      non-main checkout, missing/ambiguous upstream, and fetch/synchronization failure
-      prove fail-closed behavior with no RUN creation and no Executor invocation.
+      Deterministic regressions for dirty worktree, local-ahead, diverged, detached,
+      non-main, missing/ambiguous upstream, and fetch/precondition failure prove no
+      integrating mutation, no RUN creation, and no Executor invocation.
   - id: AC4
     condition: >
-      A regression where synchronization advances source/TASK state proves admission
-      cannot continue under stale pre-sync kernel state and the TASK consumed by the RUN
-      is the synchronized canonical TASK.
+      Deterministic regressions for native fast-forward failure prove there is exactly
+      one integration attempt, no retry/fallback/recovery mutation, no RUN creation, and
+      no Executor invocation; unchanged safe state produces an admission error, while
+      any post-failure state that cannot be proven safe produces an explicit
+      repository-integrity BLOCKED diagnostic.
   - id: AC5
+    condition: >
+      A regression where successful synchronization advances kernel source and TASK
+      state proves stale pre-sync code cannot admit a RUN and control transfers once to
+      synchronized code that loads the synchronized canonical TASK and binds its SHA.
+  - id: AC6
     condition: >
       REMEDIATION, REPAIR, and direct-candidate/correction paths retain their existing
       exact-HEAD lineage behavior and do not auto-fast-forward to upstream main.
-  - id: AC6
-    condition: >
-      Synchronization regressions prove no merge, rebase, reset, stash, force update,
-      automatic conflict resolution, retry, fallback, or remote-main mutation is introduced.
   - id: AC7
     condition: >
+      Synchronization regressions prove AIOS introduces no hand-built read-tree/update-ref
+      transaction, rollback loop, automatic retry, fallback, merge commit, rebase, reset,
+      stash, force update, automatic conflict resolution, or remote-main mutation.
+  - id: AC8
+    condition: >
       Existing PRIMARY admission, exactly-one dispatch, Runtime verification, 60/65
-      timing, interruption terminalization, deterministic model defaults, transport,
-      and failure semantics continue to pass affected operator regression coverage.
+      timing, interruption terminalization, TASK-061 deterministic executor model
+      defaults including Antigravity gemini-3.8-flash/high, transport, and failure
+      semantics continue to pass affected operator regression coverage.
 
 verification:
   required:
