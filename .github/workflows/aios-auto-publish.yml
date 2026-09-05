@@ -16,10 +16,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out canonical publication gate
+      - name: Check out event-bound publication gate
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Publish exact reviewed candidate
@@ -41,4 +41,3 @@ jobs:
             --remote origin \
             --run-id "$run_id" \
             --decision-sha "$AIOS_DECISION_SHA"
-

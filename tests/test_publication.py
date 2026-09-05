@@ -473,6 +473,8 @@ def test_workflow_has_canonical_trigger_and_minimum_authority() -> None:
     assert "pull-requests: write" not in workflow
     assert "secrets." not in workflow
     assert "aios_renew.publication" in workflow
+    assert "ref: ${{ github.sha }}" in workflow
+    assert "ref: main" not in workflow
     assert "aios run" not in workflow
     assert "aios remediate" not in workflow
     assert "pytest" not in workflow
