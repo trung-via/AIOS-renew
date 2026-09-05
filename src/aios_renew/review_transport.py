@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 class ReviewTransportError(RuntimeError):
@@ -22,6 +25,26 @@ class RemoteRemediationLineage:
     remediation: bytes
     run: bytes
     result: bytes
+    repair: bytes | None = None
+
+
+@dataclass(frozen=True)
+class RemoteFailureArtifacts:
+    """Immutable Runtime-owned facts for one canonical failed RUN."""
+
+    run_id: str
+    candidate_sha: str
+    run: bytes
+    failure: bytes
+    repair: bytes | None
+
+
+@dataclass(frozen=True)
+class RemoteRepairRecovery:
+    """Portable failed correction chain and canonical remote RUN namespace."""
+
+    failures: tuple[RemoteFailureArtifacts, ...]
+    remote_run_ids: tuple[str, ...]
 
 
 def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = False) -> tuple[int, str, str]:
@@ -145,6 +168,9 @@ def resolve_remote_remediation_lineages(
         result = _read_remote_blob(
             repo, remote, artifacts_sha, ".ai/transport/result.json"
         )
+        repair = _read_remote_blob(
+            repo, remote, artifacts_sha, ".ai/transport/repair.json"
+        )
         if None in (review, remediation, run, result):
             raise ReviewTransportError(f"canonical lineage content missing at {ref}")
         resolved.append(
@@ -155,9 +181,187 @@ def resolve_remote_remediation_lineages(
                 remediation=remediation,
                 run=run,
                 result=result,
+                repair=repair,
             )
         )
     return tuple(resolved)
+
+
+def resolve_remote_repair_recovery(
+    repo: Path, *, failed_run_id: str
+) -> RemoteRepairRecovery:
+    """Resolve one failed correction chain entirely from canonical remote refs."""
+
+    task_prefix = _run_task_prefix(failed_run_id)
+    remote = resolve_transport_remote(repo)
+    remote_run_ids = _remote_run_ids(repo, remote, task_prefix)
+    if failed_run_id not in remote_run_ids:
+        raise ReviewTransportError(
+            f"canonical failed RUN not found: {failed_run_id}"
+        )
+    cache: dict[str, RemoteFailureArtifacts] = {}
+
+    def read_failure(run_id: str) -> RemoteFailureArtifacts:
+        if run_id in cache:
+            return cache[run_id]
+        if _run_task_prefix(run_id) != task_prefix:
+            raise ReviewTransportError("correction lineage crosses TASK identity")
+        artifacts_ref = f"refs/heads/aios/failure-artifacts/{run_id}"
+        candidate_ref = f"refs/heads/aios/failure/{run_id}"
+        refs = _exact_remote_refs(repo, remote, artifacts_ref, candidate_ref)
+        if artifacts_ref not in refs or candidate_ref not in refs:
+            raise ReviewTransportError(
+                f"canonical failed RUN refs missing for {run_id}"
+            )
+        artifacts_sha = refs[artifacts_ref]
+        run = _read_remote_blob(repo, remote, artifacts_sha, ".ai/transport/run.json")
+        failure = _read_remote_blob(
+            repo, remote, artifacts_sha, ".ai/transport/failure.json"
+        )
+        repair = _read_remote_blob(
+            repo, remote, artifacts_sha, ".ai/transport/repair.json"
+        )
+        if run is None or failure is None:
+            raise ReviewTransportError(
+                f"canonical failed RUN content missing for {run_id}"
+            )
+        artifact = RemoteFailureArtifacts(
+            run_id, refs[candidate_ref], run, failure, repair
+        )
+        cache[run_id] = artifact
+        return artifact
+
+    chain: list[RemoteFailureArtifacts] = []
+    seen: set[str] = set()
+    current = failed_run_id
+    while True:
+        if current in seen:
+            raise ReviewTransportError("cyclic failed RUN continuation lineage")
+        seen.add(current)
+        artifact = read_failure(current)
+        chain.append(artifact)
+        failure_data = _json_mapping(artifact.failure, "FAILURE")
+        if failure_data.get("kind") != "FAILURE" or failure_data.get("run_id") != current:
+            raise ReviewTransportError("canonical FAILURE identity mismatch")
+        if failure_data.get("failed_head_sha") != artifact.candidate_sha:
+            raise ReviewTransportError("canonical failed-head ref mismatch")
+        continuation = failure_data.get("continuation_of")
+        if continuation is None:
+            break
+        if not isinstance(continuation, str) or not continuation:
+            raise ReviewTransportError("invalid FAILURE continuation_of")
+        if artifact.repair is not None:
+            repair_data = _json_mapping(artifact.repair, "REPAIR execution")
+            if repair_data.get("failed_run_id") != continuation:
+                raise ReviewTransportError("conflicting REPAIR execution lineage")
+        current = continuation
+
+    continuations: dict[str, list[str]] = {}
+    for run_id in remote_run_ids:
+        failure_ref = f"refs/heads/aios/failure-artifacts/{run_id}"
+        artifact_ref = f"refs/heads/aios/artifacts/{run_id}"
+        refs = _exact_remote_refs(repo, remote, failure_ref, artifact_ref)
+        if failure_ref in refs and artifact_ref in refs:
+            raise ReviewTransportError(
+                f"canonical RUN has conflicting terminal artifacts: {run_id}"
+            )
+        selected = refs.get(failure_ref) or refs.get(artifact_ref)
+        if selected is None:
+            continue
+        if failure_ref in refs:
+            failure = _read_remote_blob(
+                repo, remote, selected, ".ai/transport/failure.json"
+            )
+            if failure is None:
+                raise ReviewTransportError(
+                    f"canonical FAILURE content missing for {run_id}"
+                )
+            parent = _json_mapping(failure, "FAILURE").get("continuation_of")
+            if isinstance(parent, str) and parent:
+                continuations.setdefault(parent, []).append(run_id)
+        repair = _read_remote_blob(repo, remote, selected, ".ai/transport/repair.json")
+        if repair is None:
+            continue
+        parent = _json_mapping(repair, "REPAIR execution").get("failed_run_id")
+        if isinstance(parent, str) and parent and run_id not in continuations.get(parent, []):
+            continuations.setdefault(parent, []).append(run_id)
+    duplicates = continuations.get(failed_run_id, [])
+    if duplicates:
+        raise ReviewTransportError(
+            "canonical continuation already exists for failed RUN: "
+            + ", ".join(sorted(duplicates))
+        )
+    return RemoteRepairRecovery(tuple(chain), tuple(sorted(remote_run_ids)))
+
+
+def read_remote_task(repo: Path, *, commit_sha: str, task_id: str) -> bytes:
+    """Read an exact historical TASK without checking out its subject tree."""
+
+    if not task_id or "/" in task_id or "\\" in task_id:
+        raise ReviewTransportError(f"invalid TASK id: {task_id!r}")
+    remote = resolve_transport_remote(repo)
+    content = _read_remote_blob(
+        repo, remote, commit_sha, f".ai/tasks/{task_id}.yaml"
+    )
+    if content is None:
+        raise ReviewTransportError(
+            f"historical TASK not found at {commit_sha}: {task_id}"
+        )
+    return content
+
+
+def _run_task_prefix(run_id: str) -> str:
+    stem, separator, sequence = run_id.rpartition("-")
+    if (
+        not separator
+        or not stem.startswith("RUN-")
+        or len(stem) <= len("RUN-")
+        or not sequence.isdigit()
+    ):
+        raise ReviewTransportError(f"invalid RUN id: {run_id!r}")
+    return f"{stem}-"
+
+
+def _remote_run_ids(repo: Path, remote: str, task_prefix: str) -> set[str]:
+    refs = _exact_remote_refs(
+        repo,
+        remote,
+        f"refs/heads/aios/failure-artifacts/{task_prefix}*",
+        f"refs/heads/aios/artifacts/{task_prefix}*",
+    )
+    result: set[str] = set()
+    for ref in refs:
+        run_id = ref.rsplit("/", 1)[-1]
+        if not run_id.startswith(task_prefix):
+            raise ReviewTransportError("canonical RUN ref TASK identity mismatch")
+        _run_task_prefix(run_id)
+        result.add(run_id)
+    return result
+
+
+def _exact_remote_refs(repo: Path, remote: str, *patterns: str) -> dict[str, str]:
+    code, output, _ = _git_cmd(
+        repo, "ls-remote", "--refs", remote, *patterns, allow_fail=True
+    )
+    if code:
+        raise ReviewTransportError(f"failed to query canonical refs from {remote}")
+    refs: dict[str, str] = {}
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) != 2 or parts[1] in refs:
+            raise ReviewTransportError("malformed or ambiguous canonical ref result")
+        refs[parts[1]] = parts[0]
+    return refs
+
+
+def _json_mapping(content: bytes, name: str) -> Mapping[str, Any]:
+    try:
+        value = json.loads(content.decode("utf-8", errors="strict"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ReviewTransportError(f"invalid canonical {name} JSON: {exc}") from exc
+    if not isinstance(value, Mapping):
+        raise ReviewTransportError(f"canonical {name} must be a mapping")
+    return value
 
 
 def _create_artifacts_commit(
@@ -295,6 +499,7 @@ def _create_named_artifacts_commit(
     artifact_path: Path,
     artifact_name: str,
     run_id: str,
+    lineage_path: Path | None = None,
     observation_path: Path | None = None,
 ) -> str:
     """Create an isolated artifacts commit without touching the worktree."""
@@ -306,6 +511,12 @@ def _create_named_artifacts_commit(
 
     blobs: dict[str, str] = {}
     inputs = [("run.json", run_path), (artifact_name, artifact_path)]
+    if lineage_path is not None:
+        if not lineage_path.is_file():
+            raise ReviewTransportError(
+                f"persisted REPAIR lineage JSON missing: {lineage_path}"
+            )
+        inputs.append(("repair.json", lineage_path))
     if observation_path is not None:
         if not observation_path.is_file():
             raise ReviewTransportError(
@@ -350,6 +561,7 @@ def _create_named_artifacts_commit(
 def transport_failure(
     repo: Path, *, run_id: str, head_sha: str, run_path: Path, failure_path: Path,
     publish_candidate: bool = True,
+    lineage_path: Path | None = None,
     observation_path: Path | None = None,
 ) -> None:
     """Publish an immutable, authority-checked failed candidate and its facts."""
@@ -361,6 +573,8 @@ def transport_failure(
         ".ai/transport/run.json": run_path.read_bytes(),
         ".ai/transport/failure.json": failure_path.read_bytes(),
     }
+    if lineage_path is not None:
+        expected[".ai/transport/repair.json"] = lineage_path.read_bytes()
     expected_observation = (
         observation_path.read_bytes() if observation_path is not None else None
     )
@@ -396,6 +610,7 @@ def transport_failure(
         commit = _create_named_artifacts_commit(
             repo, run_path=run_path, artifact_path=failure_path,
             artifact_name="failure.json", run_id=run_id,
+            lineage_path=lineage_path,
             observation_path=observation_path,
         )
         specs.append(f"{commit}:{artifacts_ref}")
@@ -521,8 +736,8 @@ def read_remote_repair(repo: Path, run_id: str) -> bytes:
     code, output, _ = _git_cmd(repo, "ls-remote", remote, ref, allow_fail=True)
     if code or not output.strip():
         raise ReviewTransportError(f"remote REPAIR not found for {run_id}")
-    lines = [line.split() for line in output.splitlines() if len(line.split()) >= 2]
-    if len(lines) != 1:
+    lines = [line.split() for line in output.splitlines() if line.strip()]
+    if len(lines) != 1 or len(lines[0]) != 2 or lines[0][1] != ref:
         raise ReviewTransportError(f"remote REPAIR is ambiguous for {run_id}")
     content = _read_remote_blob(repo, remote, lines[0][0], ".ai/transport/repair.json")
     if content is None:

@@ -142,6 +142,7 @@ class RuntimeCompletion:
         verification_runner: VerificationRunner,
         observation_tracker: RunObservationTracker | None,
         error_type: BoundaryError,
+        transport_repo: Path | None = None,
     ) -> None:
         self.repo = repo
         self.state = state
@@ -151,6 +152,7 @@ class RuntimeCompletion:
         self.verification_runner = verification_runner
         self.observation_tracker = observation_tracker
         self.error_type = error_type
+        self.transport_repo = transport_repo or repo
         self.interruption_phase = "COMPLETION_GATE"
 
     def complete(
@@ -239,7 +241,7 @@ class RuntimeCompletion:
         )
         try:
             transport_post_pass(
-                self.repo,
+                self.transport_repo,
                 run_id=self.run.run_id,
                 head_sha=actual_head,
                 run_path=self.run_path,
@@ -502,6 +504,7 @@ def persist_failure(
     observation_path: Path | None = None,
     interruption_phase: str | None = None,
     transport: bool = True,
+    transport_repo: Path | None = None,
 ) -> None:
     """Persist one admitted FAILURE and optionally best-effort transport it."""
 
@@ -595,12 +598,15 @@ def persist_failure(
         if transport:
             try:
                 transport_failure(
-                    root,
+                    transport_repo or root,
                     run_id=run.run_id,
                     head_sha=head_sha,
                     run_path=run_path,
                     failure_path=failure_path,
                     publish_candidate=transportable,
+                    lineage_path=(
+                        repair_execution if repair_execution.is_file() else None
+                    ),
                     observation_path=observation_path,
                 )
             except ReviewTransportError as transport_error:

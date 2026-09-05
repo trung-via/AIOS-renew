@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
@@ -37,9 +38,12 @@ from .dispatcher import (
 )
 from .executor import ExecutorBoundaryError
 from .review_transport import (
+    RemoteFailureArtifacts,
     RemoteRemediationLineage,
     ReviewTransportError,
     read_remote_repair,
+    read_remote_task,
+    resolve_remote_repair_recovery,
     resolve_remote_remediation_lineages,
     transport_admission_failure,
     transport_failure,
@@ -81,6 +85,9 @@ class _RunAttempt:
 
     run_path: Path | None = None
     completion: RuntimeCompletion | None = None
+    subject_repo: Path | None = None
+    task: Task | None = None
+    historical_workspace: Path | None = None
 
     def bind_run(self, run_path: Path) -> None:
         if self.run_path is not None:
@@ -89,6 +96,13 @@ class _RunAttempt:
 
     def bind_completion(self, completion: RuntimeCompletion) -> None:
         self.completion = completion
+
+    def bind_subject(
+        self, repo: Path, task: Task, historical_workspace: Path | None = None
+    ) -> None:
+        self.subject_repo = repo
+        self.task = task
+        self.historical_workspace = historical_workspace
 
     @property
     def interruption_phase(self) -> str:
@@ -265,6 +279,14 @@ class RepairSummary:
         )
 
 
+@dataclass(frozen=True)
+class _HistoricalRepairAdmission:
+    failure: Mapping[str, Any]
+    task: Task
+    root_base_sha: str
+    remote_run_ids: tuple[str, ...]
+
+
 def resolve_repository(path: str | Path | None = None) -> Path:
     """Resolve an explicit path or current directory to its real Git root."""
 
@@ -362,7 +384,9 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
     return paths
 
 
-def next_run_id(task_id: str, runs_path: Path) -> str:
+def next_run_id(
+    task_id: str, runs_path: Path, *, reserved: tuple[str, ...] = ()
+) -> str:
     """Return the next compact local RUN id for one TASK."""
 
     task_part = task_id.removeprefix("TASK-")
@@ -371,6 +395,10 @@ def next_run_id(task_id: str, runs_path: Path) -> str:
     numbers = []
     for path in runs_path.glob(f"{prefix}*.json"):
         match = pattern.match(path.name)
+        if match:
+            numbers.append(int(match.group(1)))
+    for run_id in reserved:
+        match = pattern.match(f"{run_id}.json")
         if match:
             numbers.append(int(match.group(1)))
     return f"{prefix}{max(numbers, default=0) + 1:03d}"
@@ -757,12 +785,8 @@ def run_repair(
             attempt.run_path is not None
             and not (state.results / attempt.run_path.name).is_file()
         ):
-            run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
-            _persist_and_transport_failure(
-                root,
-                task_id=run_data["task"]["id"],
-                run_path=attempt.run_path,
-                failure=original,
+            _persist_repair_failure(
+                root, state=state, attempt=attempt, failure=original,
                 observation_tracker=observation_tracker,
                 interruption_phase=attempt.interruption_phase,
             )
@@ -773,15 +797,55 @@ def run_repair(
             and not (state.results / attempt.run_path.name).is_file()
         ):
             try:
-                run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
-                _persist_and_transport_failure(
-                    root, task_id=run_data["task"]["id"],
-                    run_path=attempt.run_path, failure=original,
+                _persist_repair_failure(
+                    root, state=state, attempt=attempt, failure=original,
                     observation_tracker=observation_tracker,
                 )
             except Exception:
                 pass
         raise
+    finally:
+        _remove_historical_workspace(root, attempt.historical_workspace)
+
+
+def _persist_repair_failure(
+    control_repo: Path,
+    *,
+    state: RuntimePaths,
+    attempt: _RunAttempt,
+    failure: BaseException,
+    observation_tracker: RunObservationTracker,
+    interruption_phase: str | None = None,
+) -> None:
+    if attempt.run_path is None or attempt.subject_repo is None or attempt.task is None:
+        return
+    run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
+    persist_failure(
+        attempt.subject_repo,
+        state=state,
+        task=attempt.task,
+        run=_run_from_data(run_data),
+        run_path=attempt.run_path,
+        failure=failure,
+        observation_tracker=observation_tracker,
+        interruption_phase=interruption_phase,
+        transport_repo=control_repo,
+    )
+
+
+def _remove_historical_workspace(control_repo: Path, workspace: Path | None) -> None:
+    if workspace is None:
+        return
+    try:
+        subprocess.run(
+            ("git", "-C", str(control_repo), "worktree", "remove", "--force", str(workspace)),
+            capture_output=True,
+            check=False,
+        )
+        if workspace.exists():
+            workspace.rmdir()
+    except OSError:
+        pass
 
 
 def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
@@ -813,6 +877,8 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
                 root, run_id=run_id, head_sha=payload["failed_head_sha"],
                 run_path=run_path, failure_path=failure_path,
                 publish_candidate=publish_candidate,
+                lineage_path=(state.repairs / f"{run_id}.json")
+                if (state.repairs / f"{run_id}.json").is_file() else None,
                 observation_path=optional_observation,
             )
         else:
@@ -834,36 +900,58 @@ def _run_repair_impl(
     if executor not in ("codex", "antigravity"):
         raise OperatorError(f"unsupported executor: {executor}")
     state = runtime_paths(repo)
-    failure_path = state.failures / f"{failed_run_id}.json"
-    if not failure_path.is_file():
-        raise OperatorError(f"persisted FAILURE not found: {failed_run_id}")
-    failure = json.loads(failure_path.read_text(encoding="utf-8"))
-    if failure.get("kind") != "FAILURE" or failure.get("run_id") != failed_run_id:
-        raise OperatorError("invalid persisted FAILURE lineage")
-    continuation_of = failure.get("continuation_of")
-    if continuation_of is None:
-        root_base_sha = failure.get("base_sha")
-    else:
-        prior_execution_path = state.repairs / f"{failed_run_id}.json"
-        if not prior_execution_path.is_file():
-            raise OperatorError("persisted REPAIR lineage not found")
-        prior_execution = json.loads(
-            prior_execution_path.read_text(encoding="utf-8")
-        )
-        if prior_execution.get("failed_run_id") != continuation_of:
-            raise OperatorError("invalid persisted REPAIR lineage")
-        root_base_sha = prior_execution.get("root_base_sha")
-    if not isinstance(root_base_sha, str) or not root_base_sha:
-        raise OperatorError("invalid original TASK root lineage")
-    candidate = failure.get("candidate")
-    if not isinstance(candidate, Mapping) or candidate.get("repairable") is not True:
-        raise OperatorError("failed candidate is not safely bound for REPAIR")
     if any(
-        json.loads(path.read_text(encoding="utf-8")).get("failed_run_id") == failed_run_id
+        json.loads(path.read_text(encoding="utf-8")).get("failed_run_id")
+        == failed_run_id
         for path in state.repairs.glob("*.json")
     ):
         raise OperatorError("REPAIR has already been accepted for failed RUN")
-
+    failure_path = state.failures / f"{failed_run_id}.json"
+    local_failure: Any = None
+    if failure_path.is_file():
+        local_failure = json.loads(failure_path.read_text(encoding="utf-8"))
+        if (
+            not isinstance(local_failure, Mapping)
+            or local_failure.get("kind") != "FAILURE"
+            or local_failure.get("run_id") != failed_run_id
+        ):
+            raise OperatorError("invalid persisted FAILURE lineage")
+    current_head = _git(repo, "rev-parse", "HEAD")
+    historical = (
+        local_failure is None
+        or local_failure.get("failed_head_sha") != current_head
+    )
+    remote_run_ids: tuple[str, ...] = ()
+    if historical:
+        admission = _resolve_historical_repair_admission(repo, failed_run_id)
+        failure = admission.failure
+        task = admission.task
+        root_base_sha = admission.root_base_sha
+        remote_run_ids = admission.remote_run_ids
+        if local_failure is not None and dict(local_failure) != dict(failure):
+            raise OperatorError("local and canonical remote FAILURE conflict")
+    else:
+        failure = local_failure
+        assert isinstance(failure, Mapping)
+        continuation_of = failure.get("continuation_of")
+        if continuation_of is None:
+            root_base_sha = failure.get("base_sha")
+        else:
+            prior_execution_path = state.repairs / f"{failed_run_id}.json"
+            if not prior_execution_path.is_file():
+                raise OperatorError("persisted REPAIR lineage not found")
+            prior_execution = json.loads(
+                prior_execution_path.read_text(encoding="utf-8")
+            )
+            if prior_execution.get("failed_run_id") != continuation_of:
+                raise OperatorError("invalid persisted REPAIR lineage")
+            root_base_sha = prior_execution.get("root_base_sha")
+        if not isinstance(root_base_sha, str) or not root_base_sha:
+            raise OperatorError("invalid original TASK root lineage")
+        task = load_task(repo, failure["task"]["id"])
+    candidate = failure.get("candidate")
+    if not isinstance(candidate, Mapping) or candidate.get("repairable") is not True:
+        raise OperatorError("failed candidate is not safely bound for REPAIR")
     if repair is None:
         try:
             repair_data: Any = json.loads(read_remote_repair(repo, failed_run_id))
@@ -888,9 +976,8 @@ def _run_repair_impl(
         raise OperatorError("REPAIR does not match failed committed state")
     if not isinstance(task_ref, Mapping) or dict(task_ref) != dict(failure["task"]):
         raise OperatorError("REPAIR does not match original TASK lineage")
-    task = load_task(repo, failure["task"]["id"])
     if task.revision != failure["task"]["revision"]:
-        raise OperatorError("current TASK revision does not match failed RUN")
+        raise OperatorError("TASK revision does not match failed RUN")
     action = repair_data.get("action")
     if action not in ("CODE_FIX", "NO_CHANGE"):
         raise OperatorError("REPAIR action must be CODE_FIX or NO_CHANGE")
@@ -913,15 +1000,27 @@ def _run_repair_impl(
         raise OperatorError("NO_CHANGE REPAIR modification scope must be empty")
 
     with RepositoryLock(state.lock):
+        if any(
+            json.loads(path.read_text(encoding="utf-8")).get("failed_run_id")
+            == failed_run_id
+            for path in state.repairs.glob("*.json")
+        ):
+            raise OperatorError("REPAIR has already been accepted for failed RUN")
         if _git(repo, "status", "--porcelain"):
             raise OperatorError("repository dirty")
         failed_head = failure["failed_head_sha"]
-        if _git(repo, "rev-parse", "HEAD") != failed_head:
+        subject_repo = repo
+        workspace = None
+        if historical:
+            subject_repo = _create_historical_workspace(repo, failed_head)
+            workspace = subject_repo
+        elif _git(repo, "rev-parse", "HEAD") != failed_head:
             raise OperatorError("current HEAD does not match failed committed state")
-        run_id = next_run_id(task.task_id, state.runs)
+        attempt.bind_subject(subject_repo, task, workspace)
+        run_id = next_run_id(task.task_id, state.runs, reserved=remote_run_ids)
         run = Run.from_task(
             run_id=run_id, task=task, executor=executor,
-            base_sha=failed_head, workspace=str(repo),
+            base_sha=failed_head, workspace=str(subject_repo),
         )
         run_path = state.runs / f"{run_id}.json"
         execution = {
@@ -948,7 +1047,7 @@ def _run_repair_impl(
         )
         dispatcher = repair_dispatcher(
             selected_executor=executor,
-            repo=repo,
+            repo=subject_repo,
             handoff_path=state.handoffs / f"{run_id}.json",
             execution_policy=execution_policy,
             native_runner=observed_native_runner,
@@ -965,7 +1064,7 @@ def _run_repair_impl(
             raise OperatorError(f"dispatcher failed: {exc}") from exc
 
         runtime_completion = RuntimeCompletion(
-            repo=repo,
+            repo=subject_repo,
             state=state,
             task=task,
             run=run,
@@ -973,6 +1072,7 @@ def _run_repair_impl(
             verification_runner=verification_runner,
             observation_tracker=observation_tracker,
             error_type=OperatorError,
+            transport_repo=repo,
         )
         attempt.bind_completion(runtime_completion)
         completion = runtime_completion.complete(
@@ -991,6 +1091,308 @@ def _run_repair_impl(
             executor=executor, failed_head_sha=failed_head,
             head_sha=completion.head_sha, result_path=completion.result_path,
         )
+
+
+def _resolve_historical_repair_admission(
+    repo: Path, failed_run_id: str
+) -> _HistoricalRepairAdmission:
+    try:
+        recovery = resolve_remote_repair_recovery(
+            repo, failed_run_id=failed_run_id
+        )
+    except ReviewTransportError as exc:
+        raise OperatorError(f"historical REPAIR lineage rejected: {exc}") from exc
+    if not recovery.failures:
+        raise OperatorError("historical REPAIR lineage is empty")
+
+    target_artifact = recovery.failures[0]
+    target_failure = _decode_remote_mapping(target_artifact.failure, "FAILURE")
+    task_ref = target_failure.get("task")
+    if not isinstance(task_ref, Mapping):
+        raise OperatorError("historical FAILURE TASK reference is invalid")
+    task_id = task_ref.get("id")
+    revision = task_ref.get("revision")
+    if (
+        not isinstance(task_id, str)
+        or isinstance(revision, bool)
+        or not isinstance(revision, int)
+    ):
+        raise OperatorError("historical FAILURE TASK reference is invalid")
+    try:
+        task_source = read_remote_task(
+            repo, commit_sha=target_artifact.candidate_sha, task_id=task_id
+        )
+        task = parse_task(task_source.decode("utf-8", errors="strict"))
+    except (ReviewTransportError, UnicodeError, TaskValidationError) as exc:
+        raise OperatorError(f"historical TASK rejected: {exc}") from exc
+    if task.task_id != task_id or task.revision != revision:
+        raise OperatorError("historical TASK identity or revision mismatch")
+
+    parsed: list[tuple[RemoteFailureArtifacts, Mapping[str, Any], Run, Any]] = []
+    expected_task = {"id": task_id, "revision": revision}
+    for artifact in recovery.failures:
+        failure = _decode_remote_mapping(artifact.failure, "FAILURE")
+        failure_task = failure.get("task")
+        if not isinstance(failure_task, Mapping) or dict(failure_task) != expected_task:
+            raise OperatorError("historical failed RUN TASK lineage mismatch")
+        if failure.get("failed_head_sha") != artifact.candidate_sha:
+            raise OperatorError("historical failed-head lineage mismatch")
+        run_data = _decode_remote_mapping(artifact.run, "RUN")
+        try:
+            if run_data.get("kind") == "REMEDIATION":
+                execution = _remediation_execution_from_data(run_data["execution"])
+                run = execution.run
+            elif "kind" not in run_data:
+                execution = None
+                run = _run_from_data(run_data)
+            else:
+                raise ValueError("unknown RUN kind")
+        except (KeyError, TypeError, ValueError, ReviewValidationError) as exc:
+            raise OperatorError(f"invalid historical RUN lineage: {exc}") from exc
+        if run.run_id != artifact.run_id:
+            raise OperatorError("historical RUN identity mismatch")
+        if {"id": run.task.id, "revision": run.task.revision} != expected_task:
+            raise OperatorError("historical RUN TASK lineage mismatch")
+        if failure.get("base_sha") != run.base_sha:
+            raise OperatorError("historical FAILURE base does not match RUN")
+        parsed.append((artifact, failure, run, execution))
+
+    for index, (artifact, failure, run, execution) in enumerate(parsed[:-1]):
+        if execution is not None:
+            raise OperatorError("REMEDIATION cannot contain REPAIR continuation metadata")
+        predecessor = parsed[index + 1]
+        continuation = failure.get("continuation_of")
+        if continuation != predecessor[2].run_id:
+            raise OperatorError("historical continuation chain mismatch")
+        if run.base_sha != predecessor[1].get("failed_head_sha"):
+            raise OperatorError("historical REPAIR base does not match failed head")
+        if artifact.repair is not None:
+            repair_execution = _decode_remote_mapping(
+                artifact.repair, "REPAIR execution"
+            )
+            embedded_run = repair_execution.get("run")
+            embedded_failure = repair_execution.get("failure")
+            if (
+                repair_execution.get("failed_run_id") != continuation
+                or repair_execution.get("failed_head_sha") != run.base_sha
+                or not isinstance(embedded_run, Mapping)
+                or dict(embedded_run) != dict(_decode_remote_mapping(artifact.run, "RUN"))
+                or not isinstance(embedded_failure, Mapping)
+                or dict(embedded_failure) != dict(predecessor[1])
+            ):
+                raise OperatorError("historical REPAIR execution lineage conflict")
+            authorization = repair_execution.get("repair")
+        else:
+            try:
+                authorization = json.loads(
+                    read_remote_repair(repo, continuation).decode(
+                        "utf-8", errors="strict"
+                    )
+                )
+            except (ReviewTransportError, UnicodeError, json.JSONDecodeError) as exc:
+                raise OperatorError(
+                    f"legacy REPAIR authorization rejected: {exc}"
+                ) from exc
+        if (
+            not isinstance(authorization, Mapping)
+            or authorization.get("failed_run_id") != continuation
+            or authorization.get("failed_head_sha") != predecessor[1].get("failed_head_sha")
+            or not isinstance(authorization.get("task"), Mapping)
+            or dict(authorization["task"]) != expected_task
+        ):
+            raise OperatorError("historical REPAIR authorization mismatch")
+
+    terminal_artifact, terminal_failure, terminal_run, terminal_execution = parsed[-1]
+    if terminal_failure.get("continuation_of") is not None:
+        raise OperatorError("historical correction lineage terminates incompletely")
+    if terminal_execution is None:
+        root_base_sha = terminal_run.base_sha
+    else:
+        root_base_sha = _derive_remediation_source_root(
+            repo, task=task, execution=terminal_execution
+        )
+    if not isinstance(root_base_sha, str) or not root_base_sha:
+        raise OperatorError("invalid original TASK root lineage")
+    if not _git_is_ancestor(repo, root_base_sha, target_artifact.candidate_sha):
+        raise OperatorError("historical failed head does not descend from TASK root")
+    for artifact, _, _, _ in parsed[:-1]:
+        if artifact.repair is None:
+            continue
+        lineage = _decode_remote_mapping(artifact.repair, "REPAIR execution")
+        if lineage.get("root_base_sha") != root_base_sha:
+            raise OperatorError("conflicting original TASK root lineage")
+    candidate = target_failure.get("candidate")
+    if not isinstance(candidate, Mapping) or candidate.get("repairable") is not True:
+        raise OperatorError("failed candidate is not safely bound for REPAIR")
+    return _HistoricalRepairAdmission(
+        target_failure, task, root_base_sha, recovery.remote_run_ids
+    )
+
+
+def _derive_remediation_source_root(
+    repo: Path,
+    *,
+    task: Task,
+    execution: RemediationExecution,
+    seen: frozenset[tuple[str, str]] = frozenset(),
+) -> str:
+    identity = (execution.review_id, execution.remediation.reviewed_sha)
+    if identity in seen:
+        raise OperatorError("cyclic reviewed source lineage")
+    seen = seen.union((identity,))
+    try:
+        lineages = resolve_remote_remediation_lineages(
+            repo, finding_id=execution.finding.id
+        )
+    except ReviewTransportError as exc:
+        raise OperatorError(f"reviewed source lineage rejected: {exc}") from exc
+    matches: list[str] = []
+    for remote in lineages:
+        try:
+            review = parse_review(remote.review.decode("utf-8", errors="strict"))
+            remediation = parse_remediation(
+                remote.remediation.decode("utf-8", errors="strict")
+            )
+            run_data = _decode_remote_mapping(remote.run, "source RUN")
+            if run_data.get("kind") == "REMEDIATION":
+                source_execution = _remediation_execution_from_data(
+                    run_data["execution"]
+                )
+                source_run = source_execution.run
+            elif "kind" not in run_data:
+                source_execution = None
+                source_run = _run_from_data(run_data)
+            else:
+                raise ValueError("unknown source RUN kind")
+            if source_run.task.id != task.task_id:
+                continue
+            if source_run.task.revision != task.revision:
+                raise ValueError("source RUN TASK revision mismatch")
+            package_data = _decode_remote_mapping(remote.result, "source RESULT")
+            result = validate_result(package_data["result"])
+            evidence_data = package_data["evidence"]
+            if not isinstance(evidence_data, list):
+                raise TypeError("source evidence must be a list")
+            evidence = tuple(validate_evidence(item) for item in evidence_data)
+            package = ResultPackage(result=result, evidence=evidence)
+            if source_execution is None:
+                validate_result_package(
+                    task=task, run=source_run, result=result, evidence=evidence
+                )
+                prior_review = None
+            else:
+                _validate_persisted_remediation_result(
+                    repo=repo,
+                    task=task,
+                    execution=source_execution,
+                    package=package,
+                )
+                prior_review = Review(
+                    review_id=source_execution.review_id,
+                    reviewed_sha=source_execution.remediation.reviewed_sha,
+                    mode="PRIMARY",
+                    verdict="CHANGES_REQUIRED",
+                    acceptance={},
+                    findings=(source_execution.finding,),
+                )
+            validate_review(
+                task=task, result=result, review=review, prior_review=prior_review
+            )
+            validate_remediation(review=review, remediation=remediation, task=task)
+            if review.review_id != execution.review_id:
+                continue
+            if (
+                remote.source_run_id != source_run.run_id
+                or review.reviewed_sha != execution.remediation.reviewed_sha
+                or remediation != execution.remediation
+                or result.head_sha != execution.remediation.reviewed_sha
+            ):
+                raise ValueError("reviewed source identity or SHA mismatch")
+            if source_execution is not None:
+                root = _derive_remediation_source_root(
+                    repo, task=task, execution=source_execution, seen=seen
+                )
+            elif remote.repair is None:
+                root = source_run.base_sha
+            else:
+                repair_lineage = _decode_remote_mapping(
+                    remote.repair, "source REPAIR execution"
+                )
+                source_failure = repair_lineage.get("failure")
+                source_authorization = repair_lineage.get("repair")
+                source_task = repair_lineage.get("task")
+                if (
+                    not isinstance(repair_lineage.get("failed_run_id"), str)
+                    or repair_lineage.get("failed_head_sha") != source_run.base_sha
+                    or repair_lineage.get("run") != dict(run_data)
+                    or not isinstance(source_failure, Mapping)
+                    or source_failure.get("run_id")
+                    != repair_lineage.get("failed_run_id")
+                    or source_failure.get("failed_head_sha") != source_run.base_sha
+                    or not isinstance(source_failure.get("task"), Mapping)
+                    or dict(source_failure["task"])
+                    != {"id": task.task_id, "revision": task.revision}
+                    or not isinstance(source_authorization, Mapping)
+                    or source_authorization.get("failed_run_id")
+                    != repair_lineage.get("failed_run_id")
+                    or source_authorization.get("failed_head_sha")
+                    != source_run.base_sha
+                    or not isinstance(source_authorization.get("task"), Mapping)
+                    or dict(source_authorization["task"])
+                    != {"id": task.task_id, "revision": task.revision}
+                    or not isinstance(source_task, Mapping)
+                    or source_task.get("task_id") != task.task_id
+                    or source_task.get("revision") != task.revision
+                ):
+                    raise ValueError("source REPAIR lineage mismatch")
+                root = repair_lineage.get("root_base_sha")
+            if not isinstance(root, str) or not root:
+                raise ValueError("source root_base_sha is invalid")
+            matches.append(root)
+        except (
+            ArtifactValidationError,
+            KeyError,
+            TypeError,
+            ValueError,
+            UnicodeError,
+            ReviewValidationError,
+        ) as exc:
+            raise OperatorError(
+                f"contract-invalid reviewed source lineage at {remote.ref}: {exc}"
+            ) from exc
+    if len(matches) != 1:
+        qualifier = "not found" if not matches else "ambiguous"
+        raise OperatorError(f"exact reviewed source lineage is {qualifier}")
+    return matches[0]
+
+
+def _decode_remote_mapping(content: bytes | None, name: str) -> Mapping[str, Any]:
+    if content is None:
+        raise OperatorError(f"canonical {name} is missing")
+    try:
+        value = json.loads(content.decode("utf-8", errors="strict"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise OperatorError(f"invalid canonical {name}: {exc}") from exc
+    if not isinstance(value, Mapping):
+        raise OperatorError(f"canonical {name} must be a mapping")
+    return value
+
+
+def _create_historical_workspace(repo: Path, failed_head: str) -> Path:
+    control_head = _git(repo, "rev-parse", "HEAD")
+    workspace = Path(tempfile.mkdtemp(prefix="aios-historical-repair-"))
+    try:
+        _git(repo, "worktree", "add", "--detach", str(workspace), failed_head)
+        if _git(workspace, "rev-parse", "HEAD") != failed_head:
+            raise OperatorError("historical subject HEAD mismatch")
+        if _git(workspace, "status", "--porcelain"):
+            raise OperatorError("historical subject workspace is dirty")
+        if _git(repo, "rev-parse", "HEAD") != control_head:
+            raise OperatorError("historical admission changed control HEAD")
+        return workspace
+    except Exception:
+        _remove_historical_workspace(repo, workspace)
+        raise
 
 
 def _is_kernel_source(path: str) -> bool:

@@ -10,6 +10,11 @@ import pytest
 
 import aios_renew.operator as operator_module
 import aios_renew.runtime as runtime_module
+from aios_renew.review_transport import (
+    RemoteFailureArtifacts,
+    RemoteRemediationLineage,
+    RemoteRepairRecovery,
+)
 from aios_renew.operator import (
     OperatorError,
     RepositoryLock,
@@ -243,6 +248,36 @@ class RepairRunner:
         payload = result_payload(execution["run"]["run_id"], head_sha)
         return subprocess.CompletedProcess(
             command, returncode=0, stdout=json.dumps(payload), stderr=""
+        )
+
+
+class HistoricalRepairRunner:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.initial_head = None
+        self.workspace = None
+        self.initial_pin = None
+
+    def __call__(self, command, **kwargs):
+        self.calls += 1
+        execution = json.loads(
+            kwargs["input"].decode("utf-8").split("REPAIR_INPUT:\n", 1)[1]
+        )
+        subject = Path(execution["run"]["workspace"])
+        self.workspace = subject
+        self.initial_head = git(subject, "rev-parse", "HEAD")
+        self.initial_pin = (subject / "AIOS_PIN").read_text(encoding="utf-8")
+        (subject / "OUTPUT.txt").write_text("historically repaired\n", encoding="utf-8")
+        git(subject, "add", "OUTPUT.txt")
+        git(subject, "commit", "--quiet", "-m", "historical repair")
+        head_sha = git(subject, "rev-parse", "HEAD")
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                result_payload(execution["run"]["run_id"], head_sha)
+            ),
+            stderr="",
         )
 
 
@@ -4236,6 +4271,7 @@ def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(
             command, returncode=1, stdout=b"", stderr=b"still failing"
         )
 
+
     with pytest.raises(OperatorError):
         run_repair(
             first_run_id,
@@ -4252,6 +4288,16 @@ def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(
     )
     continuation_head = continuation_failure["failed_head_sha"]
     assert continuation_failure["continuation_of"] == first_run_id
+    transported_lineage = git(
+        tmp_path / "upstream.git",
+        "show",
+        "refs/heads/aios/failure-artifacts/RUN-101-002:"
+        ".ai/transport/repair.json",
+    )
+    persisted_lineage = (state.repairs / "RUN-101-002.json").read_text(
+        encoding="utf-8"
+    ).strip()
+    assert transported_lineage == persisted_lineage
 
     summary = run_repair(
         continuation_run_id,
@@ -4277,6 +4323,320 @@ def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(
             repair=repair("REPAIR-3", continuation_run_id, continuation_head),
             native_runner=runner,
         )
+
+
+def test_historical_repair_isolates_subject_and_preserves_control_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    (repo / "AIOS_PIN").write_text("old-runtime\n", encoding="utf-8")
+    git(repo, "add", "AIOS_PIN")
+    git(repo, "commit", "--quiet", "-m", "historical runtime pin")
+    root_base_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "switch", "--quiet", "-c", "historical-failure")
+    (repo / "OUTPUT.txt").write_text("failed historical output\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "historical failed candidate")
+    failed_head = git(repo, "rev-parse", "HEAD")
+    git(repo, "switch", "--quiet", "main")
+    (repo / "AIOS_PIN").write_text("new-control-runtime\n", encoding="utf-8")
+    (repo / "CONTROL.txt").write_text("newer runtime control\n", encoding="utf-8")
+    git(repo, "add", "AIOS_PIN", "CONTROL.txt")
+    git(repo, "commit", "--quiet", "-m", "newer control main")
+    control_head = git(repo, "rev-parse", "HEAD")
+
+    failed_run_id = "RUN-101-004"
+    remote_run = {
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": root_base_sha,
+        "workspace": "historical-machine-path",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    failure = {
+        "kind": "FAILURE",
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": root_base_sha,
+        "failed_head_sha": failed_head,
+        "phase": "COMPLETION_GATE",
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": ["OUTPUT.txt"],
+            "outside_task_scope": [],
+        },
+    }
+    artifact = RemoteFailureArtifacts(
+        failed_run_id,
+        failed_head,
+        json.dumps(remote_run).encode(),
+        json.dumps(failure).encode(),
+        None,
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_repair_recovery",
+        lambda repo, *, failed_run_id: RemoteRepairRecovery(
+            (artifact,), ("RUN-101-004", "RUN-101-009")
+        ),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "read_remote_task",
+        lambda repo, *, commit_sha, task_id: TASK_SOURCE.encode(),
+    )
+    repair = {
+        "repair_id": "REPAIR-101-HISTORICAL",
+        "failed_run_id": failed_run_id,
+        "failed_head_sha": failed_head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CODE_FIX",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Correct the historical candidate only."],
+        "constraints": ["Commit the output."],
+    }
+    runner = HistoricalRepairRunner()
+
+    summary = run_repair(
+        failed_run_id,
+        executor="codex",
+        repo=repo,
+        repair=repair,
+        native_runner=runner,
+    )
+
+    assert summary.run_id == "RUN-101-010"
+    assert runner.calls == 1
+    assert runner.initial_head == failed_head
+    assert runner.initial_pin == "old-runtime\n"
+    assert runner.workspace is not None and not runner.workspace.exists()
+    assert git(repo, "rev-parse", "HEAD") == control_head
+    assert git(repo, "branch", "--show-current") == "main"
+    assert git(repo, "status", "--porcelain") == ""
+    assert (repo / "AIOS_PIN").read_text(encoding="utf-8") == "new-control-runtime\n"
+    assert git(repo, "show", f"{summary.head_sha}:AIOS_PIN") == "old-runtime"
+    git(repo, "merge-base", "--is-ancestor", failed_head, summary.head_sha)
+    assert git(repo, "rev-list", "--count", f"{failed_head}..{summary.head_sha}") == "1"
+
+
+def test_historical_repair_rejects_remote_duplicate_before_workspace_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+
+    def reject_duplicate(repo, *, failed_run_id):
+        raise operator_module.ReviewTransportError(
+            "canonical continuation already exists for failed RUN"
+        )
+
+    monkeypatch.setattr(
+        operator_module, "resolve_remote_repair_recovery", reject_duplicate
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "_create_historical_workspace",
+        lambda *args: pytest.fail("workspace must not be created"),
+    )
+
+    with pytest.raises(OperatorError, match="continuation already exists"):
+        run_repair("RUN-101-004", executor="codex", repo=repo, repair={})
+
+
+def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    task_source = TASK_SOURCE.replace("TASK-101", "TASK-125")
+    task_ref = {"id": "TASK-125", "revision": 1}
+    root_base_sha = "d47ed9c048cacd152452cf2a7054c662e1043c82"
+    reviewed_sha = "11fa6d596434f6fd3ee100b2bb481c4a2093b8bd"
+    heads = {
+        "RUN-125-006": "head-006",
+        "RUN-125-007": "head-007",
+        "RUN-125-008": "head-008",
+        "RUN-125-009": "bde5ac1e781254920ec7bb6bdb3246e1a758ebb1",
+    }
+    remediation = {
+        "finding_id": "F-125-001",
+        "action": "CODE_FIX",
+        "reviewed_sha": reviewed_sha,
+        "modification_scope": ["OUTPUT.txt"],
+        "affected_verification": ["git status --porcelain"],
+        "constraints": ["Commit the output."],
+    }
+    finding = {
+        "id": "F-125-001",
+        "basis": "AC1",
+        "action": "CODE_FIX",
+        "location": "OUTPUT.txt",
+        "issue": "The output needs correction.",
+        "expected": "The output is corrected.",
+    }
+
+    artifacts = []
+    run_006 = {
+        "kind": "REMEDIATION",
+        "execution": {
+            "review_id": "REVIEW-125-001",
+            "finding": finding,
+            "remediation": remediation,
+            "run": {
+                "run_id": "RUN-125-006",
+                "task": task_ref,
+                "executor": "codex",
+                "base_sha": reviewed_sha,
+                "workspace": "legacy",
+                "head_sha": None,
+                "status": "ACTIVE",
+            },
+            "original_constraints": ["Commit the output."],
+        },
+    }
+    prior_head = heads["RUN-125-006"]
+    for number in (6, 7, 8, 9):
+        run_id = f"RUN-125-{number:03d}"
+        continuation = None if number == 6 else f"RUN-125-{number - 1:03d}"
+        run_data = run_006 if number == 6 else {
+            "run_id": run_id,
+            "task": task_ref,
+            "executor": "codex",
+            "base_sha": prior_head,
+            "workspace": "legacy",
+            "head_sha": None,
+            "status": "ACTIVE",
+        }
+        failure = {
+            "kind": "FAILURE",
+            "run_id": run_id,
+            "task": task_ref,
+            "executor": "codex",
+            "base_sha": reviewed_sha if number == 6 else prior_head,
+            "failed_head_sha": heads[run_id],
+            "candidate": {"repairable": True, "changed_files": ["OUTPUT.txt"]},
+        }
+        if continuation is not None:
+            failure["continuation_of"] = continuation
+        artifacts.append(
+            RemoteFailureArtifacts(
+                run_id,
+                heads[run_id],
+                json.dumps(run_data).encode(),
+                json.dumps(failure).encode(),
+                None,
+            )
+        )
+        prior_head = heads[run_id]
+    artifacts.reverse()
+    recovery = RemoteRepairRecovery(tuple(artifacts), tuple(heads))
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_repair_recovery",
+        lambda repo, *, failed_run_id: recovery,
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "read_remote_task",
+        lambda repo, *, commit_sha, task_id: task_source.encode(),
+    )
+    failures = {
+        artifact.run_id: json.loads(artifact.failure) for artifact in artifacts
+    }
+
+    def legacy_repair(repo, failed_run_id):
+        return json.dumps(
+            {
+                "repair_id": f"REPAIR-{failed_run_id}",
+                "failed_run_id": failed_run_id,
+                "failed_head_sha": failures[failed_run_id]["failed_head_sha"],
+                "task": task_ref,
+                "action": "CODE_FIX",
+                "modification_scope": ["OUTPUT.txt"],
+                "instructions": ["Continue the immutable correction."],
+                "constraints": ["Commit the output."],
+            }
+        ).encode()
+
+    monkeypatch.setattr(operator_module, "read_remote_repair", legacy_repair)
+    source_run = {
+        "run_id": "RUN-125-005",
+        "task": task_ref,
+        "executor": "codex",
+        "base_sha": "source-failed-head",
+        "workspace": "legacy",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    review = {
+        "review_id": "REVIEW-125-001",
+        "reviewed_sha": reviewed_sha,
+        "mode": "PRIMARY",
+        "verdict": "CHANGES_REQUIRED",
+        "acceptance": {"AC1": "FAIL"},
+        "findings": [finding],
+    }
+    source_result = result_payload("RUN-125-005", reviewed_sha)
+    source_result["result"]["claims"][0]["evidence"] = ["E-125-005"]
+    source_result["evidence"] = [
+        {
+            "evidence_id": "E-125-005",
+            "run_id": "RUN-125-005",
+            "subject_sha": reviewed_sha,
+            "type": "TEST",
+            "source": {"command": "git status --porcelain"},
+            "result": {"exit_code": 0, "summary": "verified"},
+            "raw": {"path": ".ai/evidence/E-125-005.log"},
+        }
+    ]
+    source_lineage = RemoteRemediationLineage(
+        ref="refs/heads/aios/remediation/RUN-125-005-F-125-001",
+        source_run_id="RUN-125-005",
+        review=json.dumps(review).encode(),
+        remediation=json.dumps(remediation).encode(),
+        run=json.dumps(source_run).encode(),
+        result=json.dumps(source_result).encode(),
+        repair=json.dumps(
+            {
+                "failed_run_id": "RUN-125-004",
+                "root_base_sha": root_base_sha,
+                "failed_head_sha": "source-failed-head",
+                "run": source_run,
+                "task": {"task_id": "TASK-125", "revision": 1},
+                "failure": {
+                    "kind": "FAILURE",
+                    "run_id": "RUN-125-004",
+                    "task": task_ref,
+                    "failed_head_sha": "source-failed-head",
+                },
+                "repair": {
+                    "repair_id": "REPAIR-RUN-125-004",
+                    "failed_run_id": "RUN-125-004",
+                    "failed_head_sha": "source-failed-head",
+                    "task": task_ref,
+                },
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_remediation_lineages",
+        lambda repo, *, finding_id: (source_lineage,),
+    )
+    monkeypatch.setattr(operator_module, "_git_is_ancestor", lambda *args: True)
+
+    admission = operator_module._resolve_historical_repair_admission(
+        repo, "RUN-125-009"
+    )
+
+    assert admission.root_base_sha == root_base_sha
+    assert admission.task.task_id == "TASK-125"
+    assert admission.task.revision == 1
+    assert admission.failure["failed_head_sha"] == heads["RUN-125-009"]
 
 
 class ObservationClock:
