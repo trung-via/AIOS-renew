@@ -331,7 +331,17 @@ def test_reads_exact_historical_task_without_mutating_current_checkout(
 ) -> None:
     repo, _ = make_repo(tmp_path)
     historical_head = git(repo, "rev-parse", "HEAD")
-    historical_task = (repo / ".ai" / "tasks" / "TASK-058.yaml").read_bytes()
+    historical_task = subprocess.run(
+        (
+            "git",
+            "-C",
+            str(repo),
+            "show",
+            f"{historical_head}:.ai/tasks/TASK-058.yaml",
+        ),
+        capture_output=True,
+        check=True,
+    ).stdout
     (repo / ".ai" / "tasks" / "TASK-058.yaml").write_text(
         "task_id: TASK-058\nrevision: 99\ngoal: current contract\n",
         encoding="utf-8",
