@@ -1,0 +1,43 @@
+name: AIOS auto-publish reviewed candidate
+
+on:
+  push:
+    branches:
+      - "aios/review-decision/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aios-auto-publish-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out canonical publication gate
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Publish exact reviewed candidate
+        env:
+          AIOS_DECISION_REF: ${{ github.ref }}
+          AIOS_DECISION_SHA: ${{ github.sha }}
+          PYTHONPATH: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="refs/heads/aios/review-decision/"
+          if [[ "$AIOS_DECISION_REF" != "$prefix"* ]]; then
+            echo "Unexpected publication ref: $AIOS_DECISION_REF" >&2
+            exit 1
+          fi
+          run_id="${AIOS_DECISION_REF#"$prefix"}"
+          python -m aios_renew.publication \
+            --repo . \
+            --remote origin \
+            --run-id "$run_id" \
+            --decision-sha "$AIOS_DECISION_SHA"
