@@ -284,6 +284,35 @@ def test_rejects_failed_head_or_failure_identity_mismatch(
         resolve_remote_repair_recovery(repo, failed_run_id="RUN-058-004")
 
 
+def test_rejects_cyclic_failed_run_continuation_lineage(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    files = tmp_path / "facts"
+    root = git(repo, "rev-parse", "HEAD")
+    first_head = commit_candidate(repo, "cyclic repair one")
+    publish_failure(
+        repo,
+        files,
+        run_id="RUN-058-004",
+        candidate_sha=first_head,
+        root_base_sha=root,
+        continuation_of="RUN-058-005",
+    )
+    second_head = commit_candidate(repo, "cyclic repair two")
+    publish_failure(
+        repo,
+        files,
+        run_id="RUN-058-005",
+        candidate_sha=second_head,
+        root_base_sha=root,
+        continuation_of="RUN-058-004",
+    )
+
+    with pytest.raises(
+        ReviewTransportError, match="cyclic failed RUN continuation lineage"
+    ):
+        resolve_remote_repair_recovery(repo, failed_run_id="RUN-058-005")
+
+
 def test_remote_run_namespace_includes_successes_and_rejects_remote_duplicate(
     tmp_path: Path,
 ) -> None:

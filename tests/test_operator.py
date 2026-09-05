@@ -4448,6 +4448,346 @@ def test_historical_repair_rejects_remote_duplicate_before_workspace_creation(
         run_repair("RUN-101-004", executor="codex", repo=repo, repair={})
 
 
+def assert_historical_repair_rejected_before_mutation(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failed_run_id: str,
+    message: str,
+) -> None:
+    monkeypatch.setattr(
+        operator_module,
+        "_create_historical_workspace",
+        lambda *args: pytest.fail("workspace must not be created"),
+    )
+
+    def reject_executor(*args, **kwargs):
+        raise AssertionError("Executor must not be invoked")
+
+    with pytest.raises(OperatorError, match=message):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair={},
+            native_runner=reject_executor,
+        )
+
+
+def historical_failure_artifact(
+    *,
+    run_id: str,
+    base_sha: str,
+    failed_head_sha: str,
+    continuation_of: str | None = None,
+) -> RemoteFailureArtifacts:
+    task_ref = {"id": "TASK-101", "revision": 1}
+    run = {
+        "run_id": run_id,
+        "task": task_ref,
+        "executor": "codex",
+        "base_sha": base_sha,
+        "workspace": "historical-machine-path",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    failure = {
+        "kind": "FAILURE",
+        "run_id": run_id,
+        "task": task_ref,
+        "executor": "codex",
+        "base_sha": base_sha,
+        "failed_head_sha": failed_head_sha,
+        "candidate": {"repairable": True, "changed_files": ["OUTPUT.txt"]},
+    }
+    if continuation_of is not None:
+        failure["continuation_of"] = continuation_of
+    return RemoteFailureArtifacts(
+        run_id,
+        failed_head_sha,
+        json.dumps(run).encode(),
+        json.dumps(failure).encode(),
+        None,
+    )
+
+
+def historical_remediation_source_fixture(
+    repo: Path,
+    *,
+    source_reviewed_sha: str | None = None,
+) -> tuple[RemoteRepairRecovery, RemoteRemediationLineage]:
+    task_ref = {"id": "TASK-101", "revision": 1}
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    source_sha = source_reviewed_sha or reviewed_sha
+    root_base_sha = "historical-task-root"
+    failed_run_id = "RUN-101-004"
+    source_run_id = "RUN-101-003"
+    finding = {
+        "id": "R1",
+        "basis": "AC1",
+        "action": "CODE_FIX",
+        "location": "OUTPUT.txt",
+        "issue": "The output is absent.",
+        "expected": "Commit only the output.",
+    }
+    remediation = {
+        "finding_id": "R1",
+        "action": "CODE_FIX",
+        "reviewed_sha": reviewed_sha,
+        "modification_scope": ["OUTPUT.txt"],
+        "affected_verification": ["git status --porcelain"],
+        "constraints": ["Commit the output."],
+    }
+    failed_run = {
+        "run_id": failed_run_id,
+        "task": task_ref,
+        "executor": "codex",
+        "base_sha": reviewed_sha,
+        "workspace": "historical-machine-path",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    execution = {
+        "review_id": "REVIEW-101-001",
+        "finding": finding,
+        "remediation": remediation,
+        "run": failed_run,
+        "original_constraints": ["Commit the output."],
+    }
+    failed_artifact = RemoteFailureArtifacts(
+        failed_run_id,
+        "historical-failed-head",
+        json.dumps({"kind": "REMEDIATION", "execution": execution}).encode(),
+        json.dumps(
+            {
+                "kind": "FAILURE",
+                "run_id": failed_run_id,
+                "task": task_ref,
+                "executor": "codex",
+                "base_sha": reviewed_sha,
+                "failed_head_sha": "historical-failed-head",
+                "candidate": {
+                    "repairable": True,
+                    "changed_files": ["OUTPUT.txt"],
+                },
+            }
+        ).encode(),
+        None,
+    )
+    source_run = {
+        "run_id": source_run_id,
+        "task": task_ref,
+        "executor": "codex",
+        "base_sha": root_base_sha,
+        "workspace": "historical-machine-path",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    source_remediation = dict(remediation)
+    source_remediation["reviewed_sha"] = source_sha
+    review = {
+        "review_id": "REVIEW-101-001",
+        "reviewed_sha": source_sha,
+        "mode": "PRIMARY",
+        "verdict": "CHANGES_REQUIRED",
+        "acceptance": {"AC1": "FAIL"},
+        "findings": [finding],
+    }
+    source_result = result_payload(source_run_id, source_sha)
+    source_result["result"]["claims"][0]["evidence"] = ["E-SOURCE"]
+    source_result["evidence"] = [
+        {
+            "evidence_id": "E-SOURCE",
+            "run_id": source_run_id,
+            "subject_sha": source_sha,
+            "type": "TEST",
+            "source": {"command": "git status --porcelain"},
+            "result": {"exit_code": 0, "summary": "verified"},
+            "raw": {"path": ".ai/evidence/E-SOURCE.log"},
+        }
+    ]
+    source = RemoteRemediationLineage(
+        ref=f"refs/heads/aios/remediation/{source_run_id}-R1",
+        source_run_id=source_run_id,
+        review=json.dumps(review).encode(),
+        remediation=json.dumps(source_remediation).encode(),
+        run=json.dumps(source_run).encode(),
+        result=json.dumps(source_result).encode(),
+        repair=None,
+    )
+    return RemoteRepairRecovery((failed_artifact,), (failed_run_id,)), source
+
+
+def test_cyclic_failed_continuation_is_rejected_before_workspace_or_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+
+    def reject_cycle(repo, *, failed_run_id):
+        raise operator_module.ReviewTransportError(
+            "cyclic failed RUN continuation lineage"
+        )
+
+    monkeypatch.setattr(
+        operator_module, "resolve_remote_repair_recovery", reject_cycle
+    )
+    assert_historical_repair_rejected_before_mutation(
+        repo,
+        monkeypatch,
+        failed_run_id="RUN-101-004",
+        message="cyclic failed RUN continuation lineage",
+    )
+
+
+def test_historical_task_revision_mismatch_is_rejected_before_workspace_or_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    artifact = historical_failure_artifact(
+        run_id="RUN-101-004", base_sha=head, failed_head_sha="historical-head"
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_repair_recovery",
+        lambda repo, *, failed_run_id: RemoteRepairRecovery(
+            (artifact,), (failed_run_id,)
+        ),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "read_remote_task",
+        lambda repo, *, commit_sha, task_id: TASK_SOURCE.replace(
+            "revision: 1", "revision: 2"
+        ).encode(),
+    )
+    assert_historical_repair_rejected_before_mutation(
+        repo,
+        monkeypatch,
+        failed_run_id="RUN-101-004",
+        message="historical TASK identity or revision mismatch",
+    )
+
+
+@pytest.mark.parametrize("authorization", ["missing", "conflicting"])
+def test_legacy_repair_authorization_is_rejected_before_workspace_or_executor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authorization: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    root = git(repo, "rev-parse", "HEAD")
+    predecessor = historical_failure_artifact(
+        run_id="RUN-101-003",
+        base_sha=root,
+        failed_head_sha="historical-head-003",
+    )
+    target = historical_failure_artifact(
+        run_id="RUN-101-004",
+        base_sha="historical-head-003",
+        failed_head_sha="historical-head-004",
+        continuation_of="RUN-101-003",
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_repair_recovery",
+        lambda repo, *, failed_run_id: RemoteRepairRecovery(
+            (target, predecessor), ("RUN-101-003", "RUN-101-004")
+        ),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "read_remote_task",
+        lambda repo, *, commit_sha, task_id: TASK_SOURCE.encode(),
+    )
+    if authorization == "missing":
+        def read_repair(repo, failed_run_id):
+            raise operator_module.ReviewTransportError(
+                "remote REPAIR not found for RUN-101-003"
+            )
+
+        monkeypatch.setattr(operator_module, "read_remote_repair", read_repair)
+        message = "legacy REPAIR authorization rejected"
+    else:
+        monkeypatch.setattr(
+            operator_module,
+            "read_remote_repair",
+            lambda repo, failed_run_id: json.dumps(
+                {
+                    "failed_run_id": failed_run_id,
+                    "failed_head_sha": "conflicting-head",
+                    "task": {"id": "TASK-101", "revision": 1},
+                }
+            ).encode(),
+        )
+        message = "historical REPAIR authorization mismatch"
+    assert_historical_repair_rejected_before_mutation(
+        repo,
+        monkeypatch,
+        failed_run_id="RUN-101-004",
+        message=message,
+    )
+
+
+def test_reviewed_sha_mismatch_is_rejected_before_workspace_or_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    recovery, source = historical_remediation_source_fixture(
+        repo, source_reviewed_sha="different-reviewed-sha"
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_repair_recovery",
+        lambda repo, *, failed_run_id: recovery,
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "read_remote_task",
+        lambda repo, *, commit_sha, task_id: TASK_SOURCE.encode(),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_remediation_lineages",
+        lambda repo, *, finding_id: (source,),
+    )
+    assert_historical_repair_rejected_before_mutation(
+        repo,
+        monkeypatch,
+        failed_run_id="RUN-101-004",
+        message="reviewed source identity or SHA mismatch",
+    )
+
+
+def test_ambiguous_reviewed_source_is_rejected_before_workspace_or_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    recovery, source = historical_remediation_source_fixture(repo)
+    duplicate = replace(source, ref=source.ref + "-duplicate")
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_repair_recovery",
+        lambda repo, *, failed_run_id: recovery,
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "read_remote_task",
+        lambda repo, *, commit_sha, task_id: TASK_SOURCE.encode(),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_remediation_lineages",
+        lambda repo, *, finding_id: (source, duplicate),
+    )
+    assert_historical_repair_rejected_before_mutation(
+        repo,
+        monkeypatch,
+        failed_run_id="RUN-101-004",
+        message="exact reviewed source lineage is ambiguous",
+    )
+
+
 def test_legacy_run_125_lineage_resolves_remediation_to_successful_repair_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
