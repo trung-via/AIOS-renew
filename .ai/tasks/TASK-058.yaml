@@ -1,69 +1,86 @@
 task_id: TASK-058
-revision: 1
+revision: 2
 
 goal: >
-  Add a deterministic Runtime-owned historical REPAIR recovery boundary so the
-  currently pinned AIOS Runtime can continue one immutable historical failed RUN
-  from its exact failed_head_sha without mutating current downstream product main
-  or inserting control-plane/kernel migration commits into the original TASK
-  lineage. Preserve the normal downstream Human-facing worker surface, keep the
-  worker thin, and make Runtime responsible for immutable lineage resolution,
-  recovery admission, isolated historical subject execution, and continuation into
-  the existing canonical REPAIR completion contract.
+  Complete the deterministic Runtime-owned historical REPAIR recovery boundary on
+  current canonical AIOS state so an already-current control-plane Runtime can
+  continue one immutable historical failed RUN from its exact failed_head_sha without
+  resetting or mutating current product main, without bootstrapping the historical
+  repository-owned kernel pin, and without inserting control-plane migration commits
+  into the original TASK lineage. Preserve the normal thin Human-facing worker
+  surface, exactly-one selected Executor execution, Runtime-owned verification and
+  canonical REPAIR completion semantics.
 
 problem: >
-  Real downstream Python Agent TASK-125 exposed a second recovery-boundary defect
-  after TASK-057 corrected REPAIR Result.changed_files authority. Historical
+  The observed downstream Python Agent TASK-125 lineage remains blocked after
+  TASK-057 corrected canonical REPAIR Result.changed_files authority. Canonical
   RUN-125-009 failed at COMPLETION_GATE with failed_head_sha
-  bde5ac1e781254920ec7bb6bdb3246e1a758ebb1. Current run_repair requires the
-  execution repository HEAD to equal that failed head and reads FAILURE / REPAIR
-  continuation state from the same repository-local .git/aios state root. The
-  downstream Human-facing worker also bootstraps AIOS from repository-owned pin
-  files. Both downstream main d47ed9c048cacd152452cf2a7054c662e1043c82 and
-  the historical failed head contain old AIOS-renew pin
-  59b31ede597d4a27b848771522672705a021abe4. Checking out the failed head and using
-  the normal worker therefore bootstraps the old defective Runtime, while inserting
-  a current pin migration into the failed tree destroys exact historical lineage.
-  A portable recovery boundary must separate current control/runtime authority from
-  the immutable historical product subject, and must not depend on incidental local
-  state from the machine or worktree where the old failure occurred.
+  bde5ac1e781254920ec7bb6bdb3246e1a758ebb1 and continuation_of RUN-125-008, while
+  current downstream main is d47ed9c048cacd152452cf2a7054c662e1043c82. Both current
+  downstream main and the failed historical tree retain repository-owned AIOS pin
+  59b31ede597d4a27b848771522672705a021abe4. Current AIOS run_repair still couples
+  control state and subject state: it resolves FAILURE/REPAIR continuation from local
+  .git/aios state, loads the TASK from the current checkout, allocates RUN identity
+  from local state, and requires current checkout HEAD to equal failed_head_sha before
+  admission. That makes a newer pinned Runtime unable to recover the exact historical
+  subject without either downgrading to the old Runtime or mutating historical product
+  lineage with a pin migration. TASK-058 revision 1 also predates published
+  TASK-059/060/061/062/063 behavior and its lineage model is incomplete for the real
+  downstream topology because following REPAIR continuation_of links alone reaches
+  failed REMEDIATION RUN-125-006 rather than the original TASK root. Recovery must
+  therefore be re-based on current canonical AIOS state and reconstruct immutable
+  correction lineage, including the transition from failed remediation to its exact
+  reviewed successful source candidate, without depending on incidental local state.
 
 assumptions:
   - >
-    Current canonical AIOS-renew main before TASK-058 authoring is
-    0826f139ffd67f474afb5c512f8ce0731bef1835.
+    Current canonical AIOS-renew main immediately before this revision-2 authoring is
+    93d81da850f115a44e06128cbfff91a328cf498c.
   - >
-    TASK-057 is semantically reviewed PASS and published at
-    0826f139ffd67f474afb5c512f8ce0731bef1835. Its Runtime-owned canonical REPAIR
-    changed_files semantics remain authoritative after historical admission.
+    TASK-057 is published and remains authoritative for REPAIR completion: Runtime
+    derives canonical Result.changed_files from original root_base_sha to final HEAD
+    and separately enforces failed_head_sha-to-final-HEAD narrow REPAIR mutation scope.
   - >
-    Downstream python_complete_agent current main observed during incident audit is
-    d47ed9c048cacd152452cf2a7054c662e1043c82 and its repository-owned worker pin is
+    TASK-059 revision 2, TASK-060, TASK-061, TASK-062 revision 2, and TASK-063 revision
+    3 are published current baseline. Their direct native execution guidance,
+    interruption terminalization and bounded diagnostics, 60-minute response budget
+    with 65-minute outer watchdog, deterministic executor model defaults, PRIMARY-only
+    safe pre-admission synchronization, and reviewed-candidate publication behavior
+    remain authoritative and must not be reimplemented by this TASK.
+  - >
+    TASK-058 revision-1 RUN-058-001, RUN-058-002, and RUN-058-004 are immutable
+    historical failed execution evidence only. They produced no accepted TASK-058
+    implementation candidate and must not be repaired or rerun under revision 2.
+  - >
+    Canonical downstream python_complete_agent main is
+    d47ed9c048cacd152452cf2a7054c662e1043c82 and its active repository-owned AIOS pin is
     59b31ede597d4a27b848771522672705a021abe4.
   - >
-    Downstream RUN-125-009 canonical FAILURE records phase COMPLETION_GATE,
-    continuation_of RUN-125-008, and failed_head_sha
-    bde5ac1e781254920ec7bb6bdb3246e1a758ebb1. The canonical failure candidate ref
-    points to that exact commit.
+    Canonical downstream RUN-125-009 is TASK-125 revision 1, phase COMPLETION_GATE,
+    continuation_of RUN-125-008, with failed_head_sha
+    bde5ac1e781254920ec7bb6bdb3246e1a758ebb1; that exact historical tree contains the
+    same old repository-owned AIOS pin 59b31ede597d4a27b848771522672705a021abe4.
   - >
-    The exact historical failed head bde5ac1e781254920ec7bb6bdb3246e1a758ebb1
-    contains the same old repository-owned worker pin
-    59b31ede597d4a27b848771522672705a021abe4.
+    The observed downstream correction topology includes RUN-125-009 -> RUN-125-008 ->
+    RUN-125-007 -> RUN-125-006, where RUN-125-006 is a failed REMEDIATION bound to
+    REVIEW-125-001 and reviewed_sha 11fa6d596434f6fd3ee100b2bb481c4a2093b8bd.
+    Canonical successful source artifacts for RUN-125-005 bind that reviewed SHA and
+    include persisted REPAIR execution lineage with original root_base_sha
+    d47ed9c048cacd152452cf2a7054c662e1043c82.
   - >
-    RUN-125-008 is itself a REPAIR continuation and its FAILURE records
-    continuation_of RUN-125-007. Historical recovery must therefore support an
-    immutable multi-hop REPAIR failure chain rather than treating the latest
-    FAILURE.base_sha as the original TASK root.
+    The exact historical TASK-125 revision-1 contract is present in the immutable
+    failed subject tree. Historical recovery can therefore bind TASK semantics from
+    the subject instead of substituting a same-named contract from current product
+    main.
   - >
-    Existing failure transport preserves immutable failure candidate and failure
-    artifact refs containing RUN and FAILURE data, but failed REPAIR execution
-    lineage is not currently guaranteed to be portable to a fresh recovery state.
+    Failure candidate refs, failure-artifact refs, repair refs, successful artifact
+    refs, remediation/review refs, and their transported immutable contents are
+    subordinate delivery mechanisms but are the available canonical remote evidence
+    for portable reconstruction of legacy lineage.
   - >
-    TASK-051 exactly-one Dispatcher authority, TASK-052 Runtime completion
-    authority, TASK-055 native adapter thinning, TASK-057 REPAIR changed-files
-    authority, frozen schemas, no-retry/no-fallback semantics, and downstream pin
-    isolation remain authoritative except for the specific historical REPAIR
-    admission/recovery boundary introduced by this TASK.
+    Downstream pin migration needed to consume the completed capability and actual
+    continuation of RUN-125-009 are separate downstream changes after this AIOS TASK
+    is semantically reviewed PASS.
 
 scope:
   inspect:
@@ -73,10 +90,13 @@ scope:
     - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
     - docs/CHATGPT_PROJECT_CONTRACT.md
     - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
-    - .ai/tasks/TASK-051.yaml
-    - .ai/tasks/TASK-052.yaml
-    - .ai/tasks/TASK-055.yaml
     - .ai/tasks/TASK-057.yaml
+    - .ai/tasks/TASK-058.yaml
+    - .ai/tasks/TASK-059.yaml
+    - .ai/tasks/TASK-060.yaml
+    - .ai/tasks/TASK-061.yaml
+    - .ai/tasks/TASK-062.yaml
+    - .ai/tasks/TASK-063.yaml
     - src/aios_renew/runtime.py
     - src/aios_renew/operator.py
     - src/aios_renew/review_transport.py
@@ -97,211 +117,215 @@ scope:
     - tests/test_review_transport.py
 
 non_goals:
-  - Change Python Agent source, TASK-125, its historical commits, or its current dependency pin in this TASK.
+  - Change Python Agent source, TASK-125, historical downstream commits/artifacts, or its dependency pin in this TASK.
   - Perform the downstream AIOS pin migration required to consume this capability.
-  - Repair or rerun downstream RUN-125-009 as part of AIOS-renew implementation.
-  - Re-run TASK-125 PRIMARY, create a replacement PRIMARY RUN, or reinterpret the historical failure as a new task.
-  - Add an AIOS-specific lineage reconstruction workaround to the downstream repository-owned worker.
-  - Require the Human to use raw lower-level AIOS CLI commands as the normal downstream recovery workflow.
-  - Change Executor selection, retry, fallback, reroute, failover, timeout, lease, or exactly-one dispatch semantics.
-  - Substitute another Executor for the selected Executor or add autonomous recovery policy.
-  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, REPAIR, FAILURE, or RUN_OBSERVATION schemas merely to support historical recovery.
-  - Change TASK-057 canonical REPAIR changed_files semantics, REPAIR modification-scope semantics, verification authority, or canonical ResultPackage gates.
-  - Cherry-pick, merge, copy, or otherwise inject control-plane/kernel pin migration commits into an historical failed candidate before REPAIR.
-  - Build generic branch management, generic worktree orchestration, snapshot management, repository cloning infrastructure, or a new orchestration framework beyond the minimum deterministic historical recovery boundary.
-  - Add distributed scheduling or a cross-machine lock service; outer automation and distributed reconciliation remain separate concerns.
-  - Change Brain, Reviewer, publication, or Human intent authority.
-  - Perform unrelated operator/runtime/transport refactoring, roadmap cleanup, version cleanup, or adapter changes.
+  - Execute, repair, rerun, publish, merge, or otherwise resolve downstream RUN-125-009 as part of AIOS-renew implementation.
+  - Repair or rerun TASK-058 revision-1 RUN-058-001, RUN-058-002, or RUN-058-004.
+  - Add historical-lineage reconstruction logic to the downstream repository-owned worker.
+  - Require raw lower-level AIOS CLI commands as the normal downstream Human-facing recovery flow.
+  - Change Executor selection, retry, fallback, reroute, failover, model defaults, timing policy, lease semantics, or exactly-one dispatch authority.
+  - Change PRIMARY/REMEDIATION semantic contracts, TASK-057 changed_files authority, verification ownership, review verdict authority, or publication authority.
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, REPAIR, FAILURE, or RUN_OBSERVATION schemas merely to support recovery.
+  - Cherry-pick, merge, copy, or insert current kernel/pin/worker/control-plane migration commits into a historical failed candidate.
+  - Build generic branch management, cloning infrastructure, snapshot management, generic worktree orchestration, distributed locking, a message broker, scheduler, planner, router, or autonomous recovery framework.
+  - Add cross-machine retry/reconciliation policy or promise a distributed mutual-exclusion guarantee beyond the existing repository mutation authority.
+  - Perform unrelated adapter, dispatcher, sync, publication, roadmap, packaging, or version cleanup.
   - Push from executor execution.
 
 constraints:
   hard:
     - >
-      Historical REPAIR must separate current control/runtime repository context from
-      historical subject repository context. Current downstream product main and its
-      checked-out HEAD must not be reset, detached, rewritten, or mutated merely to
-      continue an historical failed RUN.
+      Historical REPAIR must separate the current control/runtime repository context
+      from the historical subject repository context. The current product checkout,
+      attached branch, HEAD, index, and worktree must not be reset, detached, rewritten,
+      stashed, committed, or otherwise mutated merely to recover a historical failed RUN.
     - >
-      Runtime must own an isolated historical subject workspace whose initial Git
-      HEAD is exactly the canonical failed_head_sha from immutable failed RUN
-      lineage. Executor mutation and canonical verification for historical REPAIR
-      occur against that subject workspace, not current product main.
+      Runtime must own an isolated historical subject workspace whose initial Git HEAD
+      is exactly the canonical target failed_head_sha. Executor mutation and Runtime
+      repository/completion/verification gates for the historical REPAIR operate on that
+      subject workspace, not on current product main.
     - >
-      Current control context remains authoritative for Runtime provenance,
-      repository-level mutation admission/lock state, canonical operational state,
-      canonical remote resolution, target REPAIR retrieval, continuation RUN identity
-      allocation, and terminal transport. The historical subject workspace is only
-      the Git subject for Executor mutation and Runtime repository/verification gates;
-      historical files or workspace-local metadata must not choose the Runtime,
-      canonical remote, state root, or lock domain.
+      Current control context remains authoritative for admitted Runtime provenance,
+      repository mutation lock/state root, canonical remote resolution, immutable
+      lineage retrieval, target REPAIR authorization, continuation RUN identity
+      allocation, terminal operational state, and transport. The isolated subject is
+      only the Git subject of the correction; its local metadata must not create a
+      competing authority domain.
     - >
-      The AIOS Runtime executable/provenance used for historical recovery is the
-      already-current pinned control-plane Runtime that admitted recovery. Pin,
-      launcher, workflow, or other control-plane files present inside the historical
-      subject tree are ordinary historical repository content and must not bootstrap,
-      downgrade, replace, or otherwise select the Runtime executing recovery.
+      Repository-owned pin, launcher, workflow, skill, or kernel bootstrap files inside
+      the historical subject are ordinary historical product content. They must not
+      choose, install, downgrade, replace, or re-enter the Runtime that already admitted
+      historical recovery.
     - >
-      The TASK contract used to execute and verify historical REPAIR must be bound to
-      the immutable historical lineage. Runtime must load and validate the exact TASK
-      id/revision contract from the historical subject state rather than silently
-      substituting a same-named TASK from current product main. A missing or
-      mismatching historical TASK contract must fail closed before Executor invocation.
+      Runtime must load and validate the exact historical TASK id/revision contract from
+      the immutable historical subject state and bind execution and verification to it.
+      Missing, malformed, TASK-id/revision-mismatched, or conflicting historical TASK
+      content must fail closed before Executor invocation; a same-named TASK from current
+      product main may not substitute for it.
     - >
-      The downstream Human-facing worker remains thin. A normal historical REPAIR
-      request may identify the failed RUN and already-selected Executor, but the
-      worker must not resolve continuation_of chains, discover root_base_sha, infer
-      failed_head_sha, enumerate TASK delta, allocate continuation RUN identity,
-      create the historical workspace, or reconstruct canonical FAILURE / REPAIR
-      lineage.
+      The normal downstream Human-facing worker remains thin. A historical REPAIR
+      request may identify the target failed RUN and selected Executor, but the worker
+      must not discover failed_head_sha or root_base_sha, traverse correction lineage,
+      select source artifacts, allocate continuation RUN identity, construct the
+      historical subject workspace, or reconstruct canonical FAILURE/REPAIR state.
     - >
-      Runtime must deterministically resolve historical lineage from immutable
-      canonical repository/transport state. For a multi-hop failed REPAIR chain it
-      must follow explicit continuation_of links until the original TASK root is
-      reached, validating at every hop RUN identity, TASK id/revision, failed
-      candidate SHA, and applicable canonical REPAIR authorization. Missing,
-      ambiguous, conflicting, malformed, or non-matching lineage must fail closed;
-      Runtime must not guess from ref order, commit messages, local cache, chat, or
-      current product state.
+      Runtime must reconstruct historical correction lineage from immutable canonical
+      remote state, not prior machine-local .git/aios state. Failed REPAIR chains must
+      follow explicit continuation_of and authorized REPAIR bindings. If that chain
+      reaches a failed REMEDIATION, Runtime must deterministically bind its embedded
+      review/remediation identity and reviewed_sha to the exact canonical successful
+      source lineage for that reviewed candidate, then continue deriving the original
+      TASK root through immutable source execution lineage rather than treating the
+      remediation base_sha as the TASK root.
     - >
-      Historical recovery must not depend on the recovery machine retaining prior
-      workspace-local .git/aios state. Immutable canonical remote artifacts must be
-      sufficient to re-establish historical continuation context, including legacy
-      failure chains created before this TASK where persisted repair execution data
-      was not transported as a separate artifact.
+      Successful source lineage may itself originate from PRIMARY, REPAIR, or
+      REMEDIATION continuity. Runtime must derive root_base_sha only from validated
+      immutable execution facts that establish that source candidate, including
+      transported successful REPAIR lineage when present. It must never infer the root
+      from ref order, commit message, filename ordering, current main, chat state, or
+      the latest FAILURE.base_sha alone.
     - >
-      Before Executor invocation, Runtime must prove the target failed RUN has no
-      already-accepted canonical continuation and must allocate a continuation RUN
-      identity that does not reuse or conflict with any canonical historical RUN
-      identity, even when local runtime state is empty or newly created. Remote state
-      is authority for collision/duplicate detection; local next-run numbering alone
-      is insufficient for historical recovery.
+      Missing, ambiguous, conflicting, cyclic, TASK/revision-mismatched,
+      reviewed-SHA-mismatched, failed-head-mismatched, unauthorized, or otherwise
+      incomplete remote lineage must fail closed before historical workspace mutation
+      or Executor invocation.
     - >
-      New failed REPAIR transport produced after this TASK must preserve enough
-      immutable canonical lineage to make later recovery portable without incidental
-      local state. Strengthened transport remains subordinate lineage delivery and
-      must not create semantic authority or alter frozen artifact schemas.
+      Historical recovery must work with fresh or empty local Runtime state. Before
+      Executor invocation, Runtime must reject a target failed RUN that already has a
+      canonical continuation and must allocate a continuation RUN identity that cannot
+      reuse or collide with any canonical remote RUN identity for that TASK. Local
+      next-run numbering alone is not sufficient authority.
     - >
-      The repair candidate must descend through normal Git ancestry from the exact
-      historical failed_head_sha. No control-plane migration, dependency pin update,
-      worker change, Runtime bootstrap change, or unrelated current-main commit may
-      be inserted between failed_head_sha and the repair candidate.
+      New failed REPAIR transport produced after this TASK must preserve sufficient
+      immutable Runtime-owned REPAIR execution lineage alongside RUN/FAILURE facts to
+      permit later portable continuation without incidental local state. This
+      strengthening is transport only and must not change frozen artifact schemas or
+      create new semantic authority.
     - >
-      Runtime must preserve TASK-057 completion semantics after historical admission:
-      failed_head_sha-to-final-HEAD committed mutation remains narrow REPAIR
-      authority; root_base_sha-to-final-HEAD remains complete original TASK delta
-      authority; canonical Result.changed_files is Runtime-derived; TASK scope,
-      REPAIR modification_scope, CODE_FIX/NO_CHANGE, clean-worktree, HEAD, ancestry,
-      structural ResultPackage, and verification gates remain fail-closed.
+      The historical repair candidate must be a normal Git descendant of exactly the
+      target failed_head_sha. No current-main commit, dependency-pin migration,
+      worker/kernel bootstrap change, control-plane migration, or unrelated repository
+      delta may be inserted between that failed head and final candidate.
     - >
-      Kernel/pin migration files outside the original TASK-authorized product delta
-      must not enter root_base_sha-to-final-HEAD or failed_head_sha-to-final-HEAD
-      changed files. A newer Runtime may be used only out-of-tree as control plane;
-      its migration provenance may not become part of the product repair candidate.
+      TASK-057 completion authority remains unchanged after historical admission:
+      Runtime derives canonical complete Result.changed_files from original
+      root_base_sha to final HEAD, independently enforces failed_head_sha-to-final-HEAD
+      REPAIR modification_scope and CODE_FIX/NO_CHANGE semantics, applies TASK scope and
+      clean/HEAD/ancestry gates, executes canonical verification once after repository
+      gates pass, and binds canonical EVIDENCE to exact final HEAD.
     - >
-      Exactly one already-selected Executor invocation is permitted for the admitted
-      historical REPAIR RUN. The recovery boundary must not create retry, fallback,
-      reroute, executor substitution, duplicate dispatch, or hidden PRIMARY execution.
+      Kernel/pin/control-plane files that were not part of the original TASK-authorized
+      product delta must not enter either root_base_sha-to-final-HEAD canonical TASK
+      changed files or failed_head_sha-to-final-HEAD REPAIR mutation. A newer Runtime is
+      permitted only out-of-tree as control plane.
     - >
-      Historical recovery must remain within the existing repository mutation
-      authority domain. Isolated subject workspace creation must not create an
-      independent competing local lease/lock domain that permits another canonical
-      mutation of the same downstream repository concurrently.
+      Exactly one already-selected Executor invocation is permitted for an admitted
+      historical REPAIR. No retry, fallback, reroute, executor/model substitution,
+      duplicate dispatch, hidden PRIMARY execution, or automatic repair selection may
+      occur on success or failure.
     - >
-      Operational RUN / REPAIR / RESULT / FAILURE / verification / observation state
-      created by historical recovery must remain attributable and durable even if
-      the isolated subject workspace is disposable. Workspace lifecycle mechanics
-      must not become canonical engineering truth or make terminal lineage depend on
-      an orphaned temporary directory.
+      Historical recovery must share the existing control repository one-active
+      mutation authority. Isolated subject workspace creation must not create an
+      independent lock/lease domain that can authorize a competing canonical mutation
+      of the same downstream repository.
     - >
-      The normal current-HEAD REPAIR execution/completion path must remain compatible.
-      This TASK must not force every REPAIR through historical recovery when current
-      repository HEAD already equals failed_head_sha. The only intentional observable
-      extension to existing failure behavior is the portable failed-REPAIR lineage
-      transport required by this TASK.
+      RUN, REPAIR, RESULT or FAILURE, verification, observation, and transport state
+      created by historical recovery must remain control-context-owned, durable, and
+      attributable even if the isolated subject workspace is disposable. Workspace
+      lifecycle or path identity is operational mechanics, not canonical engineering
+      truth.
+    - >
+      Existing current-HEAD REPAIR remains compatible when the current checkout already
+      equals failed_head_sha. Historical isolation is an extension for the mismatched-HEAD
+      recovery case, not a requirement to route every REPAIR through a detached subject.
+    - >
+      TASK-062 synchronization remains PRIMARY-only. Historical REPAIR must not
+      fast-forward current main or otherwise invoke pre-admission PRIMARY synchronization.
+      TASK-059/060/061 execution guidance, diagnostics, interruption behavior, timing,
+      and deterministic model defaults remain unchanged.
     - >
       Runtime remains deterministic coordination software. It may resolve immutable
-      identity, lineage, Git state, workspace isolation, admission, and verification,
-      but must not perform Brain planning, semantic review, Executor reasoning, or
-      autonomous repair selection.
+      identity, lineage, Git state, isolated subject admission, duplicate/collision
+      protection, completion, verification, and transport, but it must not perform
+      Brain planning, semantic review, Executor reasoning, or autonomous correction.
     - Do not push from executor execution.
 
 acceptance:
   - id: AC1
     condition: >
-      Historical REPAIR can be admitted from a current control repository whose HEAD
-      differs from immutable failed_head_sha without resetting or mutating current
-      product main, while the isolated subject workspace begins exactly at that
-      failed_head_sha.
+      A deterministic regression proves historical REPAIR can be admitted while the
+      current control checkout HEAD differs from target failed_head_sha; current
+      checkout HEAD/index/worktree remain unchanged and the isolated subject begins
+      exactly at failed_head_sha.
   - id: AC2
     condition: >
-      A deterministic regression models current control state using a newer Runtime
-      while the exact historical failed tree contains an older repository-owned
-      worker/kernel pin; recovery executes through the newer already-admitted Runtime
-      and the old pin remains unchanged in the historical repair candidate.
+      A regression models a newer already-admitted Runtime controlling an historical
+      failed tree whose repository-owned worker/kernel pin selects an older AIOS
+      version; recovery uses only the newer control Runtime and the old historical pin
+      remains unchanged in the repair candidate.
   - id: AC3
     condition: >
-      Runtime resolves a multi-hop historical failed REPAIR lineage from immutable
-      canonical remote artifacts, binds the exact historical TASK contract, derives
-      original TASK root and latest failed head deterministically, and rejects any
-      missing, ambiguous, conflicting, TASK/SHA-mismatched, or contract-mismatched hop
-      before Executor invocation.
+      A deterministic legacy regression equivalent to canonical Python Agent
+      RUN-125-009 resolves immutable RUN-125-009 -> RUN-125-008 -> RUN-125-007 ->
+      failed REMEDIATION RUN-125-006, binds its reviewed_sha to the exact successful
+      source lineage, consumes the successful source REPAIR lineage, derives original
+      root_base_sha d47ed9c048cacd152452cf2a7054c662e1043c82, and loads exact historical
+      TASK-125 revision 1 without using current product main or prior local Runtime state.
   - id: AC4
     condition: >
-      With fresh/empty local runtime state, a legacy regression equivalent to
-      RUN-125-009 recovers using only immutable canonical remote lineage, allocates a
-      non-conflicting continuation RUN identity rather than reusing a historical RUN
-      id, and does not require prior workspace-local .git/aios state.
+      Deterministic regressions reject missing, ambiguous, conflicting, cyclic,
+      TASK/revision-mismatched, reviewed-SHA-mismatched, failed-head-mismatched, or
+      unauthorized legacy lineage before historical workspace mutation or Executor
+      invocation.
   - id: AC5
     condition: >
-      If canonical remote state already contains an accepted continuation for the
-      target failed RUN, historical recovery rejects duplicate execution before
-      invoking an Executor; local absence of that continuation cannot authorize a
-      second REPAIR.
+      With fresh local Runtime state, recovery uses canonical remote RUN identities to
+      allocate a non-conflicting continuation identity and rejects duplicate execution
+      when canonical remote state already proves a continuation of the target failed
+      RUN, regardless of local absence.
   - id: AC6
     condition: >
-      New failed REPAIR transport preserves sufficient immutable RUN / FAILURE /
-      REPAIR lineage for future portable continuation, and deterministic regressions
-      prove transported lineage matches the admitted execution without changing
-      frozen artifact schema or semantic authority.
+      New failed REPAIR transport preserves immutable RUN/FAILURE plus sufficient
+      Runtime-owned REPAIR execution lineage for later portable continuation, and its
+      regression proves transported facts match the admitted execution without changing
+      any frozen artifact schema or semantic authority.
   - id: AC7
     condition: >
       The selected Executor is invoked exactly once against the isolated historical
-      subject workspace, no PRIMARY execution occurs, and no retry, fallback,
-      reroute, or executor substitution occurs on success or failure.
+      subject workspace, no hidden PRIMARY execution occurs, and no retry, fallback,
+      reroute, model/executor substitution, or duplicate dispatch occurs on success or
+      failure.
   - id: AC8
     condition: >
-      A successful repair candidate descends from exact historical failed_head_sha
-      and contains only authorized REPAIR correction delta; no current-main
-      migration or kernel/pin control-plane commit appears between failed_head_sha
-      and final HEAD.
+      A successful historical repair candidate is a normal Git descendant of the exact
+      failed_head_sha and contains only authorized REPAIR correction delta; no current
+      main, worker, kernel, dependency-pin, or control-plane migration commit appears
+      between failed_head_sha and final HEAD or enters the original TASK delta.
   - id: AC9
     condition: >
-      After historical admission, TASK-057 semantics remain intact: Runtime derives
-      canonical complete Result.changed_files from original root_base_sha to final
-      HEAD, independently enforces failed_head_sha-to-final-HEAD REPAIR mutation
-      scope, runs canonical verification once, and binds EVIDENCE to exact final HEAD.
+      Historical completion preserves TASK-057 semantics: Runtime derives canonical
+      complete Result.changed_files from original root_base_sha to final HEAD,
+      independently enforces failed_head_sha-to-final-HEAD REPAIR scope and
+      CODE_FIX/NO_CHANGE rules, executes canonical verification once after repository
+      gates, and binds EVIDENCE to exact final HEAD.
   - id: AC10
     condition: >
-      Current product main HEAD/worktree remain unchanged by historical recovery;
-      canonical operational state and transport remain control-context-owned; and
-      RUN / REPAIR / RESULT or FAILURE / observation state stays durable and
-      attributable after isolated subject workspace lifecycle ends.
+      Canonical operational state, lineage retrieval, mutation lock, continuation RUN,
+      RESULT or FAILURE, verification/observation state, and terminal transport remain
+      owned by the current control context and stay attributable after isolated subject
+      workspace lifecycle ends.
   - id: AC11
     condition: >
-      Historical recovery shares the existing local one-active canonical mutation
-      authority for the downstream repository rather than creating a separate local
-      mutation domain through workspace isolation.
+      Existing current-HEAD REPAIR behavior remains compatible and PRIMARY,
+      REMEDIATION, Dispatcher, native adapter, TASK-059/060/061 execution policy,
+      TASK-062 PRIMARY synchronization, review, and TASK-063 publication semantics
+      remain observably unchanged outside this historical recovery extension.
   - id: AC12
     condition: >
-      Existing current-HEAD REPAIR execution/completion behavior and PRIMARY,
-      REMEDIATION, Dispatcher, adapter, verification, publication, and review
-      semantics remain unchanged except for the explicitly authorized portable
-      failed-REPAIR lineage transport extension.
-  - id: AC13
-    condition: >
-      No downstream Python Agent source or dependency pin is changed, no Human-only
-      raw AIOS CLI workaround is introduced as normal workflow, and no new
-      planner/router/retry/failover/orchestration authority is added.
+      No downstream Python Agent source, dependency pin, TASK-125 artifact, or historical
+      commit is changed; no raw Human-only CLI workaround, new schema, planner/router,
+      retry/failover policy, generic orchestration framework, or distributed lock service
+      is introduced.
 
 verification:
   required:
