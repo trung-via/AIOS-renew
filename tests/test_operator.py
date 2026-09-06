@@ -4209,6 +4209,183 @@ def test_no_change_repair_retains_zero_mutation_contract(
         )
 
 
+def test_no_change_verification_only_continuations_reuse_exact_candidate(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
+    state = runtime_paths(repo)
+    verification_calls = []
+
+    def fail_verification(command, **kwargs):
+        verification_calls.append((command, kwargs["subject_sha"]))
+        return subprocess.CompletedProcess(
+            command, returncode=9, stdout=b"", stderr=b"external unavailable\n"
+        )
+
+    with pytest.raises(OperatorError, match="exit code 9"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=StaticResultRunner(repo, static_payload()),
+            verification_runner=fail_verification,
+        )
+
+    first_sidecar = state.preverification / "RUN-101-001.json"
+    first_failure = json.loads(
+        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert first_sidecar.is_file()
+    assert first_failure["phase"] == "VERIFICATION"
+    assert git(
+        tmp_path / "upstream.git",
+        "show",
+        "refs/heads/aios/failure-artifacts/RUN-101-001:"
+        ".ai/transport/pre-verification-candidate.json",
+    ).encode() == first_sidecar.read_bytes()
+
+    def authorization(run_id: str) -> dict:
+        failure = json.loads(
+            (state.failures / f"{run_id}.json").read_text(encoding="utf-8")
+        )
+        return {
+            "repair_id": f"REPAIR-{run_id}",
+            "failed_run_id": run_id,
+            "failed_head_sha": failure["failed_head_sha"],
+            "task": {"id": "TASK-101", "revision": 1},
+            "action": "NO_CHANGE",
+            "modification_scope": [],
+            "instructions": ["Re-run canonical verification only."],
+            "constraints": ["Commit the output."],
+        }
+
+    native_calls = []
+
+    def forbidden_native(*args, **kwargs):
+        native_calls.append((args, kwargs))
+        raise AssertionError("verification-only continuation invoked an Executor")
+
+    with pytest.raises(OperatorError, match="exit code 9"):
+        run_repair(
+            "RUN-101-001",
+            executor="codex",
+            repo=repo,
+            repair=authorization("RUN-101-001"),
+            native_runner=forbidden_native,
+            verification_runner=fail_verification,
+        )
+
+    repeated_sidecar = state.preverification / "RUN-101-002.json"
+    repeated_failure = json.loads(
+        (state.failures / "RUN-101-002.json").read_text(encoding="utf-8")
+    )
+    failed_observation = json.loads(
+        (state.observations / "RUN-101-002.json").read_text(encoding="utf-8")
+    )
+    assert native_calls == []
+    assert len(verification_calls) == 2
+    assert repeated_failure["continuation_of"] == "RUN-101-001"
+    assert repeated_failure["failed_head_sha"] == first_failure["failed_head_sha"]
+    assert repeated_sidecar.is_file()
+    assert failed_observation["executor_invoked"] is False
+    assert failed_observation["durations"]["executor_seconds"] is None
+    assert failed_observation["durations"]["verification_seconds"] is not None
+
+    success_calls = []
+
+    def pass_verification(command, **kwargs):
+        success_calls.append((command, kwargs["subject_sha"]))
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=b"clean\n", stderr=b""
+        )
+
+    summary = run_repair(
+        "RUN-101-002",
+        executor="codex",
+        repo=repo,
+        repair=authorization("RUN-101-002"),
+        native_runner=forbidden_native,
+        verification_runner=pass_verification,
+    )
+    result = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    success_observation = json.loads(
+        (state.observations / summary.result_path.name).read_text(encoding="utf-8")
+    )
+    assert summary.run_id == "RUN-101-003"
+    assert native_calls == []
+    assert success_calls == [("git status --porcelain", summary.head_sha)]
+    assert result["result"]["head_sha"] == first_failure["failed_head_sha"]
+    assert result["result"]["changed_files"] == []
+    assert result["evidence"][0]["run_id"] == summary.run_id
+    assert result["evidence"][0]["subject_sha"] == summary.head_sha
+    assert success_observation["executor_invoked"] is False
+    assert success_observation["durations"]["executor_seconds"] is None
+    assert success_observation["durations"]["verification_seconds"] is not None
+
+
+def test_malformed_present_preverification_candidate_fails_before_continuation(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(repo, action="NO_CHANGE")
+    state = runtime_paths(repo)
+    (state.preverification / f"{failed_run_id}.json").write_bytes(b"{malformed")
+    calls = []
+
+    with pytest.raises(OperatorError, match="invalid pre-verification candidate"):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair,
+            native_runner=lambda *args, **kwargs: calls.append("executor"),
+            verification_runner=lambda *args, **kwargs: calls.append("verification"),
+        )
+
+    assert calls == []
+    assert not (state.runs / "RUN-101-001.json").exists()
+
+
+def test_retry_failure_transport_preserves_preverification_sidecar(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path, task_source=READONLY_TASK_SOURCE)
+
+    def fail_verification(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, returncode=3, stdout=b"", stderr=b"temporary failure\n"
+        )
+
+    with pytest.raises(OperatorError, match="exit code 3"):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=StaticResultRunner(repo, static_payload()),
+            verification_runner=fail_verification,
+        )
+
+    state = runtime_paths(repo)
+    sidecar = state.preverification / "RUN-101-001.json"
+    upstream = tmp_path / "upstream.git"
+    git(upstream, "update-ref", "-d", "refs/heads/aios/failure/RUN-101-001")
+    git(
+        upstream,
+        "update-ref",
+        "-d",
+        "refs/heads/aios/failure-artifacts/RUN-101-001",
+    )
+
+    retry_transport("RUN-101-001", repo=repo)
+
+    assert git(
+        upstream,
+        "show",
+        "refs/heads/aios/failure-artifacts/RUN-101-001:"
+        ".ai/transport/pre-verification-candidate.json",
+    ).encode() == sidecar.read_bytes()
+
+
 def test_failed_repair_accepts_one_new_repair_with_original_task_root_lineage(
     tmp_path: Path,
 ) -> None:
@@ -4423,6 +4600,120 @@ def test_historical_repair_isolates_subject_and_preserves_control_checkout(
     assert git(repo, "show", f"{summary.head_sha}:AIOS_PIN") == "old-runtime"
     git(repo, "merge-base", "--is-ancestor", failed_head, summary.head_sha)
     assert git(repo, "rev-list", "--count", f"{failed_head}..{summary.head_sha}") == "1"
+
+
+def test_historical_verification_only_repair_uses_transported_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    root_base_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "switch", "--quiet", "-c", "historical-verification")
+    (repo / "OUTPUT.txt").write_text("historical candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "historical candidate")
+    failed_head = git(repo, "rev-parse", "HEAD")
+    git(repo, "switch", "--quiet", "main")
+    (repo / "CONTROL.txt").write_text("current runtime\n", encoding="utf-8")
+    git(repo, "add", "CONTROL.txt")
+    git(repo, "commit", "--quiet", "-m", "current control")
+    control_head = git(repo, "rev-parse", "HEAD")
+
+    failed_run_id = "RUN-101-004"
+    remote_run = {
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": root_base_sha,
+        "workspace": "discarded-historical-machine",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    failure = {
+        "kind": "FAILURE",
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": root_base_sha,
+        "failed_head_sha": failed_head,
+        "phase": "VERIFICATION",
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": ["OUTPUT.txt"],
+            "outside_task_scope": [],
+        },
+    }
+    structural = result_payload(
+        failed_run_id, failed_head, changed_files=["OUTPUT.txt"]
+    )
+    sidecar = json.dumps(
+        {
+            "kind": "PRE_VERIFICATION_CANDIDATE",
+            "run_id": failed_run_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "subject_sha": failed_head,
+            "package": structural,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    artifact = RemoteFailureArtifacts(
+        failed_run_id,
+        failed_head,
+        json.dumps(remote_run).encode(),
+        json.dumps(failure).encode(),
+        None,
+        sidecar,
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_repair_recovery",
+        lambda repo, *, failed_run_id: RemoteRepairRecovery(
+            (artifact,), ("RUN-101-004",)
+        ),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "read_remote_task",
+        lambda repo, *, commit_sha, task_id: TASK_SOURCE.encode(),
+    )
+    verification_workspaces = []
+
+    def verify(command, **kwargs):
+        verification_workspaces.append(kwargs["cwd"])
+        assert git(kwargs["cwd"], "rev-parse", "HEAD") == failed_head
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=b"clean\n", stderr=b""
+        )
+
+    summary = run_repair(
+        failed_run_id,
+        executor="codex",
+        repo=repo,
+        repair={
+            "repair_id": "REPAIR-101-HISTORICAL-VERIFY",
+            "failed_run_id": failed_run_id,
+            "failed_head_sha": failed_head,
+            "task": {"id": "TASK-101", "revision": 1},
+            "action": "NO_CHANGE",
+            "modification_scope": [],
+            "instructions": ["Re-run canonical verification only."],
+            "constraints": ["Commit the output."],
+        },
+        native_runner=lambda *args, **kwargs: pytest.fail(
+            "historical verification-only continuation invoked an Executor"
+        ),
+        verification_runner=verify,
+    )
+
+    assert summary.run_id == "RUN-101-005"
+    assert summary.head_sha == failed_head
+    assert len(verification_workspaces) == 1
+    assert not verification_workspaces[0].exists()
+    assert git(repo, "rev-parse", "HEAD") == control_head
+    assert git(repo, "status", "--porcelain") == ""
 
 
 def test_historical_repair_rejects_remote_duplicate_before_workspace_creation(

@@ -111,6 +111,38 @@ Historical refs without this optional file remain valid, and `retry-transport`
 preserves a locally persisted sidecar. Persistence or publication trouble is
 subordinate to the original RESULT or FAILURE and never invokes another Executor.
 
+### Verification-only NO_CHANGE continuation
+
+After a structural package has passed Runtime's structure, HEAD, clean worktree,
+changed-files, scope, completion, and applicable REPAIR mutation gates, Runtime
+stores a minimum pre-verification candidate snapshot. This snapshot is subordinate
+operational state keyed to the exact RUN, TASK revision, and subject SHA. It is not
+RESULT, EVIDENCE, an acceptance claim, a review input, or Reviewer authority. A
+failure before those gates creates no reusable candidate authority.
+
+When canonical verification then fails, the byte-exact optional snapshot travels
+with RUN, FAILURE, optional REPAIR lineage, and optional RUN_OBSERVATION on the
+existing failure-artifact ref as
+`.ai/transport/pre-verification-candidate.json`. Historical refs without it remain
+valid. A present snapshot must bind and validate exactly; malformed, conflicting,
+mismatched, dirty, non-repairable, or otherwise ineligible state cannot authorize
+reuse.
+
+An explicitly Human/Brain-authorized `NO_CHANGE` REPAIR with empty modification
+scope may reuse an exact clean verification-failure candidate. Runtime still
+creates the normal continuation RUN and REPAIR lineage and executes the original
+TASK canonical verification commands exactly once, but invokes no native coding
+Executor. Its RUN_OBSERVATION truthfully records `executor_invoked=false`, no
+Executor duration, and Runtime verification duration. Success retains normal
+canonical RESULT/EVIDENCE and review readiness; another verification failure
+creates one normal immutable FAILURE continuation without automatic retry.
+
+A change in credentials, quota, network, provider, service, or another external
+verification dependency may justify a separately authorized verification attempt.
+When code is unchanged, that does not justify invoking a coding Executor merely to
+restate the same candidate. Runtime does not infer that external state changed,
+probe it, or authorize a retry.
+
 ## Direct Candidate Acceptance
 
 For a committed candidate produced directly by one Human-selected Executor in

@@ -60,6 +60,7 @@ from .runtime import (
     primary_completion_policy,
     remediation_completion_policy,
     repair_completion_policy,
+    validate_preverification_candidate,
 )
 from .review import (
     Finding,
@@ -185,6 +186,7 @@ class RuntimePaths:
     runs: Path
     handoffs: Path
     staging: Path
+    preverification: Path
     verification: Path
     results: Path
     failures: Path
@@ -285,6 +287,7 @@ class _HistoricalRepairAdmission:
     task: Task
     root_base_sha: str
     remote_run_ids: tuple[str, ...]
+    preverification: bytes | None
 
 
 def resolve_repository(path: str | Path | None = None) -> Path:
@@ -361,6 +364,7 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         runs=state_root / "runs",
         handoffs=state_root / "handoffs",
         staging=state_root / "staging",
+        preverification=state_root / "pre-verification",
         verification=state_root / "verification",
         results=state_root / "results",
         failures=state_root / "failures",
@@ -373,6 +377,7 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         paths.runs,
         paths.handoffs,
         paths.staging,
+        paths.preverification,
         paths.verification,
         paths.results,
         paths.failures,
@@ -858,6 +863,10 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
     failure_path = state.failures / f"{run_id}.json"
     observation_path = state.observations / f"{run_id}.json"
     optional_observation = observation_path if observation_path.is_file() else None
+    preverification_path = state.preverification / f"{run_id}.json"
+    optional_preverification = (
+        preverification_path if preverification_path.is_file() else None
+    )
     if result_path.is_file() and failure_path.is_file():
         raise OperatorError("RUN has conflicting terminal state")
     try:
@@ -873,6 +882,50 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
         elif failure_path.is_file():
             payload = json.loads(failure_path.read_text(encoding="utf-8"))
             publish_candidate = payload.get("candidate", {}).get("transportable") is True
+            failure_preverification = (
+                optional_preverification
+                if payload.get("phase") == "VERIFICATION"
+                else None
+            )
+            if failure_preverification is not None:
+                task_ref = payload.get("task")
+                if not isinstance(task_ref, Mapping):
+                    raise OperatorError(
+                        "transport retry has invalid FAILURE TASK binding"
+                    )
+                try:
+                    retry_task = parse_task(
+                        _git(
+                            root,
+                            "show",
+                            f"{payload['failed_head_sha']}:"
+                            f".ai/tasks/{task_ref['id']}.yaml",
+                            strip_stdout=False,
+                        )
+                    )
+                    if dict(task_ref) != {
+                        "id": retry_task.task_id,
+                        "revision": retry_task.revision,
+                    }:
+                        raise ArtifactValidationError(
+                            "FAILURE TASK does not match historical subject TASK"
+                        )
+                    validate_preverification_candidate(
+                        failure_preverification.read_bytes(),
+                        task=retry_task,
+                        run_id=run_id,
+                        subject_sha=payload["failed_head_sha"],
+                    )
+                except (
+                    ArtifactValidationError,
+                    KeyError,
+                    OSError,
+                    TypeError,
+                    TaskValidationError,
+                ) as exc:
+                    raise OperatorError(
+                        f"transport retry has invalid pre-verification candidate: {exc}"
+                    ) from exc
             transport_failure(
                 root, run_id=run_id, head_sha=payload["failed_head_sha"],
                 run_path=run_path, failure_path=failure_path,
@@ -880,6 +933,7 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
                 lineage_path=(state.repairs / f"{run_id}.json")
                 if (state.repairs / f"{run_id}.json").is_file() else None,
                 observation_path=optional_observation,
+                preverification_path=failure_preverification,
             )
         else:
             raise OperatorError(f"persisted terminal state not found: {run_id}")
@@ -922,14 +976,26 @@ def _run_repair_impl(
         or local_failure.get("failed_head_sha") != current_head
     )
     remote_run_ids: tuple[str, ...] = ()
+    transported_preverification: bytes | None = None
     if historical:
         admission = _resolve_historical_repair_admission(repo, failed_run_id)
         failure = admission.failure
         task = admission.task
         root_base_sha = admission.root_base_sha
         remote_run_ids = admission.remote_run_ids
+        transported_preverification = admission.preverification
         if local_failure is not None and dict(local_failure) != dict(failure):
             raise OperatorError("local and canonical remote FAILURE conflict")
+        local_preverification = _read_optional_bytes(
+            state.preverification / f"{failed_run_id}.json"
+        )
+        if (
+            local_preverification is not None
+            and local_preverification != transported_preverification
+        ):
+            raise OperatorError(
+                "local and canonical remote pre-verification candidate conflict"
+            )
     else:
         failure = local_failure
         assert isinstance(failure, Mapping)
@@ -999,6 +1065,22 @@ def _run_repair_impl(
     if action == "NO_CHANGE" and scope:
         raise OperatorError("NO_CHANGE REPAIR modification scope must be empty")
 
+    reusable_source = (
+        transported_preverification
+        if historical
+        else _read_optional_bytes(
+            state.preverification / f"{failed_run_id}.json"
+        )
+    )
+    reusable_package = _eligible_reusable_repair_package(
+        reusable_source,
+        task=task,
+        failed_run_id=failed_run_id,
+        failure=failure,
+        action=action,
+        scope=scope,
+    )
+
     with RepositoryLock(state.lock):
         if any(
             json.loads(path.read_text(encoding="utf-8")).get("failed_run_id")
@@ -1035,33 +1117,36 @@ def _run_repair_impl(
         _write_json(run_path, asdict(run))
         attempt.bind_run(run_path)
         observation_tracker.admit(run)
-        observed_native_runner = observation_tracker.wrap_native_runner(
-            native_runner
-        )
         persisted_execution = dict(execution)
         persisted_execution["run"] = asdict(run)
         _write_json(state.repairs / f"{run_id}.json", persisted_execution)
 
-        execution_policy = resolve_native_execution_policy(
-            authorizes_mutation=action == "CODE_FIX"
-        )
-        dispatcher = repair_dispatcher(
-            selected_executor=executor,
-            repo=subject_repo,
-            handoff_path=state.handoffs / f"{run_id}.json",
-            execution_policy=execution_policy,
-            native_runner=observed_native_runner,
-        )
-        try:
-            package = dispatcher.dispatch_repair(execution=execution)
-        except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
-            raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
-        except CodexExecutionError as exc:
-            raise OperatorError(f"Codex invocation failed: {exc}") from exc
-        except AntigravityExecutionError as exc:
-            raise OperatorError(str(exc)) from exc
-        except DispatcherError as exc:
-            raise OperatorError(f"dispatcher failed: {exc}") from exc
+        if reusable_package is None:
+            observed_native_runner = observation_tracker.wrap_native_runner(
+                native_runner
+            )
+            execution_policy = resolve_native_execution_policy(
+                authorizes_mutation=action == "CODE_FIX"
+            )
+            dispatcher = repair_dispatcher(
+                selected_executor=executor,
+                repo=subject_repo,
+                handoff_path=state.handoffs / f"{run_id}.json",
+                execution_policy=execution_policy,
+                native_runner=observed_native_runner,
+            )
+            try:
+                package = dispatcher.dispatch_repair(execution=execution)
+            except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
+                raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
+            except CodexExecutionError as exc:
+                raise OperatorError(f"Codex invocation failed: {exc}") from exc
+            except AntigravityExecutionError as exc:
+                raise OperatorError(str(exc)) from exc
+            except DispatcherError as exc:
+                raise OperatorError(f"dispatcher failed: {exc}") from exc
+        else:
+            package = reusable_package
 
         runtime_completion = RuntimeCompletion(
             repo=subject_repo,
@@ -1225,8 +1310,86 @@ def _resolve_historical_repair_admission(
     if not isinstance(candidate, Mapping) or candidate.get("repairable") is not True:
         raise OperatorError("failed candidate is not safely bound for REPAIR")
     return _HistoricalRepairAdmission(
-        target_failure, task, root_base_sha, recovery.remote_run_ids
+        target_failure,
+        task,
+        root_base_sha,
+        recovery.remote_run_ids,
+        target_artifact.preverification,
     )
+
+
+def _read_optional_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise OperatorError(
+            f"pre-verification candidate could not be read: {exc}"
+        ) from exc
+
+
+def _eligible_reusable_repair_package(
+    content: bytes | None,
+    *,
+    task: Task,
+    failed_run_id: str,
+    failure: Mapping[str, Any],
+    action: str,
+    scope: list[str],
+) -> ResultPackage | None:
+    """Fail closed on present state and admit only exact verification reuse."""
+
+    if content is None:
+        return None
+    failed_head = failure.get("failed_head_sha")
+    if not isinstance(failed_head, str) or not failed_head:
+        raise OperatorError("invalid failed subject for pre-verification candidate")
+    try:
+        package = validate_preverification_candidate(
+            content,
+            task=task,
+            run_id=failed_run_id,
+            subject_sha=failed_head,
+        )
+    except ArtifactValidationError as exc:
+        raise OperatorError(f"invalid pre-verification candidate: {exc}") from exc
+
+    candidate = failure.get("candidate")
+    if not isinstance(candidate, Mapping):
+        return None
+    changed_files = candidate.get("changed_files")
+    if not isinstance(changed_files, list) or not all(
+        isinstance(item, str) and item for item in changed_files
+    ):
+        raise OperatorError("invalid pre-verification candidate changed-files binding")
+    if list(package.result.changed_files) != changed_files:
+        raise OperatorError("pre-verification candidate changed-files mismatch")
+    if package.result.unresolved:
+        raise OperatorError("pre-verification candidate is incomplete")
+    satisfied = {
+        acceptance_id
+        for claim in package.result.claims
+        for acceptance_id in claim.satisfies
+    }
+    missing = [item.id for item in task.acceptance if item.id not in satisfied]
+    if missing:
+        raise OperatorError(
+            "pre-verification candidate lacks TASK acceptance coverage: "
+            + ", ".join(missing)
+        )
+    if (
+        action != "NO_CHANGE"
+        or scope
+        or failure.get("phase") != "VERIFICATION"
+        or candidate.get("repairable") is not True
+        or candidate.get("transportable") is not True
+        or candidate.get("dirty") is not False
+        or candidate.get("descends_from_base") is not True
+        or candidate.get("outside_task_scope") != []
+    ):
+        return None
+    return package
 
 
 def _derive_remediation_source_root(

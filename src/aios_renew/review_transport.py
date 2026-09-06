@@ -37,6 +37,7 @@ class RemoteFailureArtifacts:
     run: bytes
     failure: bytes
     repair: bytes | None
+    preverification: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,15 @@ def _read_remote_blob(repo: Path, remote: str, commit_sha: str, rel_path: str) -
     if code == 0:
         return content.encode("utf-8")
     return None
+
+
+def _read_local_blob(repo: Path, commit_sha: str, rel_path: str) -> bytes | None:
+    """Read an already-fetched optional blob without another remote operation."""
+
+    code, content, _ = _git_cmd(
+        repo, "show", f"{commit_sha}:{rel_path}", strip=False, allow_fail=True
+    )
+    return content.encode("utf-8") if code == 0 else None
 
 
 def resolve_remote_remediation_lineages(
@@ -221,12 +231,17 @@ def resolve_remote_repair_recovery(
         repair = _read_remote_blob(
             repo, remote, artifacts_sha, ".ai/transport/repair.json"
         )
+        preverification = _read_local_blob(
+            repo,
+            artifacts_sha,
+            ".ai/transport/pre-verification-candidate.json",
+        )
         if run is None or failure is None:
             raise ReviewTransportError(
                 f"canonical failed RUN content missing for {run_id}"
             )
         artifact = RemoteFailureArtifacts(
-            run_id, refs[candidate_ref], run, failure, repair
+            run_id, refs[candidate_ref], run, failure, repair, preverification
         )
         cache[run_id] = artifact
         return artifact
@@ -501,6 +516,7 @@ def _create_named_artifacts_commit(
     run_id: str,
     lineage_path: Path | None = None,
     observation_path: Path | None = None,
+    preverification_path: Path | None = None,
 ) -> str:
     """Create an isolated artifacts commit without touching the worktree."""
 
@@ -523,6 +539,15 @@ def _create_named_artifacts_commit(
                 f"persisted RUN_OBSERVATION JSON missing: {observation_path}"
             )
         inputs.append(("observation.json", observation_path))
+    if preverification_path is not None:
+        if not preverification_path.is_file():
+            raise ReviewTransportError(
+                "persisted pre-verification candidate JSON missing: "
+                f"{preverification_path}"
+            )
+        inputs.append(
+            ("pre-verification-candidate.json", preverification_path)
+        )
     for name, path in inputs:
         try:
             proc = subprocess.run(
@@ -563,6 +588,7 @@ def transport_failure(
     publish_candidate: bool = True,
     lineage_path: Path | None = None,
     observation_path: Path | None = None,
+    preverification_path: Path | None = None,
 ) -> None:
     """Publish an immutable, authority-checked failed candidate and its facts."""
 
@@ -577,6 +603,11 @@ def transport_failure(
         expected[".ai/transport/repair.json"] = lineage_path.read_bytes()
     expected_observation = (
         observation_path.read_bytes() if observation_path is not None else None
+    )
+    expected_preverification = (
+        preverification_path.read_bytes()
+        if preverification_path is not None
+        else None
     )
     queried_refs = (candidate_ref, artifacts_ref) if publish_candidate else (artifacts_ref,)
     code, output, _ = _git_cmd(repo, "ls-remote", remote, *queried_refs, allow_fail=True)
@@ -606,12 +637,26 @@ def transport_failure(
             raise ReviewTransportError(
                 f"remote failure artifacts ref {artifacts_ref} exists with different observation content"
             )
+        remote_preverification = _read_remote_blob(
+            repo,
+            remote,
+            refs[artifacts_ref],
+            ".ai/transport/pre-verification-candidate.json",
+        )
+        if (
+            expected_preverification is not None
+            and remote_preverification != expected_preverification
+        ):
+            raise ReviewTransportError(
+                f"remote failure artifacts ref {artifacts_ref} exists with different pre-verification candidate content"
+            )
     else:
         commit = _create_named_artifacts_commit(
             repo, run_path=run_path, artifact_path=failure_path,
             artifact_name="failure.json", run_id=run_id,
             lineage_path=lineage_path,
             observation_path=observation_path,
+            preverification_path=preverification_path,
         )
         specs.append(f"{commit}:{artifacts_ref}")
     if specs:

@@ -71,7 +71,8 @@ def publish_failure(
     root_base_sha: str,
     continuation_of: str | None = None,
     failure_run_id: str | None = None,
-) -> tuple[bytes, bytes, bytes | None]:
+    preverification: bytes | None = None,
+) -> tuple[bytes, bytes, bytes | None, bytes | None]:
     run = {
         "run_id": run_id,
         "task": TASK,
@@ -111,9 +112,13 @@ def publish_failure(
     run_path = directory / "run.json"
     failure_path = directory / "failure.json"
     lineage_path = directory / "repair.json"
+    preverification_path = directory / "pre-verification.json"
     run_bytes = write_json(run_path, run)
     failure_bytes = write_json(failure_path, failure)
     lineage_bytes = write_json(lineage_path, lineage) if lineage is not None else None
+    if preverification is not None:
+        preverification_path.parent.mkdir(parents=True, exist_ok=True)
+        preverification_path.write_bytes(preverification)
     transport_failure(
         repo,
         run_id=run_id,
@@ -121,8 +126,11 @@ def publish_failure(
         run_path=run_path,
         failure_path=failure_path,
         lineage_path=lineage_path if lineage is not None else None,
+        preverification_path=(
+            preverification_path if preverification is not None else None
+        ),
     )
-    return run_bytes, failure_bytes, lineage_bytes
+    return run_bytes, failure_bytes, lineage_bytes, preverification
 
 
 def publish_success(
@@ -248,6 +256,36 @@ def test_resolves_canonical_failed_correction_chain_with_exact_transported_facts
         "show",
         "refs/heads/aios/failure-artifacts/RUN-058-003:.ai/transport/repair.json",
     ).encode() == third[2]
+
+
+def test_failure_transport_recovers_byte_exact_optional_preverification_candidate(
+    tmp_path: Path,
+) -> None:
+    repo, remote = make_repo(tmp_path)
+    root = git(repo, "rev-parse", "HEAD")
+    candidate = commit_candidate(repo, "verification failed")
+    sidecar = b'{"exact":"pre-verification-candidate","version":1}'
+
+    published = publish_failure(
+        repo,
+        tmp_path / "facts",
+        run_id="RUN-058-010",
+        candidate_sha=candidate,
+        root_base_sha=root,
+        preverification=sidecar,
+    )
+    recovery = resolve_remote_repair_recovery(
+        repo, failed_run_id="RUN-058-010"
+    )
+
+    assert published[3] == sidecar
+    assert recovery.failures[0].preverification == sidecar
+    assert git(
+        remote,
+        "show",
+        "refs/heads/aios/failure-artifacts/RUN-058-010:"
+        ".ai/transport/pre-verification-candidate.json",
+    ).encode() == sidecar
 
 
 @pytest.mark.parametrize("corruption", ["candidate-ref", "failure-identity"])

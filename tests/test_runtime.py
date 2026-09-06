@@ -75,6 +75,7 @@ def completion_fixture(tmp_path: Path):
     )
     state = SimpleNamespace(
         staging=tmp_path / "staging",
+        preverification=tmp_path / "pre-verification",
         verification=tmp_path / "verification",
         results=tmp_path / "results",
         failures=tmp_path / "failures",
@@ -157,6 +158,14 @@ def test_runtime_owns_ordered_verification_evidence_persistence_and_transport(
         "RUN-052-001-V001",
         "RUN-052-001-V002",
     ]
+    candidate = json.loads(
+        (state.preverification / f"{run.run_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert candidate["run_id"] == run.run_id
+    assert candidate["subject_sha"] == "head"
+    assert candidate["package"] == runtime_module.result_package_data(package)
 
 
 def test_completion_gate_failure_runs_no_verification_or_transport(
@@ -195,6 +204,7 @@ def test_completion_gate_failure_runs_no_verification_or_transport(
     assert calls == []
     assert boundary.interruption_phase == "COMPLETION_GATE"
     assert not (state.results / f"{run.run_id}.json").exists()
+    assert not (state.preverification / f"{run.run_id}.json").exists()
 
 
 def test_runtime_completion_exposes_verification_interruption_phase(

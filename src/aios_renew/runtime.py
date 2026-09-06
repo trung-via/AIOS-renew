@@ -36,6 +36,7 @@ class RuntimeState(Protocol):
     """Filesystem locations admitted and allocated by the operator."""
 
     staging: Path
+    preverification: Path
     verification: Path
     results: Path
     failures: Path
@@ -188,6 +189,19 @@ class RuntimeCompletion:
             self._require_task_result(package, policy, actual_head=actual_head)
         else:
             self._require_remediation_result(package, policy, actual_head=actual_head)
+
+        try:
+            persist_preverification_candidate(
+                self.state.preverification / f"{self.run.run_id}.json",
+                task=self.task,
+                run=self.run,
+                subject_sha=actual_head,
+                package=package,
+            )
+        except (OSError, UnicodeError, ArtifactValidationError) as exc:
+            self._raise(
+                f"pre-verification candidate persistence failed: {exc}", cause=exc
+            )
 
         self.interruption_phase = "VERIFICATION"
         verification_started = (
@@ -595,6 +609,12 @@ def persist_failure(
             }
         failure_path = state.failures / f"{run.run_id}.json"
         _write_json(failure_path, record)
+        preverification_path = state.preverification / f"{run.run_id}.json"
+        reusable_candidate_path = (
+            preverification_path
+            if phase == "VERIFICATION" and preverification_path.is_file()
+            else None
+        )
         if transport:
             try:
                 transport_failure(
@@ -608,6 +628,7 @@ def persist_failure(
                         repair_execution if repair_execution.is_file() else None
                     ),
                     observation_path=observation_path,
+                    preverification_path=reusable_candidate_path,
                 )
             except ReviewTransportError as transport_error:
                 _write_json(
@@ -640,6 +661,132 @@ def result_package_data(package: ResultPackage) -> dict[str, Any]:
             for item in package.evidence
         ],
     }
+
+
+def persist_preverification_candidate(
+    path: Path,
+    *,
+    task: Task,
+    run: Run,
+    subject_sha: str,
+    package: ResultPackage,
+) -> None:
+    """Persist exact subordinate state only after deterministic completion gates."""
+
+    data = {
+        "kind": "PRE_VERIFICATION_CANDIDATE",
+        "run_id": run.run_id,
+        "task": {"id": task.task_id, "revision": task.revision},
+        "subject_sha": subject_sha,
+        "package": result_package_data(package),
+    }
+    content = json.dumps(data, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
+    # Validate the exact representation before making it reusable authority.
+    validate_preverification_candidate(
+        content,
+        task=task,
+        run_id=run.run_id,
+        subject_sha=subject_sha,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as stream:
+            stream.write(content)
+    except FileExistsError:
+        if path.read_bytes() != content:
+            raise ArtifactValidationError(
+                f"conflicting pre-verification candidate for {run.run_id}"
+            )
+
+
+def validate_preverification_candidate(
+    content: bytes,
+    *,
+    task: Task,
+    run_id: str,
+    subject_sha: str,
+) -> ResultPackage:
+    """Validate one exact Runtime-owned structural candidate for deterministic reuse."""
+
+    try:
+        data = json.loads(content.decode("utf-8", errors="strict"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ArtifactValidationError(
+            f"invalid pre-verification candidate JSON: {exc}"
+        ) from exc
+    if not isinstance(data, Mapping) or set(data) != {
+        "kind",
+        "run_id",
+        "task",
+        "subject_sha",
+        "package",
+    }:
+        raise ArtifactValidationError(
+            "pre-verification candidate fields do not match the contract"
+        )
+    if data.get("kind") != "PRE_VERIFICATION_CANDIDATE":
+        raise ArtifactValidationError("invalid pre-verification candidate kind")
+    if data.get("run_id") != run_id or data.get("subject_sha") != subject_sha:
+        raise ArtifactValidationError(
+            "pre-verification candidate RUN or subject mismatch"
+        )
+    task_ref = data.get("task")
+    expected_task = {"id": task.task_id, "revision": task.revision}
+    if not isinstance(task_ref, Mapping) or dict(task_ref) != expected_task:
+        raise ArtifactValidationError("pre-verification candidate TASK mismatch")
+    payload = data.get("package")
+    if not isinstance(payload, Mapping) or set(payload) != {"result", "evidence"}:
+        raise ArtifactValidationError(
+            "pre-verification candidate package fields do not match the contract"
+        )
+    result_data = payload.get("result")
+    if not isinstance(result_data, Mapping) or set(result_data) != {
+        "head_sha",
+        "claims",
+        "changed_files",
+        "unresolved",
+    }:
+        raise ArtifactValidationError(
+            "pre-verification candidate RESULT fields do not match the contract"
+        )
+    claims_data = result_data.get("claims")
+    if not isinstance(claims_data, list) or any(
+        not isinstance(claim, Mapping)
+        or set(claim) != {"id", "satisfies", "claim", "evidence"}
+        for claim in claims_data
+    ):
+        raise ArtifactValidationError(
+            "pre-verification candidate claim fields do not match the contract"
+        )
+    evidence_data = payload.get("evidence")
+    if not isinstance(evidence_data, list):
+        raise ArtifactValidationError(
+            "pre-verification candidate evidence must be a list"
+        )
+    run = Run.from_task(
+        run_id=run_id,
+        task=task,
+        executor="codex",
+        base_sha=subject_sha,
+        workspace="pre-verification-candidate",
+    )
+    package = validate_structural_result_package(
+        task=task,
+        run=run,
+        result=validate_structural_result(result_data),
+        evidence=tuple(validate_evidence(item) for item in evidence_data),
+    )
+    if package.result.head_sha != subject_sha:
+        raise ArtifactValidationError(
+            "pre-verification candidate RESULT head mismatch"
+        )
+    if package.evidence or any(claim.evidence for claim in package.result.claims):
+        raise ArtifactValidationError(
+            "pre-verification candidate contains semantic evidence"
+        )
+    return package
 
 
 def _read_staged_executor_unresolved(
