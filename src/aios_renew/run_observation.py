@@ -267,7 +267,37 @@ class RunObservationTracker:
                     if not _is_elapsed(self._executor_elapsed):
                         self._valid = False
 
+        observed.record_token_usage = self.record_token_usage  # type: ignore[attr-defined]
+        observed.tracker = self  # type: ignore[attr-defined]
         return observed
+
+    def record_token_usage(self, usage: Any) -> None:
+        """Record trusted token usage from the native adapter."""
+
+        try:
+            if usage is None:
+                self._token_usage = None
+                return
+            if isinstance(usage, TokenUsage):
+                if (
+                    isinstance(usage.input_tokens, bool)
+                    or not isinstance(usage.input_tokens, int)
+                    or usage.input_tokens < 0
+                    or isinstance(usage.cached_input_tokens, bool)
+                    or not isinstance(usage.cached_input_tokens, int)
+                    or usage.cached_input_tokens < 0
+                    or isinstance(usage.output_tokens, bool)
+                    or not isinstance(usage.output_tokens, int)
+                    or usage.output_tokens < 0
+                    or usage.cached_input_tokens > usage.input_tokens
+                ):
+                    self._token_usage = None
+                    return
+                self._token_usage = usage
+            else:
+                self._token_usage = validate_token_usage(usage)
+        except Exception:
+            self._token_usage = None
 
     def begin_verification(self) -> float | None:
         """Mark the beginning of the one Runtime verification attempt."""
@@ -356,14 +386,10 @@ class RunObservationTracker:
     def _capture_usage(self, completed: Any) -> None:
         """Accept only an explicit machine-readable group on this invocation."""
 
-        try:
-            data = getattr(completed, "aios_token_usage", None)
-            if data is None:
-                return
-            self._token_usage = validate_token_usage(data)
-        except Exception:
-            # Malformed or partial counters are unavailable, never inferred.
-            self._token_usage = None
+        data = getattr(completed, "aios_token_usage", None)
+        if data is None:
+            return
+        self.record_token_usage(data)
 
 
 def _bounded_string(value: Any, path: str) -> str:

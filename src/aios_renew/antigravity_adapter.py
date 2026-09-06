@@ -17,6 +17,7 @@ from .artifacts import (
     validate_structural_result,
 )
 from .run import Run
+from .run_observation import TokenUsage
 from .review import RemediationExecution
 from .task import Task
 
@@ -113,6 +114,8 @@ class AntigravityAdapter:
         try:
             if self._transport is not None:
                 output = self._transport(task=task, run=run)
+                usage = extract_token_usage(output)
+                self._record_usage(usage)
             else:
                 task_data = asdict(task)
                 task_data.pop("verification")
@@ -143,6 +146,8 @@ class AntigravityAdapter:
         try:
             if self._transport is not None:
                 output = self._transport(execution=execution)
+                usage = extract_token_usage(output)
+                self._record_usage(usage)
             else:
                 execution_data = asdict(execution)
                 execution_data["remediation"].pop("affected_verification")
@@ -169,6 +174,8 @@ class AntigravityAdapter:
         try:
             if self._transport is not None:
                 output = self._transport(execution=execution)
+                usage = extract_token_usage(output)
+                self._record_usage(usage)
             else:
                 run = execution.get("run")
                 if not isinstance(run, Run):
@@ -230,6 +237,10 @@ class AntigravityAdapter:
             raise AntigravityExecutionError(
                 f"Antigravity CLI invocation failed: {exc}"
             ) from exc
+
+        usage = extract_token_usage(stdout)
+        self._record_usage(usage, completed)
+
         if completed.returncode != 0:
             detail = stderr.strip() or stdout.strip()
             message = f"Antigravity CLI returned nonzero ({completed.returncode})"
@@ -239,6 +250,25 @@ class AntigravityAdapter:
                 message, stdout=stdout, stderr=stderr
             )
         return _structured_output(stdout, stderr=stderr)
+
+    def _record_usage(
+        self, usage: TokenUsage | None, completed: Any = None
+    ) -> None:
+        if completed is not None and usage is not None:
+            try:
+                completed.aios_token_usage = {
+                    "input_tokens": usage.input_tokens,
+                    "cached_input_tokens": usage.cached_input_tokens,
+                    "output_tokens": usage.output_tokens,
+                }
+            except Exception:
+                pass
+        record_fn = getattr(self._runner, "record_token_usage", None)
+        if callable(record_fn):
+            record_fn(usage)
+        transport_record_fn = getattr(self._transport, "record_token_usage", None)
+        if callable(transport_record_fn):
+            transport_record_fn(usage)
 
     def command_for(
         self, *, repo: Path, instruction: str
@@ -284,6 +314,8 @@ class AntigravityAdapter:
                 else output
             )
             root = _mapping(payload, "Antigravity output")
+            if "structured_output" in root and "result" not in root:
+                root = _mapping(root["structured_output"], "Antigravity structured_output")
             validate = validate_structural_result if structural else validate_result
             result = validate(_normalize_satisfies(root["result"]))
             evidence_data = root["evidence"]
@@ -474,3 +506,148 @@ def _normalize_satisfies(result: Any) -> Any:
     normalized_result = dict(result)
     normalized_result["claims"] = normalized_claims
     return normalized_result
+
+
+def extract_token_usage(output: Any) -> TokenUsage | None:
+    """Extract and map exact Antigravity token counters from execution output."""
+
+    if output is None:
+        return None
+
+    if isinstance(output, bytes):
+        try:
+            output = output.decode("utf-8", errors="replace")
+        except Exception:
+            return None
+
+    candidates: list[TokenUsage] = []
+
+    if isinstance(output, Mapping):
+        if "usage" in output:
+            usage_data = output.get("usage")
+            mapped = _map_antigravity_usage(usage_data)
+            if mapped is not None:
+                candidates.append(mapped)
+            elif usage_data is not None:
+                return None
+        elif "input_tokens" in output and "output_tokens" in output:
+            mapped = _map_antigravity_usage(output)
+            if mapped is not None:
+                candidates.append(mapped)
+            else:
+                return None
+    elif isinstance(output, str):
+        trimmed = output.strip().removeprefix("\ufeff")
+        if trimmed.startswith("{") and trimmed.endswith("}"):
+            try:
+                payload = json.loads(trimmed)
+                if isinstance(payload, Mapping):
+                    if "usage" in payload:
+                        usage_data = payload.get("usage")
+                        mapped = _map_antigravity_usage(usage_data)
+                        if mapped is not None:
+                            candidates.append(mapped)
+                        elif usage_data is not None:
+                            return None
+                    elif "input_tokens" in payload and "output_tokens" in payload:
+                        mapped = _map_antigravity_usage(payload)
+                        if mapped is not None:
+                            candidates.append(mapped)
+                        else:
+                            return None
+            except Exception:
+                pass
+        if not candidates:
+            for line in output.splitlines():
+                line_str = line.strip().removeprefix("\ufeff")
+                if not line_str or not line_str.startswith("{"):
+                    continue
+                try:
+                    record = json.loads(line_str)
+                except Exception:
+                    continue
+                if not isinstance(record, Mapping):
+                    continue
+                if "usage" in record:
+                    usage_data = record.get("usage")
+                    mapped = _map_antigravity_usage(usage_data)
+                    if mapped is not None:
+                        candidates.append(mapped)
+                    elif usage_data is not None:
+                        return None
+                elif "input_tokens" in record and "output_tokens" in record:
+                    mapped = _map_antigravity_usage(record)
+                    if mapped is not None:
+                        candidates.append(mapped)
+                    else:
+                        return None
+
+    if not candidates:
+        return None
+
+    first = candidates[0]
+    for other in candidates[1:]:
+        if other != first:
+            return None
+
+    return first
+
+
+def _map_antigravity_usage(usage: Any) -> TokenUsage | None:
+    if not isinstance(usage, Mapping):
+        return None
+
+    input_tokens = usage.get("input_tokens")
+    output_tokens = usage.get("output_tokens")
+
+    if (
+        isinstance(input_tokens, bool)
+        or not isinstance(input_tokens, int)
+        or input_tokens < 0
+    ):
+        return None
+    if (
+        isinstance(output_tokens, bool)
+        or not isinstance(output_tokens, int)
+        or output_tokens < 0
+    ):
+        return None
+
+    cached_candidates: list[int] = []
+    if "cache_read_tokens" in usage:
+        val = usage["cache_read_tokens"]
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            return None
+        cached_candidates.append(val)
+    if "cached_input_tokens" in usage:
+        val = usage["cached_input_tokens"]
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            return None
+        cached_candidates.append(val)
+    if "cached_tokens" in usage:
+        val = usage["cached_tokens"]
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            return None
+        cached_candidates.append(val)
+    prompt_details = usage.get("prompt_tokens_details")
+    if isinstance(prompt_details, Mapping) and "cached_tokens" in prompt_details:
+        val = prompt_details["cached_tokens"]
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            return None
+        cached_candidates.append(val)
+
+    if not cached_candidates:
+        return None
+
+    if len(set(cached_candidates)) > 1:
+        return None
+
+    cached_input_tokens = cached_candidates[0]
+    if cached_input_tokens > input_tokens:
+        return None
+
+    return TokenUsage(
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        output_tokens=output_tokens,
+    )

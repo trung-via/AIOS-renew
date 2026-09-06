@@ -21,6 +21,8 @@ from aios_renew import (
 )
 from aios_renew.review import RemediationExecution
 from aios_renew.dispatcher import NativeExecutionPolicy
+from aios_renew.antigravity_adapter import extract_token_usage
+from aios_renew.run_observation import TokenUsage
 
 
 TASK_SOURCE = """
@@ -663,3 +665,241 @@ def test_antigravity_unsupported_model_fails_closed_without_fallback_or_retry(
         adapter.execute(task=task, run=run)
 
     assert len(calls) == 1
+
+
+def test_antigravity_extract_token_usage_envelope() -> None:
+    pkg = successful_output("RUN-008-001")
+    envelope = {
+        "status": "SUCCESS",
+        "response": "Done",
+        "structured_output": pkg,
+        "usage": {
+            "input_tokens": 2000,
+            "cache_read_tokens": 500,
+            "output_tokens": 300,
+            "thinking_tokens": 150,
+            "total_tokens": 2450,
+        },
+    }
+    usage = extract_token_usage(json.dumps(envelope))
+    assert usage == TokenUsage(input_tokens=2000, cached_input_tokens=500, output_tokens=300)
+
+
+def test_antigravity_extract_token_usage_cached_key_alternatives() -> None:
+    # 1. cached_input_tokens
+    u1 = extract_token_usage(json.dumps({
+        "usage": {
+            "input_tokens": 100,
+            "cached_input_tokens": 40,
+            "output_tokens": 20,
+        }
+    }))
+    assert u1 == TokenUsage(input_tokens=100, cached_input_tokens=40, output_tokens=20)
+
+    # 2. cached_tokens
+    u2 = extract_token_usage(json.dumps({
+        "usage": {
+            "input_tokens": 100,
+            "cached_tokens": 35,
+            "output_tokens": 20,
+        }
+    }))
+    assert u2 == TokenUsage(input_tokens=100, cached_input_tokens=35, output_tokens=20)
+
+    # 3. prompt_tokens_details.cached_tokens
+    u3 = extract_token_usage(json.dumps({
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "prompt_tokens_details": {"cached_tokens": 30},
+        }
+    }))
+    assert u3 == TokenUsage(input_tokens=100, cached_input_tokens=30, output_tokens=20)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # Missing cached counter
+        {"usage": {"input_tokens": 100, "output_tokens": 20}},
+        # Missing output tokens
+        {"usage": {"input_tokens": 100, "cache_read_tokens": 20}},
+        # Missing input tokens
+        {"usage": {"cache_read_tokens": 20, "output_tokens": 20}},
+        # Bool counter
+        {"usage": {"input_tokens": True, "cache_read_tokens": 20, "output_tokens": 20}},
+        {"usage": {"input_tokens": 100, "cache_read_tokens": False, "output_tokens": 20}},
+        # Negative counter
+        {"usage": {"input_tokens": 100, "cache_read_tokens": -5, "output_tokens": 20}},
+        {"usage": {"input_tokens": 100, "cache_read_tokens": 20, "output_tokens": -1}},
+        # cached > input
+        {"usage": {"input_tokens": 50, "cache_read_tokens": 100, "output_tokens": 20}},
+        # Conflicting cached counters
+        {"usage": {"input_tokens": 100, "cache_read_tokens": 20, "cached_input_tokens": 30, "output_tokens": 20}},
+        # Malformed non-mapping usage
+        {"usage": "not-a-dict"},
+        # None or non-json
+        "plain text without json",
+    ],
+)
+def test_antigravity_extract_token_usage_fail_soft_edge_cases(payload: object) -> None:
+    data = json.dumps(payload) if isinstance(payload, dict) else payload
+    assert extract_token_usage(data) is None
+
+
+def test_antigravity_execute_records_usage_and_preserves_single_invocation(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution()
+    calls = []
+    recorded_usages = []
+
+    payload = successful_output(run.run_id)
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    envelope = {
+        "status": "SUCCESS",
+        "response": "",
+        "structured_output": payload,
+        "usage": {
+            "input_tokens": 2200,
+            "cache_read_tokens": 700,
+            "output_tokens": 180,
+            "thinking_tokens": 90,
+            "total_tokens": 2470,
+        },
+    }
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(envelope).encode("utf-8"),
+            stderr=b"",
+        )
+
+    runner.record_token_usage = lambda u: recorded_usages.append(u)
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+    )
+    result_pkg = adapter.execute(task=task, run=run)
+
+    assert len(calls) == 1  # Exactly one native invocation (AC8)
+    assert result_pkg.result.head_sha == "def456"
+    assert recorded_usages == [TokenUsage(input_tokens=2200, cached_input_tokens=700, output_tokens=180)]
+
+
+def test_antigravity_execute_nonzero_exit_preserves_token_usage(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution()
+    recorded_usages = []
+
+    envelope = {
+        "status": "FAILURE",
+        "response": "",
+        "usage": {
+            "input_tokens": 1100,
+            "cache_read_tokens": 300,
+            "output_tokens": 80,
+        },
+    }
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            returncode=1,
+            stdout=json.dumps(envelope).encode("utf-8"),
+            stderr=b"process terminated unexpectedly",
+        )
+
+    runner.record_token_usage = lambda u: recorded_usages.append(u)
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+    )
+    with pytest.raises(AntigravityExecutionError, match="returned nonzero"):
+        adapter.execute(task=task, run=run)
+
+    assert recorded_usages == [TokenUsage(input_tokens=1100, cached_input_tokens=300, output_tokens=80)]
+
+
+def test_antigravity_execute_envelope_error_preserves_token_usage(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution()
+    recorded_usages = []
+
+    envelope = {
+        "status": "ERROR",
+        "error": "rate limit exceeded",
+        "usage": {
+            "input_tokens": 1400,
+            "cache_read_tokens": 400,
+            "output_tokens": 90,
+        },
+    }
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(envelope).encode("utf-8"),
+            stderr=b"",
+        )
+
+    runner.record_token_usage = lambda u: recorded_usages.append(u)
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+    )
+    with pytest.raises(AntigravityExecutionError, match="rate limit exceeded"):
+        adapter.execute(task=task, run=run)
+
+    assert recorded_usages == [TokenUsage(input_tokens=1400, cached_input_tokens=400, output_tokens=90)]
+
+
+def test_antigravity_execute_missing_structured_output_preserves_token_usage(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution()
+    recorded_usages = []
+
+    envelope = {
+        "status": "SUCCESS",
+        "response": "Done with no payload",
+        "usage": {
+            "input_tokens": 1600,
+            "cache_read_tokens": 500,
+            "output_tokens": 120,
+        },
+    }
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(envelope).encode("utf-8"),
+            stderr=b"",
+        )
+
+    runner.record_token_usage = lambda u: recorded_usages.append(u)
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+    )
+    with pytest.raises(AntigravityExecutionError, match="ResultPackage missing"):
+        adapter.execute(task=task, run=run)
+
+    assert recorded_usages == [TokenUsage(input_tokens=1600, cached_input_tokens=500, output_tokens=120)]

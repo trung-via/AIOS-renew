@@ -99,10 +99,18 @@ thinking, queueing, or total Human wait time. They are finite non-negative value
 derived from a monotonic clock, not from wall-clock timestamp subtraction.
 
 `executor_invoked` remains an exact fact even when native execution fails. Optional
-token counters are recorded only as a complete, exact machine-readable group from
-that same native invocation; missing, partial, malformed, or inferred usage remains
-unavailable. The observation is operational state, not RESULT, EVIDENCE, acceptance
-proof, or review authority. It is not yet used for automatic Executor scoring,
+token counters (`input_tokens`, `cached_input_tokens`, `output_tokens`) measure
+only the native coding Executor invocation; they reflect an Executor-only token
+domain and do not represent total task cost when Runtime verification commands or
+application code perform separate model/provider API calls (which require separate
+instrumentation rather than being merged into `RUN_OBSERVATION`). Token counters are
+recorded only as a complete, exact machine-readable group from that same native
+invocation; missing, partial, malformed, negative, boolean, conflicting, or inferred
+usage fails soft to unavailable (`null`) without changing the authoritative native
+execution outcome or canonical ResultPackage. Historical `RUN_OBSERVATION` sidecars
+with `token_usage=null` remain fully valid and compatible without migration or
+backfill. The observation is operational state, not RESULT, EVIDENCE, acceptance
+proof, or review authority. It is not used for automatic Executor scoring,
 selection, routing, retry, or fallback.
 
 When present, transports place the byte-exact sidecar at

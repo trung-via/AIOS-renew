@@ -16,6 +16,7 @@ from .artifacts import (
     validate_structural_result,
 )
 from .run import Run
+from .run_observation import TokenUsage
 from .review import RemediationExecution
 from .task import Task
 
@@ -149,6 +150,9 @@ class CodexAdapter:
                 exit_code=None,
             ) from exc
 
+        usage = extract_token_usage(stdout)
+        self._record_usage(usage, completed)
+
         if completed.returncode != 0:
             detail = stderr.strip() or stdout.strip()
             message = f"Codex CLI exited with code {completed.returncode}"
@@ -199,6 +203,10 @@ class CodexAdapter:
             raise CodexExecutionError(
                 f"Codex CLI invocation failed: {exc}", exit_code=None
             ) from exc
+
+        usage = extract_token_usage(stdout)
+        self._record_usage(usage, completed)
+
         if completed.returncode != 0:
             detail = stderr.strip() or stdout.strip()
             message = f"Codex CLI exited with code {completed.returncode}"
@@ -245,12 +253,32 @@ class CodexAdapter:
             raise CodexExecutionError(
                 f"Codex CLI invocation failed: {exc}", exit_code=None
             ) from exc
+
+        usage = extract_token_usage(stdout)
+        self._record_usage(usage, completed)
+
         if completed.returncode != 0:
             raise CodexExecutionError(
                 f"Codex CLI exited with code {completed.returncode}",
                 exit_code=completed.returncode, stdout=stdout, stderr=stderr,
             )
         return self._normalize(stdout, stderr=stderr)
+
+    def _record_usage(
+        self, usage: TokenUsage | None, completed: Any = None
+    ) -> None:
+        if completed is not None and usage is not None:
+            try:
+                completed.aios_token_usage = {
+                    "input_tokens": usage.input_tokens,
+                    "cached_input_tokens": usage.cached_input_tokens,
+                    "output_tokens": usage.output_tokens,
+                }
+            except Exception:
+                pass
+        record_fn = getattr(self._runner, "record_token_usage", None)
+        if callable(record_fn):
+            record_fn(usage)
 
     @staticmethod
     def command_for(
@@ -282,6 +310,7 @@ class CodexAdapter:
             str(schema_path),
             "--color",
             "never",
+            "--json",
             "-",
         )
 
@@ -374,7 +403,53 @@ class CodexAdapter:
     @staticmethod
     def _normalize(stdout: str, *, stderr: str) -> ResultPackage:
         try:
-            payload = json.loads(stdout)
+            payload = None
+            stripped = stdout.strip()
+            if stripped.startswith("{") and stripped.endswith("}"):
+                try:
+                    direct = json.loads(stripped)
+                    if (
+                        isinstance(direct, Mapping)
+                        and "result" in direct
+                        and "evidence" in direct
+                    ):
+                        payload = direct
+                except Exception:
+                    pass
+
+            if payload is None:
+                last_agent_text = None
+                direct_line_payload = None
+                for line in stdout.splitlines():
+                    line_str = line.strip()
+                    if not line_str or not line_str.startswith("{"):
+                        continue
+                    try:
+                        event = json.loads(line_str)
+                    except Exception:
+                        continue
+                    if not isinstance(event, Mapping):
+                        continue
+                    if event.get("type") == "item.completed":
+                        item = event.get("item")
+                        if (
+                            isinstance(item, Mapping)
+                            and item.get("type") == "agent_message"
+                        ):
+                            text = item.get("text")
+                            if isinstance(text, str):
+                                last_agent_text = text
+                    if "result" in event and "evidence" in event:
+                        direct_line_payload = event
+
+                if last_agent_text is not None:
+                    payload = json.loads(last_agent_text)
+                elif direct_line_payload is not None:
+                    payload = direct_line_payload
+
+            if payload is None:
+                payload = json.loads(stdout)
+
             root = _mapping(payload, "Codex output")
             result = validate_structural_result(root["result"])
             evidence_data = root["evidence"]
@@ -396,6 +471,118 @@ class CodexAdapter:
             ) from exc
 
         return ResultPackage(result=result, evidence=evidence)
+
+
+def extract_token_usage(output: Any) -> TokenUsage | None:
+    """Extract and map exact Codex token counters from the execution output."""
+
+    if output is None:
+        return None
+
+    if isinstance(output, bytes):
+        try:
+            output = output.decode("utf-8", errors="replace")
+        except Exception:
+            return None
+
+    candidates: list[TokenUsage] = []
+
+    if isinstance(output, Mapping):
+        usage_data = output.get("usage")
+        mapped = _map_codex_usage(usage_data)
+        if mapped is not None:
+            candidates.append(mapped)
+        elif usage_data is not None:
+            return None
+    elif isinstance(output, str):
+        for line in output.splitlines():
+            line_str = line.strip()
+            if not line_str or not line_str.startswith("{"):
+                continue
+            try:
+                record = json.loads(line_str)
+            except Exception:
+                continue
+            if not isinstance(record, Mapping):
+                continue
+            if "usage" in record:
+                usage_data = record.get("usage")
+                mapped = _map_codex_usage(usage_data)
+                if mapped is not None:
+                    candidates.append(mapped)
+                elif usage_data is not None:
+                    return None
+            elif "input_tokens" in record and "output_tokens" in record:
+                mapped = _map_codex_usage(record)
+                if mapped is not None:
+                    candidates.append(mapped)
+                else:
+                    return None
+
+    if not candidates:
+        return None
+
+    first = candidates[0]
+    for other in candidates[1:]:
+        if other != first:
+            return None
+
+    return first
+
+
+def _map_codex_usage(usage: Any) -> TokenUsage | None:
+    if not isinstance(usage, Mapping):
+        return None
+
+    input_tokens = usage.get("input_tokens")
+    output_tokens = usage.get("output_tokens")
+
+    if (
+        isinstance(input_tokens, bool)
+        or not isinstance(input_tokens, int)
+        or input_tokens < 0
+    ):
+        return None
+    if (
+        isinstance(output_tokens, bool)
+        or not isinstance(output_tokens, int)
+        or output_tokens < 0
+    ):
+        return None
+
+    cached_candidates: list[int] = []
+    if "cached_input_tokens" in usage:
+        val = usage["cached_input_tokens"]
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            return None
+        cached_candidates.append(val)
+    if "cached_tokens" in usage:
+        val = usage["cached_tokens"]
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            return None
+        cached_candidates.append(val)
+    prompt_details = usage.get("prompt_tokens_details")
+    if isinstance(prompt_details, Mapping) and "cached_tokens" in prompt_details:
+        val = prompt_details["cached_tokens"]
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            return None
+        cached_candidates.append(val)
+
+    if not cached_candidates:
+        return None
+
+    if len(set(cached_candidates)) > 1:
+        return None
+
+    cached_input_tokens = cached_candidates[0]
+    if cached_input_tokens > input_tokens:
+        return None
+
+    return TokenUsage(
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        output_tokens=output_tokens,
+    )
 
 
 def _mapping(value: Any, path: str) -> Mapping[str, Any]:

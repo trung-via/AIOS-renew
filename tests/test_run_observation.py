@@ -8,6 +8,7 @@ from aios_renew.run import Run, RunTaskReference
 from aios_renew.run_observation import (
     RunObservationError,
     RunObservationTracker,
+    TokenUsage,
     observation_data,
     persist_observation,
     validate_observation,
@@ -152,3 +153,126 @@ def test_persistence_is_immutable_and_byte_identical_repetition_is_allowed(
     with pytest.raises(RunObservationError, match="conflicting finalized"):
         persist_observation(path, conflict)
     assert json.loads(path.read_bytes()) == observation_data(observation)
+
+
+def test_provider_specific_field_names_not_in_run_observation_module() -> None:
+    import aios_renew.run_observation as ro_mod
+
+    source = Path(ro_mod.__file__).read_text(encoding="utf-8")
+    provider_names = [
+        "cache_read_tokens",
+        "reasoning_output_tokens",
+        "cache_write_input_tokens",
+        "thinking_tokens",
+        "prompt_tokens_details",
+        "total_tokens",
+        "turn.completed",
+        "item.completed",
+        "agent_message",
+    ]
+    for name in provider_names:
+        assert name not in source, f"Provider name {name!r} must not appear in run_observation.py"
+
+    with pytest.raises(RunObservationError, match="exact counter group"):
+        validate_token_usage({
+            "input_tokens": 10,
+            "cached_input_tokens": 2,
+            "output_tokens": 5,
+            "extra_counter": 1,
+        })
+
+
+def test_historical_observations_with_token_usage_null_validate_without_migration() -> None:
+    data = {
+        "kind": "RUN_OBSERVATION",
+        "run_id": "RUN-046-001",
+        "task": {"id": "TASK-046", "revision": 2},
+        "operation": "PRIMARY",
+        "executor": "codex",
+        "base_sha": "abc123",
+        "terminal_kind": "RESULT",
+        "executor_invoked": True,
+        "durations": {
+            "admitted_run_seconds": 12.5,
+            "executor_seconds": 10.0,
+            "verification_seconds": 2.0,
+        },
+        "token_usage": None,
+    }
+    observation = validate_observation(data)
+    assert observation.token_usage is None
+    exported = observation_data(observation)
+    assert exported["token_usage"] is None
+    assert exported == data
+
+
+def test_tracker_record_token_usage_lifecycle() -> None:
+    tracker = RunObservationTracker(
+        "PRIMARY",
+        monotonic_clock=ControlledClock(1.0, 2.0, 5.0, 10.0),
+    )
+    tracker.admit(run_record())
+
+    def fake_native():
+        tracker.record_token_usage(TokenUsage(100, 20, 30))
+        return "done"
+
+    observed = tracker.wrap_native_runner(fake_native)
+    assert observed() == "done"
+
+    obs = tracker.finalize("RESULT")
+    assert obs is not None
+    assert obs.token_usage == TokenUsage(100, 20, 30)
+
+
+@pytest.mark.parametrize(
+    "invalid_usage",
+    [
+        {"input_tokens": -5, "cached_input_tokens": 0, "output_tokens": 10},
+        {"input_tokens": 100, "cached_input_tokens": True, "output_tokens": 10},
+        {"input_tokens": 50, "cached_input_tokens": 100, "output_tokens": 10},
+        TokenUsage(input_tokens=50, cached_input_tokens=100, output_tokens=10),
+        "malformed string",
+    ],
+)
+def test_tracker_record_token_usage_fails_soft_on_invalid(invalid_usage: object) -> None:
+    tracker = RunObservationTracker(
+        "PRIMARY",
+        monotonic_clock=ControlledClock(1.0, 2.0, 5.0, 10.0),
+    )
+    tracker.admit(run_record())
+
+    def fake_native():
+        tracker.record_token_usage(invalid_usage)
+        return "done"
+
+    observed = tracker.wrap_native_runner(fake_native)
+    observed()
+    obs = tracker.finalize("RESULT")
+    assert obs is not None
+    assert obs.token_usage is None
+
+
+def test_executor_not_invoked_cannot_have_token_usage() -> None:
+    data = {
+        "kind": "RUN_OBSERVATION",
+        "run_id": "RUN-046-001",
+        "task": {"id": "TASK-046", "revision": 2},
+        "operation": "PRIMARY",
+        "executor": "codex",
+        "base_sha": "abc123",
+        "terminal_kind": "RESULT",
+        "executor_invoked": False,
+        "durations": {
+            "admitted_run_seconds": 5.0,
+            "executor_seconds": None,
+            "verification_seconds": 4.0,
+        },
+        "token_usage": {
+            "input_tokens": 100,
+            "cached_input_tokens": 10,
+            "output_tokens": 20,
+        },
+    }
+    with pytest.raises(RunObservationError, match="requires an invoked Executor"):
+        validate_observation(data)

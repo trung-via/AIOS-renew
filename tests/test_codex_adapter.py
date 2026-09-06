@@ -21,6 +21,8 @@ from aios_renew import (
 )
 from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.review import RemediationExecution
+from aios_renew.codex_adapter import extract_token_usage
+from aios_renew.run_observation import TokenUsage
 
 
 TASK_SOURCE = """
@@ -137,6 +139,7 @@ def test_constructs_and_invokes_native_codex_command() -> None:
         str(RESULT_PACKAGE_SCHEMA_PATH),
         "--color",
         "never",
+        "--json",
         "-",
     )
     assert calls[0][1]["capture_output"] is True
@@ -740,6 +743,7 @@ def test_codex_command_deterministic_model_and_reasoning_across_operations() -> 
     assert cmd_primary[cmd_primary.index("--sandbox") + 1] == "workspace-write"
     assert cmd_primary[cmd_primary.index("--output-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
     assert cmd_primary[cmd_primary.index("--color") + 1] == "never"
+    assert "--json" in cmd_primary
 
 
 def test_codex_unsupported_model_fails_closed_without_fallback_or_retry() -> None:
@@ -761,3 +765,196 @@ def test_codex_unsupported_model_fails_closed_without_fallback_or_retry() -> Non
 
     assert len(calls) == 1
     assert exc_info.value.exit_code == 1
+
+
+def test_codex_extract_token_usage_jsonl_stream() -> None:
+    pkg = json.loads(successful_output("RUN-007-001"))
+    lines = [
+        json.dumps({"type": "session.started", "session_id": "sess_1"}),
+        json.dumps({"type": "turn.started"}),
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(pkg)}}),
+        json.dumps({
+            "type": "turn.completed",
+            "usage": {
+                "input_tokens": 1200,
+                "cached_input_tokens": 400,
+                "cache_write_input_tokens": 150,
+                "output_tokens": 350,
+                "reasoning_output_tokens": 80,
+                "total_tokens": 1550,
+            },
+        }),
+    ]
+    stdout = "\n".join(lines)
+    usage = extract_token_usage(stdout)
+    assert usage == TokenUsage(input_tokens=1200, cached_input_tokens=400, output_tokens=350)
+
+
+def test_codex_extract_token_usage_cached_key_alternatives() -> None:
+    # 1. cached_tokens
+    u1 = extract_token_usage(json.dumps({"usage": {"input_tokens": 100, "cached_tokens": 30, "output_tokens": 20}}))
+    assert u1 == TokenUsage(input_tokens=100, cached_input_tokens=30, output_tokens=20)
+
+    # 2. prompt_tokens_details.cached_tokens
+    u2 = extract_token_usage(json.dumps({
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "prompt_tokens_details": {"cached_tokens": 25},
+        }
+    }))
+    assert u2 == TokenUsage(input_tokens=100, cached_input_tokens=25, output_tokens=20)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # Missing cached tokens
+        {"usage": {"input_tokens": 100, "output_tokens": 20}},
+        # Missing output tokens
+        {"usage": {"input_tokens": 100, "cached_input_tokens": 20}},
+        # Missing input tokens
+        {"usage": {"cached_input_tokens": 20, "output_tokens": 20}},
+        # Bool counter
+        {"usage": {"input_tokens": True, "cached_input_tokens": 20, "output_tokens": 20}},
+        {"usage": {"input_tokens": 100, "cached_input_tokens": False, "output_tokens": 20}},
+        # Negative counter
+        {"usage": {"input_tokens": 100, "cached_input_tokens": -5, "output_tokens": 20}},
+        {"usage": {"input_tokens": 100, "cached_input_tokens": 20, "output_tokens": -1}},
+        # cached > input
+        {"usage": {"input_tokens": 50, "cached_input_tokens": 100, "output_tokens": 20}},
+        # Conflicting cached counters in same object
+        {"usage": {"input_tokens": 100, "cached_input_tokens": 20, "cached_tokens": 30, "output_tokens": 20}},
+        # Malformed non-mapping usage
+        {"usage": "not-a-dict"},
+        # None or non-json
+        "plain text without json",
+    ],
+)
+def test_codex_extract_token_usage_fail_soft_edge_cases(payload: object) -> None:
+    data = json.dumps(payload) if isinstance(payload, dict) else payload
+    assert extract_token_usage(data) is None
+
+
+def test_codex_extract_token_usage_conflicting_records_fail_soft() -> None:
+    lines = [
+        json.dumps({"usage": {"input_tokens": 100, "cached_input_tokens": 20, "output_tokens": 10}}),
+        json.dumps({"usage": {"input_tokens": 200, "cached_input_tokens": 50, "output_tokens": 30}}),
+    ]
+    assert extract_token_usage("\n".join(lines)) is None
+
+
+def test_codex_execute_records_usage_and_preserves_single_invocation() -> None:
+    task, run, _, _ = make_execution()
+    calls = []
+    recorded_usages = []
+
+    pkg = json.loads(successful_output(run.run_id))
+    pkg["result"]["claims"][0]["evidence"] = []
+    pkg["evidence"] = []
+
+    lines = [
+        json.dumps({"type": "turn.started"}),
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(pkg)}}),
+        json.dumps({
+            "type": "turn.completed",
+            "usage": {
+                "input_tokens": 1500,
+                "cached_input_tokens": 600,
+                "cache_write_input_tokens": 100,
+                "output_tokens": 250,
+                "reasoning_output_tokens": 50,
+            },
+        }),
+    ]
+    stdout_content = "\n".join(lines)
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        proc = subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=stdout_content.encode("utf-8"),
+            stderr=b"",
+        )
+        return proc
+
+    runner.record_token_usage = lambda u: recorded_usages.append(u)
+
+    adapter = CodexAdapter(runner=runner)
+    result_pkg = adapter.execute(task=task, run=run)
+
+    assert len(calls) == 1  # Exactly one invocation (AC8)
+    assert result_pkg.result.head_sha == "def456"
+    assert recorded_usages == [TokenUsage(input_tokens=1500, cached_input_tokens=600, output_tokens=250)]
+
+
+def test_codex_execute_failure_preserves_token_usage_without_altering_error() -> None:
+    task, run, _, _ = make_execution()
+    recorded_usages = []
+
+    lines = [
+        json.dumps({
+            "type": "turn.completed",
+            "usage": {
+                "input_tokens": 800,
+                "cached_input_tokens": 200,
+                "output_tokens": 50,
+            },
+        }),
+    ]
+    stdout_content = "\n".join(lines)
+
+    def runner(command, **kwargs):
+        proc = subprocess.CompletedProcess(
+            command,
+            returncode=2,
+            stdout=stdout_content.encode("utf-8"),
+            stderr=b"fatal: syntax error in generated code",
+        )
+        return proc
+
+    runner.record_token_usage = lambda u: recorded_usages.append(u)
+
+    adapter = CodexAdapter(runner=runner)
+    with pytest.raises(CodexExecutionError, match="syntax error in generated code") as exc_info:
+        adapter.execute(task=task, run=run)
+
+    assert exc_info.value.exit_code == 2
+    # Usage was safely recorded despite failure
+    assert recorded_usages == [TokenUsage(input_tokens=800, cached_input_tokens=200, output_tokens=50)]
+
+
+def test_codex_execute_output_error_preserves_token_usage() -> None:
+    task, run, _, _ = make_execution()
+    recorded_usages = []
+
+    lines = [
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "not valid result package json"}}),
+        json.dumps({
+            "type": "turn.completed",
+            "usage": {
+                "input_tokens": 900,
+                "cached_input_tokens": 300,
+                "output_tokens": 70,
+            },
+        }),
+    ]
+    stdout_content = "\n".join(lines)
+
+    def runner(command, **kwargs):
+        proc = subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=stdout_content.encode("utf-8"),
+            stderr=b"",
+        )
+        return proc
+
+    runner.record_token_usage = lambda u: recorded_usages.append(u)
+
+    adapter = CodexAdapter(runner=runner)
+    with pytest.raises(CodexOutputError):
+        adapter.execute(task=task, run=run)
+
+    assert recorded_usages == [TokenUsage(input_tokens=900, cached_input_tokens=300, output_tokens=70)]
