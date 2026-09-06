@@ -105,7 +105,6 @@ def execute_dispatch(
                     "exit_code": IN_PROGRESS_EXIT_CODE,
                     "detail": "original dispatch invocation is still active",
                 }
-                _write_record(record_path, active)
                 return _outcome(active, replayed=True)
             reconciled = _reconcile(state_root, record)
             _write_record(record_path, reconciled)

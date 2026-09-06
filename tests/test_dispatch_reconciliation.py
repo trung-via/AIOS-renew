@@ -193,12 +193,21 @@ def test_duplicate_while_original_invocation_is_active_reports_in_progress(
     )
     assert replay.status == "IN_PROGRESS"
     assert replay.exit_code == dispatch.IN_PROGRESS_EXIT_CODE
+    active_record = json.loads(
+        next((state_root / "dispatches").glob("*.json")).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert active_record["status"] == "STARTED"
+    assert active_record["run_id"] is None
 
     release.set()
     thread.join(timeout=5)
     assert not thread.is_alive()
     assert len(completed) == 1
     assert not isinstance(completed[0], BaseException)
+    assert completed[0].status == "SUCCEEDED"
+    assert completed[0].run_id == "RUN-068-001"
 
 
 def test_dispatch_binding_collision_fails_closed_without_mutation(
