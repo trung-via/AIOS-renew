@@ -12,6 +12,7 @@ from aios_renew import dispatch_reconciliation as dispatch
 from aios_renew.dispatch_reconciliation import (
     DispatchError,
     DispatchInvocation,
+    bind_dispatch_run,
     execute_dispatch,
 )
 
@@ -47,6 +48,19 @@ def write_terminal(state_root: Path, directory: str, run_id: str) -> None:
     (target / f"{run_id}.json").write_text("{}", encoding="utf-8")
 
 
+def admit_dispatch_run(
+    state_root: Path, dispatch_id: str, run_id: str
+) -> None:
+    write_run(state_root, run_id)
+    bind_dispatch_run(
+        state_root=state_root,
+        dispatch_id=dispatch_id,
+        task_id="TASK-068",
+        executor="codex",
+        run_id=run_id,
+    )
+
+
 def crash_after_started(state_root: Path, dispatch_id: str = "delivery-068") -> None:
     def crash() -> DispatchInvocation:
         raise RuntimeError("simulated host loss")
@@ -79,7 +93,7 @@ def test_first_seen_is_durable_before_one_primary_invocation_and_replays(
         assert started["task_id"] == "TASK-068"
         assert started["executor"] == "codex"
         assert started["pre_run_ids"] == ["RUN-068-001"]
-        write_run(state_root, "RUN-068-002")
+        admit_dispatch_run(state_root, "delivery-068", "RUN-068-002")
         write_terminal(state_root, "results", "RUN-068-002")
         return DispatchInvocation(0, "RUN-068-002")
 
@@ -149,7 +163,7 @@ def test_duplicate_while_original_invocation_is_active_reports_in_progress(
     def invoke() -> DispatchInvocation:
         entered.set()
         assert release.wait(timeout=5)
-        write_run(state_root, "RUN-068-001")
+        admit_dispatch_run(state_root, "active-delivery", "RUN-068-001")
         write_terminal(state_root, "results", "RUN-068-001")
         return DispatchInvocation(0, "RUN-068-001")
 
@@ -259,14 +273,12 @@ def test_dispatch_id_is_hashed_not_used_as_a_path(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("terminal_directory", "expected_status", "expected_exit"),
-    [("results", "SUCCEEDED", 0), ("failures", "FAILED", 1)],
+    "terminal_directory",
+    ["results", "failures"],
 )
-def test_restart_reconciles_one_new_terminal_run_without_invocation(
+def test_restart_blocks_unowned_terminal_run_without_invocation(
     tmp_path: Path,
     terminal_directory: str,
-    expected_status: str,
-    expected_exit: int,
 ) -> None:
     state_root = tmp_path / ".git" / "aios"
     write_run(state_root, "RUN-068-001")
@@ -281,8 +293,102 @@ def test_restart_reconciles_one_new_terminal_run_without_invocation(
         executor="codex",
         invoke_primary=lambda: pytest.fail("restart invoked PRIMARY"),
     )
-    assert outcome.status == expected_status
-    assert outcome.exit_code == expected_exit
+    assert outcome.status == "RECONCILIATION_BLOCKED"
+    assert outcome.exit_code == dispatch.RECONCILIATION_BLOCKED_EXIT_CODE
+    assert outcome.run_id is None
+    assert outcome.replayed is True
+
+
+def test_competing_direct_primary_cannot_be_attributed_to_dispatch(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / ".git" / "aios"
+
+    def invoke() -> DispatchInvocation:
+        write_run(state_root, "RUN-068-001")
+        write_terminal(state_root, "results", "RUN-068-001")
+        admit_dispatch_run(state_root, "delivery-068", "RUN-068-002")
+        write_terminal(state_root, "results", "RUN-068-002")
+        return DispatchInvocation(0, "RUN-068-002")
+
+    outcome = execute_dispatch(
+        state_root=state_root,
+        dispatch_id="delivery-068",
+        task_id="TASK-068",
+        executor="codex",
+        invoke_primary=invoke,
+    )
+
+    assert outcome.status == "SUCCEEDED"
+    assert outcome.run_id == "RUN-068-002"
+
+
+def test_distinct_dispatch_between_snapshot_and_admission_keeps_ownership(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / ".git" / "aios"
+
+    def invoke_outer() -> DispatchInvocation:
+        def invoke_inner() -> DispatchInvocation:
+            admit_dispatch_run(state_root, "other-delivery", "RUN-068-001")
+            write_terminal(state_root, "results", "RUN-068-001")
+            return DispatchInvocation(0, "RUN-068-001")
+
+        inner = execute_dispatch(
+            state_root=state_root,
+            dispatch_id="other-delivery",
+            task_id="TASK-068",
+            executor="codex",
+            invoke_primary=invoke_inner,
+        )
+        assert inner.run_id == "RUN-068-001"
+        admit_dispatch_run(state_root, "delivery-068", "RUN-068-002")
+        write_terminal(state_root, "results", "RUN-068-002")
+        return DispatchInvocation(0, "RUN-068-002")
+
+    outer = execute_dispatch(
+        state_root=state_root,
+        dispatch_id="delivery-068",
+        task_id="TASK-068",
+        executor="codex",
+        invoke_primary=invoke_outer,
+    )
+
+    assert outer.status == "SUCCEEDED"
+    assert outer.run_id == "RUN-068-002"
+
+
+def test_restart_reconciles_only_run_owned_at_admission_after_competing_run(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / ".git" / "aios"
+
+    def crash_after_admission() -> DispatchInvocation:
+        write_run(state_root, "RUN-068-001")
+        write_terminal(state_root, "results", "RUN-068-001")
+        admit_dispatch_run(state_root, "delivery-068", "RUN-068-002")
+        write_terminal(state_root, "failures", "RUN-068-002")
+        raise RuntimeError("simulated host loss after admission")
+
+    with pytest.raises(RuntimeError, match="after admission"):
+        execute_dispatch(
+            state_root=state_root,
+            dispatch_id="delivery-068",
+            task_id="TASK-068",
+            executor="codex",
+            invoke_primary=crash_after_admission,
+        )
+
+    outcome = execute_dispatch(
+        state_root=state_root,
+        dispatch_id="delivery-068",
+        task_id="TASK-068",
+        executor="codex",
+        invoke_primary=lambda: pytest.fail("restart invoked PRIMARY"),
+    )
+
+    assert outcome.status == "FAILED"
+    assert outcome.exit_code == 1
     assert outcome.run_id == "RUN-068-002"
     assert outcome.replayed is True
 
@@ -291,8 +397,18 @@ def test_restart_reports_in_progress_for_one_incomplete_run_with_active_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state_root = tmp_path / ".git" / "aios"
-    crash_after_started(state_root)
-    write_run(state_root, "RUN-068-001")
+    def crash_after_admission() -> DispatchInvocation:
+        admit_dispatch_run(state_root, "delivery-068", "RUN-068-001")
+        raise RuntimeError("simulated host loss")
+
+    with pytest.raises(RuntimeError, match="simulated host loss"):
+        execute_dispatch(
+            state_root=state_root,
+            dispatch_id="delivery-068",
+            task_id="TASK-068",
+            executor="codex",
+            invoke_primary=crash_after_admission,
+        )
     monkeypatch.setattr(dispatch, "_operator_lock_is_held", lambda _path: True)
 
     outcome = execute_dispatch(
@@ -309,8 +425,18 @@ def test_restart_reports_in_progress_for_one_incomplete_run_with_active_lock(
 
 def test_restart_blocks_one_incomplete_run_without_recovery(tmp_path: Path) -> None:
     state_root = tmp_path / ".git" / "aios"
-    crash_after_started(state_root)
-    write_run(state_root, "RUN-068-001")
+    def crash_after_admission() -> DispatchInvocation:
+        admit_dispatch_run(state_root, "delivery-068", "RUN-068-001")
+        raise RuntimeError("simulated host loss")
+
+    with pytest.raises(RuntimeError, match="simulated host loss"):
+        execute_dispatch(
+            state_root=state_root,
+            dispatch_id="delivery-068",
+            task_id="TASK-068",
+            executor="codex",
+            invoke_primary=crash_after_admission,
+        )
 
     outcome = execute_dispatch(
         state_root=state_root,

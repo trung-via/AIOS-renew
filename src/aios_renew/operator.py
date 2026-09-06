@@ -39,6 +39,7 @@ from .dispatcher import (
 from .dispatch_reconciliation import (
     DispatchError,
     DispatchInvocation,
+    bind_dispatch_run,
     execute_dispatch,
 )
 from .executor import ExecutorBoundaryError
@@ -572,6 +573,7 @@ def run_task(
     monotonic_clock: MonotonicClock = time.monotonic,
     synchronize: bool = True,
     preflight_sha: str | None = None,
+    dispatch_id: str | None = None,
 ) -> RunSummary:
     """Execute a TASK and persist/transport deterministic pre-PASS failure facts."""
 
@@ -589,6 +591,7 @@ def run_task(
             observation_tracker=observation_tracker,
             synchronize=synchronize,
             preflight_sha=preflight_sha,
+            dispatch_id=dispatch_id,
         )
     except KeyboardInterrupt as original:
         if attempt.run_path is not None:
@@ -631,6 +634,7 @@ def _run_task_impl(
     observation_tracker: RunObservationTracker,
     synchronize: bool = True,
     preflight_sha: str | None = None,
+    dispatch_id: str | None = None,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
 
@@ -667,6 +671,14 @@ def _run_task_impl(
         run_path = state.runs / f"{run_id}.json"
         _write_json(run_path, asdict(run))
         attempt.bind_run(run_path)
+        if dispatch_id is not None:
+            bind_dispatch_run(
+                state_root=state.root,
+                dispatch_id=dispatch_id,
+                task_id=task_id,
+                executor=executor,
+                run_id=run_id,
+            )
         observation_tracker.admit(run)
         observed_native_runner = observation_tracker.wrap_native_runner(
             native_runner
@@ -2787,6 +2799,7 @@ def main(
                         monotonic_clock=monotonic_clock,
                         synchronize=False,
                         preflight_sha=preflight.preflight_sha,
+                        dispatch_id=args.dispatch_id,
                     )
                     return DispatchInvocation(0, summary.run_id)
                 except OperatorError as exc:

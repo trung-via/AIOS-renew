@@ -141,6 +141,59 @@ def execute_dispatch(
             invocation_guard.__exit__()
 
 
+def bind_dispatch_run(
+    *,
+    state_root: Path,
+    dispatch_id: str,
+    task_id: str,
+    executor: str,
+    run_id: str,
+) -> None:
+    """Durably bind a dispatch at the canonical PRIMARY admission boundary."""
+
+    _validate_request(dispatch_id, task_id, executor)
+    if not isinstance(run_id, str) or not run_id:
+        raise DispatchError("invalid admitted PRIMARY RUN id")
+
+    dispatches = state_root / "dispatches"
+    record_path = dispatches / f"{_dispatch_key(dispatch_id)}.json"
+    lock_path = state_root / "dispatch.lock"
+    with _DispatchLock(lock_path):
+        if not record_path.is_file():
+            raise DispatchError("dispatch admission record does not exist")
+        record = _read_record(record_path)
+        _require_same_request(record, dispatch_id, task_id, executor)
+        if record["status"] != "STARTED":
+            raise DispatchError("dispatch is not awaiting PRIMARY admission")
+        if record["run_id"] is not None:
+            raise DispatchError("dispatch already owns a PRIMARY RUN")
+        run_path = state_root / "runs" / f"{run_id}.json"
+        try:
+            run_data = json.loads(run_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise DispatchError("admitted PRIMARY RUN is not readable") from exc
+        run_task = run_data.get("task") if isinstance(run_data, Mapping) else None
+        if (
+            not isinstance(run_data, Mapping)
+            or "kind" in run_data
+            or run_data.get("run_id") != run_id
+            or not isinstance(run_task, Mapping)
+            or run_task.get("id") != task_id
+            or run_data.get("executor") != executor
+        ):
+            raise DispatchError("admitted PRIMARY RUN does not match dispatch")
+        _write_record(
+            record_path,
+            {
+                **record,
+                "run_id": run_id,
+                "detail": (
+                    "PRIMARY RUN ownership recorded at canonical admission boundary"
+                ),
+            },
+        )
+
+
 def _validate_request(dispatch_id: str, task_id: str, executor: str) -> None:
     if not isinstance(dispatch_id, str) or not DISPATCH_ID_PATTERN.fullmatch(
         dispatch_id
@@ -248,40 +301,19 @@ def _primary_run_ids(runs_path: Path, task_id: str) -> tuple[str, ...]:
     return tuple(sorted(set(run_ids)))
 
 
-def _matching_new_runs(state_root: Path, record: Mapping[str, Any]) -> tuple[str, ...]:
-    before = set(record["pre_run_ids"])
-    current = _primary_run_ids(state_root / "runs", record["task_id"])
-    candidates: list[str] = []
-    for run_id in current:
-        if run_id in before:
-            continue
-        run_path = state_root / "runs" / f"{run_id}.json"
-        try:
-            data = json.loads(run_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            continue
-        if isinstance(data, Mapping) and data.get("executor") == record["executor"]:
-            candidates.append(run_id)
-    return tuple(candidates)
-
-
 def _reconcile(state_root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
     updated = dict(record)
     bound_run = record["run_id"]
     if bound_run is None:
-        candidates = _matching_new_runs(state_root, record)
-        if len(candidates) != 1:
-            updated.update(
-                status="RECONCILIATION_BLOCKED",
-                exit_code=RECONCILIATION_BLOCKED_EXIT_CODE,
-                detail=(
-                    "cannot prove exactly one attributable PRIMARY RUN; "
-                    "no execution was attempted"
-                ),
-            )
-            return updated
-        bound_run = candidates[0]
-        updated["run_id"] = bound_run
+        updated.update(
+            status="RECONCILIATION_BLOCKED",
+            exit_code=RECONCILIATION_BLOCKED_EXIT_CODE,
+            detail=(
+                "no PRIMARY RUN ownership was recorded at admission; "
+                "no execution was attempted"
+            ),
+        )
+        return updated
 
     result_exists = (state_root / "results" / f"{bound_run}.json").is_file()
     failure_exists = (state_root / "failures" / f"{bound_run}.json").is_file()
@@ -330,24 +362,13 @@ def _finalize_invocation(
     ):
         raise DispatchError("PRIMARY invocation returned an invalid exit code")
 
-    candidates = _matching_new_runs(state_root, record)
-    run_id = invocation.run_id
-    if run_id is not None and run_id not in candidates:
-        return {
-            **record,
-            "status": "RECONCILIATION_BLOCKED",
-            "run_id": None,
-            "exit_code": RECONCILIATION_BLOCKED_EXIT_CODE,
-            "detail": "PRIMARY returned RUN attribution outside the recorded namespace",
-        }
-    if run_id is None and len(candidates) == 1:
-        run_id = candidates[0]
-    if run_id is None and len(candidates) > 1:
+    run_id = record["run_id"]
+    if invocation.run_id is not None and invocation.run_id != run_id:
         return {
             **record,
             "status": "RECONCILIATION_BLOCKED",
             "exit_code": RECONCILIATION_BLOCKED_EXIT_CODE,
-            "detail": "PRIMARY outcome has ambiguous RUN attribution",
+            "detail": "PRIMARY returned RUN attribution without matching admission ownership",
         }
 
     if invocation.exit_code != 0:
