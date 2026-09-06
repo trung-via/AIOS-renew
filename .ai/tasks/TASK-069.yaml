@@ -1,0 +1,149 @@
+task_id: TASK-069
+revision: 1
+
+goal: >
+  Correct the TASK-064 REPAIR pre-verification reuse eligibility boundary so a valid
+  predecessor sidecar does not block ordinary Executor-backed CODE_FIX or otherwise
+  non-qualifying REPAIR merely because that sidecar lacks full TASK acceptance claims.
+  Preserve fail-closed validation of the sidecar itself and preserve full acceptance
+  coverage as a mandatory condition only when Runtime actually elides the Executor for
+  the verification-only NO_CHANGE fast path.
+
+problem: >
+  Observed AIOS-renew TASK-068 lineage exposed a deterministic admission defect while
+  attempting REPAIR-068-003 after failed REMEDIATION RUN-068-003. The predecessor failed
+  at canonical verification and transported a valid pre-verification candidate whose
+  remediation ResultPackage correctly had no TASK acceptance claims. Before allocating
+  any continuation RUN, `_eligible_reusable_repair_package` validated full TASK acceptance
+  coverage before checking whether the new REPAIR action was NO_CHANGE with empty scope.
+  Because REPAIR-068-003 is CODE_FIX, Runtime should have preserved the ordinary
+  one-Executor REPAIR path, but instead rejected admission with
+  `pre-verification candidate lacks TASK acceptance coverage: AC1, AC2, AC3, AC4, AC5,
+  AC6, AC7, AC8, AC9`. No RUN-068-004 was created. TASK-064 explicitly requires CODE_FIX
+  and all other non-qualifying paths to retain existing Executor-backed REPAIR behavior,
+  while acceptance-complete reuse authority is needed only for the zero-Executor
+  verification-only NO_CHANGE path.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main immediately before TASK-069 authoring is
+    4df5ad3076b0c072b39a7fbf692ef5bc3f2b225f.
+  - >
+    TASK-064 remains authoritative for verification-only NO_CHANGE continuation and
+    requires full TASK acceptance coverage before Runtime may reuse a predecessor package
+    to elide the Executor.
+  - >
+    TASK-058 remains authoritative for historical REPAIR recovery and current-control
+    Runtime execution against an exact failed historical subject.
+  - >
+    The observed RUN-068-003 FAILURE is phase VERIFICATION, failed_head_sha
+    0936632a6dab0ec1e24ab24b97ee0176b5b24d7a, candidate repairable=true, and its attempted
+    REPAIR-068-003 was rejected before admission with no RUN-068-004 and no Executor
+    invocation.
+  - >
+    A REMEDIATION structural ResultPackage may legitimately contain no original TASK
+    acceptance claims; absence of such claims does not make its exact Runtime-owned
+    pre-verification sidecar malformed when the next REPAIR is not eligible for package
+    reuse.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-058.yaml
+    - .ai/tasks/TASK-064.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_repair_preverification_eligibility.py
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, FAILURE, REVIEW, REMEDIATION, REPAIR, or RUN_OBSERVATION schemas or semantic authority.
+  - Change historical RUN-068-003, REPAIR-068-003, TASK-068 implementation candidates, or any historical immutable artifact.
+  - Implement or revise A2 dispatch reconciliation, A3, or any later roadmap capability.
+  - Weaken validation of malformed, mismatched, conflicting, wrong-RUN, wrong-TASK, wrong-subject, or changed-files-inconsistent pre-verification sidecars.
+  - Allow Executor elision for CODE_FIX, REMEDIATION, PRIMARY, non-empty-scope REPAIR, non-VERIFICATION predecessor failures, or any REPAIR that does not satisfy the existing TASK-064 fast-path contract.
+  - Remove the full TASK acceptance-coverage requirement from a genuinely qualifying verification-only NO_CHANGE reuse candidate.
+  - Add retry, fallback, reroute, automatic REPAIR authoring, extra verification, or a second Executor call.
+  - Modify roadmap state or mark TASK-068/A2 complete.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Exact sidecar structural and immutable binding validation remains fail closed when
+      sidecar content is present, regardless of whether the requested REPAIR later
+      qualifies for reuse.
+    - >
+      After exact sidecar validity and predecessor candidate binding are established,
+      Runtime must determine whether all existing TASK-064 verification-only reuse
+      preconditions are satisfied before requiring semantic TASK acceptance coverage for
+      the reusable package.
+    - >
+      If action is CODE_FIX, modification_scope is non-empty, predecessor phase is not
+      VERIFICATION, or another existing TASK-064 fast-path precondition is false, a valid
+      sidecar that is simply ineligible for reuse must return to the ordinary
+      Executor-backed REPAIR path rather than reject admission for missing TASK acceptance
+      coverage.
+    - >
+      For an actually qualifying NO_CHANGE empty-scope verification-only continuation,
+      missing TASK acceptance coverage must continue to fail closed before RUN allocation,
+      Executor invocation, or canonical verification; valid full-coverage reuse must
+      retain zero Executor invocations and exactly one canonical verification execution.
+    - >
+      The correction must not reinterpret remediation claims as primary TASK acceptance
+      claims, fabricate claims, synthesize acceptance coverage, discard trustworthy
+      binding checks, or convert sidecar operational state into semantic evidence.
+    - >
+      Existing ordinary CODE_FIX REPAIR execution count remains exactly one selected
+      Executor when admitted. This task changes only fast-path eligibility ordering/
+      qualification, not dispatcher, verification, historical workspace, mutation, or
+      publication authority.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A deterministic regression representing the observed RUN-068-003 shape proves a
+      valid phase-VERIFICATION predecessor sidecar with no TASK acceptance claims does not
+      reject a CODE_FIX REPAIR with non-empty modification scope solely for missing
+      acceptance coverage; the request remains eligible for the ordinary Executor-backed
+      REPAIR path.
+  - id: AC2
+    condition: >
+      The same non-qualifying behavior is preserved for other existing TASK-064 fast-path
+      disqualifiers: valid but non-reusable sidecar state does not gain Executor elision
+      and does not acquire a new acceptance-coverage admission gate.
+  - id: AC3
+    condition: >
+      Present malformed, wrong-RUN, wrong-TASK/revision, wrong-subject, or candidate
+      changed-files-mismatched sidecar state still fails closed before any Executor or
+      verification invocation, including on CODE_FIX REPAIR.
+  - id: AC4
+    condition: >
+      A genuinely qualifying NO_CHANGE empty-scope verification-only continuation whose
+      reusable package lacks complete TASK acceptance coverage is still rejected before
+      RUN allocation, Executor invocation, and canonical verification.
+  - id: AC5
+    condition: >
+      Existing qualifying full-coverage NO_CHANGE reuse behavior remains unchanged:
+      Runtime may create the authorized continuation RUN, invokes zero Executors, and
+      executes the canonical TASK verification list exactly once through the existing
+      completion boundary.
+  - id: AC6
+    condition: >
+      Existing ordinary CODE_FIX REPAIR authority, historical recovery, one-Executor
+      dispatch, verification, failure continuity, and immutable artifact schemas remain
+      behaviorally unchanged outside the corrected eligibility decision.
+
+verification:
+  required:
+    - python -m pytest tests/test_repair_preverification_eligibility.py -q
+    - git diff --check
