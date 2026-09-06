@@ -1,0 +1,213 @@
+task_id: TASK-066
+revision: 1
+
+goal: >
+  Implement A1 as a thin repository-native GitHub Actions wakeup for AIOS-renew so an
+  authorized remote Human or Brain can start one canonical PRIMARY execution on the
+  designated Windows self-hosted runner without being physically present at the
+  machine, while preserving the existing Human-facing AIOS Operator as the sole
+  admission/execution boundary and adding no new kernel, review, remediation, or
+  publication authority.
+
+problem: >
+  K0.4 was semantically reviewed PASS in TASK-056, and later TASK-057 through TASK-065
+  hardened observed kernel boundaries. TASK-063 already provides safe deterministic
+  post-review publication, but starting a new PRIMARY execution still requires the
+  Human to be at the execution machine and invoke `aios run` locally. The canonical
+  roadmap reserves this missing transport/wakeup responsibility for A1 GitHub Actions
+  Self-hosted Wakeup. A1 must remove that Human courier step without turning GitHub
+  Actions into an Executor, duplicating admission/synchronization/lease logic, using a
+  fresh checkout that forks local Runtime state, or exposing a workflow write token to
+  the selected coding Executor.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main immediately before TASK-066 authoring is
+    b7e360dee5e2251f99ce120d6bdde582b1725c46 and contains the semantically reviewed
+    and published TASK-065 implementation.
+  - >
+    TASK-056 completed the K0.4 Lean Kernel Conformance Gate. TASK-057 through TASK-065
+    are post-K0 evidence-driven hardening, not a reason to reopen default kernel
+    development.
+  - >
+    docs/AIOS-ROADMAP.md remains authoritative in direction: A1 is GitHub Actions
+    Self-hosted Wakeup, outer automation is subordinate to Kernel authority, and
+    transport extraction/A6/A7/A9/A10 are separate later concerns.
+  - >
+    TASK-062 remains authoritative for PRIMARY-only safe pre-admission synchronization;
+    the wakeup workflow must call the existing `aios run` surface rather than run its
+    own fetch/pull/merge/reset/synchronization sequence.
+  - >
+    TASK-063 remains authoritative for reviewed-candidate publication. A1 does not push
+    product main or reinterpret review decisions.
+  - >
+    The designated initial A1 execution host is one Windows x64 self-hosted runner for
+    this repository, carrying the custom label `aios-renew`. The runner is an outer
+    wakeup mechanism, not canonical execution authority.
+  - >
+    The runner host has a persistent canonical AIOS-renew checkout and working native
+    environment under the runner account: `aios` is available on PATH, the selected
+    native Executor is installed/authenticated, and the persistent repository already
+    has the non-interactive Git credentials required by existing AIOS transport.
+  - >
+    The persistent repository path is configured by the repository owner as the
+    non-secret GitHub Actions repository variable `AIOS_REPO_ROOT`; it is not supplied
+    by each workflow dispatch request.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-ROADMAP.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-056.yaml
+    - .ai/tasks/TASK-062.yaml
+    - .ai/tasks/TASK-063.yaml
+    - .ai/tasks/TASK-065.yaml
+    - .github/workflows/aios-auto-publish.yml
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - README.md
+
+  modify:
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - tests/test_self_hosted_wakeup.py
+    - README.md
+    - docs/AIOS-ROADMAP.md
+
+non_goals:
+  - Change Kernel, Runtime, Dispatcher, Operator, adapter, review, publication, artifact, schema, TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, REPAIR, FAILURE, or RUN_OBSERVATION semantics.
+  - Add a second execution path, Executor, planner, router, reviewer, verifier agent, scheduler, polling daemon, message broker, queue service, or background AIOS process.
+  - Trigger REMEDIATION, REPAIR, direct-candidate acceptance, review generation, or publication from this workflow.
+  - Implement A2 durable dispatch identity/reconciliation, A3 remote status/approval, A4 transport extraction, A5 evidence strengthening, A6 review-to-remediation wakeup, A7 autonomous reviewer shadow mode, A9 zero-touch, or A10 scale.
+  - Trigger on push, pull_request, pull_request_target, issue/comment events, repository_dispatch, schedule, or any untrusted code-change event.
+  - Check out, clone, reset, merge, rebase, stash, or otherwise create a fresh workflow-owned repository copy for execution.
+  - Accept a repository path, shell command, executable path, Git ref, model, reasoning effort, verification command, operation type, or arbitrary runner label from workflow-dispatch input.
+  - Install or upgrade AIOS, Codex, Antigravity, Python, Git, dependencies, credentials, or the GitHub Actions runner from the workflow.
+  - Inject `GITHUB_TOKEN`, a PAT, deploy key, SSH key, credential helper, cloud secret, or other new transport credential into the AIOS/Executor process.
+  - Grant workflow `contents: write` or any broader GitHub permission merely so the workflow can push; existing persistent-repository Git credentials remain the transport mechanism for current AIOS behavior.
+  - Add automatic retry, fallback, reroute, alternate runner selection, duplicate execution, or continue-on-error behavior.
+  - Change downstream repositories or assume a downstream repository uses current AIOS-renew main.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      The workflow trigger must be `workflow_dispatch` only. Its dispatch contract must
+      contain exactly the semantic execution selectors needed for one PRIMARY wakeup:
+      TASK id and one explicit Executor choice from the currently supported executors.
+      The event is transport of already-authorized intent; it does not own TASK semantics
+      or infer an Executor.
+    - >
+      The execution job must target only the designated self-hosted Windows x64 runner
+      carrying the custom `aios-renew` label. There must be no GitHub-hosted fallback,
+      alternate operating-system route, dynamic runner label from dispatch input, or
+      automatic executor-host failover.
+    - >
+      The workflow must operate on the persistent repository bound by repository variable
+      `AIOS_REPO_ROOT`. That path must not be a dispatch input. The workflow may perform
+      minimum deterministic local preflight that the variable is present, the path is a
+      Git repository, and `aios` is callable, but repository synchronization/admission
+      truth remains owned by the invoked AIOS Operator.
+    - >
+      The workflow must not use actions/checkout or create another repository worktree.
+      Preserving the persistent checkout preserves existing machine-local Runtime state,
+      Executor authentication, and repository configuration; TASK-062 `aios run` remains
+      responsible for safe PRIMARY synchronization before TASK loading/admission.
+    - >
+      After outer preflight, the workflow must invoke exactly one canonical command
+      equivalent to `aios run <TASK_ID> --executor <EXECUTOR> --repo <AIOS_REPO_ROOT>`.
+      It must not invoke `aios task` first, call an Executor directly, run canonical
+      verification itself, or execute a second AIOS command as retry/fallback.
+    - >
+      The workflow must preserve the AIOS command exit status as the workflow outcome.
+      Admission rejection, RUN failure, interruption/timeout terminalization, completion
+      failure, and transport failure must remain visible failures; no `continue-on-error`,
+      success masking, automatic retry, or alternate execution path is allowed.
+    - >
+      GitHub Actions permissions must be minimum read-only for repository content and the
+      workflow must not expose a GitHub write token or newly provisioned repository
+      credential to the AIOS process or native Executor. Existing AIOS Git transport may
+      continue using the persistent checkout's already-provisioned non-interactive Git
+      credentials, exactly as local Human-facing execution does today.
+    - >
+      Because AIOS-renew is a public repository and self-hosted runners contain privileged
+      local tooling/authentication, the A1 workflow must not run on pull-request, push,
+      fork-controlled, comment, or other code-change events and must not checkout an
+      event-controlled ref. Documentation must call out this security boundary and
+      recommend a dedicated repository runner/label rather than sharing the A1 runner
+      with unrelated public repositories.
+    - >
+      README must document the one-time Human host prerequisites: register one Windows
+      x64 self-hosted runner for this repository with label `aios-renew`, run it under an
+      account/environment that can execute the already-working AIOS/Codex/Antigravity
+      toolchain, configure `AIOS_REPO_ROOT`, and ensure existing Git transport works
+      non-interactively. Runner registration/configuration itself is operational setup,
+      not Executor implementation work or canonical AIOS authority.
+    - >
+      README must document that an authorized remote Human/Brain can trigger the
+      workflow through GitHub's workflow-dispatch surfaces (web/CLI/API) by supplying
+      TASK id and Executor, and that the workflow only wakes the existing Operator.
+    - >
+      docs/AIOS-ROADMAP.md must reconcile current canonical progress when this candidate
+      is published: K0.4 is DONE via TASK-056; TASK-057 through TASK-065 are post-K0
+      evidence-driven hardening; A8 Safe Publisher is already realized by TASK-063; A1
+      is the current outer-automation milestone implemented by TASK-066. Remaining
+      A-Series items stay separately gated and are not silently declared complete.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      `.github/workflows/aios-self-hosted-wakeup.yml` is dispatch-only and exposes only
+      TASK id plus explicit codex/antigravity Executor selection; no push/PR/comment/
+      schedule/repository-dispatch trigger or arbitrary command/repository/ref/model
+      input exists.
+  - id: AC2
+    condition: >
+      The workflow routes only to `[self-hosted, windows, x64, aios-renew]`, reads the
+      persistent repository location from `AIOS_REPO_ROOT`, performs no checkout/fresh
+      worktree creation, and has no GitHub-hosted or dynamic-runner fallback.
+  - id: AC3
+    condition: >
+      A deterministic workflow contract regression proves one successful wakeup reaches
+      exactly one existing `aios run` invocation with the dispatched TASK id, dispatched
+      Executor, and fixed repository path, while no direct Executor call, duplicate AIOS
+      call, manual Git synchronization, or canonical verification command exists in the
+      workflow.
+  - id: AC4
+    condition: >
+      Workflow permissions are read-only/minimum and regressions prove no GitHub write
+      token, PAT, deploy/SSH key, credential setup, checkout-persisted credential, or new
+      secret is injected into the AIOS/native Executor process.
+  - id: AC5
+    condition: >
+      Deterministic workflow regressions prove missing repository binding, invalid local
+      Git root, missing `aios` executable, or nonzero `aios run` outcome fails the job
+      without retry, fallback, reroute, alternate runner, second invocation, or success
+      masking.
+  - id: AC6
+    condition: >
+      No file under `src/aios_renew`, existing Kernel/Operator tests, artifact schema, or
+      executor adapter is modified; A1 remains outer wakeup/transport only and current
+      TASK-062 synchronization, TASK-063 publication, one-Executor, Runtime verification,
+      and correction boundaries are unchanged.
+  - id: AC7
+    condition: >
+      README documents self-hosted runner registration/environment prerequisites,
+      `AIOS_REPO_ROOT`, remote workflow-dispatch use, existing Git-credential dependency,
+      public-repository security boundary, and the fact that GitHub Actions wakes but
+      does not replace AIOS Operator authority.
+  - id: AC8
+    condition: >
+      The roadmap is reconciled to real canonical state: K0.4 DONE, TASK-057..065
+      post-K0 hardening recognized, TASK-063 mapped to completed A8 Safe Publisher, A1
+      mapped to TASK-066, and A2/A3/A4/A5/A6/A7/A9/A10 remain separately gated.
+
+verification:
+  required:
+    - python -m pytest tests/test_self_hosted_wakeup.py -q
+    - git diff --check
