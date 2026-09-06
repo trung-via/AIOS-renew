@@ -1365,6 +1365,17 @@ def _eligible_reusable_repair_package(
         raise OperatorError("invalid pre-verification candidate changed-files binding")
     if list(package.result.changed_files) != changed_files:
         raise OperatorError("pre-verification candidate changed-files mismatch")
+    if (
+        action != "NO_CHANGE"
+        or scope
+        or failure.get("phase") != "VERIFICATION"
+        or candidate.get("repairable") is not True
+        or candidate.get("transportable") is not True
+        or candidate.get("dirty") is not False
+        or candidate.get("descends_from_base") is not True
+        or candidate.get("outside_task_scope") != []
+    ):
+        return None
     if package.result.unresolved:
         raise OperatorError("pre-verification candidate is incomplete")
     satisfied = {
@@ -1378,17 +1389,6 @@ def _eligible_reusable_repair_package(
             "pre-verification candidate lacks TASK acceptance coverage: "
             + ", ".join(missing)
         )
-    if (
-        action != "NO_CHANGE"
-        or scope
-        or failure.get("phase") != "VERIFICATION"
-        or candidate.get("repairable") is not True
-        or candidate.get("transportable") is not True
-        or candidate.get("dirty") is not False
-        or candidate.get("descends_from_base") is not True
-        or candidate.get("outside_task_scope") != []
-    ):
-        return None
     return package
 
 
