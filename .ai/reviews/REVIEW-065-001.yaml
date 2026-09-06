@@ -1,0 +1,38 @@
+review_id: REVIEW-065-001
+reviewed_sha: 6f8eb5964b2d574e7a583a8635bf902c38314223
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings:
+  - id: F1
+    basis: AC3
+    action: CODE_FIX
+    location: src/aios_renew/codex_adapter.py
+    issue: >
+      The Codex token-usage extractor accepts a valid-looking usage mapping from any
+      JSONL record that contains a usage field, without binding that telemetry to the
+      provider-defined terminal usage event. Therefore an unknown or future Codex event
+      carrying input_tokens/cached_input_tokens/output_tokens can be treated as trusted
+      RUN_OBSERVATION telemetry. TASK-065 AC3 explicitly requires unknown provider events
+      to fail soft to unavailable/null telemetry. Current Codex JSONL usage is emitted on
+      the terminal turn.completed event, so accepting usage-shaped data from unrelated
+      event types widens telemetry trust beyond the authorized native contract.
+    expected: >
+      Bind Codex usage extraction to the recognized machine-readable native usage event
+      for the same invocation so unknown/unrecognized JSONL events cannot supply portable
+      token_usage. Preserve exact mapping of input_tokens, cached_input_tokens, and
+      output_tokens from valid terminal usage; preserve fail-soft handling for missing,
+      malformed, partial, conflicting, or extra unsupported telemetry; preserve structural
+      ResultPackage parsing, one native invocation, original failure behavior, and all
+      existing TASK-065 non-goals. Add a deterministic regression proving an unknown event
+      with an otherwise valid usage-shaped payload yields unavailable/null token telemetry.
