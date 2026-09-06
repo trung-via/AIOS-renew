@@ -1,0 +1,57 @@
+review_id: REVIEW-066-001
+reviewed_sha: 5fdae1b8cc1bbc1cd07623f7cd369cbfaaf15dc4
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: FAIL
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: .github/workflows/aios-self-hosted-wakeup.yml
+    issue: >
+      The workflow interpolates `${{ inputs.task_id }}` directly into a PowerShell
+      `run:` script. `task_id` is a free-form string input, so PowerShell metacharacters
+      in the dispatch value are parsed as shell syntax before AIOS receives the TASK id.
+      An otherwise authorized workflow-dispatch caller can therefore turn the semantic
+      TASK selector into an arbitrary command on the privileged self-hosted runner,
+      bypassing the intended bounded wakeup contract and potentially causing more than
+      the one authorized `aios run` invocation required by AC3.
+    expected: >
+      Treat the dispatched TASK id strictly as data, never as PowerShell source. Pass it
+      through a safe environment/argument boundary (and optionally validate the canonical
+      TASK-id shape before invocation) so shell metacharacters cannot create additional
+      commands. Preserve exactly one canonical `aios run` call, the explicit executor
+      choice, persistent-repository binding, no checkout, no retry/fallback, and minimum
+      workflow permissions. Add a deterministic regression using an injection-shaped
+      TASK-id value proving it cannot execute a second shell command.
+  - id: F2
+    basis: AC8
+    action: CODE_FIX
+    location: docs/AIOS-ROADMAP.md
+    issue: >
+      The new Post-K0 Hardening section materially misstates canonical historical TASK
+      purposes. For example it describes TASK-057 as terminal-failure observation and
+      TASK-058 as a single-process lease registry, while canonical TASK-057 establishes
+      Runtime-owned REPAIR changed_files authority and canonical TASK-058 revision 2
+      implements deterministic historical REPAIR recovery. TASK-060 is likewise
+      described as monotonic duration tracking even though it bootstrapped the 60-minute
+      response budget / 65-minute watchdog. Because the roadmap is canonical direction
+      used by future Brain Sync, these false mappings make the attempted reconciliation
+      inaccurate.
+    expected: >
+      Reconcile the TASK-057 through TASK-065 summary against the exact canonical TASK
+      lineage rather than guessed labels. At minimum preserve the correct roles for
+      TASK-057 REPAIR changed_files authority, TASK-058 historical REPAIR recovery,
+      TASK-059 execution-efficiency/interruption hardening, TASK-060 60/65-minute timing
+      ceiling, TASK-061 deterministic model defaults, TASK-062 PRIMARY auto-sync,
+      TASK-063 safe publication, TASK-064 verification-only NO_CHANGE continuation, and
+      TASK-065 native token observation. Add or strengthen the roadmap regression so
+      these historical mappings cannot silently drift again.
