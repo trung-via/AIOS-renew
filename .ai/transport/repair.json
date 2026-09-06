@@ -1,0 +1,20 @@
+{
+  "repair_id": "REPAIR-068-001",
+  "failed_run_id": "RUN-068-001",
+  "failed_head_sha": "bc6671618e12be7480ce69bbe7d47453876f46c6",
+  "task": {
+    "id": "TASK-068",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "tests/test_self_hosted_wakeup.py"
+  ],
+  "instructions": [
+    "Continue exactly from failed TASK-068 revision-1 candidate bc6671618e12be7480ce69bbe7d47453876f46c6 for RUN-068-001. Preserve all A2 production implementation, workflow behavior, README, roadmap, operator, and dispatch reconciliation code. Do not restart PRIMARY, reset to main, widen TASK semantics, reroute, retry internally, or alter the canonical verification commands.",
+    "Canonical verification failed only in three Windows PowerShell preflight tests because PowerShell formatted Write-Error diagnostics with line wrapping/newlines inside otherwise correct message text. Correct only tests/test_self_hosted_wakeup.py so assertions compare the diagnostic content in a deterministic whitespace-normalized form rather than depending on terminal line wrapping. Preserve the required semantic checks for missing AIOS_REPO_ROOT, invalid Git repository, and missing aios executable; do not weaken them to return-code-only assertions.",
+    "Do not change .github/workflows/aios-self-hosted-wakeup.yml or any production source to accommodate test-display formatting. The workflow diagnostics observed by the failed verification are semantically correct; this repair addresses only the brittle Windows output assertion boundary.",
+    "Make the minimum test-only correction, commit it, and return the structural REPAIR ResultPackage. Runtime must execute the unchanged TASK-068 canonical verification list exactly once. Do not push or manually write Runtime-owned operational state."
+  ],
+  "constraints": []
+}
