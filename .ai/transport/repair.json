@@ -1,0 +1,22 @@
+{
+  "repair_id": "REPAIR-064-001",
+  "failed_run_id": "RUN-064-001",
+  "failed_head_sha": "a977ff5d7b0571359ba51217edb64fe9c753825d",
+  "task": {
+    "id": "TASK-064",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "tests/test_runtime.py",
+    "tests/test_operator.py"
+  ],
+  "instructions": [
+    "Continue exactly from failed TASK-064 revision-1 candidate a977ff5d7b0571359ba51217edb64fe9c753825d for RUN-064-001. Preserve the implementation in README.md, src/aios_renew/runtime.py, src/aios_renew/operator.py, and src/aios_renew/review_transport.py unless the authorized test-only correction proves impossible. Do not restart PRIMARY, reset to main, widen TASK semantics, reroute, retry internally, or alter canonical verification commands.",
+    "Canonical verification produced 200 passing tests and 12 failures. Correct only the demonstrated regression-test defects. In tests/test_runtime.py, preserve the exact pre-verification sidecar contract while comparing JSON-persisted content against an equivalently JSON-normalized expected ResultPackage representation; do not change production serialization merely to make Python tuple/list representations compare equal.",
+    "In tests/test_operator.py, isolate tests that model a fresh PRIMARY synchronization invocation from an inherited outer AIOS_RESTART_ATTEMPTED control marker. The outer marker is present because the Human-facing TASK-064 run auto-synchronized/restarted before canonical verification, and it must not cause nested unit-test invocations to masquerade as a second restart. Preserve explicit restart-loop/unsafe-restart coverage: tests that intentionally exercise AIOS_RESTART_ATTEMPTED must continue to set and verify it themselves. Do not weaken synchronization safety behavior in production code.",
+    "Also correct test_no_change_verification_only_continuations_reuse_exact_candidate so its fake VerificationRunner obeys the existing verification runner contract. execute_verification supplies command/cwd/env/capture_output/text/check to the runner; subject_sha belongs to Runtime evidence, not runner kwargs. Preserve assertions for exact verification count, zero native Executor calls on eligible NO_CHANGE continuation, repeated FAILURE continuity, successful RESULT/EVIDENCE subject binding, and executor_invoked=false observations.",
+    "Make the minimum deterministic changes only in the two authorized test files, commit the correction, and return the structural REPAIR ResultPackage. Runtime must execute the unchanged TASK-064 canonical verification list exactly once. Do not push or manually write Runtime-owned operational state."
+  ],
+  "constraints": []
+}
