@@ -1,0 +1,21 @@
+{
+  "repair_id": "REPAIR-068-003",
+  "failed_run_id": "RUN-068-003",
+  "failed_head_sha": "0936632a6dab0ec1e24ab24b97ee0176b5b24d7a",
+  "task": {
+    "id": "TASK-068",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "src/aios_renew/dispatch_reconciliation.py",
+    "tests/test_dispatch_reconciliation.py"
+  ],
+  "instructions": [
+    "Continue exactly from failed REMEDIATION candidate 0936632a6dab0ec1e24ab24b97ee0176b5b24d7a for RUN-068-003. Preserve the deterministic dispatch-to-RUN ownership fix already implemented in that candidate, including binding ownership at the canonical PRIMARY admission boundary. Do not restart PRIMARY TASK-068, reset to main, widen the original F1 semantics, change workflow/operator/publication authority, or alter the canonical verification commands.",
+    "The observed verification failure exposes a real active-duplicate race: while the original dispatch invocation holds its active guard and has not yet admitted its RUN, a duplicate delivery reports IN_PROGRESS by rewriting the durable dispatch record from STARTED to IN_PROGRESS. The original invocation then reaches bind_dispatch_run and is rejected because the record is no longer awaiting PRIMARY admission. Correct this so observing/replaying an already-active duplicate cannot mutate durable ownership state in a way that prevents the original invocation from completing canonical RUN admission.",
+    "Preserve the required external behavior: the duplicate active delivery must still return an explicit nonzero IN_PROGRESS outcome, must never invoke PRIMARY or Executor again, and must not steal/rebind RUN ownership. The original invocation must remain able to bind exactly its own admitted RUN and complete normally. Durable dispatch state must remain deterministic and crash-reconcilable; do not weaken exact dispatch/request binding or admission-time RUN ownership checks merely to make the failing test pass.",
+    "Use or strengthen deterministic regression coverage for the exact interleaving already exposed by test_duplicate_while_original_invocation_is_active_reports_in_progress: duplicate delivery occurs while the original invocation is active before RUN admission, duplicate returns IN_PROGRESS without a second invocation, then the original admits/binds its RUN and completes successfully. Keep the correction minimal within the authorized files. Runtime must execute the unchanged affected verification exactly once; do not push or manually write Runtime-owned operational state."
+  ],
+  "constraints": []
+}
