@@ -50,9 +50,16 @@ jobs:
           }
 
       - name: Execute canonical AIOS primary run
+        env:
+          AIOS_TASK_ID: ${{ inputs.task_id }}
+          AIOS_EXECUTOR: ${{ inputs.executor }}
         shell: powershell
         run: |
-          aios run ${{ inputs.task_id }} --executor ${{ inputs.executor }} --repo $env:AIOS_REPO_ROOT
+          if ($env:AIOS_TASK_ID -notmatch '^TASK-[A-Za-z0-9_-]+$') {
+            Write-Error "Invalid task_id format: $env:AIOS_TASK_ID"
+            exit 1
+          }
+          aios run $env:AIOS_TASK_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

@@ -134,9 +134,15 @@ def test_workflow_authority_and_no_direct_executor_ac3() -> None:
     # Exactly one aios run invocation in workflow
     assert raw_text.count("aios run") == 1
 
-    # Dispatched TASK id, executor, and repo passed to aios run
+    # Dispatched TASK id, executor, and repo passed to aios run via environment variables
+    workflow = load_workflow()
+    step = workflow["jobs"]["wakeup"]["steps"][1]
+    step_env = step.get("env", {})
+    assert step_env.get("AIOS_TASK_ID") == "${{ inputs.task_id }}"
+    assert step_env.get("AIOS_EXECUTOR") == "${{ inputs.executor }}"
+    assert "${{ inputs." not in step.get("run", "")
     assert (
-        "aios run ${{ inputs.task_id }} --executor ${{ inputs.executor }} --repo $env:AIOS_REPO_ROOT"
+        "aios run $env:AIOS_TASK_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT"
         in raw_text
     )
 
@@ -235,10 +241,7 @@ def test_workflow_preflight_missing_aios_executable_fails_ac5(tmp_path: Path) ->
 
 def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> None:
     workflow = load_workflow()
-    run_template = workflow["jobs"]["wakeup"]["steps"][1]["run"]
-    rendered_script = run_template.replace("${{ inputs.task_id }}", "TASK-066").replace(
-        "${{ inputs.executor }}", "antigravity"
-    )
+    run_script = workflow["jobs"]["wakeup"]["steps"][1]["run"]
 
     # Create mock aios that exits with 42
     bin_dir = tmp_path / "bin"
@@ -248,16 +251,18 @@ def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> N
 
     env = dict(os.environ)
     env["AIOS_REPO_ROOT"] = str(tmp_path)
+    env["AIOS_TASK_ID"] = "TASK-066"
+    env["AIOS_EXECUTOR"] = "antigravity"
     env["PATH"] = f"{bin_dir};{env['PATH']}"
 
-    result = run_powershell_script(rendered_script, env=env)
+    result = run_powershell_script(run_script, env=env)
     assert (
         result.returncode == 42
     ), f"expected exit code 42 to be preserved, got {result.returncode}"
 
     # Also verify exit code 1
     mock_aios.write_text("@echo off\nexit /b 1\n", encoding="utf-8")
-    result = run_powershell_script(rendered_script, env=env)
+    result = run_powershell_script(run_script, env=env)
     assert (
         result.returncode == 1
     ), f"expected exit code 1 to be preserved, got {result.returncode}"
@@ -266,10 +271,7 @@ def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> N
 def test_workflow_execution_success_invokes_aios_run_once_ac3(tmp_path: Path) -> None:
     workflow = load_workflow()
     preflight_script = workflow["jobs"]["wakeup"]["steps"][0]["run"]
-    run_template = workflow["jobs"]["wakeup"]["steps"][1]["run"]
-    rendered_run = run_template.replace("${{ inputs.task_id }}", "TASK-066").replace(
-        "${{ inputs.executor }}", "antigravity"
-    )
+    run_script = workflow["jobs"]["wakeup"]["steps"][1]["run"]
 
     # Create dummy git repository
     repo_dir = tmp_path / "repo"
@@ -288,6 +290,8 @@ def test_workflow_execution_success_invokes_aios_run_once_ac3(tmp_path: Path) ->
 
     env = dict(os.environ)
     env["AIOS_REPO_ROOT"] = str(repo_dir)
+    env["AIOS_TASK_ID"] = "TASK-066"
+    env["AIOS_EXECUTOR"] = "antigravity"
     env["PATH"] = f"{bin_dir};{env['PATH']}"
 
     # Run preflight step
@@ -297,7 +301,7 @@ def test_workflow_execution_success_invokes_aios_run_once_ac3(tmp_path: Path) ->
     ), f"preflight failed: {preflight_result.stderr}"
 
     # Run execution step
-    run_result = run_powershell_script(rendered_run, env=env)
+    run_result = run_powershell_script(run_script, env=env)
     assert run_result.returncode == 0, f"run failed: {run_result.stderr}"
 
     # Verify exactly one invocation with exact arguments
@@ -305,6 +309,73 @@ def test_workflow_execution_success_invokes_aios_run_once_ac3(tmp_path: Path) ->
     assert len(invocations) == 1
     expected_args = f"run TASK-066 --executor antigravity --repo {repo_dir}"
     assert invocations[0].strip() == expected_args
+
+
+def test_task_id_injection_cannot_execute_second_command_ac1(tmp_path: Path) -> None:
+    workflow = load_workflow()
+    step = workflow["jobs"]["wakeup"]["steps"][1]
+    run_script = step["run"]
+
+    # Step must bind inputs via env and never interpolate inputs into PowerShell script source
+    assert "${{ inputs." not in run_script
+    step_env = step.get("env", {})
+    assert step_env.get("AIOS_TASK_ID") == "${{ inputs.task_id }}"
+    assert step_env.get("AIOS_EXECUTOR") == "${{ inputs.executor }}"
+
+    # Create dummy git repository
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", str(repo_dir)], check=True, capture_output=True)
+
+    # Create mock aios that logs arguments
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    recorder_file = tmp_path / "aios_invocations.txt"
+    mock_aios = bin_dir / "aios.bat"
+    mock_aios.write_text(
+        f"@echo off\necho %* >> \"{recorder_file}\"\nexit /b 0\n",
+        encoding="utf-8",
+    )
+
+    marker_file = tmp_path / "injection_marker.txt"
+
+    payloads = [
+        f'TASK-066; New-Item -Path "{marker_file.as_posix()}" -ItemType File; #',
+        f'TASK-066\nNew-Item -Path "{marker_file.as_posix()}" -ItemType File\n#',
+        f'$(New-Item -Path "{marker_file.as_posix()}" -ItemType File)',
+        f'TASK-066 & New-Item -Path "{marker_file.as_posix()}" -ItemType File & echo',
+    ]
+
+    # Baseline: prove direct interpolation would have executed the secondary command
+    vulnerable_run = (
+        f'aios run {payloads[0]} --executor antigravity --repo $env:AIOS_REPO_ROOT'
+    )
+    vuln_env = dict(os.environ)
+    vuln_env["AIOS_REPO_ROOT"] = str(repo_dir)
+    vuln_env["PATH"] = f"{bin_dir};{vuln_env['PATH']}"
+    run_powershell_script(vulnerable_run, env=vuln_env)
+    assert marker_file.exists(), "Baseline interpolation failed to trigger secondary command"
+    marker_file.unlink()
+    if recorder_file.exists():
+        recorder_file.unlink()
+
+    # Fixed execution: verify that env-boundary and shape validation prevent execution
+    for injection_task_id in payloads:
+        env = dict(os.environ)
+        env["AIOS_REPO_ROOT"] = str(repo_dir)
+        env["AIOS_TASK_ID"] = injection_task_id
+        env["AIOS_EXECUTOR"] = "antigravity"
+        env["PATH"] = f"{bin_dir};{env['PATH']}"
+
+        result = run_powershell_script(run_script, env=env)
+
+        # Secondary command must never execute
+        assert not marker_file.exists(), f"Payload {injection_task_id!r} executed a second command!"
+        # Format validation must reject non-canonical task_id
+        assert result.returncode != 0
+        assert "Invalid task_id format" in (result.stdout + result.stderr)
+        # aios run must not be invoked
+        assert not recorder_file.exists(), f"aios run invoked for payload {injection_task_id!r}"
 
 
 def test_boundary_preservation_ac6() -> None:
