@@ -1942,6 +1942,7 @@ def publish_upstream(
 def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
     repo = make_repo(tmp_path)
     local_sha = git(repo, "rev-parse", "HEAD")
     upstream = git(
@@ -1995,6 +1996,7 @@ def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(
 def test_primary_sync_upstream_race_between_preflight_and_admission_does_not_reintegrate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
     repo = make_repo(tmp_path)
     local_sha = git(repo, "rev-parse", "HEAD")
     upstream = git(
@@ -2071,6 +2073,7 @@ def test_primary_sync_local_mutation_between_preflight_and_admission_fails_close
     mutation,
     error_match: str,
 ) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
     repo = make_repo(tmp_path)
     publish_upstream(
         repo, {"UPSTREAM_DOC.txt": "upstream doc\n"}, "advance upstream"
@@ -2211,6 +2214,7 @@ def test_fetch_failure_fails_before_run_persistence(tmp_path: Path) -> None:
 def test_synchronization_failure_with_safe_state_produces_admission_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
     repo = make_repo(tmp_path)
     local_sha = git(repo, "rev-parse", "HEAD")
     published_sha = publish_upstream(
@@ -2260,6 +2264,7 @@ def test_synchronization_failure_with_safe_state_produces_admission_error(
 def test_synchronization_failure_with_unsafe_state_produces_blocked_diagnostic(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
     repo = make_repo(tmp_path)
     local_sha = git(repo, "rev-parse", "HEAD")
     published_sha = publish_upstream(
@@ -2307,6 +2312,7 @@ def test_synchronization_failure_with_unsafe_state_produces_blocked_diagnostic(
 def test_primary_sync_advancing_source_and_task_restarts_and_consumes_canonical_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
     repo = make_repo(tmp_path, task_source=None)
     local_sha = git(repo, "rev-parse", "HEAD")
     task_102_source = TASK_SOURCE.replace("TASK-101", "TASK-102")
@@ -2383,6 +2389,7 @@ def test_primary_sync_advancing_source_and_task_restarts_and_consumes_canonical_
 def test_primary_sync_advancing_task_only_restarts_and_consumes_canonical_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
     repo = make_repo(tmp_path, task_source=None)
     local_sha = git(repo, "rev-parse", "HEAD")
     task_103_source = TASK_SOURCE.replace("TASK-101", "TASK-103")
@@ -4216,8 +4223,8 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
     state = runtime_paths(repo)
     verification_calls = []
 
-    def fail_verification(command, **kwargs):
-        verification_calls.append((command, kwargs["subject_sha"]))
+    def fail_verification(command, *, cwd, env, capture_output, text, check):
+        verification_calls.append((command, cwd, env, capture_output, text, check))
         return subprocess.CompletedProcess(
             command, returncode=9, stdout=b"", stderr=b"external unavailable\n"
         )
@@ -4293,8 +4300,8 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
 
     success_calls = []
 
-    def pass_verification(command, **kwargs):
-        success_calls.append((command, kwargs["subject_sha"]))
+    def pass_verification(command, *, cwd, env, capture_output, text, check):
+        success_calls.append((command, cwd, env, capture_output, text, check))
         return subprocess.CompletedProcess(
             command, returncode=0, stdout=b"clean\n", stderr=b""
         )
@@ -4313,7 +4320,12 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
     )
     assert summary.run_id == "RUN-101-003"
     assert native_calls == []
-    assert success_calls == [("git status --porcelain", summary.head_sha)]
+    assert len(success_calls) == 1
+    _, verification_cwd, _, capture_output, text, check = success_calls[0]
+    assert verification_cwd == repo.resolve()
+    assert capture_output is True
+    assert text is False
+    assert check is False
     assert result["result"]["head_sha"] == first_failure["failed_head_sha"]
     assert result["result"]["changed_files"] == []
     assert result["evidence"][0]["run_id"] == summary.run_id

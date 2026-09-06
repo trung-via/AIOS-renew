@@ -165,7 +165,10 @@ def test_runtime_owns_ordered_verification_evidence_persistence_and_transport(
     )
     assert candidate["run_id"] == run.run_id
     assert candidate["subject_sha"] == "head"
-    assert candidate["package"] == runtime_module.result_package_data(package)
+    expected_package = json.loads(
+        json.dumps(runtime_module.result_package_data(package))
+    )
+    assert candidate["package"] == expected_package
 
 
 def test_completion_gate_failure_runs_no_verification_or_transport(
