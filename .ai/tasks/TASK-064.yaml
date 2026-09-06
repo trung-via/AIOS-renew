@@ -1,0 +1,270 @@
+task_id: TASK-064
+revision: 1
+
+goal: >
+  Add a deterministic Runtime-owned verification-only continuation for an explicitly
+  authorized NO_CHANGE REPAIR when the exact failed candidate already passed all
+  structural and repository completion gates and failed only during canonical Runtime
+  verification. Reuse the exact pre-verification candidate state, preserve immutable
+  REPAIR lineage and canonical verification/evidence semantics, and avoid invoking a
+  coding Executor merely to restate that no implementation change is authorized.
+
+problem: >
+  Current run_repair always dispatches the selected native Executor before Runtime
+  verification, including REPAIR action NO_CHANGE with an empty modification scope.
+  Real downstream Python Agent TASK-143 demonstrates measurable waste: canonical
+  RUN-143-007 is a REPAIR failure at phase VERIFICATION on clean repairable candidate
+  273f24d115cf116aeddadaaad9afb4990eb43bcd with changed_files empty; its
+  RUN_OBSERVATION records 38.3965 admitted seconds, 34.5741 Executor seconds, and only
+  3.6896 Runtime verification seconds. The prior correction contract explicitly
+  authorized NO_CHANGE because no product-code, test, documentation, TASK, or Runtime
+  defect had been established and only an external provider prerequisite could make
+  another canonical verification informative. The Runtime nevertheless paid for a
+  coding-model invocation before that verification. The frozen kernel requires reuse
+  until relevant state is invalidated and deterministic coordination where reasoning
+  adds no value, but current failure transport does not preserve a portable exact
+  pre-verification structural candidate that a fresh or historical REPAIR continuation
+  can safely reuse without another Executor call.
+
+assumptions:
+  - >
+    Current canonical AIOS-renew main immediately before TASK-064 authoring is
+    67db82bf19d63f25721d06aabb82d850db8b78d4.
+  - >
+    Kernel v0.1 remains frozen. TASK-064 is a separately authorized hardening/new
+    Runtime capability backed by observed downstream execution evidence; it does not
+    reinterpret historical frozen artifact semantics in place.
+  - >
+    TASK-046 RUN_OBSERVATION remains subordinate operational state and already records
+    executor_invoked, Executor duration, and Runtime verification duration without
+    becoming semantic EVIDENCE or review authority.
+  - >
+    TASK-057 remains authoritative for REPAIR canonical Result.changed_files and
+    failed-head-to-final-head narrow mutation enforcement.
+  - >
+    TASK-058 revision 2 remains authoritative for current-control Runtime historical
+    REPAIR recovery, isolated historical subject workspaces, exact remote correction
+    lineage reconstruction, and fresh-machine portability.
+  - >
+    TASK-059 revision 2, TASK-060, TASK-061, TASK-062 revision 2, and TASK-063 revision
+    3 remain authoritative for direct native execution guidance, bounded timing and
+    diagnostics, deterministic model defaults, PRIMARY synchronization, and reviewed
+    candidate publication. TASK-064 must not reimplement those authorities.
+  - >
+    Canonical downstream python_complete_agent main is
+    af6c144ce42020903446b1f2313fe49106b5f66d and its repository-owned AIOS pin is
+    exactly 67db82bf19d63f25721d06aabb82d850db8b78d4.
+  - >
+    Canonical downstream RUN-143-007 is TASK-143 revision 1, executor codex, operation
+    REPAIR, phase VERIFICATION, continuation_of RUN-143-006, failed_head_sha
+    273f24d115cf116aeddadaaad9afb4990eb43bcd, candidate dirty=false,
+    repairable=true, transportable=true, changed_files=[], with 54 offline regressions
+    passing before the live verification command failed with the sanitized category
+    Gemini provider unavailable.
+  - >
+    A change in external credential, quota, network, provider, service, or other
+    verification dependency may be a legitimate new reason to execute canonical
+    verification again even when Git state is unchanged. Runtime cannot infer whether
+    such external state changed and must not autonomously decide to retry.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-046.yaml
+    - .ai/tasks/TASK-057.yaml
+    - .ai/tasks/TASK-058.yaml
+    - .ai/tasks/TASK-059.yaml
+    - .ai/tasks/TASK-063.yaml
+    - src/aios_renew/runtime.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/run_observation.py
+    - src/aios_renew/artifacts.py
+    - tests/test_runtime.py
+    - tests/test_operator.py
+    - tests/test_review_transport.py
+    - tests/test_run_observation.py
+    - README.md
+
+  modify:
+    - src/aios_renew/runtime.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - tests/test_runtime.py
+    - tests/test_operator.py
+    - tests/test_review_transport.py
+    - README.md
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, REPAIR, FAILURE, or RUN_OBSERVATION schemas or semantic authority.
+  - Add automatic retry, retry timers, polling, provider monitoring, quota monitoring, credential probing, fallback, reroute, failover, or automatic REPAIR authoring.
+  - Let Runtime interpret provider-specific error prose, infer that external state changed, inspect secret values, hash credentials, or decide when a Human should retry verification.
+  - Skip, weaken, synthesize, cache-as-PASS, or otherwise bypass canonical Runtime verification required by the TASK.
+  - Reuse a candidate that failed during EXECUTION or COMPLETION_GATE, returned unresolved items, had invalid structural output, was dirty, violated scope/HEAD/lineage gates, or lacks an exact trustworthy pre-verification candidate snapshot.
+  - Bypass the Executor for CODE_FIX REPAIR, PRIMARY, REMEDIATION, or any operation that still has authorized implementation work.
+  - Change Executor selection, model defaults, native timeout/watchdog policy, mutation permissions, one-active-executor lease semantics, or dispatcher fallback behavior.
+  - Modify Python Agent source, TASK-143, its historical RUNs/artifacts, or its dependency pin in this TASK.
+  - Automatically resolve, rerun, repair, review, publish, or otherwise advance downstream TASK-143 as part of AIOS-renew implementation.
+  - Create a metrics database, event bus, scheduler, planner, router, generic checkpoint graph, generalized cache, or new remote ref family solely for this capability.
+  - Treat the reusable pre-verification candidate sidecar as semantic RESULT, EVIDENCE, acceptance proof, or Reviewer PASS authority.
+  - Backfill or rewrite historical terminal artifacts that predate this capability.
+  - Push from executor execution.
+
+constraints:
+  hard:
+    - >
+      Runtime may elide native Executor invocation only for an explicitly authorized
+      REPAIR whose action is NO_CHANGE and whose modification_scope is empty. The target
+      predecessor FAILURE must be phase VERIFICATION, bind the exact failed_head_sha,
+      describe a clean repairable candidate, and provide an exact Runtime-owned
+      pre-verification candidate snapshot produced for that failed RUN.
+    - >
+      The reusable pre-verification candidate must be captured only after the Executor
+      structural package has passed the same deterministic structure, HEAD, clean
+      worktree, changed-files, scope, completion, and applicable REPAIR mutation gates
+      that precede canonical verification. A package staged before those gates is not
+      sufficient reuse authority.
+    - >
+      The pre-verification candidate is subordinate Runtime operational state keyed to
+      the exact RUN and subject SHA. It must preserve only the minimum structural
+      ResultPackage information needed to re-enter deterministic completion and must not
+      become a new semantic artifact, review input, acceptance claim, or source of
+      canonical EVIDENCE.
+    - >
+      When verification fails after a valid pre-verification candidate exists, failure
+      artifact transport must preserve a byte-exact optional copy alongside the existing
+      RUN/FAILURE/REPAIR/RUN_OBSERVATION family so a fresh machine or historical repair
+      can deterministically recover it without relying on incidental local .git/aios
+      state. No new remote ref family is permitted solely for this sidecar.
+    - >
+      Remote recovery must bind any present pre-verification candidate to the exact
+      failed RUN identity, TASK id/revision, failed subject SHA, FAILURE phase, and
+      validated structural/completion contract before it can authorize Executor
+      elision. Present-but-malformed, conflicting, mismatched, ambiguous, or otherwise
+      untrustworthy sidecar content must fail closed before verification or Executor
+      invocation.
+    - >
+      Historical artifacts that legitimately lack the optional sidecar remain valid.
+      Absence of reusable pre-verification state, a non-VERIFICATION predecessor failure,
+      CODE_FIX action, non-empty modification scope, or any other unmet fast-path
+      precondition must preserve the existing one-Executor REPAIR behavior rather than
+      fabricate reuse authority.
+    - >
+      For an admitted verification-only NO_CHANGE continuation, Runtime must allocate
+      and persist a normal continuation RUN and REPAIR lineage, preserve exact
+      failed_head_sha/root_base_sha/TASK authority, create or use the same required
+      historical subject workspace when applicable, and invoke zero native Executors.
+      Runtime then executes the original TASK canonical verification list exactly once
+      through the existing completion boundary.
+    - >
+      The verification-only continuation must not change Git HEAD, index, worktree,
+      TASK files, product files, dependency pins, or control-plane files. Existing
+      NO_CHANGE REPAIR repository gates remain authoritative before and after
+      verification.
+    - >
+      A successful verification-only continuation must produce the same canonical
+      RESULT/EVIDENCE semantics, full original TASK changed_files authority, exact
+      subject-SHA evidence binding, transport, review readiness, and later publication
+      eligibility as an equivalent ordinary successful NO_CHANGE REPAIR. Executor
+      omission must not weaken completion or review requirements.
+    - >
+      If canonical verification fails again, Runtime must persist and transport a new
+      immutable FAILURE continuation with the same truthful failure taxonomy and reusable
+      pre-verification candidate when still valid. It must not automatically retry,
+      author another REPAIR, change Executor, probe the external dependency, or claim
+      semantic progress.
+    - >
+      RUN_OBSERVATION for the verification-only continuation must truthfully record
+      executor_invoked=false, executor_seconds unavailable/null, and bounded Runtime
+      verification duration when verification is attempted. Observation remains
+      subordinate and must not become a gate for RESULT or FAILURE authority.
+    - >
+      PRIMARY, REMEDIATION, CODE_FIX REPAIR, and ordinary NO_CHANGE REPAIR paths that do
+      not qualify for deterministic reuse must retain their existing dispatch count,
+      canonical verification count, remote discovery behavior, mutation authority,
+      timing policy, failure behavior, and semantic contracts. TASK-064 must not add a
+      second model call or extra verification command to any path.
+    - >
+      Fast-path admission checks, local sidecar persistence, and byte-exact transport
+      are deterministic local/transport operations only. They must not introduce model
+      reasoning, repository-wide discovery, provider-specific networking, or a new
+      mandatory remote round trip on unrelated PRIMARY/REMEDIATION/CODE_FIX execution.
+    - Do not push from executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A deterministic verification-failure regression proves Runtime persists an exact
+      pre-verification candidate only after all pre-verification structure, HEAD, clean,
+      changed-files, scope, completion, and applicable REPAIR mutation gates have passed;
+      failures before those gates create no reusable candidate authority.
+  - id: AC2
+    condition: >
+      Failure transport for a post-gate VERIFICATION failure carries the byte-exact
+      optional pre-verification candidate with RUN/FAILURE and optional REPAIR/
+      RUN_OBSERVATION state on the existing failure-artifact ref, retry-transport
+      preserves it, and historical refs without the sidecar remain valid compatibility
+      inputs.
+  - id: AC3
+    condition: >
+      An explicitly authorized NO_CHANGE REPAIR with empty modification_scope against a
+      clean repairable phase-VERIFICATION predecessor and exact valid reusable candidate
+      creates one normal continuation RUN but invokes zero native Executors and executes
+      the original TASK canonical verification commands exactly once.
+  - id: AC4
+    condition: >
+      The verification-only continuation produces RUN_OBSERVATION with
+      executor_invoked=false, no Executor duration, and truthful Runtime verification
+      duration without changing RUN_OBSERVATION semantic authority or making observation
+      persistence a completion requirement.
+  - id: AC5
+    condition: >
+      On successful verification, the fast-path produces a canonical ResultPackage and
+      EVIDENCE equivalent in validation, TASK acceptance coverage, changed_files
+      authority, exact subject-SHA binding, transport, and review readiness to an
+      ordinary successful NO_CHANGE REPAIR of the same immutable candidate.
+  - id: AC6
+    condition: >
+      On repeated verification failure, the fast-path persists and transports one new
+      FAILURE continuation without mutating the candidate or invoking an Executor, and
+      the resulting exact reusable candidate remains eligible for a later separately
+      authorized NO_CHANGE continuation without automatic retry.
+  - id: AC7
+    condition: >
+      Fresh-machine historical recovery proves a verification-only continuation can
+      reconstruct the exact reusable candidate from canonical remote failure artifacts,
+      preserve current-control Runtime authority and isolated historical subject
+      semantics from TASK-058, and verify without bootstrapping or invoking the
+      historical repository-owned Executor path.
+  - id: AC8
+    condition: >
+      Regressions prove EXECUTION failure, COMPLETION_GATE failure, invalid or
+      mismatched sidecar, dirty/non-repairable candidate, CODE_FIX action, non-empty
+      modification_scope, and sidecar absence cannot enter verification-only reuse;
+      optional absence and otherwise valid legacy lineage preserve existing ordinary
+      Executor-backed REPAIR behavior while conflicting/malformed present state fails
+      closed.
+  - id: AC9
+    condition: >
+      Existing PRIMARY, REMEDIATION, CODE_FIX REPAIR, and non-qualifying NO_CHANGE
+      regressions retain exactly one selected Executor invocation when admitted and do
+      not gain an extra canonical verification command, automatic retry, fallback,
+      provider probe, or unrelated remote discovery because of TASK-064.
+  - id: AC10
+    condition: >
+      Frozen TASK/RUN/RESULT/EVIDENCE/REVIEW/REMEDIATION/REPAIR/FAILURE and
+      RUN_OBSERVATION schemas remain unchanged; the reusable candidate is documented as
+      subordinate operational state, and README explains that external-state change may
+      justify another Human/Brain-authorized verification while unchanged code does not
+      justify another coding Executor invocation.
+
+verification:
+  required:
+    - python -m pytest tests/test_runtime.py tests/test_operator.py tests/test_review_transport.py tests/test_run_observation.py -q
+    - git diff --check
