@@ -45,6 +45,7 @@ from .review_transport import (
     read_remote_task,
     resolve_remote_repair_recovery,
     resolve_remote_remediation_lineages,
+    task_run_prefix,
     transport_admission_failure,
     transport_failure,
     transport_post_pass,
@@ -394,8 +395,7 @@ def next_run_id(
 ) -> str:
     """Return the next compact local RUN id for one TASK."""
 
-    task_part = task_id.removeprefix("TASK-")
-    prefix = f"RUN-{task_part}-"
+    prefix = task_run_prefix(task_id)
     pattern = re.compile(rf"^{re.escape(prefix)}(\d{{3}})\.json$")
     numbers = []
     for path in runs_path.glob(f"{prefix}*.json"):
@@ -1405,7 +1405,10 @@ def _derive_remediation_source_root(
     seen = seen.union((identity,))
     try:
         lineages = resolve_remote_remediation_lineages(
-            repo, finding_id=execution.finding.id
+            repo,
+            finding_id=execution.finding.id,
+            task_id=task.task_id,
+            task_revision=task.revision,
         )
     except ReviewTransportError as exc:
         raise OperatorError(f"reviewed source lineage rejected: {exc}") from exc
@@ -1430,7 +1433,7 @@ def _derive_remediation_source_root(
             if source_run.task.id != task.task_id:
                 continue
             if source_run.task.revision != task.revision:
-                raise ValueError("source RUN TASK revision mismatch")
+                continue
             package_data = _decode_remote_mapping(remote.result, "source RESULT")
             result = validate_result(package_data["result"])
             evidence_data = package_data["evidence"]
@@ -2322,7 +2325,10 @@ def _resolve_remote_remediation_lineage(
 
     try:
         remote_lineages = resolve_remote_remediation_lineages(
-            repo, finding_id=finding_id
+            repo,
+            finding_id=finding_id,
+            task_id=task.task_id,
+            task_revision=task.revision,
         )
     except ReviewTransportError as exc:
         raise OperatorError(f"{context} lineage resolution failed: {exc}") from exc
@@ -2370,7 +2376,7 @@ def _parse_remote_direct_lineage(
         if source_run.task.id != task.task_id:
             return None
         if source_run.task.revision != task.revision:
-            raise ValueError("source RUN TASK revision mismatch")
+            return None
 
         if admission is not None:
             admission["phase"] = "CANONICAL_CONTRACT_ADMISSION"

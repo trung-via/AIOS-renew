@@ -96,8 +96,60 @@ def _read_local_blob(repo: Path, commit_sha: str, rel_path: str) -> bytes | None
     return content.encode("utf-8") if code == 0 else None
 
 
+def task_run_prefix(task_id: str) -> str:
+    """Return the deterministic RUN prefix for one TASK."""
+    if not task_id or "/" in task_id or "\\" in task_id:
+        raise ReviewTransportError(f"invalid TASK id: {task_id!r}")
+    task_part = task_id.removeprefix("TASK-")
+    if not task_part:
+        raise ReviewTransportError(f"invalid TASK id: {task_id!r}")
+    return f"RUN-{task_part}-"
+
+
+def _decode_run_task_identity(run_bytes: bytes, ref: str) -> tuple[str, int, str]:
+    try:
+        run_data = json.loads(run_bytes.decode("utf-8", errors="strict"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ReviewTransportError(f"canonical RUN JSON invalid for {ref}: {exc}") from exc
+    if not isinstance(run_data, Mapping):
+        raise ReviewTransportError(f"canonical RUN at {ref} must be a mapping")
+    if run_data.get("kind") == "REMEDIATION":
+        execution = run_data.get("execution")
+        if not isinstance(execution, Mapping):
+            raise ReviewTransportError(
+                f"canonical REMEDIATION execution at {ref} must be a mapping"
+            )
+        source_run = execution.get("run")
+        if not isinstance(source_run, Mapping):
+            raise ReviewTransportError(
+                f"canonical REMEDIATION run at {ref} must be a mapping"
+            )
+        run_id = source_run.get("run_id")
+        task_data = source_run.get("task")
+    elif "kind" not in run_data:
+        run_id = run_data.get("run_id")
+        task_data = run_data.get("task")
+    else:
+        raise ReviewTransportError(f"unknown canonical RUN kind at {ref}")
+    if not isinstance(run_id, str) or not run_id:
+        raise ReviewTransportError(f"canonical RUN run_id at {ref} is invalid")
+    if not isinstance(task_data, Mapping):
+        raise ReviewTransportError(f"canonical RUN task at {ref} must be a mapping")
+    task_id = task_data.get("id")
+    revision = task_data.get("revision")
+    if not isinstance(task_id, str) or not task_id:
+        raise ReviewTransportError(f"canonical RUN task.id at {ref} is invalid")
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+        raise ReviewTransportError(f"canonical RUN task.revision at {ref} is invalid")
+    return task_id, revision, run_id
+
+
 def resolve_remote_remediation_lineages(
-    repo: Path, *, finding_id: str
+    repo: Path,
+    *,
+    finding_id: str,
+    task_id: str | None = None,
+    task_revision: int | None = None,
 ) -> tuple[RemoteRemediationLineage, ...]:
     """Resolve all structurally complete remote lineages for one finding id.
 
@@ -107,8 +159,19 @@ def resolve_remote_remediation_lineages(
 
     if not finding_id or "/" in finding_id or "\\" in finding_id:
         raise ReviewTransportError(f"invalid finding id: {finding_id!r}")
+    if task_revision is not None and (
+        isinstance(task_revision, bool)
+        or not isinstance(task_revision, int)
+        or task_revision < 1
+    ):
+        raise ReviewTransportError("invalid TASK revision")
     remote = resolve_transport_remote(repo)
-    pattern = f"refs/heads/aios/remediation/*-{finding_id}"
+    if task_id is not None:
+        task_prefix = task_run_prefix(task_id)
+        pattern = f"refs/heads/aios/remediation/{task_prefix}*-{finding_id}"
+    else:
+        task_prefix = None
+        pattern = f"refs/heads/aios/remediation/*-{finding_id}"
     code, output, _ = _git_cmd(
         repo, "ls-remote", "--refs", remote, pattern, allow_fail=True
     )
@@ -130,6 +193,40 @@ def resolve_remote_remediation_lineages(
         source_run_id = ref[len(prefix) : -len(suffix)]
         if not source_run_id:
             raise ReviewTransportError("canonical REMEDIATION ref has no source RUN")
+        if task_prefix is not None and not source_run_id.startswith(task_prefix):
+            continue
+
+        artifacts_ref = f"refs/heads/aios/artifacts/{source_run_id}"
+        artifacts_code, artifacts_output, _ = _git_cmd(
+            repo, "ls-remote", "--refs", remote, artifacts_ref, allow_fail=True
+        )
+        artifact_lines = [item.split() for item in artifacts_output.splitlines()]
+        if artifacts_code or len(artifact_lines) != 1 or len(artifact_lines[0]) != 2:
+            raise ReviewTransportError(
+                f"canonical source artifacts missing or ambiguous for {source_run_id}"
+            )
+        artifacts_sha = artifact_lines[0][0]
+        run = _read_remote_blob(
+            repo, remote, artifacts_sha, ".ai/transport/run.json"
+        )
+        result = _read_remote_blob(
+            repo, remote, artifacts_sha, ".ai/transport/result.json"
+        )
+        repair = _read_remote_blob(
+            repo, remote, artifacts_sha, ".ai/transport/repair.json"
+        )
+        if run is None or result is None:
+            raise ReviewTransportError(f"canonical lineage content missing at {ref}")
+
+        run_task_id, run_revision, run_id = _decode_run_task_identity(run, ref)
+        if run_id != source_run_id:
+            raise ReviewTransportError(
+                f"canonical RUN id mismatch at {ref}: expected {source_run_id}, got {run_id}"
+            )
+        if task_id is not None and run_task_id != task_id:
+            continue
+        if task_revision is not None and run_revision != task_revision:
+            continue
 
         _git_cmd(repo, "fetch", "--no-tags", remote, commit_sha, allow_fail=True)
         tree_code, tree_output, _ = _git_cmd(
@@ -161,27 +258,7 @@ def resolve_remote_remediation_lineages(
         remediation = _read_remote_blob(
             repo, remote, commit_sha, remediation_paths[0]
         )
-
-        artifacts_ref = f"refs/heads/aios/artifacts/{source_run_id}"
-        artifacts_code, artifacts_output, _ = _git_cmd(
-            repo, "ls-remote", "--refs", remote, artifacts_ref, allow_fail=True
-        )
-        artifact_lines = [item.split() for item in artifacts_output.splitlines()]
-        if artifacts_code or len(artifact_lines) != 1 or len(artifact_lines[0]) != 2:
-            raise ReviewTransportError(
-                f"canonical source artifacts missing or ambiguous for {source_run_id}"
-            )
-        artifacts_sha = artifact_lines[0][0]
-        run = _read_remote_blob(
-            repo, remote, artifacts_sha, ".ai/transport/run.json"
-        )
-        result = _read_remote_blob(
-            repo, remote, artifacts_sha, ".ai/transport/result.json"
-        )
-        repair = _read_remote_blob(
-            repo, remote, artifacts_sha, ".ai/transport/repair.json"
-        )
-        if None in (review, remediation, run, result):
+        if None in (review, remediation):
             raise ReviewTransportError(f"canonical lineage content missing at {ref}")
         resolved.append(
             RemoteRemediationLineage(

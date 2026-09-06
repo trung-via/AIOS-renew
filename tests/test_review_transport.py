@@ -8,6 +8,8 @@ from aios_renew.review_transport import (
     ReviewTransportError,
     read_remote_task,
     resolve_remote_repair_recovery,
+    resolve_remote_remediation_lineages,
+    task_run_prefix,
     transport_failure,
     transport_post_pass,
 )
@@ -434,3 +436,297 @@ def test_historical_task_reader_rejects_noncanonical_identity(
 
     with pytest.raises(ReviewTransportError, match="invalid TASK id"):
         read_remote_task(repo, commit_sha=head, task_id=task_id)
+
+
+def publish_remediation_artifacts(
+    repo: Path,
+    files: Path,
+    *,
+    run_id: str,
+    task_id: str = "TASK-058",
+    task_revision: int = 2,
+    reviewed_sha: str,
+    corrupt_run: bool = False,
+) -> None:
+    run = {
+        "run_id": run_id,
+        "task": {"id": task_id, "revision": task_revision},
+        "executor": "codex",
+        "base_sha": reviewed_sha,
+        "workspace": "historical-workspace",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    result_data = {
+        "result": {
+            "head_sha": reviewed_sha,
+            "claims": [
+                {
+                    "id": "C1",
+                    "satisfies": ["AC1"],
+                    "claim": "historical fix",
+                    "evidence": ["E1"],
+                }
+            ],
+            "changed_files": ["subject.txt"],
+            "unresolved": [],
+        },
+        "evidence": [
+            {
+                "evidence_id": "E1",
+                "run_id": run_id,
+                "subject_sha": reviewed_sha,
+                "type": "TEST",
+                "source": {"command": "git status --porcelain"},
+                "result": {"exit_code": 0, "summary": "verified"},
+                "raw": {"path": ".ai/evidence/E1.log"},
+            }
+        ],
+    }
+    directory = files / run_id
+    run_path = directory / "run.json"
+    result_path = directory / "result.json"
+    if corrupt_run:
+        run_path.parent.mkdir(parents=True, exist_ok=True)
+        run_path.write_bytes(b"not json")
+    else:
+        write_json(run_path, run)
+    write_json(result_path, result_data)
+    transport_post_pass(
+        repo,
+        run_id=run_id,
+        head_sha=reviewed_sha,
+        run_path=run_path,
+        result_path=result_path,
+    )
+
+
+def publish_remediation_ref(
+    repo: Path,
+    *,
+    source_run_id: str,
+    finding_id: str,
+    reviewed_sha: str,
+    extra_reviews: int = 0,
+    extra_remediations: int = 0,
+) -> str:
+    branch_name = f"branch-{source_run_id}-{finding_id}"
+    git(repo, "checkout", "--quiet", "-b", branch_name, reviewed_sha)
+    reviews_dir = repo / ".ai" / "reviews"
+    remediations_dir = repo / ".ai" / "remediations"
+    reviews_dir.mkdir(parents=True, exist_ok=True)
+    remediations_dir.mkdir(parents=True, exist_ok=True)
+    (reviews_dir / f"REVIEW-{source_run_id}.yaml").write_text(
+        f"review_id: REVIEW-{source_run_id}\nreviewed_sha: {reviewed_sha}\nmode: PRIMARY\nverdict: CHANGES_REQUIRED\nacceptance:\n  AC1: FAIL\nfindings:\n  - id: {finding_id}\n    basis: AC1\n    action: CODE_FIX\n    location: subject.txt\n    issue: issue\n    expected: expected\n",
+        encoding="utf-8",
+    )
+    for i in range(extra_reviews):
+        (reviews_dir / f"REVIEW-{source_run_id}-extra-{i}.yaml").write_text(
+            f"review_id: REVIEW-{source_run_id}-extra-{i}\nreviewed_sha: {reviewed_sha}\nmode: PRIMARY\nverdict: CHANGES_REQUIRED\nacceptance:\n  AC1: FAIL\nfindings:\n  - id: {finding_id}\n    basis: AC1\n    action: CODE_FIX\n    location: subject.txt\n    issue: issue\n    expected: expected\n",
+            encoding="utf-8",
+        )
+    (remediations_dir / f"REMEDIATION-{source_run_id}-{finding_id}.yaml").write_text(
+        f"finding_id: {finding_id}\naction: CODE_FIX\nreviewed_sha: {reviewed_sha}\nmodification_scope:\n  - subject.txt\naffected_verification:\n  - git status --porcelain\nconstraints:\n  - hard: [c]\n",
+        encoding="utf-8",
+    )
+    for i in range(extra_remediations):
+        (remediations_dir / f"REMEDIATION-{source_run_id}-extra-{i}.yaml").write_text(
+            f"finding_id: {finding_id}\naction: CODE_FIX\nreviewed_sha: {reviewed_sha}\nmodification_scope:\n  - subject.txt\naffected_verification:\n  - git status --porcelain\nconstraints:\n  - hard: [c]\n",
+            encoding="utf-8",
+        )
+    git(repo, "add", ".ai")
+    git(repo, "commit", "--quiet", "-m", f"remediation {source_run_id}-{finding_id}")
+    ref = f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"
+    git(repo, "push", "--quiet", "origin", f"HEAD:{ref}")
+    git(repo, "checkout", "--quiet", "main")
+    git(repo, "branch", "--quiet", "-D", branch_name)
+    return ref
+
+
+def test_task_run_prefix_deterministic_derivation() -> None:
+    assert task_run_prefix("TASK-066") == "RUN-066-"
+    assert task_run_prefix("TASK-101") == "RUN-101-"
+    assert task_run_prefix("066") == "RUN-066-"
+    for invalid in ["", "TASK-", "TASK/066", "TASK\\066"]:
+        with pytest.raises(ReviewTransportError, match="invalid TASK id"):
+            task_run_prefix(invalid)
+
+
+def test_cross_task_collision_ignored_during_discovery(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    files = tmp_path / "files"
+    sha = git(repo, "rev-parse", "HEAD")
+
+    # Unrelated TASK-041 lineage with structurally incompatible review layout (2 reviews)
+    publish_remediation_ref(
+        repo,
+        source_run_id="RUN-041-002",
+        finding_id="F1",
+        reviewed_sha=sha,
+        extra_reviews=1,
+    )
+    publish_remediation_artifacts(
+        repo,
+        files,
+        run_id="RUN-041-002",
+        task_id="TASK-041",
+        task_revision=1,
+        reviewed_sha=sha,
+    )
+
+    # Valid TASK-066 revision 1 lineage
+    publish_remediation_ref(
+        repo,
+        source_run_id="RUN-066-001",
+        finding_id="F1",
+        reviewed_sha=sha,
+    )
+    publish_remediation_artifacts(
+        repo,
+        files,
+        run_id="RUN-066-001",
+        task_id="TASK-066",
+        task_revision=1,
+        reviewed_sha=sha,
+    )
+
+    lineages = resolve_remote_remediation_lineages(
+        repo, finding_id="F1", task_id="TASK-066", task_revision=1
+    )
+    assert len(lineages) == 1
+    assert lineages[0].source_run_id == "RUN-066-001"
+    assert lineages[0].ref == "refs/heads/aios/remediation/RUN-066-001-F1"
+
+
+def test_different_revision_lineage_not_candidate_during_discovery(
+    tmp_path: Path,
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    files = tmp_path / "files"
+    sha = git(repo, "rev-parse", "HEAD")
+
+    publish_remediation_ref(
+        repo, source_run_id="RUN-066-001", finding_id="F1", reviewed_sha=sha
+    )
+    publish_remediation_artifacts(
+        repo,
+        files,
+        run_id="RUN-066-001",
+        task_id="TASK-066",
+        task_revision=1,
+        reviewed_sha=sha,
+    )
+
+    publish_remediation_ref(
+        repo, source_run_id="RUN-066-002", finding_id="F1", reviewed_sha=sha
+    )
+    publish_remediation_artifacts(
+        repo,
+        files,
+        run_id="RUN-066-002",
+        task_id="TASK-066",
+        task_revision=2,
+        reviewed_sha=sha,
+    )
+
+    # Resolving for revision 2 ignores revision 1
+    lineages_r2 = resolve_remote_remediation_lineages(
+        repo, finding_id="F1", task_id="TASK-066", task_revision=2
+    )
+    assert len(lineages_r2) == 1
+    assert lineages_r2[0].source_run_id == "RUN-066-002"
+
+    # Resolving for revision 1 ignores revision 2
+    lineages_r1 = resolve_remote_remediation_lineages(
+        repo, finding_id="F1", task_id="TASK-066", task_revision=1
+    )
+    assert len(lineages_r1) == 1
+    assert lineages_r1[0].source_run_id == "RUN-066-001"
+
+
+def test_malformed_lineage_for_exact_task_revision_fails_closed(
+    tmp_path: Path,
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    files = tmp_path / "files"
+    sha = git(repo, "rev-parse", "HEAD")
+
+    # Attributable to requested exact TASK revision, but has 2 reviews
+    publish_remediation_ref(
+        repo,
+        source_run_id="RUN-066-001",
+        finding_id="F1",
+        reviewed_sha=sha,
+        extra_reviews=1,
+    )
+    publish_remediation_artifacts(
+        repo,
+        files,
+        run_id="RUN-066-001",
+        task_id="TASK-066",
+        task_revision=1,
+        reviewed_sha=sha,
+    )
+    with pytest.raises(
+        ReviewTransportError,
+        match="canonical lineage at .* must contain exactly one REVIEW and REMEDIATION",
+    ):
+        resolve_remote_remediation_lineages(
+            repo, finding_id="F1", task_id="TASK-066", task_revision=1
+        )
+
+
+def test_missing_artifacts_for_exact_task_revision_fails_closed(
+    tmp_path: Path,
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    sha = git(repo, "rev-parse", "HEAD")
+
+    # Attributable to requested exact TASK revision, but artifacts are missing
+    publish_remediation_ref(
+        repo, source_run_id="RUN-066-001", finding_id="F1", reviewed_sha=sha
+    )
+    with pytest.raises(
+        ReviewTransportError,
+        match="canonical source artifacts missing or ambiguous for RUN-066-001",
+    ):
+        resolve_remote_remediation_lineages(
+            repo, finding_id="F1", task_id="TASK-066", task_revision=1
+        )
+
+
+def test_two_valid_lineages_for_exact_task_revision_returned(
+    tmp_path: Path,
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    files = tmp_path / "files"
+    sha = git(repo, "rev-parse", "HEAD")
+
+    publish_remediation_ref(
+        repo, source_run_id="RUN-066-001", finding_id="F1", reviewed_sha=sha
+    )
+    publish_remediation_artifacts(
+        repo,
+        files,
+        run_id="RUN-066-001",
+        task_id="TASK-066",
+        task_revision=1,
+        reviewed_sha=sha,
+    )
+
+    publish_remediation_ref(
+        repo, source_run_id="RUN-066-003", finding_id="F1", reviewed_sha=sha
+    )
+    publish_remediation_artifacts(
+        repo,
+        files,
+        run_id="RUN-066-003",
+        task_id="TASK-066",
+        task_revision=1,
+        reviewed_sha=sha,
+    )
+
+    lineages = resolve_remote_remediation_lineages(
+        repo, finding_id="F1", task_id="TASK-066", task_revision=1
+    )
+    assert len(lineages) == 2
