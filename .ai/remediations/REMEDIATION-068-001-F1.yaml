@@ -1,0 +1,12 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: a78b7ffece805228e0262c2b03099d050bf386fa
+scope:
+  modify:
+    - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/operator.py
+    - tests/test_dispatch_reconciliation.py
+verification:
+  affected:
+    - python -m pytest tests/test_dispatch_reconciliation.py -q
+    - git diff --check
