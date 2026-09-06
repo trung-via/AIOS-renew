@@ -792,17 +792,25 @@ def test_codex_extract_token_usage_jsonl_stream() -> None:
 
 def test_codex_extract_token_usage_cached_key_alternatives() -> None:
     # 1. cached_tokens
-    u1 = extract_token_usage(json.dumps({"usage": {"input_tokens": 100, "cached_tokens": 30, "output_tokens": 20}}))
+    u1 = extract_token_usage(
+        json.dumps({
+            "type": "turn.completed",
+            "usage": {"input_tokens": 100, "cached_tokens": 30, "output_tokens": 20},
+        })
+    )
     assert u1 == TokenUsage(input_tokens=100, cached_input_tokens=30, output_tokens=20)
 
     # 2. prompt_tokens_details.cached_tokens
-    u2 = extract_token_usage(json.dumps({
-        "usage": {
-            "input_tokens": 100,
-            "output_tokens": 20,
-            "prompt_tokens_details": {"cached_tokens": 25},
-        }
-    }))
+    u2 = extract_token_usage(
+        json.dumps({
+            "type": "turn.completed",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "prompt_tokens_details": {"cached_tokens": 25},
+            },
+        })
+    )
     assert u2 == TokenUsage(input_tokens=100, cached_input_tokens=25, output_tokens=20)
 
 
@@ -810,23 +818,23 @@ def test_codex_extract_token_usage_cached_key_alternatives() -> None:
     "payload",
     [
         # Missing cached tokens
-        {"usage": {"input_tokens": 100, "output_tokens": 20}},
+        {"type": "turn.completed", "usage": {"input_tokens": 100, "output_tokens": 20}},
         # Missing output tokens
-        {"usage": {"input_tokens": 100, "cached_input_tokens": 20}},
+        {"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 20}},
         # Missing input tokens
-        {"usage": {"cached_input_tokens": 20, "output_tokens": 20}},
+        {"type": "turn.completed", "usage": {"cached_input_tokens": 20, "output_tokens": 20}},
         # Bool counter
-        {"usage": {"input_tokens": True, "cached_input_tokens": 20, "output_tokens": 20}},
-        {"usage": {"input_tokens": 100, "cached_input_tokens": False, "output_tokens": 20}},
+        {"type": "turn.completed", "usage": {"input_tokens": True, "cached_input_tokens": 20, "output_tokens": 20}},
+        {"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": False, "output_tokens": 20}},
         # Negative counter
-        {"usage": {"input_tokens": 100, "cached_input_tokens": -5, "output_tokens": 20}},
-        {"usage": {"input_tokens": 100, "cached_input_tokens": 20, "output_tokens": -1}},
+        {"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": -5, "output_tokens": 20}},
+        {"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 20, "output_tokens": -1}},
         # cached > input
-        {"usage": {"input_tokens": 50, "cached_input_tokens": 100, "output_tokens": 20}},
+        {"type": "turn.completed", "usage": {"input_tokens": 50, "cached_input_tokens": 100, "output_tokens": 20}},
         # Conflicting cached counters in same object
-        {"usage": {"input_tokens": 100, "cached_input_tokens": 20, "cached_tokens": 30, "output_tokens": 20}},
+        {"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 20, "cached_tokens": 30, "output_tokens": 20}},
         # Malformed non-mapping usage
-        {"usage": "not-a-dict"},
+        {"type": "turn.completed", "usage": "not-a-dict"},
         # None or non-json
         "plain text without json",
     ],
@@ -838,10 +846,54 @@ def test_codex_extract_token_usage_fail_soft_edge_cases(payload: object) -> None
 
 def test_codex_extract_token_usage_conflicting_records_fail_soft() -> None:
     lines = [
-        json.dumps({"usage": {"input_tokens": 100, "cached_input_tokens": 20, "output_tokens": 10}}),
-        json.dumps({"usage": {"input_tokens": 200, "cached_input_tokens": 50, "output_tokens": 30}}),
+        json.dumps({"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 20, "output_tokens": 10}}),
+        json.dumps({"type": "turn.completed", "usage": {"input_tokens": 200, "cached_input_tokens": 50, "output_tokens": 30}}),
     ]
     assert extract_token_usage("\n".join(lines)) is None
+
+
+def test_codex_extract_token_usage_unknown_event_yields_unavailable() -> None:
+    # Unknown event with otherwise valid usage-shaped payload yields unavailable/null
+    unknown_record = {
+        "type": "unknown.event",
+        "usage": {
+            "input_tokens": 100,
+            "cached_input_tokens": 20,
+            "output_tokens": 10,
+        },
+    }
+    assert extract_token_usage(json.dumps(unknown_record)) is None
+    assert extract_token_usage(unknown_record) is None
+
+    # Unknown event with direct counters yields unavailable/null
+    unknown_direct = {
+        "type": "future.token_event",
+        "input_tokens": 100,
+        "cached_input_tokens": 20,
+        "output_tokens": 10,
+    }
+    assert extract_token_usage(json.dumps(unknown_direct)) is None
+    assert extract_token_usage(unknown_direct) is None
+
+    # Unknown event in JSONL stream does not supply token_usage
+    stream = "\n".join([
+        json.dumps({"type": "session.started", "session_id": "sess_1"}),
+        json.dumps({"type": "turn.started"}),
+        json.dumps(unknown_record),
+    ])
+    assert extract_token_usage(stream) is None
+
+    # Untyped usage record yields unavailable/null
+    untyped = {
+        "usage": {
+            "input_tokens": 100,
+            "cached_input_tokens": 20,
+            "output_tokens": 10,
+        },
+    }
+    assert extract_token_usage(json.dumps(untyped)) is None
+    assert extract_token_usage(untyped) is None
+
 
 
 def test_codex_execute_records_usage_and_preserves_single_invocation() -> None:

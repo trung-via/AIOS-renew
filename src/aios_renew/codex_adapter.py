@@ -473,6 +473,9 @@ class CodexAdapter:
         return ResultPackage(result=result, evidence=evidence)
 
 
+CODEX_USAGE_EVENT = "turn.completed"
+
+
 def extract_token_usage(output: Any) -> TokenUsage | None:
     """Extract and map exact Codex token counters from the execution output."""
 
@@ -488,11 +491,19 @@ def extract_token_usage(output: Any) -> TokenUsage | None:
     candidates: list[TokenUsage] = []
 
     if isinstance(output, Mapping):
-        usage_data = output.get("usage")
-        mapped = _map_codex_usage(usage_data)
-        if mapped is not None:
-            candidates.append(mapped)
-        elif usage_data is not None:
+        if output.get("type") == CODEX_USAGE_EVENT:
+            usage_data = output.get("usage")
+            if isinstance(usage_data, Mapping):
+                mapped = _map_codex_usage(usage_data)
+            elif "input_tokens" in output and "output_tokens" in output:
+                mapped = _map_codex_usage(output)
+            else:
+                mapped = None
+            if mapped is not None:
+                candidates.append(mapped)
+            else:
+                return None
+        else:
             return None
     elif isinstance(output, str):
         for line in output.splitlines():
@@ -505,15 +516,14 @@ def extract_token_usage(output: Any) -> TokenUsage | None:
                 continue
             if not isinstance(record, Mapping):
                 continue
-            if "usage" in record:
+            if record.get("type") == CODEX_USAGE_EVENT:
                 usage_data = record.get("usage")
-                mapped = _map_codex_usage(usage_data)
-                if mapped is not None:
-                    candidates.append(mapped)
-                elif usage_data is not None:
-                    return None
-            elif "input_tokens" in record and "output_tokens" in record:
-                mapped = _map_codex_usage(record)
+                if isinstance(usage_data, Mapping):
+                    mapped = _map_codex_usage(usage_data)
+                elif "input_tokens" in record and "output_tokens" in record:
+                    mapped = _map_codex_usage(record)
+                else:
+                    mapped = None
                 if mapped is not None:
                     candidates.append(mapped)
                 else:
