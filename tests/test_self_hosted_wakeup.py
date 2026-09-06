@@ -49,6 +49,10 @@ def run_powershell_script(
             temp_path.unlink()
 
 
+def normalized_process_output(result: subprocess.CompletedProcess[str]) -> str:
+    return " ".join((result.stdout + result.stderr).split())
+
+
 def test_workflow_dispatch_only_and_inputs_ac1() -> None:
     workflow = load_workflow()
     raw_text = WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -199,7 +203,7 @@ def test_workflow_preflight_missing_repo_variable_fails_ac5(tmp_path: Path) -> N
     result = run_powershell_script(preflight_script, env=env)
     assert result.returncode != 0
     assert "AIOS_REPO_ROOT repository variable is not set or empty" in (
-        result.stdout + result.stderr
+        normalized_process_output(result)
     )
 
 
@@ -219,7 +223,7 @@ def test_workflow_preflight_invalid_git_root_fails_ac5(tmp_path: Path) -> None:
     env["AIOS_REPO_ROOT"] = str(non_git_dir)
     result = run_powershell_script(preflight_script, env=env)
     assert result.returncode != 0
-    assert "not a valid Git repository" in (result.stdout + result.stderr)
+    assert "not a valid Git repository" in normalized_process_output(result)
 
 
 def test_workflow_preflight_missing_aios_executable_fails_ac5(tmp_path: Path) -> None:
@@ -243,7 +247,7 @@ def test_workflow_preflight_missing_aios_executable_fails_ac5(tmp_path: Path) ->
 
     result = run_powershell_script(preflight_script, env=env)
     assert result.returncode != 0
-    assert "aios executable was not found on PATH" in (result.stdout + result.stderr)
+    assert "aios executable was not found on PATH" in normalized_process_output(result)
 
 
 def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> None:
