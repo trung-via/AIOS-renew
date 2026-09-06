@@ -1,0 +1,236 @@
+task_id: TASK-071
+revision: 1
+
+goal: >
+  Harden canonical RUN identity allocation so a new PRIMARY, REMEDIATION, direct-candidate,
+  or REPAIR admission cannot reuse an already-canonical remote RUN identity merely because
+  repository-local operational state is absent or was created in another workspace. Add
+  one deterministic PRIMARY collision-recovery boundary that can re-admit the exact
+  successful candidate from an already-observed conflicting terminal RUN under a fresh
+  non-colliding RUN identity without invoking an Executor/model again, while preserving
+  immutable historical artifacts and rerunning only the canonical verification needed to
+  establish correctly attributed EVIDENCE for the recovered RUN.
+
+problem: >
+  TASK-070 exposed a canonical RUN identity collision after an operational Codex failure
+  and later fresh execution occurred from different local Runtime state. Canonical remote
+  state now contains both a FAILURE terminal artifact and a successful RESULT artifact for
+  RUN-070-001. The failed attempt binds failed_head_sha
+  017c94e5ef0b013369d9b6ba73b82e423156cdcf and no implementation delta, while the later
+  successful artifact binds TASK-070 revision 1 candidate
+  bf804affb6fdc05e391f61d922cebbe8c36351f4 with canonical verification PASS. Reviewer
+  must fail closed because one RUN identity cannot represent two execution instances.
+
+  The immediate root cause is that normal run allocation calls next_run_id() using only
+  repository-local .git/aios/runs. TASK-058 already established the stronger rule for
+  historical REPAIR: local next-run numbering alone is insufficient and canonical remote
+  RUN identities must be reserved. That protection is not applied to normal PRIMARY,
+  REMEDIATION, or direct-candidate allocation, so a terminal RUN created in another
+  workspace/host-local state can be silently reissued.
+
+  Re-executing TASK-070 through Codex would discard a valid implementation candidate and
+  repeat expensive model work. However the old verification evidence cannot simply be
+  relabeled to a new RUN because its run_id attribution is itself part of the conflicted
+  lineage. Recovery therefore needs a deterministic no-Executor admission of the exact
+  already-committed successful candidate, followed by fresh Runtime-owned canonical
+  verification under a new globally non-colliding RUN identity.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main immediately before TASK-071 authoring is
+    017c94e5ef0b013369d9b6ba73b82e423156cdcf with TASK-070 revision 1 authored but not
+    semantically published.
+  - >
+    Canonical remote state for RUN-070-001 contains both
+    aios/failure-artifacts/RUN-070-001 and aios/artifacts/RUN-070-001, proving a terminal
+    identity conflict rather than a normal transport retry.
+  - >
+    The successful RUN-070-001 artifact binds source candidate
+    bf804affb6fdc05e391f61d922cebbe8c36351f4, TASK-070 revision 1, and a ResultPackage
+    whose Runtime verification recorded 27 passing publication tests plus git diff --check.
+  - >
+    The failed RUN-070-001 artifact and successful RUN-070-001 artifact are immutable
+    historical facts. Neither may be deleted, renamed, overwritten, reinterpreted as the
+    other, or silently preferred merely by timestamp/order.
+  - >
+    TASK-058 revision 2 remains the architectural precedent for current-control versus
+    historical-subject separation and for reserving canonical remote RUN identities when
+    local Runtime state is insufficient.
+  - >
+    TASK-068 remains outer A2 dispatch identity/reconciliation work. It deliberately leaves
+    direct aios run semantics unchanged and therefore does not own canonical RUN namespace
+    allocation or recovery from a RUN identity collision.
+  - >
+    Existing TASK, RUN, RESULT, EVIDENCE, FAILURE, REVIEW, REMEDIATION, REPAIR, and
+    RUN_OBSERVATION schemas remain authoritative and do not need revision for this defect.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-058.yaml
+    - .ai/tasks/TASK-068.yaml
+    - .ai/tasks/TASK-070.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/run.py
+    - src/aios_renew/artifacts.py
+    - tests/test_operator.py
+    - tests/test_review_transport.py
+    - README.md
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+    - tests/test_review_transport.py
+    - README.md
+
+non_goals:
+  - Modify, delete, rename, force-update, or replace either historical RUN-070-001 terminal artifact/ref or any other immutable canonical historical artifact.
+  - Semantically review, publish, merge, rebase, cherry-pick, integrate, or otherwise resolve TASK-070 as part of TASK-071 implementation.
+  - Re-execute TASK-070 implementation through Codex, Antigravity, or any other model as part of collision recovery.
+  - Reuse or relabel RUN-070-001 EVIDENCE as if it had been produced by a newly allocated RUN identity.
+  - Change TASK, RUN, RESULT, EVIDENCE, FAILURE, REVIEW, REMEDIATION, REPAIR, or RUN_OBSERVATION schemas or semantic authority.
+  - Turn A2 dispatch_id into RUN identity, merge TASK-068 authority into this task, or mark A2 DONE.
+  - Add distributed locking, a database, broker, scheduler, polling daemon, global counter service, UUID migration, retry loop, fallback, reroute, or second Executor.
+  - Promise cross-host mutual exclusion for concurrently ACTIVE RUNs beyond existing repository mutation authority; this task addresses canonical remote terminal namespace reuse and explicit observed-collision recovery.
+  - Change Executor selection/model defaults, TASK-062 PRIMARY synchronization, Dispatcher exactly-one invocation semantics, Runtime verification ownership, review authority, or publication authority.
+  - Automatically resolve a divergent reviewed candidate against current main.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Before allocating any new normal PRIMARY, REMEDIATION, direct-candidate, or REPAIR
+      RUN identity, Runtime/Operator must combine repository-local RUN namespace state with
+      the canonical remote terminal RUN namespace for that TASK. A canonical remote RUN id
+      must never be reused merely because its local .git/aios/runs record is absent.
+    - >
+      Canonical remote namespace resolution must use exact task-bound terminal artifact
+      refs and fail closed on malformed, ambiguous, cross-TASK, or otherwise invalid ref
+      identity. Existing TASK-058 remote-reservation behavior must remain compatible and
+      should not be replaced by a second competing namespace authority.
+    - >
+      Normal admission must detect when one canonical RUN id has both success and failure
+      terminal artifact refs. Such a conflict is not a completed success, failed RUN,
+      transport retry, or reason to choose the newest artifact. Normal execution for that
+      conflicted TASK must fail closed before allocating or invoking an Executor until the
+      explicit collision-recovery boundary is used.
+    - >
+      Add one Human-facing deterministic recovery surface `aios recover-primary <RUN_ID>`
+      for an already-observed PRIMARY terminal identity conflict. It accepts only the
+      conflicted RUN identity plus repository selection; it must not accept an arbitrary
+      candidate SHA, arbitrary ResultPackage, verification command, TASK replacement,
+      branch target, shell command, or publication target.
+    - >
+      Recovery must resolve the exact canonical failure artifacts, exact canonical success
+      artifacts, and exact successful candidate/ref for the requested conflicted RUN from
+      remote immutable state. It must prove both terminal records contain the requested
+      RUN identity and same TASK id/revision namespace while remaining distinct execution
+      facts. Missing, non-conflicting, multiple, malformed, wrong-TASK/revision, wrong-base,
+      wrong-result-head, or ambiguous source state must fail closed before candidate
+      admission.
+    - >
+      Recovery must use current canonical control-plane code while treating the successful
+      historical candidate as immutable subject data. If current product main is not the
+      successful candidate, recovery must operate on an isolated subject workspace at the
+      exact candidate SHA and must not reset, detach, commit, merge, rebase, cherry-pick,
+      stash, or otherwise mutate current main merely to perform recovery.
+    - >
+      Recovery must allocate a fresh RUN identity using the combined local plus canonical
+      remote namespace, including the conflicted source identity as reserved. The recovered
+      RUN must not overwrite or reuse any existing local or remote RUN identity.
+    - >
+      Recovery is direct PRIMARY candidate admission, not Executor execution. It must invoke
+      no coding Executor/model and must preserve exactly the successful source candidate
+      Git object. The source successful ResultPackage may supply only structurally validated
+      completion claims/changed_files/unresolved data bound to that exact candidate; old
+      EVIDENCE and old claim evidence references must not be carried forward as evidence
+      for the recovered RUN.
+    - >
+      Before canonical verification, recovery must deterministically prove the candidate
+      descends from the successful source RUN base_sha, its committed changed files exactly
+      match the structural result and remain within the historical TASK.scope.modify, the
+      candidate is clean/immutable, unresolved is empty, and claims cover every historical
+      TASK acceptance criterion. No Brain/Reviewer inference may be used to manufacture or
+      repair missing claims.
+    - >
+      Because the prior evidence attribution is invalidated by the RUN identity collision,
+      Runtime must execute the historical TASK's canonical verification exactly once under
+      the fresh recovered RUN identity and exact candidate SHA. This rerun is justified by
+      new identity information and is not ceremonial repetition. New canonical EVIDENCE
+      must bind only to the recovered RUN id and candidate SHA.
+    - >
+      Recovery must persist and transport an ordinary canonical successful RUN/RESULT/
+      EVIDENCE lineage under the fresh RUN identity using existing schemas. Operational
+      observation must truthfully record that no Executor was invoked; recovery must not
+      synthesize a fake native invocation or alter frozen artifact semantics.
+    - >
+      A successful recovery does not itself semantically PASS TASK-070, publish it, or
+      integrate it onto current main. It only restores one unambiguous reviewable candidate
+      lineage. Reviewer and publication remain separate authorities.
+    - >
+      Existing normal direct aios run, REMEDIATION, REPAIR, TASK-058 historical recovery,
+      TASK-068 outer dispatch reconciliation, transport retry, Runtime completion, and safe
+      publication behavior must remain otherwise unchanged.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A deterministic regression with empty/fresh local Runtime state and an existing
+      canonical remote terminal RUN proves the next normal PRIMARY allocation skips that
+      remote identity and uses the next free task-bound RUN id without invoking duplicate
+      execution under the old id.
+  - id: AC2
+    condition: >
+      REMEDIATION, direct-candidate, and REPAIR allocation regressions prove they share the
+      same remote-reserved task RUN namespace rather than independently reusing a remote
+      terminal identity; existing TASK-058 historical REPAIR allocation remains passing.
+  - id: AC3
+    condition: >
+      A deterministic remote namespace containing both success and failure terminal refs
+      for one RUN causes normal admission for that TASK to fail closed before new RUN
+      persistence or Executor invocation, with the conflicting RUN identity reported.
+  - id: AC4
+    condition: >
+      A regression equivalent to canonical RUN-070-001 proves `recover-primary` resolves
+      exactly the conflicting failure plus successful artifacts and successful candidate,
+      allocates a fresh non-colliding RUN identity, and does not modify either historical
+      terminal lineage.
+  - id: AC5
+    condition: >
+      The RUN-070-style recovery uses current control-plane code against an isolated exact
+      historical candidate while current main HEAD/index/worktree remain unchanged, and no
+      merge, rebase, cherry-pick, candidate rewrite, Executor, or model invocation occurs.
+  - id: AC6
+    condition: >
+      Recovery rejects malformed, missing, non-conflicting, ambiguous, wrong-TASK/revision,
+      wrong-base, wrong-candidate/ref, RESULT-head-mismatched, incomplete-claim, unresolved,
+      dirty, out-of-scope, or non-descendant source state before canonical RESULT transport.
+  - id: AC7
+    condition: >
+      Recovery discards the conflicted source EVIDENCE as attribution for the new RUN,
+      executes the exact historical TASK verification list once against the unchanged
+      candidate, and emits fresh Runtime-owned EVIDENCE bound to the fresh RUN id and exact
+      candidate SHA with executor_invoked=false observation.
+  - id: AC8
+    condition: >
+      The recovered canonical ResultPackage preserves the exact validated source completion
+      claims and repository truth while using only fresh recovered-RUN evidence references;
+      it is structurally valid and reviewable through the existing PRIMARY review path.
+  - id: AC9
+    condition: >
+      Existing operator/transport regressions remain passing, README documents normal
+      remote RUN reservation plus the narrow recover-primary use case, and no A2/roadmap,
+      schema, review, verification-ownership, or publication-authority change is introduced.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py tests/test_review_transport.py -q
+    - git diff --check
