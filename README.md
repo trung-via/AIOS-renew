@@ -33,6 +33,41 @@ aios run TASK-101 --executor antigravity
 
 Use `--repo PATH` to target a repository other than the current Git repository.
 
+## Remote Wakeup (GitHub Actions Self-Hosted)
+
+A1 provides a thin repository-native GitHub Actions wakeup (`.github/workflows/aios-self-hosted-wakeup.yml`) so an authorized remote Human or Brain can start one canonical PRIMARY execution on the designated Windows self-hosted runner without being physically present at the execution machine.
+
+GitHub Actions wakes the existing Human-facing Operator (`aios run <TASK_ID> --executor <EXECUTOR> --repo <AIOS_REPO_ROOT>`) and does not replace AIOS Operator authority. Admission, pre-admission synchronization (TASK-062), mutation authority, verification, and completion truth remain owned by the invoked AIOS process.
+
+### One-Time Host Prerequisites
+
+Self-hosted runner registration and host configuration are operational setup, not Executor implementation work or canonical AIOS authority:
+1. **Register Runner**: Register one Windows x64 self-hosted runner for this repository with custom label `aios-renew` (targeting `[self-hosted, windows, x64, aios-renew]`).
+2. **Environment & Toolchain**: Run the runner under an account and environment that has the working AIOS/Codex/Antigravity toolchain:
+   - `aios` CLI available on `PATH`;
+   - Native coding Executors (`codex`, `antigravity`) installed and authenticated;
+   - Python environment with repository dependencies installed (`pip install -e .`).
+3. **Repository Variable `AIOS_REPO_ROOT`**: Configure the non-secret repository variable `AIOS_REPO_ROOT` in GitHub repository settings (Settings > Secrets and variables > Actions > Variables) pointing to the persistent canonical checkout (e.g. `C:\TOOL\Projects\AIOS-renew`). The workflow does not checkout code or create fresh worktrees; it executes against this persistent checkout.
+4. **Existing Git Credentials**: Ensure the persistent repository already has the non-interactive Git credentials required for existing AIOS transport (e.g. Git credential manager, SSH key, or stored credentials for `origin`). GitHub Actions runs with minimum read-only permissions and injects no write token, PAT, deploy key, or secret into the AIOS or Executor process.
+
+### Triggering Remote Wakeup
+
+An authorized remote Human or Brain can trigger the workflow through GitHub's workflow-dispatch surfaces:
+- **Web UI**: Navigate to Actions > "AIOS self-hosted primary wakeup" > "Run workflow", enter the `task_id` (e.g. `TASK-066`), and select the `executor` (`codex` or `antigravity`).
+- **GitHub CLI (`gh`)**:
+  ```powershell
+  gh workflow run aios-self-hosted-wakeup.yml -f task_id=TASK-066 -f executor=antigravity
+  ```
+- **GitHub REST API**: `POST /repos/{owner}/{repo}/actions/workflows/aios-self-hosted-wakeup.yml/dispatches` with `ref` and `inputs`.
+
+### Public Repository Security Boundary
+
+Because AIOS-renew is a public repository and self-hosted runners run on a host with privileged local development tooling and authenticated credentials:
+- The wakeup workflow trigger is strictly `workflow_dispatch` only. It never triggers on `pull_request`, `push`, `issue_comment`, `schedule`, `repository_dispatch`, or any untrusted code-change event.
+- The workflow never checks out or runs an event-controlled ref.
+- The runner should be a dedicated repository runner labeled `aios-renew` rather than shared with unrelated or untrusted public repositories.
+
+
 ## Canonical remediation
 
 After reviewing a canonical `CHANGES_REQUIRED` finding, a Human authorizes one

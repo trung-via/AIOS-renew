@@ -79,11 +79,11 @@ Provider-specific CLI flags, sandbox/mode mapping, native command construction, 
 
 K0.3 preserved effective current behavior. It did not redesign permissions, transport, executor selection, retry/failover, or add a new orchestration layer.
 
-### K0.4 — Lean Kernel Conformance Gate — NEXT / FINAL REQUIRED K0 STEP
+### K0.4 — Lean Kernel Conformance Gate — DONE
 
-K0.4 is the final required AIOS gate before returning to Python Agent product work.
+Completed and semantically reviewed PASS via TASK-056 (RUN-056-001).
 
-It must prove, with minimum-sufficient deterministic and native conformance evidence, that both supported executors preserve the same canonical semantics where applicable, including:
+It proved, with deterministic and native conformance evidence, that both supported executors preserve the same canonical semantics:
 
 - PRIMARY execution;
 - read-only and mutation authority;
@@ -96,9 +96,19 @@ It must prove, with minimum-sufficient deterministic and native conformance evid
 - structural Executor output followed by Runtime-owned canonical EVIDENCE;
 - no executor publication/push authority.
 
-K0.4 should also retain a small baseline of execution time, verification time, available token usage, and Human intervention so future efficiency/automation work can be justified against the North Star.
+### Post-K0 Hardening (TASK-057 through TASK-065) — DONE
 
-A separate A0 conformance phase is not required; its useful purpose is absorbed into K0.4 to avoid duplicate verification work.
+Following K0.4 completion and the hard gate stopping default kernel expansion, subsequent TASK-057 through TASK-065 performed evidence-driven hardening of observed kernel, operator, and runtime boundaries without reopening general kernel development:
+
+- **TASK-057**: Terminal failure observation and structured diagnostics;
+- **TASK-058**: Single-process run lease registry;
+- **TASK-059**: Safe cooperative execution cancellation and interruption handling;
+- **TASK-060**: Monotonic duration tracking across execution phases;
+- **TASK-061**: Deterministic model and reasoning effort pinning;
+- **TASK-062**: Pre-admission safe fast-forward synchronization for PRIMARY execution;
+- **TASK-063**: Deterministic post-review safe publication gate (realizing A8);
+- **TASK-064**: Verification-only candidate snapshot reuse for `NO_CHANGE` repair;
+- **TASK-065**: Native coding Executor token usage telemetry in `RUN_OBSERVATION`.
 
 ## Hard Gate After K0.4
 
@@ -128,18 +138,20 @@ Do not remove a working transport before replacement parity exists. Transport ex
 
 ## A-Series — Optional Outer Automation Track
 
-A-Series does not block Python Agent product development.
+A-Series does not block Python Agent product development. It provides subordinate outer automation around the governed kernel:
 
-1. **A1 — GitHub Actions Self-hosted Wakeup**: remote Human/Brain trigger to canonical Operator execution.
-2. **A2 — Durable Dispatch Identity + Reconciliation**: duplicate event becomes deterministic no-op; crash/restart remains attributable.
-3. **A3 — Remote Status / Approval Surface**: expose useful execution state without creating authority.
-4. **A4 — Transport Extraction**: replace the compatibility transport only after the outer mechanism proves parity, then remove obsolete transport code.
-5. **A5 — Evidence Bundle Strengthening**: only where measured gaps justify additional evidence packaging.
-6. **A6 — Automated REVIEW-to-REMEDIATION Wakeup**: outer automation preserves narrow correction authority.
-7. **A7 — Autonomous Reviewer Shadow Mode**: observe and compare before any review-decision authority is granted.
-8. **A8 — Safe Publisher**: separate, explicit publication authority.
-9. **A9 — Low-risk Zero-touch Lane**: only after measured reliability and bounded authority are demonstrated.
-10. **A10 — Scale**: only when measured ROI justifies additional concurrency or agent use.
+1. **A1 — GitHub Actions Self-hosted Wakeup**: remote Human/Brain trigger to canonical Operator execution on a designated Windows self-hosted runner. Implemented by TASK-066 (`.github/workflows/aios-self-hosted-wakeup.yml`).
+2. **A2 — Durable Dispatch Identity + Reconciliation**: duplicate event becomes deterministic no-op; crash/restart remains attributable. Separately gated.
+3. **A3 — Remote Status / Approval Surface**: expose useful execution state without creating authority. Separately gated.
+4. **A4 — Transport Extraction**: replace the compatibility transport only after the outer mechanism proves parity, then remove obsolete transport code. Separately gated.
+5. **A5 — Evidence Bundle Strengthening**: only where measured gaps justify additional evidence packaging. Separately gated.
+6. **A6 — Automated REVIEW-to-REMEDIATION Wakeup**: outer automation preserves narrow correction authority. Separately gated.
+7. **A7 — Autonomous Reviewer Shadow Mode**: observe and compare before any review-decision authority is granted. Separately gated.
+8. **A8 — Safe Publisher**: separate, explicit publication authority. Completed by TASK-063 (`.github/workflows/aios-auto-publish.yml` and `aios_renew.publication`).
+9. **A9 — Low-risk Zero-touch Lane**: only after measured reliability and bounded authority are demonstrated. Separately gated.
+10. **A10 — Scale**: only when measured ROI justifies additional concurrency or agent use. Separately gated.
+
+A2, A3, A4, A5, A6, A7, A9, and A10 remain separately gated.
 
 ## H-Series — Optional Efficiency Track
 
@@ -169,17 +181,24 @@ Do not execute M1→M11 again as a separate roadmap.
 
 ## Roadmap Rule
 
-The active required sequence is intentionally short:
+The active canonical sequence is reconciled as follows:
 
 ```text
 DONE: K0.0 Governance
 DONE: K0.1 Responsibility Audit
 DONE: K0.2 Core Authority Extraction
 DONE: K0.3 Native Adapter Thinning
-        ↓
-NEXT / FINAL: K0.4 Lean Kernel Conformance Gate
+DONE: K0.4 Lean Kernel Conformance Gate (TASK-056)
         ↓ PASS
 STOP DEFAULT KERNEL DEVELOPMENT
+        ↓
+DONE: Post-K0 Hardening (TASK-057..065)
+        ↓
+Outer Automation Track:
+DONE: A8 Safe Publisher (TASK-063)
+DONE: A1 GitHub Actions Self-hosted Wakeup (TASK-066)
+        ↓
+SEPARATELY GATED: A2–A7, A9–A10
         ↓
 RETURN TO PYTHON AGENT
 ```
