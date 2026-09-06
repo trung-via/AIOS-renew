@@ -88,7 +88,7 @@ non_goals:
   - Accept a repository path, shell command, executable path, Git ref, model, reasoning effort, verification command, operation type, or arbitrary runner label from workflow-dispatch input.
   - Install or upgrade AIOS, Codex, Antigravity, Python, Git, dependencies, credentials, or the GitHub Actions runner from the workflow.
   - Inject `GITHUB_TOKEN`, a PAT, deploy key, SSH key, credential helper, cloud secret, or other new transport credential into the AIOS/Executor process.
-  - Grant workflow `contents: write` or any broader GitHub permission merely so the workflow can push; existing persistent-repository Git credentials remain the transport mechanism for current AIOS behavior.
+  - 'Grant workflow `contents: write` or any broader GitHub permission merely so the workflow can push; existing persistent-repository Git credentials remain the transport mechanism for current AIOS behavior.'
   - Add automatic retry, fallback, reroute, alternate runner selection, duplicate execution, or continue-on-error behavior.
   - Change downstream repositories or assume a downstream repository uses current AIOS-renew main.
   - Push from Executor implementation execution.
