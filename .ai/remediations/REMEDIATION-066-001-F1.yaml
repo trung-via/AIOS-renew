@@ -1,0 +1,11 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: 5fdae1b8cc1bbc1cd07623f7cd369cbfaaf15dc4
+scope:
+  modify:
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - tests/test_self_hosted_wakeup.py
+verification:
+  affected:
+    - python -m pytest tests/test_self_hosted_wakeup.py -q
+    - git diff --check
