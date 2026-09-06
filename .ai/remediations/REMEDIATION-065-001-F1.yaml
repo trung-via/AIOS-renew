@@ -1,0 +1,11 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: 6f8eb5964b2d574e7a583a8635bf902c38314223
+scope:
+  modify:
+    - src/aios_renew/codex_adapter.py
+    - tests/test_codex_adapter.py
+verification:
+  affected:
+    - python -m pytest tests/test_codex_adapter.py -q
+    - git diff --check
