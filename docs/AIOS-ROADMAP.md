@@ -141,7 +141,7 @@ Do not remove a working transport before replacement parity exists. Transport ex
 A-Series does not block Python Agent product development. It provides subordinate outer automation around the governed kernel:
 
 1. **A1 — GitHub Actions Self-hosted Wakeup**: remote Human/Brain trigger to canonical Operator execution on a designated Windows self-hosted runner. Implemented by TASK-066 (`.github/workflows/aios-self-hosted-wakeup.yml`).
-2. **A2 — Durable Dispatch Identity + Reconciliation**: duplicate event becomes deterministic no-op; crash/restart remains attributable. Separately gated.
+2. **A2 — Durable Dispatch Identity + Reconciliation — DONE**: duplicate event becomes deterministic no-op; crash/restart remains attributable. Implemented by TASK-068 (`aios wakeup` plus repository-local `.git/aios` dispatch state).
 3. **A3 — Remote Status / Approval Surface**: expose useful execution state without creating authority. Separately gated.
 4. **A4 — Transport Extraction**: replace the compatibility transport only after the outer mechanism proves parity, then remove obsolete transport code. Separately gated.
 5. **A5 — Evidence Bundle Strengthening**: only where measured gaps justify additional evidence packaging. Separately gated.
@@ -151,7 +151,7 @@ A-Series does not block Python Agent product development. It provides subordinat
 9. **A9 — Low-risk Zero-touch Lane**: only after measured reliability and bounded authority are demonstrated. Separately gated.
 10. **A10 — Scale**: only when measured ROI justifies additional concurrency or agent use. Separately gated.
 
-A2, A3, A4, A5, A6, A7, A9, and A10 remain separately gated.
+A3, A4, A5, A6, A7, A9, and A10 remain separately gated. A2 dispatch attribution remains operational-only and does not pre-authorize A3 remote status/approval authority.
 
 ## H-Series — Optional Efficiency Track
 
@@ -197,8 +197,9 @@ DONE: Post-K0 Hardening (TASK-057..065)
 Outer Automation Track:
 DONE: A8 Safe Publisher (TASK-063)
 DONE: A1 GitHub Actions Self-hosted Wakeup (TASK-066)
+DONE: A2 Durable Dispatch Identity + Reconciliation (TASK-068)
         ↓
-SEPARATELY GATED: A2–A7, A9–A10
+SEPARATELY GATED: A3–A7, A9–A10
         ↓
 RETURN TO PYTHON AGENT
 ```

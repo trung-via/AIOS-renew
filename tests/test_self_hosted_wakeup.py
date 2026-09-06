@@ -75,9 +75,14 @@ def test_workflow_dispatch_only_and_inputs_ac1() -> None:
     assert "inputs" in dispatch_config, "workflow_dispatch must define inputs"
     inputs = dispatch_config["inputs"]
     assert set(inputs.keys()) == {
+        "dispatch_id",
         "task_id",
         "executor",
-    }, f"inputs must contain only task_id and executor, got {set(inputs.keys())}"
+    }, f"inputs must contain only dispatch_id, task_id and executor, got {set(inputs.keys())}"
+
+    dispatch_id_input = inputs["dispatch_id"]
+    assert dispatch_id_input.get("required") is True
+    assert dispatch_id_input.get("type") == "string"
 
     task_id_input = inputs["task_id"]
     assert task_id_input.get("required") is True
@@ -131,18 +136,20 @@ def test_workflow_routing_and_no_checkout_ac2() -> None:
 def test_workflow_authority_and_no_direct_executor_ac3() -> None:
     raw_text = WORKFLOW_PATH.read_text(encoding="utf-8")
 
-    # Exactly one aios run invocation in workflow
-    assert raw_text.count("aios run") == 1
+    # Exactly one thin outer wakeup invocation; PRIMARY remains inside the Operator.
+    assert raw_text.count("aios wakeup") == 1
+    assert "aios run" not in raw_text
 
-    # Dispatched TASK id, executor, and repo passed to aios run via environment variables
+    # Outer identity and semantic selectors pass through environment data bindings.
     workflow = load_workflow()
     step = workflow["jobs"]["wakeup"]["steps"][1]
     step_env = step.get("env", {})
+    assert step_env.get("AIOS_DISPATCH_ID") == "${{ inputs.dispatch_id }}"
     assert step_env.get("AIOS_TASK_ID") == "${{ inputs.task_id }}"
     assert step_env.get("AIOS_EXECUTOR") == "${{ inputs.executor }}"
     assert "${{ inputs." not in step.get("run", "")
     assert (
-        "aios run $env:AIOS_TASK_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT"
+        "aios wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT"
         in raw_text
     )
 
@@ -154,7 +161,7 @@ def test_workflow_authority_and_no_direct_executor_ac3() -> None:
         ), f"direct executor call forbidden: {forbidden_call}"
 
     # No duplicate AIOS commands
-    for duplicate in ("aios task", "aios remediate", "aios accept-candidate", "aios repair", "aios transport"):
+    for duplicate in ("aios task", "aios run", "aios remediate", "aios accept-candidate", "aios repair", "aios transport"):
         assert duplicate not in raw_text, f"duplicate AIOS command forbidden: {duplicate}"
 
     # No manual Git synchronization commands
@@ -251,6 +258,7 @@ def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> N
 
     env = dict(os.environ)
     env["AIOS_REPO_ROOT"] = str(tmp_path)
+    env["AIOS_DISPATCH_ID"] = "dispatch-066-failure"
     env["AIOS_TASK_ID"] = "TASK-066"
     env["AIOS_EXECUTOR"] = "antigravity"
     env["PATH"] = f"{bin_dir};{env['PATH']}"
@@ -268,7 +276,7 @@ def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> N
     ), f"expected exit code 1 to be preserved, got {result.returncode}"
 
 
-def test_workflow_execution_success_invokes_aios_run_once_ac3(tmp_path: Path) -> None:
+def test_workflow_execution_success_invokes_aios_wakeup_once_ac3(tmp_path: Path) -> None:
     workflow = load_workflow()
     preflight_script = workflow["jobs"]["wakeup"]["steps"][0]["run"]
     run_script = workflow["jobs"]["wakeup"]["steps"][1]["run"]
@@ -290,6 +298,7 @@ def test_workflow_execution_success_invokes_aios_run_once_ac3(tmp_path: Path) ->
 
     env = dict(os.environ)
     env["AIOS_REPO_ROOT"] = str(repo_dir)
+    env["AIOS_DISPATCH_ID"] = "dispatch-066-success"
     env["AIOS_TASK_ID"] = "TASK-066"
     env["AIOS_EXECUTOR"] = "antigravity"
     env["PATH"] = f"{bin_dir};{env['PATH']}"
@@ -307,7 +316,9 @@ def test_workflow_execution_success_invokes_aios_run_once_ac3(tmp_path: Path) ->
     # Verify exactly one invocation with exact arguments
     invocations = recorder_file.read_text(encoding="utf-8").strip().splitlines()
     assert len(invocations) == 1
-    expected_args = f"run TASK-066 --executor antigravity --repo {repo_dir}"
+    expected_args = (
+        f"wakeup dispatch-066-success TASK-066 --executor antigravity --repo {repo_dir}"
+    )
     assert invocations[0].strip() == expected_args
 
 
@@ -319,6 +330,7 @@ def test_task_id_injection_cannot_execute_second_command_ac1(tmp_path: Path) -> 
     # Step must bind inputs via env and never interpolate inputs into PowerShell script source
     assert "${{ inputs." not in run_script
     step_env = step.get("env", {})
+    assert step_env.get("AIOS_DISPATCH_ID") == "${{ inputs.dispatch_id }}"
     assert step_env.get("AIOS_TASK_ID") == "${{ inputs.task_id }}"
     assert step_env.get("AIOS_EXECUTOR") == "${{ inputs.executor }}"
 
@@ -363,6 +375,7 @@ def test_task_id_injection_cannot_execute_second_command_ac1(tmp_path: Path) -> 
     for injection_task_id in payloads:
         env = dict(os.environ)
         env["AIOS_REPO_ROOT"] = str(repo_dir)
+        env["AIOS_DISPATCH_ID"] = "dispatch-066-injection-test"
         env["AIOS_TASK_ID"] = injection_task_id
         env["AIOS_EXECUTOR"] = "antigravity"
         env["PATH"] = f"{bin_dir};{env['PATH']}"
@@ -375,22 +388,38 @@ def test_task_id_injection_cannot_execute_second_command_ac1(tmp_path: Path) -> 
         assert result.returncode != 0
         assert "Invalid task_id format" in (result.stdout + result.stderr)
         # aios run must not be invoked
-        assert not recorder_file.exists(), f"aios run invoked for payload {injection_task_id!r}"
+        assert not recorder_file.exists(), f"aios wakeup invoked for payload {injection_task_id!r}"
 
 
-def test_boundary_preservation_ac6() -> None:
-    # No file under src/aios_renew is modified
-    status = subprocess.run(
-        ["git", "status", "--porcelain"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
+def test_dispatch_id_injection_is_data_bound_and_rejected_ac1(tmp_path: Path) -> None:
+    workflow = load_workflow()
+    step = workflow["jobs"]["wakeup"]["steps"][1]
+    run_script = step["run"]
+    assert "${{ inputs." not in run_script
 
-    changed_lines = [line.strip() for line in status.splitlines() if line.strip()]
-    for line in changed_lines:
-        path = line.split()[-1]
-        assert not path.startswith("src/aios_renew"), f"src/aios_renew modified: {path}"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    marker_file = tmp_path / "dispatch_injection_marker.txt"
+    mock_aios = bin_dir / "aios.bat"
+    mock_aios.write_text("@echo off\nexit /b 0\n", encoding="utf-8")
+    env = dict(os.environ)
+    env["AIOS_REPO_ROOT"] = str(tmp_path)
+    env["AIOS_TASK_ID"] = "TASK-066"
+    env["AIOS_EXECUTOR"] = "codex"
+    env["PATH"] = f"{bin_dir};{env['PATH']}"
+
+    for payload in (
+        "../escape",
+        "..\\escape",
+        f'dispatch; New-Item -Path "{marker_file}" -ItemType File; #',
+        "$(Write-Output injected)",
+        "dispatch with spaces",
+    ):
+        env["AIOS_DISPATCH_ID"] = payload
+        result = run_powershell_script(run_script, env=env)
+        assert result.returncode != 0
+        assert "Invalid dispatch_id format" in result.stdout + result.stderr
+        assert not marker_file.exists()
 
 
 def test_readme_documents_self_hosted_wakeup_ac7() -> None:
@@ -407,6 +436,8 @@ def test_readme_documents_self_hosted_wakeup_ac7() -> None:
     assert "workflow_dispatch" in readme_text or "workflow-dispatch" in readme_text
     assert "task_id" in readme_text
     assert "executor" in readme_text
+    assert "dispatch_id" in readme_text
+    assert "no re-execution" in readme_text.lower()
 
     # Security boundary
     assert "public repository" in readme_text.lower()
@@ -472,7 +503,9 @@ def test_roadmap_reconciled_ac8() -> None:
     assert "A1 — GitHub Actions Self-hosted Wakeup" in roadmap_text
     assert "TASK-066" in roadmap_text
 
-    # Remaining A-series separately gated
-    for gated in ("A2", "A3", "A4", "A5", "A6", "A7", "A9", "A10"):
+    # A2 is implemented while later A-series items remain separately gated.
+    assert "A2 — Durable Dispatch Identity + Reconciliation" in roadmap_text
+    assert "TASK-068" in roadmap_text
+    for gated in ("A3", "A4", "A5", "A6", "A7", "A9", "A10"):
         assert gated in roadmap_text
     assert "separately gated" in roadmap_text.lower()

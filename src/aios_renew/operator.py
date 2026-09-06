@@ -36,6 +36,11 @@ from .dispatcher import (
     repair_dispatcher,
     resolve_native_execution_policy,
 )
+from .dispatch_reconciliation import (
+    DispatchError,
+    DispatchInvocation,
+    execute_dispatch,
+)
 from .executor import ExecutorBoundaryError
 from .review_transport import (
     RemoteFailureArtifacts,
@@ -2678,6 +2683,15 @@ def _parser() -> argparse.ArgumentParser:
     run_parser.add_argument("task_id")
     run_parser.add_argument("--executor", required=True, choices=("codex", "antigravity"))
     run_parser.add_argument("--repo")
+    wakeup_parser = commands.add_parser(
+        "wakeup", help="Idempotently wake one canonical PRIMARY execution"
+    )
+    wakeup_parser.add_argument("dispatch_id")
+    wakeup_parser.add_argument("task_id")
+    wakeup_parser.add_argument(
+        "--executor", required=True, choices=("codex", "antigravity")
+    )
+    wakeup_parser.add_argument("--repo")
     remediation_parser = commands.add_parser(
         "remediate", help="Execute one canonical narrow REMEDIATION"
     )
@@ -2746,6 +2760,48 @@ def main(
                 preflight_sha=preflight.preflight_sha,
             )
             print(summary.render())
+        elif args.command == "wakeup":
+            repo_root = resolve_repository(args.repo)
+
+            def invoke_primary() -> DispatchInvocation:
+                primary_argv = [
+                    "run",
+                    args.task_id,
+                    "--executor",
+                    args.executor,
+                    "--repo",
+                    str(repo_root),
+                ]
+                try:
+                    preflight = _preflight_primary_sync(
+                        repo_root, argv=primary_argv, runner=native_runner
+                    )
+                    if preflight.restart_code is not None:
+                        return DispatchInvocation(preflight.restart_code)
+                    summary = run_task(
+                        args.task_id,
+                        executor=args.executor,
+                        repo=repo_root,
+                        native_runner=native_runner,
+                        verification_runner=verification_runner,
+                        monotonic_clock=monotonic_clock,
+                        synchronize=False,
+                        preflight_sha=preflight.preflight_sha,
+                    )
+                    return DispatchInvocation(0, summary.run_id)
+                except OperatorError as exc:
+                    print(f"AIOS ERROR: {exc}", file=sys.stderr)
+                    return DispatchInvocation(1)
+
+            outcome = execute_dispatch(
+                state_root=runtime_paths(repo_root).root,
+                dispatch_id=args.dispatch_id,
+                task_id=args.task_id,
+                executor=args.executor,
+                invoke_primary=invoke_primary,
+            )
+            print(outcome.render())
+            return outcome.exit_code
         elif args.command == "remediate":
             summary = run_remediation(
                 args.task_id,
@@ -2784,7 +2840,7 @@ def main(
         else:
             retry_transport(args.run_id, repo=args.repo)
             print(f"AIOS TRANSPORT PASS\nrun: {args.run_id}")
-    except OperatorError as exc:
+    except (OperatorError, DispatchError) as exc:
         print(f"AIOS ERROR: {exc}", file=sys.stderr)
         return 1
     return 0
