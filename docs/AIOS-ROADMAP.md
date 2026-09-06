@@ -100,15 +100,15 @@ It proved, with deterministic and native conformance evidence, that both support
 
 Following K0.4 completion and the hard gate stopping default kernel expansion, subsequent TASK-057 through TASK-065 performed evidence-driven hardening of observed kernel, operator, and runtime boundaries without reopening general kernel development:
 
-- **TASK-057**: Terminal failure observation and structured diagnostics;
-- **TASK-058**: Single-process run lease registry;
-- **TASK-059**: Safe cooperative execution cancellation and interruption handling;
-- **TASK-060**: Monotonic duration tracking across execution phases;
-- **TASK-061**: Deterministic model and reasoning effort pinning;
-- **TASK-062**: Pre-admission safe fast-forward synchronization for PRIMARY execution;
-- **TASK-063**: Deterministic post-review safe publication gate (realizing A8);
-- **TASK-064**: Verification-only candidate snapshot reuse for `NO_CHANGE` repair;
-- **TASK-065**: Native coding Executor token usage telemetry in `RUN_OBSERVATION`.
+- **TASK-057**: Runtime-owned REPAIR changed_files authority;
+- **TASK-058**: Deterministic historical REPAIR recovery (revision 2);
+- **TASK-059**: Native execution-efficiency/interruption hardening;
+- **TASK-060**: 60-minute response budget plus 65-minute outer watchdog;
+- **TASK-061**: Deterministic model defaults;
+- **TASK-062**: PRIMARY auto-sync;
+- **TASK-063**: Safe publication (realizing A8);
+- **TASK-064**: Verification-only NO_CHANGE continuation;
+- **TASK-065**: Native token observation.
 
 ## Hard Gate After K0.4
 

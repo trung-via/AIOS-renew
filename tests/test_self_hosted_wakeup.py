@@ -427,8 +427,42 @@ def test_roadmap_reconciled_ac8() -> None:
     assert "K0.4 — Lean Kernel Conformance Gate — DONE" in roadmap_text
     assert "TASK-056" in roadmap_text
 
-    # Post-K0 hardening recognized
+    # Post-K0 hardening recognized and mapped to exact canonical TASK lineage
     assert "TASK-057 through TASK-065" in roadmap_text or "Post-K0 Hardening" in roadmap_text
+    canonical_post_k0_mappings = {
+        "TASK-057": "Runtime-owned REPAIR changed_files authority",
+        "TASK-058": "Deterministic historical REPAIR recovery",
+        "TASK-059": "Native execution-efficiency/interruption hardening",
+        "TASK-060": "60-minute response budget plus 65-minute outer watchdog",
+        "TASK-061": "Deterministic model defaults",
+        "TASK-062": "PRIMARY auto-sync",
+        "TASK-063": "Safe publication",
+        "TASK-064": "Verification-only NO_CHANGE continuation",
+        "TASK-065": "Native token observation",
+    }
+    for task_id, expected_purpose in canonical_post_k0_mappings.items():
+        matching_lines = [
+            line.strip()
+            for line in roadmap_text.splitlines()
+            if f"**{task_id}**" in line
+        ]
+        assert matching_lines, f"{task_id} mapping bullet missing in roadmap"
+        assert any(
+            expected_purpose.lower() in line.lower() for line in matching_lines
+        ), f"{task_id} line {matching_lines} does not contain expected canonical purpose '{expected_purpose}'"
+
+    assert "revision 2" in [
+        line for line in roadmap_text.splitlines() if "**TASK-058**" in line
+    ][0]
+
+    for obsolete_purpose in (
+        "Terminal failure observation and structured diagnostics",
+        "Single-process run lease registry",
+        "Monotonic duration tracking across execution phases",
+    ):
+        assert obsolete_purpose not in roadmap_text, (
+            f"Obsolete/incorrect mapping '{obsolete_purpose}' found in roadmap"
+        )
 
     # A8 mapped to TASK-063
     assert "A8 — Safe Publisher" in roadmap_text
