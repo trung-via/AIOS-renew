@@ -1,0 +1,42 @@
+review_id: REVIEW-068-001
+reviewed_sha: a78b7ffece805228e0262c2b03099d050bf386fa
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: FAIL
+  AC6: FAIL
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings:
+  - id: F1
+    basis: AC5
+    action: CODE_FIX
+    location: src/aios_renew/dispatch_reconciliation.py
+    issue: >
+      Dispatch-to-RUN attribution is inferred from the set of PRIMARY RUN ids that appear
+      after the dispatch record's pre-invocation snapshot, filtered only by TASK id and
+      Executor. That set difference is not proof that the RUN was created by this
+      dispatch. Between the durable snapshot and this dispatch reaching the existing
+      RepositoryLock/RUN-admission boundary, a separate direct `aios run` or another
+      `aios wakeup` for the same TASK and Executor can create the sole new RUN. If this
+      dispatch then fails before admitting its own RUN, `_finalize_invocation` can bind
+      that unrelated RUN to this dispatch; after a crash, `_reconcile` can likewise
+      classify the dispatch from the unrelated RUN's RESULT/FAILURE. This violates the
+      required crash/restart attribution boundary and the rule that uncertain attribution
+      must fail closed rather than guess.
+    expected: >
+      Make ownership of an attributable RUN deterministic at the existing canonical
+      PRIMARY admission boundary, or otherwise prove that a candidate RUN was created by
+      this exact dispatch before recording/replaying that attribution. Preserve the
+      existing Operator/Runtime authority, direct `aios run` behavior, TASK-062 sync,
+      exactly-one Executor invocation, and operational-only dispatch state. A concurrent
+      unrelated PRIMARY for the same TASK/Executor must never be accepted as this
+      dispatch's RUN; if exact ownership cannot be proven, reconciliation must remain
+      non-executing and blocked. Add deterministic race regressions covering at least a
+      competing direct PRIMARY / distinct dispatch appearing between the pre-invocation
+      snapshot and this dispatch's admission, including crash/restart reconciliation.
