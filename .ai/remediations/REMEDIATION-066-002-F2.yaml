@@ -1,0 +1,11 @@
+finding_id: F2
+action: CODE_FIX
+reviewed_sha: 605437ecbbc8b6976e5698e2af78459d103fcb78
+scope:
+  modify:
+    - docs/AIOS-ROADMAP.md
+    - tests/test_self_hosted_wakeup.py
+verification:
+  affected:
+    - python -m pytest tests/test_self_hosted_wakeup.py -q
+    - git diff --check
