@@ -34,6 +34,7 @@ _RECORD_KEYS = frozenset(
         "detail",
     }
 )
+_RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9_-]+-\d{3,}$")
 
 
 class DispatchError(RuntimeError):
@@ -72,6 +73,80 @@ class DispatchOutcome:
             f"replayed: {str(self.replayed).lower()}\n"
             f"detail: {self.detail}"
         )
+
+
+@dataclass(frozen=True)
+class DispatchStatus:
+    """Allowlisted read-only observation of one existing dispatch."""
+
+    dispatch_id: str
+    task_id: str
+    executor: str
+    stored_status: str
+    run_id: str | None
+    observed_run_state: str
+
+
+def inspect_dispatch(*, state_root: Path, dispatch_id: str) -> DispatchStatus:
+    """Read one dispatch and bounded RUN facts without reconciling or writing."""
+
+    _validate_dispatch_id(dispatch_id)
+    record_path = state_root / "dispatches" / f"{_dispatch_key(dispatch_id)}.json"
+    if not record_path.is_file():
+        raise DispatchError("dispatch record does not exist")
+    record = _read_record(record_path)
+    if record["dispatch_id"] != dispatch_id:
+        raise DispatchError("dispatch journal hash collision")
+
+    run_id = record["run_id"]
+    if run_id is None:
+        observed = "NOT_ATTRIBUTED"
+    else:
+        if not _RUN_ID_PATTERN.fullmatch(run_id):
+            raise DispatchError("invalid dispatch RUN attribution")
+        run_path = state_root / "runs" / f"{run_id}.json"
+        if not run_path.is_file():
+            observed = "RUN_RECORD_MISSING"
+        else:
+            _validate_attributed_run(run_path, record)
+            result_exists = (state_root / "results" / f"{run_id}.json").is_file()
+            failure_exists = (state_root / "failures" / f"{run_id}.json").is_file()
+            if result_exists and failure_exists:
+                observed = "TERMINAL_CONFLICT"
+            elif result_exists:
+                observed = "RESULT_AVAILABLE"
+            elif failure_exists:
+                observed = "FAILURE_AVAILABLE"
+            elif _operator_lock_is_held(state_root / "operator.lock"):
+                observed = "IN_PROGRESS"
+            else:
+                observed = "INCOMPLETE"
+
+    return DispatchStatus(
+        dispatch_id=record["dispatch_id"],
+        task_id=record["task_id"],
+        executor=record["executor"],
+        stored_status=record["status"],
+        run_id=run_id,
+        observed_run_state=observed,
+    )
+
+
+def _validate_attributed_run(path: Path, record: Mapping[str, Any]) -> None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise DispatchError("attributed RUN record is invalid") from exc
+    task = data.get("task") if isinstance(data, Mapping) else None
+    if (
+        not isinstance(data, Mapping)
+        or "kind" in data
+        or data.get("run_id") != record["run_id"]
+        or not isinstance(task, Mapping)
+        or task.get("id") != record["task_id"]
+        or data.get("executor") != record["executor"]
+    ):
+        raise DispatchError("attributed RUN record does not match dispatch")
 
 
 def execute_dispatch(
@@ -194,17 +269,19 @@ def bind_dispatch_run(
 
 
 def _validate_request(dispatch_id: str, task_id: str, executor: str) -> None:
-    if not isinstance(dispatch_id, str) or not DISPATCH_ID_PATTERN.fullmatch(
-        dispatch_id
-    ):
-        raise DispatchError(
-            "dispatch_id must be 1-128 ASCII letters, digits, '_' or '-', "
-            "starting with a letter or digit"
-        )
+    _validate_dispatch_id(dispatch_id)
     if not isinstance(task_id, str) or not TASK_ID_PATTERN.fullmatch(task_id):
         raise DispatchError(f"invalid task_id format: {task_id!r}")
     if executor not in SUPPORTED_EXECUTORS:
         raise DispatchError(f"unsupported executor: {executor!r}")
+
+
+def _validate_dispatch_id(dispatch_id: str) -> None:
+    if not isinstance(dispatch_id, str) or not DISPATCH_ID_PATTERN.fullmatch(dispatch_id):
+        raise DispatchError(
+            "dispatch_id must be 1-128 ASCII letters, digits, '_' or '-', "
+            "starting with a letter or digit"
+        )
 
 
 def _dispatch_key(dispatch_id: str) -> str:

@@ -27,6 +27,9 @@ class RemoteRemediationLineage:
     run: bytes
     result: bytes
     repair: bytes | None = None
+    commit_sha: str = ""
+    task_id: str = ""
+    task_revision: int = 0
 
 
 @dataclass(frozen=True)
@@ -315,6 +318,7 @@ def resolve_remote_remediation_lineages(
     finding_id: str,
     task_id: str | None = None,
     task_revision: int | None = None,
+    source_run_id: str | None = None,
 ) -> tuple[RemoteRemediationLineage, ...]:
     """Resolve all structurally complete remote lineages for one finding id.
 
@@ -322,6 +326,7 @@ def resolve_remote_remediation_lineages(
     operator, which then requires exactly one matching lineage.
     """
 
+    exact_source_requested = source_run_id is not None
     if not finding_id or "/" in finding_id or "\\" in finding_id:
         raise ReviewTransportError(f"invalid finding id: {finding_id!r}")
     if task_revision is not None and (
@@ -330,8 +335,18 @@ def resolve_remote_remediation_lineages(
         or task_revision < 1
     ):
         raise ReviewTransportError("invalid TASK revision")
+    if source_run_id is not None:
+        try:
+            source_prefix = _run_task_prefix(source_run_id)
+        except ReviewTransportError as exc:
+            raise ReviewTransportError("invalid source RUN id") from exc
+        if not re.fullmatch(rf"{re.escape(source_prefix)}\d{{3,}}", source_run_id):
+            raise ReviewTransportError("invalid source RUN id")
     remote = resolve_transport_remote(repo)
-    if task_id is not None:
+    if source_run_id is not None:
+        task_prefix = None
+        pattern = f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"
+    elif task_id is not None:
         task_prefix = task_run_prefix(task_id)
         pattern = f"refs/heads/aios/remediation/{task_prefix}*-{finding_id}"
     else:
@@ -362,6 +377,24 @@ def resolve_remote_remediation_lineages(
             continue
 
         artifacts_ref = f"refs/heads/aios/artifacts/{source_run_id}"
+        if exact_source_requested:
+            failure_ref = f"refs/heads/aios/failure-artifacts/{source_run_id}"
+            failure_code, failure_output, _ = _git_cmd(
+                repo, "ls-remote", "--refs", remote, failure_ref, allow_fail=True
+            )
+            if failure_code:
+                raise ReviewTransportError(
+                    f"failed to query canonical source state for {source_run_id}"
+                )
+            failure_lines = [item.split() for item in failure_output.splitlines()]
+            if failure_lines:
+                if any(len(item) != 2 for item in failure_lines):
+                    raise ReviewTransportError(
+                        f"canonical source state is malformed for {source_run_id}"
+                    )
+                raise ReviewTransportError(
+                    f"canonical source RUN has conflicting terminal artifacts: {source_run_id}"
+                )
         artifacts_code, artifacts_output, _ = _git_cmd(
             repo, "ls-remote", "--refs", remote, artifacts_ref, allow_fail=True
         )
@@ -434,6 +467,9 @@ def resolve_remote_remediation_lineages(
                 run=run,
                 result=result,
                 repair=repair,
+                commit_sha=commit_sha,
+                task_id=run_task_id,
+                task_revision=run_revision,
             )
         )
     return tuple(resolved)

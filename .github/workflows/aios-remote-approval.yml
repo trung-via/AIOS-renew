@@ -1,0 +1,71 @@
+name: AIOS exact remote remediation approval
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Canonical source RUN containing the reviewed RESULT"
+        required: true
+        type: string
+      finding_id:
+        description: "Exact CHANGES_REQUIRED finding identity"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aios-remote-approval
+  cancel-in-progress: false
+
+jobs:
+  approval:
+    runs-on: [self-hosted, windows, x64, aios-renew]
+    env:
+      AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}
+    steps:
+      - name: Preflight persistent environment
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AIOS_REPO_ROOT)) {
+            Write-Error "AIOS_REPO_ROOT repository variable is not configured."
+            exit 1
+          }
+          if (-not (Test-Path -LiteralPath $env:AIOS_REPO_ROOT -PathType Container)) {
+            Write-Error "The configured persistent repository is unavailable."
+            exit 1
+          }
+          git -C $env:AIOS_REPO_ROOT rev-parse --is-inside-work-tree
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "The configured persistent repository is invalid."
+            exit 1
+          }
+          if (-not (Get-Command aios -ErrorAction SilentlyContinue)) {
+            Write-Error "The bounded AIOS command is unavailable."
+            exit 1
+          }
+
+      - name: Record exact Human approval
+        env:
+          AIOS_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          AIOS_FINDING_ID: ${{ inputs.finding_id }}
+          AIOS_APPROVER: ${{ github.actor }}
+        shell: powershell
+        run: |
+          if ($env:AIOS_SOURCE_RUN_ID -notmatch '^RUN-[A-Za-z0-9_-]+-[0-9]{3,}$') {
+            Write-Error "Invalid source RUN identity."
+            exit 1
+          }
+          if ($env:AIOS_FINDING_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') {
+            Write-Error "Invalid finding identity."
+            exit 1
+          }
+          if ($env:AIOS_APPROVER -notmatch '^[A-Za-z0-9][A-Za-z0-9_\-\[\]]{0,99}$') {
+            Write-Error "Invalid trusted approver attribution."
+            exit 1
+          }
+          aios remote-approve $env:AIOS_SOURCE_RUN_ID $env:AIOS_FINDING_ID --approver $env:AIOS_APPROVER --repo $env:AIOS_REPO_ROOT
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }

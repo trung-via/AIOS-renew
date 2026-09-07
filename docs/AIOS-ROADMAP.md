@@ -142,7 +142,7 @@ A-Series does not block Python Agent product development. It provides subordinat
 
 1. **A1 — GitHub Actions Self-hosted Wakeup**: remote Human/Brain trigger to canonical Operator execution on a designated Windows self-hosted runner. Implemented by TASK-066 (`.github/workflows/aios-self-hosted-wakeup.yml`).
 2. **A2 — Durable Dispatch Identity + Reconciliation — DONE**: duplicate event becomes deterministic no-op; crash/restart remains attributable. Semantics established by TASK-068 and integrated onto the published current-main lineage by TASK-073 (`aios wakeup` plus repository-local `.git/aios` dispatch state).
-3. **A3 — Remote Status / Approval Surface**: expose useful execution state without creating authority. Separately gated.
+3. **A3 — Remote Status / Approval Surface — DONE BY TASK-074 UPON PUBLICATION**: bounded read-only dispatch observation and exact SHA-bound Human remediation approval, with no execution authority. This completion is authoritative only when the TASK-074 candidate is semantically reviewed PASS and published.
 4. **A4 — Transport Extraction**: replace the compatibility transport only after the outer mechanism proves parity, then remove obsolete transport code. Separately gated.
 5. **A5 — Evidence Bundle Strengthening**: only where measured gaps justify additional evidence packaging. Separately gated.
 6. **A6 — Automated REVIEW-to-REMEDIATION Wakeup**: outer automation preserves narrow correction authority. Separately gated.
@@ -151,7 +151,7 @@ A-Series does not block Python Agent product development. It provides subordinat
 9. **A9 — Low-risk Zero-touch Lane**: only after measured reliability and bounded authority are demonstrated. Separately gated.
 10. **A10 — Scale**: only when measured ROI justifies additional concurrency or agent use. Separately gated.
 
-A3, A4, A5, A6, A7, A9, and A10 remain separately gated. A2 dispatch attribution remains operational-only and does not pre-authorize A3 remote status/approval authority.
+A4, A5, A6, A7, A9, and A10 remain separately gated. A2 dispatch attribution and A3 approval remain operational-only; neither creates execution, review, correction, verification, recovery, transport, or publication authority.
 
 ## H-Series — Optional Efficiency Track
 
@@ -198,8 +198,9 @@ Outer Automation Track:
 DONE: A8 Safe Publisher (TASK-063)
 DONE: A1 GitHub Actions Self-hosted Wakeup (TASK-066)
 DONE: A2 Durable Dispatch Identity + Reconciliation (TASK-068, current-main integration TASK-073)
+DONE UPON PASS PUBLICATION: A3 Remote Status / Approval Surface (TASK-074)
         ↓
-SEPARATELY GATED: A3–A7, A9–A10
+SEPARATELY GATED: A4–A7, A9–A10
         ↓
 RETURN TO PYTHON AGENT
 ```

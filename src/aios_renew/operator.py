@@ -391,11 +391,7 @@ def describe_task(task_id: str, *, repo: str | Path | None = None) -> TaskSummar
 
 def runtime_paths(repo: str | Path) -> RuntimePaths:
     root = Path(repo).resolve()
-    git_dir_value = _git(root, "rev-parse", "--git-dir")
-    git_dir = Path(git_dir_value)
-    if not git_dir.is_absolute():
-        git_dir = root / git_dir
-    state_root = git_dir.resolve() / "aios"
+    state_root = runtime_state_root(root)
     paths = RuntimePaths(
         root=state_root,
         runs=state_root / "runs",
@@ -424,6 +420,17 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
     ):
         path.mkdir(parents=True, exist_ok=True)
     return paths
+
+
+def runtime_state_root(repo: str | Path) -> Path:
+    """Resolve repository-local Git runtime state without creating it."""
+
+    root = Path(repo).resolve()
+    git_dir_value = _git(root, "rev-parse", "--git-dir")
+    git_dir = Path(git_dir_value)
+    if not git_dir.is_absolute():
+        git_dir = root / git_dir
+    return git_dir.resolve() / "aios"
 
 
 def next_run_id(
@@ -3040,6 +3047,18 @@ def _parser() -> argparse.ArgumentParser:
         "--executor", required=True, choices=("codex", "antigravity")
     )
     wakeup_parser.add_argument("--repo")
+    status_parser = commands.add_parser(
+        "remote-status", help="Inspect one existing dispatch without mutation"
+    )
+    status_parser.add_argument("dispatch_id")
+    status_parser.add_argument("--repo")
+    approval_parser = commands.add_parser(
+        "remote-approve", help="Record exact Human remediation approval"
+    )
+    approval_parser.add_argument("source_run_id")
+    approval_parser.add_argument("finding_id")
+    approval_parser.add_argument("--approver", required=True)
+    approval_parser.add_argument("--repo")
     remediation_parser = commands.add_parser(
         "remediate", help="Execute one canonical narrow REMEDIATION"
     )
@@ -3165,6 +3184,44 @@ def main(
             )
             print(outcome.render())
             return outcome.exit_code
+        elif args.command == "remote-status":
+            from .remote_surface import RemoteSurfaceError, remote_status
+
+            try:
+                repo_root = resolve_repository(args.repo)
+                summary = remote_status(
+                    repo=repo_root,
+                    state_root=runtime_state_root(repo_root),
+                    dispatch_id=args.dispatch_id,
+                )
+            except (OperatorError, RemoteSurfaceError) as exc:
+                message = (
+                    str(exc)
+                    if isinstance(exc, RemoteSurfaceError)
+                    else "status repository is unavailable"
+                )
+                raise OperatorError(message) from exc
+            print(summary.render())
+        elif args.command == "remote-approve":
+            from .remote_surface import RemoteSurfaceError, record_remote_approval
+
+            try:
+                repo_root = resolve_repository(args.repo)
+                summary = record_remote_approval(
+                    repo=repo_root,
+                    state_root=runtime_state_root(repo_root),
+                    source_run_id=args.source_run_id,
+                    finding_id=args.finding_id,
+                    approver=args.approver,
+                )
+            except (OperatorError, RemoteSurfaceError) as exc:
+                message = (
+                    str(exc)
+                    if isinstance(exc, RemoteSurfaceError)
+                    else "approval repository is unavailable"
+                )
+                raise OperatorError(message) from exc
+            print(summary.render())
         elif args.command == "remediate":
             summary = run_remediation(
                 args.task_id,

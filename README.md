@@ -62,7 +62,7 @@ Trigger through GitHub's workflow-dispatch surfaces:
   ```
 - **GitHub REST API**: `POST /repos/{owner}/{repo}/actions/workflows/aios-self-hosted-wakeup.yml/dispatches` with `ref` and `inputs` containing exactly `dispatch_id`, `task_id`, and `executor`.
 
-Before the first PRIMARY call, A2 stores a path-safe, hashed dispatch record under repository-local `.git/aios/dispatches`. This is operational control/telemetry state outside the product worktree and canonical artifact schemas. It provides delivery and RUN attribution only; it is not TASK truth, RESULT/EVIDENCE, review input, publication proof, or semantic completion truth. Future A3 remote status/approval authority is a separate gate.
+Before the first PRIMARY call, A2 stores a path-safe, hashed dispatch record under repository-local `.git/aios/dispatches`. This is operational control/telemetry state outside the product worktree and canonical artifact schemas. It provides delivery and RUN attribution only; it is not TASK truth, RESULT/EVIDENCE, review input, publication proof, or semantic completion truth. The separate A3 status surface can observe this record but cannot reconcile or mutate it.
 
 A duplicate terminal delivery performs no re-execution. A successful dispatch returns the same dispatch/RUN attribution with success; a failed dispatch preserves its prior nonzero outcome. Reusing a `dispatch_id` with a different TASK or Executor fails closed. After a process or host interruption, re-delivery only observes the recorded pre-invocation RUN namespace and canonical `.git/aios` RUN/RESULT/FAILURE state. It can link one uniquely attributable terminal RUN, report an execution still in progress, or return reconciliation blocked. This is attribution and no re-execution, not automatic retry or recovery: it never starts a second RUN, invokes an Executor again, repairs an incomplete RUN, or synthesizes terminal artifacts.
 
@@ -73,6 +73,45 @@ Because AIOS-renew is a public repository and self-hosted runners run on a host 
 - The workflow never checks out or runs an event-controlled ref.
 - `dispatch_id`, `task_id`, and `executor` enter PowerShell only through environment data bindings. The bounded dispatch id is hashed for journal filenames and never becomes a path, Git ref, command, or authority token.
 - The runner should be a dedicated repository runner labeled `aios-renew` rather than shared with unrelated or untrusted public repositories.
+
+
+## Bounded Remote Status and Human Approval
+
+A3 adds two separate manual GitHub Actions surfaces on the same dedicated
+self-hosted runner. They do not extend the wakeup workflow and do not provide a
+generic operation selector:
+
+- `.github/workflows/aios-remote-status.yml` accepts only an existing A2
+  `dispatch_id`. It reads the hashed repository-local dispatch record and reports
+  an allowlisted request binding (`dispatch`, `task`, and `executor`), its stored
+  dispatch status, its attributed RUN when present, and one bounded observed RUN
+  classification. The classification distinguishes no attribution, missing RUN
+  state, in-progress or incomplete state, RESULT, FAILURE, and conflicting terminal
+  artifacts. Status does not reconcile or rewrite the dispatch, read raw logs, or
+  expose prompts, credentials, environment values, arbitrary files, or local paths.
+- `.github/workflows/aios-remote-approval.yml` accepts exactly `source_run_id` and
+  `finding_id`. The approver is derived from the trusted `github.actor` event
+  context; TASK identity/revision, REVIEW identity, action, reviewed RESULT SHA,
+  remediation ref, and remediation commit SHA are derived from canonical lineage.
+  The command requires exactly one current, contract-valid `CHANGES_REQUIRED`
+  REVIEW/finding/REMEDIATION lineage for that source RUN and exact current remote
+  remediation ref. Same-name findings under another source RUN are not candidates.
+
+Approval is stored only in path-safe, content-addressed `.git/aios/approvals`
+operational state. It binds the Human attribution and the exact immutable
+remediation commit SHA as well as the source RUN/TASK/review/finding/action/reviewed
+SHA. Repeating the identical approval is idempotent. If the canonical remediation
+ref later moves to a different commit, the earlier SHA-bound record is stale for
+that ref and cannot authorize the changed content; a new Human approval is required.
+
+Both workflows are `workflow_dispatch`-only, request only `contents: read`, run only
+on `[self-hosted, windows, x64, aios-renew]`, use the fixed `AIOS_REPO_ROOT`
+repository variable, perform no checkout, and pass workflow/event values through
+environment data bindings. Neither status nor approval invokes PRIMARY, a coding
+Executor, verification, reconciliation writes, remediation, repair, recovery,
+transport, retry, or publication. In particular, approval records authorization
+only: it does not choose an Executor, create an approve-and-run path, or execute the
+correction.
 
 
 ## Canonical remediation

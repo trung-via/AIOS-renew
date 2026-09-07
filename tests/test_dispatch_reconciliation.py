@@ -402,6 +402,22 @@ def test_dispatch_id_is_hashed_not_used_as_a_path(tmp_path: Path) -> None:
     assert len(record_path.stem) == 64
 
 
+def test_inspect_dispatch_is_observational_and_does_not_reconcile(tmp_path: Path) -> None:
+    state_root = tmp_path / ".git" / "aios"
+    crash_after_started(state_root)
+    record_path = next((state_root / "dispatches").glob("*.json"))
+    before = record_path.read_bytes()
+
+    status = dispatch.inspect_dispatch(
+        state_root=state_root, dispatch_id="delivery-068"
+    )
+
+    assert status.stored_status == "STARTED"
+    assert status.run_id is None
+    assert status.observed_run_state == "NOT_ATTRIBUTED"
+    assert record_path.read_bytes() == before
+
+
 @pytest.mark.parametrize(
     "terminal_directory",
     ["results", "failures"],

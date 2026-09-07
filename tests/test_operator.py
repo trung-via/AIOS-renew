@@ -29,7 +29,9 @@ from aios_renew.operator import (
     run_remediation,
     run_task,
     runtime_paths,
+    runtime_state_root,
 )
+from aios_renew.remote_surface import RemoteSurfaceError, record_remote_approval
 
 
 def hold_repository_lock(lock_path: str, ready, release) -> None:
@@ -5894,6 +5896,134 @@ def test_remediation_ignores_unrelated_cross_task_collision_and_preserves_admiss
     assert summary.head_sha != baseline
     assert len(runner.calls) == 1
     assert git(repo, "status", "--porcelain") == ""
+
+
+def test_remote_approval_binds_exact_source_lineage_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    ref = publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+    )
+    state_root = runtime_state_root(repo)
+
+    first = record_remote_approval(
+        repo=repo,
+        state_root=state_root,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        approver="human-reviewer",
+    )
+    approval_path = next((state_root / "approvals").glob("*.json"))
+    before = approval_path.read_bytes()
+    second = record_remote_approval(
+        repo=repo,
+        state_root=state_root,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        approver="human-reviewer",
+    )
+    record = json.loads(before)
+
+    assert first.replayed is False
+    assert second.replayed is True
+    assert approval_path.read_bytes() == before
+    assert record == {
+        "version": 1,
+        "source_run_id": "RUN-101-000",
+        "task_id": "TASK-101",
+        "task_revision": 1,
+        "review_id": "REVIEW-RUN-101-000",
+        "finding_id": "R1",
+        "action": "CODE_FIX",
+        "reviewed_sha": first.reviewed_sha,
+        "remediation_ref": ref,
+        "remediation_sha": first.remediation_sha,
+        "approver": "human-reviewer",
+    }
+
+
+def test_remote_approval_ignores_unrelated_same_finding_and_sha_change_is_new_authority(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-041-002",
+        finding_id="R1",
+        task_id="TASK-041",
+        extra_reviews=1,
+    )
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+    )
+    state_root = runtime_state_root(repo)
+    first = record_remote_approval(
+        repo=repo,
+        state_root=state_root,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        approver="human-reviewer",
+    )
+
+    author = tmp_path / "author-RUN-101-000-R1"
+    (author / "lineage-note.txt").write_text("new immutable content\n", encoding="utf-8")
+    git(author, "add", "lineage-note.txt")
+    git(author, "commit", "--quiet", "-m", "advance exact remediation ref")
+    git(
+        author,
+        "push",
+        "--quiet",
+        "--force",
+        "origin",
+        "HEAD:refs/heads/aios/remediation/RUN-101-000-R1",
+    )
+
+    second = record_remote_approval(
+        repo=repo,
+        state_root=state_root,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        approver="human-reviewer",
+    )
+    records = [json.loads(path.read_text(encoding="utf-8")) for path in (state_root / "approvals").glob("*.json")]
+    assert second.remediation_sha != first.remediation_sha
+    assert len(records) == 2
+    assert {item["remediation_sha"] for item in records} == {
+        first.remediation_sha,
+        second.remediation_sha,
+    }
+
+
+def test_remote_approval_malformed_exact_lineage_fails_without_authority(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        extra_reviews=1,
+    )
+    state_root = runtime_state_root(repo)
+
+    with pytest.raises(RemoteSurfaceError, match="lineage is missing"):
+        record_remote_approval(
+            repo=repo,
+            state_root=state_root,
+            source_run_id="RUN-101-000",
+            finding_id="R1",
+            approver="human-reviewer",
+        )
+    assert not (state_root / "approvals").exists()
 
 
 def test_remediation_lineage_from_different_revision_is_not_candidate(
