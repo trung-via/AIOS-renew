@@ -846,3 +846,447 @@ def test_historical_code_fix_with_unusable_local_sidecar(
     assert summary.failed_head_sha == failure["failed_head_sha"]
     assert summary.head_sha != failure["failed_head_sha"]
 
+MULTI_TASK_SOURCE = """
+task_id: TASK-102
+revision: 1
+goal: Exercise REPAIR pre-verification eligibility with distinct changed-files authorities.
+problem: Preserve NO_CHANGE reuse after CODE_FIX failure.
+assumptions: []
+scope:
+  inspect: []
+  modify: [DOC.txt, OUTPUT.txt]
+non_goals: []
+constraints:
+  hard: [Commit the output.]
+acceptance:
+  - id: AC1
+    condition: The requested repair is complete.
+verification:
+  required: [git status --porcelain]
+"""
+
+
+def make_multi_repo(root: Path) -> Path:
+    repo = root / "repo"
+    repo.mkdir()
+    git(repo, "init", "--quiet")
+    git(repo, "config", "user.name", "Eligibility Test")
+    git(repo, "config", "user.email", "eligibility@example.invalid")
+    git(repo, "branch", "-M", "main")
+    task_dir = repo / ".ai" / "tasks"
+    task_dir.mkdir(parents=True)
+    (task_dir / "TASK-102.yaml").write_text(MULTI_TASK_SOURCE, encoding="utf-8")
+    (repo / "README.md").write_text("# multi eligibility test\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "baseline")
+    upstream = root / "upstream.git"
+    subprocess.run(("git", "init", "--bare", "--quiet", str(upstream)), check=True)
+    git(repo, "remote", "add", "origin", str(upstream))
+    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
+    return repo
+
+
+class MultiPrimaryRunner:
+    def __init__(self, repo: Path) -> None:
+        self.repo = repo
+        self.calls = 0
+
+    def __call__(self, command, **kwargs):
+        self.calls += 1
+        (self.repo / "DOC.txt").write_text("initial doc\n", encoding="utf-8")
+        git(self.repo, "add", "DOC.txt")
+        git(self.repo, "commit", "--quiet", "-m", "initial primary doc")
+        head = git(self.repo, "rev-parse", "HEAD")
+        payload = {
+            "result": {
+                "head_sha": head,
+                "claims": [{
+                    "id": "C1",
+                    "satisfies": ["AC1"],
+                    "claim": "Initial primary attempt.",
+                    "evidence": [],
+                }],
+                "changed_files": ["DOC.txt"],
+                "unresolved": [],
+            },
+            "evidence": [],
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+
+class MultiCodeFixRunner:
+    def __init__(self, repo: Path) -> None:
+        self.repo = repo
+        self.calls = 0
+
+    def __call__(self, command, **kwargs):
+        self.calls += 1
+        execution = json.loads(
+            kwargs["input"].decode("utf-8").split("REPAIR_INPUT:\n", 1)[1]
+        )
+        target_repo = Path(execution["run"]["workspace"])
+        (target_repo / "OUTPUT.txt").write_text("corrected output\n", encoding="utf-8")
+        git(target_repo, "add", "OUTPUT.txt")
+        git(target_repo, "commit", "--quiet", "-m", "code fix output")
+        head = git(target_repo, "rev-parse", "HEAD")
+        payload = {
+            "result": {
+                "head_sha": head,
+                "claims": [{
+                    "id": "C1",
+                    "satisfies": ["AC1"],
+                    "claim": "The repair is complete.",
+                    "evidence": [],
+                }],
+                "changed_files": ["OUTPUT.txt"],
+                "unresolved": [],
+            },
+            "evidence": [],
+        }
+        assert execution["repair"]["action"] == "CODE_FIX"
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+
+def _setup_multi_continuation_topology(
+    tmp_path: Path,
+) -> tuple[Path, list[str]]:
+    """Helper to set up Steps 1 to 3 of the AC5 continuation topology."""
+    repo = make_multi_repo(tmp_path)
+    v_calls = []
+
+    def failing_verification(command, **kwargs):
+        v_calls.append("fail")
+        return subprocess.CompletedProcess(
+            command, 1, b"", b"canonical verification failed\n"
+        )
+
+    # Step 1: PRIMARY fails at canonical verification
+    primary_runner = MultiPrimaryRunner(repo)
+    with pytest.raises(OperatorError, match="exit code 1"):
+        run_task(
+            "TASK-102",
+            executor="codex",
+            repo=repo,
+            native_runner=primary_runner,
+            verification_runner=failing_verification,
+        )
+
+    state = runtime_paths(repo)
+    primary_failure = json.loads(
+        (state.failures / "RUN-102-001.json").read_text(encoding="utf-8")
+    )
+
+    # Step 2: NO_CHANGE fails at canonical verification
+    no_change_auth_1 = {
+        "repair_id": "REPAIR-102-001",
+        "failed_run_id": "RUN-102-001",
+        "failed_head_sha": primary_failure["failed_head_sha"],
+        "task": {"id": "TASK-102", "revision": 1},
+        "action": "NO_CHANGE",
+        "modification_scope": [],
+        "instructions": ["Re-run verification only."],
+        "constraints": ["Commit the output."],
+    }
+
+    def forbidden_executor(*args, **kwargs):
+        raise AssertionError("Executor must not be invoked for eligible NO_CHANGE reuse")
+
+    with pytest.raises(OperatorError, match="exit code 1"):
+        run_repair(
+            "RUN-102-001",
+            executor="codex",
+            repo=repo,
+            repair=no_change_auth_1,
+            native_runner=forbidden_executor,
+            verification_runner=failing_verification,
+        )
+
+    second_failure = json.loads(
+        (state.failures / "RUN-102-002.json").read_text(encoding="utf-8")
+    )
+
+    # Step 3: CODE_FIX dispatches once and fails during canonical verification
+    code_fix_auth = {
+        "repair_id": "REPAIR-102-002",
+        "failed_run_id": "RUN-102-002",
+        "failed_head_sha": second_failure["failed_head_sha"],
+        "task": {"id": "TASK-102", "revision": 1},
+        "action": "CODE_FIX",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Apply authorized code fix."],
+        "constraints": ["Commit the output."],
+    }
+    code_fix_runner = MultiCodeFixRunner(repo)
+
+    with pytest.raises(OperatorError, match="exit code 1"):
+        run_repair(
+            "RUN-102-002",
+            executor="codex",
+            repo=repo,
+            repair=code_fix_auth,
+            native_runner=code_fix_runner,
+            verification_runner=failing_verification,
+        )
+
+    assert code_fix_runner.calls == 1
+    return repo, v_calls
+
+
+def test_continuation_topology_primary_fail_no_change_fail_code_fix_fail_no_change_succeeds(
+    tmp_path: Path,
+) -> None:
+    """AC1, AC2, AC3, AC5, AC6, AC7: Full deterministic continuation topology:
+    PRIMARY canonical verification failure -> eligible NO_CHANGE continuation whose canonical
+    verification fails -> authorized CODE_FIX REPAIR that dispatches its selected Executor
+    exactly once and itself fails only during canonical verification -> final explicitly
+    authorized NO_CHANGE continuation that is admissible when its preserved pre-verification
+    candidate is valid despite correction-relative versus root-relative changed-files inequality.
+    """
+    repo, v_calls = _setup_multi_continuation_topology(tmp_path)
+    state = runtime_paths(repo)
+
+    primary_failure = json.loads(
+        (state.failures / "RUN-102-001.json").read_text(encoding="utf-8")
+    )
+    second_failure = json.loads(
+        (state.failures / "RUN-102-002.json").read_text(encoding="utf-8")
+    )
+    third_failure = json.loads(
+        (state.failures / "RUN-102-003.json").read_text(encoding="utf-8")
+    )
+
+    # Verify Step 3 properties
+    assert third_failure["phase"] == "VERIFICATION"
+    assert third_failure["continuation_of"] == "RUN-102-002"
+    assert third_failure["failed_head_sha"] != second_failure["failed_head_sha"]
+    assert third_failure["base_sha"] == second_failure["failed_head_sha"]
+    assert third_failure["candidate"]["repairable"] is True
+    assert third_failure["candidate"]["transportable"] is True
+    # AC3: FAILURE candidate.changed_files retains narrow per-RUN correction-relative authority
+    assert third_failure["candidate"]["changed_files"] == ["OUTPUT.txt"]
+
+    third_sidecar = json.loads(
+        (state.preverification / "RUN-102-003.json").read_text(encoding="utf-8")
+    )
+    # AC1: Preserved pre-verification ResultPackage has full root_base_sha-to-subject authority
+    assert third_sidecar["package"]["result"]["changed_files"] == ["DOC.txt", "OUTPUT.txt"]
+    # Distinct changed-files authorities: inequality between correction delta and root delta
+    assert (
+        third_failure["candidate"]["changed_files"]
+        != third_sidecar["package"]["result"]["changed_files"]
+    )
+
+    # Step 4: Final explicitly authorized NO_CHANGE continuation
+    no_change_auth_2 = {
+        "repair_id": "REPAIR-102-003",
+        "failed_run_id": "RUN-102-003",
+        "failed_head_sha": third_failure["failed_head_sha"],
+        "task": {"id": "TASK-102", "revision": 1},
+        "action": "NO_CHANGE",
+        "modification_scope": [],
+        "instructions": ["Re-run canonical verification only."],
+        "constraints": ["Commit the output."],
+    }
+    final_executors = []
+
+    def final_forbidden_executor(*args, **kwargs):
+        final_executors.append(args)
+        raise AssertionError(
+            "Executor must not be invoked for final eligible NO_CHANGE reuse"
+        )
+
+    def passing_verification(command, **kwargs):
+        v_calls.append("pass")
+        return subprocess.CompletedProcess(command, 0, b"clean\n", b"")
+
+    summary = run_repair(
+        "RUN-102-003",
+        executor="codex",
+        repo=repo,
+        repair=no_change_auth_2,
+        native_runner=final_forbidden_executor,
+        verification_runner=passing_verification,
+    )
+
+    # AC7: Final eligible NO_CHANGE continuation invokes zero native Executors
+    assert final_executors == []
+    # AC7: Runs the canonical TASK verification list exactly once
+    assert v_calls[-1] == "pass"
+    assert len(v_calls) == 4
+    assert summary.run_id == "RUN-102-004"
+    assert summary.failed_head_sha == third_failure["failed_head_sha"]
+    assert summary.head_sha == third_failure["failed_head_sha"]
+
+    # AC2: Canonical REPAIR Result.changed_files remains complete stable original TASK delta
+    final_result_record = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    assert final_result_record["result"]["head_sha"] == summary.head_sha
+    assert final_result_record["result"]["changed_files"] == ["DOC.txt", "OUTPUT.txt"]
+    assert git(repo, "rev-parse", "HEAD") == summary.head_sha
+
+    # AC3: Predecessor FAILURE candidate.changed_files retains narrow delta without expansion
+    predecessor_record = json.loads(
+        (state.failures / "RUN-102-003.json").read_text(encoding="utf-8")
+    )
+    assert predecessor_record["candidate"]["changed_files"] == ["OUTPUT.txt"]
+
+    # AC6: Preserves exact latest failed_head_sha, continuation_of, original root_base_sha,
+    # TASK id/revision, historical/correction lineage, and subject identity at every step
+    r1 = json.loads((state.runs / "RUN-102-001.json").read_text(encoding="utf-8"))
+    assert r1["base_sha"] == primary_failure["base_sha"]
+    assert r1["task"] == {"id": "TASK-102", "revision": 1}
+
+    rep2 = json.loads((state.repairs / "RUN-102-002.json").read_text(encoding="utf-8"))
+    assert rep2["failed_run_id"] == "RUN-102-001"
+    assert rep2["failed_head_sha"] == primary_failure["failed_head_sha"]
+    assert rep2["root_base_sha"] == primary_failure["base_sha"]
+    assert rep2["task"]["task_id"] == "TASK-102"
+    assert rep2["task"]["revision"] == 1
+
+    rep3 = json.loads((state.repairs / "RUN-102-003.json").read_text(encoding="utf-8"))
+    assert rep3["failed_run_id"] == "RUN-102-002"
+    assert rep3["failed_head_sha"] == second_failure["failed_head_sha"]
+    assert rep3["root_base_sha"] == primary_failure["base_sha"]
+    assert rep3["task"]["task_id"] == "TASK-102"
+    assert rep3["task"]["revision"] == 1
+
+    rep4 = json.loads((state.repairs / "RUN-102-004.json").read_text(encoding="utf-8"))
+    assert rep4["failed_run_id"] == "RUN-102-003"
+    assert rep4["failed_head_sha"] == third_failure["failed_head_sha"]
+    assert rep4["root_base_sha"] == primary_failure["base_sha"]
+    assert rep4["task"]["task_id"] == "TASK-102"
+    assert rep4["task"]["revision"] == 1
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "narrow_files_only",
+        "outside_task_scope",
+        "wrong_subject",
+        "wrong_task",
+        "incomplete",
+        "coverage",
+        "conflicting_historical",
+    ],
+)
+def test_no_change_after_code_fix_fails_closed_on_invalid_reusable_package(
+    tmp_path: Path, defect: str
+) -> None:
+    """AC4: Genuine NO_CHANGE reuse fails closed before canonical verification when the
+    preserved pre-verification package itself has an invalid full-TASK changed-files set,
+    wrong subject/head, wrong TASK/revision, malformed or conflicting local/transported state,
+    incomplete ResultPackage, or incomplete TASK acceptance coverage; no Executor fallback occurs.
+    """
+    repo, _ = _setup_multi_continuation_topology(tmp_path)
+    state = runtime_paths(repo)
+    sidecar_path = state.preverification / "RUN-102-003.json"
+    third_failure = json.loads(
+        (state.failures / "RUN-102-003.json").read_text(encoding="utf-8")
+    )
+
+    if defect == "conflicting_historical":
+        transport_failure(
+            repo,
+            run_id="RUN-102-003",
+            head_sha=third_failure["failed_head_sha"],
+            run_path=state.runs / "RUN-102-003.json",
+            failure_path=state.failures / "RUN-102-003.json",
+            publish_candidate=True,
+            preverification_path=sidecar_path,
+        )
+        (repo / "ADVANCE.txt").write_text("advance\n", encoding="utf-8")
+        git(repo, "add", "ADVANCE.txt")
+        git(repo, "commit", "--quiet", "-m", "advance main")
+        sidecar_path.write_bytes(b'{"conflicting": "different_sidecar"}')
+    else:
+        data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        if defect == "narrow_files_only":
+            # Invalid full-TASK changed files: only the narrow correction delta, not full delta
+            data["package"]["result"]["changed_files"] = ["OUTPUT.txt"]
+        elif defect == "outside_task_scope":
+            data["package"]["result"]["changed_files"] = ["DOC.txt", "OUTPUT.txt", "FOREIGN.txt"]
+        elif defect == "wrong_subject":
+            data["subject_sha"] = "0" * 40
+        elif defect == "wrong_task":
+            data["task"]["revision"] = 2
+        elif defect == "incomplete":
+            data["package"]["result"]["unresolved"] = ["unresolved issue"]
+        elif defect == "coverage":
+            data["package"]["result"]["claims"] = []
+        sidecar_path.write_text(json.dumps(data), encoding="utf-8")
+
+    no_change_auth = {
+        "repair_id": "REPAIR-102-003",
+        "failed_run_id": "RUN-102-003",
+        "failed_head_sha": third_failure["failed_head_sha"],
+        "task": {"id": "TASK-102", "revision": 1},
+        "action": "NO_CHANGE",
+        "modification_scope": [],
+        "instructions": ["Re-run canonical verification only."],
+        "constraints": ["Commit the output."],
+    }
+    calls = []
+    with pytest.raises(OperatorError):
+        run_repair(
+            "RUN-102-003",
+            executor="codex",
+            repo=repo,
+            repair=no_change_auth,
+            native_runner=lambda *args, **kwargs: calls.append("executor"),
+            verification_runner=lambda *args, **kwargs: calls.append("verification"),
+        )
+
+    # Fails closed: zero native executors, zero verification runs, no RUN-102-004 created
+    assert calls == []
+    assert not (state.runs / "RUN-102-004.json").exists()
+
+
+def test_eligible_reusable_repair_package_direct_check_with_distinct_authorities(
+    tmp_path: Path,
+) -> None:
+    """AC1: Direct validation of _eligible_reusable_repair_package proves an eligible
+    NO_CHANGE continuation after CODE_FIX failure is admitted when package.result.changed_files
+    matches full root-to-subject Git authority while candidate.changed_files matches
+    narrow per-RUN Git authority.
+    """
+    repo, _ = _setup_multi_continuation_topology(tmp_path)
+    state = runtime_paths(repo)
+    sidecar_content = (state.preverification / "RUN-102-003.json").read_bytes()
+    third_failure = json.loads(
+        (state.failures / "RUN-102-003.json").read_text(encoding="utf-8")
+    )
+    primary_failure = json.loads(
+        (state.failures / "RUN-102-001.json").read_text(encoding="utf-8")
+    )
+    task = load_task(repo, "TASK-102")
+
+    # Valid pre-verification package returned despite inequality between authorities
+    package = _eligible_reusable_repair_package(
+        sidecar_content,
+        task=task,
+        failed_run_id="RUN-102-003",
+        failure=third_failure,
+        action="NO_CHANGE",
+        scope=[],
+        repo=repo,
+        root_base_sha=primary_failure["base_sha"],
+    )
+    assert package is not None
+    assert list(package.result.changed_files) == ["DOC.txt", "OUTPUT.txt"]
+    assert third_failure["candidate"]["changed_files"] == ["OUTPUT.txt"]
+
+    # Fails closed if package.result.changed_files contains only narrow delta
+    tampered_data = json.loads(sidecar_content.decode("utf-8"))
+    tampered_data["package"]["result"]["changed_files"] = ["OUTPUT.txt"]
+    with pytest.raises(OperatorError, match="pre-verification candidate changed-files mismatch"):
+        _eligible_reusable_repair_package(
+            json.dumps(tampered_data).encode(),
+            task=task,
+            failed_run_id="RUN-102-003",
+            failure=third_failure,
+            action="NO_CHANGE",
+            scope=[],
+            repo=repo,
+            root_base_sha=primary_failure["base_sha"],
+        )
+

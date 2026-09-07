@@ -1425,6 +1425,8 @@ def _run_repair_impl(
             action=action,
             scope=scope,
             local_content=local_preverification if historical else None,
+            repo=repo,
+            root_base_sha=root_base_sha,
         )
 
     with RepositoryLock(state.lock):
@@ -1694,6 +1696,8 @@ def _eligible_reusable_repair_package(
     action: str,
     scope: list[str],
     local_content: bytes | None = None,
+    repo: Path | None = None,
+    root_base_sha: str | None = None,
 ) -> ResultPackage | None:
     """Fail closed on present state and admit only exact verification reuse."""
 
@@ -1727,8 +1731,42 @@ def _eligible_reusable_repair_package(
         isinstance(item, str) and item for item in changed_files
     ):
         raise OperatorError("invalid pre-verification candidate changed-files binding")
-    if list(package.result.changed_files) != changed_files:
-        raise OperatorError("pre-verification candidate changed-files mismatch")
+    if repo is not None:
+        resolved_root_base = root_base_sha
+        if resolved_root_base is None and failure.get("continuation_of") is None:
+            resolved_root_base = failure.get("base_sha")
+        if not isinstance(resolved_root_base, str) or not resolved_root_base:
+            raise OperatorError("invalid original TASK root lineage")
+        actual_root_changed = _committed_changed_files(
+            repo, resolved_root_base, failed_head
+        )
+        if set(package.result.changed_files) != actual_root_changed or len(
+            package.result.changed_files
+        ) != len(actual_root_changed):
+            raise OperatorError("pre-verification candidate changed-files mismatch")
+        if actual_root_changed.difference(task.scope.modify):
+            raise OperatorError("pre-verification candidate changed-files mismatch")
+        failed_base = failure.get("base_sha")
+        if not isinstance(failed_base, str) or not failed_base:
+            raise OperatorError("invalid failed candidate base")
+        actual_candidate_changed = _committed_changed_files(
+            repo, failed_base, failed_head
+        )
+        if set(changed_files) != actual_candidate_changed or len(changed_files) != len(
+            actual_candidate_changed
+        ):
+            raise OperatorError(
+                "invalid pre-verification candidate changed-files binding"
+            )
+    else:
+        if set(package.result.changed_files).difference(task.scope.modify):
+            raise OperatorError("pre-verification candidate changed-files mismatch")
+        if (
+            failure.get("continuation_of") is None
+            and (root_base_sha is None or root_base_sha == failure.get("base_sha"))
+        ):
+            if list(package.result.changed_files) != changed_files:
+                raise OperatorError("pre-verification candidate changed-files mismatch")
     if (
         failure.get("phase") != "VERIFICATION"
         or candidate.get("repairable") is not True
