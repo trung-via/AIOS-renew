@@ -3,6 +3,10 @@ name: AIOS self-hosted primary wakeup
 on:
   workflow_dispatch:
     inputs:
+      dispatch_id:
+        description: "Stable delivery identity (reuse unchanged for re-delivery)"
+        required: true
+        type: string
       task_id:
         description: "Canonical TASK id to execute"
         required: true
@@ -49,17 +53,22 @@ jobs:
             exit 1
           }
 
-      - name: Execute canonical AIOS primary run
+      - name: Execute idempotent AIOS primary wakeup
         env:
+          AIOS_DISPATCH_ID: ${{ inputs.dispatch_id }}
           AIOS_TASK_ID: ${{ inputs.task_id }}
           AIOS_EXECUTOR: ${{ inputs.executor }}
         shell: powershell
         run: |
+          if ($env:AIOS_DISPATCH_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') {
+            Write-Error "Invalid dispatch_id format."
+            exit 1
+          }
           if ($env:AIOS_TASK_ID -notmatch '^TASK-[A-Za-z0-9_-]+$') {
             Write-Error "Invalid task_id format: $env:AIOS_TASK_ID"
             exit 1
           }
-          aios run $env:AIOS_TASK_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
+          aios wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
