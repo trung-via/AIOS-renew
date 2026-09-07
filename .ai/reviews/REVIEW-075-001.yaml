@@ -1,0 +1,37 @@
+review_id: REVIEW-075-001
+reviewed_sha: 3d12d29833f9e5994c53df6adff85d226f180000
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: src/aios_renew/operator.py
+    issue: >
+      `_run_repair_impl` still reads the local pre-verification sidecar unconditionally
+      before `_eligible_reusable_repair_package` can bypass reusable-candidate handling
+      for CODE_FIX. `_read_optional_bytes` turns any filesystem read error into
+      `OperatorError`, so an otherwise valid CODE_FIX can still be rejected solely
+      because unused reusable state is unreadable or malformed at the filesystem level
+      (for example, the expected sidecar path is not a readable regular file). This
+      leaves reusable state as a CODE_FIX admission dependency and violates AC1's
+      requirement that malformed, incomplete, or otherwise unusable reuse-only state
+      must not prevent the ordinary exactly-one Executor REPAIR path.
+    expected: >
+      Ensure CODE_FIX does not need to read, decode, compare, or otherwise depend on the
+      local/transported pre-verification candidate before entering the ordinary REPAIR
+      dispatch path. Add a deterministic regression where the local reusable sidecar is
+      unreadable or has an invalid filesystem shape and an otherwise valid CODE_FIX still
+      dispatches the selected Executor exactly once. Preserve fail-closed behavior for an
+      actually eligible NO_CHANGE reuse request encountering the same unusable state,
+      and preserve exact failed-head/historical lineage, Runtime completion/verification,
+      and no retry/fallback/reroute semantics.
