@@ -1,0 +1,11 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: 3d12d29833f9e5994c53df6adff85d226f180000
+scope:
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_repair_preverification_eligibility.py
+verification:
+  affected:
+    - python -m pytest tests/test_repair_preverification_eligibility.py -q
+    - git diff --check
