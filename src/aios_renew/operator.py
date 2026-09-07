@@ -1407,23 +1407,25 @@ def _run_repair_impl(
     if action == "NO_CHANGE" and scope:
         raise OperatorError("NO_CHANGE REPAIR modification scope must be empty")
 
-    local_preverification = _read_optional_bytes(
-        state.preverification / f"{failed_run_id}.json"
-    )
-    reusable_source = (
-        transported_preverification
-        if historical
-        else local_preverification
-    )
-    reusable_package = _eligible_reusable_repair_package(
-        reusable_source,
-        task=task,
-        failed_run_id=failed_run_id,
-        failure=failure,
-        action=action,
-        scope=scope,
-        local_content=local_preverification if historical else None,
-    )
+    reusable_package = None
+    if action == "NO_CHANGE":
+        local_preverification = _read_optional_bytes(
+            state.preverification / f"{failed_run_id}.json"
+        )
+        reusable_source = (
+            transported_preverification
+            if historical
+            else local_preverification
+        )
+        reusable_package = _eligible_reusable_repair_package(
+            reusable_source,
+            task=task,
+            failed_run_id=failed_run_id,
+            failure=failure,
+            action=action,
+            scope=scope,
+            local_content=local_preverification if historical else None,
+        )
 
     with RepositoryLock(state.lock):
         if any(
@@ -1670,6 +1672,10 @@ def _resolve_historical_repair_admission(
 
 def _read_optional_bytes(path: Path) -> bytes | None:
     try:
+        if path.exists() and not path.is_file():
+            raise OperatorError(
+                f"pre-verification candidate could not be read: {path} is not a regular file"
+            )
         return path.read_bytes()
     except FileNotFoundError:
         return None

@@ -409,6 +409,7 @@ def test_code_fix_preserves_independent_canonical_gates(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "defect",
     [
+        "directory",
         "malformed",
         "wrong_run",
         "wrong_task",
@@ -438,7 +439,10 @@ def test_eligible_no_change_fails_closed_on_unusable_or_conflicting_sidecar(
     failed_run_id, failure = predecessor(repo, claims=full_claim)
     path = state.preverification / f"{failed_run_id}.json"
 
-    if defect == "conflicting_historical":
+    if defect == "directory":
+        path.unlink()
+        path.mkdir()
+    elif defect == "conflicting_historical":
         transport_failure(
             repo,
             run_id=failed_run_id,
@@ -687,3 +691,158 @@ def test_continuation_regression_primary_fail_no_change_fail_code_fix_succeeds(
     assert result_record["result"]["head_sha"] == summary.head_sha
     assert result_record["result"]["changed_files"] == ["OUTPUT.txt"]
     assert git(repo, "rev-parse", "HEAD") == summary.head_sha
+
+
+@pytest.mark.parametrize(
+    "unusable_kind",
+    ["directory", "unreadable"],
+)
+def test_code_fix_dispatches_when_predecessor_sidecar_unreadable_or_invalid_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unusable_kind: str
+) -> None:
+    """AC1: CODE_FIX REPAIR does not read, decode, compare, or depend on the local
+    reusable sidecar before entering ordinary REPAIR dispatch, dispatching the selected
+    Executor exactly once even when the sidecar is unreadable or has an invalid
+    filesystem shape (e.g. directory). An actually eligible NO_CHANGE request encountering
+    the same state fails closed without Executor dispatch.
+    """
+    repo = make_repo(tmp_path)
+    full_claim = [{
+        "id": "C1",
+        "satisfies": ["AC1"],
+        "claim": "The requested repair is complete.",
+        "evidence": [],
+    }]
+    failed_run_id, failure = predecessor(repo, claims=full_claim)
+    state = runtime_paths(repo)
+    path = state.preverification / f"{failed_run_id}.json"
+
+    if unusable_kind == "directory":
+        path.unlink()
+        path.mkdir()
+    elif unusable_kind == "unreadable":
+        original_read_bytes = Path.read_bytes
+
+        def failing_read(self):
+            if self == path:
+                raise OSError("Permission denied")
+            return original_read_bytes(self)
+
+        monkeypatch.setattr(Path, "read_bytes", failing_read)
+
+    # Preserve fail-closed behavior for an actually eligible NO_CHANGE reuse request
+    # encountering the same unusable state; no Executor dispatch occurs.
+    no_change_calls = []
+    with pytest.raises(OperatorError, match="pre-verification candidate could not be read"):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair(failure, action="NO_CHANGE"),
+            native_runner=lambda *args, **kwargs: no_change_calls.append("executor"),
+            verification_runner=lambda *args, **kwargs: no_change_calls.append("verification"),
+        )
+    assert no_change_calls == []
+    assert not (state.runs / "RUN-101-001.json").exists()
+
+    # Otherwise valid CODE_FIX REPAIR dispatches selected Executor exactly once
+    code_fix_runner = CodeFixRunner(repo)
+    v_calls = []
+
+    def verification_runner(command, **kwargs):
+        v_calls.append("verification")
+        return subprocess.CompletedProcess(command, 0, b"clean\n", b"")
+
+    summary = run_repair(
+        failed_run_id,
+        executor="codex",
+        repo=repo,
+        repair=repair(failure, action="CODE_FIX"),
+        native_runner=code_fix_runner,
+        verification_runner=verification_runner,
+    )
+
+    assert code_fix_runner.calls == 1
+    assert len(v_calls) == 1
+    assert summary.run_id == "RUN-101-001"
+    assert summary.failed_head_sha == failure["failed_head_sha"]
+    assert summary.head_sha != failure["failed_head_sha"]
+
+    # Preserved exact failed-head lineage
+    repair_lineage = json.loads(
+        (state.repairs / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert repair_lineage["failed_run_id"] == failed_run_id
+    assert repair_lineage["failed_head_sha"] == failure["failed_head_sha"]
+    assert repair_lineage["root_base_sha"] == failure["base_sha"]
+
+    # Runtime completion and verification
+    result_record = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    assert result_record["result"]["head_sha"] == summary.head_sha
+    assert result_record["result"]["changed_files"] == ["OUTPUT.txt"]
+    assert git(repo, "rev-parse", "HEAD") == summary.head_sha
+
+
+@pytest.mark.parametrize("unusable_kind", ["directory", "unreadable"])
+def test_historical_code_fix_with_unusable_local_sidecar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unusable_kind: str
+) -> None:
+    """Historical CODE_FIX does not read or depend on local reusable sidecar even
+    when it is unreadable or has an invalid filesystem shape, dispatching the selected
+    Executor exactly once and preserving lineage.
+    """
+    repo = make_repo(tmp_path)
+    full_claim = [{
+        "id": "C1",
+        "satisfies": ["AC1"],
+        "claim": "The requested repair is complete.",
+        "evidence": [],
+    }]
+    failed_run_id, failure = predecessor(repo, claims=full_claim)
+    state = runtime_paths(repo)
+
+    # Publish canonical failure to remote ref
+    transport_failure(
+        repo,
+        run_id=failed_run_id,
+        head_sha=failure["failed_head_sha"],
+        run_path=state.runs / f"{failed_run_id}.json",
+        failure_path=state.failures / f"{failed_run_id}.json",
+        publish_candidate=True,
+        preverification_path=state.preverification / f"{failed_run_id}.json",
+    )
+
+    # Advance repository HEAD so the repair is historical
+    (repo / "ADVANCE.txt").write_text("advance\n", encoding="utf-8")
+    git(repo, "add", "ADVANCE.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main")
+
+    path = state.preverification / f"{failed_run_id}.json"
+    if unusable_kind == "directory":
+        path.unlink()
+        path.mkdir()
+    elif unusable_kind == "unreadable":
+        original_read_bytes = Path.read_bytes
+
+        def failing_read(self):
+            if self == path:
+                raise OSError("Permission denied")
+            return original_read_bytes(self)
+
+        monkeypatch.setattr(Path, "read_bytes", failing_read)
+
+    code_fix_runner = CodeFixRunner(repo)
+    summary = run_repair(
+        failed_run_id,
+        executor="codex",
+        repo=repo,
+        repair=repair(failure, action="CODE_FIX"),
+        native_runner=code_fix_runner,
+        verification_runner=passing_verification,
+    )
+
+    assert code_fix_runner.calls == 1
+    assert summary.run_id == "RUN-101-001"
+    assert summary.failed_head_sha == failure["failed_head_sha"]
+    assert summary.head_sha != failure["failed_head_sha"]
+
