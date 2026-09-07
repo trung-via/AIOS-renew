@@ -1,0 +1,42 @@
+review_id: REVIEW-073-001
+reviewed_sha: 16856003f01c852766d2cfe6f9e93a2f13063a0c
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: FAIL
+  AC5: FAIL
+  AC6: PASS
+  AC7: FAIL
+  AC8: FAIL
+  AC9: PASS
+findings:
+  - id: F1
+    basis: AC3
+    action: CODE_FIX
+    location: src/aios_renew/operator.py
+    issue: >
+      The new `aios wakeup` path durably creates the outer dispatch record before
+      TASK-062 PRIMARY pre-admission synchronization, but when that synchronization
+      fast-forwards to newer canonical code and requires a self-restart, wakeup supplies
+      `_preflight_primary_sync()` with `primary_argv` beginning with `run` rather than
+      preserving the original `wakeup <dispatch_id> ...` command. The synchronized child
+      therefore executes a normal PRIMARY with no dispatch_id and can create a canonical
+      RESULT that is not bound to the durable dispatch. The parent receives only the
+      child's exit code, so a successful child can leave the dispatch without exact RUN
+      ownership and finalize as RECONCILIATION_BLOCKED. Re-delivery is then correctly
+      prohibited from starting another PRIMARY, leaving an otherwise successful remote
+      wakeup permanently unattributed. This violates at-most-once durable ownership across
+      the existing TASK-062 synchronization boundary and also breaks restart/reconciliation
+      guarantees that depend on exact admitted RUN ownership.
+    expected: >
+      Preserve the same stable dispatch identity across TASK-062 synchronized self-restart
+      so the restarted canonical code continues the same `aios wakeup` request, invokes at
+      most one PRIMARY, and binds the exact admitted RUN to the existing durable dispatch.
+      Add a deterministic regression covering a wakeup whose preflight actually requires
+      restart and proving the synchronized child retains dispatch identity, produces at
+      most one canonical PRIMARY, and leaves the original dispatch correctly attributable.
+      Preserve direct `aios run`, TASK-071 remote RUN namespace/recover-primary behavior,
+      TASK-072 publication behavior, and all no-retry/no-fallback/no-second-RUN boundaries.
