@@ -1,0 +1,17 @@
+{
+  "repair_id": "REPAIR-079-002",
+  "failed_run_id": "RUN-079-002",
+  "failed_head_sha": "4ee6e68ec1ad8fe92a26fcd3bcf4e12067c69600",
+  "task": {
+    "id": "TASK-079",
+    "revision": 1
+  },
+  "action": "NO_CHANGE",
+  "modification_scope": [],
+  "instructions": [
+    "Continue exactly from failed TASK-079 candidate 4ee6e68ec1ad8fe92a26fcd3bcf4e12067c69600 without modifying repository files. RUN-079-002 failed at COMPLETION_GATE because the structural REPAIR ResultPackage omitted complete original TASK acceptance claims; canonical verification did not establish any remaining source, schema, adapter, or test defect.",
+    "Preserve exact HEAD 4ee6e68ec1ad8fe92a26fcd3bcf4e12067c69600. Return one structural ResultPackage for the complete original TASK-079 contract with empty root evidence, empty claim.evidence arrays, result.unresolved empty, and explicit claims whose satisfies coverage includes every acceptance criterion AC1 through AC6. Do not manufacture a commit, alter formatting, broaden scope, or rerun implementation work.",
+    "Runtime owns canonical TASK-079 verification and evidence. Do not execute canonical verification commands inside the Executor. Preserve executor identity codex, exactly-one invocation, no retry/fallback/reroute, and no downstream Python Agent execution or mutation."
+  ],
+  "constraints": []
+}
