@@ -474,7 +474,8 @@ def test_remediation_schema_requires_runtime_owned_arrays_to_be_empty() -> None:
     assert result_properties["head_sha"]["minLength"] == 1
     assert result_properties["changed_files"]["items"]["minLength"] == 1
 
-    valid_payload = json.loads(successful_output("RUN-007-001"))
+    source_payload = json.loads(successful_output("RUN-007-001"))
+    valid_payload = json.loads(json.dumps(source_payload))
     valid_payload["result"]["claims"] = []
     valid_payload["result"]["unresolved"] = []
     valid_payload["evidence"] = []
@@ -483,10 +484,10 @@ def test_remediation_schema_requires_runtime_owned_arrays_to_be_empty() -> None:
     for path, item in (
         (
             ("result", "claims"),
-            successful_output("RUN-007-001")["result"]["claims"][0],
+            source_payload["result"]["claims"][0],
         ),
         (("result", "unresolved"), "still unresolved"),
-        (("evidence",), successful_output("RUN-007-001")["evidence"][0]),
+        (("evidence",), source_payload["evidence"][0]),
     ):
         invalid_payload = json.loads(json.dumps(valid_payload))
         target = invalid_payload
