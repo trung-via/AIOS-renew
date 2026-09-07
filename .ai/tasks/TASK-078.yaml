@@ -1,0 +1,226 @@
+task_id: TASK-078
+revision: 1
+
+goal: >
+  Extend the existing REMEDIATION/FIX execution boundary so one canonically reviewed
+  historical candidate can receive its exact narrow finding correction even when the
+  current control checkout has advanced or diverged from REVIEW.reviewed_sha. Preserve
+  the current control repository and current AIOS Runtime as execution authority, resolve
+  the exact TASK/revision + REVIEW + REMEDIATION lineage remotely under TASK-067, execute
+  the one selected Executor in an isolated subject workspace whose initial HEAD is exactly
+  reviewed_sha, and retain all existing narrow-remediation completion, verification,
+  transport, and publication semantics. Do not restart PRIMARY and do not mutate current
+  main merely to make FIX admissible.
+
+problem: >
+  Downstream Python Agent TASK-156 exposed a deterministic admission gap after its
+  certification candidate d66faa95c8c03e1fe2d5f4c4c36b44b7fc9bc364 passed canonical
+  Runtime verification through historical REPAIR continuity and then received semantic
+  finding F1 under REVIEW-156-006. The current downstream main had legitimately advanced
+  through AIOS pin-migration TASK-157/TASK-158/TASK-159 to
+  5dcfff5400a1bff3daf236dd197f8e32ffe6680a. Canonical remediation F1 is valid and narrow,
+  but current run_remediation performs repository admission by requiring current HEAD ==
+  REMEDIATION.reviewed_sha before allocating a RUN. Therefore `$aios-worker FIX TASK-156 F1`
+  fails before RUN admission even though remote finding lineage resolution succeeds and
+  the correction itself belongs on the exact historical reviewed candidate. AIOS already
+  supports control/subject separation for historical REPAIR under TASK-058, but TASK-058
+  explicitly excluded changing REMEDIATION semantics. TASK-067 owns exact TASK/revision-
+  scoped remote finding lineage resolution but preserves current reviewed-SHA admission.
+  The observed defect is therefore a missing historical-subject execution extension in the
+  existing REMEDIATION boundary, not a Python Agent product defect, not a TASK-067 resolver
+  defect, and not a reason to reset/rebase current main.
+
+assumptions:
+  - >
+    Current canonical AIOS-renew main at authoring is
+    6893d44a3b8478cadb4bdceab6e671324a54d954, the published TASK-077 source candidate.
+  - >
+    The AIOS frozen kernel contract remains authoritative that a REMEDIATION addresses one
+    explicit review finding only and must not become a hidden second TASK or restart PRIMARY.
+  - >
+    TASK-067 remains the sole authority for remote `--finding` remediation lineage discovery
+    and exact TASK/revision filtering. This TASK does not replace, broaden, or weaken that
+    resolver.
+  - >
+    TASK-058 revision 2 remains the historical REPAIR authority. Its control-repository /
+    isolated-subject separation is an implementation and safety precedent only; TASK-078
+    does not redefine REPAIR or move REMEDIATION semantics under TASK-058.
+  - >
+    TASK-077 remains historical-REPAIR remote-ref snapshot hardening only and is unrelated
+    to this REMEDIATION admission gap except that downstream currently pins it.
+  - >
+    Canonical downstream Python Agent current main is
+    5dcfff5400a1bff3daf236dd197f8e32ffe6680a. REVIEW-156-006 reviews exact source candidate
+    d66faa95c8c03e1fe2d5f4c4c36b44b7fc9bc364, verdict CHANGES_REQUIRED, finding F1 basis
+    AC10, action CODE_FIX. REMEDIATION-156-006-F1 has reviewed_sha
+    d66faa95c8c03e1fe2d5f4c4c36b44b7fc9bc364, scope limited to the two roadmap documents,
+    and affected verification `git diff --check`.
+  - >
+    The failed downstream FIX attempt produced no RUN-156-007 and no canonical FAILURE,
+    proving this is an admission failure rather than Executor, completion, or verification
+    failure.
+  - >
+    Downstream publication after eventual DELTA PASS may still require a separately
+    authorized integration candidate because the reviewed historical source and current
+    main have diverged. That publication reconciliation is not part of TASK-078.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-ROADMAP.md
+    - .ai/tasks/TASK-058.yaml
+    - .ai/tasks/TASK-067.yaml
+    - .ai/tasks/TASK-077.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/review.py
+    - tests/test_operator.py
+    - tests/test_review_transport.py
+    - tests/test_runtime.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - src/aios_renew/review_transport.py
+    - tests/test_review_transport.py
+
+non_goals:
+  - Change Python Agent source, TASK-156, REVIEW-156-006, REMEDIATION-156-006-F1, its current main, or downstream dependency pin.
+  - Execute or complete downstream TASK-156 F1 inside this AIOS task.
+  - Change finding semantics, REVIEW/REMEDIATION schemas, TASK-067 exact TASK/revision filtering, or finding-id locality.
+  - Change historical REPAIR semantics, TASK-058 root lineage, TASK-077 snapshot logic, NO_CHANGE/CODE_FIX REPAIR behavior, or REPAIR worker UX.
+  - Restart PRIMARY, synthesize a new product TASK, convert FIX into REPAIR, or create a fake failed RUN merely to obtain REPAIR semantics.
+  - Reset, detach, rebase, merge, cherry-pick, stash, amend, or otherwise mutate the current control checkout to the historical reviewed SHA.
+  - Insert current-main control-plane, pin-migration, worker, or kernel commits into the historical remediation candidate lineage.
+  - Add retry, fallback, reroute, alternate executor, branch cleanup, polling, backoff, autonomous recovery, or first-valid-wins behavior.
+  - Make publication auto-merge/rebase diverged source candidates onto current main. Historical-candidate integration after semantic PASS remains separate publication/integration authority.
+  - Add generic worktree management, snapshot infrastructure, scheduler, planner, router, or background service.
+  - Change model defaults, execution deadlines, Dispatcher exactly-one authority, verification ownership, RESULT/EVIDENCE authority, Reviewer authority, or publication authority.
+  - Push from Executor execution.
+
+constraints:
+  hard:
+    - >
+      Remote `--finding` resolution must remain TASK-067 authoritative. The Runtime must first
+      resolve exactly one contract-valid TASK/revision-scoped REVIEW + REMEDIATION + authoritative
+      reviewed source RESULT lineage before deciding current-head versus historical-subject
+      execution mechanics. Unrelated or malformed relevant lineage remains fail-closed.
+    - >
+      When current control HEAD equals REMEDIATION.reviewed_sha, existing current-head
+      REMEDIATION behavior must remain compatible and need not use a historical workspace.
+    - >
+      When current control HEAD differs from REMEDIATION.reviewed_sha, a valid remote finding
+      must not be rejected solely for that mismatch. Runtime must keep the current control
+      checkout HEAD, branch, index, and worktree unchanged and create one isolated Runtime-owned
+      subject workspace whose initial HEAD is exactly the canonical reviewed_sha.
+    - >
+      The current control repository remains authoritative for the admitted Runtime provenance,
+      repository lock/state root, canonical remote lineage resolution, remote RUN namespace
+      reservation, continuation operational identity, terminal state, and transport. The
+      historical subject is only the Git mutation/verification subject and must not bootstrap
+      or select a Runtime from historical repository-owned pin/worker files.
+    - >
+      The exact historical TASK id/revision contract used to validate and execute the
+      remediation must be bound from immutable canonical source state associated with the
+      reviewed candidate. A same-named TASK from current main may not silently substitute if
+      historical TASK content is missing, malformed, revision-mismatched, or conflicting.
+    - >
+      The isolated subject must begin exactly at reviewed_sha. A CODE_FIX candidate must be a
+      normal Git descendant of reviewed_sha and contain a real non-empty committed delta. The
+      committed delta must remain inside both REMEDIATION.modification_scope and TASK.scope.modify.
+      No current-main-only commit may be inserted into that ancestry.
+    - >
+      Existing REMEDIATION completion semantics remain authoritative: one selected Executor at
+      most once, narrow ResultPackage validation, affected verification only as defined by the
+      remediation contract, clean/HEAD/ancestry/scope gates, canonical evidence binding to the
+      final subject SHA, and no Executor publication authority.
+    - >
+      Runtime-owned RUN/RESULT/FAILURE/observation/transport state for historical REMEDIATION
+      must remain durable under the current control repository state root even though the
+      isolated subject workspace is disposable. Transport must preserve enough exact execution
+      lineage for later DELTA review, failed-FIX REPAIR continuity, and publication validation.
+    - >
+      If the selected Executor or completion/verification fails after RUN admission, persist and
+      transport an ordinary canonical REMEDIATION RUN failure against the exact historical
+      subject so existing REPAIR-after-failed-FIX semantics can continue from that RUN. Do not
+      translate an admitted historical FIX failure back into an admission failure.
+    - >
+      Historical workspace setup, canonical source/TASK binding, or remote-lineage defects before
+      RUN admission must fail closed with zero Executor invocation. Do not create a synthetic RUN
+      solely to make the failure repairable.
+    - >
+      Current control HEAD and dirty state must be rechecked so historical REMEDIATION cannot
+      race or silently mutate control main. Cleanup of the isolated subject must not replace or
+      mask the original execution/completion failure.
+    - >
+      Exactly one already-selected Executor identity is preserved. Codex stays Codex and
+      Antigravity stays Antigravity; no retry, fallback, reroute, executor substitution, or hidden
+      PRIMARY execution is allowed.
+    - >
+      Explicit artifact remediation mode and direct-candidate acceptance must retain existing
+      semantics unless a strictly shared subject-isolation helper can be reused without changing
+      their authority. Do not broaden TASK-078 into redesigning every remediation surface.
+    - >
+      TASK-078 does not authorize automatic publication integration. If a historical remediation
+      candidate later receives semantic DELTA PASS while current main has diverged, publication
+      must continue to fail closed with the existing integration-required boundary until a
+      separately authorized downstream integration candidate is produced.
+    - Do not push from Executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A deterministic regression proves a valid remote `--finding` remediation is admitted when
+      current control HEAD differs from REVIEW/REMEDIATION reviewed_sha, with current control
+      HEAD/index/worktree unchanged and one isolated subject workspace beginning exactly at
+      reviewed_sha.
+  - id: AC2
+    condition: >
+      The AC1 regression proves exact TASK/revision, REVIEW, finding, REMEDIATION, authoritative
+      reviewed RESULT, and reviewed_sha identity are preserved from TASK-067 canonical remote
+      lineage; historical subject setup does not substitute current-main TASK semantics.
+  - id: AC3
+    condition: >
+      Historical CODE_FIX execution invokes exactly the selected Executor once in the isolated
+      subject, produces a committed descendant of reviewed_sha, and rejects empty, out-of-
+      remediation-scope, out-of-TASK-scope, dirty, non-descendant, or wrong-HEAD candidates under
+      existing completion authority.
+  - id: AC4
+    condition: >
+      Required remediation affected verification runs against the exact final historical subject
+      candidate, canonical EVIDENCE binds that SHA, and a successful historical FIX transports one
+      normal REMEDIATION RESULT lineage suitable for DELTA review without mutating current main.
+  - id: AC5
+    condition: >
+      A deterministic admitted historical FIX failure persists and transports a canonical
+      REMEDIATION FAILURE/RUN bound to the exact historical candidate and selected executor so
+      existing REPAIR-after-failed-FIX continuity remains available; no PRIMARY rerun is created.
+  - id: AC6
+    condition: >
+      Missing/malformed historical TASK, invalid or ambiguous relevant remote finding lineage,
+      unavailable reviewed commit, historical workspace setup failure, or control-repository
+      mutation/conflict fails closed before Executor invocation and without a synthetic RUN when
+      admission has not completed.
+  - id: AC7
+    condition: >
+      Existing current-head remote remediation regressions continue to pass unchanged, including
+      TASK-067 cross-TASK/revision finding isolation, exactly-one Executor dispatch, narrow scope,
+      affected verification, and canonical RESULT/EVIDENCE validation.
+  - id: AC8
+    condition: >
+      Historical REPAIR, TASK-077 snapshot behavior, explicit artifact remediation, direct-candidate
+      acceptance, publication integration-required behavior, and ordinary PRIMARY execution remain
+      unchanged except for strictly shared low-level helpers proven by no-regression tests.
+  - id: AC9
+    condition: >
+      Implementation contains no retry/fallback/reroute, current-main reset/rebase/merge/cherry-pick,
+      historical worker bootstrap, automatic publication integration, duplicate Executor call, or
+      shadow review/planning authority.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py tests/test_review_transport.py -q
+    - git diff --check
