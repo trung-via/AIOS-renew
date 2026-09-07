@@ -1338,16 +1338,6 @@ def _run_repair_impl(
         transported_preverification = admission.preverification
         if local_failure is not None and dict(local_failure) != dict(failure):
             raise OperatorError("local and canonical remote FAILURE conflict")
-        local_preverification = _read_optional_bytes(
-            state.preverification / f"{failed_run_id}.json"
-        )
-        if (
-            local_preverification is not None
-            and local_preverification != transported_preverification
-        ):
-            raise OperatorError(
-                "local and canonical remote pre-verification candidate conflict"
-            )
     else:
         failure = local_failure
         assert isinstance(failure, Mapping)
@@ -1417,12 +1407,13 @@ def _run_repair_impl(
     if action == "NO_CHANGE" and scope:
         raise OperatorError("NO_CHANGE REPAIR modification scope must be empty")
 
+    local_preverification = _read_optional_bytes(
+        state.preverification / f"{failed_run_id}.json"
+    )
     reusable_source = (
         transported_preverification
         if historical
-        else _read_optional_bytes(
-            state.preverification / f"{failed_run_id}.json"
-        )
+        else local_preverification
     )
     reusable_package = _eligible_reusable_repair_package(
         reusable_source,
@@ -1431,6 +1422,7 @@ def _run_repair_impl(
         failure=failure,
         action=action,
         scope=scope,
+        local_content=local_preverification if historical else None,
     )
 
     with RepositoryLock(state.lock):
@@ -1695,9 +1687,17 @@ def _eligible_reusable_repair_package(
     failure: Mapping[str, Any],
     action: str,
     scope: list[str],
+    local_content: bytes | None = None,
 ) -> ResultPackage | None:
     """Fail closed on present state and admit only exact verification reuse."""
 
+    if action != "NO_CHANGE" or scope:
+        return None
+
+    if local_content is not None and local_content != content:
+        raise OperatorError(
+            "local and canonical remote pre-verification candidate conflict"
+        )
     if content is None:
         return None
     failed_head = failure.get("failed_head_sha")
@@ -1724,9 +1724,7 @@ def _eligible_reusable_repair_package(
     if list(package.result.changed_files) != changed_files:
         raise OperatorError("pre-verification candidate changed-files mismatch")
     if (
-        action != "NO_CHANGE"
-        or scope
-        or failure.get("phase") != "VERIFICATION"
+        failure.get("phase") != "VERIFICATION"
         or candidate.get("repairable") is not True
         or candidate.get("transportable") is not True
         or candidate.get("dirty") is not False
