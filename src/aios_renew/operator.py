@@ -3116,19 +3116,20 @@ def main(
             print(summary.render())
         elif args.command == "wakeup":
             repo_root = resolve_repository(args.repo)
+            wakeup_argv = [
+                "wakeup",
+                args.dispatch_id,
+                args.task_id,
+                "--executor",
+                args.executor,
+                "--repo",
+                str(repo_root),
+            ]
 
             def invoke_primary() -> DispatchInvocation:
-                primary_argv = [
-                    "run",
-                    args.task_id,
-                    "--executor",
-                    args.executor,
-                    "--repo",
-                    str(repo_root),
-                ]
                 try:
                     preflight = _preflight_primary_sync(
-                        repo_root, argv=primary_argv, runner=native_runner
+                        repo_root, argv=wakeup_argv, runner=native_runner
                     )
                     if preflight.restart_code is not None:
                         return DispatchInvocation(preflight.restart_code)
@@ -3147,6 +3148,13 @@ def main(
                 except OperatorError as exc:
                     print(f"AIOS ERROR: {exc}", file=sys.stderr)
                     return DispatchInvocation(1)
+
+            if os.environ.get("AIOS_RESTART_ATTEMPTED") == "1":
+                # The original wakeup still owns its durable invocation guard while
+                # it waits for this synchronized child. Continue that invocation
+                # directly so admission binds the RUN to the same dispatch record;
+                # the parent will perform the single dispatch finalization.
+                return invoke_primary().exit_code
 
             outcome = execute_dispatch(
                 state_root=runtime_paths(repo_root).root,

@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from aios_renew import dispatch_reconciliation as dispatch
+from aios_renew import operator as operator_module
 from aios_renew.dispatch_reconciliation import (
     DispatchError,
     DispatchInvocation,
@@ -118,6 +122,123 @@ def test_first_seen_is_durable_before_one_primary_invocation_and_replays(
     assert first.exit_code == replay.exit_code == 0
     assert first.replayed is False
     assert replay.replayed is True
+
+
+def test_wakeup_sync_restart_continues_the_same_durable_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo = tmp_path / "repo"
+    state_root = repo / ".git" / "aios"
+    state_root.mkdir(parents=True)
+    runtime = SimpleNamespace(
+        root=state_root,
+        lock=state_root / "operator.lock",
+    )
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda _repo: repo)
+    monkeypatch.setattr(operator_module, "runtime_paths", lambda _repo: runtime)
+
+    sync_calls = 0
+
+    def synchronize(_repo: Path, *, allow_restart: bool = False) -> bool:
+        nonlocal sync_calls
+        sync_calls += 1
+        assert allow_restart is True
+        records = list((state_root / "dispatches").glob("*.json"))
+        assert len(records) == 1
+        record = json.loads(records[0].read_text(encoding="utf-8"))
+        assert record["dispatch_id"] == "delivery-073"
+        assert record["status"] == "STARTED"
+        return sync_calls == 1
+
+    monkeypatch.setattr(
+        operator_module, "_synchronize_primary_branch", synchronize
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "_git",
+        lambda _repo, *args, **_kwargs: "b" * 40
+        if args == ("rev-parse", "HEAD")
+        else pytest.fail(f"unexpected git invocation: {args}"),
+    )
+
+    primary_calls = 0
+
+    def run_task(task_id: str, **kwargs: object) -> SimpleNamespace:
+        nonlocal primary_calls
+        primary_calls += 1
+        assert task_id == "TASK-073"
+        assert kwargs["dispatch_id"] == "delivery-073"
+        run_id = "RUN-073-001"
+        write_run(state_root, run_id, task_id=task_id)
+        bind_dispatch_run(
+            state_root=state_root,
+            dispatch_id="delivery-073",
+            task_id=task_id,
+            executor="codex",
+            run_id=run_id,
+        )
+        write_terminal(state_root, "results", run_id)
+        return SimpleNamespace(run_id=run_id)
+
+    monkeypatch.setattr(operator_module, "run_task", run_task)
+    restarted_argv: list[list[str]] = []
+
+    def restart_runner(
+        cmd: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        child_argv = cmd[3:]
+        restarted_argv.append(child_argv)
+        assert child_argv == [
+            "wakeup",
+            "delivery-073",
+            "TASK-073",
+            "--executor",
+            "codex",
+            "--repo",
+            str(repo),
+        ]
+        env = kwargs["env"]
+        assert isinstance(env, dict)
+        restart_attempted = env["AIOS_RESTART_ATTEMPTED"]
+        assert isinstance(restart_attempted, str)
+        prior = os.environ.get("AIOS_RESTART_ATTEMPTED")
+        os.environ["AIOS_RESTART_ATTEMPTED"] = restart_attempted
+        try:
+            exit_code = operator_module.main(
+                child_argv,
+                native_runner=restart_runner,
+            )
+        finally:
+            if prior is None:
+                os.environ.pop("AIOS_RESTART_ATTEMPTED", None)
+            else:
+                os.environ["AIOS_RESTART_ATTEMPTED"] = prior
+        return subprocess.CompletedProcess(cmd, exit_code, b"", b"")
+
+    argv = [
+        "wakeup",
+        "delivery-073",
+        "TASK-073",
+        "--executor",
+        "codex",
+        "--repo",
+        str(repo),
+    ]
+    first_exit = operator_module.main(argv, native_runner=restart_runner)
+    replay_exit = operator_module.main(argv, native_runner=restart_runner)
+
+    assert first_exit == replay_exit == 0
+    assert sync_calls == 2
+    assert len(restarted_argv) == 1
+    assert primary_calls == 1
+    records = list((state_root / "dispatches").glob("*.json"))
+    assert len(records) == 1
+    record = json.loads(records[0].read_text(encoding="utf-8"))
+    assert record["dispatch_id"] == "delivery-073"
+    assert record["run_id"] == "RUN-073-001"
+    assert record["status"] == "SUCCEEDED"
+    assert len(list((state_root / "runs").glob("RUN-073-*.json"))) == 1
 
 
 def test_terminal_nonzero_replay_preserves_failure_without_reexecution(
