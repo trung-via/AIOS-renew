@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -45,6 +46,27 @@ class RemoteRepairRecovery:
     """Portable failed correction chain and canonical remote RUN namespace."""
 
     failures: tuple[RemoteFailureArtifacts, ...]
+    remote_run_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RemoteRunNamespace:
+    """Validated canonical terminal RUN identities for one TASK namespace."""
+
+    run_ids: tuple[str, ...]
+    conflicts: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RemotePrimaryRecovery:
+    """Exact immutable facts for one conflicting PRIMARY terminal identity."""
+
+    run_id: str
+    candidate_sha: str
+    success_run: bytes
+    result: bytes
+    failure_run: bytes
+    failure: bytes
     remote_run_ids: tuple[str, ...]
 
 
@@ -104,6 +126,149 @@ def task_run_prefix(task_id: str) -> str:
     if not task_part:
         raise ReviewTransportError(f"invalid TASK id: {task_id!r}")
     return f"RUN-{task_part}-"
+
+
+def resolve_remote_run_namespace(
+    repo: Path, *, task_id: str, task_revision: int
+) -> RemoteRunNamespace:
+    """Resolve the TASK namespace, retaining RUNs from every valid revision."""
+
+    if (
+        isinstance(task_revision, bool)
+        or not isinstance(task_revision, int)
+        or task_revision < 1
+    ):
+        raise ReviewTransportError("invalid TASK revision")
+    task_prefix = task_run_prefix(task_id)
+    remote = resolve_transport_remote(repo)
+    refs = _exact_remote_refs(
+        repo,
+        remote,
+        f"refs/heads/aios/failure-artifacts/{task_prefix}*",
+        f"refs/heads/aios/artifacts/{task_prefix}*",
+    )
+    terminal_kinds: dict[str, set[str]] = {}
+    run_pattern = re.compile(rf"^{re.escape(task_prefix)}\d{{3,}}$")
+    for ref, artifact_sha in refs.items():
+        if ref.startswith("refs/heads/aios/failure-artifacts/"):
+            terminal_kind = "FAILURE"
+        elif ref.startswith("refs/heads/aios/artifacts/"):
+            terminal_kind = "RESULT"
+        else:
+            raise ReviewTransportError("canonical RUN ref namespace mismatch")
+        run_id = ref.rsplit("/", 1)[-1]
+        if not run_pattern.fullmatch(run_id):
+            raise ReviewTransportError(
+                f"canonical RUN ref identity is invalid for {task_id}: {ref}"
+            )
+        run_bytes = _read_remote_blob(
+            repo, remote, artifact_sha, ".ai/transport/run.json"
+        )
+        if run_bytes is None:
+            raise ReviewTransportError(f"canonical RUN content missing at {ref}")
+        bound_task_id, _bound_revision, bound_run_id = _decode_run_task_identity(
+            run_bytes, ref
+        )
+        if bound_run_id != run_id:
+            raise ReviewTransportError(
+                f"canonical RUN id mismatch at {ref}: expected {run_id}, got {bound_run_id}"
+            )
+        if bound_task_id != task_id:
+            raise ReviewTransportError(
+                f"canonical RUN TASK identity mismatch at {ref}"
+            )
+        terminal_kinds.setdefault(run_id, set()).add(terminal_kind)
+    conflicts = tuple(
+        sorted(
+            run_id
+            for run_id, kinds in terminal_kinds.items()
+            if kinds == {"FAILURE", "RESULT"}
+        )
+    )
+    return RemoteRunNamespace(tuple(sorted(terminal_kinds)), conflicts)
+
+
+def resolve_remote_primary_recovery(
+    repo: Path, *, run_id: str
+) -> RemotePrimaryRecovery:
+    """Resolve one exact conflicting PRIMARY terminal identity from remote state."""
+
+    task_prefix = _run_task_prefix(run_id)
+    if not re.fullmatch(rf"{re.escape(task_prefix)}\d{{3,}}", run_id):
+        raise ReviewTransportError(f"invalid RUN id: {run_id!r}")
+    remote = resolve_transport_remote(repo)
+    failure_ref = f"refs/heads/aios/failure-artifacts/{run_id}"
+    success_ref = f"refs/heads/aios/artifacts/{run_id}"
+    candidate_ref = f"refs/heads/aios/review/{run_id}"
+    refs = _exact_remote_refs(
+        repo, remote, failure_ref, success_ref, candidate_ref
+    )
+    missing = [
+        ref for ref in (failure_ref, success_ref, candidate_ref) if ref not in refs
+    ]
+    if missing:
+        raise ReviewTransportError(
+            f"canonical PRIMARY terminal conflict is incomplete for {run_id}"
+        )
+
+    failure_run = _read_remote_blob(
+        repo, remote, refs[failure_ref], ".ai/transport/run.json"
+    )
+    failure = _read_remote_blob(
+        repo, remote, refs[failure_ref], ".ai/transport/failure.json"
+    )
+    success_run = _read_remote_blob(
+        repo, remote, refs[success_ref], ".ai/transport/run.json"
+    )
+    result = _read_remote_blob(
+        repo, remote, refs[success_ref], ".ai/transport/result.json"
+    )
+    if None in (failure_run, failure, success_run, result):
+        raise ReviewTransportError(
+            f"canonical PRIMARY terminal conflict content missing for {run_id}"
+        )
+    assert failure_run is not None
+    assert failure is not None
+    assert success_run is not None
+    assert result is not None
+    if (
+        _read_remote_blob(
+            repo, remote, refs[failure_ref], ".ai/transport/repair.json"
+        )
+        is not None
+        or _read_remote_blob(
+            repo, remote, refs[success_ref], ".ai/transport/repair.json"
+        )
+        is not None
+    ):
+        raise ReviewTransportError(
+            f"canonical terminal conflict is not a PRIMARY lineage: {run_id}"
+        )
+
+    failure_identity = _decode_run_task_identity(failure_run, failure_ref)
+    success_identity = _decode_run_task_identity(success_run, success_ref)
+    if failure_identity[2] != run_id or success_identity[2] != run_id:
+        raise ReviewTransportError("canonical PRIMARY terminal RUN identity mismatch")
+    if failure_identity[:2] != success_identity[:2]:
+        raise ReviewTransportError("canonical PRIMARY terminal TASK identity mismatch")
+    namespace = resolve_remote_run_namespace(
+        repo,
+        task_id=success_identity[0],
+        task_revision=success_identity[1],
+    )
+    if run_id not in namespace.conflicts:
+        raise ReviewTransportError(
+            f"canonical PRIMARY terminal identity is not conflicting: {run_id}"
+        )
+    return RemotePrimaryRecovery(
+        run_id=run_id,
+        candidate_sha=refs[candidate_ref],
+        success_run=success_run,
+        result=result,
+        failure_run=failure_run,
+        failure=failure,
+        remote_run_ids=namespace.run_ids,
+    )
 
 
 def _decode_run_task_identity(run_bytes: bytes, ref: str) -> tuple[str, int, str]:
@@ -281,8 +446,8 @@ def resolve_remote_repair_recovery(
 
     task_prefix = _run_task_prefix(failed_run_id)
     remote = resolve_transport_remote(repo)
-    remote_run_ids = _remote_run_ids(repo, remote, task_prefix)
-    if failed_run_id not in remote_run_ids:
+    discovered_run_ids = _remote_run_ids(repo, remote, task_prefix)
+    if failed_run_id not in discovered_run_ids:
         raise ReviewTransportError(
             f"canonical failed RUN not found: {failed_run_id}"
         )
@@ -347,6 +512,24 @@ def resolve_remote_repair_recovery(
             if repair_data.get("failed_run_id") != continuation:
                 raise ReviewTransportError("conflicting REPAIR execution lineage")
         current = continuation
+
+    target_task_id, target_revision, target_run_id = _decode_run_task_identity(
+        chain[0].run,
+        f"refs/heads/aios/failure-artifacts/{failed_run_id}",
+    )
+    if target_run_id != failed_run_id:
+        raise ReviewTransportError("canonical failed RUN identity mismatch")
+    namespace = resolve_remote_run_namespace(
+        repo,
+        task_id=target_task_id,
+        task_revision=target_revision,
+    )
+    if namespace.conflicts:
+        raise ReviewTransportError(
+            "canonical RUN has conflicting terminal artifacts: "
+            + ", ".join(namespace.conflicts)
+        )
+    remote_run_ids = set(namespace.run_ids)
 
     continuations: dict[str, list[str]] = {}
     for run_id in remote_run_ids:

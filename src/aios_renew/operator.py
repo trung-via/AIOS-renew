@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -43,8 +43,10 @@ from .review_transport import (
     ReviewTransportError,
     read_remote_repair,
     read_remote_task,
+    resolve_remote_primary_recovery,
     resolve_remote_repair_recovery,
     resolve_remote_remediation_lineages,
+    resolve_remote_run_namespace,
     task_run_prefix,
     transport_admission_failure,
     transport_failure,
@@ -283,12 +285,40 @@ class RepairSummary:
 
 
 @dataclass(frozen=True)
+class RecoverySummary:
+    task_id: str
+    source_run_id: str
+    run_id: str
+    executor: str
+    base_sha: str
+    head_sha: str
+    result_path: Path
+
+    def render(self) -> str:
+        return (
+            "AIOS RECOVER PRIMARY PASS\n"
+            f"task: {self.task_id}\nsource_run: {self.source_run_id}\n"
+            f"run: {self.run_id}\nexecutor: {self.executor}\n"
+            f"base_sha: {self.base_sha}\nhead_sha: {self.head_sha}\n"
+            f"result: {self.result_path}"
+        )
+
+
+@dataclass(frozen=True)
 class _HistoricalRepairAdmission:
     failure: Mapping[str, Any]
     task: Task
     root_base_sha: str
     remote_run_ids: tuple[str, ...]
     preverification: bytes | None
+
+
+@dataclass(frozen=True)
+class _PrimaryRecoveryAdmission:
+    task: Task
+    source_run: Run
+    structural_package: ResultPackage
+    remote_run_ids: tuple[str, ...]
 
 
 def resolve_repository(path: str | Path | None = None) -> Path:
@@ -407,6 +437,25 @@ def next_run_id(
         if match:
             numbers.append(int(match.group(1)))
     return f"{prefix}{max(numbers, default=0) + 1:03d}"
+
+
+def _remote_run_reservations(repo: Path, task: Task) -> tuple[str, ...]:
+    """Return validated remote reservations or fail closed on terminal conflict."""
+
+    try:
+        namespace = resolve_remote_run_namespace(
+            repo,
+            task_id=task.task_id,
+            task_revision=task.revision,
+        )
+    except ReviewTransportError as exc:
+        raise OperatorError(f"canonical RUN namespace rejected: {exc}") from exc
+    if namespace.conflicts:
+        raise OperatorError(
+            "canonical RUN has conflicting terminal artifacts: "
+            + ", ".join(namespace.conflicts)
+        )
+    return namespace.run_ids
 
 
 def _load_authoritative_prior_result(
@@ -651,7 +700,8 @@ def _run_task_impl(
             raise OperatorError("current HEAD does not match preflight state")
         task = load_task(root, task_id)
         base_sha = current_sha
-        run_id = next_run_id(task_id, state.runs)
+        remote_run_ids = _remote_run_reservations(root, task)
+        run_id = next_run_id(task_id, state.runs, reserved=remote_run_ids)
         run = Run.from_task(
             run_id=run_id,
             task=task,
@@ -943,6 +993,284 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
         raise OperatorError(f"transport retry failed: {exc}") from exc
 
 
+def recover_primary(
+    source_run_id: str,
+    *,
+    repo: str | Path | None = None,
+    verification_runner: VerificationRunner = subprocess.run,
+    monotonic_clock: MonotonicClock = time.monotonic,
+) -> RecoverySummary:
+    """Re-admit one exact successful candidate from a conflicting PRIMARY RUN."""
+
+    root = resolve_repository(repo)
+    state = runtime_paths(root)
+    observation_tracker = RunObservationTracker(
+        "PRIMARY", monotonic_clock=monotonic_clock
+    )
+    attempt = _RunAttempt()
+    try:
+        return _recover_primary_impl(
+            source_run_id,
+            repo=root,
+            verification_runner=verification_runner,
+            observation_tracker=observation_tracker,
+            attempt=attempt,
+        )
+    except KeyboardInterrupt as original:
+        _persist_primary_recovery_failure(
+            root,
+            state=state,
+            attempt=attempt,
+            failure=original,
+            observation_tracker=observation_tracker,
+            interruption_phase=attempt.interruption_phase,
+        )
+        raise
+    except Exception as original:
+        try:
+            _persist_primary_recovery_failure(
+                root,
+                state=state,
+                attempt=attempt,
+                failure=original,
+                observation_tracker=observation_tracker,
+            )
+        except Exception:
+            pass
+        raise
+    finally:
+        _remove_historical_workspace(root, attempt.historical_workspace)
+
+
+def _persist_primary_recovery_failure(
+    control_repo: Path,
+    *,
+    state: RuntimePaths,
+    attempt: _RunAttempt,
+    failure: BaseException,
+    observation_tracker: RunObservationTracker,
+    interruption_phase: str | None = None,
+) -> None:
+    if (
+        attempt.run_path is None
+        or attempt.subject_repo is None
+        or attempt.task is None
+        or (state.results / attempt.run_path.name).is_file()
+    ):
+        return
+    run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
+    persist_failure(
+        attempt.subject_repo,
+        state=state,
+        task=attempt.task,
+        run=_run_from_data(run_data),
+        run_path=attempt.run_path,
+        failure=failure,
+        observation_tracker=observation_tracker,
+        interruption_phase=interruption_phase,
+        transport_repo=control_repo,
+    )
+
+
+def _recover_primary_impl(
+    source_run_id: str,
+    *,
+    repo: Path,
+    verification_runner: VerificationRunner,
+    observation_tracker: RunObservationTracker,
+    attempt: _RunAttempt,
+) -> RecoverySummary:
+    state = runtime_paths(repo)
+    with RepositoryLock(state.lock):
+        control_head = _git(repo, "rev-parse", "HEAD")
+        if _git(repo, "status", "--porcelain"):
+            raise OperatorError("repository dirty")
+        admission = _resolve_primary_recovery_admission(repo, source_run_id)
+        source_run = admission.source_run
+        task = admission.task
+        candidate_sha = admission.structural_package.result.head_sha
+        subject_repo = _create_historical_workspace(repo, candidate_sha)
+        attempt.bind_subject(subject_repo, task, subject_repo)
+        if load_task(subject_repo, task.task_id) != task:
+            raise OperatorError("historical candidate TASK content mismatch")
+        if _git(subject_repo, "rev-parse", "HEAD") != candidate_sha:
+            raise OperatorError("historical candidate HEAD mismatch")
+        if _git(subject_repo, "status", "--porcelain"):
+            raise OperatorError("historical candidate workspace is dirty")
+        if _git(repo, "rev-parse", "HEAD") != control_head:
+            raise OperatorError("recovery changed control HEAD before admission")
+        if _git(repo, "status", "--porcelain"):
+            raise OperatorError("recovery changed control repository before admission")
+
+        run_id = next_run_id(
+            task.task_id,
+            state.runs,
+            reserved=admission.remote_run_ids,
+        )
+        run = Run.from_task(
+            run_id=run_id,
+            task=task,
+            executor=source_run.executor,
+            base_sha=source_run.base_sha,
+            workspace=str(subject_repo),
+        )
+        run_path = state.runs / f"{run_id}.json"
+        _write_json(run_path, asdict(run))
+        attempt.bind_run(run_path)
+        observation_tracker.admit(run)
+        completion = RuntimeCompletion(
+            repo=subject_repo,
+            state=state,
+            task=task,
+            run=run,
+            run_path=run_path,
+            verification_runner=verification_runner,
+            observation_tracker=observation_tracker,
+            error_type=OperatorError,
+            transport_repo=repo,
+        )
+        attempt.bind_completion(completion)
+        outcome = completion.complete(
+            admission.structural_package,
+            primary_completion_policy(task, base_sha=source_run.base_sha),
+        )
+        if _git(repo, "rev-parse", "HEAD") != control_head:
+            raise OperatorError("recovery changed control HEAD")
+        if _git(repo, "status", "--porcelain"):
+            raise OperatorError("recovery changed control repository")
+        return RecoverySummary(
+            task_id=task.task_id,
+            source_run_id=source_run_id,
+            run_id=run_id,
+            executor=source_run.executor,
+            base_sha=source_run.base_sha,
+            head_sha=outcome.head_sha,
+            result_path=outcome.result_path,
+        )
+
+
+def _resolve_primary_recovery_admission(
+    repo: Path, source_run_id: str
+) -> _PrimaryRecoveryAdmission:
+    try:
+        remote = resolve_remote_primary_recovery(repo, run_id=source_run_id)
+    except ReviewTransportError as exc:
+        raise OperatorError(f"PRIMARY recovery source rejected: {exc}") from exc
+    try:
+        success_data = _decode_remote_mapping(remote.success_run, "successful RUN")
+        failure_run_data = _decode_remote_mapping(remote.failure_run, "failed RUN")
+        if "kind" in success_data or "kind" in failure_run_data:
+            raise ValueError("recovery accepts only PRIMARY RUN records")
+        source_run = _run_from_data(success_data)
+        failed_run = _run_from_data(failure_run_data)
+        if source_run.run_id != source_run_id or failed_run.run_id != source_run_id:
+            raise ValueError("terminal RUN identity mismatch")
+        expected_task = {
+            "id": source_run.task.id,
+            "revision": source_run.task.revision,
+        }
+        if {
+            "id": failed_run.task.id,
+            "revision": failed_run.task.revision,
+        } != expected_task:
+            raise ValueError("terminal TASK identity mismatch")
+        if source_run.base_sha != failed_run.base_sha:
+            raise ValueError("conflicting terminal RUN base mismatch")
+
+        failure = _decode_remote_mapping(remote.failure, "FAILURE")
+        if (
+            failure.get("kind") != "FAILURE"
+            or failure.get("run_id") != source_run_id
+            or not isinstance(failure.get("task"), Mapping)
+            or dict(failure["task"]) != expected_task
+            or failure.get("executor") != failed_run.executor
+            or failure.get("base_sha") != failed_run.base_sha
+            or not isinstance(failure.get("failed_head_sha"), str)
+            or not failure.get("failed_head_sha")
+        ):
+            raise ValueError("canonical FAILURE binding mismatch")
+        if not _git_is_ancestor(
+            repo, failed_run.base_sha, failure["failed_head_sha"]
+        ):
+            raise ValueError("failed terminal head does not descend from RUN base")
+
+        task_source = read_remote_task(
+            repo,
+            commit_sha=remote.candidate_sha,
+            task_id=source_run.task.id,
+        )
+        task = parse_task(task_source.decode("utf-8", errors="strict"))
+        if task.task_id != source_run.task.id or task.revision != source_run.task.revision:
+            raise ValueError("historical TASK identity or revision mismatch")
+
+        result_data = _decode_remote_mapping(remote.result, "successful ResultPackage")
+        result = validate_result(result_data["result"])
+        evidence_data = result_data["evidence"]
+        if not isinstance(evidence_data, list):
+            raise TypeError("successful ResultPackage evidence must be a list")
+        evidence = tuple(validate_evidence(item) for item in evidence_data)
+        validate_result_package(
+            task=task,
+            run=source_run,
+            result=result,
+            evidence=evidence,
+        )
+        if result.head_sha != remote.candidate_sha:
+            raise ValueError("successful RESULT head does not match candidate ref")
+        if result.unresolved:
+            raise ValueError("successful RESULT has unresolved items")
+        satisfied = {
+            acceptance_id
+            for claim in result.claims
+            for acceptance_id in claim.satisfies
+        }
+        missing = [item.id for item in task.acceptance if item.id not in satisfied]
+        if missing:
+            raise ValueError(
+                "successful RESULT lacks TASK acceptance coverage: "
+                + ", ".join(missing)
+            )
+        if not _git_is_ancestor(repo, source_run.base_sha, remote.candidate_sha):
+            raise ValueError("successful candidate does not descend from RUN base")
+        changed_files = _committed_changed_files(
+            repo, source_run.base_sha, remote.candidate_sha
+        )
+        if changed_files != set(result.changed_files):
+            raise ValueError("successful RESULT changed_files mismatch")
+        outside_scope = changed_files.difference(task.scope.modify)
+        if outside_scope:
+            raise ValueError(
+                "successful candidate changed paths outside TASK.scope.modify: "
+                + ", ".join(sorted(outside_scope))
+            )
+        structural_result = replace(
+            result,
+            claims=tuple(replace(claim, evidence=()) for claim in result.claims),
+        )
+        return _PrimaryRecoveryAdmission(
+            task=task,
+            source_run=source_run,
+            structural_package=ResultPackage(
+                result=structural_result,
+                evidence=(),
+            ),
+            remote_run_ids=remote.remote_run_ids,
+        )
+    except (
+        ArtifactValidationError,
+        KeyError,
+        OperatorError,
+        ReviewTransportError,
+        TaskValidationError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+    ) as exc:
+        if isinstance(exc, OperatorError):
+            raise
+        raise OperatorError(f"PRIMARY recovery source rejected: {exc}") from exc
+
+
 def _run_repair_impl(
     failed_run_id: str, *, executor: str, repo: Path,
     repair: Mapping[str, Any] | str | Path | None,
@@ -1099,7 +1427,13 @@ def _run_repair_impl(
         elif _git(repo, "rev-parse", "HEAD") != failed_head:
             raise OperatorError("current HEAD does not match failed committed state")
         attempt.bind_subject(subject_repo, task, workspace)
-        run_id = next_run_id(task.task_id, state.runs, reserved=remote_run_ids)
+        canonical_run_ids = _remote_run_reservations(repo, task)
+        reserved_run_ids = tuple(
+            sorted(set(remote_run_ids).union(canonical_run_ids))
+        )
+        run_id = next_run_id(
+            task.task_id, state.runs, reserved=reserved_run_ids
+        )
         run = Run.from_task(
             run_id=run_id, task=task, executor=executor,
             base_sha=failed_head, workspace=str(subject_repo),
@@ -2046,7 +2380,8 @@ def _run_remediation_impl(
         if actual_baseline != canonical_remediation.reviewed_sha:
             raise OperatorError("current HEAD does not match REMEDIATION reviewed_sha")
 
-        run_id = next_run_id(task_id, state.runs)
+        remote_run_ids = _remote_run_reservations(root, task)
+        run_id = next_run_id(task_id, state.runs, reserved=remote_run_ids)
         run = Run.from_task(
             run_id=run_id,
             task=task,
@@ -2243,7 +2578,8 @@ def _accept_candidate_impl(
         if existing_summary is not None:
             return existing_summary
 
-        run_id = next_run_id(task_id, state.runs)
+        remote_run_ids = _remote_run_reservations(repo, task)
+        run_id = next_run_id(task_id, state.runs, reserved=remote_run_ids)
         run = Run.from_task(
             run_id=run_id,
             task=task,
@@ -2709,6 +3045,12 @@ def _parser() -> argparse.ArgumentParser:
         "--executor", required=True, choices=("codex", "antigravity")
     )
     repair_parser.add_argument("--repo")
+    recovery_parser = commands.add_parser(
+        "recover-primary",
+        help="Recover one exact conflicting PRIMARY terminal RUN",
+    )
+    recovery_parser.add_argument("run_id")
+    recovery_parser.add_argument("--repo")
     transport_parser = commands.add_parser(
         "transport", help="Retry transport of one persisted terminal RUN"
     )
@@ -2777,6 +3119,14 @@ def main(
                 repo=args.repo,
                 repair=args.repair,
                 native_runner=native_runner,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
+            )
+            print(summary.render())
+        elif args.command == "recover-primary":
+            summary = recover_primary(
+                args.run_id,
+                repo=args.repo,
                 verification_runner=verification_runner,
                 monotonic_clock=monotonic_clock,
             )

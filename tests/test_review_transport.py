@@ -7,8 +7,10 @@ import pytest
 from aios_renew.review_transport import (
     ReviewTransportError,
     read_remote_task,
+    resolve_remote_primary_recovery,
     resolve_remote_repair_recovery,
     resolve_remote_remediation_lineages,
+    resolve_remote_run_namespace,
     task_run_prefix,
     transport_failure,
     transport_post_pass,
@@ -550,6 +552,95 @@ def test_task_run_prefix_deterministic_derivation() -> None:
     for invalid in ["", "TASK-", "TASK/066", "TASK\\066"]:
         with pytest.raises(ReviewTransportError, match="invalid TASK id"):
             task_run_prefix(invalid)
+
+
+def test_remote_namespace_reports_exact_terminal_conflict(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    files = tmp_path / "facts"
+    root = git(repo, "rev-parse", "HEAD")
+    candidate = commit_candidate(repo, "successful candidate")
+    publish_failure(
+        repo,
+        files,
+        run_id="RUN-058-001",
+        candidate_sha=root,
+        root_base_sha=root,
+    )
+    publish_success(
+        repo,
+        files,
+        run_id="RUN-058-001",
+        head_sha=candidate,
+        root_base_sha=root,
+    )
+
+    namespace = resolve_remote_run_namespace(
+        repo, task_id="TASK-058", task_revision=2
+    )
+    recovery = resolve_remote_primary_recovery(repo, run_id="RUN-058-001")
+
+    assert namespace.run_ids == ("RUN-058-001",)
+    assert namespace.conflicts == ("RUN-058-001",)
+    assert recovery.candidate_sha == candidate
+    assert recovery.remote_run_ids == ("RUN-058-001",)
+
+
+def test_remote_namespace_rejects_cross_task_terminal_content(
+    tmp_path: Path,
+) -> None:
+    repo, remote = make_repo(tmp_path)
+    commit = git(repo, "rev-parse", "HEAD")
+    wrong_run = json.dumps(
+        {
+            "run_id": "RUN-058-009",
+            "task": {"id": "TASK-999", "revision": 2},
+            "executor": "codex",
+            "base_sha": commit,
+            "workspace": "historical",
+            "head_sha": None,
+            "status": "ACTIVE",
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    blob = subprocess.run(
+        ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
+        input=wrong_run,
+        capture_output=True,
+        check=True,
+    ).stdout.decode().strip()
+    tree_input = f"100644 blob {blob}\trun.json\n".encode()
+    tree = subprocess.run(
+        ("git", "-C", str(repo), "mktree"),
+        input=tree_input,
+        capture_output=True,
+        check=True,
+    ).stdout.decode().strip()
+    transport_tree = subprocess.run(
+        ("git", "-C", str(repo), "mktree"),
+        input=f"040000 tree {tree}\ttransport\n".encode(),
+        capture_output=True,
+        check=True,
+    ).stdout.decode().strip()
+    root_tree = subprocess.run(
+        ("git", "-C", str(repo), "mktree"),
+        input=f"040000 tree {transport_tree}\t.ai\n".encode(),
+        capture_output=True,
+        check=True,
+    ).stdout.decode().strip()
+    artifact_commit = git(repo, "commit-tree", root_tree, "-m", "wrong task")
+    git(
+        repo,
+        "push",
+        "--quiet",
+        "origin",
+        f"{artifact_commit}:refs/heads/aios/artifacts/RUN-058-009",
+    )
+
+    with pytest.raises(ReviewTransportError, match="TASK identity mismatch"):
+        resolve_remote_run_namespace(
+            repo, task_id="TASK-058", task_revision=2
+        )
 
 
 def test_cross_task_collision_ignored_during_discovery(tmp_path: Path) -> None:

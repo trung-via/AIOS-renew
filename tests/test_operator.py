@@ -21,6 +21,7 @@ from aios_renew.operator import (
     accept_candidate,
     describe_task,
     load_task,
+    recover_primary,
     resolve_repository,
     retry_transport,
     run_repair,
@@ -5510,6 +5511,159 @@ def test_historical_remote_artifact_without_observation_remains_compatible(
     )
 
     assert git(upstream, "rev-parse", artifacts_ref) == legacy_commit
+
+
+def clone_runtime_fresh(repo: Path, destination: Path) -> Path:
+    upstream = Path(git(repo, "remote", "get-url", "origin"))
+    subprocess.run(
+        ("git", "clone", "--quiet", str(upstream), str(destination)), check=True
+    )
+    git(destination, "config", "user.name", "Fresh Runtime Test")
+    git(destination, "config", "user.email", "fresh@example.invalid")
+    return destination
+
+
+def publish_conflicting_primary_failure(
+    repo: Path, *, run_id: str, base_sha: str, root: Path
+) -> None:
+    failure_path = root / f"{run_id}-failure.json"
+    failure_path.write_text(
+        json.dumps(
+            {
+                "kind": "FAILURE",
+                "run_id": run_id,
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "codex",
+                "base_sha": base_sha,
+                "failed_head_sha": base_sha,
+                "phase": "EXECUTION",
+                "candidate": {
+                    "repairable": False,
+                    "transportable": False,
+                    "dirty": False,
+                    "descends_from_base": True,
+                    "changed_files": [],
+                    "outside_task_scope": [],
+                },
+                "error": {"type": "OperatorError", "message": "source failed"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    state = runtime_paths(repo)
+    operator_module.transport_failure(
+        repo,
+        run_id=run_id,
+        head_sha=base_sha,
+        run_path=state.runs / f"{run_id}.json",
+        failure_path=failure_path,
+        publish_candidate=False,
+    )
+
+
+def test_fresh_primary_reserves_remote_terminal_run_identity(tmp_path: Path) -> None:
+    source = make_repo(tmp_path / "source")
+    first = run_task(
+        "TASK-101", executor="codex", repo=source, native_runner=FakeCodexRunner(source)
+    )
+    fresh = clone_runtime_fresh(source, tmp_path / "fresh")
+    second_runner = FakeCodexRunner(fresh)
+
+    second = run_task(
+        "TASK-101", executor="codex", repo=fresh, native_runner=second_runner
+    )
+
+    assert first.run_id == "RUN-101-001"
+    assert second.run_id == "RUN-101-002"
+    assert len(second_runner.calls) == 1
+
+
+def test_normal_primary_conflict_fails_before_run_or_executor(tmp_path: Path) -> None:
+    source = make_repo(tmp_path / "source")
+    runner = FakeCodexRunner(source)
+    success = run_task(
+        "TASK-101", executor="codex", repo=source, native_runner=runner
+    )
+    publish_conflicting_primary_failure(
+        source,
+        run_id=success.run_id,
+        base_sha=success.base_sha,
+        root=tmp_path,
+    )
+    fresh = clone_runtime_fresh(source, tmp_path / "fresh")
+    rejected_runner = FakeCodexRunner(fresh)
+
+    with pytest.raises(
+        OperatorError,
+        match="canonical RUN has conflicting terminal artifacts: RUN-101-001",
+    ):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=fresh,
+            native_runner=rejected_runner,
+        )
+
+    assert rejected_runner.calls == []
+    assert list(runtime_paths(fresh).runs.glob("*.json")) == []
+
+
+def test_recover_primary_rebinds_exact_candidate_with_fresh_evidence(
+    tmp_path: Path,
+) -> None:
+    source = make_repo(tmp_path / "source")
+    success = run_task(
+        "TASK-101", executor="codex", repo=source, native_runner=FakeCodexRunner(source)
+    )
+    publish_conflicting_primary_failure(
+        source,
+        run_id=success.run_id,
+        base_sha=success.base_sha,
+        root=tmp_path,
+    )
+    fresh = clone_runtime_fresh(source, tmp_path / "fresh")
+    control_head = git(fresh, "rev-parse", "HEAD")
+    control_status = git(fresh, "status", "--porcelain")
+    verification_calls = []
+
+    def counting_verification(command, **kwargs):
+        verification_calls.append(command)
+        return subprocess.run(command, **kwargs)
+
+    recovered = recover_primary(
+        success.run_id,
+        repo=fresh,
+        verification_runner=counting_verification,
+    )
+
+    assert recovered.run_id == "RUN-101-002"
+    assert recovered.head_sha == success.head_sha
+    assert len(verification_calls) == 1
+    assert git(fresh, "rev-parse", "HEAD") == control_head
+    assert git(fresh, "status", "--porcelain") == control_status
+    state = runtime_paths(fresh)
+    result = json.loads(recovered.result_path.read_text(encoding="utf-8"))
+    assert {item["run_id"] for item in result["evidence"]} == {"RUN-101-002"}
+    assert {item["subject_sha"] for item in result["evidence"]} == {
+        success.head_sha
+    }
+    assert result["result"]["claims"][0]["evidence"] == [
+        result["evidence"][0]["evidence_id"]
+    ]
+    observation = json.loads(
+        (state.observations / "RUN-101-002.json").read_text(encoding="utf-8")
+    )
+    assert observation["executor_invoked"] is False
+    assert git(
+        Path(git(fresh, "remote", "get-url", "origin")),
+        "rev-parse",
+        "refs/heads/aios/artifacts/RUN-101-001",
+    )
+    assert git(
+        Path(git(fresh, "remote", "get-url", "origin")),
+        "rev-parse",
+        "refs/heads/aios/failure-artifacts/RUN-101-001",
+    )
 
 
 def publish_test_remediation_lineage(

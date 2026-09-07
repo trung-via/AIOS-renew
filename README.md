@@ -116,6 +116,36 @@ review, which may return PASS or authorize a new narrow REMEDIATION. These three
 states are distinct and an admission diagnostic is never treated as a RUN failure
 or a review judgment.
 
+### Canonical RUN namespace and PRIMARY collision recovery
+
+Before admitting a new PRIMARY, REMEDIATION, direct-candidate, or REPAIR RUN,
+the Operator combines repository-local RUN state with the configured remote's
+canonical success and failure artifact refs for that TASK. Remote terminal RUN
+identities are reserved even in a fresh checkout with no local Runtime state.
+Malformed or cross-TASK terminal refs fail closed. If one RUN id has both success
+and failure terminal artifacts, normal admission stops before RUN persistence or
+Executor invocation and reports the conflicting identity; neither historical
+artifact is preferred or changed.
+
+For an already-observed conflicting PRIMARY identity, a Human may request the one
+narrow recovery boundary:
+
+```powershell
+aios recover-primary RUN-070-001
+```
+
+The command accepts only the conflicting RUN id and optional `--repo`. It resolves
+the exact failure artifact, successful artifact, and successful candidate ref from
+the canonical remote, validates their shared TASK/revision/base and the successful
+ResultPackage, and reserves the complete remote TASK RUN namespace. It runs current
+control-plane code against an isolated worktree at the immutable historical
+candidate, leaving current main, its index, and worktree unchanged. Recovery
+allocates a fresh RUN id, invokes no Executor or model, discards source evidence
+attribution, and executes the historical TASK verification list once so Runtime
+can emit fresh evidence for the new RUN. The resulting ordinary PRIMARY lineage is
+reviewable through the existing review path; recovery does not review, publish,
+merge, rebase, cherry-pick, or otherwise integrate the candidate.
+
 ### RUN observations
 
 For each newly admitted PRIMARY, REMEDIATION, or REPAIR RUN, Runtime best-effort
