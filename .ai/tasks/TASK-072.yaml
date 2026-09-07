@@ -1,0 +1,186 @@
+task_id: TASK-072
+revision: 1
+
+goal: >
+  Integrate the semantically reviewed TASK-070 publication behavior onto the current
+  canonical product main as a fresh current-main descendant candidate. Preserve the
+  TASK-071 canonical RUN namespace and PRIMARY collision-recovery behavior already
+  published on main, while establishing fresh Runtime verification and semantic review
+  for the integrated publication implementation before any product publication.
+
+problem: >
+  TASK-070 revision 1 produced candidate
+  bf804affb6fdc05e391f61d922cebbe8c36351f4 and recovered canonical RUN-070-002.
+  REVIEW-070-001 judged that candidate PRIMARY PASS for AC1 through AC8. The candidate
+  cannot be published directly because current canonical main has since advanced through
+  published TASK-071 to f8f169a23643bb176e78f97b836d72e581963658, and the two histories
+  diverge from merge base 017c94e5ef0b013369d9b6ba73b82e423156cdcf.
+
+  TASK-070 intentionally requires divergent reviewed candidates to remain immutable and
+  report integration-required rather than being automatically merged, rebased, or used to
+  move main backward. Human has now explicitly authorized the separate integration
+  contract required by that boundary. The product therefore needs a newly verified
+  current-main descendant candidate that realizes the reviewed TASK-070 publication
+  semantics while preserving all already-published TASK-071 behavior and authority.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-072 authoring is
+    f8f169a23643bb176e78f97b836d72e581963658 and includes published TASK-071 revision 1
+    plus its F1 remediation.
+  - >
+    TASK-070 revision 1 remains the authoritative semantic source for the publication
+    behavior being integrated.
+  - >
+    Recovered RUN-070-002 binds exact historical candidate
+    bf804affb6fdc05e391f61d922cebbe8c36351f4 to fresh Runtime verification evidence:
+    27 passing publication tests plus git diff --check, with executor_invoked=false.
+  - >
+    REVIEW-070-001 is the canonical PRIMARY PASS decision for that historical candidate,
+    with AC1 through AC8 PASS and no findings. That PASS establishes semantic intent but
+    does not authorize moving current main backward or treating the historical candidate
+    itself as the integrated product state.
+  - >
+    Current main and the TASK-070 candidate diverge only after TASK-070 authoring; the
+    TASK-071 published delta owns canonical RUN allocation and recover-primary behavior in
+    operator/review-transport/README surfaces and must remain behaviorally intact.
+  - >
+    After TASK-072 is separately verified, reviewed, and published, replaying historical
+    REVIEW-068-002 is a later operational step. TASK-072 does not itself integrate or
+    publish TASK-068 and does not mark A2 DONE.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-063.yaml
+    - .ai/tasks/TASK-068.yaml
+    - .ai/tasks/TASK-070.yaml
+    - .ai/tasks/TASK-071.yaml
+    - src/aios_renew/publication.py
+    - tests/test_publication.py
+    - .github/workflows/aios-auto-publish.yml
+  modify:
+    - src/aios_renew/publication.py
+    - tests/test_publication.py
+    - .github/workflows/aios-auto-publish.yml
+
+non_goals:
+  - Modify, delete, rewrite, force-update, or replace historical RUN-070-001, RUN-070-002, REVIEW-070-001, candidate bf804affb6fdc05e391f61d922cebbe8c36351f4, or any TASK-068 historical artifact/ref.
+  - Move current main backward to the historical TASK-070 candidate or publish that divergent candidate directly.
+  - Integrate, publish, merge, rebase, repair, remediate, or otherwise change TASK-068 product behavior in this TASK.
+  - Mark TASK-068 or roadmap A2 DONE.
+  - Change TASK-071 RUN namespace allocation, recover-primary semantics, Operator/Runtime execution authority, or any TASK/RESULT/EVIDENCE/REVIEW/REMEDIATION/REPAIR schema.
+  - Change semantic REVIEW generation or Reviewer authority.
+  - Add Executor/model calls, canonical verification execution, retry, fallback, reroute, automatic remediation, automatic repair, or autonomous integration to publication.
+  - Weaken TASK-063 exact reviewed-SHA binding, fast-forward ancestry proof, exact expected-old-SHA lease, or exclusion of review metadata from product main.
+  - Add general branch management, queueing, polling, scheduler, broker, database, or background orchestration.
+  - Change downstream repositories or dependency pins.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      The TASK-072 implementation candidate must be created from current canonical main
+      f8f169a23643bb176e78f97b836d72e581963658 and remain a descendant of that state. The
+      historical TASK-070 candidate is immutable semantic/reference input, not a product
+      main replacement or authority to discard later published state.
+    - >
+      The integrated publication boundary must preserve the complete semantically reviewed
+      TASK-070 outcome: current canonical main supplies executable publication control;
+      immutable historical decision/source/correction artifacts remain validated subject
+      data; successful REPAIR lineage can reconstruct the applicable prior semantic review;
+      and an already-canonical review decision can be replayed by canonical RUN/ref identity
+      without recreating review, implementation, evidence, or verification.
+    - >
+      Successful REPAIR of a failed REMEDIATION must deterministically validate the exact
+      failed RUN/failure/failed-head/task/repair authorization and reconstruct the prior
+      REVIEW/finding needed for DELTA review validation. REPAIR before any semantic finding
+      must remain compatible with PRIMARY review semantics. Malformed, missing, ambiguous,
+      unauthorized, mismatched, or cyclic correction lineage must fail closed before main
+      mutation.
+    - >
+      Automatic review-decision delivery must execute publication authority from the exact
+      current canonical main observed for the attempt while binding the pushed immutable
+      decision ref/SHA as subject data. Explicit replay may accept only canonical RUN/ref
+      identity and must resolve the existing canonical decision rather than accept arbitrary
+      candidate SHA, review document, repository path, shell command, or publication target.
+    - >
+      Publication state classification must remain deterministic and non-destructive:
+      equal-main is idempotent already-published; reviewed SHA already contained by main is
+      side-effect-free already-included; current main ancestor of reviewed SHA uses the
+      existing exact-SHA-lease fast-forward path; divergent histories return explicit
+      integration-required with attributable source RUN/reviewed SHA/current main and no
+      product mutation.
+    - >
+      Integration-required must remain observably distinct from invalid-lineage or race
+      failure. Publication must never merge, rebase, cherry-pick, synthesize a replacement
+      candidate, resolve conflicts, move main backward, invoke an Executor/model, or run
+      canonical verification as part of publication/replay.
+    - >
+      Existing TASK-063 exact expected-old-SHA publication lease remains the sole bounded
+      mutation mechanism after fast-forward ancestry proof. A concurrent main change must
+      fail closed without automatic retry or broader force authority.
+    - >
+      TASK-071 published behavior and authority boundaries must remain intact. TASK-072 may
+      not alter Operator, Runtime, review transport, RUN allocation, recover-primary, or
+      their tests/documentation.
+    - >
+      Review metadata must remain outside product main, and publication/replay must require
+      no credential beyond the existing minimum repository contents write authority.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The final implementation candidate is a descendant of TASK-072 base main and changes
+      only the three authorized publication files while realizing the reviewed TASK-070
+      publication behavior on top of the already-published TASK-071 state.
+  - id: AC2
+    condition: >
+      Deterministic publication regressions equivalent to canonical RUN-068-004 prove a
+      successful REPAIR of failed REMEDIATION reconstructs the exact prior REVIEW/F1 and
+      accepts the matching DELTA PASS semantics; malformed or unauthorized correction
+      lineage produces no main mutation.
+  - id: AC3
+    condition: >
+      Deterministic regressions prove a successful REPAIR before any semantic finding keeps
+      PRIMARY review semantics and that wrong RUN/TASK/revision/failed-head/reviewed-SHA,
+      missing, ambiguous, conflicting, or cyclic lineage fails closed.
+  - id: AC4
+    condition: >
+      Automatic delivery and explicit replay both execute publisher authority from current
+      canonical main while preserving immutable review decisions as subject data; replay
+      resolves only canonical RUN/ref identity and invokes no Executor, model, or canonical
+      verification.
+  - id: AC5
+    condition: >
+      Equal-main, already-included, normal fast-forward, and exact expected-old-SHA lease
+      race behavior remain safe and idempotent, with review metadata excluded from product
+      main and no backward main movement.
+  - id: AC6
+    condition: >
+      A deterministic divergent-main regression returns explicit integration-required with
+      source RUN, reviewed SHA, and current/prior main SHA, performs no main mutation, and
+      performs no merge, rebase, cherry-pick, conflict resolution, Executor/model call, or
+      canonical verification.
+  - id: AC7
+    condition: >
+      Invalid review verdict/content, RESULT mismatch, canonical ref ambiguity, malformed
+      historical correction lineage, or publication race remains distinguishable from
+      integration-required and fails closed without product mutation.
+  - id: AC8
+    condition: >
+      Existing PRIMARY and REMEDIATION publication behavior remains passing; workflow
+      authority remains minimum contents write; TASK-072 introduces no change to execution,
+      correction, Runtime verification, semantic review, TASK-071 RUN recovery, roadmap A2
+      status, or downstream authority.
+
+verification:
+  required:
+    - python -m pytest tests/test_publication.py -q
+    - git diff --check
