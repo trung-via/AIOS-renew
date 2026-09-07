@@ -1,0 +1,22 @@
+{
+  "repair_id": "REPAIR-078-001",
+  "failed_run_id": "RUN-078-001",
+  "failed_head_sha": "639d9d0612fa7fa712cb67cdeb5d1316de4ac19a",
+  "task": {
+    "id": "TASK-078",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "src/aios_renew/operator.py",
+    "tests/test_operator.py"
+  ],
+  "instructions": [
+    "Continue exactly from failed TASK-078 candidate 639d9d0612fa7fa712cb67cdeb5d1316de4ac19a for RUN-078-001. Preserve the historical REMEDIATION/FIX subject-isolation implementation already present in that candidate and correct only the five canonical verification regressions. Do not restart PRIMARY TASK-078, reset to main, broaden authority, change TASK-067/TASK-058/TASK-077 semantics, or modify review_transport.py unless new canonical evidence proves it is necessary.",
+    "Preserve compatibility for existing consumers of _parse_remote_direct_lineage / remote remediation lineage parsing. RUN-078-001 proves remote_surface.py still expects the pre-TASK-078 four-value parsed lineage contract, while the candidate made the helper return five values and caused two approval regressions with ValueError: too many values to unpack. Correct the operator-side design so historical reviewed-TASK binding is available only where TASK-078 needs it without breaking existing four-value consumers. Do not patch remote_surface.py merely to follow the accidental widened helper return shape.",
+    "Correct the successful historical-remediation transport regression test to assert the existing canonical success transport surface: refs/heads/aios/review/<RUN> binds the candidate HEAD and refs/heads/aios/artifacts/<RUN> carries RUN/RESULT transport state. Do not introduce or require a new refs/heads/aios/run/<RUN> authority.",
+    "Correct the two pre-admission historical-remediation tests so they prove zero NEW remediation RUN admission / zero Executor invocation when historical TASK binding or workspace setup fails. Their fixture already creates RUN-101-000 as authoritative source lineage, so asserting that the entire Runtime runs directory is empty is invalid. Preserve the source fixture and compare the pre/post RUN set or otherwise assert no new continuation RUN was allocated.",
+    "Run the unchanged TASK-078 verification. The correction must remain within src/aios_renew/operator.py and tests/test_operator.py, preserve current-control checkout immutability, exact reviewed_sha subject ancestry, one selected Executor, canonical affected verification/transport, admitted FIX failure persistence, and no retry/fallback/reroute. Do not push or manually synthesize Runtime-owned terminal state."
+  ],
+  "constraints": []
+}
