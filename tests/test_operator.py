@@ -12,6 +12,7 @@ import aios_renew.operator as operator_module
 import aios_renew.runtime as runtime_module
 from aios_renew.review_transport import (
     RemoteFailureArtifacts,
+    RemoteRunNamespace,
     RemoteRemediationLineage,
     RemoteRepairRecovery,
 )
@@ -5523,6 +5524,39 @@ def clone_runtime_fresh(repo: Path, destination: Path) -> Path:
     return destination
 
 
+def complete_four_digit_run_namespace() -> tuple[str, ...]:
+    return tuple(f"RUN-101-{number:03d}" for number in range(1, 1001))
+
+
+def test_next_run_id_recognizes_four_digit_local_identity(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "RUN-101-1000.json").write_text("{}", encoding="utf-8")
+
+    assert operator_module.next_run_id("TASK-101", runs) == "RUN-101-1001"
+
+
+def test_fresh_primary_allocates_after_four_digit_remote_namespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    remote_run_ids = complete_four_digit_run_namespace()
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_run_namespace",
+        lambda *args, **kwargs: RemoteRunNamespace(remote_run_ids, ()),
+    )
+
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=FakeCodexRunner(repo),
+    )
+
+    assert summary.run_id == "RUN-101-1001"
+
+
 def publish_conflicting_primary_failure(
     repo: Path, *, run_id: str, base_sha: str, root: Path
 ) -> None:
@@ -5664,6 +5698,40 @@ def test_recover_primary_rebinds_exact_candidate_with_fresh_evidence(
         "rev-parse",
         "refs/heads/aios/failure-artifacts/RUN-101-001",
     )
+
+
+def test_recover_primary_allocates_after_four_digit_remote_namespace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = make_repo(tmp_path / "source")
+    success = run_task(
+        "TASK-101", executor="codex", repo=source, native_runner=FakeCodexRunner(source)
+    )
+    publish_conflicting_primary_failure(
+        source,
+        run_id=success.run_id,
+        base_sha=success.base_sha,
+        root=tmp_path,
+    )
+    fresh = clone_runtime_fresh(source, tmp_path / "fresh")
+    resolve_remote_primary_recovery = operator_module.resolve_remote_primary_recovery
+
+    def resolve_with_four_digit_namespace(*args, **kwargs):
+        recovery = resolve_remote_primary_recovery(*args, **kwargs)
+        return replace(
+            recovery,
+            remote_run_ids=complete_four_digit_run_namespace(),
+        )
+
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_primary_recovery",
+        resolve_with_four_digit_namespace,
+    )
+
+    recovered = recover_primary(success.run_id, repo=fresh)
+
+    assert recovered.run_id == "RUN-101-1001"
 
 
 def publish_test_remediation_lineage(

@@ -426,7 +426,7 @@ def next_run_id(
     """Return the next compact local RUN id for one TASK."""
 
     prefix = task_run_prefix(task_id)
-    pattern = re.compile(rf"^{re.escape(prefix)}(\d{{3}})\.json$")
+    pattern = re.compile(rf"^{re.escape(prefix)}(\d{{3,}})\.json$")
     numbers = []
     for path in runs_path.glob(f"{prefix}*.json"):
         match = pattern.match(path.name)
