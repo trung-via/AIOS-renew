@@ -23,6 +23,7 @@ from aios_renew.review import RemediationExecution
 from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.antigravity_adapter import (
     REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
+    REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
     extract_token_usage,
 )
 from aios_renew.run_observation import TokenUsage
@@ -642,7 +643,7 @@ def test_antigravity_command_deterministic_model_and_effort_across_operations(
         REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH
     )
     assert cmd_repair[cmd_repair.index("--json-schema") + 1] == str(
-        RESULT_PACKAGE_SCHEMA_PATH
+        REPAIR_RESULT_PACKAGE_SCHEMA_PATH
     )
 
 

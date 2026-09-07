@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RepairResultPackage",
+  "type": "object",
+  "required": [
+    "result",
+    "evidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "result": {
+      "type": "object",
+      "required": [
+        "head_sha",
+        "claims",
+        "changed_files",
+        "unresolved"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "head_sha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claims": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "satisfies",
+              "claim",
+              "evidence"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "satisfies": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "claim": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "array",
+                "maxItems": 0,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "changed_files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "unresolved": {
+          "type": "array",
+          "maxItems": 0,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 0,
+      "items": {
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "run_id",
+          "subject_sha",
+          "type",
+          "source",
+          "result",
+          "raw"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "subject_sha": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "command"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "required": [
+              "exit_code",
+              "summary"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "exit_code": {
+                "type": "integer"
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "raw": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

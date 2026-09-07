@@ -30,6 +30,9 @@ RESULT_PACKAGE_SCHEMA_PATH = (
 REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH = (
     Path(__file__).parent / "schemas" / "remediation_result_package.json"
 ).resolve()
+REPAIR_RESULT_PACKAGE_SCHEMA_PATH = (
+    Path(__file__).parent / "schemas" / "repair_result_package.json"
+).resolve()
 
 
 class ExecutionPolicy(Protocol):
@@ -280,11 +283,11 @@ class AntigravityAdapter:
     ) -> tuple[str, ...]:
         """Build the native AGY command from provider-neutral authorization."""
 
-        schema_path = (
-            REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH
-            if operation == "REMEDIATION"
-            else RESULT_PACKAGE_SCHEMA_PATH
-        )
+        schema_path = {
+            "PRIMARY": RESULT_PACKAGE_SCHEMA_PATH,
+            "REMEDIATION": REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
+            "REPAIR": REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
+        }.get(operation, RESULT_PACKAGE_SCHEMA_PATH)
 
         command = [
             "agy",

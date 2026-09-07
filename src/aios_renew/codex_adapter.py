@@ -47,6 +47,9 @@ RESULT_PACKAGE_SCHEMA_PATH = (
 REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH = (
     Path(__file__).parent / "schemas" / "remediation_result_package.json"
 ).resolve()
+REPAIR_RESULT_PACKAGE_SCHEMA_PATH = (
+    Path(__file__).parent / "schemas" / "repair_result_package.json"
+).resolve()
 
 _NATIVE_EXECUTOR_INSTRUCTION = (
     "You are the already-selected native Executor inside an admitted AIOS execution. "
@@ -231,7 +234,7 @@ class CodexAdapter:
             raise CodexExecutionError("REPAIR execution has no bound RUN", exit_code=None)
         command = self.command_for(
             run,
-            schema_path=self._schema_path,
+            schema_path=REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
             authorizes_mutation=self._execution_policy.authorizes_mutation,
         )
         prompt = self.repair_prompt_for(execution=execution)

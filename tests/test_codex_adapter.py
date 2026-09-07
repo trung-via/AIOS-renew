@@ -23,6 +23,7 @@ from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.review import RemediationExecution
 from aios_renew.codex_adapter import (
     REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
+    REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
     extract_token_usage,
 )
 from aios_renew.run_observation import TokenUsage
@@ -498,6 +499,85 @@ def test_remediation_schema_requires_runtime_owned_arrays_to_be_empty() -> None:
             jsonschema.validate(instance=invalid_payload, schema=schema)
 
 
+def test_repair_schema_preserves_result_package_shape() -> None:
+    assert REPAIR_RESULT_PACKAGE_SCHEMA_PATH.exists()
+    schema = json.loads(
+        REPAIR_RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8")
+    )
+    result_properties = schema["properties"]["result"]["properties"]
+    claim_properties = result_properties["claims"]["items"]["properties"]
+
+    assert set(schema["required"]) == {"result", "evidence"}
+    assert set(schema["properties"]["result"]["required"]) == {
+        "head_sha",
+        "claims",
+        "changed_files",
+        "unresolved",
+    }
+    assert set(result_properties["claims"]["items"]["required"]) == {
+        "id",
+        "satisfies",
+        "claim",
+        "evidence",
+    }
+    assert result_properties["claims"]["minItems"] == 1
+    assert result_properties["unresolved"]["maxItems"] == 0
+    assert schema["properties"]["evidence"]["maxItems"] == 0
+    assert claim_properties["evidence"]["maxItems"] == 0
+    assert result_properties["head_sha"]["minLength"] == 1
+    assert result_properties["changed_files"]["items"]["minLength"] == 1
+    assert claim_properties["id"]["minLength"] == 1
+    assert claim_properties["satisfies"]["minItems"] == 1
+    assert claim_properties["satisfies"]["items"]["minLength"] == 1
+    assert claim_properties["claim"]["minLength"] == 1
+
+    source_payload = json.loads(successful_output("RUN-079-002"))
+    valid_payload = json.loads(json.dumps(source_payload))
+    valid_payload["result"]["claims"][0]["evidence"] = []
+    valid_payload["evidence"] = []
+    jsonschema.validate(instance=valid_payload, schema=schema)
+
+
+def test_repair_schema_rejects_run_079_002_empty_claims_regression() -> None:
+    schema = json.loads(
+        REPAIR_RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8")
+    )
+    payload = json.loads(successful_output("RUN-079-002"))
+    payload["result"]["claims"] = []
+    payload["evidence"] = []
+
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=payload, schema=schema)
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("result", "unresolved"), ["still unresolved"]),
+        (("evidence",), None),
+        (("result", "claims", 0, "evidence"), ["E1"]),
+    ],
+    ids=["unresolved", "root-evidence", "claim-evidence"],
+)
+def test_repair_schema_rejects_nonempty_runtime_owned_arrays(path, value) -> None:
+    schema = json.loads(
+        REPAIR_RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8")
+    )
+    payload = json.loads(successful_output("RUN-080-001"))
+    runtime_evidence = payload["evidence"]
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+    if path == ("evidence",):
+        value = runtime_evidence
+    target = payload
+    for segment in path[:-1]:
+        target = target[segment]
+    target[path[-1]] = value
+
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(instance=payload, schema=schema)
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -793,7 +873,7 @@ def test_codex_command_deterministic_model_and_reasoning_across_operations() -> 
         REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH
     )
     assert cmd_repair[cmd_repair.index("--output-schema") + 1] == str(
-        RESULT_PACKAGE_SCHEMA_PATH
+        REPAIR_RESULT_PACKAGE_SCHEMA_PATH
     )
     assert cmd_primary[cmd_primary.index("--color") + 1] == "never"
     assert "--json" in cmd_primary
