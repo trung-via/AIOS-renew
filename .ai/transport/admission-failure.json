@@ -1,0 +1,1 @@
+{"error":{"message":"remote remediation lineage resolution failed: failed to query canonical REMEDIATION refs from origin","type":"OperatorError"},"executor_invoked":false,"finding_id":"F1","kind":"ADMISSION_FAILURE","operation":"REMEDIATION","phase":"REMOTE_LINEAGE_RESOLUTION","requested_executor":"antigravity","task":{"id":"TASK-075","revision":1}}
