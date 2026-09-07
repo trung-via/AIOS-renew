@@ -27,6 +27,9 @@ ProcessRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 RESULT_PACKAGE_SCHEMA_PATH = (
     Path(__file__).parent / "schemas" / "result_package.json"
 ).resolve()
+REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH = (
+    Path(__file__).parent / "schemas" / "remediation_result_package.json"
+).resolve()
 
 
 class ExecutionPolicy(Protocol):
@@ -209,7 +212,9 @@ class AntigravityAdapter:
         instruction = _native_instruction(
             operation=operation, handoff_path=self._handoff_path
         )
-        command = self.command_for(repo=self._repo, instruction=instruction)
+        command = self.command_for(
+            repo=self._repo, instruction=instruction, operation=operation
+        )
         try:
             completed = self._runner(
                 command,
@@ -271,9 +276,15 @@ class AntigravityAdapter:
             transport_record_fn(usage)
 
     def command_for(
-        self, *, repo: Path, instruction: str
+        self, *, repo: Path, instruction: str, operation: str = "PRIMARY"
     ) -> tuple[str, ...]:
         """Build the native AGY command from provider-neutral authorization."""
+
+        schema_path = (
+            REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH
+            if operation == "REMEDIATION"
+            else RESULT_PACKAGE_SCHEMA_PATH
+        )
 
         command = [
             "agy",
@@ -295,7 +306,7 @@ class AntigravityAdapter:
             "--output-format",
             "json",
             "--json-schema",
-            str(RESULT_PACKAGE_SCHEMA_PATH),
+            str(schema_path),
             "--print-timeout",
             f"{self._execution_policy.response_budget_minutes}m",
         ]

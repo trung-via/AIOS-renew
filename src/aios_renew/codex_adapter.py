@@ -44,6 +44,9 @@ class _DefaultExecutionPolicy:
 RESULT_PACKAGE_SCHEMA_PATH = (
     Path(__file__).parent / "schemas" / "result_package.json"
 ).resolve()
+REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH = (
+    Path(__file__).parent / "schemas" / "remediation_result_package.json"
+).resolve()
 
 _NATIVE_EXECUTOR_INSTRUCTION = (
     "You are the already-selected native Executor inside an admitted AIOS execution. "
@@ -174,7 +177,7 @@ class CodexAdapter:
 
         command = self.command_for(
             execution.run,
-            schema_path=self._schema_path,
+            schema_path=REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
             authorizes_mutation=self._execution_policy.authorizes_mutation,
         )
         try:

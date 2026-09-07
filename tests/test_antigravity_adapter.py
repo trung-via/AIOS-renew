@@ -21,7 +21,10 @@ from aios_renew import (
 )
 from aios_renew.review import RemediationExecution
 from aios_renew.dispatcher import NativeExecutionPolicy
-from aios_renew.antigravity_adapter import extract_token_usage
+from aios_renew.antigravity_adapter import (
+    REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
+    extract_token_usage,
+)
 from aios_renew.run_observation import TokenUsage
 
 
@@ -635,6 +638,12 @@ def test_antigravity_command_deterministic_model_and_effort_across_operations(
     assert "--dangerously-skip-permissions" in cmd_primary
     assert cmd_primary[cmd_primary.index("--output-format") + 1] == "json"
     assert cmd_primary[cmd_primary.index("--json-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
+    assert cmd_remediation[cmd_remediation.index("--json-schema") + 1] == str(
+        REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH
+    )
+    assert cmd_repair[cmd_repair.index("--json-schema") + 1] == str(
+        RESULT_PACKAGE_SCHEMA_PATH
+    )
 
 
 def test_antigravity_unsupported_model_fails_closed_without_fallback_or_retry(

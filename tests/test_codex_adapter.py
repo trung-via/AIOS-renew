@@ -21,7 +21,10 @@ from aios_renew import (
 )
 from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.review import RemediationExecution
-from aios_renew.codex_adapter import extract_token_usage
+from aios_renew.codex_adapter import (
+    REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
+    extract_token_usage,
+)
 from aios_renew.run_observation import TokenUsage
 
 
@@ -451,6 +454,49 @@ def test_schema_represents_canonical_result_and_evidence_shape() -> None:
     jsonschema.validate(instance=empty_claim_evidence, schema=schema)
 
 
+def test_remediation_schema_requires_runtime_owned_arrays_to_be_empty() -> None:
+    assert REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH.exists()
+    schema = json.loads(
+        REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8")
+    )
+    result_properties = schema["properties"]["result"]["properties"]
+
+    assert set(schema["required"]) == {"result", "evidence"}
+    assert set(schema["properties"]["result"]["required"]) == {
+        "head_sha",
+        "claims",
+        "changed_files",
+        "unresolved",
+    }
+    assert result_properties["claims"]["maxItems"] == 0
+    assert result_properties["unresolved"]["maxItems"] == 0
+    assert schema["properties"]["evidence"]["maxItems"] == 0
+    assert result_properties["head_sha"]["minLength"] == 1
+    assert result_properties["changed_files"]["items"]["minLength"] == 1
+
+    valid_payload = json.loads(successful_output("RUN-007-001"))
+    valid_payload["result"]["claims"] = []
+    valid_payload["result"]["unresolved"] = []
+    valid_payload["evidence"] = []
+    jsonschema.validate(instance=valid_payload, schema=schema)
+
+    for path, item in (
+        (
+            ("result", "claims"),
+            successful_output("RUN-007-001")["result"]["claims"][0],
+        ),
+        (("result", "unresolved"), "still unresolved"),
+        (("evidence",), successful_output("RUN-007-001")["evidence"][0]),
+    ):
+        invalid_payload = json.loads(json.dumps(valid_payload))
+        target = invalid_payload
+        for segment in path[:-1]:
+            target = target[segment]
+        target[path[-1]] = [item]
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(instance=invalid_payload, schema=schema)
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -742,6 +788,12 @@ def test_codex_command_deterministic_model_and_reasoning_across_operations() -> 
     assert cmd_primary[cmd_primary.index("--cd") + 1] == "C:/workspace"
     assert cmd_primary[cmd_primary.index("--sandbox") + 1] == "workspace-write"
     assert cmd_primary[cmd_primary.index("--output-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
+    assert cmd_remediation[cmd_remediation.index("--output-schema") + 1] == str(
+        REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH
+    )
+    assert cmd_repair[cmd_repair.index("--output-schema") + 1] == str(
+        RESULT_PACKAGE_SCHEMA_PATH
+    )
     assert cmd_primary[cmd_primary.index("--color") + 1] == "never"
     assert "--json" in cmd_primary
 
