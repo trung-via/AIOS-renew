@@ -1961,6 +1961,19 @@ def _create_historical_workspace(repo: Path, failed_head: str) -> Path:
         raise
 
 
+def _require_control_checkout_unchanged(
+    repo: Path, *, head_sha: str, branch: str
+) -> None:
+    """Fail closed if isolated execution races with the control checkout."""
+
+    if _git(repo, "rev-parse", "HEAD") != head_sha:
+        raise OperatorError("historical execution changed control HEAD")
+    if _git(repo, "rev-parse", "--abbrev-ref", "HEAD") != branch:
+        raise OperatorError("historical execution changed control branch")
+    if _git(repo, "status", "--porcelain"):
+        raise OperatorError("historical execution changed control index or worktree")
+
+
 def _is_kernel_source(path: str) -> bool:
     normalized = path.replace("\\", "/").strip()
     return (
@@ -2238,10 +2251,10 @@ def run_remediation(
     except KeyboardInterrupt as original:
         if attempt.run_path is not None:
             if not (state.results / attempt.run_path.name).is_file():
-                _persist_and_transport_failure(
+                _persist_remediation_failure(
                     root,
-                    task_id=task_id,
-                    run_path=attempt.run_path,
+                    state=state,
+                    attempt=attempt,
                     failure=original,
                     observation_tracker=observation_tracker,
                     interruption_phase=attempt.interruption_phase,
@@ -2250,10 +2263,10 @@ def run_remediation(
     except Exception as original:
         if attempt.run_path is not None:
             if not (state.results / attempt.run_path.name).is_file():
-                _persist_and_transport_failure(
+                _persist_remediation_failure(
                     root,
-                    task_id=task_id,
-                    run_path=attempt.run_path,
+                    state=state,
+                    attempt=attempt,
                     failure=original,
                     observation_tracker=observation_tracker,
                 )
@@ -2266,6 +2279,44 @@ def run_remediation(
                 failure=original,
             )
         raise
+    finally:
+        _remove_historical_workspace(root, attempt.historical_workspace)
+
+
+def _persist_remediation_failure(
+    control_repo: Path,
+    *,
+    state: RuntimePaths,
+    attempt: _RunAttempt,
+    failure: BaseException,
+    observation_tracker: RunObservationTracker,
+    interruption_phase: str | None = None,
+) -> None:
+    """Persist an admitted FIX failure against its exact mutation subject."""
+
+    if (
+        attempt.run_path is None
+        or attempt.subject_repo is None
+        or attempt.task is None
+    ):
+        return
+    try:
+        run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
+        run = _remediation_execution_from_data(run_data["execution"]).run
+        persist_failure(
+            attempt.subject_repo,
+            state=state,
+            task=attempt.task,
+            run=run,
+            run_path=attempt.run_path,
+            failure=failure,
+            observation_tracker=observation_tracker,
+            interruption_phase=interruption_phase,
+            transport_repo=control_repo,
+        )
+    except Exception:
+        # Failure recording is subordinate and never masks the admitted failure.
+        return
 
 
 def _persist_and_transport_admission_failure(
@@ -2359,12 +2410,19 @@ def _run_remediation_impl(
             "remote finding mode cannot be mixed with explicit REVIEW/REMEDIATION artifacts"
         )
     if remote_mode:
-        canonical_review, canonical_remediation, prior_result, canonical_prior_review = (
+        (
+            canonical_review,
+            canonical_remediation,
+            prior_result,
+            canonical_prior_review,
+            task,
+        ) = (
             _resolve_remote_remediation_lineage(
                 root,
                 task=task,
                 finding_id=finding_id,
                 admission=admission,
+                bind_reviewed_task=True,
             )
         )
     else:
@@ -2440,11 +2498,37 @@ def _run_remediation_impl(
     admission["phase"] = "REPOSITORY_ADMISSION"
     with RepositoryLock(state.lock):
         actual_baseline = _git(root, "rev-parse", "HEAD")
+        control_branch = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
         admission["current_head_sha"] = actual_baseline
         if _git(root, "status", "--porcelain"):
             raise OperatorError("repository dirty")
-        if actual_baseline != canonical_remediation.reviewed_sha:
+        historical = (
+            remote_mode
+            and actual_baseline != canonical_remediation.reviewed_sha
+        )
+        if (
+            not remote_mode
+            and actual_baseline != canonical_remediation.reviewed_sha
+        ):
             raise OperatorError("current HEAD does not match REMEDIATION reviewed_sha")
+
+        subject_repo = root
+        historical_workspace = None
+        if historical:
+            admission["phase"] = "HISTORICAL_SUBJECT_ADMISSION"
+            historical_workspace = _create_historical_workspace(
+                root, canonical_remediation.reviewed_sha
+            )
+            subject_repo = historical_workspace
+            _require_control_checkout_unchanged(
+                root, head_sha=actual_baseline, branch=control_branch
+            )
+        if attempt is not None:
+            attempt.bind_subject(
+                subject_repo,
+                task,
+                historical_workspace=historical_workspace,
+            )
 
         remote_run_ids = _remote_run_reservations(root, task)
         run_id = next_run_id(task_id, state.runs, reserved=remote_run_ids)
@@ -2452,8 +2536,8 @@ def _run_remediation_impl(
             run_id=run_id,
             task=task,
             executor=executor,
-            base_sha=actual_baseline,
-            workspace=str(root),
+            base_sha=canonical_remediation.reviewed_sha,
+            workspace=str(subject_repo),
         )
         finding = next(
             item
@@ -2484,7 +2568,7 @@ def _run_remediation_impl(
         )
         dispatcher = remediation_dispatcher(
             selected_executor=executor,
-            repo=root,
+            repo=subject_repo,
             handoff_path=state.handoffs / f"{run_id}.json",
             execution_policy=execution_policy,
             native_runner=observed_native_runner,
@@ -2501,8 +2585,22 @@ def _run_remediation_impl(
         except DispatcherError as exc:
             raise OperatorError(f"dispatcher failed: {exc}") from exc
 
+        if historical:
+            _require_control_checkout_unchanged(
+                root, head_sha=actual_baseline, branch=control_branch
+            )
+            historical_candidate = _git(subject_repo, "rev-parse", "HEAD")
+            if not _git_is_ancestor(
+                subject_repo,
+                canonical_remediation.reviewed_sha,
+                historical_candidate,
+            ):
+                raise OperatorError(
+                    "historical remediation candidate does not descend from reviewed_sha"
+                )
+
         runtime_completion = RuntimeCompletion(
-            repo=root,
+            repo=subject_repo,
             state=state,
             task=task,
             run=run,
@@ -2510,12 +2608,17 @@ def _run_remediation_impl(
             verification_runner=verification_runner,
             observation_tracker=observation_tracker,
             error_type=OperatorError,
+            transport_repo=root,
         )
         if attempt is not None:
             attempt.bind_completion(runtime_completion)
         completion = runtime_completion.complete(
             package, remediation_completion_policy(execution)
         )
+        if historical:
+            _require_control_checkout_unchanged(
+                root, head_sha=actual_baseline, branch=control_branch
+            )
 
         return RemediationSummary(
             task_id=task_id,
@@ -2523,7 +2626,7 @@ def _run_remediation_impl(
             finding_id=canonical_remediation.finding_id,
             run_id=run_id,
             executor=executor,
-            reviewed_sha=actual_baseline,
+            reviewed_sha=canonical_remediation.reviewed_sha,
             head_sha=completion.head_sha,
             result_path=completion.result_path,
         )
@@ -2710,9 +2813,12 @@ def _accept_candidate_impl(
 def _resolve_direct_lineage(
     repo: Path, *, task: Task, finding_id: str
 ) -> tuple[Review, Remediation, Result, Review | None]:
-    return _resolve_remote_remediation_lineage(
-        repo, task=task, finding_id=finding_id, context="direct candidate"
+    review, remediation, result, prior_review, _ = (
+        _resolve_remote_remediation_lineage(
+            repo, task=task, finding_id=finding_id, context="direct candidate"
+        )
     )
+    return review, remediation, result, prior_review
 
 
 def _resolve_remote_remediation_lineage(
@@ -2722,7 +2828,8 @@ def _resolve_remote_remediation_lineage(
     finding_id: str,
     context: str = "remote remediation",
     admission: dict[str, Any] | None = None,
-) -> tuple[Review, Remediation, Result, Review | None]:
+    bind_reviewed_task: bool = False,
+) -> tuple[Review, Remediation, Result, Review | None, Task]:
     """Resolve exactly one contract-valid remote lineage without heuristics."""
 
     try:
@@ -2735,10 +2842,14 @@ def _resolve_remote_remediation_lineage(
     except ReviewTransportError as exc:
         raise OperatorError(f"{context} lineage resolution failed: {exc}") from exc
 
-    matches: list[tuple[Review, Remediation, Result, Review | None]] = []
+    matches: list[tuple[Review, Remediation, Result, Review | None, Task]] = []
     for remote in remote_lineages:
         parsed = _parse_remote_direct_lineage(
-            repo, task=task, remote=remote, admission=admission
+            repo,
+            task=task,
+            remote=remote,
+            admission=admission,
+            bind_reviewed_task=bind_reviewed_task,
         )
         if parsed is not None:
             if parsed[1].finding_id != finding_id:
@@ -2760,7 +2871,8 @@ def _parse_remote_direct_lineage(
     task: Task,
     remote: RemoteRemediationLineage,
     admission: dict[str, Any] | None = None,
-) -> tuple[Review, Remediation, Result, Review | None] | None:
+    bind_reviewed_task: bool = False,
+) -> tuple[Review, Remediation, Result, Review | None, Task] | None:
     try:
         run_data = json.loads(remote.run.decode("utf-8", errors="strict"))
         if not isinstance(run_data, Mapping):
@@ -2790,6 +2902,25 @@ def _parse_remote_direct_lineage(
                     "reviewed_sha": review.reviewed_sha,
                 }
             )
+        lineage_task = task
+        if bind_reviewed_task:
+            try:
+                lineage_task = parse_task(
+                    read_remote_task(
+                        repo,
+                        commit_sha=review.reviewed_sha,
+                        task_id=task.task_id,
+                    ).decode("utf-8", errors="strict")
+                )
+            except (ReviewTransportError, TaskValidationError, UnicodeError) as exc:
+                raise ValueError(f"historical TASK rejected: {exc}") from exc
+            if (
+                lineage_task.task_id != task.task_id
+                or lineage_task.revision != task.revision
+                or lineage_task.task_id != source_run.task.id
+                or lineage_task.revision != source_run.task.revision
+            ):
+                raise ValueError("historical TASK identity or revision mismatch")
         remediation = parse_remediation(
             remote.remediation.decode("utf-8", errors="strict")
         )
@@ -2806,11 +2937,17 @@ def _parse_remote_direct_lineage(
         package = ResultPackage(result=result, evidence=evidence)
         if prior_execution is None:
             validate_result_package(
-                task=task, run=source_run, result=result, evidence=evidence
+                task=lineage_task,
+                run=source_run,
+                result=result,
+                evidence=evidence,
             )
         else:
             _validate_persisted_remediation_result(
-                repo=repo, task=task, execution=prior_execution, package=package
+                repo=repo,
+                task=lineage_task,
+                execution=prior_execution,
+                package=package,
             )
         if result.head_sha != review.reviewed_sha:
             raise ValueError("REVIEW does not bind to authoritative source RESULT")
@@ -2830,7 +2967,7 @@ def _parse_remote_direct_lineage(
                 acceptance={},
                 findings=(prior_execution.finding,),
             )
-        return review, remediation, result, prior_review
+        return review, remediation, result, prior_review, lineage_task
     except (
         ArtifactValidationError,
         KeyError,

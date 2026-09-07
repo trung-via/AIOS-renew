@@ -638,6 +638,8 @@ def read_remote_task(repo: Path, *, commit_sha: str, task_id: str) -> bytes:
 
     if not task_id or "/" in task_id or "\\" in task_id:
         raise ReviewTransportError(f"invalid TASK id: {task_id!r}")
+    if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit_sha):
+        raise ReviewTransportError("invalid historical TASK commit SHA")
     remote = resolve_transport_remote(repo)
     content = _read_remote_blob(
         repo, remote, commit_sha, f".ai/tasks/{task_id}.yaml"

@@ -765,6 +765,52 @@ class RemediationRunner:
         )
 
 
+class IsolatedRemediationRunner:
+    """Apply a remediation to the --cd subject selected by the Runtime."""
+
+    def __init__(self, reviewed_sha: str) -> None:
+        self.reviewed_sha = reviewed_sha
+        self.calls = []
+        self.subjects: list[Path] = []
+        self.task_sources: list[str] = []
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        subject = Path(command[command.index("--cd") + 1])
+        self.subjects.append(subject)
+        assert git(subject, "rev-parse", "HEAD") == self.reviewed_sha
+        self.task_sources.append(
+            (subject / ".ai" / "tasks" / "TASK-101.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        execution = json.loads(
+            kwargs["input"].decode("utf-8").split("REMEDIATION_INPUT:\n", 1)[1]
+        )
+        assert execution["run"]["base_sha"] == self.reviewed_sha
+        (subject / "OUTPUT.txt").write_text(
+            "historical correction\n", encoding="utf-8"
+        )
+        git(subject, "add", "OUTPUT.txt")
+        git(subject, "commit", "--quiet", "-m", "historical narrow remediation")
+        head_sha = git(subject, "rev-parse", "HEAD")
+        payload = {
+            "result": {
+                "head_sha": head_sha,
+                "claims": [],
+                "changed_files": ["OUTPUT.txt"],
+                "unresolved": [],
+            },
+            "evidence": [],
+        }
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(payload),
+            stderr="",
+        )
+
+
 class StaticRemediationRunner:
     def __init__(
         self,
@@ -4616,6 +4662,208 @@ def test_historical_repair_isolates_subject_and_preserves_control_checkout(
     assert git(repo, "show", f"{summary.head_sha}:AIOS_PIN") == "old-runtime"
     git(repo, "merge-base", "--is-ancestor", failed_head, summary.head_sha)
     assert git(repo, "rev-list", "--count", f"{failed_head}..{summary.head_sha}") == "1"
+
+
+def test_remote_remediation_executes_historical_reviewed_subject_in_isolation(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        reviewed_sha=reviewed_sha,
+    )
+    (repo / "README.md").write_text("# advanced control main\n", encoding="utf-8")
+    (repo / ".ai" / "tasks" / "TASK-101.yaml").write_text(
+        TASK_SOURCE.replace("    - OUTPUT.txt", "    - CONTROL.txt"),
+        encoding="utf-8",
+    )
+    git(repo, "add", "README.md", ".ai/tasks/TASK-101.yaml")
+    git(repo, "commit", "--quiet", "-m", "advance control main")
+    git(repo, "push", "--quiet", "origin", "main")
+    control_head = git(repo, "rev-parse", "HEAD")
+    control_branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    runner = IsolatedRemediationRunner(reviewed_sha)
+
+    summary = run_remediation(
+        "TASK-101",
+        finding_id="R1",
+        executor="codex",
+        repo=repo,
+        native_runner=runner,
+    )
+    run_data = json.loads(
+        (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert len(runner.calls) == 1
+    assert len(runner.subjects) == 1
+    assert "    - OUTPUT.txt" in runner.task_sources[0]
+    assert "    - CONTROL.txt" in (
+        repo / ".ai" / "tasks" / "TASK-101.yaml"
+    ).read_text(encoding="utf-8")
+    assert not runner.subjects[0].exists()
+    assert summary.review_id == "REVIEW-RUN-101-000"
+    assert summary.reviewed_sha == reviewed_sha
+    assert summary.head_sha != reviewed_sha
+    assert (
+        git(repo, "merge-base", "--is-ancestor", reviewed_sha, summary.head_sha)
+        == ""
+    )
+    assert run_data["kind"] == "REMEDIATION"
+    assert run_data["execution"]["run"]["task"] == {
+        "id": "TASK-101",
+        "revision": 1,
+    }
+    assert run_data["execution"]["run"]["base_sha"] == reviewed_sha
+    assert Path(run_data["execution"]["run"]["workspace"]) != repo
+    assert git(repo, "rev-parse", "HEAD") == control_head
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == control_branch
+    assert git(repo, "status", "--porcelain") == ""
+    upstream = tmp_path / "upstream.git"
+    assert git(
+        upstream,
+        "rev-parse",
+        f"refs/heads/aios/run/{summary.run_id}",
+    ) == summary.head_sha
+
+
+def test_historical_remediation_failure_persists_exact_subject_candidate(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        reviewed_sha=reviewed_sha,
+    )
+    (repo / "README.md").write_text("# advanced control main\n", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "commit", "--quiet", "-m", "advance control main")
+    git(repo, "push", "--quiet", "origin", "main")
+    control_head = git(repo, "rev-parse", "HEAD")
+    runner = IsolatedRemediationRunner(reviewed_sha)
+
+    def failing_verification(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, returncode=1, stdout=b"", stderr=b"historical failure"
+        )
+
+    with pytest.raises(OperatorError, match="verification command failed"):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+            native_runner=runner,
+            verification_runner=failing_verification,
+        )
+
+    failure = json.loads(
+        (runtime_paths(repo).failures / "RUN-101-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert len(runner.calls) == 1
+    assert failure["kind"] == "FAILURE"
+    assert failure["run_id"] == "RUN-101-001"
+    assert failure["task"] == {"id": "TASK-101", "revision": 1}
+    assert failure["executor"] == "codex"
+    assert failure["base_sha"] == reviewed_sha
+    assert failure["failed_head_sha"] != reviewed_sha
+    assert failure["phase"] == "VERIFICATION"
+    assert failure["candidate"]["transportable"] is True
+    assert git(repo, "rev-parse", "HEAD") == control_head
+    assert git(repo, "status", "--porcelain") == ""
+    assert git(
+        tmp_path / "upstream.git",
+        "rev-parse",
+        "refs/heads/aios/failure/RUN-101-001",
+    ) == failure["failed_head_sha"]
+    assert not (runtime_paths(repo).results / "RUN-101-001.json").exists()
+
+
+def test_historical_remediation_requires_task_at_reviewed_sha_before_run(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    task_path = repo / ".ai" / "tasks" / "TASK-101.yaml"
+    task_path.parent.mkdir(parents=True)
+    task_path.write_text(TASK_SOURCE, encoding="utf-8")
+    git(repo, "add", ".ai/tasks/TASK-101.yaml")
+    git(repo, "commit", "--quiet", "-m", "add current task only")
+    git(repo, "push", "--quiet", "origin", "main")
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        reviewed_sha=reviewed_sha,
+    )
+    runner = IsolatedRemediationRunner(reviewed_sha)
+
+    with pytest.raises(OperatorError, match="historical TASK rejected"):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+            native_runner=runner,
+        )
+
+    assert runner.calls == []
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_historical_remediation_workspace_failure_precedes_run_and_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        reviewed_sha=reviewed_sha,
+    )
+    (repo / "README.md").write_text("# advanced control main\n", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "commit", "--quiet", "-m", "advance control main")
+    git(repo, "push", "--quiet", "origin", "main")
+    control_head = git(repo, "rev-parse", "HEAD")
+    runner = IsolatedRemediationRunner(reviewed_sha)
+
+    def fail_workspace(repo: Path, head_sha: str) -> Path:
+        assert head_sha == reviewed_sha
+        raise OperatorError("historical workspace setup failed")
+
+    monkeypatch.setattr(
+        operator_module, "_create_historical_workspace", fail_workspace
+    )
+
+    with pytest.raises(OperatorError, match="historical workspace setup failed"):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+            native_runner=runner,
+        )
+
+    assert runner.calls == []
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert git(repo, "rev-parse", "HEAD") == control_head
+    assert git(repo, "status", "--porcelain") == ""
 
 
 def test_historical_verification_only_repair_uses_transported_candidate(

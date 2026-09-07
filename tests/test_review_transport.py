@@ -626,6 +626,20 @@ def test_historical_task_reader_rejects_noncanonical_identity(
         read_remote_task(repo, commit_sha=head, task_id=task_id)
 
 
+@pytest.mark.parametrize(
+    "commit_sha", ["", "HEAD", "--help", "a" * 39, "g" * 40]
+)
+def test_historical_task_reader_rejects_noncanonical_commit_sha(
+    tmp_path: Path, commit_sha: str
+) -> None:
+    repo, _ = make_repo(tmp_path)
+
+    with pytest.raises(
+        ReviewTransportError, match="invalid historical TASK commit SHA"
+    ):
+        read_remote_task(repo, commit_sha=commit_sha, task_id="TASK-058")
+
+
 def publish_remediation_artifacts(
     repo: Path,
     files: Path,
