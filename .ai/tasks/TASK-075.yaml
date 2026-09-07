@@ -1,0 +1,198 @@
+task_id: TASK-075
+revision: 1
+
+goal: >
+  Correct the REPAIR pre-verification reuse ordering boundary so verification-only
+  reusable-candidate logic is authoritative only for an actually eligible NO_CHANGE
+  REPAIR. Preserve ordinary Executor-backed CODE_FIX dispatch even when reusable
+  sidecar state is malformed, incomplete, conflicting, or otherwise unusable for reuse,
+  while continuing to fail closed when malformed reusable state is actually relied on
+  to elide the Executor. Preserve exact failed-head and historical REPAIR lineage,
+  Runtime-owned verification/completion, thin Human-facing worker behavior, and the
+  existing no-retry/no-reroute execution model.
+
+problem: >
+  Current canonical main b28fa775d8adce591eb2038829ffb2ddfbe58ec4 still applies
+  reusable-candidate structural/binding checks before the Runtime has established that
+  the newly authorized REPAIR is an eligible verification-only NO_CHANGE continuation.
+  TASK-069 corrected one ordering defect by moving TASK acceptance-coverage checks after
+  fast-path eligibility, but deliberately retained fail-closed sidecar validation even
+  for CODE_FIX. That retained rule is now an observed semantic defect: a later CODE_FIX
+  continuation can be rejected by reuse-specific candidate equality, completeness, or
+  malformed-sidecar validation even though CODE_FIX must not reuse that candidate and
+  should instead proceed through the normal one-Executor REPAIR path. The required
+  boundary is that reusable pre-verification state is subordinate optimization state,
+  not general REPAIR admission authority. Canonical FAILURE/TASK/failed-head/historical
+  lineage and REPAIR authorization remain mandatory independently of reuse.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-075 authoring is
+    b28fa775d8adce591eb2038829ffb2ddfbe58ec4 and contains published TASK-074 behavior.
+  - >
+    Human explicitly authorizes this TASK as a new semantic correction to the narrow
+    TASK-069 rule that malformed or mismatched pre-verification sidecar state fails
+    CODE_FIX admission. This is new Human intent and therefore a new TASK rather than a
+    FIX of historical TASK-069.
+  - >
+    TASK-064 remains authoritative for verification-only NO_CHANGE continuation:
+    Executor elision is permitted only for the existing eligible reuse topology and
+    never for CODE_FIX or another non-qualifying REPAIR.
+  - >
+    TASK-058 revision 2 remains authoritative for exact failed_head_sha historical
+    REPAIR admission, immutable correction lineage reconstruction, current-control
+    Runtime authority, isolated historical subject handling, exactly-one selected
+    Executor dispatch for ordinary repair, and no retry/fallback/reroute.
+  - >
+    TASK-057 remains authoritative for Runtime-owned canonical REPAIR changed_files,
+    narrow failed-head-to-final mutation safety, canonical verification ordering, and
+    EVIDENCE construction.
+  - >
+    Pre-verification sidecar/package state is subordinate reusable-candidate state. It
+    may authorize Executor elision only when the requested REPAIR already satisfies the
+    existing verification-only NO_CHANGE reuse preconditions.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-ROADMAP.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-057.yaml
+    - .ai/tasks/TASK-058.yaml
+    - .ai/tasks/TASK-064.yaml
+    - .ai/tasks/TASK-069.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/review_transport.py
+    - tests/test_repair_preverification_eligibility.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_repair_preverification_eligibility.py
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, FAILURE, REVIEW, REMEDIATION, REPAIR, or RUN_OBSERVATION schemas or semantic authority.
+  - Change TASK-057 canonical changed_files authority, TASK-058 historical recovery semantics, or TASK-064 verification-only NO_CHANGE eligibility itself.
+  - Reinterpret, rewrite, delete, or republish historical TASK-069, RUN-069-001, its review, or any immutable lineage artifact.
+  - Permit CODE_FIX, PRIMARY, REMEDIATION, non-empty-scope REPAIR, non-VERIFICATION predecessor failures, or any other non-qualifying path to reuse a pre-verification package or elide the selected Executor.
+  - Weaken canonical FAILURE identity, TASK id/revision, failed_head_sha, continuation/root lineage, historical workspace, duplicate-continuation, REPAIR authorization, mutation scope, repository, completion, verification, or publication gates.
+  - Convert malformed reusable state into an automatic Executor fallback for an otherwise eligible NO_CHANGE reuse request.
+  - Add retry, fallback, reroute, failover, duplicate dispatch, automatic repair selection, automatic repair authoring, extra verification, or a second Executor invocation.
+  - Add reusable-candidate validation or lineage reconstruction logic to repository-provided Human-facing workers, Codex, Antigravity, or downstream repositories.
+  - Modify dispatcher selection/model policy, native adapter contracts, worker scripts, roadmap capability status, outer automation, or publication behavior.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Runtime must establish whether the authorized REPAIR is actually eligible to rely
+      on verification-only reusable-candidate state before applying validation whose only
+      purpose is to authorize Executor elision. Reuse-specific state must not become a
+      general REPAIR admission gate.
+    - >
+      CODE_FIX must bypass reusable-candidate decoding, local-versus-transported candidate
+      equality, reusable package completeness, acceptance-coverage, subject/package
+      consistency, and other validation whose authority exists only because Runtime may
+      reuse that package instead of invoking the selected Executor. Presence of malformed,
+      stale, conflicting, incomplete, or mismatched reusable state alone must not prevent
+      an otherwise valid CODE_FIX from entering the ordinary one-Executor REPAIR path.
+    - >
+      The CODE_FIX bypass applies only to reusable-candidate authority. Canonical remote
+      and local FAILURE lineage, exact failed_head_sha, TASK id/revision, continuation and
+      original root lineage, historical admission, REPAIR identity/action/scope,
+      duplicate-continuation protection, repository safety, completion, verification,
+      and transport authority remain fail closed exactly as required by existing
+      contracts.
+    - >
+      For an actually eligible verification-only NO_CHANGE reuse request, malformed,
+      undecodable, wrong-RUN, wrong-TASK/revision, wrong-subject, candidate changed-files
+      mismatch, local-versus-transported conflict, incomplete ResultPackage, missing TASK
+      acceptance coverage, or any other existing reusable-package invariant must still
+      fail closed before Executor elision and before canonical verification. Runtime must
+      not silently convert such a failed reuse request into ordinary Executor dispatch.
+    - >
+      If no reusable package exists for a NO_CHANGE request, preserve existing TASK-064
+      semantics for the ordinary Executor-backed REPAIR path. This TASK must not broaden
+      the zero-Executor fast path or infer reusable truth from absence.
+    - >
+      A CODE_FIX continuation admitted after one or more verification failures must remain
+      bound to the exact latest failed_head_sha and preserved historical/correction
+      lineage. Bypassing reusable-state validation must not allow CODE_FIX to repair a
+      different candidate, substitute current main for the failed subject, or collapse
+      continuation lineage.
+    - >
+      Ordinary admitted CODE_FIX continues to invoke exactly one already-selected
+      Executor through the existing REPAIR dispatcher and then the existing Runtime
+      completion/verification boundary. No additional model call, retry, fallback,
+      reroute, worker-side decision, or hidden verification may be introduced.
+    - >
+      Repository-provided Human-facing worker behavior remains thin and unchanged. The
+      worker may request the existing repair operation and selected Executor but does not
+      inspect reusable sidecars, decide reuse eligibility, reconcile candidate equality,
+      reconstruct historical lineage, retry, or reroute.
+    - >
+      This TASK supersedes only the narrow TASK-069 requirement that malformed or
+      mismatched reusable sidecar state must fail CODE_FIX admission. All other TASK-069
+      guarantees, including zero-Executor reuse only for qualifying NO_CHANGE and full
+      TASK acceptance coverage for actual reuse, remain authoritative.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A deterministic regression proves an otherwise valid CODE_FIX REPAIR is dispatched
+      to its selected Executor exactly once even when predecessor reusable-candidate state
+      is malformed, incomplete, wrong-subject, changed-files-inconsistent, or otherwise
+      unusable solely for verification-only package reuse.
+  - id: AC2
+    condition: >
+      CODE_FIX is not rejected by local-versus-transported reusable-candidate equality or
+      reusable package completeness/acceptance checks, while exact canonical FAILURE,
+      TASK, failed_head_sha, REPAIR, correction-lineage, and historical-admission gates
+      remain enforced independently.
+  - id: AC3
+    condition: >
+      A genuinely eligible NO_CHANGE verification-only reuse request still fails closed
+      before canonical verification when its reusable state is malformed, conflicting,
+      wrong-RUN, wrong-TASK/revision, wrong-subject, changed-files-inconsistent,
+      incomplete, or lacks complete TASK acceptance coverage; no Executor fallback,
+      retry, or reroute occurs.
+  - id: AC4
+    condition: >
+      Existing valid qualifying NO_CHANGE reuse remains zero-Executor and executes the
+      canonical TASK verification list exactly once through the existing Runtime
+      completion boundary.
+  - id: AC5
+    condition: >
+      A full deterministic continuation regression models PRIMARY canonical verification
+      failure followed by an eligible NO_CHANGE continuation whose canonical verification
+      also fails, followed by an authorized CODE_FIX REPAIR. The final CODE_FIX dispatches
+      normally exactly once instead of failing reusable-candidate validation, and remains
+      bound to the exact failed_head_sha and continuation/root lineage produced by the
+      second verification failure.
+  - id: AC6
+    condition: >
+      The regression topology in AC5 proves the CODE_FIX final candidate is processed by
+      existing REPAIR repository/completion/verification gates and that no reusable
+      package is substituted for the CODE_FIX Executor result.
+  - id: AC7
+    condition: >
+      Existing historical REPAIR recovery, current-HEAD REPAIR, no-retry/no-fallback/
+      no-reroute behavior, exactly-one ordinary Executor dispatch, Runtime-owned
+      verification/EVIDENCE, and immutable artifact schemas remain behaviorally
+      unchanged outside the corrected reusable-state authority ordering.
+  - id: AC8
+    condition: >
+      No worker, adapter, dispatcher, downstream repository, roadmap capability status,
+      or publication surface changes are required; the implementation remains limited to
+      the Runtime/Operator reuse decision boundary and focused deterministic regression
+      coverage.
+
+verification:
+  required:
+    - python -m pytest tests/test_repair_preverification_eligibility.py -q
+    - git diff --check
