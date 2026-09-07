@@ -2417,12 +2417,11 @@ def _run_remediation_impl(
             canonical_prior_review,
             task,
         ) = (
-            _resolve_remote_remediation_lineage(
+            _resolve_remote_remediation_lineage_with_reviewed_task(
                 root,
                 task=task,
                 finding_id=finding_id,
                 admission=admission,
-                bind_reviewed_task=True,
             )
         )
     else:
@@ -2813,12 +2812,9 @@ def _accept_candidate_impl(
 def _resolve_direct_lineage(
     repo: Path, *, task: Task, finding_id: str
 ) -> tuple[Review, Remediation, Result, Review | None]:
-    review, remediation, result, prior_review, _ = (
-        _resolve_remote_remediation_lineage(
-            repo, task=task, finding_id=finding_id, context="direct candidate"
-        )
+    return _resolve_remote_remediation_lineage(
+        repo, task=task, finding_id=finding_id, context="direct candidate"
     )
-    return review, remediation, result, prior_review
 
 
 def _resolve_remote_remediation_lineage(
@@ -2828,10 +2824,48 @@ def _resolve_remote_remediation_lineage(
     finding_id: str,
     context: str = "remote remediation",
     admission: dict[str, Any] | None = None,
-    bind_reviewed_task: bool = False,
-) -> tuple[Review, Remediation, Result, Review | None, Task]:
+) -> tuple[Review, Remediation, Result, Review | None]:
     """Resolve exactly one contract-valid remote lineage without heuristics."""
 
+    resolved = _resolve_remote_remediation_lineage_impl(
+        repo,
+        task=task,
+        finding_id=finding_id,
+        context=context,
+        admission=admission,
+        bind_reviewed_task=False,
+    )
+    return resolved[:4]
+
+
+def _resolve_remote_remediation_lineage_with_reviewed_task(
+    repo: Path,
+    *,
+    task: Task,
+    finding_id: str,
+    admission: dict[str, Any] | None = None,
+) -> tuple[Review, Remediation, Result, Review | None, Task]:
+    """Resolve remote FIX lineage against its immutable reviewed TASK."""
+
+    return _resolve_remote_remediation_lineage_impl(
+        repo,
+        task=task,
+        finding_id=finding_id,
+        context="remote remediation",
+        admission=admission,
+        bind_reviewed_task=True,
+    )
+
+
+def _resolve_remote_remediation_lineage_impl(
+    repo: Path,
+    *,
+    task: Task,
+    finding_id: str,
+    context: str,
+    admission: dict[str, Any] | None,
+    bind_reviewed_task: bool,
+) -> tuple[Review, Remediation, Result, Review | None, Task]:
     try:
         remote_lineages = resolve_remote_remediation_lineages(
             repo,
@@ -2844,7 +2878,7 @@ def _resolve_remote_remediation_lineage(
 
     matches: list[tuple[Review, Remediation, Result, Review | None, Task]] = []
     for remote in remote_lineages:
-        parsed = _parse_remote_direct_lineage(
+        parsed = _parse_remote_direct_lineage_impl(
             repo,
             task=task,
             remote=remote,
@@ -2871,7 +2905,26 @@ def _parse_remote_direct_lineage(
     task: Task,
     remote: RemoteRemediationLineage,
     admission: dict[str, Any] | None = None,
-    bind_reviewed_task: bool = False,
+) -> tuple[Review, Remediation, Result, Review | None] | None:
+    """Parse the stable four-value remote remediation lineage contract."""
+
+    parsed = _parse_remote_direct_lineage_impl(
+        repo,
+        task=task,
+        remote=remote,
+        admission=admission,
+        bind_reviewed_task=False,
+    )
+    return None if parsed is None else parsed[:4]
+
+
+def _parse_remote_direct_lineage_impl(
+    repo: Path,
+    *,
+    task: Task,
+    remote: RemoteRemediationLineage,
+    admission: dict[str, Any] | None = None,
+    bind_reviewed_task: bool,
 ) -> tuple[Review, Remediation, Result, Review | None, Task] | None:
     try:
         run_data = json.loads(remote.run.decode("utf-8", errors="strict"))

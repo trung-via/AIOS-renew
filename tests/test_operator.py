@@ -4726,11 +4726,17 @@ def test_remote_remediation_executes_historical_reviewed_subject_in_isolation(
     assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == control_branch
     assert git(repo, "status", "--porcelain") == ""
     upstream = tmp_path / "upstream.git"
+    review_ref = f"refs/heads/aios/review/{summary.run_id}"
+    artifacts_ref = f"refs/heads/aios/artifacts/{summary.run_id}"
+    assert git(upstream, "rev-parse", review_ref) == summary.head_sha
     assert git(
-        upstream,
-        "rev-parse",
-        f"refs/heads/aios/run/{summary.run_id}",
-    ) == summary.head_sha
+        upstream, "show", f"{artifacts_ref}:.ai/transport/run.json"
+    ) == (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(
+        encoding="utf-8"
+    )
+    assert git(
+        upstream, "show", f"{artifacts_ref}:.ai/transport/result.json"
+    ) == summary.result_path.read_text(encoding="utf-8")
 
 
 def test_historical_remediation_failure_persists_exact_subject_candidate(
@@ -4810,6 +4816,9 @@ def test_historical_remediation_requires_task_at_reviewed_sha_before_run(
         reviewed_sha=reviewed_sha,
     )
     runner = IsolatedRemediationRunner(reviewed_sha)
+    runs_before = {
+        path.name for path in runtime_paths(repo).runs.glob("*.json")
+    }
 
     with pytest.raises(OperatorError, match="historical TASK rejected"):
         run_remediation(
@@ -4821,7 +4830,9 @@ def test_historical_remediation_requires_task_at_reviewed_sha_before_run(
         )
 
     assert runner.calls == []
-    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert {
+        path.name for path in runtime_paths(repo).runs.glob("*.json")
+    } == runs_before
 
 
 def test_historical_remediation_workspace_failure_precedes_run_and_executor(
@@ -4842,6 +4853,9 @@ def test_historical_remediation_workspace_failure_precedes_run_and_executor(
     git(repo, "push", "--quiet", "origin", "main")
     control_head = git(repo, "rev-parse", "HEAD")
     runner = IsolatedRemediationRunner(reviewed_sha)
+    runs_before = {
+        path.name for path in runtime_paths(repo).runs.glob("*.json")
+    }
 
     def fail_workspace(repo: Path, head_sha: str) -> Path:
         assert head_sha == reviewed_sha
@@ -4861,7 +4875,9 @@ def test_historical_remediation_workspace_failure_precedes_run_and_executor(
         )
 
     assert runner.calls == []
-    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert {
+        path.name for path in runtime_paths(repo).runs.glob("*.json")
+    } == runs_before
     assert git(repo, "rev-parse", "HEAD") == control_head
     assert git(repo, "status", "--porcelain") == ""
 
