@@ -95,6 +95,25 @@ def _failed(
     )
 
 
+def _integration_required(
+    run_id: str, *, reviewed_sha: str, prior_main_sha: str
+) -> PublicationError:
+    detail = (
+        "reviewed candidate and current main have diverged; a separately "
+        "authorized integration candidate is required"
+    )
+    return PublicationError(
+        detail,
+        PublicationReport(
+            source_run=run_id,
+            reviewed_sha=reviewed_sha,
+            prior_main_sha=prior_main_sha,
+            outcome="INTEGRATION_REQUIRED",
+            detail=detail,
+        ),
+    )
+
+
 def _single_remote_sha(
     repo: Path, remote: str, ref: str, *, run_id: str
 ) -> str:
@@ -132,6 +151,13 @@ def _read_blob(repo: Path, commit_sha: str, path: str, *, run_id: str) -> bytes:
     if code:
         raise _failed(run_id, f"canonical content missing: {path}")
     return output.encode("utf-8")
+
+
+def _read_optional_blob(repo: Path, commit_sha: str, path: str) -> bytes | None:
+    code, output, _ = _git(
+        repo, "show", f"{commit_sha}:{path}", allow_fail=True
+    )
+    return output.encode("utf-8") if code == 0 else None
 
 
 def _json_no_duplicates(source: bytes, *, document: str) -> Any:
@@ -289,6 +315,316 @@ def _validate_remediation_package(
     return ResultPackage(result=result, evidence=evidence)
 
 
+def _changed_files(repo: Path, base_sha: str, head_sha: str) -> set[str]:
+    code, output, _ = _git(
+        repo,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        base_sha,
+        head_sha,
+        allow_fail=True,
+    )
+    if code:
+        raise ValueError("cannot inspect committed correction delta")
+    return {path for path in output.split("\0") if path}
+
+
+def _validate_repair_authorization(
+    data: Any,
+    *,
+    failed_run_id: str,
+    failed_head_sha: str,
+    task: Any,
+    failed_changed_files: set[str],
+) -> Mapping[str, Any]:
+    authorization = _mapping(data, "REPAIR authorization")
+    required = {
+        "repair_id",
+        "failed_run_id",
+        "failed_head_sha",
+        "task",
+        "action",
+        "modification_scope",
+        "instructions",
+        "constraints",
+    }
+    if set(authorization) != required:
+        raise ValueError("REPAIR authorization fields do not match the contract")
+    task_ref = _mapping(authorization.get("task"), "REPAIR authorization.task")
+    expected_task = {"id": task.task_id, "revision": task.revision}
+    if (
+        authorization.get("failed_run_id") != failed_run_id
+        or authorization.get("failed_head_sha") != failed_head_sha
+        or dict(task_ref) != expected_task
+    ):
+        raise ValueError("REPAIR authorization identity mismatch")
+    action = authorization.get("action")
+    if action not in ("CODE_FIX", "NO_CHANGE"):
+        raise ValueError("REPAIR authorization action is invalid")
+    scope = authorization.get("modification_scope")
+    instructions = authorization.get("instructions")
+    constraints = authorization.get("constraints")
+    if not isinstance(scope, list) or not all(
+        isinstance(item, str) and item for item in scope
+    ):
+        raise ValueError("REPAIR modification_scope must be a string list")
+    if not isinstance(instructions, list) or not instructions or not all(
+        isinstance(item, str) and item for item in instructions
+    ):
+        raise ValueError("REPAIR instructions must be a non-empty string list")
+    if not isinstance(constraints, list) or not all(
+        isinstance(item, str) and item for item in constraints
+    ):
+        raise ValueError("REPAIR constraints must be a string list")
+    correction_scope = set(task.scope.modify).union(failed_changed_files)
+    if set(scope).difference(correction_scope):
+        raise ValueError("REPAIR modification scope exceeds correction authority")
+    if set(constraints).difference(task.constraints.hard):
+        raise ValueError("REPAIR constraints introduce new Human intent")
+    if action == "NO_CHANGE" and scope:
+        raise ValueError("NO_CHANGE REPAIR modification scope must be empty")
+    return authorization
+
+
+def _canonical_repair_authorization(
+    repo: Path,
+    *,
+    remote: str,
+    failed_run_id: str,
+    run_id: str,
+) -> Mapping[str, Any]:
+    ref = f"refs/heads/aios/repair/{failed_run_id}"
+    sha = _single_remote_sha(repo, remote, ref, run_id=run_id)
+    _fetch_object(repo, remote, sha, run_id=run_id)
+    content = _read_blob(
+        repo, sha, ".ai/transport/repair.json", run_id=run_id
+    )
+    return _mapping(
+        _json_no_duplicates(content, document="canonical REPAIR"),
+        "canonical REPAIR",
+    )
+
+
+def _repair_review_lineage(
+    repo: Path,
+    *,
+    remote: str,
+    publication_run_id: str,
+    child_run_data: Mapping[str, Any],
+    child_run: Run,
+    child_head_sha: str,
+    lineage_bytes: bytes,
+    task: Any,
+    seen: frozenset[str] = frozenset(),
+) -> tuple[str, Review | None]:
+    """Validate persisted REPAIR links and recover the applicable prior REVIEW."""
+
+    lineage = _mapping(
+        _json_no_duplicates(lineage_bytes, document="REPAIR execution"),
+        "REPAIR execution",
+    )
+    required = {
+        "failed_run_id",
+        "root_base_sha",
+        "failed_head_sha",
+        "failure",
+        "task",
+        "repair",
+        "run",
+    }
+    if set(lineage) != required:
+        raise ValueError("REPAIR execution fields do not match persisted lineage")
+    failed_run_id = lineage.get("failed_run_id")
+    if not isinstance(failed_run_id, str) or _RUN_ID.fullmatch(failed_run_id) is None:
+        raise ValueError("REPAIR failed RUN identity is invalid")
+    if failed_run_id in seen:
+        raise ValueError("cyclic REPAIR predecessor lineage")
+    seen = seen.union((failed_run_id,))
+
+    root_base_sha = lineage.get("root_base_sha")
+    failed_head_sha = lineage.get("failed_head_sha")
+    if (
+        not isinstance(root_base_sha, str)
+        or _SHA.fullmatch(root_base_sha) is None
+        or not isinstance(failed_head_sha, str)
+        or _SHA.fullmatch(failed_head_sha) is None
+    ):
+        raise ValueError("REPAIR root or failed-head SHA is invalid")
+    embedded_run = _mapping(lineage.get("run"), "REPAIR execution.run")
+    if dict(embedded_run) != dict(child_run_data):
+        raise ValueError("REPAIR execution RUN does not match successful RUN")
+    if child_run.base_sha != failed_head_sha:
+        raise ValueError("REPAIR RUN base_sha does not match failed_head_sha")
+    execution_task = _mapping(lineage.get("task"), "REPAIR execution.task")
+    if (
+        execution_task.get("task_id") != task.task_id
+        or execution_task.get("revision") != task.revision
+    ):
+        raise ValueError("REPAIR execution TASK identity or revision mismatch")
+
+    artifacts_ref = f"refs/heads/aios/failure-artifacts/{failed_run_id}"
+    failed_ref = f"refs/heads/aios/failure/{failed_run_id}"
+    artifacts_sha = _single_remote_sha(
+        repo, remote, artifacts_ref, run_id=publication_run_id
+    )
+    canonical_failed_sha = _single_remote_sha(
+        repo, remote, failed_ref, run_id=publication_run_id
+    )
+    _fetch_object(repo, remote, artifacts_sha, run_id=publication_run_id)
+    _fetch_object(repo, remote, canonical_failed_sha, run_id=publication_run_id)
+    if canonical_failed_sha != failed_head_sha:
+        raise ValueError("REPAIR failed_head_sha does not match canonical failure ref")
+    predecessor_run_bytes = _read_blob(
+        repo, artifacts_sha, ".ai/transport/run.json", run_id=publication_run_id
+    )
+    failure_bytes = _read_blob(
+        repo, artifacts_sha, ".ai/transport/failure.json", run_id=publication_run_id
+    )
+    predecessor_repair = _read_optional_blob(
+        repo, artifacts_sha, ".ai/transport/repair.json"
+    )
+    predecessor_run_data = _mapping(
+        _json_no_duplicates(predecessor_run_bytes, document="predecessor RUN"),
+        "predecessor RUN",
+    )
+    failure = _mapping(
+        _json_no_duplicates(failure_bytes, document="predecessor FAILURE"),
+        "predecessor FAILURE",
+    )
+    embedded_failure = _mapping(lineage.get("failure"), "REPAIR execution.failure")
+    expected_task = {"id": task.task_id, "revision": task.revision}
+    failure_task = _mapping(failure.get("task"), "predecessor FAILURE.task")
+    if (
+        dict(embedded_failure) != dict(failure)
+        or failure.get("kind") != "FAILURE"
+        or failure.get("run_id") != failed_run_id
+        or dict(failure_task) != expected_task
+        or failure.get("failed_head_sha") != failed_head_sha
+    ):
+        raise ValueError("REPAIR predecessor FAILURE identity mismatch")
+    candidate = _mapping(failure.get("candidate"), "predecessor FAILURE.candidate")
+    if candidate.get("repairable") is not True:
+        raise ValueError("REPAIR predecessor is not authorized as repairable")
+    failed_changed_data = candidate.get("changed_files")
+    if not isinstance(failed_changed_data, list) or not all(
+        isinstance(item, str) and item for item in failed_changed_data
+    ):
+        raise ValueError("REPAIR predecessor changed_files are invalid")
+    failed_changed = set(failed_changed_data)
+
+    embedded_authorization = _validate_repair_authorization(
+        lineage.get("repair"),
+        failed_run_id=failed_run_id,
+        failed_head_sha=failed_head_sha,
+        task=task,
+        failed_changed_files=failed_changed,
+    )
+    canonical_authorization = _canonical_repair_authorization(
+        repo,
+        remote=remote,
+        failed_run_id=failed_run_id,
+        run_id=publication_run_id,
+    )
+    if dict(canonical_authorization) != dict(embedded_authorization):
+        raise ValueError("persisted REPAIR authorization is not canonical")
+
+    mutation = _changed_files(repo, failed_head_sha, child_head_sha)
+    scope = set(embedded_authorization["modification_scope"])
+    if mutation.difference(scope):
+        raise ValueError("REPAIR committed delta exceeds modification scope")
+    if embedded_authorization["action"] == "CODE_FIX":
+        if child_head_sha == failed_head_sha or not mutation:
+            raise ValueError("CODE_FIX REPAIR committed delta is empty")
+    elif child_head_sha != failed_head_sha or mutation:
+        raise ValueError("NO_CHANGE REPAIR changed repository HEAD")
+
+    if predecessor_run_data.get("kind") == "REMEDIATION":
+        if predecessor_repair is not None:
+            raise ValueError("REMEDIATION predecessor has conflicting REPAIR lineage")
+        predecessor_run, remediation, prior_review = _remediation_lineage(
+            predecessor_run_data, run_id=failed_run_id
+        )
+        if (
+            predecessor_run.task.id != task.task_id
+            or predecessor_run.task.revision != task.revision
+            or predecessor_run.status != ACTIVE
+            or failure.get("base_sha") != predecessor_run.base_sha
+            or predecessor_run.base_sha != remediation.reviewed_sha
+        ):
+            raise ValueError("failed REMEDIATION predecessor identity mismatch")
+        validate_remediation(review=prior_review, remediation=remediation, task=task)
+        semantic_review = prior_review
+    elif "kind" not in predecessor_run_data:
+        predecessor_run = _run_from_data(predecessor_run_data, "predecessor RUN")
+        if (
+            predecessor_run.run_id != failed_run_id
+            or predecessor_run.task.id != task.task_id
+            or predecessor_run.task.revision != task.revision
+            or predecessor_run.status != ACTIVE
+            or failure.get("base_sha") != predecessor_run.base_sha
+        ):
+            raise ValueError("failed PRIMARY/REPAIR predecessor identity mismatch")
+        if predecessor_repair is None:
+            if root_base_sha != predecessor_run.base_sha:
+                raise ValueError("REPAIR root_base_sha does not match PRIMARY root")
+            semantic_review = None
+        else:
+            predecessor_root, semantic_review = _repair_review_lineage(
+                repo,
+                remote=remote,
+                publication_run_id=publication_run_id,
+                child_run_data=predecessor_run_data,
+                child_run=predecessor_run,
+                child_head_sha=failed_head_sha,
+                lineage_bytes=predecessor_repair,
+                task=task,
+                seen=seen,
+            )
+            if predecessor_root != root_base_sha:
+                raise ValueError("conflicting REPAIR root_base_sha lineage")
+    else:
+        raise ValueError("unknown predecessor RUN kind")
+
+    code, _, _ = _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        root_base_sha,
+        child_head_sha,
+        allow_fail=True,
+    )
+    if code:
+        raise ValueError("repaired candidate does not descend from TASK root")
+    return root_base_sha, semantic_review
+
+
+def _validate_repair_package(
+    repo: Path,
+    *,
+    source_sha: str,
+    root_base_sha: str,
+    task: Any,
+    run: Run,
+    result: Any,
+    evidence: tuple[Any, ...],
+) -> ResultPackage:
+    package = validate_result_package(
+        task=task, run=run, result=result, evidence=evidence
+    )
+    changed_files = _changed_files(repo, root_base_sha, source_sha)
+    if set(result.changed_files) != changed_files:
+        raise ValueError("REPAIR RESULT.changed_files mismatch")
+    outside_scope = changed_files.difference(task.scope.modify)
+    if outside_scope:
+        raise ValueError(
+            "REPAIR result changed paths outside TASK scope: "
+            + ", ".join(sorted(outside_scope))
+        )
+    return package
+
+
 def _load_success_lineage(
     repo: Path,
     *,
@@ -336,6 +672,9 @@ def _load_success_lineage(
     )
     result_bytes = _read_blob(
         repo, artifacts_sha, ".ai/transport/result.json", run_id=run_id
+    )
+    repair_bytes = _read_optional_blob(
+        repo, artifacts_sha, ".ai/transport/repair.json"
     )
     try:
         run_data = _mapping(
@@ -388,7 +727,32 @@ def _load_success_lineage(
             run_id=run_id,
         )
         task = parse_task(task_bytes.decode("utf-8", errors="strict"))
-        if remediation is None:
+        repair_prior_review = None
+        if repair_bytes is not None:
+            if remediation is not None:
+                raise ValueError(
+                    "successful artifacts contain conflicting REMEDIATION/REPAIR lineage"
+                )
+            root_base_sha, repair_prior_review = _repair_review_lineage(
+                repo,
+                remote=remote,
+                publication_run_id=run_id,
+                child_run_data=run_data,
+                child_run=run,
+                child_head_sha=source_sha,
+                lineage_bytes=repair_bytes,
+                task=task,
+            )
+            package = _validate_repair_package(
+                repo,
+                source_sha=source_sha,
+                root_base_sha=root_base_sha,
+                task=task,
+                run=run,
+                result=result,
+                evidence=evidence,
+            )
+        elif remediation is None:
             package = validate_result_package(
                 task=task, run=run, result=result, evidence=evidence
             )
@@ -408,7 +772,31 @@ def _load_success_lineage(
             raise ValueError("successful RESULT contains unresolved items")
 
         review = parse_review(review_bytes.decode("utf-8", errors="strict"))
-        if remediation is None:
+        if repair_bytes is not None:
+            if repair_prior_review is None:
+                if review.mode != "PRIMARY" or review.prior_finding_id is not None:
+                    raise ValueError(
+                        "REPAIR before a semantic finding requires a PRIMARY REVIEW"
+                    )
+                validate_review(task=task, result=result, review=review)
+            else:
+                if review.mode != "DELTA":
+                    raise ValueError(
+                        "REPAIR of REMEDIATION candidate requires a DELTA REVIEW"
+                    )
+                if review.prior_finding_id not in {
+                    finding.id for finding in repair_prior_review.findings
+                }:
+                    raise ValueError(
+                        "DELTA REVIEW prior finding does not match repaired REMEDIATION"
+                    )
+                validate_review(
+                    task=task,
+                    result=result,
+                    review=review,
+                    prior_review=repair_prior_review,
+                )
+        elif remediation is None:
             validate_review(task=task, result=result, review=review)
         else:
             if review.mode != "DELTA":
@@ -448,6 +836,7 @@ def publish_review_decision(
     *,
     run_id: str,
     decision_sha: str,
+    control_sha: str | None = None,
     remote: str = "origin",
 ) -> PublicationReport:
     """Validate one immutable decision lineage and fast-forward remote main."""
@@ -457,6 +846,8 @@ def publish_review_decision(
         raise _failed(run_id, "invalid source RUN id")
     if _SHA.fullmatch(decision_sha) is None:
         raise _failed(run_id, "invalid review-decision event SHA")
+    if control_sha is not None and _SHA.fullmatch(control_sha) is None:
+        raise _failed(run_id, "invalid publication control SHA")
     if not remote or remote.startswith("-"):
         raise _failed(run_id, "invalid publication remote")
 
@@ -470,6 +861,12 @@ def publish_review_decision(
             run_id,
             str(exc),
         ) from exc
+    if control_sha is not None and control_sha != prior_main_sha:
+        raise _failed(
+            run_id,
+            "publication control SHA does not match current canonical main",
+            prior_main_sha=prior_main_sha,
+        )
     expected_reviewed_sha = "UNKNOWN"
     try:
         expected_reviewed_sha = _single_remote_sha(
@@ -531,10 +928,39 @@ def publish_review_decision(
         reviewed_sha,
         allow_fail=True,
     )
-    if code:
+    if code not in (0, 1):
         raise _failed(
             run_id,
-            "remote main is not an ancestor of the reviewed candidate",
+            "cannot classify reviewed candidate against remote main",
+            reviewed_sha=reviewed_sha,
+            prior_main_sha=prior_main_sha,
+        )
+    if code == 1:
+        included_code, _, _ = _git(
+            root,
+            "merge-base",
+            "--is-ancestor",
+            reviewed_sha,
+            prior_main_sha,
+            allow_fail=True,
+        )
+        if included_code == 0:
+            return PublicationReport(
+                source_run=run_id,
+                reviewed_sha=reviewed_sha,
+                prior_main_sha=prior_main_sha,
+                outcome="ALREADY_INCLUDED",
+                detail="reviewed candidate is already contained in remote main",
+            )
+        if included_code != 1:
+            raise _failed(
+                run_id,
+                "cannot classify reviewed candidate against remote main",
+                reviewed_sha=reviewed_sha,
+                prior_main_sha=prior_main_sha,
+            )
+        raise _integration_required(
+            run_id,
             reviewed_sha=reviewed_sha,
             prior_main_sha=prior_main_sha,
         )
@@ -593,6 +1019,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--remote", default="origin")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--decision-sha", required=True)
+    parser.add_argument("--control-sha")
     return parser
 
 
@@ -603,6 +1030,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.repo,
             run_id=args.run_id,
             decision_sha=args.decision_sha,
+            control_sha=args.control_sha,
             remote=args.remote,
         )
     except PublicationError as exc:
