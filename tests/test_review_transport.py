@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import aios_renew.review_transport as review_transport
 from aios_renew.review_transport import (
     ReviewTransportError,
     read_remote_task,
@@ -198,7 +199,7 @@ def publish_success(
 
 
 def test_resolves_canonical_failed_correction_chain_with_exact_transported_facts(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, remote = make_repo(tmp_path)
     files = tmp_path / "facts"
@@ -230,6 +231,19 @@ def test_resolves_canonical_failed_correction_chain_with_exact_transported_facts
         continuation_of="RUN-058-002",
     )
 
+    original_git_cmd = review_transport._git_cmd
+    snapshot_calls: list[tuple[str, ...]] = []
+
+    def track_git_cmd(repo: Path, *args: str, **kwargs: object):
+        result = original_git_cmd(repo, *args, **kwargs)
+        if args[:2] == ("ls-remote", "--refs"):
+            snapshot_calls.append(args)
+            code, output, stderr = result
+            return code, "\n".join(reversed(output.splitlines())), stderr
+        return result
+
+    monkeypatch.setattr(review_transport, "_git_cmd", track_git_cmd)
+
     recovery = resolve_remote_repair_recovery(
         repo, failed_run_id="RUN-058-003"
     )
@@ -249,6 +263,16 @@ def test_resolves_canonical_failed_correction_chain_with_exact_transported_facts
         "RUN-058-002",
         "RUN-058-003",
     )
+    assert snapshot_calls == [
+        (
+            "ls-remote",
+            "--refs",
+            "origin",
+            "refs/heads/aios/failure-artifacts/RUN-058-*",
+            "refs/heads/aios/artifacts/RUN-058-*",
+            "refs/heads/aios/failure/RUN-058-*",
+        )
+    ]
     by_run = {item.run_id: item for item in recovery.failures}
     assert (by_run["RUN-058-001"].run, by_run["RUN-058-001"].failure) == first[:2]
     assert (by_run["RUN-058-002"].run, by_run["RUN-058-002"].failure) == second[:2]
@@ -260,6 +284,114 @@ def test_resolves_canonical_failed_correction_chain_with_exact_transported_facts
         "show",
         "refs/heads/aios/failure-artifacts/RUN-058-003:.ai/transport/repair.json",
     ).encode() == third[2]
+
+
+def test_historical_repair_snapshot_failure_has_bounded_operational_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    snapshot_calls = 0
+    original_git_cmd = review_transport._git_cmd
+
+    def fail_snapshot(repo: Path, *args: str, **kwargs: object):
+        nonlocal snapshot_calls
+        if args[:2] == ("ls-remote", "--refs"):
+            snapshot_calls += 1
+            return 128, "", "fatal: Authentication failed for credential-bearing URL"
+        return original_git_cmd(repo, *args, **kwargs)
+
+    monkeypatch.setattr(review_transport, "_git_cmd", fail_snapshot)
+
+    with pytest.raises(
+        ReviewTransportError,
+        match=(
+            r"^historical REPAIR snapshot acquisition failed: "
+            r"exit_status=128 category=AUTH$"
+        ),
+    ):
+        resolve_remote_repair_recovery(repo, failed_run_id="RUN-058-001")
+
+    assert snapshot_calls == 1
+
+
+def test_successful_snapshot_missing_failed_candidate_is_lineage_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    root = git(repo, "rev-parse", "HEAD")
+    candidate = commit_candidate(repo, "failed candidate")
+    publish_failure(
+        repo,
+        tmp_path / "facts",
+        run_id="RUN-058-001",
+        candidate_sha=candidate,
+        root_base_sha=root,
+    )
+    original_git_cmd = review_transport._git_cmd
+    snapshot_calls = 0
+
+    def omit_candidate(repo: Path, *args: str, **kwargs: object):
+        nonlocal snapshot_calls
+        result = original_git_cmd(repo, *args, **kwargs)
+        if args[:2] != ("ls-remote", "--refs"):
+            return result
+        snapshot_calls += 1
+        code, output, stderr = result
+        output = "\n".join(
+            line
+            for line in output.splitlines()
+            if "refs/heads/aios/failure/RUN-058-001" not in line
+        )
+        return code, output, stderr
+
+    monkeypatch.setattr(review_transport, "_git_cmd", omit_candidate)
+
+    with pytest.raises(
+        ReviewTransportError,
+        match=r"^canonical failed RUN refs missing for RUN-058-001$",
+    ):
+        resolve_remote_repair_recovery(repo, failed_run_id="RUN-058-001")
+
+    assert snapshot_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("output", "message"),
+    [
+        ("not-a-ref-result", "malformed"),
+        (
+            "a" * 40 + "\trefs/heads/aios/failure/RUN-058-001\n"
+            + "b" * 40 + "\trefs/heads/aios/failure/RUN-058-001",
+            "ambiguous",
+        ),
+        ("a" * 40 + "\trefs/heads/aios/review/RUN-058-001", "prefix"),
+        ("a" * 40 + "\trefs/heads/aios/failure/RUN-999-001", "identity"),
+        ("not-an-object\trefs/heads/aios/failure/RUN-058-001", "identity"),
+    ],
+)
+def test_historical_repair_snapshot_rejects_invalid_ref_results(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    output: str,
+    message: str,
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    snapshot_calls = 0
+    original_git_cmd = review_transport._git_cmd
+
+    def invalid_snapshot(repo: Path, *args: str, **kwargs: object):
+        nonlocal snapshot_calls
+        if args[:2] == ("ls-remote", "--refs"):
+            snapshot_calls += 1
+            return 0, output, ""
+        return original_git_cmd(repo, *args, **kwargs)
+
+    monkeypatch.setattr(review_transport, "_git_cmd", invalid_snapshot)
+
+    with pytest.raises(ReviewTransportError, match=message):
+        resolve_remote_repair_recovery(repo, failed_run_id="RUN-058-001")
+
+    assert snapshot_calls == 1
 
 
 def test_failure_transport_recovers_byte_exact_optional_preverification_candidate(
@@ -356,7 +488,7 @@ def test_rejects_cyclic_failed_run_continuation_lineage(tmp_path: Path) -> None:
 
 
 def test_remote_run_namespace_includes_successes_and_rejects_remote_duplicate(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, _ = make_repo(tmp_path)
     files = tmp_path / "facts"
@@ -377,10 +509,22 @@ def test_remote_run_namespace_includes_successes_and_rejects_remote_duplicate(
         root_base_sha=root,
     )
 
+    original_git_cmd = review_transport._git_cmd
+    snapshot_calls = 0
+
+    def track_git_cmd(repo: Path, *args: str, **kwargs: object):
+        nonlocal snapshot_calls
+        if args[:2] == ("ls-remote", "--refs"):
+            snapshot_calls += 1
+        return original_git_cmd(repo, *args, **kwargs)
+
+    monkeypatch.setattr(review_transport, "_git_cmd", track_git_cmd)
+
     recovery = resolve_remote_repair_recovery(
         repo, failed_run_id="RUN-058-004"
     )
     assert recovery.remote_run_ids == ("RUN-058-004", "RUN-058-008")
+    assert snapshot_calls == 1
 
     publish_success(
         repo,
@@ -390,11 +534,53 @@ def test_remote_run_namespace_includes_successes_and_rejects_remote_duplicate(
         root_base_sha=root,
         failed_run_id="RUN-058-004",
     )
+    snapshot_calls = 0
     with pytest.raises(
         ReviewTransportError,
         match="canonical continuation already exists for failed RUN: RUN-058-009",
     ):
         resolve_remote_repair_recovery(repo, failed_run_id="RUN-058-004")
+    assert snapshot_calls == 1
+
+
+def test_historical_repair_terminal_conflict_uses_one_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    root = git(repo, "rev-parse", "HEAD")
+    failed_head = commit_candidate(repo, "conflicting terminal candidate")
+    publish_failure(
+        repo,
+        tmp_path / "facts",
+        run_id="RUN-058-004",
+        candidate_sha=failed_head,
+        root_base_sha=root,
+    )
+    publish_success(
+        repo,
+        tmp_path / "facts",
+        run_id="RUN-058-004",
+        head_sha=failed_head,
+        root_base_sha=root,
+    )
+    original_git_cmd = review_transport._git_cmd
+    snapshot_calls = 0
+
+    def track_git_cmd(repo: Path, *args: str, **kwargs: object):
+        nonlocal snapshot_calls
+        if args[:2] == ("ls-remote", "--refs"):
+            snapshot_calls += 1
+        return original_git_cmd(repo, *args, **kwargs)
+
+    monkeypatch.setattr(review_transport, "_git_cmd", track_git_cmd)
+
+    with pytest.raises(
+        ReviewTransportError,
+        match="canonical RUN has conflicting terminal artifacts: RUN-058-004",
+    ):
+        resolve_remote_repair_recovery(repo, failed_run_id="RUN-058-004")
+
+    assert snapshot_calls == 1
 
 
 def test_reads_exact_historical_task_without_mutating_current_checkout(

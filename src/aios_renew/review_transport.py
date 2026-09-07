@@ -9,6 +9,7 @@ import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 
@@ -150,6 +151,27 @@ def resolve_remote_run_namespace(
         f"refs/heads/aios/failure-artifacts/{task_prefix}*",
         f"refs/heads/aios/artifacts/{task_prefix}*",
     )
+    return _remote_run_namespace_from_refs(
+        repo,
+        remote,
+        task_id=task_id,
+        task_revision=task_revision,
+        task_prefix=task_prefix,
+        refs=refs,
+    )
+
+
+def _remote_run_namespace_from_refs(
+    repo: Path,
+    remote: str,
+    *,
+    task_id: str,
+    task_revision: int,
+    task_prefix: str,
+    refs: Mapping[str, str],
+) -> RemoteRunNamespace:
+    """Validate a TASK terminal namespace from an already-acquired ref mapping."""
+
     terminal_kinds: dict[str, set[str]] = {}
     run_pattern = re.compile(rf"^{re.escape(task_prefix)}\d{{3,}}$")
     for ref, artifact_sha in refs.items():
@@ -157,6 +179,8 @@ def resolve_remote_run_namespace(
             terminal_kind = "FAILURE"
         elif ref.startswith("refs/heads/aios/artifacts/"):
             terminal_kind = "RESULT"
+        elif ref.startswith("refs/heads/aios/failure/"):
+            continue
         else:
             raise ReviewTransportError("canonical RUN ref namespace mismatch")
         run_id = ref.rsplit("/", 1)[-1]
@@ -482,7 +506,8 @@ def resolve_remote_repair_recovery(
 
     task_prefix = _run_task_prefix(failed_run_id)
     remote = resolve_transport_remote(repo)
-    discovered_run_ids = _remote_run_ids(repo, remote, task_prefix)
+    refs = _historical_repair_ref_snapshot(repo, remote, task_prefix)
+    discovered_run_ids = _remote_run_ids_from_refs(refs, task_prefix)
     if failed_run_id not in discovered_run_ids:
         raise ReviewTransportError(
             f"canonical failed RUN not found: {failed_run_id}"
@@ -496,7 +521,6 @@ def resolve_remote_repair_recovery(
             raise ReviewTransportError("correction lineage crosses TASK identity")
         artifacts_ref = f"refs/heads/aios/failure-artifacts/{run_id}"
         candidate_ref = f"refs/heads/aios/failure/{run_id}"
-        refs = _exact_remote_refs(repo, remote, artifacts_ref, candidate_ref)
         if artifacts_ref not in refs or candidate_ref not in refs:
             raise ReviewTransportError(
                 f"canonical failed RUN refs missing for {run_id}"
@@ -555,10 +579,15 @@ def resolve_remote_repair_recovery(
     )
     if target_run_id != failed_run_id:
         raise ReviewTransportError("canonical failed RUN identity mismatch")
-    namespace = resolve_remote_run_namespace(
+    if task_run_prefix(target_task_id) != task_prefix:
+        raise ReviewTransportError("canonical failed RUN TASK identity mismatch")
+    namespace = _remote_run_namespace_from_refs(
         repo,
+        remote,
         task_id=target_task_id,
         task_revision=target_revision,
+        task_prefix=task_prefix,
+        refs=refs,
     )
     if namespace.conflicts:
         raise ReviewTransportError(
@@ -571,7 +600,6 @@ def resolve_remote_repair_recovery(
     for run_id in remote_run_ids:
         failure_ref = f"refs/heads/aios/failure-artifacts/{run_id}"
         artifact_ref = f"refs/heads/aios/artifacts/{run_id}"
-        refs = _exact_remote_refs(repo, remote, failure_ref, artifact_ref)
         if failure_ref in refs and artifact_ref in refs:
             raise ReviewTransportError(
                 f"canonical RUN has conflicting terminal artifacts: {run_id}"
@@ -640,14 +668,120 @@ def _remote_run_ids(repo: Path, remote: str, task_prefix: str) -> set[str]:
         f"refs/heads/aios/failure-artifacts/{task_prefix}*",
         f"refs/heads/aios/artifacts/{task_prefix}*",
     )
+    return _remote_run_ids_from_refs(refs, task_prefix)
+
+
+def _remote_run_ids_from_refs(
+    refs: Mapping[str, str], task_prefix: str
+) -> set[str]:
     result: set[str] = set()
     for ref in refs:
+        if not ref.startswith(
+            ("refs/heads/aios/failure-artifacts/", "refs/heads/aios/artifacts/")
+        ):
+            continue
         run_id = ref.rsplit("/", 1)[-1]
         if not run_id.startswith(task_prefix):
             raise ReviewTransportError("canonical RUN ref TASK identity mismatch")
         _run_task_prefix(run_id)
         result.add(run_id)
     return result
+
+
+def _historical_repair_ref_snapshot(
+    repo: Path, remote: str, task_prefix: str
+) -> Mapping[str, str]:
+    """Acquire and validate one immutable TASK-scoped historical REPAIR snapshot."""
+
+    patterns = (
+        f"refs/heads/aios/failure-artifacts/{task_prefix}*",
+        f"refs/heads/aios/artifacts/{task_prefix}*",
+        f"refs/heads/aios/failure/{task_prefix}*",
+    )
+    code, output, stderr = _git_cmd(
+        repo, "ls-remote", "--refs", remote, *patterns, allow_fail=True
+    )
+    if code:
+        category = _remote_snapshot_failure_category(stderr)
+        raise ReviewTransportError(
+            "historical REPAIR snapshot acquisition failed: "
+            f"exit_status={code} category={category}"
+        )
+
+    allowed_prefixes = (
+        "refs/heads/aios/failure-artifacts/",
+        "refs/heads/aios/artifacts/",
+        "refs/heads/aios/failure/",
+    )
+    run_pattern = re.compile(rf"^{re.escape(task_prefix)}\d{{3,}}$")
+    object_pattern = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
+    refs: dict[str, str] = {}
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            raise ReviewTransportError(
+                "malformed historical REPAIR canonical ref snapshot"
+            )
+        commit_sha, ref = parts
+        matching_prefixes = [
+            prefix for prefix in allowed_prefixes if ref.startswith(prefix)
+        ]
+        if len(matching_prefixes) != 1:
+            raise ReviewTransportError(
+                "invalid historical REPAIR canonical ref snapshot prefix"
+            )
+        run_id = ref[len(matching_prefixes[0]) :]
+        if not run_pattern.fullmatch(run_id) or not object_pattern.fullmatch(commit_sha):
+            raise ReviewTransportError(
+                "invalid historical REPAIR canonical ref snapshot identity"
+            )
+        if ref in refs:
+            raise ReviewTransportError(
+                "ambiguous historical REPAIR canonical ref snapshot"
+            )
+        refs[ref] = commit_sha
+    return MappingProxyType(refs)
+
+
+def _remote_snapshot_failure_category(stderr: str) -> str:
+    """Return a bounded operational category without relaying raw Git diagnostics."""
+
+    detail = stderr.casefold()
+    if any(
+        signal in detail
+        for signal in (
+            "authentication failed",
+            "authorization failed",
+            "could not read username",
+            "permission denied",
+            "access denied",
+        )
+    ):
+        return "AUTH"
+    if any(
+        signal in detail
+        for signal in ("could not resolve host", "name resolution", "no such host")
+    ):
+        return "DNS"
+    if any(
+        signal in detail
+        for signal in ("certificate", "ssl", "tls")
+    ):
+        return "TLS"
+    if any(signal in detail for signal in ("timed out", "timeout")):
+        return "TIMEOUT"
+    if any(
+        signal in detail
+        for signal in (
+            "could not connect",
+            "couldn't connect",
+            "failed to connect",
+            "connection reset",
+            "network is unreachable",
+        )
+    ):
+        return "CONNECTIVITY"
+    return "UNKNOWN"
 
 
 def _exact_remote_refs(repo: Path, remote: str, *patterns: str) -> dict[str, str]:
