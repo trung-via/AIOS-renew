@@ -1,0 +1,19 @@
+{
+  "repair_id": "REPAIR-079-001",
+  "failed_run_id": "RUN-079-001",
+  "failed_head_sha": "18b444c2306a5b44b1f23fea897c82115e26e3cb",
+  "task": {
+    "id": "TASK-079",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "tests/test_codex_adapter.py"
+  ],
+  "instructions": [
+    "Continue exactly from failed TASK-079 candidate 18b444c2306a5b44b1f23fea897c82115e26e3cb. Preserve the remediation-specific schema and both adapter schema-selection implementations unchanged. Correct only the single observed regression-test defect in tests/test_codex_adapter.py.",
+    "The failing test test_remediation_schema_requires_runtime_owned_arrays_to_be_empty treats successful_output(\"RUN-007-001\") as a mapping even though that helper returns a JSON string. Parse the helper output before indexing it, or otherwise construct the invalid claims/evidence samples from parsed JSON while preserving the test's intended assertions that non-empty result.claims, result.unresolved, and root evidence are rejected by the remediation schema.",
+    "Do not weaken maxItems=0 constraints, do not change Runtime completion semantics, do not modify Codex/Antigravity adapter behavior, do not broaden scope, and do not add retries, fallback, reroute, normalization, or output stripping. Run the unchanged TASK-079 verification and git diff --check. Do not push."
+  ],
+  "constraints": []
+}
