@@ -665,6 +665,7 @@ def publish_direct_candidate_lineage(repo: Path, root: Path) -> None:
 
     state = runtime_paths(repo)
     reviewed_sha = git(repo, "rev-parse", "HEAD")
+    remediation_contract(repo)
     transport_post_pass(
         repo,
         run_id="RUN-101-000",

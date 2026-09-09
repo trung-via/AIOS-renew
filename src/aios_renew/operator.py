@@ -1265,7 +1265,7 @@ def _recover_primary_impl(
         )
         attempt.bind_completion(completion)
         outcome = completion.complete(
-            admission.structural_package,
+            resolved_admission.structural_package,
             primary_completion_policy(task, base_sha=source_run.base_sha),
         )
         if _git(repo, "rev-parse", "HEAD") != control_head:
