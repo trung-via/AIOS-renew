@@ -1,0 +1,56 @@
+review_id: REVIEW-086-001
+reviewed_sha: e9a3c6fe883eb4d96690437dccb8a3f29f75ad0e
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: FAIL
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: FAIL
+  AC10: PASS
+  AC11: PASS
+findings:
+  - id: F1
+    basis: AC2
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_local_pending_runs / observe_unified_state
+    issue: >
+      Unified State treats any local active or locally-terminal-but-untransported RUN as
+      ambiguous whenever any canonical remote terminal for the TASK already exists. That
+      is incorrect for an admitted REMEDIATION or REPAIR child whose canonical parent
+      necessarily remains in remote history, so valid correction children are reported
+      BLOCKED instead of WAIT or RETRY_TRANSPORT.
+    expected: >
+      Resolve local pending RUNs through exact correction continuity before declaring them
+      competing with remote history. A unique exact active correction child returns WAIT;
+      the same child with a valid local terminal awaiting transport returns RETRY_TRANSPORT;
+      unrelated or multiple tips still fail closed.
+  - id: F2
+    basis: AC9
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::observe_unified_state DELTA prior-review resolution
+    issue: >
+      DELTA validation scans every review in the TASK for a matching prior_finding_id even
+      though finding ids are review-local. Reused F1 identifiers can make an exact valid
+      continuation ambiguous or bind validation to an unrelated review.
+    expected: >
+      Bind DELTA review to its exact predecessor through resolved correction lineage,
+      embedded review identity, SHA and finding identity; reused finding ids elsewhere have
+      no effect.
+  - id: F3
+    basis: AC9
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_decode_remote_lifecycle / _local_pending_runs
+    issue: >
+      RESULT terminals are reduced after validating only the nested RESULT object and
+      FAILURE terminals after only partial identity checks. Malformed evidence or failure
+      binding can therefore drive an actionable next_action instead of fail-closing.
+    expected: >
+      Reuse existing canonical Runtime validators/shared helpers so a terminal proves a
+      valid RESULT/EVIDENCE package or self-consistent FAILURE before it drives lifecycle
+      continuation; malformed terminal state must reduce to BLOCKED/NONE.
