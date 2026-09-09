@@ -938,12 +938,12 @@ def test_different_revision_lineage_not_candidate_during_discovery(
 def test_malformed_lineage_for_exact_task_revision_fails_closed(
     tmp_path: Path,
 ) -> None:
-    repo, _ = make_repo(tmp_path)
+    repo, remote = make_repo(tmp_path)
     files = tmp_path / "files"
     sha = git(repo, "rev-parse", "HEAD")
 
     # Attributable to requested exact TASK revision, but has 2 reviews
-    publish_remediation_ref(
+    ref = publish_remediation_ref(
         repo,
         source_run_id="RUN-066-001",
         finding_id="F1",
@@ -958,13 +958,19 @@ def test_malformed_lineage_for_exact_task_revision_fails_closed(
         task_revision=1,
         reviewed_sha=sha,
     )
+    observed_sha = git(repo, "ls-remote", "origin", ref).split()[0]
     with pytest.raises(
         ReviewTransportError,
         match="canonical lineage at .* must contain exactly one REVIEW and REMEDIATION",
-    ):
+    ) as raised:
         resolve_remote_remediation_lineages(
             repo, finding_id="F1", task_id="TASK-066", task_revision=1
         )
+    git(remote, "update-ref", ref, sha)
+
+    assert raised.value.observed_refs == ((ref, observed_sha),)
+    assert git(repo, "ls-remote", "origin", ref).split()[0] == sha
+    assert raised.value.observed_refs[0][1] != sha
 
 
 def test_missing_artifacts_for_exact_task_revision_fails_closed(

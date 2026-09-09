@@ -6503,7 +6503,7 @@ def test_remediation_malformed_lineage_for_exact_task_fails_closed_before_execut
     repo = make_repo(tmp_path)
 
     # Lineage attributable to exact task and revision, but structurally malformed (2 reviews)
-    publish_test_remediation_lineage(
+    ref = publish_test_remediation_lineage(
         repo,
         tmp_path,
         source_run_id="RUN-101-000",
@@ -6512,6 +6512,7 @@ def test_remediation_malformed_lineage_for_exact_task_fails_closed_before_execut
         task_revision=1,
         extra_reviews=1,
     )
+    observed_sha = git(repo, "ls-remote", "origin", ref).split()[0]
 
     runner = RemediationRunner(repo)
     with pytest.raises(
@@ -6525,8 +6526,15 @@ def test_remediation_malformed_lineage_for_exact_task_fails_closed_before_execut
             native_runner=runner,
         )
 
-    # Executor must not be invoked
+    replacement_sha = git(repo, "rev-parse", "HEAD")
+    git(tmp_path / "upstream.git", "update-ref", ref, replacement_sha)
+    diagnostic = admission_failure_records(repo)[0]
+
     assert len(runner.calls) == 0
+    assert diagnostic["observed_ref"] == ref
+    assert diagnostic["observed_sha"] == observed_sha
+    assert git(repo, "ls-remote", "origin", ref).split()[0] == replacement_sha
+    assert diagnostic["observed_sha"] != replacement_sha
 
 
 def test_remediation_ambiguous_lineages_for_exact_task_fails_closed_before_executor(

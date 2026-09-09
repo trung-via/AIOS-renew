@@ -3337,6 +3337,14 @@ def _resolve_remote_remediation_lineage_impl(
             task_revision=task.revision,
         )
     except ReviewTransportError as exc:
+        if admission is not None:
+            observed_refs = getattr(exc, "observed_refs", ())
+            if isinstance(observed_refs, tuple):
+                _record_observed_refs(admission, observed_refs)
+                if len(observed_refs) == 1:
+                    admission["observed_ref"], admission["observed_sha"] = (
+                        observed_refs[0]
+                    )
         raise OperatorError(f"{context} lineage resolution failed: {exc}") from exc
     if admission is not None and remote_lineages:
         _record_observed_refs(
