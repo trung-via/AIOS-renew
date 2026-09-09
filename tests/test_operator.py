@@ -6719,6 +6719,26 @@ def _runtime_bytes(repo: Path) -> dict[str, bytes]:
     }
 
 
+def _control_repository_snapshot(repo: Path) -> dict[str, object]:
+    git_dir = repo / ".git"
+    return {
+        "head": git(repo, "rev-parse", "HEAD"),
+        "index_tree": git(repo, "write-tree"),
+        "status": git(repo, "status", "--porcelain"),
+        "control_git": {
+            path.relative_to(git_dir).as_posix(): path.read_bytes()
+            for path in git_dir.rglob("*")
+            if path.is_file() and path.relative_to(git_dir).parts[0] != "aios"
+        },
+        "runtime": _runtime_bytes(repo),
+        "worktree": {
+            path.relative_to(repo).as_posix(): path.read_bytes()
+            for path in repo.rglob("*")
+            if path.is_file() and path.relative_to(repo).parts[0] != ".git"
+        },
+    }
+
+
 def test_correction_preflight_remediation_is_read_only_for_current_and_historical_subjects(
     tmp_path: Path,
 ) -> None:
@@ -6821,6 +6841,91 @@ def test_correction_preflight_repair_preserves_reuse_action_order_and_state(
     assert ready.action == "CODE_FIX"
     assert ready.as_dict()["executor_invoked"] is False
     assert _runtime_bytes(repo) == before_runtime
+
+
+def test_correction_preflight_remote_repair_is_observational_for_ready_and_blocked(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(repo)
+    author = tmp_path / "repair-author"
+    subprocess.run(
+        ("git", "clone", "--quiet", str(tmp_path / "upstream.git"), str(author)),
+        check=True,
+    )
+    git(author, "config", "user.name", "AIOS Repair Author Test")
+    git(author, "config", "user.email", "repair-author@example.invalid")
+    repair_path = author / ".ai" / "transport" / "repair.json"
+    repair_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def publish_remote_repair(payload: dict) -> None:
+        repair_path.write_text(json.dumps(payload), encoding="utf-8")
+        git(author, "add", ".ai/transport/repair.json")
+        git(author, "commit", "--quiet", "-m", "author canonical repair")
+        git(
+            author,
+            "push",
+            "--quiet",
+            "--force",
+            "origin",
+            f"HEAD:refs/heads/aios/repair/{failed_run_id}",
+        )
+
+    publish_remote_repair(repair)
+    before_ready = _control_repository_snapshot(repo)
+
+    ready = preflight_repair(failed_run_id, repo=repo)
+
+    assert ready.as_dict() == {
+        "format": "AIOS_CORRECTION_PREFLIGHT",
+        "version": 1,
+        "kind": "CORRECTION_PREFLIGHT",
+        "family": "REPAIR",
+        "status": "READY",
+        "phase": "READY",
+        "reason_code": "READY",
+        "task": {"id": "TASK-101", "revision": 1},
+        "source_run_id": None,
+        "failed_run_id": failed_run_id,
+        "review_id": None,
+        "finding_id": None,
+        "reviewed_sha": None,
+        "failed_head_sha": repair["failed_head_sha"],
+        "subject_mode": "CURRENT",
+        "action": "CODE_FIX",
+        "run_created": False,
+        "executor_invoked": False,
+    }
+    assert _control_repository_snapshot(repo) == before_ready
+
+    invalid_repair = dict(repair)
+    invalid_repair["failed_head_sha"] = "different-failed-head"
+    publish_remote_repair(invalid_repair)
+    before_blocked = _control_repository_snapshot(repo)
+
+    blocked = preflight_repair(failed_run_id, repo=repo)
+
+    assert blocked.as_dict() == {
+        "format": "AIOS_CORRECTION_PREFLIGHT",
+        "version": 1,
+        "kind": "CORRECTION_PREFLIGHT",
+        "family": "REPAIR",
+        "status": "BLOCKED",
+        "phase": "CANONICAL_CONTRACT_ADMISSION",
+        "reason_code": "TASK_CONTRACT_REJECTED",
+        "task": {"id": "TASK-101", "revision": 1},
+        "source_run_id": None,
+        "failed_run_id": failed_run_id,
+        "review_id": None,
+        "finding_id": None,
+        "reviewed_sha": None,
+        "failed_head_sha": repair["failed_head_sha"],
+        "subject_mode": None,
+        "action": None,
+        "run_created": False,
+        "executor_invoked": False,
+    }
+    assert _control_repository_snapshot(repo) == before_blocked
 
 
 def test_correction_preflight_historical_repair_preserves_subject_and_blocks_duplicate(

@@ -1608,7 +1608,9 @@ def _resolve_repair_admission(
     )
     if repair is None:
         try:
-            repair_data: Any = json.loads(read_remote_repair(repo, failed_run_id))
+            repair_data: Any = json.loads(
+                read_remote_repair(remote_repo or repo, failed_run_id)
+            )
         except (ReviewTransportError, json.JSONDecodeError, UnicodeError) as exc:
             raise OperatorError(f"invalid remote REPAIR: {exc}") from exc
     elif isinstance(repair, Mapping):
