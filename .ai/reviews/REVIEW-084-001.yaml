@@ -1,0 +1,40 @@
+review_id: REVIEW-084-001
+reviewed_sha: 7c5e494e5cb81c8657f02142f6046a6f68c169c7
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: FAIL
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings:
+  - id: F1
+    basis: AC2
+    action: CODE_FIX
+    location: README.md::Approved Remote Correction Wakeup / docs/AIOS-ROADMAP.md::A6
+    issue: >
+      The current-main integration copied TASK-082 documentation forward without
+      reconciling it to the final reviewed F1 safety boundary or to TASK-084's actual
+      integration/publication lineage. README still says crash re-delivery may reconcile a
+      "uniquely attributable new REMEDIATION RUN" after interruption, while the integrated
+      implementation intentionally refuses all unbound later RUN attribution and permits
+      reconciliation only for the exact RUN already durably bound to the correction
+      dispatch. The roadmap also says A6 is "DONE BY TASK-082 UPON PUBLICATION" and makes
+      completion authoritative only if the TASK-082 candidate itself is published, even
+      though TASK-082's reviewed candidate is intentionally divergent and TASK-084 exists
+      precisely to create the separately verified current-main descendant that can be
+      published. Leaving these statements in product main would make the documented A6
+      safety/completion contract disagree with the implementation and immutable publication
+      lineage.
+    expected: >
+      Correct only the stale A6 documentation. README must state that an unbound correction
+      dispatch never claims a later matching REMEDIATION RUN; re-delivery remains
+      RECONCILIATION_BLOCKED/in-progress until exact durable dispatch-to-RUN ownership is
+      already recorded, and only that exact bound RUN may be reconciled without
+      re-execution. The roadmap must distinguish historical TASK-082 semantic review from
+      current-main integration: A6 completion becomes authoritative only when the exact
+      TASK-084 integrated candidate is semantically reviewed PASS and published, without
+      retroactively claiming that the divergent TASK-082 candidate was published. Preserve
+      TASK-083 byte-for-byte and make no production-code/test/workflow changes.
