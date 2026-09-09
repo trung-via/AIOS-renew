@@ -213,7 +213,11 @@ At the beginning of a fresh ChatGPT work context:
 5. Determine latest published implementation.
 6. Check relevant success/failure/review/remediation/repair refs.
 7. Reconstruct active state.
-8. Produce a short SYNC CHECKPOINT.
+8. When `.ai/roadmap-state.yaml` is present, read it before selecting roadmap work and reconcile its bookmark against explicit current Human intent and the exact engineering lineage.
+9. Select roadmap work only after that reconciliation. For generic "continue roadmap" intent, use the unique `NEXT` item in the active track; parallel or separately gated work must not compete with it. An explicit current Human track or priority change outranks the pointer prospectively and must be canonicalized before later generic continuation relies on it.
+10. Produce a short SYNC CHECKPOINT.
+
+The roadmap bookmark is subordinate to the authority hierarchy in section 2. It is Human/Brain planning state, not engineering evidence: it cannot override a conflict with canonical Git or immutable TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR lineage, fabricate completion, make a TASK or RUN complete, or advance itself after execution, review, or publication. Fail closed and surface any conflict before selecting roadmap work.
 
 Expected checkpoint:
 

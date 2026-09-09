@@ -17,6 +17,20 @@ AIOS-renew must remain a small governed engineering execution kernel. It owns ca
 
 Do not build AIOS-native replacements for capabilities already provided appropriately by Codex or Antigravity, including generic worktree management, subagent orchestration, skills, hooks, MCP, sandbox engines, browser agents, agent planners, model routers, or agent-swarm infrastructure.
 
+## Active Sequential Priority — Control-plane Closure
+
+The current machine-readable sequencing bookmark is [`.ai/roadmap-state.yaml`](../.ai/roadmap-state.yaml). It binds `control-plane-closure` as the active track with this ordered sequence:
+
+1. **Admission Failure v2 — DONE**: completed by TASK-081 at published SHA `65c1597eb59b06041fba1d749f2dea87e2c00833`.
+2. **Correction Preflight — NEXT**.
+3. **Unified State + Next Action — BLOCKED** by Correction Preflight.
+4. **Unified Human Surface — BLOCKED** by Unified State + Next Action.
+5. **Downstream Adoption — BLOCKED** by Unified Human Surface.
+
+Absent an explicit new Human track or priority, generic **"continue roadmap"** means continue the unique `NEXT` item in this active sequence. It must not select A4, A5, A7, A9, A10, or other parallel work while Correction Preflight remains `NEXT`. An explicit current Human priority change outranks the bookmark prospectively and must be canonicalized there before a later generic continuation relies on it.
+
+This bookmark is Human/Brain planning state only. Exact canonical Git state and immutable TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR lineage remain the sole engineering-state truth. A `DONE` item requires an exact supporting TASK and published SHA; the bookmark neither proves implementation success nor makes a TASK or RUN complete, and it is never advanced automatically by execution, review, or publication.
+
 ## K0 — Lean Kernel
 
 ### K0.0 — Governance Baseline — DONE
@@ -145,7 +159,7 @@ A-Series does not block Python Agent product development. It provides subordinat
 3. **A3 — Remote Status / Approval Surface — DONE BY TASK-074 UPON PUBLICATION**: bounded read-only dispatch observation and exact SHA-bound Human remediation approval, with no execution authority. This completion is authoritative only when the TASK-074 candidate is semantically reviewed PASS and published.
 4. **A4 — Transport Extraction**: replace the compatibility transport only after the outer mechanism proves parity, then remove obsolete transport code. Separately gated.
 5. **A5 — Evidence Bundle Strengthening**: only where measured gaps justify additional evidence packaging. Separately gated.
-6. **A6 — Automated REVIEW-to-REMEDIATION Wakeup — DONE BY TASK-084 UPON PUBLICATION**: an exact existing A3 approval can be delivered once through a durable correction identity and explicit Executor into the unchanged canonical REMEDIATION path. TASK-082 established the semantics and received semantic-review PASS, but its divergent candidate was intentionally not published. A6 completion becomes authoritative only when the exact TASK-084 integrated current-main candidate is semantically reviewed PASS and published; that publication does not retroactively publish the divergent TASK-082 candidate.
+6. **A6 — Automated REVIEW-to-REMEDIATION Wakeup — DONE AS PARALLEL WORK**: completed by TASK-084 at published SHA `93cc833e03c15bd1c57a53093476af671c5f6027`. An exact existing A3 approval can be delivered once through a durable correction identity and explicit Executor into the unchanged canonical REMEDIATION path. TASK-082 established the reviewed semantics, but neither divergent TASK-082 candidate was published onto current main. A6 is not part of the active Control-plane Closure sequence and does not compete with its `NEXT` item.
 7. **A7 — Autonomous Reviewer Shadow Mode**: observe and compare before any review-decision authority is granted. Separately gated.
 8. **A8 — Safe Publisher**: separate, explicit publication authority. Completed by TASK-063 (`.github/workflows/aios-auto-publish.yml` and `aios_renew.publication`).
 9. **A9 — Low-risk Zero-touch Lane**: only after measured reliability and bounded authority are demonstrated. Separately gated.
@@ -181,7 +195,7 @@ Do not execute M1→M11 again as a separate roadmap.
 
 ## Roadmap Rule
 
-The active canonical sequence is reconciled as follows:
+The completed kernel and outer-automation lineage is summarized as follows; it is historical context, not a competing active sequence:
 
 ```text
 DONE: K0.0 Governance
@@ -198,11 +212,11 @@ Outer Automation Track:
 DONE: A8 Safe Publisher (TASK-063)
 DONE: A1 GitHub Actions Self-hosted Wakeup (TASK-066)
 DONE: A2 Durable Dispatch Identity + Reconciliation (TASK-068, current-main integration TASK-073)
-DONE UPON PASS PUBLICATION: A3 Remote Status / Approval Surface (TASK-074)
+DONE: A3 Remote Status / Approval Surface (TASK-074)
+DONE: A6 Automated REVIEW-to-REMEDIATION Wakeup (TASK-084)
         ↓
-SEPARATELY GATED: A4–A7, A9–A10
-        ↓
-RETURN TO PYTHON AGENT
+ACTIVE SEQUENTIAL PRIORITY: Control-plane Closure
+NEXT: Correction Preflight
 ```
 
-Everything else must justify itself against the Manifesto, Constitution, observed evidence, and the North Star.
+Separately gated A4, A5, A7, A9, A10, and other feasible parallel milestones do not become current work from generic continuation intent. Everything else must justify itself against explicit Human intent, the machine-readable active bookmark, the Manifesto, Constitution, observed evidence, and the North Star.

@@ -1,0 +1,45 @@
+version: 1
+active_track: control-plane-closure
+sequence:
+  - id: admission-failure-v2
+    status: DONE
+    completed_by:
+      task_id: TASK-081
+      published_sha: "65c1597eb59b06041fba1d749f2dea87e2c00833"
+  - id: correction-preflight
+    status: NEXT
+  - id: unified-state-next-action
+    status: BLOCKED
+    blocked_by: correction-preflight
+  - id: unified-human-surface
+    status: BLOCKED
+    blocked_by: unified-state-next-action
+  - id: downstream-adoption
+    status: BLOCKED
+    blocked_by: unified-human-surface
+parallel_work:
+  - id: approved-remediation-wakeup
+    milestone: A6
+    status: DONE
+    completed_by:
+      task_id: TASK-084
+      published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
+sequencing_rule:
+  generic_continuation: >-
+    Absent an explicit new Human priority, "continue roadmap" means continue the
+    unique NEXT item in the active track; parallel work does not compete with it.
+  human_override: >-
+    An explicit Human track or priority change outranks the pointer and must be
+    canonicalized in this bookmark before later generic continuation relies on it.
+authority:
+  purpose: Human/Brain planning state only
+  engineering_truth: >-
+    Exact canonical Git state and immutable TASK, RUN, RESULT, FAILURE, REVIEW,
+    REMEDIATION, and REPAIR lineage are the sole engineering-state truth.
+  completion: >-
+    DONE requires an exact supporting task and published SHA; this roadmap state
+    never makes a TASK or RUN complete and cannot override conflicting lineage.
+  advancement: >-
+    Updates are Human/Brain roadmap-authority changes grounded in canonical evidence;
+    execution, review, publication, and workflow events do not advance this state
+    automatically.
