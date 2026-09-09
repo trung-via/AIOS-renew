@@ -1,0 +1,271 @@
+task_id: TASK-082
+revision: 1
+
+goal: >
+  Implement the separately gated A6 approved REVIEW-to-REMEDIATION wakeup as a
+  subordinate outer-automation boundary. After A3 has already recorded exact Human
+  approval for one immutable canonical REMEDIATION lineage, allow an authorized remote
+  Human/Brain to submit one bounded correction-delivery identity plus one explicit
+  Executor choice and have AIOS durably attribute that delivery, validate the exact
+  still-current approval/remediation identity, and delegate at most once into the existing
+  canonical REMEDIATION execution path. Re-delivery of the same request must never create
+  another correction RUN or invoke another coding Executor. Preserve TASK-081 admission
+  diagnostics, existing narrow correction semantics, Runtime verification, semantic DELTA
+  review, publication authority, and A1/A2/A3 boundaries.
+
+problem: >
+  A1/A2 provide durable remote PRIMARY wakeup and at-most-once delivery attribution, while
+  A3 provides bounded remote status plus exact SHA-bound Human approval for a canonical
+  REMEDIATION. The remaining A6 gap is execution handoff: after ChatGPT has authored a
+  valid REVIEW/REMEDIATION and the Human has approved that exact immutable correction,
+  the Human still has to operate the local terminal and invoke `aios remediate` manually.
+  Repeating that manual handoff also has no outer correction-delivery identity comparable
+  to A2, so a remote delivery/rerun layer could not safely distinguish re-delivery from a
+  new correction request. TASK-081 now makes pre-RUN rejection observable and attributable,
+  and A3 already validates the exact approved correction lineage. A6 should therefore add
+  only a thin, idempotent approved-remediation wakeup around the existing REMEDIATION path;
+  it must not become an autonomous Reviewer, correction author, Executor router, retry
+  engine, or second remediation implementation.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-082 authoring is
+    65c1597eb59b06041fba1d749f2dea87e2c00833, the semantically reviewed PASS and
+    published TASK-081 source candidate.
+  - >
+    REVIEW-081-003 is canonical DELTA PASS for exact reviewed SHA
+    65c1597eb59b06041fba1d749f2dea87e2c00833 and there is no active TASK-081 finding or
+    failed continuation that TASK-082 must continue.
+  - >
+    TASK-068 semantics, as integrated and hardened through TASK-073, remain authoritative
+    for PRIMARY-only durable dispatch identity and crash/re-delivery reconciliation. A6
+    may use that design as a safety precedent but must not reinterpret A2 PRIMARY dispatch
+    records as correction authority.
+  - >
+    TASK-074 remains authoritative for A3: remote approval is operational Human authority
+    bound to one exact canonical source RUN, TASK/revision, REVIEW, finding, action,
+    reviewed_sha, remediation ref and remediation commit SHA. Approval itself is not a
+    semantic verdict, RESULT/EVIDENCE, publication proof, or correction implementation.
+  - >
+    TASK-078 remains authoritative for current-head versus historical-subject REMEDIATION
+    execution. A6 delegates to that existing canonical path and must not recreate its
+    historical workspace or lineage logic.
+  - >
+    TASK-081 remains authoritative for Admission Failure v2 and exact failure taxonomy.
+    Rejections occurring before a canonical REMEDIATION RUN is created remain pre-RUN
+    operational rejection; once a REMEDIATION RUN exists, later failure remains RUN-keyed
+    state only.
+  - >
+    A4 transport extraction and A5 evidence strengthening remain separately gated because
+    no replacement-parity or measured evidence gap currently requires them before A6.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-ROADMAP.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-068.yaml
+    - .ai/tasks/TASK-073.yaml
+    - .ai/tasks/TASK-074.yaml
+    - .ai/tasks/TASK-078.yaml
+    - .ai/tasks/TASK-081.yaml
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - .github/workflows/aios-remote-approval.yml
+    - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/remote_surface.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operator.py
+    - tests/test_dispatch_reconciliation.py
+    - tests/test_remote_surface.py
+    - tests/test_operator.py
+    - README.md
+  modify:
+    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - src/aios_renew/correction_dispatch.py
+    - src/aios_renew/remote_surface.py
+    - src/aios_renew/operator.py
+    - tests/test_correction_dispatch.py
+    - tests/test_remediation_wakeup.py
+    - tests/test_remote_surface.py
+    - tests/test_operator.py
+    - README.md
+    - docs/AIOS-ROADMAP.md
+
+non_goals:
+  - Change or unfreeze TASK, RUN, RESULT, EVIDENCE, FAILURE, REVIEW, REMEDIATION, REPAIR,
+    RUN_OBSERVATION, or Admission Failure v2 semantic authority.
+  - Change A2 PRIMARY dispatch records into a generic multi-operation queue or make A6
+    correction dispatch identity part of canonical TASK/RUN artifact schemas.
+  - Author, edit, infer, select, repair, or reinterpret REVIEW findings or REMEDIATION
+    content; create a correction when no exact A3 approval already exists; or turn Human
+    approval into semantic PASS.
+  - Infer or automatically choose an Executor from source RUN history, model quality,
+    quota, prior success, repository state, or heuristics. No router, fallback Executor,
+    silent default, or automatic executor substitution is added.
+  - Automatically retry, reroute, resume, repair, re-run, or recover a failed, interrupted,
+    incomplete, rejected, or ambiguous correction dispatch or REMEDIATION RUN.
+  - Implement A4 transport extraction, A5 evidence strengthening, A7 autonomous Reviewer
+    shadow mode, A9 low-risk zero-touch, A10 scale, unified status/next-action grammar,
+    correction artifact authoring, or downstream dependency migration.
+  - Change historical REMEDIATION subject isolation, TASK-067 finding resolution,
+    TASK-071 RUN namespace, TASK-081 admission classification, Runtime completion,
+    verification ownership, semantic DELTA review, or publication behavior.
+  - Add a scheduler, polling daemon, queue service, message broker, database, background
+    model, Planner, Reviewer, router, generic worktree manager, or additional coding agent.
+  - Expose raw Executor logs, verification logs, prompts, credentials, environment values,
+    arbitrary repository paths, or unrestricted canonical document contents through the
+    remote wakeup surface.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      A6 is subordinate outer automation only. The canonical REMEDIATION implementation
+      remains the existing Operator/Runtime path. After A6 validates one approved delivery,
+      it must delegate to that path rather than duplicating finding resolution, historical
+      subject mechanics, Dispatcher invocation, completion, verification, RESULT/EVIDENCE,
+      failure transport, or review transport.
+    - >
+      The A6 remote workflow must be workflow_dispatch-only and preserve the established
+      dedicated host/security boundary: [self-hosted, windows, x64, aios-renew], persistent
+      repository configuration, read-only GitHub contents permission, no actions/checkout,
+      no GitHub-hosted fallback, and no newly injected GitHub write credential into AIOS or
+      a coding Executor.
+    - >
+      The remote wakeup accepts only four semantic inputs: one bounded stable
+      correction_dispatch_id, exact source_run_id, exact finding_id, and explicit Executor
+      choice limited to supported executors. TASK/revision, REVIEW id, action, reviewed_sha,
+      remediation ref/SHA, repository path, verification commands, model, prompt, arbitrary
+      Git ref, and shell command are not remote inputs and must be resolved from trusted
+      configuration plus canonical/A3 state.
+    - >
+      Executor identity is explicit Human/Brain execution intent for this delivery and must
+      not be inferred from the source RUN, A3 approval, prior correction history, quota, or
+      any model/router policy. Re-delivery preserves the originally bound Executor exactly;
+      a different Executor with the same correction_dispatch_id is an identity collision,
+      not a reroute.
+    - >
+      Before canonical REMEDIATION invocation, A6 must prove that one existing A3 approval
+      exactly matches the requested source RUN/finding and the current immutable canonical
+      remediation ref commit. Approval for an older remediation SHA, different source RUN,
+      different finding, malformed/stale lineage, missing approval, or conflicting approval
+      fails closed with zero coding Executor calls and zero REMEDIATION RUNs.
+    - >
+      A6 must persist a separate path-safe durable correction-dispatch record under
+      repository-local .git/aios operational state before the first canonical REMEDIATION
+      delegation. It must bind at minimum correction_dispatch_id, source_run_id, finding_id,
+      explicit Executor, exact approved remediation ref/SHA, and enough pre-invocation RUN
+      namespace state for deterministic attribution after process/host restart. It is
+      operational delivery state, not canonical product evidence or semantic truth.
+    - >
+      A first-seen valid correction dispatch may cause at most one call into the existing
+      canonical REMEDIATION path and at most one invocation of the already-selected coding
+      Executor. The A6 layer must not invoke PRIMARY, REPAIR, direct-candidate acceptance,
+      recover-primary, publication, or canonical verification independently.
+    - >
+      Re-delivery of the same correction_dispatch_id with the same exact immutable request
+      binding must never invoke REMEDIATION or a coding Executor a second time. If the
+      prior dispatch is durably terminal, replay the bounded stored outcome/attribution.
+      Reusing an existing correction_dispatch_id with any different source RUN, finding,
+      Executor, approval, or remediation SHA must fail closed without overwriting the
+      original binding.
+    - >
+      If a process/host restart occurs after a correction dispatch has begun but before its
+      outer terminal outcome is durably recorded, reconciliation may observe existing
+      canonical RUN/RESULT/FAILURE and repository lock state only to attribute the request.
+      If exactly one newly attributable REMEDIATION RUN can be proven, bind it without a
+      second execution. If the state is active, incomplete, zero/multiple, or otherwise
+      uncertain, return an explicit non-executing blocked/in-progress outcome; do not retry,
+      resume, synthesize terminal state, steal a lease, or clean up canonical state.
+    - >
+      TASK-081 failure taxonomy remains exact. Rejection before canonical REMEDIATION RUN
+      creation must not fabricate a RUN. Once the delegated REMEDIATION path creates a RUN,
+      execution/completion/verification failure remains exclusively ordinary RUN-keyed
+      FAILURE. A6 outer dispatch state may report attribution but must not convert failure
+      categories or become semantic evidence.
+    - >
+      Existing A3 `remote-approve` remains a valid no-execution approval surface. A6 does
+      not make approval itself execute a correction and does not mutate an existing A3
+      approval into a consumed semantic artifact. The Human may approve first and later
+      submit an A6 wakeup; exact approval is a prerequisite, not the dispatch journal.
+    - >
+      Successful REMEDIATION still ends at the existing Runtime PASS/RESULT transport
+      boundary and waits for normal semantic DELTA review. A6 grants no review verdict,
+      automatic FIX chaining, publication authority, or A9 zero-touch behavior.
+    - >
+      README must document the two-step remote correction flow (A3 exact approval, then A6
+      approved wakeup), stable correction_dispatch_id re-delivery semantics, explicit
+      Executor binding, stale-approval rejection, crash/no-reexecution behavior, and the
+      distinction between correction dispatch state and canonical engineering truth.
+      docs/AIOS-ROADMAP.md may mark A6 DONE only when this candidate is semantically
+      reviewed PASS and published; A4/A5/A7/A9/A10 remain separately gated.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      `.github/workflows/aios-approved-remediation-wakeup.yml` is workflow_dispatch-only,
+      runs exclusively on [self-hosted, windows, x64, aios-renew] with persistent configured
+      repository and read-only permissions, performs no checkout, accepts only stable
+      correction_dispatch_id + source_run_id + finding_id + explicit codex/antigravity
+      Executor, and reaches exactly one bounded repository-provided A6 wakeup command with
+      all event values passed as data rather than shell source.
+  - id: AC2
+    condition: >
+      Deterministic regressions prove a first-seen valid A6 request requires an already-
+      persisted exact A3 approval whose source RUN/finding/remediation ref/SHA still match
+      current canonical lineage, durably records one correction-dispatch binding before
+      REMEDIATION delegation, and invokes the existing canonical REMEDIATION path at most
+      once with exactly the explicitly selected Executor.
+  - id: AC3
+    condition: >
+      Missing approval, stale approval after remediation-ref SHA change, source/finding
+      mismatch, malformed/conflicting approval, or invalid canonical remediation lineage
+      fails closed before coding Executor invocation and before any REMEDIATION RUN is
+      created; no automatic new approval, retry, fallback, or alternate lineage is used.
+  - id: AC4
+    condition: >
+      Re-delivery of the same terminal successful or failed correction dispatch with the
+      same immutable request binding is side-effect free and preserves the same dispatch/
+      RUN attribution without another REMEDIATION call, RUN, verification execution, or
+      coding Executor invocation. Reusing its dispatch id with any different bound field
+      is a deterministic collision failure.
+  - id: AC5
+    condition: >
+      Crash/restart regressions prove a nonterminal correction dispatch can reconcile one
+      uniquely attributable REMEDIATION RUN created after its recorded pre-invocation RUN
+      namespace and report an already-terminal RESULT/FAILURE without re-execution; active,
+      incomplete, zero/multiple, or uncertain attribution remains non-executing and
+      explicitly blocked/in-progress.
+  - id: AC6
+    condition: >
+      A delegated pre-RUN rejection preserves TASK-081 Admission Failure v2 semantics with
+      zero synthetic RUNs/Executors, while any failure after REMEDIATION RUN creation remains
+      only RUN-keyed FAILURE. Correction dispatch records do not convert, duplicate, or
+      masquerade as either canonical failure category.
+  - id: AC7
+    condition: >
+      A successful A6 delivery produces the same normal REMEDIATION RESULT/EVIDENCE and
+      review-transport state as direct `aios remediate`, including TASK-078 historical-
+      subject behavior when applicable, and stops before semantic DELTA review/publication.
+  - id: AC8
+    condition: >
+      Existing direct `aios remediate`, A3 remote approval/status, A1/A2 PRIMARY wakeup,
+      REPAIR, direct-candidate acceptance, recover-primary, Runtime verification, review,
+      and safe publication behavior remain unchanged; A6 adds no model call, router,
+      retry/fallback/reroute, scheduler, queue service, or new canonical artifact schema.
+  - id: AC9
+    condition: >
+      Correction-dispatch state is repository-local, bounded, path-safe, attributable,
+      replay-safe, and operational-only. README documents its authority limits and the
+      roadmap records A6 as completed by TASK-082 only upon PASS publication while
+      A4/A5/A7/A9/A10 remain separately gated.
+
+verification:
+  required:
+    - python -m pytest tests/test_correction_dispatch.py tests/test_remediation_wakeup.py tests/test_remote_surface.py tests/test_operator.py -q
+    - git diff --check
