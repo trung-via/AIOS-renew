@@ -1,0 +1,191 @@
+task_id: TASK-084
+revision: 1
+
+goal: >
+  Integrate the semantically reviewed PASS behavior of TASK-082 onto the current canonical
+  product main as a fresh current-main descendant candidate. Preserve the already-authored
+  TASK-083 contract exactly as current-main state, preserve all previously published AIOS
+  behavior and authority boundaries, and establish fresh Runtime verification plus semantic
+  review for the integrated A6 approved REVIEW-to-REMEDIATION wakeup before publication.
+
+problem: >
+  TASK-082 revision 1 produced PRIMARY candidate
+  56977430d8ef45f07c12b6b6ee6df2c39420bb34 in RUN-082-001. REVIEW-082-001 found one
+  material AC5 defect (F1) in crash reconciliation. REMEDIATION RUN-082-002 corrected that
+  defect and produced candidate 879329b49ec7969abe225f38594a2a63705e460a; REVIEW-082-002
+  judged the F1 delta PASS with no remaining findings. That reviewed candidate cannot be
+  published directly because current canonical main advanced independently to
+  a58fc35549b87acaf2fc42dace4ad31eb0072b78 when TASK-083 was authored, and the two
+  histories diverge from merge base ae068d5257b3d16aa01ff8d2910931c245827cfa.
+
+  Safe publication correctly treats this state as INTEGRATION_REQUIRED and may not merge,
+  rebase, cherry-pick, synthesize, or otherwise replace the reviewed candidate itself.
+  Human has now explicitly authorized a separate integration contract. The product needs a
+  new candidate descended from current main that realizes the full reviewed TASK-082 A6
+  semantics, including the F1 durable dispatch-to-RUN ownership boundary, while preserving
+  TASK-083 as already-authored canonical state and without treating historical TASK-082
+  review metadata as product implementation.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-084 authoring is
+    a58fc35549b87acaf2fc42dace4ad31eb0072b78. Its delta from merge base
+    ae068d5257b3d16aa01ff8d2910931c245827cfa is the authored TASK-083 contract.
+  - >
+    RUN-082-001 is canonical PRIMARY execution for TASK-082 from base
+    ae068d5257b3d16aa01ff8d2910931c245827cfa and produced candidate
+    56977430d8ef45f07c12b6b6ee6df2c39420bb34 with Runtime verification PASS.
+  - >
+    REVIEW-082-001 is canonical PRIMARY CHANGES_REQUIRED for candidate
+    56977430d8ef45f07c12b6b6ee6df2c39420bb34 with one finding F1 / AC5 / CODE_FIX.
+  - >
+    RUN-082-002 is canonical REMEDIATION of F1 from exact reviewed SHA
+    56977430d8ef45f07c12b6b6ee6df2c39420bb34 and produced candidate
+    879329b49ec7969abe225f38594a2a63705e460a with focused Runtime verification PASS.
+  - >
+    REVIEW-082-002 is canonical DELTA PASS for candidate
+    879329b49ec7969abe225f38594a2a63705e460a, with AC5 PASS, prior_finding_id F1, and no
+    remaining findings. That historical candidate and its review lineage are immutable
+    semantic/reference input, not authorization to move current main backward.
+  - >
+    TASK-083 is authored but has not been executed or semantically reviewed. Its assumptions
+    about TASK-082 predate the now-existing RUN-082 lineage, so TASK-084 must preserve the
+    TASK-083 artifact unchanged rather than silently revising or executing it. A later BRAIN
+    SYNC must reconcile TASK-083 before any execution of that task.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-ROADMAP.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-082.yaml
+    - .ai/tasks/TASK-083.yaml
+    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - src/aios_renew/correction_dispatch.py
+    - src/aios_renew/remote_surface.py
+    - src/aios_renew/operator.py
+    - tests/test_correction_dispatch.py
+    - tests/test_remediation_wakeup.py
+    - tests/test_remote_surface.py
+    - tests/test_operator.py
+    - README.md
+  modify:
+    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - src/aios_renew/correction_dispatch.py
+    - src/aios_renew/remote_surface.py
+    - src/aios_renew/operator.py
+    - tests/test_correction_dispatch.py
+    - tests/test_remediation_wakeup.py
+    - tests/test_remote_surface.py
+    - tests/test_operator.py
+    - README.md
+    - docs/AIOS-ROADMAP.md
+
+non_goals:
+  - Modify, delete, rewrite, renumber, execute, or semantically reinterpret TASK-083 in this
+    integration task.
+  - Modify, delete, rewrite, force-update, or replace historical RUN-082-001,
+    REVIEW-082-001, REMEDIATION-082-001-F1, RUN-082-002, REVIEW-082-002, candidate
+    56977430d8ef45f07c12b6b6ee6df2c39420bb34, candidate
+    879329b49ec7969abe225f38594a2a63705e460a, or their canonical refs/artifacts.
+  - Move current main backward to a TASK-082 historical candidate or publish either
+    divergent historical candidate directly.
+  - Add new A6 behavior beyond the semantically reviewed TASK-082 outcome or reopen F1 with
+    broader redesign.
+  - Implement Correction Preflight, Unified State + Next Action, Unified Human Surface,
+    Downstream Adoption, A4, A5, A7, A9, A10, TASK-083 roadmap-state behavior, or any
+    downstream dependency migration.
+  - Change frozen TASK/RUN/RESULT/EVIDENCE/FAILURE/REVIEW/REMEDIATION/REPAIR semantics,
+    TASK-081 Admission Failure v2 authority, TASK-078 historical remediation isolation,
+    A2 dispatch authority, A3 approval authority, Runtime verification authority, Reviewer
+    authority, or publication authority.
+  - Add an Executor router, fallback, retry, reroute, scheduler, queue service, database,
+    extra model call, autonomous Reviewer, automatic correction authoring, or publication
+    from Executor execution.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      The TASK-084 implementation candidate must be created from exact current canonical
+      main a58fc35549b87acaf2fc42dace4ad31eb0072b78 and remain its descendant. Historical
+      TASK-082 candidates are immutable semantic/reference input and must not replace later
+      current-main state.
+    - >
+      `.ai/tasks/TASK-083.yaml` and every other current-main file outside TASK-084 scope must
+      remain byte-for-byte unchanged by the implementation delta. TASK-083 remains authored
+      canonical planning state only; TASK-084 grants no authority to update its stale
+      assumptions or mark it executed/reviewed.
+    - >
+      The integrated product behavior must preserve the complete semantically reviewed
+      TASK-082 outcome: workflow_dispatch-only A6 wakeup on the dedicated self-hosted Windows
+      runner; exactly four bounded remote selectors; explicit codex/antigravity Executor;
+      exact current A3 approval/remediation SHA validation; durable repository-local
+      correction dispatch binding; at-most-once canonical REMEDIATION delegation; terminal
+      replay and immutable collision rejection; TASK-081 failure taxonomy; normal Runtime
+      RESULT/EVIDENCE and DELTA review boundary; and no review/publication authority.
+    - >
+      The F1 correction is mandatory in the integrated state. Crash/restart reconciliation
+      must never attribute a later matching REMEDIATION RUN solely because it appeared after
+      a pre-invocation namespace snapshot. If no exact REMEDIATION RUN was durably bound to
+      the correction dispatch, re-delivery must remain non-executing and explicitly blocked
+      or in-progress. Only the exact already-bound RUN may later be reconciled without
+      re-execution.
+    - >
+      Existing direct `aios remediate`, A1/A2 PRIMARY wakeup, A3 approval/status, REPAIR,
+      direct-candidate acceptance, recover-primary, Runtime verification, semantic review,
+      safe publication, and historical REMEDIATION behavior must remain unchanged except
+      for the already-reviewed TASK-082 A6 additions.
+    - >
+      Integration must not treat Git conflict-freedom, historical semantic PASS, or
+      historical verification alone as proof that the new current-main descendant candidate
+      is publishable. The integrated candidate requires its own Runtime verification and
+      semantic review before publication.
+    - >
+      Review-decision metadata and historical correction artifacts remain outside product
+      implementation. Executor execution must not publish, push, modify main directly, or
+      create a new review decision.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The final TASK-084 candidate is a descendant of exact base main
+      a58fc35549b87acaf2fc42dace4ad31eb0072b78, changes only TASK-084-authorized product
+      files, and preserves `.ai/tasks/TASK-083.yaml` and all unrelated current-main state
+      unchanged.
+  - id: AC2
+    condition: >
+      The integrated candidate realizes the full reviewed TASK-082 A6 authority boundary:
+      exact A3 approval/current remediation binding, explicit Executor, durable separate
+      correction-dispatch identity, at-most-once delegation into existing canonical
+      REMEDIATION, terminal replay/collision safety, and no routing/retry/review/publication
+      authority expansion.
+  - id: AC3
+    condition: >
+      The integrated crash/restart behavior preserves REVIEW-082-002 F1 resolution: an
+      unbound dispatch cannot claim any later metadata-matching RUN, while an exact durably
+      bound REMEDIATION RUN can be reconciled from its existing RESULT/FAILURE without
+      re-execution.
+  - id: AC4
+    condition: >
+      TASK-081 Admission Failure v2 taxonomy, TASK-078 historical remediation behavior,
+      direct `aios remediate`, A1/A2/A3 surfaces, REPAIR, recover-primary, Runtime
+      verification, semantic review, and safe publication remain behaviorally intact.
+  - id: AC5
+    condition: >
+      TASK-083 remains an unchanged authored artifact and TASK-084 neither fabricates nor
+      updates roadmap sequencing completion/state on TASK-083's behalf.
+  - id: AC6
+    condition: >
+      The new current-main descendant candidate passes the complete TASK-082 focused
+      canonical regression set and `git diff --check`, producing fresh Runtime evidence
+      bound to the integrated candidate before semantic review/publication.
+
+verification:
+  required:
+    - python -m pytest tests/test_correction_dispatch.py tests/test_remediation_wakeup.py tests/test_remote_surface.py tests/test_operator.py -q
+    - git diff --check
