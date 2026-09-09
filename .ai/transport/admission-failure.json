@@ -1,0 +1,1 @@
+{"error":{"message":"local branch has diverged from upstream","type":"OperatorError"},"executor_invoked":false,"format":"AIOS_ADMISSION_FAILURE","kind":"ADMISSION_FAILURE","operation":"PRIMARY","phase":"PRIMARY_SYNCHRONIZATION","reason_code":"PRIMARY_SYNCHRONIZATION_REJECTED","requested_executor":"codex","requested_task_id":"TASK-084","version":2}
