@@ -1,0 +1,18 @@
+{
+  "repair_id": "REPAIR-084-001",
+  "failed_run_id": "RUN-084-001",
+  "failed_head_sha": "7c5e494e5cb81c8657f02142f6046a6f68c169c7",
+  "task": {
+    "id": "TASK-084",
+    "revision": 1
+  },
+  "action": "NO_CHANGE",
+  "modification_scope": [],
+  "instructions": [
+    "Continue exactly from failed TASK-084 candidate 7c5e494e5cb81c8657f02142f6046a6f68c169c7 for RUN-084-001. Preserve that clean, in-scope integration candidate byte-for-byte; do not modify product code, tests, documentation, TASK-083, workflows, or control-plane files.",
+    "The predecessor failed at COMPLETION_GATE because the Executor ResultPackage did not cover acceptance criterion AC6. Runtime verification was not reached. Return one structurally complete ResultPackage for the existing candidate whose acceptance mapping covers all TASK-084 criteria, including AC6, without fabricating verification evidence or claiming that canonical verification already ran.",
+    "After structural completion succeeds, allow Runtime to execute the unchanged TASK-084 canonical verification list exactly once and produce fresh Runtime-owned EVIDENCE bound to the same candidate. Do not run verification as a substitute for Runtime-owned canonical verification and do not synthesize terminal artifacts manually.",
+    "This is an ordinary Executor-backed NO_CHANGE REPAIR because the predecessor failed at COMPLETION_GATE, not an eligible verification-only reuse continuation. Do not retry, reroute, change Executor, restart PRIMARY, reset to main, merge/rebase/cherry-pick, or alter historical TASK-082 lineage."
+  ],
+  "constraints": []
+}
