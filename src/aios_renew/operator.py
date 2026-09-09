@@ -12,9 +12,10 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable, Mapping
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Iterator
 
 from .antigravity_adapter import AntigravityExecutionError, AntigravityOutputError
 from .artifacts import (
@@ -292,6 +293,55 @@ class RepairSummary:
 
 
 @dataclass(frozen=True)
+class CorrectionPreflightResult:
+    """Bounded, non-authoritative observation of correction admission readiness."""
+
+    family: str
+    status: str
+    phase: str
+    reason_code: str
+    task_id: str | None = None
+    task_revision: int | None = None
+    source_run_id: str | None = None
+    failed_run_id: str | None = None
+    review_id: str | None = None
+    finding_id: str | None = None
+    reviewed_sha: str | None = None
+    failed_head_sha: str | None = None
+    subject_mode: str | None = None
+    action: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "format": "AIOS_CORRECTION_PREFLIGHT",
+            "version": 1,
+            "kind": "CORRECTION_PREFLIGHT",
+            "family": self.family,
+            "status": self.status,
+            "phase": self.phase,
+            "reason_code": self.reason_code,
+            "task": (
+                {"id": self.task_id, "revision": self.task_revision}
+                if self.task_id is not None and self.task_revision is not None
+                else None
+            ),
+            "source_run_id": self.source_run_id,
+            "failed_run_id": self.failed_run_id,
+            "review_id": self.review_id,
+            "finding_id": self.finding_id,
+            "reviewed_sha": self.reviewed_sha,
+            "failed_head_sha": self.failed_head_sha,
+            "subject_mode": self.subject_mode,
+            "action": self.action,
+            "run_created": False,
+            "executor_invoked": False,
+        }
+
+    def render(self) -> str:
+        return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
+
+
+@dataclass(frozen=True)
 class RecoverySummary:
     task_id: str
     source_run_id: str
@@ -318,6 +368,29 @@ class _HistoricalRepairAdmission:
     root_base_sha: str
     remote_run_ids: tuple[str, ...]
     preverification: bytes | None
+
+
+@dataclass(frozen=True)
+class _RepairAdmission:
+    failure: Mapping[str, Any]
+    task: Task
+    root_base_sha: str
+    remote_run_ids: tuple[str, ...]
+    historical: bool
+    repair: Mapping[str, Any]
+    action: str
+    scope: list[str]
+    reusable_package: ResultPackage | None
+
+
+@dataclass(frozen=True)
+class _RemediationAdmission:
+    review: Review
+    remediation: Remediation
+    prior_result: Result
+    prior_review: Review | None
+    task: Task
+    remote_mode: bool
 
 
 @dataclass(frozen=True)
@@ -392,21 +465,7 @@ def describe_task(task_id: str, *, repo: str | Path | None = None) -> TaskSummar
 
 def runtime_paths(repo: str | Path) -> RuntimePaths:
     root = Path(repo).resolve()
-    state_root = runtime_state_root(root)
-    paths = RuntimePaths(
-        root=state_root,
-        runs=state_root / "runs",
-        handoffs=state_root / "handoffs",
-        staging=state_root / "staging",
-        preverification=state_root / "pre-verification",
-        verification=state_root / "verification",
-        results=state_root / "results",
-        failures=state_root / "failures",
-        observations=state_root / "observations",
-        admission_failures=state_root / "admission-failures",
-        repairs=state_root / "repairs",
-        lock=state_root / "operator.lock",
-    )
+    paths = _runtime_paths_readonly(root)
     for path in (
         paths.runs,
         paths.handoffs,
@@ -421,6 +480,55 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
     ):
         path.mkdir(parents=True, exist_ok=True)
     return paths
+
+
+def _runtime_paths_readonly(repo: str | Path) -> RuntimePaths:
+    """Describe Runtime-owned paths without creating any operational state."""
+
+    root = Path(repo).resolve()
+    state_root = runtime_state_root(root)
+    return RuntimePaths(
+        root=state_root,
+        runs=state_root / "runs",
+        handoffs=state_root / "handoffs",
+        staging=state_root / "staging",
+        preverification=state_root / "pre-verification",
+        verification=state_root / "verification",
+        results=state_root / "results",
+        failures=state_root / "failures",
+        observations=state_root / "observations",
+        admission_failures=state_root / "admission-failures",
+        repairs=state_root / "repairs",
+        lock=state_root / "operator.lock",
+    )
+
+
+@contextmanager
+def _remote_observation_repository(control_repo: Path) -> Iterator[Path]:
+    """Provide an isolated Git object/config store for read-only remote resolution."""
+
+    branch = _git(control_repo, "rev-parse", "--abbrev-ref", "HEAD")
+    common_dir = Path(_git(control_repo, "rev-parse", "--git-common-dir"))
+    if not common_dir.is_absolute():
+        common_dir = control_repo / common_dir
+    control_objects = (common_dir.resolve() / "objects").as_posix()
+    remote = _git(control_repo, "config", "--get", f"branch.{branch}.remote")
+    remote_name = "origin" if remote == "." else remote
+    remote_url = (
+        str(control_repo)
+        if remote == "."
+        else _git(control_repo, "remote", "get-url", remote)
+    )
+    with tempfile.TemporaryDirectory(prefix="aios-correction-preflight-") as raw:
+        observer = Path(raw)
+        _git(observer, "init", "--quiet")
+        (observer / ".git" / "objects" / "info" / "alternates").write_bytes(
+            f"{control_objects}\n".encode("utf-8")
+        )
+        _git(observer, "symbolic-ref", "HEAD", f"refs/heads/{branch}")
+        _git(observer, "remote", "add", remote_name, remote_url)
+        _git(observer, "config", f"branch.{branch}.remote", remote_name)
+        yield observer
 
 
 def runtime_state_root(repo: str | Path) -> Path:
@@ -1415,24 +1523,20 @@ def _resolve_primary_recovery_admission(
         raise OperatorError(f"PRIMARY recovery source rejected: {exc}") from exc
 
 
-def _run_repair_impl(
-    failed_run_id: str, *, executor: str, repo: Path,
+def _resolve_repair_admission(
+    failed_run_id: str,
+    *,
+    repo: Path,
+    state: RuntimePaths,
     repair: Mapping[str, Any] | str | Path | None,
-    native_runner: NativeRunner,
-    verification_runner: VerificationRunner,
-    attempt: _RunAttempt,
-    observation_tracker: RunObservationTracker,
     admission: dict[str, Any],
-) -> RepairSummary:
-    if executor not in ("codex", "antigravity"):
-        _set_admission_boundary(
-            admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
-        )
-        raise OperatorError(f"unsupported executor: {executor}")
+    remote_repo: Path | None = None,
+) -> _RepairAdmission:
+    """Resolve the shared REPAIR contract through the last pre-RUN boundary."""
+
     _set_admission_boundary(
         admission, "FAILED_RUN_RESOLUTION", "CANONICAL_LINEAGE_INVALID"
     )
-    state = runtime_paths(repo)
     if any(
         json.loads(path.read_text(encoding="utf-8")).get("failed_run_id")
         == failed_run_id
@@ -1462,7 +1566,7 @@ def _run_repair_impl(
             admission, "FAILED_RUN_RESOLUTION", "CANONICAL_LINEAGE_MISSING"
         )
         resolved_admission = _resolve_historical_repair_admission(
-            repo, failed_run_id, admission=admission
+            remote_repo or repo, failed_run_id, admission=admission
         )
         failure = resolved_admission.failure
         task = resolved_admission.task
@@ -1548,6 +1652,7 @@ def _run_repair_impl(
         raise OperatorError("REPAIR constraints introduce new Human intent")
     if action == "NO_CHANGE" and scope:
         raise OperatorError("NO_CHANGE REPAIR modification scope must be empty")
+    admission["action"] = action
 
     reusable_package = None
     if action == "NO_CHANGE":
@@ -1570,9 +1675,54 @@ def _run_repair_impl(
             action=action,
             scope=scope,
             local_content=local_preverification if historical else None,
-            repo=repo,
+            repo=(remote_repo or repo) if historical else repo,
             root_base_sha=root_base_sha,
         )
+
+    return _RepairAdmission(
+        failure=failure,
+        task=task,
+        root_base_sha=root_base_sha,
+        remote_run_ids=remote_run_ids,
+        historical=historical,
+        repair=repair_data,
+        action=action,
+        scope=scope,
+        reusable_package=reusable_package,
+    )
+
+
+def _run_repair_impl(
+    failed_run_id: str, *, executor: str, repo: Path,
+    repair: Mapping[str, Any] | str | Path | None,
+    native_runner: NativeRunner,
+    verification_runner: VerificationRunner,
+    attempt: _RunAttempt,
+    observation_tracker: RunObservationTracker,
+    admission: dict[str, Any],
+) -> RepairSummary:
+    if executor not in ("codex", "antigravity"):
+        _set_admission_boundary(
+            admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
+        )
+        raise OperatorError(f"unsupported executor: {executor}")
+    state = runtime_paths(repo)
+    resolved = _resolve_repair_admission(
+        failed_run_id,
+        repo=repo,
+        state=state,
+        repair=repair,
+        admission=admission,
+    )
+    failure = resolved.failure
+    task = resolved.task
+    root_base_sha = resolved.root_base_sha
+    remote_run_ids = resolved.remote_run_ids
+    historical = resolved.historical
+    repair_data = resolved.repair
+    action = resolved.action
+    scope = resolved.scope
+    reusable_package = resolved.reusable_package
 
     _set_admission_boundary(
         admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
@@ -2780,7 +2930,207 @@ _ADMISSION_REASONS = frozenset(
 )
 
 
-def _run_remediation_impl(
+def _blocked_correction_preflight(
+    family: str, admission: Mapping[str, Any], failure: BaseException
+) -> CorrectionPreflightResult:
+    """Project an admission boundary into the bounded observation contract."""
+
+    task = admission.get("task")
+    task_id = None
+    task_revision = None
+    if isinstance(task, Mapping):
+        if isinstance(task.get("id"), str) and len(task["id"]) <= 128:
+            task_id = task["id"]
+        revision = task.get("revision")
+        if isinstance(revision, int) and not isinstance(revision, bool):
+            task_revision = revision
+    phase = admission.get("phase")
+    reason_code = admission.get("reason_code")
+    if phase not in _ADMISSION_PHASES:
+        phase = "CANONICAL_CONTRACT_ADMISSION"
+    if reason_code not in _ADMISSION_REASONS:
+        reason_code = "CANONICAL_LINEAGE_INVALID"
+    if _find_remote_query_error(failure) is not None:
+        reason_code = "REMOTE_TRANSPORT_UNAVAILABLE"
+
+    def fact(name: str, limit: int = 256) -> str | None:
+        value = admission.get(name)
+        return value if isinstance(value, str) and len(value) <= limit else None
+
+    action = fact("action", 32)
+    if action not in ("CODE_FIX", "EVIDENCE_ONLY", "NO_CHANGE"):
+        action = None
+    subject_mode = fact("subject_mode", 16)
+    if subject_mode not in ("CURRENT", "HISTORICAL"):
+        subject_mode = None
+    return CorrectionPreflightResult(
+        family=family,
+        status="BLOCKED",
+        phase=phase,
+        reason_code=reason_code,
+        task_id=task_id,
+        task_revision=task_revision,
+        source_run_id=fact("source_run_id"),
+        failed_run_id=fact("failed_run_id"),
+        review_id=fact("review_id"),
+        finding_id=fact("finding_id"),
+        reviewed_sha=fact("reviewed_sha", 64),
+        failed_head_sha=fact("failed_head_sha", 64),
+        subject_mode=subject_mode,
+        action=action,
+    )
+
+
+def preflight_remediation(
+    task_id: str,
+    *,
+    finding_id: str,
+    repo: str | Path | None = None,
+    source_run_id: str | None = None,
+    approved_remediation_sha: str | None = None,
+) -> CorrectionPreflightResult:
+    """Observe exact remote REMEDIATION readiness without creating execution state."""
+
+    admission = _new_admission(
+        "REMEDIATION",
+        phase="TASK_ADMISSION",
+        reason_code="TASK_CONTRACT_REJECTED",
+        task_id=task_id,
+        finding_id=finding_id,
+    )
+    if source_run_id is not None:
+        admission["source_run_id"] = source_run_id
+    try:
+        root = resolve_repository(repo)
+        task = load_task(root, task_id)
+        _bind_admission_task(admission, task)
+        _set_admission_boundary(
+            admission, "REMOTE_LINEAGE_RESOLUTION", "CANONICAL_LINEAGE_MISSING"
+        )
+        with _remote_observation_repository(root) as remote_repo:
+            resolved = _resolve_remediation_admission(
+                task_id,
+                finding_id=finding_id,
+                source_run_id=source_run_id,
+                approved_remediation_sha=approved_remediation_sha,
+                repo=remote_repo,
+                state=_runtime_paths_readonly(root),
+                resolved_task=task,
+                admission=admission,
+            )
+            admission["action"] = resolved.remediation.action
+            _set_admission_boundary(
+                admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
+            )
+            current_head = _git(root, "rev-parse", "HEAD")
+            historical = current_head != resolved.remediation.reviewed_sha
+            subject_mode = "HISTORICAL" if historical else "CURRENT"
+            admission["subject_mode"] = subject_mode
+            if _git(root, "status", "--porcelain"):
+                raise OperatorError("repository dirty")
+            if historical:
+                _set_admission_boundary(
+                    admission,
+                    "HISTORICAL_SUBJECT_ADMISSION",
+                    "HISTORICAL_SUBJECT_REJECTED",
+                )
+                _git(
+                    remote_repo,
+                    "cat-file",
+                    "-e",
+                    f"{resolved.remediation.reviewed_sha}^{{commit}}",
+                )
+            _set_admission_boundary(
+                admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT"
+            )
+            _remote_run_reservations(
+                remote_repo, resolved.task, admission=admission
+            )
+        return CorrectionPreflightResult(
+            family="REMEDIATION",
+            status="READY",
+            phase="READY",
+            reason_code="READY",
+            task_id=resolved.task.task_id,
+            task_revision=resolved.task.revision,
+            source_run_id=admission.get("source_run_id"),
+            review_id=resolved.review.review_id,
+            finding_id=resolved.remediation.finding_id,
+            reviewed_sha=resolved.remediation.reviewed_sha,
+            subject_mode=subject_mode,
+            action=resolved.remediation.action,
+        )
+    except Exception as exc:
+        return _blocked_correction_preflight("REMEDIATION", admission, exc)
+
+
+def preflight_repair(
+    failed_run_id: str,
+    *,
+    repo: str | Path | None = None,
+    repair: Mapping[str, Any] | str | Path | None = None,
+) -> CorrectionPreflightResult:
+    """Observe exact REPAIR readiness without creating execution state."""
+
+    admission = _new_admission(
+        "REPAIR",
+        phase="FAILED_RUN_RESOLUTION",
+        reason_code="CANONICAL_LINEAGE_MISSING",
+        failed_run_id=failed_run_id,
+    )
+    try:
+        root = resolve_repository(repo)
+        state = _runtime_paths_readonly(root)
+        with _remote_observation_repository(root) as remote_repo:
+            resolved = _resolve_repair_admission(
+                failed_run_id,
+                repo=root,
+                state=state,
+                repair=repair,
+                admission=admission,
+                remote_repo=remote_repo,
+            )
+            admission["action"] = resolved.action
+            subject_mode = "HISTORICAL" if resolved.historical else "CURRENT"
+            admission["subject_mode"] = subject_mode
+            _set_admission_boundary(
+                admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
+            )
+            if _git(root, "status", "--porcelain"):
+                raise OperatorError("repository dirty")
+            failed_head = resolved.failure["failed_head_sha"]
+            if resolved.historical:
+                _set_admission_boundary(
+                    admission,
+                    "HISTORICAL_SUBJECT_ADMISSION",
+                    "HISTORICAL_SUBJECT_REJECTED",
+                )
+                _git(remote_repo, "cat-file", "-e", f"{failed_head}^{{commit}}")
+            elif _git(root, "rev-parse", "HEAD") != failed_head:
+                raise OperatorError("current HEAD does not match failed committed state")
+            _set_admission_boundary(
+                admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT"
+            )
+            _remote_run_reservations(
+                remote_repo, resolved.task, admission=admission
+            )
+        return CorrectionPreflightResult(
+            family="REPAIR",
+            status="READY",
+            phase="READY",
+            reason_code="READY",
+            task_id=resolved.task.task_id,
+            task_revision=resolved.task.revision,
+            failed_run_id=failed_run_id,
+            failed_head_sha=failed_head,
+            subject_mode=subject_mode,
+            action=resolved.action,
+        )
+    except Exception as exc:
+        return _blocked_correction_preflight("REPAIR", admission, exc)
+
+
+def _resolve_remediation_admission(
     task_id: str,
     *,
     review: Review | str | Path | None = None,
@@ -2789,37 +3139,20 @@ def _run_remediation_impl(
     finding_id: str | None = None,
     source_run_id: str | None = None,
     approved_remediation_sha: str | None = None,
-    correction_dispatch_id: str | None = None,
-    executor: str,
-    repo: str | Path | None = None,
-    native_runner: NativeRunner = subprocess.run,
-    verification_runner: VerificationRunner = subprocess.run,
+    repo: Path,
+    state: RuntimePaths,
     resolved_task: Task | None = None,
-    admission: dict[str, Any] | None = None,
-    attempt: _RunAttempt | None = None,
-    observation_tracker: RunObservationTracker,
-) -> RemediationSummary:
-    """Execute one bound remediation without entering the TASK execution path.
+    admission: dict[str, Any],
+) -> _RemediationAdmission:
+    """Resolve the shared REMEDIATION contract through the last pre-RUN boundary."""
 
-    Explicit artifact mode accepts REVIEW and REMEDIATION inputs. Remote canonical
-    mode accepts a finding id and resolves those inputs from immutable remote refs.
-    """
-
-    root = resolve_repository(repo)
-    task = resolved_task or load_task(root, task_id)
-    admission = admission if admission is not None else {}
+    task = resolved_task or load_task(repo, task_id)
     explicit_mode = (
         review is not None or remediation is not None or prior_review is not None
     )
     remote_mode = finding_id is not None
     if source_run_id is not None and not remote_mode:
         raise OperatorError("source RUN binding requires remote finding mode")
-    if correction_dispatch_id is not None and (
-        source_run_id is None or approved_remediation_sha is None
-    ):
-        raise OperatorError(
-            "correction dispatch requires exact source RUN and approval SHA"
-        )
     if explicit_mode and remote_mode:
         _set_admission_boundary(
             admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
@@ -2836,7 +3169,7 @@ def _run_remediation_impl(
             task,
         ) = (
             _resolve_remote_remediation_lineage_with_reviewed_task(
-                root,
+                repo,
                 task=task,
                 finding_id=finding_id,
                 source_run_id=source_run_id,
@@ -2875,12 +3208,11 @@ def _run_remediation_impl(
                 else load_review(prior_review)
             )
         )
-        state = runtime_paths(root)
         prior_result = _load_authoritative_prior_result(
             state,
             task,
             canonical_review.reviewed_sha,
-            repo=root,
+            repo=repo,
         )
     _record_admission_artifact_facts(
         admission, canonical_review, canonical_remediation
@@ -2889,7 +3221,6 @@ def _run_remediation_impl(
     _set_admission_boundary(
         admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
     )
-    state = runtime_paths(root)
     try:
         validate_review(
             task=task,
@@ -2907,8 +3238,6 @@ def _run_remediation_impl(
         )
     except ReviewValidationError as exc:
         raise OperatorError(f"invalid REMEDIATION: {exc}") from exc
-    if executor not in ("codex", "antigravity"):
-        raise OperatorError(f"unsupported executor: {executor}")
     if (
         canonical_remediation.action == "CODE_FIX"
         and not canonical_remediation.modification_scope
@@ -2916,6 +3245,66 @@ def _run_remediation_impl(
         raise OperatorError("CODE_FIX remediation modification scope is empty")
     if not canonical_remediation.affected_verification:
         raise OperatorError("REMEDIATION affected verification is empty")
+
+    return _RemediationAdmission(
+        review=canonical_review,
+        remediation=canonical_remediation,
+        prior_result=prior_result,
+        prior_review=canonical_prior_review,
+        task=task,
+        remote_mode=remote_mode,
+    )
+
+
+def _run_remediation_impl(
+    task_id: str,
+    *,
+    review: Review | str | Path | None = None,
+    remediation: Remediation | str | Path | None = None,
+    prior_review: Review | str | Path | None = None,
+    finding_id: str | None = None,
+    source_run_id: str | None = None,
+    approved_remediation_sha: str | None = None,
+    correction_dispatch_id: str | None = None,
+    executor: str,
+    repo: str | Path | None = None,
+    native_runner: NativeRunner = subprocess.run,
+    verification_runner: VerificationRunner = subprocess.run,
+    resolved_task: Task | None = None,
+    admission: dict[str, Any] | None = None,
+    attempt: _RunAttempt | None = None,
+    observation_tracker: RunObservationTracker,
+) -> RemediationSummary:
+    """Execute one bound remediation without entering the TASK execution path."""
+
+    root = resolve_repository(repo)
+    admission = admission if admission is not None else {}
+    state = runtime_paths(root)
+    if correction_dispatch_id is not None and (
+        source_run_id is None or approved_remediation_sha is None
+    ):
+        raise OperatorError(
+            "correction dispatch requires exact source RUN and approval SHA"
+        )
+    resolved = _resolve_remediation_admission(
+        task_id,
+        review=review,
+        remediation=remediation,
+        prior_review=prior_review,
+        finding_id=finding_id,
+        source_run_id=source_run_id,
+        approved_remediation_sha=approved_remediation_sha,
+        repo=root,
+        state=state,
+        resolved_task=resolved_task,
+        admission=admission,
+    )
+    canonical_review = resolved.review
+    canonical_remediation = resolved.remediation
+    task = resolved.task
+    remote_mode = resolved.remote_mode
+    if executor not in ("codex", "antigravity"):
+        raise OperatorError(f"unsupported executor: {executor}")
 
     _set_admission_boundary(
         admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
@@ -3384,7 +3773,12 @@ def _resolve_remote_remediation_lineage_impl(
             tuple((remote.ref, remote.commit_sha) for remote in remote_lineages),
         )
 
-    matches: list[tuple[Review, Remediation, Result, Review | None, Task]] = []
+    matches: list[
+        tuple[
+            str,
+            tuple[Review, Remediation, Result, Review | None, Task],
+        ]
+    ] = []
     for remote in remote_lineages:
         if admission is not None:
             admission["observed_ref"] = remote.ref
@@ -3407,7 +3801,7 @@ def _resolve_remote_remediation_lineage_impl(
                     f"contract-invalid canonical lineage at {remote.ref}: "
                     "REMEDIATION finding does not match requested finding"
                 )
-            matches.append(parsed)
+            matches.append((remote.source_run_id, parsed))
     if not matches:
         if admission is not None:
             _set_admission_boundary(
@@ -3424,7 +3818,9 @@ def _resolve_remote_remediation_lineage_impl(
                 "CANONICAL_LINEAGE_AMBIGUOUS",
             )
         raise OperatorError(f"canonical {context} lineage is ambiguous")
-    return matches[0]
+    if admission is not None:
+        admission["source_run_id"] = matches[0][0]
+    return matches[0][1]
 
 
 def _parse_remote_direct_lineage(
@@ -3846,6 +4242,15 @@ def _parser() -> argparse.ArgumentParser:
         "--executor", required=True, choices=("codex", "antigravity")
     )
     remediation_parser.add_argument("--repo")
+    remediation_preflight_parser = commands.add_parser(
+        "preflight-remediation",
+        help="Inspect exact REMEDIATION readiness without execution",
+    )
+    remediation_preflight_parser.add_argument("task_id")
+    remediation_preflight_parser.add_argument("--finding", required=True)
+    remediation_preflight_parser.add_argument("--source-run")
+    remediation_preflight_parser.add_argument("--approved-remediation-sha")
+    remediation_preflight_parser.add_argument("--repo")
     candidate_parser = commands.add_parser(
         "accept-candidate",
         help="Accept one already committed CODE_FIX candidate",
@@ -3865,6 +4270,13 @@ def _parser() -> argparse.ArgumentParser:
         "--executor", required=True, choices=("codex", "antigravity")
     )
     repair_parser.add_argument("--repo")
+    repair_preflight_parser = commands.add_parser(
+        "preflight-repair",
+        help="Inspect exact REPAIR readiness without execution",
+    )
+    repair_preflight_parser.add_argument("failed_run_id")
+    repair_preflight_parser.add_argument("--repair")
+    repair_preflight_parser.add_argument("--repo")
     recovery_parser = commands.add_parser(
         "recover-primary",
         help="Recover one exact conflicting PRIMARY terminal RUN",
@@ -4078,6 +4490,16 @@ def main(
                 monotonic_clock=monotonic_clock,
             )
             print(summary.render())
+        elif args.command == "preflight-remediation":
+            observation = preflight_remediation(
+                args.task_id,
+                finding_id=args.finding,
+                source_run_id=args.source_run,
+                approved_remediation_sha=args.approved_remediation_sha,
+                repo=args.repo,
+            )
+            print(observation.render())
+            return 0 if observation.status == "READY" else 1
         elif args.command == "accept-candidate":
             summary = accept_candidate(
                 args.task_id,
@@ -4099,6 +4521,14 @@ def main(
                 monotonic_clock=monotonic_clock,
             )
             print(summary.render())
+        elif args.command == "preflight-repair":
+            observation = preflight_repair(
+                args.failed_run_id,
+                repo=args.repo,
+                repair=args.repair,
+            )
+            print(observation.render())
+            return 0 if observation.status == "READY" else 1
         elif args.command == "recover-primary":
             summary = recover_primary(
                 args.run_id,

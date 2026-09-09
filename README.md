@@ -188,6 +188,42 @@ aios remediate TASK-101 --review .ai/reviews/REVIEW-101-001.yaml `
 `--prior-review`. In either mode, the command is the Human execution-authorization
 boundary and AIOS invokes only the selected Executor, with no retry or fallback.
 
+### Optional Correction Preflight
+
+Before authorizing execution, a Human or outer automation may inspect either
+canonical correction family explicitly:
+
+```powershell
+aios preflight-remediation TASK-101 --finding F1
+aios preflight-repair RUN-101-001
+```
+
+The optional commands return one versioned `AIOS_CORRECTION_PREFLIGHT` JSON
+observation with `READY` or `BLOCKED`, the exact allowlisted lineage identities
+known at that boundary, current or historical subject mode when known, and a
+bounded phase/reason code. They reuse the deterministic REMEDIATION and REPAIR
+lineage, contract, reusable-state, repository, historical-subject, and canonical
+RUN-namespace admission checks. A `NO_CHANGE` REPAIR inspects eligible reusable
+candidate state; a `CODE_FIX` REPAIR bypasses those reuse-only checks.
+
+Preflight is read-only: it creates no RUN, lease, RESULT, FAILURE, EVIDENCE,
+Admission Failure v2 record, repair/remediation/dispatch state, or Executor
+invocation, and it runs no canonical verification. `BLOCKED` is an observation,
+not an admission failure or execution attempt. `READY` is informative only; it is
+not a reservation, lease, authorization, or cached proof, and the later
+`aios remediate` or `aios repair` command performs normal admission again against
+then-current state.
+
+Correction Preflight does not author or choose a correction, choose or recommend
+an Executor, execute, verify, review, publish, retry, recover, reroute, select a
+next action, or advance roadmap state. Focused Operator and approved-remediation
+wakeup regressions, together with the final whitespace check, remain:
+
+```powershell
+python -m pytest tests/test_operator.py tests/test_remediation_wakeup.py tests/test_correction_dispatch.py -q
+git diff --check
+```
+
 ### Admission Failure v2 and outcome boundaries
 
 Admission Failure v2 covers every execution-capable pre-RUN boundary: PRIMARY
