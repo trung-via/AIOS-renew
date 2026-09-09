@@ -1,0 +1,170 @@
+task_id: TASK-083
+revision: 1
+
+goal: >
+  Canonicalize one small Brain-readable roadmap sequencing state so the Human phrase
+  "continue roadmap" has one deterministic current meaning instead of requiring ChatGPT
+  to infer priority from several parallel roadmap tracks or remembered chat context. Bind
+  the currently approved Control-plane Closure sequence as the active track, record
+  Admission Failure v2 as completed by TASK-081, record Correction Preflight as the next
+  item, and keep the already-authored TASK-082 A6 work as deferred parallel work rather
+  than the active priority. Make BRAIN SYNC explicitly read this sequencing state while
+  preserving the existing authority hierarchy: Human intent and canonical engineering
+  lineage remain authoritative, and roadmap sequencing state never becomes evidence that
+  implementation work passed.
+
+problem: >
+  After TASK-081 passed, the Human asked to continue the previously agreed control-plane
+  closure sequence: Admission Failure v2 -> Correction Preflight -> Unified State + Next
+  Action -> Unified Human Surface -> Downstream Adoption. That sequence existed in chat
+  reasoning but not as an explicit canonical next-step pointer in the repository. The
+  canonical roadmap still exposed several separately gated A-Series options, so a later
+  BRAIN SYNC reasonably but incorrectly selected A6 and authored TASK-082. This is a
+  roadmap-state ambiguity: the repository describes available tracks but does not state
+  which incomplete item is currently active when the Human says only "continue roadmap".
+  The fix is not ChatGPT memory, a database, a scheduler, or a Runtime planner. It is one
+  bounded canonical Human/Brain sequencing artifact plus explicit BRAIN SYNC semantics.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-083 authoring is
+    ae068d5257b3d16aa01ff8d2910931c245827cfa. Its parent
+    65c1597eb59b06041fba1d749f2dea87e2c00833 is the semantically reviewed PASS and
+    published TASK-081 implementation candidate.
+  - >
+    TASK-081 is complete with no active finding or failed continuation. It closed
+    Admission Failure v2 but explicitly left correction-artifact preflight,
+    STATUS/next-action state-machine work, unified Human command grammar, and downstream
+    migration out of scope.
+  - >
+    TASK-082 is already authored on current main as A6 Approved REVIEW-to-REMEDIATION
+    Wakeup, but no RUN-082 success/failure lineage exists. Human intent now explicitly
+    places it outside the active sequential priority until the Control-plane Closure
+    sequence permits or the Human explicitly changes track.
+  - >
+    docs/AIOS-ROADMAP.md remains the descriptive roadmap authority. The new sequencing
+    artifact is a compact current pointer over that roadmap, not a replacement for the
+    roadmap, governance documents, TASK contracts, or exact engineering lineage.
+  - >
+    Human intent may explicitly change active track or priority at any time. Absent such
+    an explicit change, "continue roadmap" must resolve to the canonical next item of the
+    active sequence rather than to another separately gated item that merely appears
+    feasible.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/AIOS-ROADMAP.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-081.yaml
+    - .ai/tasks/TASK-082.yaml
+  modify:
+    - .ai/roadmap-state.yaml
+    - docs/AIOS-ROADMAP.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+
+non_goals:
+  - Implement Correction Preflight, Unified State + Next Action, Unified Human Surface,
+    Downstream Adoption, TASK-082/A6, A7, A9, or any other roadmap capability.
+  - Add or change any Runtime, Operator, Dispatcher, Executor, verification, review,
+    remediation, repair, publication, transport, workflow, model, or Git synchronization
+    behavior.
+  - Make roadmap state a canonical TASK/RUN/RESULT/EVIDENCE/FAILURE/REVIEW/REMEDIATION/
+    REPAIR schema or semantic completion authority.
+  - Automatically infer that an item is DONE from prose, branch names, chat history, or
+    model judgment without exact canonical evidence.
+  - Automatically mutate or advance roadmap state after RUN, REVIEW, publication, or
+    workflow events. State advancement remains a Human/Brain roadmap-authority update
+    grounded in canonical evidence until a separately authorized deterministic mechanism
+    exists.
+  - Delete, renumber, rewrite, or execute TASK-082 merely because it is deferred from the
+    active track.
+  - Add a generic planner, priority engine, scheduler, queue, database, model router,
+    scoring system, polling loop, or autonomous roadmap-selection agent.
+  - Rewrite historical roadmap decisions or TASK/RUN lineage to pretend this sequencing
+    artifact existed before TASK-083.
+
+constraints:
+  hard:
+    - >
+      Add one machine-readable `.ai/roadmap-state.yaml` with version 1. It must identify
+      `control-plane-closure` as the active track and represent exactly this ordered
+      sequence: `admission-failure-v2` DONE by TASK-081 at published SHA
+      65c1597eb59b06041fba1d749f2dea87e2c00833; `correction-preflight` NEXT;
+      `unified-state-next-action` BLOCKED by correction-preflight;
+      `unified-human-surface` BLOCKED by unified-state-next-action; and
+      `downstream-adoption` BLOCKED by unified-human-surface.
+    - >
+      The state must separately record `approved-remediation-wakeup` / TASK-082 as
+      `AUTHORED_DEFERRED`, not as DONE, NEXT, BLOCKED within the active sequence, or an
+      implementation failure. No RUN-082 or review fact may be fabricated.
+    - >
+      The artifact must state the sequencing rule semantically: absent explicit new Human
+      priority, "continue roadmap" means continue the unique NEXT item in the active
+      track. A Human-explicit track/priority change outranks that pointer and must be
+      canonicalized before later generic continuation relies on it.
+    - >
+      Roadmap sequencing is Human/Brain planning state only. Exact canonical Git state and
+      immutable TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR lineage remain the sole
+      engineering-state truth. A DONE roadmap item must cite exact supporting task and
+      published SHA; roadmap state itself must never make a RUN or TASK complete.
+    - >
+      docs/AIOS-ROADMAP.md must document the active Control-plane Closure sequence, point
+      to `.ai/roadmap-state.yaml` as the current machine-readable bookmark, state that
+      TASK-082 is authored/deferred parallel work, and state the deterministic meaning of
+      generic "continue roadmap".
+    - >
+      docs/CHATGPT_PROJECT_CONTRACT.md Brain Sync Protocol must require reading
+      `.ai/roadmap-state.yaml` when present before selecting roadmap work. It must also
+      make clear that the state is subordinate to explicit current Human intent and exact
+      engineering lineage and cannot override a conflict or fabricate completion.
+    - >
+      There must be exactly one NEXT item in the active sequence. BLOCKED items must point
+      only to an earlier item in that same ordered sequence. Parallel/deferred items must
+      not silently compete with NEXT when the Human gives only generic continuation
+      intent.
+    - >
+      Keep this change documentation/state-only. Do not modify Python source, tests,
+      workflows, task schemas, frozen kernel documents, or TASK-082.
+
+acceptance:
+  - id: AC1
+    condition: >
+      `.ai/roadmap-state.yaml` exists, parses deterministically, has version 1, one active
+      track named control-plane-closure, exactly one NEXT item named correction-preflight,
+      and the complete ordered five-item sequence and TASK-081 published-SHA evidence
+      required by this TASK.
+  - id: AC2
+    condition: >
+      The state records TASK-082/A6 only as AUTHORED_DEFERRED parallel work and contains no
+      fabricated RUN/review/publication status for TASK-082.
+  - id: AC3
+    condition: >
+      docs/AIOS-ROADMAP.md makes Control-plane Closure the active sequential priority and
+      defines generic "continue roadmap" as the unique NEXT item unless the Human
+      explicitly changes track/priority.
+  - id: AC4
+    condition: >
+      docs/CHATGPT_PROJECT_CONTRACT.md BRAIN SYNC explicitly reads the roadmap-state
+      bookmark when present before selecting roadmap work, while preserving the existing
+      authority hierarchy and engineering-truth precedence.
+  - id: AC5
+    condition: >
+      The documented/state semantics prohibit Brain from choosing TASK-082/A6, A7, A9, or
+      another feasible parallel milestone in response to generic continuation while
+      correction-preflight remains NEXT, but still allow explicit Human intent to change
+      the active priority prospectively.
+  - id: AC6
+    condition: >
+      The change is documentation/state-only, preserves historical artifacts unchanged,
+      and introduces no implementation, Runtime automation, model call, retry/reroute,
+      automatic state advancement, or new execution/review/publication authority.
+
+verification:
+  required:
+    - python -c "from pathlib import Path; import yaml; d=yaml.safe_load(Path('.ai/roadmap-state.yaml').read_text(encoding='utf-8')); assert d['version'] == 1; assert d['active_track'] == 'control-plane-closure'; seq=d['sequence']; assert [x['id'] for x in seq] == ['admission-failure-v2','correction-preflight','unified-state-next-action','unified-human-surface','downstream-adoption']; assert sum(x['status'] == 'NEXT' for x in seq) == 1; assert next(x for x in seq if x['status'] == 'NEXT')['id'] == 'correction-preflight'"
+    - git diff --check
