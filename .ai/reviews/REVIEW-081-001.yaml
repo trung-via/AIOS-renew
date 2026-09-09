@@ -1,0 +1,57 @@
+review_id: REVIEW-081-001
+reviewed_sha: 2c1930bfb3045f5c59ef5f51bb26a8e84b0fc070
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: FAIL
+  AC11: PASS
+findings:
+  - id: F1
+    basis: AC6
+    action: CODE_FIX
+    location: src/aios_renew/review_transport.py::resolve_remote_remediation_lineages
+    issue: >
+      The remediation resolver obtains an exact canonical remediation ref and commit SHA
+      from ls-remote, but only exposes that observed identity to Operator after the whole
+      resolver returns successfully. If validation rejects inside the transport resolver
+      after observation, including the historical TASK-166-style case where the observed
+      remediation commit does not contain exactly one REVIEW and REMEDIATION, the raised
+      ReviewTransportError carries no observed ref/SHA. Admission Failure v2 therefore
+      cannot prove which immutable remediation commit was actually seen at the failure
+      boundary, leaving the original forensic gap that AC6 explicitly requires closing.
+    expected: >
+      Preserve the exact already-observed remediation ref commit identity, or an equivalent
+      immutable bounded snapshot identity, on every rejection that occurs after successful
+      remediation ref observation inside the resolver. Add a deterministic regression for
+      the exact malformed REVIEW/REMEDIATION-cardinality case: bind the observed ref/SHA in
+      the diagnostic, mutate the remote ref afterward, and prove the historical diagnostic
+      remains bound to the earlier observation. Do not add a second remote query, retry,
+      fallback, or weaken canonical lineage validation.
+  - id: F2
+    basis: AC10
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::run_repair
+    issue: >
+      REPAIR exception handling emits Admission Failure v2 in the else branch whenever the
+      continuation RUN has a persisted RESULT. Runtime persists RESULT before attempting
+      post-PASS transport, so a transport failure after RESULT persistence reaches this
+      branch with attempt.run_path already bound and incorrectly creates ADMISSION_FAILURE
+      for an attempt that already has a canonical RUN. This violates the required exact
+      admission-vs-RUN taxonomy and differs from PRIMARY, REMEDIATION, direct-candidate,
+      and recover-primary handling, which only emit admission diagnostics when no RUN was
+      created.
+    expected: >
+      Emit a REPAIR admission diagnostic only when attempt.run_path is absent. Once a
+      continuation RUN exists, never create ADMISSION_FAILURE for that attempt; preserve
+      existing semantics that a persisted RESULT followed by transport failure is not
+      rewritten as FAILURE. Add a regression that forces REPAIR transport failure after
+      RESULT persistence and proves no admission diagnostic or category conversion occurs.
