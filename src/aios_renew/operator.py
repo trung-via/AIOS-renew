@@ -47,6 +47,7 @@ from .review_transport import (
     RemoteFailureArtifacts,
     RemoteRemediationLineage,
     ReviewTransportError,
+    RemoteQueryError,
     read_remote_repair,
     read_remote_task,
     resolve_remote_primary_recovery,
@@ -452,7 +453,9 @@ def next_run_id(
     return f"{prefix}{max(numbers, default=0) + 1:03d}"
 
 
-def _remote_run_reservations(repo: Path, task: Task) -> tuple[str, ...]:
+def _remote_run_reservations(
+    repo: Path, task: Task, *, admission: dict[str, Any] | None = None
+) -> tuple[str, ...]:
     """Return validated remote reservations or fail closed on terminal conflict."""
 
     try:
@@ -462,7 +465,13 @@ def _remote_run_reservations(repo: Path, task: Task) -> tuple[str, ...]:
             task_revision=task.revision,
         )
     except ReviewTransportError as exc:
+        if admission is not None:
+            observed_refs = getattr(exc, "observed_refs", ())
+            if isinstance(observed_refs, tuple):
+                _record_observed_refs(admission, observed_refs)
         raise OperatorError(f"canonical RUN namespace rejected: {exc}") from exc
+    if admission is not None:
+        _record_observed_refs(admission, namespace.observed_refs)
     if namespace.conflicts:
         raise OperatorError(
             "canonical RUN has conflicting terminal artifacts: "
@@ -639,6 +648,18 @@ def run_task(
         "PRIMARY", monotonic_clock=monotonic_clock
     )
     attempt = _RunAttempt()
+    admission = _new_admission(
+        "PRIMARY",
+        phase="PRIMARY_SYNCHRONIZATION" if synchronize else "REPOSITORY_ADMISSION",
+        reason_code=(
+            "PRIMARY_SYNCHRONIZATION_REJECTED"
+            if synchronize
+            else "REPOSITORY_ADMISSION_REJECTED"
+        ),
+        task_id=task_id,
+        executor=executor,
+        dispatch_id=dispatch_id,
+    )
     try:
         return _run_task_impl(
             task_id, executor=executor, repo=root,
@@ -648,6 +669,7 @@ def run_task(
             synchronize=synchronize,
             preflight_sha=preflight_sha,
             dispatch_id=dispatch_id,
+            admission=admission,
         )
     except KeyboardInterrupt as original:
         if attempt.run_path is not None:
@@ -661,6 +683,10 @@ def run_task(
                     observation_tracker=observation_tracker,
                     interruption_phase=attempt.interruption_phase,
                 )
+        else:
+            _persist_and_transport_admission_failure(
+                root, admission=admission, failure=original
+            )
         raise
     except Exception as original:
         if attempt.run_path is not None:
@@ -676,6 +702,10 @@ def run_task(
                     failure=original,
                     observation_tracker=observation_tracker,
                 )
+        else:
+            _persist_and_transport_admission_failure(
+                root, admission=admission, failure=original
+            )
         raise
 
 
@@ -691,18 +721,38 @@ def _run_task_impl(
     synchronize: bool = True,
     preflight_sha: str | None = None,
     dispatch_id: str | None = None,
+    admission: dict[str, Any] | None = None,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
 
     root = resolve_repository(repo)
+    admission = admission if admission is not None else _new_admission(
+        "PRIMARY",
+        phase="PRIMARY_SYNCHRONIZATION",
+        reason_code="PRIMARY_SYNCHRONIZATION_REJECTED",
+        task_id=task_id,
+        executor=executor,
+        dispatch_id=dispatch_id,
+    )
     if executor not in ("codex", "antigravity"):
+        _set_admission_boundary(
+            admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
+        )
         raise OperatorError(f"unsupported executor: {executor}")
     state = runtime_paths(root)
 
     with RepositoryLock(state.lock):
         if synchronize:
+            _set_admission_boundary(
+                admission,
+                "PRIMARY_SYNCHRONIZATION",
+                "PRIMARY_SYNCHRONIZATION_REJECTED",
+            )
             _synchronize_primary_branch(root)
         else:
+            _set_admission_boundary(
+                admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
+            )
             if _git(root, "status", "--porcelain"):
                 raise OperatorError("repository dirty")
             try:
@@ -714,9 +764,19 @@ def _run_task_impl(
         current_sha = _git(root, "rev-parse", "HEAD")
         if preflight_sha is not None and current_sha != preflight_sha:
             raise OperatorError("current HEAD does not match preflight state")
+        admission["current_head_sha"] = current_sha
+        _set_admission_boundary(
+            admission, "TASK_ADMISSION", "TASK_CONTRACT_REJECTED"
+        )
         task = load_task(root, task_id)
+        _bind_admission_task(admission, task)
         base_sha = current_sha
-        remote_run_ids = _remote_run_reservations(root, task)
+        _set_admission_boundary(
+            admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT"
+        )
+        remote_run_ids = _remote_run_reservations(
+            root, task, admission=admission
+        )
         run_id = next_run_id(task_id, state.runs, reserved=remote_run_ids)
         run = Run.from_task(
             run_id=run_id,
@@ -851,6 +911,13 @@ def run_repair(
         "REPAIR", monotonic_clock=monotonic_clock
     )
     attempt = _RunAttempt()
+    admission = _new_admission(
+        "REPAIR",
+        phase="FAILED_RUN_RESOLUTION",
+        reason_code="CANONICAL_LINEAGE_MISSING",
+        executor=executor,
+        failed_run_id=failed_run_id,
+    )
     try:
         return _run_repair_impl(
             failed_run_id, executor=executor, repo=root, repair=repair,
@@ -858,6 +925,7 @@ def run_repair(
             verification_runner=verification_runner,
             attempt=attempt,
             observation_tracker=observation_tracker,
+            admission=admission,
         )
     except KeyboardInterrupt as original:
         if (
@@ -868,6 +936,10 @@ def run_repair(
                 root, state=state, attempt=attempt, failure=original,
                 observation_tracker=observation_tracker,
                 interruption_phase=attempt.interruption_phase,
+            )
+        else:
+            _persist_and_transport_admission_failure(
+                root, admission=admission, failure=original
             )
         raise
     except Exception as original:
@@ -882,6 +954,10 @@ def run_repair(
                 )
             except Exception:
                 pass
+        else:
+            _persist_and_transport_admission_failure(
+                root, admission=admission, failure=original
+            )
         raise
     finally:
         _remove_historical_workspace(root, attempt.historical_workspace)
@@ -1032,6 +1108,12 @@ def recover_primary(
         "PRIMARY", monotonic_clock=monotonic_clock
     )
     attempt = _RunAttempt()
+    admission = _new_admission(
+        "RECOVER_PRIMARY",
+        phase="FAILED_RUN_RESOLUTION",
+        reason_code="CANONICAL_LINEAGE_MISSING",
+        source_run_id=source_run_id,
+    )
     try:
         return _recover_primary_impl(
             source_run_id,
@@ -1039,6 +1121,7 @@ def recover_primary(
             verification_runner=verification_runner,
             observation_tracker=observation_tracker,
             attempt=attempt,
+            admission=admission,
         )
     except KeyboardInterrupt as original:
         _persist_primary_recovery_failure(
@@ -1049,6 +1132,10 @@ def recover_primary(
             observation_tracker=observation_tracker,
             interruption_phase=attempt.interruption_phase,
         )
+        if attempt.run_path is None:
+            _persist_and_transport_admission_failure(
+                root, admission=admission, failure=original
+            )
         raise
     except Exception as original:
         try:
@@ -1061,6 +1148,10 @@ def recover_primary(
             )
         except Exception:
             pass
+        if attempt.run_path is None:
+            _persist_and_transport_admission_failure(
+                root, admission=admission, failure=original
+            )
         raise
     finally:
         _remove_historical_workspace(root, attempt.historical_workspace)
@@ -1103,16 +1194,32 @@ def _recover_primary_impl(
     verification_runner: VerificationRunner,
     observation_tracker: RunObservationTracker,
     attempt: _RunAttempt,
+    admission: dict[str, Any],
 ) -> RecoverySummary:
     state = runtime_paths(repo)
     with RepositoryLock(state.lock):
+        _set_admission_boundary(
+            admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
+        )
         control_head = _git(repo, "rev-parse", "HEAD")
+        admission["control_head_sha"] = control_head
         if _git(repo, "status", "--porcelain"):
             raise OperatorError("repository dirty")
-        admission = _resolve_primary_recovery_admission(repo, source_run_id)
-        source_run = admission.source_run
-        task = admission.task
-        candidate_sha = admission.structural_package.result.head_sha
+        _set_admission_boundary(
+            admission, "FAILED_RUN_RESOLUTION", "CANONICAL_LINEAGE_MISSING"
+        )
+        resolved_admission = _resolve_primary_recovery_admission(
+            repo, source_run_id, admission=admission
+        )
+        source_run = resolved_admission.source_run
+        task = resolved_admission.task
+        _bind_admission_task(admission, task)
+        candidate_sha = resolved_admission.structural_package.result.head_sha
+        _set_admission_boundary(
+            admission,
+            "HISTORICAL_SUBJECT_ADMISSION",
+            "HISTORICAL_SUBJECT_REJECTED",
+        )
         subject_repo = _create_historical_workspace(repo, candidate_sha)
         attempt.bind_subject(subject_repo, task, subject_repo)
         if load_task(subject_repo, task.task_id) != task:
@@ -1126,10 +1233,13 @@ def _recover_primary_impl(
         if _git(repo, "status", "--porcelain"):
             raise OperatorError("recovery changed control repository before admission")
 
+        _set_admission_boundary(
+            admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT"
+        )
         run_id = next_run_id(
             task.task_id,
             state.runs,
-            reserved=admission.remote_run_ids,
+            reserved=resolved_admission.remote_run_ids,
         )
         run = Run.from_task(
             run_id=run_id,
@@ -1174,12 +1284,26 @@ def _recover_primary_impl(
 
 
 def _resolve_primary_recovery_admission(
-    repo: Path, source_run_id: str
+    repo: Path,
+    source_run_id: str,
+    *,
+    admission: dict[str, Any] | None = None,
 ) -> _PrimaryRecoveryAdmission:
     try:
         remote = resolve_remote_primary_recovery(repo, run_id=source_run_id)
     except ReviewTransportError as exc:
+        if admission is not None:
+            observed_refs = getattr(exc, "observed_refs", ())
+            if isinstance(observed_refs, tuple):
+                _record_observed_refs(admission, observed_refs)
         raise OperatorError(f"PRIMARY recovery source rejected: {exc}") from exc
+    if admission is not None:
+        _record_observed_refs(admission, remote.observed_refs)
+        _set_admission_boundary(
+            admission,
+            "CANONICAL_CONTRACT_ADMISSION",
+            "CANONICAL_LINEAGE_INVALID",
+        )
     try:
         success_data = _decode_remote_mapping(remote.success_run, "successful RUN")
         failure_run_data = _decode_remote_mapping(remote.failure_run, "failed RUN")
@@ -1302,9 +1426,16 @@ def _run_repair_impl(
     verification_runner: VerificationRunner,
     attempt: _RunAttempt,
     observation_tracker: RunObservationTracker,
+    admission: dict[str, Any],
 ) -> RepairSummary:
     if executor not in ("codex", "antigravity"):
+        _set_admission_boundary(
+            admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
+        )
         raise OperatorError(f"unsupported executor: {executor}")
+    _set_admission_boundary(
+        admission, "FAILED_RUN_RESOLUTION", "CANONICAL_LINEAGE_INVALID"
+    )
     state = runtime_paths(repo)
     if any(
         json.loads(path.read_text(encoding="utf-8")).get("failed_run_id")
@@ -1323,6 +1454,7 @@ def _run_repair_impl(
         ):
             raise OperatorError("invalid persisted FAILURE lineage")
     current_head = _git(repo, "rev-parse", "HEAD")
+    admission["current_head_sha"] = current_head
     historical = (
         local_failure is None
         or local_failure.get("failed_head_sha") != current_head
@@ -1330,12 +1462,17 @@ def _run_repair_impl(
     remote_run_ids: tuple[str, ...] = ()
     transported_preverification: bytes | None = None
     if historical:
-        admission = _resolve_historical_repair_admission(repo, failed_run_id)
-        failure = admission.failure
-        task = admission.task
-        root_base_sha = admission.root_base_sha
-        remote_run_ids = admission.remote_run_ids
-        transported_preverification = admission.preverification
+        _set_admission_boundary(
+            admission, "FAILED_RUN_RESOLUTION", "CANONICAL_LINEAGE_MISSING"
+        )
+        resolved_admission = _resolve_historical_repair_admission(
+            repo, failed_run_id, admission=admission
+        )
+        failure = resolved_admission.failure
+        task = resolved_admission.task
+        root_base_sha = resolved_admission.root_base_sha
+        remote_run_ids = resolved_admission.remote_run_ids
+        transported_preverification = resolved_admission.preverification
         if local_failure is not None and dict(local_failure) != dict(failure):
             raise OperatorError("local and canonical remote FAILURE conflict")
     else:
@@ -1356,10 +1493,19 @@ def _run_repair_impl(
             root_base_sha = prior_execution.get("root_base_sha")
         if not isinstance(root_base_sha, str) or not root_base_sha:
             raise OperatorError("invalid original TASK root lineage")
+        _set_admission_boundary(
+            admission, "TASK_ADMISSION", "TASK_CONTRACT_REJECTED"
+        )
         task = load_task(repo, failure["task"]["id"])
+    _bind_admission_task(admission, task)
+    if isinstance(failure.get("failed_head_sha"), str):
+        admission["failed_head_sha"] = failure["failed_head_sha"]
     candidate = failure.get("candidate")
     if not isinstance(candidate, Mapping) or candidate.get("repairable") is not True:
         raise OperatorError("failed candidate is not safely bound for REPAIR")
+    _set_admission_boundary(
+        admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
+    )
     if repair is None:
         try:
             repair_data: Any = json.loads(read_remote_repair(repo, failed_run_id))
@@ -1409,6 +1555,9 @@ def _run_repair_impl(
 
     reusable_package = None
     if action == "NO_CHANGE":
+        _set_admission_boundary(
+            admission, "REUSABLE_STATE_ADMISSION", "REUSABLE_STATE_REJECTED"
+        )
         local_preverification = _read_optional_bytes(
             state.preverification / f"{failed_run_id}.json"
         )
@@ -1429,6 +1578,9 @@ def _run_repair_impl(
             root_base_sha=root_base_sha,
         )
 
+    _set_admission_boundary(
+        admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
+    )
     with RepositoryLock(state.lock):
         if any(
             json.loads(path.read_text(encoding="utf-8")).get("failed_run_id")
@@ -1442,12 +1594,22 @@ def _run_repair_impl(
         subject_repo = repo
         workspace = None
         if historical:
+            _set_admission_boundary(
+                admission,
+                "HISTORICAL_SUBJECT_ADMISSION",
+                "HISTORICAL_SUBJECT_REJECTED",
+            )
             subject_repo = _create_historical_workspace(repo, failed_head)
             workspace = subject_repo
         elif _git(repo, "rev-parse", "HEAD") != failed_head:
             raise OperatorError("current HEAD does not match failed committed state")
         attempt.bind_subject(subject_repo, task, workspace)
-        canonical_run_ids = _remote_run_reservations(repo, task)
+        _set_admission_boundary(
+            admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT"
+        )
+        canonical_run_ids = _remote_run_reservations(
+            repo, task, admission=admission
+        )
         reserved_run_ids = tuple(
             sorted(set(remote_run_ids).union(canonical_run_ids))
         )
@@ -1533,19 +1695,35 @@ def _run_repair_impl(
 
 
 def _resolve_historical_repair_admission(
-    repo: Path, failed_run_id: str
+    repo: Path,
+    failed_run_id: str,
+    *,
+    admission: dict[str, Any] | None = None,
 ) -> _HistoricalRepairAdmission:
     try:
         recovery = resolve_remote_repair_recovery(
             repo, failed_run_id=failed_run_id
         )
     except ReviewTransportError as exc:
+        if admission is not None:
+            observed_refs = getattr(exc, "observed_refs", ())
+            if isinstance(observed_refs, tuple):
+                _record_observed_refs(admission, observed_refs)
         raise OperatorError(f"historical REPAIR lineage rejected: {exc}") from exc
+    if admission is not None:
+        _record_observed_refs(admission, recovery.observed_refs)
+        _set_admission_boundary(
+            admission,
+            "CANONICAL_CONTRACT_ADMISSION",
+            "CANONICAL_LINEAGE_INVALID",
+        )
     if not recovery.failures:
         raise OperatorError("historical REPAIR lineage is empty")
 
     target_artifact = recovery.failures[0]
     target_failure = _decode_remote_mapping(target_artifact.failure, "FAILURE")
+    if admission is not None:
+        admission["failed_head_sha"] = target_artifact.candidate_sha
     task_ref = target_failure.get("task")
     if not isinstance(task_ref, Mapping):
         raise OperatorError("historical FAILURE TASK reference is invalid")
@@ -2143,6 +2321,34 @@ def _preflight_primary_sync(
     return PreflightResult(preflight_sha=preflight_sha)
 
 
+def _preflight_primary_admission(
+    root: Path,
+    *,
+    task_id: str,
+    executor: str,
+    dispatch_id: str | None = None,
+    argv: list[str] | None = None,
+    runner: NativeRunner = subprocess.run,
+) -> PreflightResult:
+    """Expose TASK-062 rejection through the operation-neutral v2 boundary."""
+
+    admission = _new_admission(
+        "PRIMARY",
+        phase="PRIMARY_SYNCHRONIZATION",
+        reason_code="PRIMARY_SYNCHRONIZATION_REJECTED",
+        task_id=task_id,
+        executor=executor,
+        dispatch_id=dispatch_id,
+    )
+    try:
+        return _preflight_primary_sync(root, argv=argv, runner=runner)
+    except BaseException as original:
+        _persist_and_transport_admission_failure(
+            root, admission=admission, failure=original
+        )
+        raise
+
+
 def _restart_primary_invocation(
     root: Path,
     *,
@@ -2221,18 +2427,40 @@ def run_remediation(
     observation_tracker = RunObservationTracker(
         "REMEDIATION", monotonic_clock=monotonic_clock
     )
-    task = load_task(root, task_id)
     attempt = _RunAttempt()
-    admission: dict[str, Any] = {
-        "phase": (
+    task: Task | None = None
+    admission = _new_admission(
+        "REMEDIATION",
+        phase=(
             "REMOTE_LINEAGE_RESOLUTION"
             if finding_id is not None
             else "CANONICAL_CONTRACT_ADMISSION"
         ),
-    }
+        reason_code=(
+            "CANONICAL_LINEAGE_MISSING"
+            if finding_id is not None
+            else "TASK_CONTRACT_REJECTED"
+        ),
+        task_id=task_id,
+        executor=executor,
+    )
     if finding_id is not None:
         admission["finding_id"] = finding_id
     try:
+        _set_admission_boundary(
+            admission, "TASK_ADMISSION", "TASK_CONTRACT_REJECTED"
+        )
+        task = load_task(root, task_id)
+        _bind_admission_task(admission, task)
+        _set_admission_boundary(
+            admission,
+            "REMOTE_LINEAGE_RESOLUTION"
+            if finding_id is not None
+            else "CANONICAL_CONTRACT_ADMISSION",
+            "CANONICAL_LINEAGE_MISSING"
+            if finding_id is not None
+            else "TASK_CONTRACT_REJECTED",
+        )
         return _run_remediation_impl(
             task_id,
             review=review,
@@ -2259,6 +2487,10 @@ def run_remediation(
                     observation_tracker=observation_tracker,
                     interruption_phase=attempt.interruption_phase,
                 )
+        else:
+            _persist_and_transport_admission_failure(
+                root, admission=admission, failure=original
+            )
         raise
     except Exception as original:
         if attempt.run_path is not None:
@@ -2273,8 +2505,6 @@ def run_remediation(
         else:
             _persist_and_transport_admission_failure(
                 root,
-                task=task,
-                executor=executor,
                 admission=admission,
                 failure=original,
             )
@@ -2322,36 +2552,91 @@ def _persist_remediation_failure(
 def _persist_and_transport_admission_failure(
     root: Path,
     *,
-    task: Task,
-    executor: str,
     admission: Mapping[str, Any],
-    failure: Exception,
+    failure: BaseException,
 ) -> None:
-    """Best-effort one bounded pre-RUN diagnostic without changing authority."""
+    """Best-effort one bounded v2 pre-RUN diagnostic without changing authority."""
 
     try:
-        message = str(failure).splitlines()[0][:512]
+        operation = admission.get("operation")
+        phase = admission.get("phase")
+        reason_code = admission.get("reason_code")
+        if (
+            operation not in _ADMISSION_OPERATIONS
+            or phase not in _ADMISSION_PHASES
+            or reason_code not in _ADMISSION_REASONS
+        ):
+            return
+        message = _bounded_admission_message(failure)
         record: dict[str, Any] = {
+            "format": "AIOS_ADMISSION_FAILURE",
+            "version": 2,
             "kind": "ADMISSION_FAILURE",
-            "operation": "REMEDIATION",
-            "task": {"id": task.task_id, "revision": task.revision},
-            "requested_executor": executor,
+            "operation": operation,
             "executor_invoked": False,
-            "phase": admission["phase"],
+            "phase": phase,
+            "reason_code": reason_code,
             "error": {
-                "type": type(failure).__name__,
+                "type": type(failure).__name__[:128],
                 "message": message,
             },
         }
+        requested_executor = admission.get("requested_executor")
+        if requested_executor in ("codex", "antigravity"):
+            record["requested_executor"] = requested_executor
+        task = admission.get("task")
+        if (
+            isinstance(task, Mapping)
+            and isinstance(task.get("id"), str)
+            and isinstance(task.get("revision"), int)
+        ):
+            record["task"] = {
+                "id": task["id"],
+                "revision": task["revision"],
+            }
         for name in (
+            "requested_task_id",
             "finding_id",
             "review_id",
             "reviewed_sha",
+            "failed_head_sha",
             "current_head_sha",
+            "control_head_sha",
+            "failed_run_id",
+            "source_run_id",
+            "dispatch_id",
+            "observed_ref",
+            "observed_sha",
+            "observed_snapshot_sha256",
         ):
             value = admission.get(name)
-            if isinstance(value, str):
+            if isinstance(value, str) and len(value) <= 256:
                 record[name] = value
+        observed_ref_count = admission.get("observed_ref_count")
+        if isinstance(observed_ref_count, int) and observed_ref_count >= 0:
+            record["observed_ref_count"] = observed_ref_count
+        observed_refs = admission.get("observed_refs")
+        if isinstance(observed_refs, list):
+            bounded_refs = []
+            for item in observed_refs[:8]:
+                if (
+                    isinstance(item, Mapping)
+                    and isinstance(item.get("ref"), str)
+                    and isinstance(item.get("sha"), str)
+                    and len(item["ref"]) <= 256
+                    and len(item["sha"]) <= 64
+                ):
+                    bounded_refs.append({"ref": item["ref"], "sha": item["sha"]})
+            if bounded_refs:
+                record["observed_refs"] = bounded_refs
+        remote_error = _find_remote_query_error(failure)
+        if remote_error is not None:
+            record["reason_code"] = "REMOTE_TRANSPORT_UNAVAILABLE"
+            record["remote_query"] = {
+                "operation": "LS_REMOTE",
+                "outcome": "UNAVAILABLE",
+                "category": remote_error.category,
+            }
         content = json.dumps(
             record, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
@@ -2373,6 +2658,122 @@ def _persist_and_transport_admission_failure(
     except Exception:
         # Diagnostic state can never replace or mask the admission exception.
         return
+
+
+def _new_admission(
+    operation: str,
+    *,
+    phase: str,
+    reason_code: str,
+    task_id: str | None = None,
+    executor: str | None = None,
+    **facts: Any,
+) -> dict[str, Any]:
+    admission: dict[str, Any] = {
+        "operation": operation,
+        "phase": phase,
+        "reason_code": reason_code,
+    }
+    if isinstance(task_id, str):
+        admission["requested_task_id"] = task_id
+    if executor in ("codex", "antigravity"):
+        admission["requested_executor"] = executor
+    admission.update(facts)
+    return admission
+
+
+def _bounded_admission_message(failure: BaseException) -> str:
+    """Bound one operator error line and redact common credential shapes."""
+
+    message = str(failure).splitlines()[0][:2048]
+    message = re.sub(
+        r"(?i)(https?://)[^/@\s]+@",
+        r"\1[REDACTED]@",
+        message,
+    )
+    message = re.sub(
+        r"(?i)\b(token|password|passwd|secret|authorization|credential)"
+        r"\s*[:=]\s*[^\s,;]+",
+        r"\1=[REDACTED]",
+        message,
+    )
+    return message[:512]
+
+
+def _bind_admission_task(admission: dict[str, Any], task: Task) -> None:
+    admission["task"] = {"id": task.task_id, "revision": task.revision}
+
+
+def _set_admission_boundary(
+    admission: dict[str, Any], phase: str, reason_code: str
+) -> None:
+    admission["phase"] = phase
+    admission["reason_code"] = reason_code
+
+
+def _record_observed_refs(
+    admission: dict[str, Any], refs: tuple[tuple[str, str], ...]
+) -> None:
+    """Bind one immutable bounded ref observation without retaining an unbounded list."""
+
+    normalized = tuple(sorted((str(ref), str(sha)) for ref, sha in refs))
+    snapshot = json.dumps(normalized, separators=(",", ":")).encode("utf-8")
+    admission["observed_snapshot_sha256"] = hashlib.sha256(snapshot).hexdigest()
+    admission["observed_ref_count"] = len(normalized)
+    requested_ids = {
+        admission.get("failed_run_id"),
+        admission.get("source_run_id"),
+    }
+    selected = [
+        {"ref": ref, "sha": sha}
+        for ref, sha in normalized
+        if any(isinstance(identity, str) and identity in ref for identity in requested_ids)
+    ][:8]
+    if selected:
+        admission["observed_refs"] = selected
+
+
+def _find_remote_query_error(failure: BaseException) -> RemoteQueryError | None:
+    current: BaseException | None = failure
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, RemoteQueryError):
+            return current
+        current = current.__cause__ or current.__context__
+    return None
+
+
+_ADMISSION_OPERATIONS = frozenset(
+    {"PRIMARY", "REMEDIATION", "REPAIR", "DIRECT_CANDIDATE", "RECOVER_PRIMARY"}
+)
+_ADMISSION_PHASES = frozenset(
+    {
+        "PRIMARY_SYNCHRONIZATION",
+        "TASK_ADMISSION",
+        "FAILED_RUN_RESOLUTION",
+        "REMOTE_LINEAGE_RESOLUTION",
+        "CANONICAL_CONTRACT_ADMISSION",
+        "REPOSITORY_ADMISSION",
+        "HISTORICAL_SUBJECT_ADMISSION",
+        "REUSABLE_STATE_ADMISSION",
+        "RUN_RESERVATION",
+    }
+)
+_ADMISSION_REASONS = frozenset(
+    {
+        "PRIMARY_SYNCHRONIZATION_REJECTED",
+        "TASK_CONTRACT_REJECTED",
+        "REMOTE_TRANSPORT_UNAVAILABLE",
+        "CANONICAL_LINEAGE_MISSING",
+        "CANONICAL_LINEAGE_AMBIGUOUS",
+        "CANONICAL_LINEAGE_INVALID",
+        "REPOSITORY_ADMISSION_REJECTED",
+        "RUN_NAMESPACE_CONFLICT",
+        "HISTORICAL_SUBJECT_REJECTED",
+        "REUSABLE_STATE_REJECTED",
+    }
+)
 
 
 def _run_remediation_impl(
@@ -2405,7 +2806,9 @@ def _run_remediation_impl(
     )
     remote_mode = finding_id is not None
     if explicit_mode and remote_mode:
-        admission["phase"] = "CANONICAL_CONTRACT_ADMISSION"
+        _set_admission_boundary(
+            admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
+        )
         raise OperatorError(
             "remote finding mode cannot be mixed with explicit REVIEW/REMEDIATION artifacts"
         )
@@ -2465,7 +2868,10 @@ def _run_remediation_impl(
     _record_admission_artifact_facts(
         admission, canonical_review, canonical_remediation
     )
-    admission["phase"] = "CANONICAL_CONTRACT_ADMISSION"
+    _bind_admission_task(admission, task)
+    _set_admission_boundary(
+        admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
+    )
     state = runtime_paths(root)
     try:
         validate_review(
@@ -2494,7 +2900,9 @@ def _run_remediation_impl(
     if not canonical_remediation.affected_verification:
         raise OperatorError("REMEDIATION affected verification is empty")
 
-    admission["phase"] = "REPOSITORY_ADMISSION"
+    _set_admission_boundary(
+        admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
+    )
     with RepositoryLock(state.lock):
         actual_baseline = _git(root, "rev-parse", "HEAD")
         control_branch = _git(root, "rev-parse", "--abbrev-ref", "HEAD")
@@ -2514,7 +2922,11 @@ def _run_remediation_impl(
         subject_repo = root
         historical_workspace = None
         if historical:
-            admission["phase"] = "HISTORICAL_SUBJECT_ADMISSION"
+            _set_admission_boundary(
+                admission,
+                "HISTORICAL_SUBJECT_ADMISSION",
+                "HISTORICAL_SUBJECT_REJECTED",
+            )
             historical_workspace = _create_historical_workspace(
                 root, canonical_remediation.reviewed_sha
             )
@@ -2529,7 +2941,12 @@ def _run_remediation_impl(
                 historical_workspace=historical_workspace,
             )
 
-        remote_run_ids = _remote_run_reservations(root, task)
+        _set_admission_boundary(
+            admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT"
+        )
+        remote_run_ids = _remote_run_reservations(
+            root, task, admission=admission
+        )
         run_id = next_run_id(task_id, state.runs, reserved=remote_run_ids)
         run = Run.from_task(
             run_id=run_id,
@@ -2555,12 +2972,12 @@ def _run_remediation_impl(
             run_path,
             {"kind": "REMEDIATION", "execution": asdict(execution)},
         )
+        if attempt is not None:
+            attempt.bind_run(run_path)
         observation_tracker.admit(run)
         observed_native_runner = observation_tracker.wrap_native_runner(
             native_runner
         )
-        if attempt is not None:
-            attempt.bind_run(run_path)
 
         execution_policy = resolve_native_execution_policy(
             authorizes_mutation=canonical_remediation.action == "CODE_FIX"
@@ -2647,7 +3064,15 @@ def accept_candidate(
     observation_tracker = RunObservationTracker(
         "REMEDIATION", monotonic_clock=monotonic_clock
     )
-    existing = {path.name for path in state.runs.glob("*.json")}
+    attempt = _RunAttempt()
+    admission = _new_admission(
+        "DIRECT_CANDIDATE",
+        phase="TASK_ADMISSION",
+        reason_code="TASK_CONTRACT_REJECTED",
+        task_id=task_id,
+        executor=executor,
+        finding_id=finding_id,
+    )
     try:
         return _accept_candidate_impl(
             task_id,
@@ -2656,18 +3081,24 @@ def accept_candidate(
             repo=root,
             verification_runner=verification_runner,
             observation_tracker=observation_tracker,
+            attempt=attempt,
+            admission=admission,
         )
     except Exception as original:
-        created = [
-            path for path in state.runs.glob("*.json") if path.name not in existing
-        ]
-        if len(created) == 1 and not (state.results / created[0].name).is_file():
+        if (
+            attempt.run_path is not None
+            and not (state.results / attempt.run_path.name).is_file()
+        ):
             _persist_and_transport_failure(
                 root,
                 task_id=task_id,
-                run_path=created[0],
+                run_path=attempt.run_path,
                 failure=original,
                 observation_tracker=observation_tracker,
+            )
+        elif attempt.run_path is None:
+            _persist_and_transport_admission_failure(
+                root, admission=admission, failure=original
             )
         raise
 
@@ -2680,18 +3111,36 @@ def _accept_candidate_impl(
     repo: Path,
     verification_runner: VerificationRunner,
     observation_tracker: RunObservationTracker,
+    attempt: _RunAttempt,
+    admission: dict[str, Any],
 ) -> RemediationSummary:
     if executor not in ("codex", "antigravity"):
         raise OperatorError(f"unsupported executor: {executor}")
     task = load_task(repo, task_id)
+    _bind_admission_task(admission, task)
     state = runtime_paths(repo)
 
     with RepositoryLock(state.lock):
+        _set_admission_boundary(
+            admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
+        )
         if _git(repo, "status", "--porcelain"):
             raise OperatorError("repository dirty")
         candidate_head = _git(repo, "rev-parse", "HEAD")
+        admission["current_head_sha"] = candidate_head
+        _set_admission_boundary(
+            admission,
+            "REMOTE_LINEAGE_RESOLUTION",
+            "CANONICAL_LINEAGE_MISSING",
+        )
         review, remediation, prior_result, prior_review = _resolve_direct_lineage(
-            repo, task=task, finding_id=finding_id
+            repo,
+            task=task,
+            finding_id=finding_id,
+            admission=admission,
+        )
+        _set_admission_boundary(
+            admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
         )
         try:
             validate_review(
@@ -2746,7 +3195,12 @@ def _accept_candidate_impl(
         if existing_summary is not None:
             return existing_summary
 
-        remote_run_ids = _remote_run_reservations(repo, task)
+        _set_admission_boundary(
+            admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT"
+        )
+        remote_run_ids = _remote_run_reservations(
+            repo, task, admission=admission
+        )
         run_id = next_run_id(task_id, state.runs, reserved=remote_run_ids)
         run = Run.from_task(
             run_id=run_id,
@@ -2775,6 +3229,7 @@ def _accept_candidate_impl(
                 "execution": asdict(execution),
             },
         )
+        attempt.bind_run(run_path)
         observation_tracker.admit(run)
 
         structural_result = Result(
@@ -2810,10 +3265,18 @@ def _accept_candidate_impl(
 
 
 def _resolve_direct_lineage(
-    repo: Path, *, task: Task, finding_id: str
+    repo: Path,
+    *,
+    task: Task,
+    finding_id: str,
+    admission: dict[str, Any] | None = None,
 ) -> tuple[Review, Remediation, Result, Review | None]:
     return _resolve_remote_remediation_lineage(
-        repo, task=task, finding_id=finding_id, context="direct candidate"
+        repo,
+        task=task,
+        finding_id=finding_id,
+        context="direct candidate",
+        admission=admission,
     )
 
 
@@ -2875,9 +3338,17 @@ def _resolve_remote_remediation_lineage_impl(
         )
     except ReviewTransportError as exc:
         raise OperatorError(f"{context} lineage resolution failed: {exc}") from exc
+    if admission is not None and remote_lineages:
+        _record_observed_refs(
+            admission,
+            tuple((remote.ref, remote.commit_sha) for remote in remote_lineages),
+        )
 
     matches: list[tuple[Review, Remediation, Result, Review | None, Task]] = []
     for remote in remote_lineages:
+        if admission is not None:
+            admission["observed_ref"] = remote.ref
+            admission["observed_sha"] = remote.commit_sha
         parsed = _parse_remote_direct_lineage_impl(
             repo,
             task=task,
@@ -2893,8 +3364,20 @@ def _resolve_remote_remediation_lineage_impl(
                 )
             matches.append(parsed)
     if not matches:
+        if admission is not None:
+            _set_admission_boundary(
+                admission,
+                "REMOTE_LINEAGE_RESOLUTION",
+                "CANONICAL_LINEAGE_MISSING",
+            )
         raise OperatorError(f"canonical {context} lineage not found")
     if len(matches) != 1:
+        if admission is not None:
+            _set_admission_boundary(
+                admission,
+                "REMOTE_LINEAGE_RESOLUTION",
+                "CANONICAL_LINEAGE_AMBIGUOUS",
+            )
         raise OperatorError(f"canonical {context} lineage is ambiguous")
     return matches[0]
 
@@ -2946,7 +3429,11 @@ def _parse_remote_direct_lineage_impl(
             return None
 
         if admission is not None:
-            admission["phase"] = "CANONICAL_CONTRACT_ADMISSION"
+            _set_admission_boundary(
+                admission,
+                "CANONICAL_CONTRACT_ADMISSION",
+                "CANONICAL_LINEAGE_INVALID",
+            )
         review = parse_review(remote.review.decode("utf-8", errors="strict"))
         if admission is not None:
             admission.update(
@@ -3349,8 +3836,12 @@ def main(
             print(describe_task(args.task_id, repo=args.repo).render())
         elif args.command == "run":
             repo_root = resolve_repository(args.repo)
-            preflight = _preflight_primary_sync(
-                repo_root, argv=argv, runner=native_runner
+            preflight = _preflight_primary_admission(
+                repo_root,
+                task_id=args.task_id,
+                executor=args.executor,
+                argv=argv,
+                runner=native_runner,
             )
             if preflight.restart_code is not None:
                 return preflight.restart_code
@@ -3379,8 +3870,13 @@ def main(
 
             def invoke_primary() -> DispatchInvocation:
                 try:
-                    preflight = _preflight_primary_sync(
-                        repo_root, argv=wakeup_argv, runner=native_runner
+                    preflight = _preflight_primary_admission(
+                        repo_root,
+                        task_id=args.task_id,
+                        executor=args.executor,
+                        dispatch_id=args.dispatch_id,
+                        argv=wakeup_argv,
+                        runner=native_runner,
                     )
                     if preflight.restart_code is not None:
                         return DispatchInvocation(preflight.restart_code)

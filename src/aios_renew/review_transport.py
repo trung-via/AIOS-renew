@@ -17,6 +17,16 @@ class ReviewTransportError(RuntimeError):
     """Raised when post-PASS review or artifact transport fails."""
 
 
+class RemoteQueryError(ReviewTransportError):
+    """Bounded failure to acquire a canonical remote ref snapshot."""
+
+    def __init__(self, message: str, *, category: str = "UNKNOWN") -> None:
+        super().__init__(message)
+        self.category = category if category in {
+            "AUTH", "DNS", "TLS", "TIMEOUT", "CONNECTIVITY", "UNKNOWN"
+        } else "UNKNOWN"
+
+
 @dataclass(frozen=True)
 class RemoteRemediationLineage:
     """Immutable canonical inputs resolved from one remote remediation ref."""
@@ -51,6 +61,7 @@ class RemoteRepairRecovery:
 
     failures: tuple[RemoteFailureArtifacts, ...]
     remote_run_ids: tuple[str, ...]
+    observed_refs: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -59,6 +70,7 @@ class RemoteRunNamespace:
 
     run_ids: tuple[str, ...]
     conflicts: tuple[str, ...]
+    observed_refs: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -72,6 +84,7 @@ class RemotePrimaryRecovery:
     failure_run: bytes
     failure: bytes
     remote_run_ids: tuple[str, ...]
+    observed_refs: tuple[tuple[str, str], ...] = ()
 
 
 def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = False) -> tuple[int, str, str]:
@@ -151,14 +164,18 @@ def resolve_remote_run_namespace(
         f"refs/heads/aios/failure-artifacts/{task_prefix}*",
         f"refs/heads/aios/artifacts/{task_prefix}*",
     )
-    return _remote_run_namespace_from_refs(
-        repo,
-        remote,
-        task_id=task_id,
-        task_revision=task_revision,
-        task_prefix=task_prefix,
-        refs=refs,
-    )
+    try:
+        return _remote_run_namespace_from_refs(
+            repo,
+            remote,
+            task_id=task_id,
+            task_revision=task_revision,
+            task_prefix=task_prefix,
+            refs=refs,
+        )
+    except ReviewTransportError as exc:
+        exc.observed_refs = tuple(sorted(refs.items()))
+        raise
 
 
 def _remote_run_namespace_from_refs(
@@ -212,7 +229,9 @@ def _remote_run_namespace_from_refs(
             if kinds == {"FAILURE", "RESULT"}
         )
     )
-    return RemoteRunNamespace(tuple(sorted(terminal_kinds)), conflicts)
+    return RemoteRunNamespace(
+        tuple(sorted(terminal_kinds)), conflicts, tuple(sorted(refs.items()))
+    )
 
 
 def resolve_remote_primary_recovery(
@@ -230,6 +249,33 @@ def resolve_remote_primary_recovery(
     refs = _exact_remote_refs(
         repo, remote, failure_ref, success_ref, candidate_ref
     )
+    try:
+        return _resolve_remote_primary_recovery_from_refs(
+            repo,
+            remote=remote,
+            run_id=run_id,
+            failure_ref=failure_ref,
+            success_ref=success_ref,
+            candidate_ref=candidate_ref,
+            refs=refs,
+        )
+    except ReviewTransportError as exc:
+        exc.observed_refs = tuple(sorted(refs.items()))
+        raise
+
+
+def _resolve_remote_primary_recovery_from_refs(
+    repo: Path,
+    *,
+    remote: str,
+    run_id: str,
+    failure_ref: str,
+    success_ref: str,
+    candidate_ref: str,
+    refs: Mapping[str, str],
+) -> RemotePrimaryRecovery:
+    """Validate PRIMARY recovery from one exact observed ref set."""
+
     missing = [
         ref for ref in (failure_ref, success_ref, candidate_ref) if ref not in refs
     ]
@@ -295,6 +341,7 @@ def resolve_remote_primary_recovery(
         failure_run=failure_run,
         failure=failure,
         remote_run_ids=namespace.run_ids,
+        observed_refs=tuple(sorted(refs.items())),
     )
 
 
@@ -380,9 +427,7 @@ def resolve_remote_remediation_lineages(
         repo, "ls-remote", "--refs", remote, pattern, allow_fail=True
     )
     if code:
-        raise ReviewTransportError(
-            f"failed to query canonical REMEDIATION refs from {remote}"
-        )
+        raise RemoteQueryError("failed to query canonical REMEDIATION refs")
 
     resolved: list[RemoteRemediationLineage] = []
     for line in output.splitlines():
@@ -407,7 +452,7 @@ def resolve_remote_remediation_lineages(
                 repo, "ls-remote", "--refs", remote, failure_ref, allow_fail=True
             )
             if failure_code:
-                raise ReviewTransportError(
+                raise RemoteQueryError(
                     f"failed to query canonical source state for {source_run_id}"
                 )
             failure_lines = [item.split() for item in failure_output.splitlines()]
@@ -507,6 +552,29 @@ def resolve_remote_repair_recovery(
     task_prefix = _run_task_prefix(failed_run_id)
     remote = resolve_transport_remote(repo)
     refs = _historical_repair_ref_snapshot(repo, remote, task_prefix)
+    try:
+        return _resolve_remote_repair_recovery_from_snapshot(
+            repo,
+            remote=remote,
+            failed_run_id=failed_run_id,
+            task_prefix=task_prefix,
+            refs=refs,
+        )
+    except ReviewTransportError as exc:
+        exc.observed_refs = tuple(sorted(refs.items()))
+        raise
+
+
+def _resolve_remote_repair_recovery_from_snapshot(
+    repo: Path,
+    *,
+    remote: str,
+    failed_run_id: str,
+    task_prefix: str,
+    refs: Mapping[str, str],
+) -> RemoteRepairRecovery:
+    """Reconstruct historical REPAIR state from one already-observed snapshot."""
+
     discovered_run_ids = _remote_run_ids_from_refs(refs, task_prefix)
     if failed_run_id not in discovered_run_ids:
         raise ReviewTransportError(
@@ -630,7 +698,9 @@ def resolve_remote_repair_recovery(
             "canonical continuation already exists for failed RUN: "
             + ", ".join(sorted(duplicates))
         )
-    return RemoteRepairRecovery(tuple(chain), tuple(sorted(remote_run_ids)))
+    return RemoteRepairRecovery(
+        tuple(chain), tuple(sorted(remote_run_ids)), tuple(sorted(refs.items()))
+    )
 
 
 def read_remote_task(repo: Path, *, commit_sha: str, task_id: str) -> bytes:
@@ -705,9 +775,10 @@ def _historical_repair_ref_snapshot(
     )
     if code:
         category = _remote_snapshot_failure_category(stderr)
-        raise ReviewTransportError(
+        raise RemoteQueryError(
             "historical REPAIR snapshot acquisition failed: "
-            f"exit_status={code} category={category}"
+            f"exit_status={code} category={category}",
+            category=category,
         )
 
     allowed_prefixes = (
@@ -791,7 +862,7 @@ def _exact_remote_refs(repo: Path, remote: str, *patterns: str) -> dict[str, str
         repo, "ls-remote", "--refs", remote, *patterns, allow_fail=True
     )
     if code:
-        raise ReviewTransportError(f"failed to query canonical refs from {remote}")
+        raise RemoteQueryError("failed to query canonical refs")
     refs: dict[str, str] = {}
     for line in output.splitlines():
         parts = line.split()

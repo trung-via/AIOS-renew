@@ -143,16 +143,32 @@ aios remediate TASK-101 --review .ai/reviews/REVIEW-101-001.yaml `
 `--prior-review`. In either mode, the command is the Human execution-authorization
 boundary and AIOS invokes only the selected Executor, with no retry or fallback.
 
-### Remediation outcome boundaries
+### Admission Failure v2 and outcome boundaries
 
-A remediation admission failure is a Runtime-owned rejection before a RUN exists.
-It means the requested Executor never ran. Runtime keeps one bounded, allowlisted
-diagnostic under the repository's Git runtime state and best-effort publishes the
-byte-identical artifact under `refs/heads/aios/admission-failure/`. This diagnostic
-records operational facts only; it is not RESULT, EVIDENCE, or proof that a finding
-was fixed. Repeated byte-identical rejections resolve to the same content-addressed
-artifact, and unavailable diagnostic transport never replaces the local admission
-error.
+Admission Failure v2 covers every execution-capable pre-RUN boundary: PRIMARY
+(including TASK-062 synchronization and A2 wakeup preflight), REMEDIATION, REPAIR,
+direct-candidate acceptance, and PRIMARY collision recovery. A v2 record carries
+the `AIOS_ADMISSION_FAILURE` format marker and version 2, a bounded operation,
+deterministic admission phase and reason code, and only allowlisted identities that
+were authoritatively known at rejection time. When canonical remote refs were
+already observed, the record binds their exact commit identity or a deterministic
+digest of the immutable task-scoped snapshot. Remote transport unavailability is
+kept distinct from a successful query that found missing or invalid canonical
+state.
+
+An admission failure is a Runtime-owned rejection before a RUN exists. Its
+`executor_invoked=false` fact means no Executor ran; recovery-primary has no
+requested Executor field because that boundary selects none. Runtime keeps one
+bounded diagnostic under the repository's Git runtime state and best-effort
+publishes the byte-identical artifact under
+`refs/heads/aios/admission-failure/`. Repeated byte-identical rejections reuse the
+same content-addressed identity, while changed bounded observations create a new
+immutable record. Diagnostic persistence or transport failure never replaces the
+original admission error.
+
+Admission diagnostics are operational forensic facts only. They are not RESULT,
+EVIDENCE, semantic review, proof that a finding was fixed, automatic recovery
+instructions, or authority to retry, reroute, or invoke an Executor.
 
 A RUN failure occurs only after admission created a RUN and the selected Executor
 or a later completion or verification gate failed. It remains represented by the

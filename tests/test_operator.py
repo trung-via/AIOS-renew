@@ -1258,6 +1258,11 @@ def test_direct_candidate_rejection_precedes_canonical_admission(
 
     assert {path.name for path in state.runs.glob("*.json")} == before
     assert not list(state.failures.glob("*.json"))
+    diagnostic = admission_failure_records(repo)[0]
+    assert diagnostic["operation"] == "DIRECT_CANDIDATE"
+    assert diagnostic["phase"] == "CANONICAL_CONTRACT_ADMISSION"
+    assert diagnostic["reason_code"] == "TASK_CONTRACT_REJECTED"
+    assert diagnostic["executor_invoked"] is False
 
 
 @pytest.mark.parametrize("empty_commit", [False, True])
@@ -1382,12 +1387,16 @@ def test_remote_remediation_lineage_failure_publishes_bounded_admission_diagnost
         )
 
     expected = {
+        "format": "AIOS_ADMISSION_FAILURE",
+        "version": 2,
         "kind": "ADMISSION_FAILURE",
         "operation": "REMEDIATION",
+        "requested_task_id": "TASK-101",
         "task": {"id": "TASK-101", "revision": 1},
         "requested_executor": "codex",
         "executor_invoked": False,
         "phase": "REMOTE_LINEAGE_RESOLUTION",
+        "reason_code": "CANONICAL_LINEAGE_MISSING",
         "finding_id": "R1",
         "error": {
             "type": "OperatorError",
@@ -1437,12 +1446,16 @@ def test_contract_admission_failures_are_executor_neutral_and_exact(
     assert calls == []
     assert len(records) == 1
     assert records[0] == {
+        "format": "AIOS_ADMISSION_FAILURE",
+        "version": 2,
         "kind": "ADMISSION_FAILURE",
         "operation": "REMEDIATION",
+        "requested_task_id": "TASK-101",
         "task": {"id": "TASK-101", "revision": 1},
         "requested_executor": executor,
         "executor_invoked": False,
         "phase": "CANONICAL_CONTRACT_ADMISSION",
+        "reason_code": "TASK_CONTRACT_REJECTED",
         "finding_id": remediation.finding_id,
         "review_id": review.review_id,
         "reviewed_sha": remediation.reviewed_sha,
@@ -1608,6 +1621,10 @@ def test_primary_pre_run_failure_does_not_claim_foreign_run(
     assert (state.runs / "RUN-999-001.json").is_file()
     assert not (state.failures / "RUN-999-001.json").exists()
     assert not (state.observations / "RUN-999-001.json").exists()
+    diagnostic = admission_failure_records(repo)[0]
+    assert diagnostic["operation"] == "PRIMARY"
+    assert diagnostic["requested_task_id"] == "TASK-101"
+    assert diagnostic["executor_invoked"] is False
 
 
 def test_primary_owned_run_failure_survives_foreign_run_interleaving(
@@ -1665,6 +1682,10 @@ def test_repair_pre_run_failure_does_not_claim_foreign_run(
     assert (state.runs / "RUN-999-001.json").is_file()
     assert not (state.failures / "RUN-999-001.json").exists()
     assert not (state.observations / "RUN-999-001.json").exists()
+    diagnostic = admission_failure_records(repo)[0]
+    assert diagnostic["operation"] == "REPAIR"
+    assert diagnostic["failed_run_id"] == failed_run_id
+    assert diagnostic["executor_invoked"] is False
 
 
 def test_repair_owned_run_failure_survives_foreign_run_interleaving(
@@ -1699,6 +1720,29 @@ def test_repair_owned_run_failure_survives_foreign_run_interleaving(
     assert not (state.observations / "RUN-999-001.json").exists()
 
 
+def test_recover_primary_pre_run_rejection_has_no_executor_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+
+    def reject_before_run(*args, **kwargs):
+        assert kwargs["attempt"].run_path is None
+        raise OperatorError("recovery rejected before RUN creation")
+
+    monkeypatch.setattr(operator_module, "_recover_primary_impl", reject_before_run)
+
+    with pytest.raises(OperatorError, match="recovery rejected"):
+        recover_primary("RUN-101-001", repo=repo)
+
+    diagnostic = admission_failure_records(repo)[0]
+    assert diagnostic["operation"] == "RECOVER_PRIMARY"
+    assert diagnostic["source_run_id"] == "RUN-101-001"
+    assert diagnostic["executor_invoked"] is False
+    assert "requested_executor" not in diagnostic
+    assert not list(state.runs.glob("RUN-101-*.json"))
+
+
 def test_admission_diagnostic_is_content_addressed_idempotent_and_immutable(
     tmp_path: Path,
 ) -> None:
@@ -1721,6 +1765,35 @@ def test_admission_diagnostic_is_content_addressed_idempotent_and_immutable(
     assert len(local) == len(remote) == 2
     assert local == remote
     assert {record["finding_id"] for record in local} == {"R1", "R2"}
+
+
+def test_admission_diagnostic_binds_ref_sha_observed_before_later_rejection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    publish_direct_candidate_lineage(repo, tmp_path)
+    upstream = tmp_path / "upstream.git"
+    ref = "refs/heads/aios/remediation/RUN-101-000-R1"
+    observed_sha = git(repo, "ls-remote", "origin", ref).split()[0]
+    replacement_sha = git(repo, "rev-parse", "HEAD")
+
+    def reject_after_observation(*args, **kwargs):
+        git(upstream, "update-ref", ref, replacement_sha)
+        raise OperatorError("canonical contract rejected after ref observation")
+
+    monkeypatch.setattr(
+        operator_module, "_parse_remote_direct_lineage_impl", reject_after_observation
+    )
+    with pytest.raises(OperatorError, match="after ref observation"):
+        run_remediation(
+            "TASK-101", finding_id="R1", executor="codex", repo=repo
+        )
+
+    record = admission_failure_records(repo)[0]
+    assert record["observed_ref"] == ref
+    assert record["observed_sha"] == observed_sha
+    assert git(repo, "ls-remote", "origin", ref).split()[0] == replacement_sha
+    assert record["observed_sha"] != replacement_sha
 
 
 def test_admission_transport_failure_preserves_original_error(
@@ -1779,6 +1852,57 @@ def test_unavailable_admission_remote_does_not_mask_local_error(
         "message": str(raised.value),
     }
     assert record["executor_invoked"] is False
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_admission_local_persistence_failure_preserves_original_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    real_write_bytes = Path.write_bytes
+
+    def reject_diagnostic_write(path: Path, content: bytes) -> int:
+        if path.parent.name == "admission-failures":
+            raise OSError("diagnostic persistence unavailable")
+        return real_write_bytes(path, content)
+
+    monkeypatch.setattr(Path, "write_bytes", reject_diagnostic_write)
+    with pytest.raises(
+        OperatorError, match="canonical remote remediation lineage not found"
+    ):
+        run_remediation(
+            "TASK-101", finding_id="R1", executor="codex", repo=repo
+        )
+
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not admission_failure_records(repo)
+
+
+def test_remote_query_failure_is_distinct_from_successful_missing_lineage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+
+    def unavailable(*args, **kwargs):
+        raise operator_module.RemoteQueryError(
+            "canonical ref query unavailable", category="CONNECTIVITY"
+        )
+
+    monkeypatch.setattr(
+        operator_module, "resolve_remote_remediation_lineages", unavailable
+    )
+    with pytest.raises(OperatorError, match="lineage resolution failed"):
+        run_remediation(
+            "TASK-101", finding_id="R1", executor="codex", repo=repo
+        )
+
+    record = admission_failure_records(repo)[0]
+    assert record["reason_code"] == "REMOTE_TRANSPORT_UNAVAILABLE"
+    assert record["remote_query"] == {
+        "operation": "LS_REMOTE",
+        "outcome": "UNAVAILABLE",
+        "category": "CONNECTIVITY",
+    }
     assert not list(runtime_paths(repo).runs.glob("*.json"))
 
 
@@ -2258,6 +2382,35 @@ def test_fetch_failure_fails_before_run_persistence(tmp_path: Path) -> None:
             native_runner=runner,
         )
 
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    diagnostic = admission_failure_records(repo)[0]
+    assert diagnostic["operation"] == "PRIMARY"
+    assert diagnostic["phase"] == "PRIMARY_SYNCHRONIZATION"
+    assert diagnostic["reason_code"] == "PRIMARY_SYNCHRONIZATION_REJECTED"
+
+
+def test_wakeup_preflight_admission_failure_retains_dispatch_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+
+    def reject_preflight(*args, **kwargs):
+        raise OperatorError("wakeup preflight rejected")
+
+    monkeypatch.setattr(operator_module, "_preflight_primary_sync", reject_preflight)
+
+    with pytest.raises(OperatorError, match="wakeup preflight rejected"):
+        operator_module._preflight_primary_admission(
+            repo,
+            task_id="TASK-101",
+            executor="codex",
+            dispatch_id="delivery-081",
+        )
+
+    diagnostic = admission_failure_records(repo)[0]
+    assert diagnostic["operation"] == "PRIMARY"
+    assert diagnostic["dispatch_id"] == "delivery-081"
+    assert diagnostic["executor_invoked"] is False
     assert not list(runtime_paths(repo).runs.glob("*.json"))
 
 
