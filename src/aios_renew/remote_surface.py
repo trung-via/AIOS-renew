@@ -94,6 +94,22 @@ class ApprovalSummary:
         )
 
 
+@dataclass(frozen=True)
+class ApprovedRemediation:
+    """Exact current A3 authority consumed by the subordinate A6 surface."""
+
+    source_run_id: str
+    task_id: str
+    task_revision: int
+    review_id: str
+    finding_id: str
+    action: str
+    reviewed_sha: str
+    remediation_ref: str
+    remediation_sha: str
+    approver: str
+
+
 def remote_status(
     dispatch_id: str,
     *,
@@ -135,64 +151,12 @@ def record_remote_approval(
             from .operator import runtime_state_root
 
             state_root = runtime_state_root(repo)
-        lineages = resolve_remote_remediation_lineages(
-            repo, finding_id=finding_id, source_run_id=source_run_id
+        record = _current_lineage_record(
+            repo,
+            source_run_id=source_run_id,
+            finding_id=finding_id,
+            approver=approver,
         )
-        if len(lineages) != 1:
-            raise ValueError("exact lineage is missing or ambiguous")
-        remote = lineages[0]
-        if remote.source_run_id != source_run_id:
-            raise ValueError("source RUN mismatch")
-        expected_ref = (
-            f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"
-        )
-        if remote.ref != expected_ref:
-            raise ValueError("remediation ref identity mismatch")
-        if not _SHA_PATTERN.fullmatch(remote.commit_sha):
-            raise ValueError("remediation commit is invalid")
-
-        # Reuse the existing frozen-contract lineage validator without entering
-        # any admission, execution, verification, reconciliation, or transport path.
-        from .operator import _parse_remote_direct_lineage, load_task
-
-        task = load_task(repo, remote.task_id)
-        if task.revision != remote.task_revision:
-            raise ValueError("source TASK revision is stale")
-        parsed = _parse_remote_direct_lineage(repo, task=task, remote=remote)
-        if parsed is None:
-            raise ValueError("source TASK mismatch")
-        review, remediation, result, prior_review = parsed
-        validate_review(
-            task=task, result=result, review=review, prior_review=prior_review
-        )
-        validate_remediation(review=review, remediation=remediation, task=task)
-        if review.verdict != "CHANGES_REQUIRED":
-            raise ValueError("review does not require changes")
-        findings = [item for item in review.findings if item.id == finding_id]
-        if len(findings) != 1:
-            raise ValueError("finding identity mismatch")
-        finding = findings[0]
-        if (
-            remediation.finding_id != finding_id
-            or remediation.action != finding.action
-        ):
-            raise ValueError("remediation identity mismatch")
-        if result.head_sha != review.reviewed_sha:
-            raise ValueError("reviewed RESULT head mismatch")
-
-        record: dict[str, Any] = {
-            "version": 1,
-            "source_run_id": source_run_id,
-            "task_id": task.task_id,
-            "task_revision": task.revision,
-            "review_id": review.review_id,
-            "finding_id": finding_id,
-            "action": remediation.action,
-            "reviewed_sha": remediation.reviewed_sha,
-            "remediation_ref": remote.ref,
-            "remediation_sha": remote.commit_sha,
-            "approver": approver,
-        }
     except (
         KeyError,
         OSError,
@@ -206,8 +170,9 @@ def record_remote_approval(
             "approval lineage is missing, stale, malformed, conflicting, or ambiguous"
         ) from exc
 
-    key_material = "\0".join((source_run_id, finding_id, remote.commit_sha))
-    approval_key = hashlib.sha256(key_material.encode("ascii")).hexdigest()
+    approval_key = _approval_key(
+        source_run_id, finding_id, record["remediation_sha"]
+    )
     approval_path = state_root / "approvals" / f"{approval_key}.json"
     with _StateLock(state_root / "approval.lock"):
         replayed = approval_path.is_file()
@@ -233,6 +198,125 @@ def record_remote_approval(
         approver=record["approver"],
         replayed=replayed,
     )
+
+
+def require_current_approval(
+    source_run_id: str,
+    finding_id: str,
+    *,
+    repo: Path,
+    state_root: Path | None = None,
+) -> ApprovedRemediation:
+    """Return one exact still-current A3 approval without creating authority."""
+
+    if not _SOURCE_RUN_PATTERN.fullmatch(source_run_id):
+        raise RemoteSurfaceError("approval selectors are invalid")
+    if not _FINDING_PATTERN.fullmatch(finding_id):
+        raise RemoteSurfaceError("approval selectors are invalid")
+    if state_root is None:
+        from .operator import runtime_state_root
+
+        state_root = runtime_state_root(repo)
+    try:
+        expected = _current_lineage_record(
+            repo,
+            source_run_id=source_run_id,
+            finding_id=finding_id,
+            approver=None,
+        )
+        approval_path = state_root / "approvals" / (
+            _approval_key(source_run_id, finding_id, expected["remediation_sha"])
+            + ".json"
+        )
+        existing = _read_approval(approval_path)
+        for key, value in expected.items():
+            if key != "approver" and existing.get(key) != value:
+                raise ValueError("approval binding conflicts with current lineage")
+        return ApprovedRemediation(
+            **{
+                key: existing[key]
+                for key in _APPROVAL_KEYS
+                if key != "version"
+            }
+        )
+    except (
+        KeyError,
+        OSError,
+        UnicodeError,
+        ValueError,
+        ReviewTransportError,
+        ReviewValidationError,
+        RuntimeError,
+    ) as exc:
+        raise RemoteSurfaceError(
+            "exact current remediation approval is missing, stale, malformed, "
+            "conflicting, or ambiguous"
+        ) from exc
+
+
+def _current_lineage_record(
+    repo: Path,
+    *,
+    source_run_id: str,
+    finding_id: str,
+    approver: str | None,
+) -> dict[str, Any]:
+    """Resolve the current immutable correction lineage using A3 validation."""
+
+    lineages = resolve_remote_remediation_lineages(
+        repo, finding_id=finding_id, source_run_id=source_run_id
+    )
+    if len(lineages) != 1:
+        raise ValueError("exact lineage is missing or ambiguous")
+    remote = lineages[0]
+    if remote.source_run_id != source_run_id:
+        raise ValueError("source RUN mismatch")
+    expected_ref = f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"
+    if remote.ref != expected_ref:
+        raise ValueError("remediation ref identity mismatch")
+    if not _SHA_PATTERN.fullmatch(remote.commit_sha):
+        raise ValueError("remediation commit is invalid")
+
+    from .operator import _parse_remote_direct_lineage, load_task
+
+    task = load_task(repo, remote.task_id)
+    if task.revision != remote.task_revision:
+        raise ValueError("source TASK revision is stale")
+    parsed = _parse_remote_direct_lineage(repo, task=task, remote=remote)
+    if parsed is None:
+        raise ValueError("source TASK mismatch")
+    review, remediation, result, prior_review = parsed
+    validate_review(task=task, result=result, review=review, prior_review=prior_review)
+    validate_remediation(review=review, remediation=remediation, task=task)
+    if review.verdict != "CHANGES_REQUIRED":
+        raise ValueError("review does not require changes")
+    findings = [item for item in review.findings if item.id == finding_id]
+    if len(findings) != 1:
+        raise ValueError("finding identity mismatch")
+    finding = findings[0]
+    if remediation.finding_id != finding_id or remediation.action != finding.action:
+        raise ValueError("remediation identity mismatch")
+    if result.head_sha != review.reviewed_sha:
+        raise ValueError("reviewed RESULT head mismatch")
+
+    return {
+        "version": 1,
+        "source_run_id": source_run_id,
+        "task_id": task.task_id,
+        "task_revision": task.revision,
+        "review_id": review.review_id,
+        "finding_id": finding_id,
+        "action": remediation.action,
+        "reviewed_sha": remediation.reviewed_sha,
+        "remediation_ref": remote.ref,
+        "remediation_sha": remote.commit_sha,
+        "approver": approver,
+    }
+
+
+def _approval_key(source_run_id: str, finding_id: str, remediation_sha: str) -> str:
+    material = "\0".join((source_run_id, finding_id, remediation_sha))
+    return hashlib.sha256(material.encode("ascii")).hexdigest()
 
 
 def _read_approval(path: Path) -> dict[str, Any]:
