@@ -427,17 +427,10 @@ def _remediation_run_ids(runs_path: Path) -> tuple[str, ...]:
 
 def _matching_new_runs(state_root: Path, record: Mapping[str, Any]) -> tuple[str, ...]:
     bound_run = record["run_id"]
-    if bound_run is not None:
-        path = state_root / "runs" / f"{bound_run}.json"
-        return (bound_run,) if _run_matches_record(path, record) else ()
-    before = set(record["pre_run_ids"])
-    matches: list[str] = []
-    for run_id in _remediation_run_ids(state_root / "runs"):
-        if run_id in before:
-            continue
-        if _run_matches_record(state_root / "runs" / f"{run_id}.json", record):
-            matches.append(run_id)
-    return tuple(matches)
+    if bound_run is None:
+        return ()
+    path = state_root / "runs" / f"{bound_run}.json"
+    return (bound_run,) if _run_matches_record(path, record) else ()
 
 
 def _run_matches_record(path: Path, record: Mapping[str, Any]) -> bool:
@@ -469,6 +462,13 @@ def _run_matches_record(path: Path, record: Mapping[str, Any]) -> bool:
 
 
 def _reconcile(state_root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
+    if record["run_id"] is None:
+        return {
+            **record,
+            "status": "RECONCILIATION_BLOCKED",
+            "exit_code": RECONCILIATION_BLOCKED_EXIT_CODE,
+            "detail": "correction dispatch has no durably bound REMEDIATION RUN",
+        }
     matches = _matching_new_runs(state_root, record)
     if len(matches) != 1:
         return {

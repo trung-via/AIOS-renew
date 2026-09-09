@@ -127,7 +127,7 @@ def test_dispatch_id_collision_never_overwrites_or_invokes(tmp_path: Path) -> No
     assert record.read_bytes() == before
 
 
-def test_restart_reconciles_one_terminal_run_without_reexecution(
+def test_restart_does_not_attribute_unbound_later_matching_run(
     tmp_path: Path,
 ) -> None:
     state = tmp_path / ".git" / "aios"
@@ -155,6 +155,47 @@ def test_restart_reconciles_one_terminal_run_without_reexecution(
         approval=approval(),
         invoke_remediation=lambda: pytest.fail("restart invoked REMEDIATION"),
     )
+
+    assert replay.status == "RECONCILIATION_BLOCKED"
+    assert replay.run_id is None
+    assert replay.replayed is True
+    assert replay.detail == "correction dispatch has no durably bound REMEDIATION RUN"
+
+
+def test_restart_reconciles_durably_bound_terminal_run_without_reexecution(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / ".git" / "aios"
+
+    def bind_then_crash() -> CorrectionInvocation:
+        write_run(state, "RUN-082-002", terminal="failures")
+        bind_correction_run(
+            state_root=state,
+            correction_dispatch_id="restart-bound-082",
+            run_id="RUN-082-002",
+        )
+        raise RuntimeError("host lost after binding")
+
+    with pytest.raises(RuntimeError, match="host lost after binding"):
+        execute_correction_dispatch(
+            state_root=state,
+            correction_dispatch_id="restart-bound-082",
+            source_run_id="RUN-082-000",
+            finding_id="F1",
+            executor="codex",
+            approval=approval(),
+            invoke_remediation=bind_then_crash,
+        )
+    replay = execute_correction_dispatch(
+        state_root=state,
+        correction_dispatch_id="restart-bound-082",
+        source_run_id="RUN-082-000",
+        finding_id="F1",
+        executor="codex",
+        approval=approval(),
+        invoke_remediation=lambda: pytest.fail("restart invoked REMEDIATION"),
+    )
+
     assert replay.status == "FAILED"
     assert replay.run_id == "RUN-082-002"
     assert replay.replayed is True
