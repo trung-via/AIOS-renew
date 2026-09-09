@@ -5864,6 +5864,36 @@ def test_observation_transport_failure_preserves_result_and_does_not_fallback(
     assert calls == [state.observations / "RUN-101-001.json"]
 
 
+def test_repair_transport_failure_preserves_result_without_admission_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(repo)
+    runner = RepairRunner(repo)
+
+    def fail_transport(*args, **kwargs):
+        raise operator_module.ReviewTransportError("repair publish failed")
+
+    monkeypatch.setattr(runtime_module, "transport_post_pass", fail_transport)
+
+    with pytest.raises(OperatorError, match="review transport failed"):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair,
+            native_runner=runner,
+        )
+
+    state = runtime_paths(repo)
+    assert len(runner.executions) == 1
+    assert (state.results / "RUN-101-001.json").is_file()
+    assert not (state.failures / "RUN-101-001.json").exists()
+    assert admission_failure_records(repo) == []
+    assert remote_admission_failure_records(tmp_path / "upstream.git") == []
+
+
 def test_retry_transport_preserves_optional_observation_sidecar(
     tmp_path: Path,
 ) -> None:

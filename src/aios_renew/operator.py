@@ -928,32 +928,28 @@ def run_repair(
             admission=admission,
         )
     except KeyboardInterrupt as original:
-        if (
-            attempt.run_path is not None
-            and not (state.results / attempt.run_path.name).is_file()
-        ):
-            _persist_repair_failure(
-                root, state=state, attempt=attempt, failure=original,
-                observation_tracker=observation_tracker,
-                interruption_phase=attempt.interruption_phase,
-            )
+        if attempt.run_path is not None:
+            if not (state.results / attempt.run_path.name).is_file():
+                _persist_repair_failure(
+                    root, state=state, attempt=attempt, failure=original,
+                    observation_tracker=observation_tracker,
+                    interruption_phase=attempt.interruption_phase,
+                )
         else:
             _persist_and_transport_admission_failure(
                 root, admission=admission, failure=original
             )
         raise
     except Exception as original:
-        if (
-            attempt.run_path is not None
-            and not (state.results / attempt.run_path.name).is_file()
-        ):
-            try:
-                _persist_repair_failure(
-                    root, state=state, attempt=attempt, failure=original,
-                    observation_tracker=observation_tracker,
-                )
-            except Exception:
-                pass
+        if attempt.run_path is not None:
+            if not (state.results / attempt.run_path.name).is_file():
+                try:
+                    _persist_repair_failure(
+                        root, state=state, attempt=attempt, failure=original,
+                        observation_tracker=observation_tracker,
+                    )
+                except Exception:
+                    pass
         else:
             _persist_and_transport_admission_failure(
                 root, admission=admission, failure=original
