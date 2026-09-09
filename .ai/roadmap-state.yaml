@@ -7,10 +7,12 @@ sequence:
       task_id: TASK-081
       published_sha: "65c1597eb59b06041fba1d749f2dea87e2c00833"
   - id: correction-preflight
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-085
+      published_sha: "36ff663675ac04b94da406536ac523e820b1b21e"
   - id: unified-state-next-action
-    status: BLOCKED
-    blocked_by: correction-preflight
+    status: NEXT
   - id: unified-human-surface
     status: BLOCKED
     blocked_by: unified-state-next-action
