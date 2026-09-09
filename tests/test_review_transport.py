@@ -12,6 +12,7 @@ from aios_renew.review_transport import (
     resolve_remote_repair_recovery,
     resolve_remote_remediation_lineages,
     resolve_remote_run_namespace,
+    resolve_remote_task_lifecycle,
     task_run_prefix,
     transport_failure,
     transport_post_pass,
@@ -51,6 +52,24 @@ def make_repo(root: Path) -> tuple[Path, Path]:
     git(repo, "remote", "add", "origin", str(remote))
     git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
     return repo, remote
+
+
+def test_unified_lifecycle_snapshot_is_bounded_and_read_only(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path)
+    before_head = git(repo, "rev-parse", "HEAD")
+    before_refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+
+    snapshot = resolve_remote_task_lifecycle(
+        repo, task_id="TASK-058", task_revision=2
+    )
+
+    assert snapshot.main_sha == before_head
+    assert snapshot.terminals == ()
+    assert snapshot.reviews == ()
+    assert snapshot.remediation_selectors == ()
+    assert snapshot.repair_selectors == ()
+    assert git(repo, "rev-parse", "HEAD") == before_head
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
 
 
 def commit_candidate(repo: Path, label: str) -> str:

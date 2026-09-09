@@ -224,6 +224,36 @@ python -m pytest tests/test_operator.py tests/test_remediation_wakeup.py tests/t
 git diff --check
 ```
 
+### Unified State + Next Action
+
+`aios state TASK-101` returns one versioned `AIOS_UNIFIED_STATE` JSON observation
+for the exact TASK revision stored in the current control repository. It derives
+state from repository-local admitted RUN facts and an isolated snapshot of the
+canonical remote lineage. The observation does not create Runtime state, fetch
+objects into the control repository, invoke an Executor or verification, retry
+transport, recover a conflict, author a correction, review, integrate, or publish.
+
+`next_action` is restricted to `EXECUTE_PRIMARY`, `WAIT`, `SEMANTIC_REVIEW`,
+`AUTHOR_REMEDIATION`, `EXECUTE_REMEDIATION`, `AUTHOR_REPAIR`, `EXECUTE_REPAIR`,
+`RETRY_TRANSPORT`, `RECOVER_PRIMARY`, `PUBLICATION`, `DONE`, and `NONE`.
+Execution, correction, transport, and recovery actions identify a boundary that
+still requires Human-authorized Runtime entry; `SEMANTIC_REVIEW` belongs to the
+Reviewer; correction authoring belongs to the Brain; and `PUBLICATION` belongs to
+the separate safe-publication boundary. `WAIT`, `DONE`, and `NONE` grant no
+mutation authority.
+
+The reducer follows exact TASK revision, RUN, terminal, reviewed/failed SHA, and
+correction-continuation identities. It never chooses by timestamps, directory
+order, or largest RUN number. Competing tips, decisions, findings or corrections,
+malformed lineage, contradictory terminal facts, and divergent publication state
+fail closed as a bounded `BLOCKED` observation with `next_action=NONE`.
+Historical Admission Failure v2 records are allowlisted forensic context only;
+their error prose is neither parsed nor allowed to override currently observable
+lifecycle state. REMEDIATION and REPAIR readiness consumes the existing Correction
+Preflight boundary rather than approximating its admission rules. Unified State is
+a derived observation, not a planner or router, and this release does not provide
+the later unified Human command grammar or any Executor/model recommendation.
+
 ### Admission Failure v2 and outcome boundaries
 
 Admission Failure v2 covers every execution-capable pre-RUN boundary: PRIMARY

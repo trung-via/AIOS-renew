@@ -3,25 +3,32 @@ import json
 import multiprocessing
 import subprocess
 import tomllib
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 import aios_renew.operator as operator_module
+import aios_renew.publication as publication_module
 import aios_renew.runtime as runtime_module
 from aios_renew.review_transport import (
     RemoteFailureArtifacts,
+    RemoteLifecycleReview,
+    RemoteLifecycleTerminal,
     RemoteRunNamespace,
     RemoteRemediationLineage,
     RemoteRepairRecovery,
+    RemoteTaskLifecycle,
 )
 from aios_renew.operator import (
+    CorrectionPreflightResult,
     OperatorError,
     RepositoryLock,
     accept_candidate,
     describe_task,
     load_task,
+    observe_unified_state,
     preflight_remediation,
     preflight_repair,
     recover_primary,
@@ -259,6 +266,283 @@ class RepairRunner:
         return subprocess.CompletedProcess(
             command, returncode=0, stdout=json.dumps(payload), stderr=""
         )
+
+
+def _stub_unified_remote(
+    monkeypatch: pytest.MonkeyPatch,
+    repo: Path,
+    lifecycle: RemoteTaskLifecycle,
+) -> None:
+    @contextmanager
+    def observer(_root: Path):
+        yield repo
+
+    monkeypatch.setattr(operator_module, "_remote_observation_repository", observer)
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle,
+    )
+
+
+def test_unified_state_fresh_task_is_read_only_execute_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    lifecycle = RemoteTaskLifecycle(head, (), (), (), (), ())
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    before = git(repo, "status", "--porcelain=v1")
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["format"] == "AIOS_UNIFIED_STATE"
+    assert observation["version"] == 1
+    assert observation["task"] == {"id": "TASK-101", "revision": 1}
+    assert observation["lifecycle_state"] == "READY"
+    assert observation["next_action"] == "EXECUTE_PRIMARY"
+    assert observation["run_created"] is False
+    assert observation["executor_invoked"] is False
+    assert observation["verification_invoked"] is False
+    assert not runtime_state_root(repo).exists()
+    assert git(repo, "status", "--porcelain=v1") == before
+
+
+def test_unified_state_remote_observation_leaves_control_git_unchanged(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    git_dir = Path(git(repo, "rev-parse", "--git-dir"))
+    if not git_dir.is_absolute():
+        git_dir = repo / git_dir
+    fetch_head = git_dir / "FETCH_HEAD"
+    before_fetch = fetch_head.read_bytes() if fetch_head.exists() else None
+    before_head = git(repo, "rev-parse", "HEAD")
+    before_refs = git(repo, "for-each-ref", "--format=%(refname) %(objectname)")
+    before_objects = git(repo, "count-objects", "-v")
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["next_action"] == "EXECUTE_PRIMARY"
+    assert git(repo, "rev-parse", "HEAD") == before_head
+    assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+    assert git(repo, "count-objects", "-v") == before_objects
+    assert (fetch_head.read_bytes() if fetch_head.exists() else None) == before_fetch
+    assert not runtime_state_root(repo).exists()
+
+
+def test_unified_state_local_active_wait_and_untransported_result_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    lifecycle = RemoteTaskLifecycle(head, (), (), (), (), ())
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    state = runtime_paths(repo)
+    run_id = "RUN-101-001"
+    run = {
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    (state.runs / f"{run_id}.json").write_text(json.dumps(run), encoding="utf-8")
+
+    waiting = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (waiting["lifecycle_state"], waiting["next_action"], waiting["run_id"]) == (
+        "WAIT", "WAIT", run_id,
+    )
+
+    (state.results / f"{run_id}.json").write_text(
+        json.dumps({
+            "result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []},
+            "evidence": [],
+        }),
+        encoding="utf-8",
+    )
+    retry = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (retry["lifecycle_state"], retry["next_action"], retry["run_id"]) == (
+        "TRANSPORT", "RETRY_TRANSPORT", run_id,
+    )
+
+
+def test_unified_state_runtime_pass_never_synthesizes_semantic_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = json.dumps({
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    terminal = RemoteLifecycleTerminal(
+        run_id, "RESULT", head, run,
+        json.dumps({
+            "result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []},
+            "evidence": [],
+        }).encode(),
+        None,
+    )
+    lifecycle = RemoteTaskLifecycle(head, (terminal,), (), (), (), ())
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["lifecycle_state"] == "REVIEW"
+    assert observation["next_action"] == "SEMANTIC_REVIEW"
+    assert observation["review_id"] is None
+
+
+def test_unified_state_changes_required_preserves_finding_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = json.dumps({
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex", "base_sha": head, "workspace": "bounded-away",
+        "head_sha": None, "status": "ACTIVE",
+    }).encode()
+    package = json.dumps({
+        "result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []},
+        "evidence": [],
+    }).encode()
+    review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: output is incomplete
+    expected: output is complete
+""".encode()
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),),
+        (RemoteLifecycleReview(run_id, head, review),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["next_action"] == "AUTHOR_REMEDIATION"
+    assert observation["source_run_id"] == run_id
+    assert observation["review_id"] == "REVIEW-101-001"
+    assert observation["finding_id"] == "F1"
+    assert observation["reviewed_sha"] == head
+
+
+def test_unified_state_authored_remediation_consumes_exact_ready_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = json.dumps({
+        "run_id": run_id, "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex", "base_sha": head, "workspace": "bounded-away",
+        "head_sha": None, "status": "ACTIVE",
+    }).encode()
+    package = json.dumps({
+        "result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []},
+        "evidence": [],
+    }).encode()
+    review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: output is incomplete
+    expected: output is complete
+""".encode()
+    correction_sha = "a" * 40
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),),
+        (RemoteLifecycleReview(run_id, head, review),),
+        ((run_id, "F1", correction_sha),), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    monkeypatch.setattr(
+        operator_module,
+        "preflight_remediation",
+        lambda *_args, **_kwargs: CorrectionPreflightResult(
+            "REMEDIATION", "READY", "READY", "READY",
+            task_id="TASK-101", task_revision=1, source_run_id=run_id,
+            review_id="REVIEW-101-001", finding_id="F1", reviewed_sha=head,
+            subject_mode="CURRENT", action="CODE_FIX",
+        ),
+    )
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["next_action"] == "EXECUTE_REMEDIATION"
+    assert observation["correction_sha"] == correction_sha
+    assert observation["correction_preflight"]["status"] == "READY"
+
+
+def test_unified_state_pass_is_done_only_when_candidate_is_contained(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = json.dumps({
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex", "base_sha": head, "workspace": "bounded-away",
+        "head_sha": None, "status": "ACTIVE",
+    }).encode()
+    package = json.dumps({
+        "result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []},
+        "evidence": [],
+    }).encode()
+    review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+""".encode()
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),),
+        (RemoteLifecycleReview(run_id, head, review),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    monkeypatch.setattr(
+        publication_module, "_load_success_lineage", lambda *_args, **_kwargs: (head, None)
+    )
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["lifecycle_state"] == "DONE"
+    assert observation["next_action"] == "DONE"
 
 
 class HistoricalRepairRunner:

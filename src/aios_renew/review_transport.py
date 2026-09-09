@@ -87,6 +87,40 @@ class RemotePrimaryRecovery:
     observed_refs: tuple[tuple[str, str], ...] = ()
 
 
+@dataclass(frozen=True)
+class RemoteLifecycleTerminal:
+    """One immutable terminal identity observed for Unified State."""
+
+    run_id: str
+    kind: str
+    candidate_sha: str
+    run: bytes
+    terminal: bytes
+    correction: bytes | None = None
+    candidate_available: bool = True
+
+
+@dataclass(frozen=True)
+class RemoteLifecycleReview:
+    """One immutable semantic decision bound to a RUN identity."""
+
+    run_id: str
+    decision_sha: str
+    review: bytes
+
+
+@dataclass(frozen=True)
+class RemoteTaskLifecycle:
+    """Allowlisted canonical ref snapshot used by the read-only state reducer."""
+
+    main_sha: str
+    terminals: tuple[RemoteLifecycleTerminal, ...]
+    reviews: tuple[RemoteLifecycleReview, ...]
+    remediation_selectors: tuple[tuple[str, str, str], ...]
+    repair_selectors: tuple[tuple[str, str, bytes], ...]
+    observed_refs: tuple[tuple[str, str], ...]
+
+
 def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = False) -> tuple[int, str, str]:
     try:
         completed = subprocess.run(
@@ -123,6 +157,27 @@ def _read_remote_blob(repo: Path, remote: str, commit_sha: str, rel_path: str) -
     code, content, _ = _git_cmd(repo, "show", f"{commit_sha}:{rel_path}", strip=False, allow_fail=True)
     if code == 0:
         return content.encode("utf-8")
+    return None
+
+
+def _read_lifecycle_blob(
+    repo: Path, remote: str, commit_sha: str, rel_path: str
+) -> bytes | None:
+    """Read in an observer while distinguishing unavailable transport from absence."""
+
+    fetch_code, _, fetch_error = _git_cmd(
+        repo, "fetch", "--no-tags", remote, commit_sha, allow_fail=True
+    )
+    code, content, _ = _git_cmd(
+        repo, "show", f"{commit_sha}:{rel_path}", strip=False, allow_fail=True
+    )
+    if code == 0:
+        return content.encode("utf-8")
+    if fetch_code:
+        raise RemoteQueryError(
+            "failed to acquire canonical lifecycle object",
+            category=_classify_remote_failure(fetch_error),
+        )
     return None
 
 
@@ -172,6 +227,197 @@ def resolve_remote_run_namespace(
             task_revision=task_revision,
             task_prefix=task_prefix,
             refs=refs,
+        )
+    except ReviewTransportError as exc:
+        exc.observed_refs = tuple(sorted(refs.items()))
+        raise
+
+
+def resolve_remote_task_lifecycle(
+    repo: Path, *, task_id: str, task_revision: int
+) -> RemoteTaskLifecycle:
+    """Acquire one bounded canonical snapshot for Unified State.
+
+    The caller supplies an isolated observation repository.  This function never
+    updates a ref and derives no ordering from ref or filesystem timestamps.
+    """
+
+    if (
+        isinstance(task_revision, bool)
+        or not isinstance(task_revision, int)
+        or task_revision < 1
+    ):
+        raise ReviewTransportError("invalid TASK revision")
+    task_prefix = task_run_prefix(task_id)
+    remote = resolve_transport_remote(repo)
+    refs = _exact_remote_refs(
+        repo,
+        remote,
+        "refs/heads/main",
+        f"refs/heads/aios/failure/{task_prefix}*",
+        f"refs/heads/aios/failure-artifacts/{task_prefix}*",
+        f"refs/heads/aios/artifacts/{task_prefix}*",
+        f"refs/heads/aios/review/{task_prefix}*",
+        f"refs/heads/aios/review-decision/{task_prefix}*",
+        f"refs/heads/aios/remediation/{task_prefix}*",
+        f"refs/heads/aios/repair/{task_prefix}*",
+    )
+    try:
+        main_ref = "refs/heads/main"
+        main_sha = refs.get(main_ref)
+        if main_sha is None:
+            raise RemoteQueryError("canonical main ref is missing")
+        main_fetch, _, main_error = _git_cmd(
+            repo, "fetch", "--no-tags", remote, main_sha, allow_fail=True
+        )
+        if main_fetch:
+            raise RemoteQueryError(
+                "failed to acquire canonical main",
+                category=_classify_remote_failure(main_error),
+            )
+        terminals: list[RemoteLifecycleTerminal] = []
+        for ref, artifact_sha in sorted(refs.items()):
+            if ref.startswith("refs/heads/aios/failure-artifacts/"):
+                kind = "FAILURE"
+                candidate_ref = "refs/heads/aios/failure/" + ref.rsplit("/", 1)[-1]
+                terminal_path = ".ai/transport/failure.json"
+            elif ref.startswith("refs/heads/aios/artifacts/"):
+                kind = "RESULT"
+                candidate_ref = "refs/heads/aios/review/" + ref.rsplit("/", 1)[-1]
+                terminal_path = ".ai/transport/result.json"
+            else:
+                continue
+            run_id = ref.rsplit("/", 1)[-1]
+            run = _read_lifecycle_blob(
+                repo, remote, artifact_sha, ".ai/transport/run.json"
+            )
+            if run is None:
+                raise ReviewTransportError(
+                    f"canonical {kind} RUN content is missing for {run_id}"
+                )
+            bound_task, bound_revision, bound_run = _decode_run_task_identity(run, ref)
+            if bound_task != task_id or bound_run != run_id:
+                raise ReviewTransportError(
+                    f"canonical terminal identity does not match TASK: {run_id}"
+                )
+            if bound_revision != task_revision:
+                continue
+            terminal = _read_lifecycle_blob(repo, remote, artifact_sha, terminal_path)
+            correction = _read_lifecycle_blob(
+                repo, remote, artifact_sha, ".ai/transport/repair.json"
+            )
+            if terminal is None:
+                raise ReviewTransportError(
+                    f"canonical {kind} content is missing for {run_id}"
+                )
+            candidate_sha = refs.get(candidate_ref)
+            candidate_available = candidate_sha is not None
+            if candidate_sha is None:
+                if kind != "FAILURE":
+                    raise ReviewTransportError(
+                        f"canonical {kind} candidate ref is missing for {run_id}"
+                    )
+                failure_data = _json_mapping(terminal, "FAILURE")
+                candidate_sha = failure_data.get("failed_head_sha")
+                if not isinstance(candidate_sha, str) or not candidate_sha:
+                    raise ReviewTransportError(
+                        f"canonical FAILURE has no failed head for {run_id}"
+                    )
+            else:
+                candidate_fetch, _, candidate_error = _git_cmd(
+                    repo, "fetch", "--no-tags", remote, candidate_sha, allow_fail=True
+                )
+                if candidate_fetch:
+                    raise RemoteQueryError(
+                        f"failed to acquire canonical candidate for {run_id}",
+                        category=_classify_remote_failure(candidate_error),
+                    )
+            terminals.append(
+                RemoteLifecycleTerminal(
+                    run_id, kind, candidate_sha, run, terminal, correction,
+                    candidate_available,
+                )
+            )
+
+        reviews: list[RemoteLifecycleReview] = []
+        decision_prefix = "refs/heads/aios/review-decision/"
+        current_run_ids = {item.run_id for item in terminals}
+        for ref, decision_sha in sorted(refs.items()):
+            if not ref.startswith(decision_prefix):
+                continue
+            run_id = ref[len(decision_prefix) :]
+            if run_id not in current_run_ids:
+                continue
+            decision_fetch, _, decision_error = _git_cmd(
+                repo, "fetch", "--no-tags", remote, decision_sha, allow_fail=True
+            )
+            if decision_fetch:
+                raise RemoteQueryError(
+                    "failed to acquire canonical review decision",
+                    category=_classify_remote_failure(decision_error),
+                )
+            code, tree, _ = _git_cmd(
+                repo,
+                "ls-tree",
+                "-r",
+                "--name-only",
+                decision_sha,
+                "--",
+                ".ai/reviews",
+                allow_fail=True,
+            )
+            paths = [
+                path
+                for path in tree.splitlines()
+                if path.startswith(".ai/reviews/")
+                and path.endswith((".yaml", ".yml"))
+            ]
+            if code or len(paths) != 1:
+                raise ReviewTransportError(
+                    f"canonical review decision is missing or ambiguous for {run_id}"
+                )
+            review = _read_lifecycle_blob(repo, remote, decision_sha, paths[0])
+            if review is None:
+                raise ReviewTransportError(
+                    f"canonical review decision content is missing for {run_id}"
+                )
+            reviews.append(RemoteLifecycleReview(run_id, decision_sha, review))
+
+        remediation_selectors: list[tuple[str, str, str]] = []
+        remediation_prefix = "refs/heads/aios/remediation/"
+        run_pattern = re.compile(
+            rf"^({re.escape(task_prefix)}\d{{3,}})-(.+)$"
+        )
+        repair_selectors: list[tuple[str, str, bytes]] = []
+        for ref, sha in sorted(refs.items()):
+            if ref.startswith(remediation_prefix):
+                match = run_pattern.fullmatch(ref[len(remediation_prefix) :])
+                if match is None:
+                    raise ReviewTransportError(
+                        "canonical REMEDIATION selector identity is malformed"
+                    )
+                remediation_selectors.append((match.group(1), match.group(2), sha))
+            elif ref.startswith("refs/heads/aios/repair/"):
+                run_id = ref.rsplit("/", 1)[-1]
+                if not re.fullmatch(rf"{re.escape(task_prefix)}\d{{3,}}", run_id):
+                    raise ReviewTransportError(
+                        "canonical REPAIR selector identity is malformed"
+                    )
+                repair = _read_lifecycle_blob(
+                    repo, remote, sha, ".ai/transport/repair.json"
+                )
+                if repair is None:
+                    raise ReviewTransportError(
+                        f"canonical REPAIR content is missing for {run_id}"
+                    )
+                repair_selectors.append((run_id, sha, repair))
+        return RemoteTaskLifecycle(
+            main_sha=main_sha,
+            terminals=tuple(terminals),
+            reviews=tuple(reviews),
+            remediation_selectors=tuple(remediation_selectors),
+            repair_selectors=tuple(repair_selectors),
+            observed_refs=tuple(sorted(refs.items())),
         )
     except ReviewTransportError as exc:
         exc.observed_refs = tuple(sorted(refs.items()))
