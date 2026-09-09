@@ -141,12 +141,14 @@ without another remediation call, Runtime verification, RUN, or Executor. Reusin
 the id with any changed bound value is an identity collision, never an Executor
 reroute.
 
-After a host/process interruption, re-delivery only reconciles a uniquely
-attributable new REMEDIATION RUN and its existing RESULT or FAILURE. An active,
-incomplete, absent, multiple, or otherwise uncertain attribution reports
-in-progress or blocked and does not retry, resume, repair, steal a lock, or invoke
-the Executor. A delegated canonical pre-RUN rejection remains an Admission Failure
-v2 diagnostic; failure after RUN creation remains only ordinary RUN-keyed FAILURE. The correction journal
+After a host/process interruption, re-delivery never infers or claims an unbound
+later REMEDIATION RUN, even when that RUN otherwise matches the correction. Until
+exact dispatch-to-RUN ownership is already durably recorded, re-delivery remains
+`RECONCILIATION_BLOCKED`/in-progress and does not retry, resume, repair, steal a
+lock, or invoke the Executor. Once that ownership is recorded, re-delivery may
+reconcile only the exact bound RUN and its existing RESULT or FAILURE. A delegated
+canonical pre-RUN rejection remains an Admission Failure v2 diagnostic; failure
+after RUN creation remains only ordinary RUN-keyed FAILURE. The correction journal
 is operational attribution, not TASK/RUN schema, RESULT, EVIDENCE, REVIEW truth,
 approval, publication proof, or authority for semantic DELTA review/publication.
 
