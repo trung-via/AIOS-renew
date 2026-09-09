@@ -113,6 +113,49 @@ transport, retry, or publication. In particular, approval records authorization
 only: it does not choose an Executor, create an approve-and-run path, or execute the
 correction.
 
+### Approved Remote Correction Wakeup
+
+A6 adds a second, separately dispatched step after A3 approval. First, a Human
+records exact approval with `aios-remote-approval.yml`. Later, an authorized Human
+or Brain triggers `.github/workflows/aios-approved-remediation-wakeup.yml` with
+only a stable `correction_dispatch_id`, that same `source_run_id` and `finding_id`,
+and an explicit `codex` or `antigravity` Executor. The workflow delegates once to:
+
+```powershell
+aios approved-remediation-wakeup DELIVERY_ID RUN-101-001 F1 --executor codex
+```
+
+The wakeup re-resolves canonical lineage and requires the already-persisted A3
+approval to match the current remediation ref commit exactly. A missing,
+malformed, conflicting, or older SHA-bound approval fails before a REMEDIATION RUN
+or coding Executor exists. Approval remains reusable Human authority and is not
+mutated into a consumed artifact; the correction dispatch journal is the separate
+delivery identity.
+
+Before calling the existing `aios remediate` implementation, A6 stores a hashed,
+path-safe record under `.git/aios/correction-dispatches`. It binds the delivery,
+source RUN, finding, explicit Executor, exact approved remediation ref/SHA, and the
+pre-invocation REMEDIATION RUN namespace. Re-deliveries must reuse the stable id
+with the identical binding. A terminal re-delivery returns its stored RUN/outcome
+without another remediation call, Runtime verification, RUN, or Executor. Reusing
+the id with any changed bound value is an identity collision, never an Executor
+reroute.
+
+After a host/process interruption, re-delivery only reconciles a uniquely
+attributable new REMEDIATION RUN and its existing RESULT or FAILURE. An active,
+incomplete, absent, multiple, or otherwise uncertain attribution reports
+in-progress or blocked and does not retry, resume, repair, steal a lock, or invoke
+the Executor. A delegated canonical pre-RUN rejection remains an Admission Failure
+v2 diagnostic; failure after RUN creation remains only ordinary RUN-keyed FAILURE. The correction journal
+is operational attribution, not TASK/RUN schema, RESULT, EVIDENCE, REVIEW truth,
+approval, publication proof, or authority for semantic DELTA review/publication.
+
+The A6 workflow retains the dedicated self-hosted security boundary used by A1/A3:
+manual `workflow_dispatch` only, `[self-hosted, windows, x64, aios-renew]`, the
+configured persistent `AIOS_REPO_ROOT`, read-only GitHub contents permission, no
+checkout, and event values passed as command data. It introduces no GitHub write
+credential, scheduler, queue, retry, router, fallback, or model call.
+
 
 ## Canonical remediation
 

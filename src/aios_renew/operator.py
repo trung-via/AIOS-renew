@@ -2410,6 +2410,9 @@ def run_remediation(
     remediation: Remediation | str | Path | None = None,
     prior_review: Review | str | Path | None = None,
     finding_id: str | None = None,
+    source_run_id: str | None = None,
+    approved_remediation_sha: str | None = None,
+    correction_dispatch_id: str | None = None,
     executor: str,
     repo: str | Path | None = None,
     native_runner: NativeRunner = subprocess.run,
@@ -2442,6 +2445,8 @@ def run_remediation(
     )
     if finding_id is not None:
         admission["finding_id"] = finding_id
+    if source_run_id is not None:
+        admission["source_run_id"] = source_run_id
     try:
         _set_admission_boundary(
             admission, "TASK_ADMISSION", "TASK_CONTRACT_REJECTED"
@@ -2463,6 +2468,9 @@ def run_remediation(
             remediation=remediation,
             prior_review=prior_review,
             finding_id=finding_id,
+            source_run_id=source_run_id,
+            approved_remediation_sha=approved_remediation_sha,
+            correction_dispatch_id=correction_dispatch_id,
             executor=executor,
             repo=root,
             native_runner=native_runner,
@@ -2779,6 +2787,9 @@ def _run_remediation_impl(
     remediation: Remediation | str | Path | None = None,
     prior_review: Review | str | Path | None = None,
     finding_id: str | None = None,
+    source_run_id: str | None = None,
+    approved_remediation_sha: str | None = None,
+    correction_dispatch_id: str | None = None,
     executor: str,
     repo: str | Path | None = None,
     native_runner: NativeRunner = subprocess.run,
@@ -2801,6 +2812,14 @@ def _run_remediation_impl(
         review is not None or remediation is not None or prior_review is not None
     )
     remote_mode = finding_id is not None
+    if source_run_id is not None and not remote_mode:
+        raise OperatorError("source RUN binding requires remote finding mode")
+    if correction_dispatch_id is not None and (
+        source_run_id is None or approved_remediation_sha is None
+    ):
+        raise OperatorError(
+            "correction dispatch requires exact source RUN and approval SHA"
+        )
     if explicit_mode and remote_mode:
         _set_admission_boundary(
             admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
@@ -2820,6 +2839,8 @@ def _run_remediation_impl(
                 root,
                 task=task,
                 finding_id=finding_id,
+                source_run_id=source_run_id,
+                required_remediation_sha=approved_remediation_sha,
                 admission=admission,
             )
         )
@@ -2970,6 +2991,14 @@ def _run_remediation_impl(
         )
         if attempt is not None:
             attempt.bind_run(run_path)
+        if correction_dispatch_id is not None:
+            from .correction_dispatch import bind_correction_run
+
+            bind_correction_run(
+                state_root=state.root,
+                correction_dispatch_id=correction_dispatch_id,
+                run_id=run_id,
+            )
         observation_tracker.admit(run)
         observed_native_runner = observation_tracker.wrap_native_runner(
             native_runner
@@ -3302,6 +3331,8 @@ def _resolve_remote_remediation_lineage_with_reviewed_task(
     *,
     task: Task,
     finding_id: str,
+    source_run_id: str | None = None,
+    required_remediation_sha: str | None = None,
     admission: dict[str, Any] | None = None,
 ) -> tuple[Review, Remediation, Result, Review | None, Task]:
     """Resolve remote FIX lineage against its immutable reviewed TASK."""
@@ -3310,6 +3341,8 @@ def _resolve_remote_remediation_lineage_with_reviewed_task(
         repo,
         task=task,
         finding_id=finding_id,
+        source_run_id=source_run_id,
+        required_remediation_sha=required_remediation_sha,
         context="remote remediation",
         admission=admission,
         bind_reviewed_task=True,
@@ -3321,6 +3354,8 @@ def _resolve_remote_remediation_lineage_impl(
     *,
     task: Task,
     finding_id: str,
+    source_run_id: str | None = None,
+    required_remediation_sha: str | None = None,
     context: str,
     admission: dict[str, Any] | None,
     bind_reviewed_task: bool,
@@ -3331,6 +3366,7 @@ def _resolve_remote_remediation_lineage_impl(
             finding_id=finding_id,
             task_id=task.task_id,
             task_revision=task.revision,
+            source_run_id=source_run_id,
         )
     except ReviewTransportError as exc:
         if admission is not None:
@@ -3353,6 +3389,11 @@ def _resolve_remote_remediation_lineage_impl(
         if admission is not None:
             admission["observed_ref"] = remote.ref
             admission["observed_sha"] = remote.commit_sha
+        if (
+            required_remediation_sha is not None
+            and remote.commit_sha != required_remediation_sha
+        ):
+            raise OperatorError("approved remediation SHA is no longer current")
         parsed = _parse_remote_direct_lineage_impl(
             repo,
             task=task,
@@ -3782,6 +3823,17 @@ def _parser() -> argparse.ArgumentParser:
     approval_parser.add_argument("finding_id")
     approval_parser.add_argument("--approver", required=True)
     approval_parser.add_argument("--repo")
+    correction_parser = commands.add_parser(
+        "approved-remediation-wakeup",
+        help="Idempotently wake one exactly approved REMEDIATION",
+    )
+    correction_parser.add_argument("correction_dispatch_id")
+    correction_parser.add_argument("source_run_id")
+    correction_parser.add_argument("finding_id")
+    correction_parser.add_argument(
+        "--executor", required=True, choices=("codex", "antigravity")
+    )
+    correction_parser.add_argument("--repo")
     remediation_parser = commands.add_parser(
         "remediate", help="Execute one canonical narrow REMEDIATION"
     )
@@ -3954,6 +4006,64 @@ def main(
                 )
                 raise OperatorError(message) from exc
             print(summary.render())
+        elif args.command == "approved-remediation-wakeup":
+            from .correction_dispatch import (
+                CorrectionDispatchError,
+                CorrectionInvocation,
+                execute_correction_dispatch,
+                reject_existing_selector_collision,
+            )
+            from .remote_surface import RemoteSurfaceError, require_current_approval
+
+            try:
+                repo_root = resolve_repository(args.repo)
+                state_root = runtime_state_root(repo_root)
+                reject_existing_selector_collision(
+                    state_root=state_root,
+                    correction_dispatch_id=args.correction_dispatch_id,
+                    source_run_id=args.source_run_id,
+                    finding_id=args.finding_id,
+                    executor=args.executor,
+                )
+                approval = require_current_approval(
+                    repo=repo_root,
+                    state_root=state_root,
+                    source_run_id=args.source_run_id,
+                    finding_id=args.finding_id,
+                )
+
+                def invoke_remediation() -> CorrectionInvocation:
+                    try:
+                        summary = run_remediation(
+                            approval.task_id,
+                            finding_id=args.finding_id,
+                            source_run_id=args.source_run_id,
+                            approved_remediation_sha=approval.remediation_sha,
+                            correction_dispatch_id=args.correction_dispatch_id,
+                            executor=args.executor,
+                            repo=repo_root,
+                            native_runner=native_runner,
+                            verification_runner=verification_runner,
+                            monotonic_clock=monotonic_clock,
+                        )
+                        return CorrectionInvocation(0, summary.run_id)
+                    except OperatorError as exc:
+                        print(f"AIOS ERROR: {exc}", file=sys.stderr)
+                        return CorrectionInvocation(1)
+
+                outcome = execute_correction_dispatch(
+                    state_root=state_root,
+                    correction_dispatch_id=args.correction_dispatch_id,
+                    source_run_id=args.source_run_id,
+                    finding_id=args.finding_id,
+                    executor=args.executor,
+                    approval=approval,
+                    invoke_remediation=invoke_remediation,
+                )
+            except (RemoteSurfaceError, CorrectionDispatchError) as exc:
+                raise OperatorError(str(exc)) from exc
+            print(outcome.render())
+            return outcome.exit_code
         elif args.command == "remediate":
             summary = run_remediation(
                 args.task_id,

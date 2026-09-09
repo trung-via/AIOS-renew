@@ -145,13 +145,13 @@ A-Series does not block Python Agent product development. It provides subordinat
 3. **A3 — Remote Status / Approval Surface — DONE BY TASK-074 UPON PUBLICATION**: bounded read-only dispatch observation and exact SHA-bound Human remediation approval, with no execution authority. This completion is authoritative only when the TASK-074 candidate is semantically reviewed PASS and published.
 4. **A4 — Transport Extraction**: replace the compatibility transport only after the outer mechanism proves parity, then remove obsolete transport code. Separately gated.
 5. **A5 — Evidence Bundle Strengthening**: only where measured gaps justify additional evidence packaging. Separately gated.
-6. **A6 — Automated REVIEW-to-REMEDIATION Wakeup**: outer automation preserves narrow correction authority. Separately gated.
+6. **A6 — Automated REVIEW-to-REMEDIATION Wakeup — DONE BY TASK-082 UPON PUBLICATION**: an exact existing A3 approval can be delivered once through a durable correction identity and explicit Executor into the unchanged canonical REMEDIATION path. This completion is authoritative only when the TASK-082 candidate is semantically reviewed PASS and published.
 7. **A7 — Autonomous Reviewer Shadow Mode**: observe and compare before any review-decision authority is granted. Separately gated.
 8. **A8 — Safe Publisher**: separate, explicit publication authority. Completed by TASK-063 (`.github/workflows/aios-auto-publish.yml` and `aios_renew.publication`).
 9. **A9 — Low-risk Zero-touch Lane**: only after measured reliability and bounded authority are demonstrated. Separately gated.
 10. **A10 — Scale**: only when measured ROI justifies additional concurrency or agent use. Separately gated.
 
-A4, A5, A6, A7, A9, and A10 remain separately gated. A2 dispatch attribution and A3 approval remain operational-only; neither creates execution, review, correction, verification, recovery, transport, or publication authority.
+A4, A5, A7, A9, and A10 remain separately gated. A2 dispatch attribution, A3 approval, and A6 correction-delivery attribution remain operational-only; none creates review, correction-authoring, verification, recovery, retry, routing, or publication authority.
 
 ## H-Series — Optional Efficiency Track
 

@@ -105,7 +105,10 @@ def test_remote_workflows_are_separate_manual_read_only_surfaces() -> None:
     approval = (root / ".github/workflows/aios-remote-approval.yml").read_text(
         encoding="utf-8"
     )
-    for source in (status, approval):
+    correction = (
+        root / ".github/workflows/aios-approved-remediation-wakeup.yml"
+    ).read_text(encoding="utf-8")
+    for source in (status, approval, correction):
         assert "workflow_dispatch:" in source
         assert "pull_request:" not in source
         assert "push:" not in source
@@ -114,4 +117,5 @@ def test_remote_workflows_are_separate_manual_read_only_surfaces() -> None:
         assert "contents: read" in source
     assert status.count("aios remote-status ") == 1
     assert approval.count("aios remote-approve ") == 1
+    assert correction.count("aios approved-remediation-wakeup ") == 1
     assert "AIOS_APPROVER: ${{ github.actor }}" in approval

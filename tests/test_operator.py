@@ -31,7 +31,11 @@ from aios_renew.operator import (
     runtime_paths,
     runtime_state_root,
 )
-from aios_renew.remote_surface import RemoteSurfaceError, record_remote_approval
+from aios_renew.remote_surface import (
+    RemoteSurfaceError,
+    record_remote_approval,
+    require_current_approval,
+)
 
 
 def hold_repository_lock(lock_path: str, ready, release) -> None:
@@ -6392,6 +6396,53 @@ def test_remote_approval_binds_exact_source_lineage_and_is_idempotent(
         "remediation_sha": first.remediation_sha,
         "approver": "human-reviewer",
     }
+
+
+def test_current_approval_resolution_rejects_stale_remediation_ref(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+    )
+    state_root = runtime_state_root(repo)
+    approved = record_remote_approval(
+        repo=repo,
+        state_root=state_root,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        approver="human-reviewer",
+    )
+    current = require_current_approval(
+        repo=repo,
+        state_root=state_root,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+    )
+    assert current.remediation_sha == approved.remediation_sha
+
+    author = tmp_path / "author-RUN-101-000-R1"
+    (author / "lineage-note.txt").write_text("changed\n", encoding="utf-8")
+    git(author, "add", "lineage-note.txt")
+    git(author, "commit", "--quiet", "-m", "move remediation ref")
+    git(
+        author,
+        "push",
+        "--quiet",
+        "--force",
+        "origin",
+        "HEAD:refs/heads/aios/remediation/RUN-101-000-R1",
+    )
+    with pytest.raises(RemoteSurfaceError, match="missing, stale"):
+        require_current_approval(
+            repo=repo,
+            state_root=state_root,
+            source_run_id="RUN-101-000",
+            finding_id="R1",
+        )
 
 
 def test_remote_approval_ignores_unrelated_same_finding_and_sha_change_is_new_authority(
