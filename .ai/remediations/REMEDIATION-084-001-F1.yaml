@@ -1,0 +1,10 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: 7c5e494e5cb81c8657f02142f6046a6f68c169c7
+scope:
+  modify:
+    - README.md
+    - docs/AIOS-ROADMAP.md
+verification:
+  affected:
+    - git diff --check
