@@ -1,0 +1,21 @@
+{
+  "repair_id": "REPAIR-081-002",
+  "failed_run_id": "RUN-081-002",
+  "failed_head_sha": "5d18ac29eda1f4ff041b700cd4a0b12f09c6836c",
+  "task": {
+    "id": "TASK-081",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "src/aios_renew/operator.py",
+    "tests/test_operator.py"
+  ],
+  "instructions": [
+    "Continue exactly from failed TASK-081 candidate 5d18ac29eda1f4ff041b700cd4a0b12f09c6836c for RUN-081-002. Preserve the Admission Failure v2 implementation already present in that candidate and correct only the three canonical verification regressions. Do not restart PRIMARY TASK-081, reset to main, broaden scope, change TASK-062/TASK-067/TASK-071/TASK-077/TASK-078 semantics, or modify README.md or review_transport.py.",
+    "Correct recover-primary so post-admission completion consumes the structurally resolved primary-recovery package, not the separate Admission Failure v2 diagnostic mapping. Preserve the diagnostic mapping as bounded pre-RUN forensic state only, preserve the exact historical candidate subject and fresh verification/evidence semantics, and do not alter RUN namespace allocation or zero-Executor recovery authority.",
+    "Correct the new admission-diagnostic ref-binding regression fixture without weakening canonical transport validation. The existing publish_direct_candidate_lineage helper calls transport_post_pass with RUN/RESULT paths that are not persisted; make the test fixture establish legitimate minimal persisted source RUN/RESULT state before transport, or otherwise use an existing canonical helper that does so. Do not relax transport_post_pass persisted-artifact requirements and do not change production semantics merely to satisfy the fixture.",
+    "Runtime must execute the unchanged TASK-081 canonical verification after the narrow correction. Preserve exact failure-category boundaries, exact observed remote-ref identity binding, content-addressed admission diagnostics, no fabricated identities, and zero retry/fallback/reroute or added model calls. Do not push or synthesize Runtime-owned terminal artifacts manually."
+  ],
+  "constraints": []
+}
