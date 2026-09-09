@@ -1,0 +1,77 @@
+review_id: REVIEW-086-001
+reviewed_sha: e9a3c6fe883eb4d96690437dccb8a3f29f75ad0e
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: FAIL
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: FAIL
+  AC10: PASS
+  AC11: PASS
+findings:
+  - id: F1
+    basis: AC2
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_local_pending_runs / observe_unified_state
+    issue: >
+      Unified State treats any local active or locally-terminal-but-untransported RUN as
+      ambiguous whenever any canonical remote terminal for the TASK already exists. That
+      is correct only for unrelated competing tips. It is incorrect for an admitted
+      REMEDIATION or REPAIR child, because its canonical parent RESULT/FAILURE necessarily
+      remains in remote history while the correction child is still active or awaiting
+      transport. The current `(pending_active and remote)` and `(pending_terminal and
+      remote)` gates therefore report BLOCKED instead of WAIT for an active correction and
+      instead of RETRY_TRANSPORT for a completed correction whose terminal artifact has not
+      yet been transported.
+    expected: >
+      Resolve local pending RUNs through exact correction continuity before declaring them
+      competing with remote history. A local active REMEDIATION/REPAIR that is the unique
+      exact child of the canonical lineage tip must return WAIT, and the same unique child
+      with a valid local terminal not yet present canonically must return RETRY_TRANSPORT.
+      Unrelated or multiple local/remote tips must still fail closed. Add focused
+      regressions for correction children and preserve zero mutation/reconciliation.
+  - id: F2
+    basis: AC9
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::observe_unified_state DELTA prior-review resolution
+    issue: >
+      DELTA review validation resolves `prior_review` by scanning every review in the TASK
+      for any finding whose id equals `prior_finding_id`. Finding ids are review-local, not
+      a TASK-wide or repository-wide namespace. Sequential reviews may legitimately reuse
+      `F1`; the current scan can therefore reject a valid exact correction lineage as
+      ambiguous, or bind the DELTA validation to an unrelated review when only one reused
+      id happens to match. This violates lineage-driven reduction and the existing local
+      finding-identity semantics.
+    expected: >
+      Bind a DELTA review to its exact predecessor through the already-resolved correction
+      lineage (RUN parent, embedded review identity, reviewed SHA, and finding identity),
+      not through a task-global search by finding id. Reused finding ids in other review
+      decisions must have no effect. Add a regression with repeated `F1` across distinct
+      review decisions proving the exact correction tip still reduces deterministically.
+  - id: F3
+    basis: AC9
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_decode_remote_lifecycle / _local_pending_runs
+    issue: >
+      Unified State validates only the nested RESULT object for RESULT terminals and only
+      a small subset of fields for FAILURE terminals before allowing those documents to
+      drive SEMANTIC_REVIEW, RETRY_TRANSPORT, AUTHOR_REPAIR, or later lineage reduction.
+      It does not validate the canonical ResultPackage evidence binding/required
+      verification, and it does not establish the full FAILURE/RUN candidate binding
+      needed to call a failed tip repairable. A malformed canonical/local terminal can
+      therefore produce an actionable next_action instead of fail-closing as malformed
+      state.
+    expected: >
+      Before a terminal may drive lifecycle continuation, validate enough of the existing
+      canonical Runtime terminal contract to prove it is a valid RESULT/EVIDENCE package
+      or a self-consistent FAILURE for the exact RUN/TASK/candidate. Reuse existing
+      validators/shared deterministic helpers rather than inventing a parallel contract.
+      Malformed evidence, RUN/subject mismatch, or malformed failure binding must reduce to
+      bounded BLOCKED/NONE. Add focused regressions without changing Runtime schemas or
+      execution behavior.
