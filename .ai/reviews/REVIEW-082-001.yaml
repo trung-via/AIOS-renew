@@ -1,0 +1,39 @@
+review_id: REVIEW-082-001
+reviewed_sha: 56977430d8ef45f07c12b6b6ee6df2c39420bb34
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: FAIL
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings:
+  - id: F1
+    basis: AC5
+    action: CODE_FIX
+    location: src/aios_renew/correction_dispatch.py::_matching_new_runs / _reconcile
+    issue: >
+      Crash reconciliation can attribute an unrelated later REMEDIATION RUN to the
+      correction dispatch using only temporal namespace delta plus matching task/review/
+      finding/executor metadata. If the A6 invocation crashes before creating or durably
+      binding a RUN, another direct/manual execution of the same canonical remediation can
+      create one matching RUN afterward; the current reconciler then treats that RUN as the
+      unique continuation of the crashed dispatch even though no dispatch-owned binding
+      proves causality. The added restart regression demonstrates this exact behavior by
+      crashing before any RUN is created, writing a matching RUN afterward, and expecting
+      it to be attributed. This violates the requirement that restart reconciliation bind
+      only a uniquely attributable REMEDIATION RUN that can be proven to belong to the
+      original correction delivery.
+    expected: >
+      Reconciliation must never claim a later matching RUN solely because it appeared after
+      the pre-invocation namespace snapshot. A RUN may be reconciled only when durable state
+      proves that the exact correction dispatch owns that RUN; otherwise the re-delivery
+      remains non-executing and explicitly blocked/in-progress. Add regression coverage for
+      both sides of the boundary: a crash before any dispatch-owned RUN binding followed by
+      an unrelated matching RUN must not be attributed, while a crash after durable binding
+      of the exact admitted REMEDIATION RUN may reconcile that bound RUN without re-execution.
