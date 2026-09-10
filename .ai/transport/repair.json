@@ -1,0 +1,23 @@
+{
+  "repair_id": "REPAIR-086-001",
+  "failed_run_id": "RUN-086-005",
+  "failed_head_sha": "0e7af360e3ff057ed7986432cb6b97e55b2fe952",
+  "task": {
+    "id": "TASK-086",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "src/aios_renew/operator.py",
+    "src/aios_renew/review_transport.py",
+    "tests/test_operator.py",
+    "tests/test_review_transport.py"
+  ],
+  "instructions": [
+    "Continue exactly from failed REMEDIATION RUN-086-005 at failed HEAD 0e7af360e3ff057ed7986432cb6b97e55b2fe952. Preserve the F6 implementation already committed there. Do not restart F6 from reviewed SHA e354af551a9aef8365e01a2a651da1562fda8fab, reset/rebase to main, recreate prior F1/F4/F5 corrections, widen TASK-086, or create a sibling correction path.",
+    "RUN-086-005 failed only because the selected Codex Executor exceeded the native response deadline during EXECUTION, before Runtime verification began. The failed candidate is canonically recorded clean, descendant of its base, repairable, transportable, and limited to the authorized F6 files, but no structural ResultPackage or Runtime verification established completion. Treat the existing candidate as preserved implementation work, not as proven PASS.",
+    "Complete only the still-authorized F6 outcome: before Unified State may derive an actionable continuation, canonical and local RESULT terminals must be sufficiently bound to exact RESULT/EVIDENCE/RUN/subject and required-verification semantics, FAILURE terminals must be bound to exact RUN/TASK/base/failed-head/candidate facts needed by repair semantics, and malformed terminal state must reduce fail-closed to bounded BLOCKED/NONE. Preserve the exact correction-lineage behavior already fixed by the earlier TASK-086 corrections, including REMEDIATION/REPAIR DELTA predecessor continuity and no TASK-wide finding-id selection.",
+    "Inspect the exact failed candidate first and make only the minimum additional changes genuinely required to finish F6 within the authorized files. Commit the final permitted implementation state and return one structural ResultPackage for the complete TASK-086 correction lineage. Runtime owns canonical verification and EVIDENCE: do not rerun the original TASK, do not execute the canonical verification list for ceremony, do not retry/reroute/fallback, and do not push."
+  ],
+  "constraints": []
+}
