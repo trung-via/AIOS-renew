@@ -12,10 +12,12 @@ sequence:
       task_id: TASK-085
       published_sha: "36ff663675ac04b94da406536ac523e820b1b21e"
   - id: unified-state-next-action
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-086
+      published_sha: "e56abece22509dc6e7f4d3b641c9d5600798ec67"
   - id: unified-human-surface
-    status: BLOCKED
-    blocked_by: unified-state-next-action
+    status: NEXT
   - id: downstream-adoption
     status: BLOCKED
     blocked_by: unified-human-surface
