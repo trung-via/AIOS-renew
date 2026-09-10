@@ -313,6 +313,7 @@ class CorrectionPreflightResult:
     failed_head_sha: str | None = None
     subject_mode: str | None = None
     action: str | None = None
+    executor_required: bool | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -336,6 +337,7 @@ class CorrectionPreflightResult:
             "failed_head_sha": self.failed_head_sha,
             "subject_mode": self.subject_mode,
             "action": self.action,
+            "executor_required": self.executor_required,
             "run_created": False,
             "executor_invoked": False,
         }
@@ -1923,10 +1925,13 @@ def _run_repair_impl(
     reusable_package = resolved.reusable_package
     if executor is None and reusable_package is None:
         raise OperatorError("coding Executor is required for REPAIR")
-    # TASK-064 reusable verification state bypasses dispatcher invocation.  Run
-    # still requires a schema-compatible executor label; this value is metadata,
-    # not a selected or invoked coding Executor.
-    run_executor = executor if executor is not None else "codex"
+    # TASK-064 reusable verification state bypasses dispatcher invocation.  Its
+    # schema-compatible RUN label preserves the frozen failed-RUN lineage; it is
+    # not a defaulted, selected, or invoked coding Executor.
+    inherited_executor = failure.get("executor")
+    if inherited_executor not in ("codex", "antigravity"):
+        raise OperatorError("failed RUN has invalid Executor lineage")
+    run_executor = executor if executor is not None else inherited_executor
 
     _set_admission_boundary(
         admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
@@ -4141,6 +4146,7 @@ def _human_surface_result(
     delegated_operation: str | None = None,
     resulting_run_id: str | None = None,
     resulting_head_sha: str | None = None,
+    blocker: Mapping[str, Any] | None = None,
 ) -> HumanSurfaceResult:
     return HumanSurfaceResult(
         task_id=observation.task_id,
@@ -4163,7 +4169,30 @@ def _human_surface_result(
         executor=executor,
         resulting_run_id=resulting_run_id,
         resulting_head_sha=resulting_head_sha,
-        blocker=observation.blocker,
+        blocker=blocker if blocker is not None else observation.blocker,
+    )
+
+
+def _human_surface_delegation_failed(
+    observation: UnifiedStateObservation,
+    *,
+    operation: str,
+    executor: str | None,
+    executor_required: bool,
+) -> tuple[HumanSurfaceResult, int]:
+    """Project one canonical operation failure without creating new authority."""
+
+    return (
+        _human_surface_result(
+            observation,
+            disposition="DELEGATED",
+            authority="RUNTIME",
+            executor=executor,
+            executor_required=executor_required,
+            delegated_operation=operation,
+            blocker={"code": "DELEGATED_OPERATION_FAILED"},
+        ),
+        1,
     )
 
 
@@ -4182,13 +4211,13 @@ def continue_task(
     root = resolve_repository(repo)
     observation = observe_unified_state(task_id, repo=root)
     action = observation.next_action
-    repair_action = (
-        observation.correction.get("action")
+    repair_executor_required = (
+        observation.correction.get("executor_required")
         if isinstance(observation.correction, Mapping)
         else None
     )
     executor_required = action in ("EXECUTE_PRIMARY", "EXECUTE_REMEDIATION") or (
-        action == "EXECUTE_REPAIR" and repair_action != "NO_CHANGE"
+        action == "EXECUTE_REPAIR" and repair_executor_required is not False
     )
     if executor_required and executor is None:
         return (
@@ -4244,26 +4273,32 @@ def continue_task(
     delegated_operation: str
     if action == "EXECUTE_PRIMARY":
         assert executor is not None
-        preflight = _preflight_primary_admission(
-            root,
-            task_id=task_id,
-            executor=executor,
-            argv=argv,
-            runner=native_runner,
-        )
-        if preflight.restart_code is not None:
-            # The synchronized child re-enters `continue` and derives state again.
-            return None, preflight.restart_code
-        summary = run_task(
-            task_id,
-            executor=executor,
-            repo=root,
-            native_runner=native_runner,
-            verification_runner=verification_runner,
-            monotonic_clock=monotonic_clock,
-            synchronize=False,
-            preflight_sha=preflight.preflight_sha,
-        )
+        try:
+            preflight = _preflight_primary_admission(
+                root,
+                task_id=task_id,
+                executor=executor,
+                argv=argv,
+                runner=native_runner,
+            )
+            if preflight.restart_code is not None:
+                # The synchronized child re-enters `continue` and derives state again.
+                return None, preflight.restart_code
+            summary = run_task(
+                task_id,
+                executor=executor,
+                repo=root,
+                native_runner=native_runner,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
+                synchronize=False,
+                preflight_sha=preflight.preflight_sha,
+            )
+        except (OperatorError, DispatchError):
+            return _human_surface_delegation_failed(
+                observation, operation="PRIMARY", executor=executor,
+                executor_required=executor_required,
+            )
         delegated_operation = "PRIMARY"
         resulting_run_id = summary.run_id
         resulting_head_sha = summary.head_sha
@@ -4272,17 +4307,23 @@ def continue_task(
         if not all((observation.source_run_id, observation.finding_id,
                     observation.correction_sha)):
             raise OperatorError("Unified State remediation selectors are incomplete")
-        summary = run_remediation(
-            task_id,
-            finding_id=observation.finding_id,
-            source_run_id=observation.source_run_id,
-            approved_remediation_sha=observation.correction_sha,
-            executor=executor,
-            repo=root,
-            native_runner=native_runner,
-            verification_runner=verification_runner,
-            monotonic_clock=monotonic_clock,
-        )
+        try:
+            summary = run_remediation(
+                task_id,
+                finding_id=observation.finding_id,
+                source_run_id=observation.source_run_id,
+                approved_remediation_sha=observation.correction_sha,
+                executor=executor,
+                repo=root,
+                native_runner=native_runner,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
+            )
+        except (OperatorError, DispatchError):
+            return _human_surface_delegation_failed(
+                observation, operation="REMEDIATION", executor=executor,
+                executor_required=executor_required,
+            )
         delegated_operation = "REMEDIATION"
         resulting_run_id = summary.run_id
         resulting_head_sha = summary.head_sha
@@ -4293,35 +4334,53 @@ def continue_task(
             or observation.correction_document is None
         ):
             raise OperatorError("Unified State repair selectors are incomplete")
-        summary = run_repair(
-            observation.failed_run_id,
-            executor=executor,
-            repo=root,
-            repair=observation.correction_document,
-            required_repair_sha=observation.correction_sha,
-            native_runner=native_runner,
-            verification_runner=verification_runner,
-            monotonic_clock=monotonic_clock,
-        )
+        try:
+            summary = run_repair(
+                observation.failed_run_id,
+                executor=executor,
+                repo=root,
+                repair=observation.correction_document,
+                required_repair_sha=observation.correction_sha,
+                native_runner=native_runner,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
+            )
+        except (OperatorError, DispatchError):
+            return _human_surface_delegation_failed(
+                observation, operation="REPAIR", executor=executor,
+                executor_required=executor_required,
+            )
         delegated_operation = "REPAIR"
         resulting_run_id = summary.run_id
         resulting_head_sha = summary.head_sha
     elif action == "RETRY_TRANSPORT":
         if observation.run_id is None:
             raise OperatorError("Unified State transport selector is incomplete")
-        retry_transport(observation.run_id, repo=root)
+        try:
+            retry_transport(observation.run_id, repo=root)
+        except (OperatorError, DispatchError):
+            return _human_surface_delegation_failed(
+                observation, operation="TRANSPORT", executor=executor,
+                executor_required=executor_required,
+            )
         delegated_operation = "TRANSPORT"
         resulting_run_id = observation.run_id
         resulting_head_sha = observation.candidate_sha
     elif action == "RECOVER_PRIMARY":
         if observation.source_run_id is None:
             raise OperatorError("Unified State recovery selector is incomplete")
-        summary = recover_primary(
-            observation.source_run_id,
-            repo=root,
-            verification_runner=verification_runner,
-            monotonic_clock=monotonic_clock,
-        )
+        try:
+            summary = recover_primary(
+                observation.source_run_id,
+                repo=root,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
+            )
+        except (OperatorError, DispatchError):
+            return _human_surface_delegation_failed(
+                observation, operation="RECOVER_PRIMARY", executor=executor,
+                executor_required=executor_required,
+            )
         delegated_operation = "RECOVER_PRIMARY"
         resulting_run_id = summary.run_id
         resulting_head_sha = summary.head_sha
@@ -4404,6 +4463,7 @@ def preflight_repair(
             failed_head_sha=failed_head,
             subject_mode=subject_mode,
             action=resolved.action,
+            executor_required=resolved.reusable_package is None,
         )
     except Exception as exc:
         return _blocked_correction_preflight("REPAIR", admission, exc)

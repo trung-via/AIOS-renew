@@ -473,7 +473,11 @@ def test_human_surface_elides_executor_only_for_ready_no_change_repair(
             failed_run_id="RUN-101-001",
             failed_head_sha="d" * 40,
             correction_sha=repair_sha,
-            correction={"action": "NO_CHANGE", "status": "READY"},
+            correction={
+                "action": "NO_CHANGE",
+                "status": "READY",
+                "executor_required": False,
+            },
             correction_document=repair,
         ),
     )
@@ -496,6 +500,113 @@ def test_human_surface_elides_executor_only_for_ready_no_change_repair(
     assert outcome.executor_required is False
     assert outcome.executor_supplied is False
     assert outcome.delegated_operation == "REPAIR"
+
+
+def test_human_surface_requires_executor_for_non_reusable_no_change_repair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    before = _runtime_bytes(repo)
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: _human_observation(
+            "EXECUTE_REPAIR",
+            failed_run_id="RUN-101-001",
+            correction_sha="c" * 40,
+            correction={
+                "action": "NO_CHANGE",
+                "status": "READY",
+                "executor_required": True,
+            },
+            correction_document={"action": "NO_CHANGE"},
+        ),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "run_repair",
+        lambda *_args, **_kwargs: pytest.fail("REPAIR was delegated"),
+    )
+
+    outcome, exit_code = operator_module.continue_task("TASK-101", repo=repo)
+
+    assert exit_code == 0
+    assert outcome is not None
+    assert outcome.disposition == "EXECUTOR_REQUIRED"
+    assert outcome.authority == "HUMAN"
+    assert outcome.executor_required is True
+    assert list(state.admission_failures.glob("*.json")) == []
+    assert _runtime_bytes(repo) == before
+
+
+@pytest.mark.parametrize("admitted", [False, True])
+def test_continue_cli_bounds_delegated_repair_failure_without_second_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    admitted: bool,
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    repair_sha = "c" * 40
+    repair = {
+        "repair_id": "REPAIR-101-001",
+        "failed_run_id": "RUN-101-001",
+        "failed_head_sha": "d" * 40,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CODE_FIX",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Apply the repair."],
+        "constraints": [],
+    }
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: _human_observation(
+            "EXECUTE_REPAIR",
+            run_id="RUN-101-001",
+            failed_run_id="RUN-101-001",
+            failed_head_sha="d" * 40,
+            correction_sha=repair_sha,
+            correction={"action": "CODE_FIX", "executor_required": True},
+            correction_document=repair,
+        ),
+    )
+    calls = []
+
+    def fail_once(*_args, **_kwargs):
+        calls.append("REPAIR")
+        artifact = (
+            state.failures / "RUN-101-002.json"
+            if admitted
+            else state.admission_failures / "REPAIR-test.json"
+        )
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text('{"canonical":true}', encoding="utf-8")
+        raise OperatorError("canonical operation failed")
+
+    monkeypatch.setattr(operator_module, "run_repair", fail_once)
+
+    exit_code = operator_module.main(
+        ["continue", "TASK-101", "--executor", "codex", "--repo", str(repo)]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert exit_code == 1
+    assert calls == ["REPAIR"]
+    assert captured.err == ""
+    assert payload["format"] == "AIOS_HUMAN_SURFACE"
+    assert payload["version"] == 1
+    assert payload["disposition"] == "DELEGATED"
+    assert payload["delegated_operation"] == "REPAIR"
+    assert payload["blocker"] == {"code": "DELEGATED_OPERATION_FAILED"}
+    artifacts = list(state.failures.glob("*.json")) + list(
+        state.admission_failures.glob("*.json")
+    )
+    assert len(artifacts) == 1
+    assert artifacts[0].read_text(encoding="utf-8") == '{"canonical":true}'
 
 
 @pytest.mark.parametrize("action", ["RETRY_TRANSPORT", "RECOVER_PRIMARY"])
@@ -5806,7 +5917,7 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
     with pytest.raises(OperatorError, match="exit code 9"):
         run_task(
             "TASK-101",
-            executor="codex",
+            executor="antigravity",
             repo=repo,
             native_runner=StaticResultRunner(repo, static_payload()),
             verification_runner=fail_verification,
@@ -5818,6 +5929,7 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
     )
     assert first_sidecar.is_file()
     assert first_failure["phase"] == "VERIFICATION"
+    assert first_failure["executor"] == "antigravity"
     assert git(
         tmp_path / "upstream.git",
         "show",
@@ -5846,10 +5958,16 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
         native_calls.append((args, kwargs))
         raise AssertionError("verification-only continuation invoked an Executor")
 
+    eligible = preflight_repair(
+        "RUN-101-001", repo=repo, repair=authorization("RUN-101-001")
+    )
+    assert eligible.status == "READY"
+    assert eligible.executor_required is False
+
     with pytest.raises(OperatorError, match="exit code 9"):
         run_repair(
             "RUN-101-001",
-            executor="codex",
+            executor=None,
             repo=repo,
             repair=authorization("RUN-101-001"),
             native_runner=forbidden_native,
@@ -5866,6 +5984,7 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
     assert native_calls == []
     assert len(verification_calls) == 2
     assert repeated_failure["continuation_of"] == "RUN-101-001"
+    assert repeated_failure["executor"] == "antigravity"
     assert repeated_failure["failed_head_sha"] == first_failure["failed_head_sha"]
     assert repeated_sidecar.is_file()
     assert failed_observation["executor_invoked"] is False
@@ -5882,7 +6001,7 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
 
     summary = run_repair(
         "RUN-101-002",
-        executor="codex",
+        executor=None,
         repo=repo,
         repair=authorization("RUN-101-002"),
         native_runner=forbidden_native,
@@ -5893,6 +6012,7 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
         (state.observations / summary.result_path.name).read_text(encoding="utf-8")
     )
     assert summary.run_id == "RUN-101-003"
+    assert summary.executor == "antigravity"
     assert native_calls == []
     assert len(success_calls) == 1
     _, verification_cwd, _, capture_output, text, check = success_calls[0]
@@ -8178,6 +8298,13 @@ def test_correction_preflight_repair_preserves_reuse_action_order_and_state(
     repo = make_repo(tmp_path)
     failed_run_id, no_change = repair_contract(repo, action="NO_CHANGE")
     state = runtime_paths(repo)
+
+    ordinary = preflight_repair(failed_run_id, repo=repo, repair=no_change)
+
+    assert ordinary.status == "READY"
+    assert ordinary.action == "NO_CHANGE"
+    assert ordinary.executor_required is True
+
     (state.preverification / f"{failed_run_id}.json").write_bytes(b"not-json")
     before_runtime = _runtime_bytes(repo)
 
@@ -8257,6 +8384,7 @@ def test_correction_preflight_remote_repair_is_observational_for_ready_and_block
         "failed_head_sha": repair["failed_head_sha"],
         "subject_mode": "CURRENT",
         "action": "CODE_FIX",
+        "executor_required": True,
         "run_created": False,
         "executor_invoked": False,
     }
@@ -8286,6 +8414,7 @@ def test_correction_preflight_remote_repair_is_observational_for_ready_and_block
         "failed_head_sha": repair["failed_head_sha"],
         "subject_mode": None,
         "action": None,
+        "executor_required": None,
         "run_created": False,
         "executor_invoked": False,
     }

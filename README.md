@@ -200,11 +200,13 @@ aios preflight-repair RUN-101-001
 
 The optional commands return one versioned `AIOS_CORRECTION_PREFLIGHT` JSON
 observation with `READY` or `BLOCKED`, the exact allowlisted lineage identities
-known at that boundary, current or historical subject mode when known, and a
-bounded phase/reason code. They reuse the deterministic REMEDIATION and REPAIR
-lineage, contract, reusable-state, repository, historical-subject, and canonical
+known at that boundary, current or historical subject mode when known, the exact
+REPAIR Executor requirement when admission reaches that decision, and a bounded
+phase/reason code. They reuse the deterministic REMEDIATION and REPAIR lineage,
+contract, reusable-state, repository, historical-subject, and canonical
 RUN-namespace admission checks. A `NO_CHANGE` REPAIR inspects eligible reusable
-candidate state; a `CODE_FIX` REPAIR bypasses those reuse-only checks.
+candidate state; `executor_required=false` is emitted only when that exact state
+qualifies for TASK-064 reuse. A `CODE_FIX` REPAIR bypasses those reuse-only checks.
 
 Preflight is read-only: it creates no RUN, lease, RESULT, FAILURE, EVIDENCE,
 Admission Failure v2 record, repair/remediation/dispatch state, or Executor
@@ -275,7 +277,9 @@ There is no default, remembered, inferred, ranked, or recommended Executor.
 `--executor` is required for PRIMARY, REMEDIATION, and CODE_FIX or ordinary
 Executor-backed REPAIR. A deterministically eligible TASK-064 verification-only
 `NO_CHANGE` REPAIR may continue without it because that existing path invokes no
-coding Executor; supplying an Executor does not force a coding call. An Executor
+coding Executor. Its continuation RUN preserves the failed RUN's frozen Executor
+lineage metadata when the Human supplies none; that metadata is not a default or
+Human selection. Supplying an Executor does not force a coding call. An Executor
 argument on transport, recovery, handoff, blocked, wait, or done state grants no
 additional authority.
 
@@ -306,6 +310,9 @@ review, author a correction, publish, retry, recover, reroute, poll, or execute 
 newly derived next action. Pre-RUN rejection remains Admission Failure v2; an
 admitted failure remains the ordinary RUN FAILURE. The Human result does not create
 another failure artifact, RESULT, or EVIDENCE, and it never attempts a second run.
+Delegated failures still emit the single versioned Human result with exit status 1,
+the attempted operation, and the bounded `DELEGATED_OPERATION_FAILED` blocker;
+arbitrary exception text and canonical failure contents are not copied into it.
 
 `aios state <TASK_ID>` remains the read-only inspection surface. `aios continue`
 does not perform planning, semantic review, correction authoring, publication,
