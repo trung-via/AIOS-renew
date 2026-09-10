@@ -315,8 +315,23 @@ the attempted operation, and the bounded `DELEGATED_OPERATION_FAILED` blocker;
 arbitrary exception text and canonical failure contents are not copied into it.
 
 `aios state <TASK_ID>` remains the read-only inspection surface. `aios continue`
-does not perform planning, semantic review, correction authoring, publication,
-downstream migration, roadmap mutation, autonomous workflow, or any change to the
+adds one narrowly bounded stale-checkout convenience: only when a syntactically
+valid requested TASK is absent at its exact local `.ai/tasks/<TASK_ID>.yaml` path,
+it uses the existing TASK-062 synchronization authority before Unified State loads
+the TASK. A clean attached local `main` with one upstream `main` may be fetched and
+fast-forwarded once; synchronized kernel or TASK changes transfer control once to
+the same `continue` request, which validates the TASK and derives Unified State
+again from current state. If the TASK remains absent, or the repository is dirty,
+detached, non-`main`, lacks one unambiguous upstream `main`, is ahead or diverged,
+or fetch/fast-forward fails, continuation fails closed before a RUN or Executor.
+
+An existing local TASK never enters this new pre-resolution synchronization path,
+regardless of whether its derived action is PRIMARY, correction, review,
+publication, transport, recovery, wait, done, or blocked. `aios state` remains
+mutation-free and may report a missing TASK on a stale checkout. This hardening of
+the TASK-087 surface reuses TASK-062; it adds no manual action selection, Executor
+routing, retry, fallback, reroute, planning, semantic review, correction authoring,
+publication, downstream migration, workflow, roadmap completion, or change to the
 syntax and authority of the existing low-level commands.
 
 ### Admission Failure v2 and outcome boundaries

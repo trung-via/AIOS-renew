@@ -321,8 +321,10 @@ def _stub_unified_remote(
 def _human_observation(
     action: str, **facts,
 ) -> operator_module.UnifiedStateObservation:
+    task_id = facts.pop("task_id", "TASK-101")
+    revision = facts.pop("revision", 1)
     return operator_module.UnifiedStateObservation(
-        "TASK-101", 1, "TEST", action, **facts
+        task_id, revision, "TEST", action, **facts
     )
 
 
@@ -3593,6 +3595,392 @@ def publish_upstream(
     git(publisher, "commit", "--quiet", "-m", message)
     git(publisher, "push", "--quiet")
     return git(publisher, "rev-parse", "HEAD")
+
+
+@pytest.mark.parametrize(
+    "task_id", ["", "TASK/102", "TASK\\102", "../TASK-102", "NOT-A-TASK"]
+)
+def test_continue_rejects_invalid_task_before_pre_resolution_sync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    task_id: str,
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    before = git(repo, "rev-parse", "HEAD")
+    monkeypatch.setattr(
+        operator_module,
+        "_preflight_primary_sync",
+        lambda *_args, **_kwargs: pytest.fail("invalid TASK triggered sync"),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: pytest.fail("invalid TASK was observed"),
+    )
+
+    with pytest.raises(OperatorError, match="invalid TASK id"):
+        operator_module.continue_task(task_id, repo=repo)
+
+    assert git(repo, "rev-parse", "HEAD") == before
+    assert not list(operator_module._runtime_paths_readonly(repo).runs.glob("*.json"))
+
+
+@pytest.mark.parametrize(
+    "action", ["EXECUTE_REMEDIATION", "SEMANTIC_REVIEW", "WAIT", "NONE"]
+)
+def test_continue_existing_task_never_uses_pre_resolution_sync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    monkeypatch.setattr(
+        operator_module,
+        "_preflight_primary_sync",
+        lambda *_args, **_kwargs: pytest.fail("existing TASK triggered pre-sync"),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: _human_observation(action),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "run_remediation",
+        lambda *_args, **_kwargs: pytest.fail("correction was delegated"),
+    )
+
+    outcome, exit_code = operator_module.continue_task("TASK-101", repo=repo)
+
+    assert exit_code == 0
+    assert outcome is not None
+    assert outcome.next_action == action
+
+
+def test_continue_existing_malformed_task_does_not_sync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path, task_source="task_id: TASK-101\n")
+    monkeypatch.setattr(
+        operator_module,
+        "_preflight_primary_sync",
+        lambda *_args, **_kwargs: pytest.fail("existing malformed TASK triggered sync"),
+    )
+
+    with pytest.raises(OperatorError, match="invalid TASK TASK-101"):
+        operator_module.continue_task("TASK-101", repo=repo)
+
+
+def test_continue_missing_upstream_task_syncs_then_reenters_fresh_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo = make_repo(tmp_path, task_source=None)
+    task_source = TASK_SOURCE.replace("TASK-101", "TASK-102")
+    published_sha = publish_upstream(
+        repo, {".ai/tasks/TASK-102.yaml": task_source}, "publish TASK-102"
+    )
+    argv = ["continue", "TASK-102", "--executor", "codex", "--repo", str(repo)]
+    events = []
+    child_results = []
+    git_calls = []
+    real_git = operator_module._git
+
+    def recording_git(root, *args, **kwargs):
+        git_calls.append(args)
+        return real_git(root, *args, **kwargs)
+
+    def observe(*_args, **_kwargs):
+        events.append(("observe", git(repo, "rev-parse", "HEAD")))
+        assert load_task(repo, "TASK-102").task_id == "TASK-102"
+        return _human_observation("EXECUTE_PRIMARY", task_id="TASK-102")
+
+    def execute(*_args, **kwargs):
+        events.append(("execute", kwargs["preflight_sha"]))
+        return SimpleNamespace(run_id="RUN-102-001", head_sha=published_sha)
+
+    def restart(root, *, argv=None, runner=subprocess.run):
+        events.append(("restart", tuple(argv or ())))
+        monkeypatch.setenv("AIOS_RESTART_ATTEMPTED", "1")
+        child_results.append(
+            operator_module.continue_task(
+                "TASK-102", executor="codex", repo=root, argv=argv
+            )
+        )
+        return child_results[-1][1]
+
+    monkeypatch.setattr(operator_module, "_git", recording_git)
+    monkeypatch.setattr(operator_module, "observe_unified_state", observe)
+    monkeypatch.setattr(operator_module, "run_task", execute)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", restart)
+
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-102", executor="codex", repo=repo, argv=argv
+    )
+
+    assert outcome is None
+    assert exit_code == 0
+    assert git(repo, "rev-parse", "HEAD") == published_sha
+    assert events == [
+        ("restart", tuple(argv)),
+        ("observe", published_sha),
+        ("execute", published_sha),
+    ]
+    assert child_results[0][0] is not None
+    assert child_results[0][0].delegated_operation == "PRIMARY"
+    ff_calls = [args for args in git_calls if args[:2] == ("merge", "--ff-only")]
+    assert len(ff_calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("action", "executor", "disposition"),
+    [
+        ("EXECUTE_PRIMARY", None, "EXECUTOR_REQUIRED"),
+        ("SEMANTIC_REVIEW", "codex", "EXTERNAL_AUTHORITY_REQUIRED"),
+        ("AUTHOR_REMEDIATION", "codex", "EXTERNAL_AUTHORITY_REQUIRED"),
+        ("PUBLICATION", "codex", "EXTERNAL_AUTHORITY_REQUIRED"),
+        ("WAIT", "codex", "NO_ACTION"),
+        ("DONE", "codex", "NO_ACTION"),
+        ("NONE", "codex", "BLOCKED"),
+    ],
+)
+def test_continue_restart_honors_fresh_zero_or_executor_required_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    executor: str | None,
+    disposition: str,
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo = make_repo(tmp_path, task_source=None)
+    task_source = TASK_SOURCE.replace("TASK-101", "TASK-102")
+    publish_upstream(repo, {".ai/tasks/TASK-102.yaml": task_source})
+    argv = ["continue", "TASK-102"]
+    if executor is not None:
+        argv.extend(["--executor", executor])
+    argv.extend(["--repo", str(repo)])
+    child_results = []
+    observations = []
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: observations.append(action)
+        or _human_observation(action, task_id="TASK-102"),
+    )
+    forbidden = lambda *_args, **_kwargs: pytest.fail("fresh state was bypassed")
+    monkeypatch.setattr(operator_module, "run_task", forbidden)
+    monkeypatch.setattr(operator_module, "run_remediation", forbidden)
+    monkeypatch.setattr(operator_module, "run_repair", forbidden)
+
+    def restart(root, *, argv=None, runner=subprocess.run):
+        monkeypatch.setenv("AIOS_RESTART_ATTEMPTED", "1")
+        child_results.append(
+            operator_module.continue_task(
+                "TASK-102", executor=executor, repo=root, argv=argv
+            )
+        )
+        return child_results[-1][1]
+
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", restart)
+
+    parent, exit_code = operator_module.continue_task(
+        "TASK-102", executor=executor, repo=repo, argv=argv
+    )
+
+    assert parent is None
+    assert exit_code == 0
+    assert observations == [action]
+    child, child_code = child_results[0]
+    assert child_code == 0
+    assert child is not None
+    assert child.disposition == disposition
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        "dirty",
+        "detached",
+        "non-main",
+        "missing-upstream",
+        "ambiguous-upstream",
+        "ahead",
+        "diverged",
+        "fetch-failure",
+    ],
+)
+def test_continue_missing_task_preserves_sync_fail_closed_states(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    state: str,
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo = make_repo(tmp_path, task_source=None)
+    if state == "dirty":
+        (repo / "DIRTY.txt").write_text("dirty\n", encoding="utf-8")
+    elif state == "detached":
+        git(repo, "checkout", "--quiet", "--detach")
+    elif state == "non-main":
+        git(repo, "checkout", "--quiet", "-b", "feature")
+    elif state == "missing-upstream":
+        git(repo, "branch", "--unset-upstream")
+    elif state == "ambiguous-upstream":
+        git(repo, "config", "--add", "branch.main.remote", "second-remote")
+    elif state == "ahead":
+        git(repo, "commit", "--allow-empty", "--quiet", "-m", "local ahead")
+    elif state == "diverged":
+        publish_upstream(repo, {"REMOTE.txt": "remote\n"})
+        git(repo, "commit", "--allow-empty", "--quiet", "-m", "local diverged")
+    else:
+        git(repo, "remote", "set-url", "origin", str(tmp_path / "missing.git"))
+    git_calls = []
+    real_git = operator_module._git
+
+    def recording_git(root, *args, **kwargs):
+        git_calls.append(args)
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", recording_git)
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: pytest.fail("unsafe checkout reached Unified State"),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "run_task",
+        lambda *_args, **_kwargs: pytest.fail("unsafe checkout invoked Executor path"),
+    )
+
+    with pytest.raises(OperatorError):
+        operator_module.continue_task("TASK-102", executor="codex", repo=repo)
+
+    assert not list(operator_module._runtime_paths_readonly(repo).runs.glob("*.json"))
+    assert len([args for args in git_calls if args[:2] == ("merge", "--ff-only")]) <= 1
+    prohibited = {"rebase", "reset", "checkout", "stash", "clean", "pull", "push"}
+    assert not any(args and args[0] in prohibited for args in git_calls)
+
+
+def test_continue_missing_task_native_fast_forward_failure_is_not_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo = make_repo(tmp_path, task_source=None)
+    before = git(repo, "rev-parse", "HEAD")
+    publish_upstream(repo, {"UPSTREAM.txt": "upstream\n"})
+    git_calls = []
+    real_git = operator_module._git
+
+    def failing_git(root, *args, **kwargs):
+        git_calls.append(args)
+        if args[:2] == ("merge", "--ff-only"):
+            raise OperatorError("simulated native fast-forward failure")
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", failing_git)
+
+    with pytest.raises(OperatorError, match="upstream fast-forward failed"):
+        operator_module.continue_task("TASK-102", executor="codex", repo=repo)
+
+    assert git(repo, "rev-parse", "HEAD") == before
+    assert len([args for args in git_calls if args[:2] == ("merge", "--ff-only")]) == 1
+    assert not list(operator_module._runtime_paths_readonly(repo).runs.glob("*.json"))
+
+
+@pytest.mark.parametrize("advance", [False, True])
+def test_continue_sync_without_requested_task_fails_once_before_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    advance: bool,
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo = make_repo(tmp_path, task_source=None)
+    expected_head = git(repo, "rev-parse", "HEAD")
+    if advance:
+        expected_head = publish_upstream(repo, {"UPSTREAM.txt": "upstream\n"})
+    sync_calls = []
+    real_sync = operator_module._synchronize_primary_branch
+
+    def recording_sync(*args, **kwargs):
+        sync_calls.append((args, kwargs))
+        return real_sync(*args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_synchronize_primary_branch", recording_sync)
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: pytest.fail("missing TASK reached Unified State"),
+    )
+
+    with pytest.raises(OperatorError, match="TASK not found: TASK-102"):
+        operator_module.continue_task("TASK-102", executor="codex", repo=repo)
+
+    assert len(sync_calls) == 1
+    assert git(repo, "rev-parse", "HEAD") == expected_head
+    assert not list(operator_module._runtime_paths_readonly(repo).runs.glob("*.json"))
+
+
+def test_continue_restart_without_requested_task_does_not_sync_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo = make_repo(tmp_path, task_source=None)
+    publish_upstream(repo, {"src/aios_renew/marker.py": "# synchronized kernel\n"})
+    argv = ["continue", "TASK-102", "--executor", "codex", "--repo", str(repo)]
+    sync_calls = []
+    child_errors = []
+    real_sync = operator_module._synchronize_primary_branch
+
+    def recording_sync(*args, **kwargs):
+        sync_calls.append((args, kwargs))
+        return real_sync(*args, **kwargs)
+
+    def restart(root, *, argv=None, runner=subprocess.run):
+        monkeypatch.setenv("AIOS_RESTART_ATTEMPTED", "1")
+        try:
+            operator_module.continue_task(
+                "TASK-102", executor="codex", repo=root, argv=argv
+            )
+        except OperatorError as exc:
+            child_errors.append(str(exc))
+        return 1
+
+    monkeypatch.setattr(operator_module, "_synchronize_primary_branch", recording_sync)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", restart)
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: pytest.fail("missing TASK reached Unified State"),
+    )
+
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-102", executor="codex", repo=repo, argv=argv
+    )
+
+    assert outcome is None
+    assert exit_code == 1
+    assert len(sync_calls) == 1
+    assert child_errors == ["TASK not found: TASK-102"]
+    assert not list(operator_module._runtime_paths_readonly(repo).runs.glob("*.json"))
+
+
+def test_state_missing_task_remains_read_only_on_stale_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path, task_source=None)
+    before = git(repo, "rev-parse", "HEAD")
+    task_source = TASK_SOURCE.replace("TASK-101", "TASK-102")
+    publish_upstream(repo, {".ai/tasks/TASK-102.yaml": task_source})
+    monkeypatch.setattr(
+        operator_module,
+        "_preflight_primary_sync",
+        lambda *_args, **_kwargs: pytest.fail("state attempted synchronization"),
+    )
+
+    with pytest.raises(OperatorError, match="TASK not found: TASK-102"):
+        observe_unified_state("TASK-102", repo=repo)
+
+    assert git(repo, "rev-parse", "HEAD") == before
 
 
 def test_primary_fast_forwards_before_task_load_and_binds_synchronized_base(

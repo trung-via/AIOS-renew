@@ -40,6 +40,7 @@ from .dispatcher import (
 from .dispatch_reconciliation import (
     DispatchError,
     DispatchInvocation,
+    TASK_ID_PATTERN,
     bind_dispatch_run,
     execute_dispatch,
 )
@@ -583,12 +584,18 @@ def resolve_repository(path: str | Path | None = None) -> Path:
     return Path(stdout.strip()).resolve()
 
 
+def _canonical_task_path(repo: str | Path, task_id: str) -> Path:
+    """Validate one TASK identity before resolving its exact local path."""
+
+    if not isinstance(task_id, str) or not TASK_ID_PATTERN.fullmatch(task_id):
+        raise OperatorError(f"invalid TASK id: {task_id!r}")
+    return Path(repo) / ".ai" / "tasks" / f"{task_id}.yaml"
+
+
 def load_task(repo: str | Path, task_id: str) -> Task:
     """Load one canonical TASK from the repository-local task store."""
 
-    if not task_id or "/" in task_id or "\\" in task_id:
-        raise OperatorError(f"invalid TASK id: {task_id!r}")
-    task_path = Path(repo) / ".ai" / "tasks" / f"{task_id}.yaml"
+    task_path = _canonical_task_path(repo, task_id)
     if not task_path.is_file():
         raise OperatorError(f"TASK not found: {task_id}")
     try:
@@ -2704,6 +2711,29 @@ def _preflight_primary_admission(
         raise
 
 
+def _pre_resolve_continue_task(
+    root: Path,
+    *,
+    task_id: str,
+    argv: list[str] | None = None,
+    runner: NativeRunner = subprocess.run,
+) -> PreflightResult:
+    """Resolve an absent valid TASK once before Unified State observation."""
+
+    task_path = _canonical_task_path(root, task_id)
+    if task_path.is_file():
+        return PreflightResult()
+    if os.environ.get("AIOS_RESTART_ATTEMPTED") == "1":
+        raise OperatorError(f"TASK not found: {task_id}")
+
+    preflight = _preflight_primary_sync(root, argv=argv, runner=runner)
+    if preflight.restart_code is not None:
+        return preflight
+    if not task_path.is_file():
+        raise OperatorError(f"TASK not found: {task_id}")
+    return preflight
+
+
 def _restart_primary_invocation(
     root: Path,
     *,
@@ -4209,6 +4239,11 @@ def continue_task(
     """Observe once and delegate at most one already-authoritative operation."""
 
     root = resolve_repository(repo)
+    resolution = _pre_resolve_continue_task(
+        root, task_id=task_id, argv=argv, runner=native_runner
+    )
+    if resolution.restart_code is not None:
+        return None, resolution.restart_code
     observation = observe_unified_state(task_id, repo=root)
     action = observation.next_action
     repair_executor_required = (
