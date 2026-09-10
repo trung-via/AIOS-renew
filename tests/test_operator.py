@@ -369,6 +369,239 @@ def test_unified_state_local_active_wait_and_untransported_result_retry(
     )
 
 
+def _local_correction_lifecycle(
+    repo: Path, *, family: str
+) -> tuple[RemoteTaskLifecycle, str]:
+    state = runtime_paths(repo)
+    head = git(repo, "rev-parse", "HEAD")
+    parent_id = "RUN-101-001"
+    child_id = "RUN-101-002"
+    parent_run = {
+        "run_id": parent_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    child_run = {
+        "run_id": child_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    if family == "REMEDIATION":
+        terminal = {
+            "result": {
+                "head_sha": head,
+                "claims": [],
+                "changed_files": [],
+                "unresolved": [],
+            },
+            "evidence": [],
+        }
+        review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: output is incomplete
+    expected: output is complete
+""".encode()
+        lifecycle = RemoteTaskLifecycle(
+            head,
+            (
+                RemoteLifecycleTerminal(
+                    parent_id,
+                    "RESULT",
+                    head,
+                    json.dumps(parent_run).encode(),
+                    json.dumps(terminal).encode(),
+                    None,
+                ),
+            ),
+            (RemoteLifecycleReview(parent_id, head, review),),
+            (),
+            (),
+            (),
+        )
+        finding = {
+            "id": "F1",
+            "basis": "AC1",
+            "action": "CODE_FIX",
+            "location": "OUTPUT.txt",
+            "issue": "output is incomplete",
+            "expected": "output is complete",
+        }
+        remediation = {
+            "finding_id": "F1",
+            "action": "CODE_FIX",
+            "reviewed_sha": head,
+            "modification_scope": ["OUTPUT.txt"],
+            "affected_verification": ["git diff --check"],
+            "constraints": {"hard": ["Commit the output."]},
+        }
+        local_run = {
+            "kind": "REMEDIATION",
+            "execution": {
+                "review_id": "REVIEW-101-001",
+                "finding": finding,
+                "remediation": remediation,
+                "run": child_run,
+                "original_constraints": ["Commit the output."],
+            },
+        }
+    else:
+        failure = {
+            "kind": "FAILURE",
+            "run_id": parent_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": head,
+            "failed_head_sha": head,
+            "candidate": {"repairable": True, "transportable": True},
+        }
+        lifecycle = RemoteTaskLifecycle(
+            head,
+            (
+                RemoteLifecycleTerminal(
+                    parent_id,
+                    "FAILURE",
+                    head,
+                    json.dumps(parent_run).encode(),
+                    json.dumps(failure).encode(),
+                    None,
+                ),
+            ),
+            (),
+            (),
+            (),
+            (),
+        )
+        repair = {
+            "repair_id": "REPAIR-101-001",
+            "failed_run_id": parent_id,
+            "failed_head_sha": head,
+            "task": {"id": "TASK-101", "revision": 1},
+            "action": "CODE_FIX",
+            "modification_scope": ["OUTPUT.txt"],
+            "instructions": ["Apply only the authorized correction."],
+            "constraints": ["Commit the output."],
+        }
+        local_run = child_run
+        (state.repairs / f"{child_id}.json").write_text(
+            json.dumps(
+                {
+                    "failed_run_id": parent_id,
+                    "root_base_sha": head,
+                    "failed_head_sha": head,
+                    "failure": failure,
+                    "task": {"task_id": "TASK-101", "revision": 1},
+                    "repair": repair,
+                    "run": child_run,
+                }
+            ),
+            encoding="utf-8",
+        )
+    (state.runs / f"{child_id}.json").write_text(
+        json.dumps(local_run), encoding="utf-8"
+    )
+    return lifecycle, child_id
+
+
+@pytest.mark.parametrize("family", ["REMEDIATION", "REPAIR"])
+def test_unified_state_exact_local_correction_continues_remote_tip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, family: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    lifecycle, run_id = _local_correction_lifecycle(repo, family=family)
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    waiting = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (waiting["lifecycle_state"], waiting["next_action"], waiting["run_id"]) == (
+        "WAIT", "WAIT", run_id,
+    )
+
+    head = git(repo, "rev-parse", "HEAD")
+    (runtime_paths(repo).results / f"{run_id}.json").write_text(
+        json.dumps({
+            "result": {
+                "head_sha": head,
+                "claims": [],
+                "changed_files": [],
+                "unresolved": [],
+            },
+            "evidence": [],
+        }),
+        encoding="utf-8",
+    )
+    retry = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert (retry["lifecycle_state"], retry["next_action"], retry["run_id"]) == (
+        "TRANSPORT", "RETRY_TRANSPORT", run_id,
+    )
+
+
+def test_unified_state_multiple_local_tips_stay_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    lifecycle, _ = _local_correction_lifecycle(repo, family="REMEDIATION")
+    state = runtime_paths(repo)
+    unrelated_id = "RUN-101-003"
+    (state.runs / f"{unrelated_id}.json").write_text(
+        json.dumps({
+            "run_id": unrelated_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": git(repo, "rev-parse", "HEAD"),
+            "workspace": str(repo),
+            "head_sha": None,
+            "status": "ACTIVE",
+        }),
+        encoding="utf-8",
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["lifecycle_state"] == "BLOCKED"
+    assert observation["blocker"]["code"] == "AMBIGUOUS_ACTIVE_TIPS"
+
+
+def test_unified_state_single_unrelated_local_run_stays_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    lifecycle, run_id = _local_correction_lifecycle(repo, family="REMEDIATION")
+    (runtime_paths(repo).runs / f"{run_id}.json").write_text(
+        json.dumps({
+            "run_id": run_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": git(repo, "rev-parse", "HEAD"),
+            "workspace": str(repo),
+            "head_sha": None,
+            "status": "ACTIVE",
+        }),
+        encoding="utf-8",
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["lifecycle_state"] == "BLOCKED"
+    assert observation["blocker"]["code"] == "AMBIGUOUS_ACTIVE_TIPS"
+
+
 def test_unified_state_runtime_pass_never_synthesizes_semantic_verdict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

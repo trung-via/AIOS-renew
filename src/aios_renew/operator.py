@@ -3327,11 +3327,14 @@ def _decode_remote_lifecycle(
 
 
 def _local_pending_runs(
-    state: RuntimePaths, task: Task, remote: list[_LifecycleRun]
-) -> tuple[list[_LifecycleRun], list[str]]:
+    state: RuntimePaths,
+    task: Task,
+    remote: list[_LifecycleRun],
+    reviews: Mapping[str, Review],
+) -> tuple[list[_LifecycleRun], list[_LifecycleRun]]:
     remote_kinds = {(item.run_id, item.terminal_kind) for item in remote}
     terminal_pending: list[_LifecycleRun] = []
-    active_pending: list[str] = []
+    active_pending: list[_LifecycleRun] = []
     prefix = task_run_prefix(task.task_id)
     if not state.runs.is_dir():
         return terminal_pending, active_pending
@@ -3343,6 +3346,62 @@ def _local_pending_runs(
             continue
         if run.run_id != run_id or run.status != "ACTIVE":
             raise ValueError("persisted RUN identity is invalid")
+        parent_run_id = None
+        repair_path = state.repairs / path.name
+        if repair_path.is_file():
+            if family != "PRIMARY":
+                raise ValueError("local RUN has competing correction families")
+            repair_execution = json.loads(repair_path.read_text(encoding="utf-8"))
+            if not isinstance(repair_execution, Mapping):
+                raise ValueError("persisted REPAIR execution must be a mapping")
+            parent_run_id = repair_execution.get("failed_run_id")
+            failure = repair_execution.get("failure")
+            authorization = repair_execution.get("repair")
+            embedded_run = repair_execution.get("run")
+            if (
+                not isinstance(parent_run_id, str)
+                or not parent_run_id
+                or repair_execution.get("failed_head_sha") != run.base_sha
+                or not isinstance(failure, Mapping)
+                or failure.get("run_id") != parent_run_id
+                or failure.get("failed_head_sha") != run.base_sha
+                or not isinstance(authorization, Mapping)
+                or authorization.get("failed_run_id") != parent_run_id
+                or authorization.get("failed_head_sha") != run.base_sha
+                or not isinstance(embedded_run, Mapping)
+                or _run_from_data(embedded_run) != run
+            ):
+                raise ValueError("persisted REPAIR execution lineage is invalid")
+            family = "REPAIR"
+        elif family == "REMEDIATION":
+            local_value = json.loads(raw.decode("utf-8", errors="strict"))
+            execution = _remediation_execution_from_data(local_value["execution"])
+            if execution.remediation.reviewed_sha != run.base_sha:
+                raise ValueError("persisted REMEDIATION reviewed SHA is invalid")
+            parents = [
+                parent
+                for parent in remote
+                if parent.candidate_sha == run.base_sha
+                and parent.terminal_kind == "RESULT"
+                and parent.run_id in reviews
+                and reviews[parent.run_id].review_id == review_id
+                and reviews[parent.run_id].reviewed_sha == run.base_sha
+                and finding_id in {
+                    finding.id for finding in reviews[parent.run_id].findings
+                }
+            ]
+            if len(parents) == 1:
+                parent_run_id = parents[0].run_id
+        if family == "REPAIR":
+            parents = [
+                parent
+                for parent in remote
+                if parent.run_id == parent_run_id
+                and parent.candidate_sha == run.base_sha
+                and parent.terminal_kind == "FAILURE"
+            ]
+            if len(parents) != 1:
+                parent_run_id = None
         result_path = state.results / path.name
         failure_path = state.failures / path.name
         has_result = result_path.is_file()
@@ -3351,7 +3410,12 @@ def _local_pending_runs(
             raise ValueError("persisted RUN has conflicting terminal state")
         if not has_result and not has_failure:
             if not any(item.run_id == run_id for item in remote):
-                active_pending.append(run_id)
+                active_pending.append(
+                    _LifecycleRun(
+                        run_id, family, run, run.base_sha, "ACTIVE", {},
+                        parent_run_id, review_id, finding_id,
+                    )
+                )
             continue
         kind = "RESULT" if has_result else "FAILURE"
         value = json.loads(
@@ -3380,10 +3444,35 @@ def _local_pending_runs(
         terminal_pending.append(
             _LifecycleRun(
                 run_id, family, run, candidate_sha, kind, value,
+                parent_run_id=parent_run_id,
                 review_id=review_id, finding_id=finding_id,
             )
         )
     return terminal_pending, active_pending
+
+
+def _is_exact_local_correction_tip(
+    pending: _LifecycleRun, remote: list[_LifecycleRun]
+) -> bool:
+    """Recognize one local child that exactly continues the canonical remote tip."""
+
+    if pending.family not in ("REMEDIATION", "REPAIR"):
+        return False
+    remote_ids = [item.run_id for item in remote]
+    if len(set(remote_ids)) != len(remote_ids):
+        return False
+    identities = set(remote_ids)
+    children: dict[str, list[str]] = {}
+    for item in remote:
+        if item.parent_run_id is None:
+            continue
+        if item.parent_run_id not in identities:
+            return False
+        children.setdefault(item.parent_run_id, []).append(item.run_id)
+    if any(len(set(value)) != 1 for value in children.values()):
+        return False
+    tips = [item for item in remote if item.run_id not in children]
+    return len(tips) == 1 and pending.parent_run_id == tips[0].run_id
 
 
 def observe_unified_state(
@@ -3401,11 +3490,19 @@ def observe_unified_state(
                 observer, task_id=task.task_id, task_revision=task.revision
             )
             remote, reviews = _decode_remote_lifecycle(task, lifecycle)
-            pending_terminal, pending_active = _local_pending_runs(state, task, remote)
+            pending_terminal, pending_active = _local_pending_runs(
+                state, task, remote, reviews
+            )
             if (
                 len(pending_terminal) > 1
                 or (pending_terminal and pending_active)
-                or (pending_terminal and remote)
+                or (
+                    pending_terminal
+                    and remote
+                    and not _is_exact_local_correction_tip(
+                        pending_terminal[0], remote
+                    )
+                )
             ):
                 return _unified_blocked(
                     task, "AMBIGUOUS_LOCAL_TIPS", admission_failures=admission_context
@@ -3419,14 +3516,19 @@ def observe_unified_state(
                     failed_head_sha=(tip.candidate_sha if tip.terminal_kind == "FAILURE" else None),
                     admission_failures=admission_context,
                 )
-            if len(pending_active) > 1 or (pending_active and remote):
+            if len(pending_active) > 1 or (
+                pending_active
+                and remote
+                and not _is_exact_local_correction_tip(pending_active[0], remote)
+            ):
                 return _unified_blocked(
                     task, "AMBIGUOUS_ACTIVE_TIPS", admission_failures=admission_context
                 )
             if pending_active:
                 return UnifiedStateObservation(
                     task.task_id, task.revision, "WAIT", "WAIT",
-                    run_id=pending_active[0], admission_failures=admission_context,
+                    run_id=pending_active[0].run_id,
+                    admission_failures=admission_context,
                 )
 
             kinds: dict[str, set[str]] = {}
