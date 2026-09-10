@@ -825,6 +825,163 @@ prior_finding_id: F1
     assert observation["finding_id"] == finding_f2["id"]
 
 
+def test_unified_state_delta_binds_repair_of_failed_remediation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    failed_sha = "f" * 40
+    repaired_sha = "e" * 40
+    primary_id = "RUN-101-001"
+    failed_remediation_id = "RUN-101-002"
+    repair_id = "RUN-101-003"
+    task_ref = {"id": "TASK-101", "revision": 1}
+    finding = {
+        "id": "F1",
+        "basis": "AC1",
+        "action": "CODE_FIX",
+        "location": "OUTPUT.txt",
+        "issue": "output is incomplete",
+        "expected": "output is complete",
+    }
+
+    def run_payload(run_id: str, base_sha: str) -> dict:
+        return {
+            "run_id": run_id,
+            "task": task_ref,
+            "executor": "codex",
+            "base_sha": base_sha,
+            "workspace": "bounded-away",
+            "head_sha": None,
+            "status": "ACTIVE",
+        }
+
+    primary_run = run_payload(primary_id, reviewed_sha)
+    failed_run = run_payload(failed_remediation_id, reviewed_sha)
+    repair_run = run_payload(repair_id, failed_sha)
+    failed_remediation = {
+        "kind": "REMEDIATION",
+        "execution": {
+            "review_id": "REVIEW-101-001",
+            "finding": finding,
+            "remediation": {
+                "finding_id": finding["id"],
+                "action": "CODE_FIX",
+                "reviewed_sha": reviewed_sha,
+                "modification_scope": ["OUTPUT.txt"],
+                "affected_verification": ["git diff --check"],
+                "constraints": {"hard": ["Commit the output."]},
+            },
+            "run": failed_run,
+            "original_constraints": ["Commit the output."],
+        },
+    }
+    failure = {
+        "kind": "FAILURE",
+        "run_id": failed_remediation_id,
+        "task": task_ref,
+        "executor": "codex",
+        "base_sha": reviewed_sha,
+        "failed_head_sha": failed_sha,
+        "candidate": {"repairable": True, "transportable": True},
+    }
+    repair_authorization = {
+        "repair_id": "REPAIR-101-001",
+        "failed_run_id": failed_remediation_id,
+        "failed_head_sha": failed_sha,
+        "task": task_ref,
+        "action": "CODE_FIX",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Complete the authorized correction."],
+        "constraints": ["Commit the output."],
+    }
+    repair_execution = {
+        "failed_run_id": failed_remediation_id,
+        "root_base_sha": reviewed_sha,
+        "failed_head_sha": failed_sha,
+        "failure": failure,
+        "task": {"task_id": "TASK-101", "revision": 1},
+        "repair": repair_authorization,
+        "run": repair_run,
+    }
+    package = json.dumps({
+        "result": {
+            "head_sha": repaired_sha,
+            "claims": [],
+            "changed_files": [],
+            "unresolved": [],
+        },
+        "evidence": [],
+    }).encode()
+    primary_review = f"""review_id: REVIEW-101-001
+reviewed_sha: {reviewed_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: output is incomplete
+    expected: output is complete
+""".encode()
+    repair_review = f"""review_id: REVIEW-101-002
+reviewed_sha: {repaired_sha}
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: repaired output needs a final correction
+    expected: apply the final correction
+prior_finding_id: F1
+""".encode()
+    lifecycle = RemoteTaskLifecycle(
+        repaired_sha,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", reviewed_sha,
+                json.dumps(primary_run).encode(),
+                json.dumps({
+                    "result": {
+                        "head_sha": reviewed_sha,
+                        "claims": [],
+                        "changed_files": [],
+                        "unresolved": [],
+                    },
+                    "evidence": [],
+                }).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                failed_remediation_id, "FAILURE", failed_sha,
+                json.dumps(failed_remediation).encode(), json.dumps(failure).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                repair_id, "RESULT", repaired_sha,
+                json.dumps(repair_run).encode(), package,
+                json.dumps(repair_execution).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(primary_id, reviewed_sha, primary_review),
+            RemoteLifecycleReview(repair_id, repaired_sha, repair_review),
+        ),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["next_action"] == "AUTHOR_REMEDIATION"
+    assert observation["source_run_id"] == repair_id
+    assert observation["review_id"] == "REVIEW-101-002"
+    assert observation["finding_id"] == "F2"
+
+
 def test_unified_state_authored_remediation_consumes_exact_ready_preflight(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

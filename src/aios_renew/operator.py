@@ -3158,6 +3158,7 @@ class _LifecycleRun:
     review_id: str | None = None
     finding_id: str | None = None
     candidate_available: bool = True
+    correction: Mapping[str, Any] | None = None
 
 
 def _unified_blocked(
@@ -3229,6 +3230,8 @@ def _decode_lifecycle_run(
         raise ValueError("RUN must be a mapping")
     if value.get("kind") == "REMEDIATION":
         execution = _remediation_execution_from_data(value.get("execution"))
+        if execution.run.base_sha != execution.remediation.reviewed_sha:
+            raise ValueError("REMEDIATION RUN base does not match reviewed SHA")
         return (
             execution.run,
             "REMEDIATION",
@@ -3264,6 +3267,7 @@ def _decode_remote_lifecycle(
         ):
             raise ValueError("terminal RUN does not bind the current TASK revision")
         parent_run_id = None
+        correction = None
         if item.correction is not None:
             correction = json.loads(item.correction.decode("utf-8", errors="strict"))
             if not isinstance(correction, Mapping):
@@ -3273,6 +3277,28 @@ def _decode_remote_lifecycle(
                 raise ValueError("REPAIR lineage has no failed RUN identity")
             if family != "PRIMARY":
                 raise ValueError("terminal has competing correction families")
+            embedded_run = correction.get("run")
+            embedded_failure = correction.get("failure")
+            authorization = correction.get("repair")
+            correction_task = correction.get("task")
+            run_value = json.loads(item.run.decode("utf-8", errors="strict"))
+            if (
+                correction.get("failed_head_sha") != run.base_sha
+                or not isinstance(correction.get("root_base_sha"), str)
+                or not correction.get("root_base_sha")
+                or not isinstance(embedded_run, Mapping)
+                or dict(embedded_run) != dict(run_value)
+                or not isinstance(embedded_failure, Mapping)
+                or embedded_failure.get("run_id") != parent_run_id
+                or embedded_failure.get("failed_head_sha") != run.base_sha
+                or not isinstance(authorization, Mapping)
+                or authorization.get("failed_run_id") != parent_run_id
+                or authorization.get("failed_head_sha") != run.base_sha
+                or not isinstance(correction_task, Mapping)
+                or correction_task.get("task_id") != task.task_id
+                or correction_task.get("revision") != task.revision
+            ):
+                raise ValueError("REPAIR execution lineage is invalid")
             family = "REPAIR"
         terminal = json.loads(item.terminal.decode("utf-8", errors="strict"))
         if not isinstance(terminal, Mapping):
@@ -3282,10 +3308,15 @@ def _decode_remote_lifecycle(
             if result.head_sha != item.candidate_sha:
                 raise ValueError("RESULT head does not match candidate ref")
         else:
+            failure_task = terminal.get("task")
             if (
                 terminal.get("kind") != "FAILURE"
                 or terminal.get("run_id") != item.run_id
                 or terminal.get("failed_head_sha") != item.candidate_sha
+                or terminal.get("base_sha") != run.base_sha
+                or not isinstance(failure_task, Mapping)
+                or failure_task.get("id") != task.task_id
+                or failure_task.get("revision") != task.revision
             ):
                 raise ValueError("FAILURE identity does not match candidate ref")
         decoded.append(
@@ -3300,6 +3331,7 @@ def _decode_remote_lifecycle(
                 review_id,
                 finding_id,
                 item.candidate_available,
+                correction,
             )
         )
     # A remediation points to the uniquely reviewed predecessor with the same
@@ -3323,7 +3355,86 @@ def _decode_remote_lifecycle(
         if len(parents) != 1:
             raise ValueError("REMEDIATION predecessor is missing or ambiguous")
         resolved.append(replace(item, parent_run_id=parents[0].run_id))
-    return resolved, reviews
+
+    # A REPAIR keeps its immediate failed RUN as parent, while inheriting the
+    # semantic identity embedded by the correction it repairs.  Resolve that
+    # identity only by walking the immutable parent chain; never search the TASK
+    # by finding id.
+    by_run_id: dict[str, list[_LifecycleRun]] = {}
+    for item in resolved:
+        by_run_id.setdefault(item.run_id, []).append(item)
+
+    def correction_origin(
+        item: _LifecycleRun, seen: frozenset[str] = frozenset()
+    ) -> _LifecycleRun | None:
+        if item.family == "REMEDIATION":
+            return item
+        if item.family != "REPAIR":
+            return None
+        if item.run_id in seen or item.parent_run_id is None:
+            raise ValueError("REPAIR predecessor is missing or cyclic")
+        parents = by_run_id.get(item.parent_run_id, ())
+        if len(parents) != 1:
+            raise ValueError("REPAIR predecessor is missing or ambiguous")
+        parent = parents[0]
+        if (
+            parent.terminal_kind != "FAILURE"
+            or item.run.base_sha != parent.candidate_sha
+            or item.correction is None
+            or dict(item.correction["failure"]) != dict(parent.terminal)
+            or parent.terminal.get("base_sha") != parent.run.base_sha
+        ):
+            raise ValueError("REPAIR predecessor identity or failed SHA mismatch")
+        return correction_origin(parent, seen.union((item.run_id,)))
+
+    correction_complete: list[_LifecycleRun] = []
+    for item in resolved:
+        if item.family != "REPAIR":
+            correction_complete.append(item)
+            continue
+        origin = correction_origin(item)
+        correction_complete.append(
+            replace(
+                item,
+                review_id=None if origin is None else origin.review_id,
+                finding_id=None if origin is None else origin.finding_id,
+            )
+        )
+    return correction_complete, reviews
+
+
+def _correction_prior_review(
+    tip: _LifecycleRun,
+    lifecycle: list[_LifecycleRun],
+    reviews: Mapping[str, Review],
+) -> Review:
+    """Resolve a DELTA predecessor through one exact correction lineage."""
+
+    by_run_id: dict[str, list[_LifecycleRun]] = {}
+    for item in lifecycle:
+        by_run_id.setdefault(item.run_id, []).append(item)
+    current = tip
+    seen: set[str] = set()
+    while current.family == "REPAIR":
+        if current.run_id in seen or current.parent_run_id is None:
+            raise ValueError("DELTA review predecessor is missing or ambiguous")
+        seen.add(current.run_id)
+        parents = by_run_id.get(current.parent_run_id, ())
+        if len(parents) != 1:
+            raise ValueError("DELTA review predecessor is missing or ambiguous")
+        current = parents[0]
+    if current.family != "REMEDIATION" or current.parent_run_id is None:
+        raise ValueError("DELTA review predecessor is missing or ambiguous")
+    prior_review = reviews.get(current.parent_run_id)
+    if (
+        prior_review is None
+        or prior_review.review_id != current.review_id
+        or prior_review.reviewed_sha != current.run.base_sha
+        or tip.review_id != current.review_id
+        or tip.finding_id != current.finding_id
+    ):
+        raise ValueError("DELTA review predecessor is missing or ambiguous")
+    return prior_review
 
 
 def _local_pending_runs(
@@ -3657,17 +3768,9 @@ def observe_unified_state(
                 )
             prior_review = None
             if review.prior_finding_id is not None:
-                prior_review = (
-                    reviews.get(tip.parent_run_id)
-                    if tip.family == "REMEDIATION"
-                    and tip.parent_run_id is not None
-                    else None
-                )
+                prior_review = _correction_prior_review(tip, remote, reviews)
                 if (
-                    prior_review is None
-                    or prior_review.review_id != tip.review_id
-                    or prior_review.reviewed_sha != tip.run.base_sha
-                    or review.prior_finding_id != tip.finding_id
+                    review.prior_finding_id != tip.finding_id
                 ):
                     raise ValueError("DELTA review predecessor is missing or ambiguous")
             validate_review(task=task, result=result, review=review, prior_review=prior_review)
