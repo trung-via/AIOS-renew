@@ -17,10 +17,12 @@ sequence:
       task_id: TASK-086
       published_sha: "e56abece22509dc6e7f4d3b641c9d5600798ec67"
   - id: unified-human-surface
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-087
+      published_sha: "a607fb2cf1c57fe35a9a15504df0e98d28de2f5b"
   - id: downstream-adoption
-    status: BLOCKED
-    blocked_by: unified-human-surface
+    status: NEXT
 parallel_work:
   - id: approved-remediation-wakeup
     milestone: A6
