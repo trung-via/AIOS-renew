@@ -1,0 +1,53 @@
+review_id: REVIEW-087-001
+reviewed_sha: 0ef0a8c554e4c5d3270a08b3d358df741dc0adb8
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+  AC8: PASS
+  AC9: FAIL
+  AC10: PASS
+  AC11: FAIL
+findings:
+  - id: F1
+    basis: AC6
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::continue_task / run_repair / main Human-surface delegation boundary
+    issue: >
+      The unified Human surface does not yet preserve exact Executor authority and bounded
+      outcome semantics across REPAIR and failure paths. `continue_task` decides that every
+      `EXECUTE_REPAIR` whose preflight reports action `NO_CHANGE` needs no Executor, but the
+      TASK-085 preflight result exposes only the authorized action, not whether TASK-064
+      reusable pre-verification state actually qualified. TASK-064 explicitly requires a
+      non-qualifying NO_CHANGE REPAIR to retain the ordinary one-Executor path. With no
+      `--executor`, such a READY NO_CHANGE state is therefore delegated into `run_repair`,
+      which only later discovers `reusable_package is None` and raises; the Human receives a
+      canonical REPAIR Admission Failure instead of the required non-delegated
+      `EXECUTOR_REQUIRED` outcome. Conversely, when reuse is eligible and no Executor was
+      supplied, `run_repair` fabricates `run_executor = "codex"`, so the canonical RUN and
+      summary identify an Executor that the Human did not select even though this surface is
+      forbidden to default, infer, or silently reuse one. Finally, delegated canonical
+      operation exceptions escape `continue_task`; `main` falls back to plain `AIOS ERROR`
+      and emits no versioned `AIOS_HUMAN_SURFACE` result for that delegated outcome, leaving
+      the failure-facing part of AC9/AC11 and the README claim of one bounded Human result
+      unfulfilled.
+    expected: >
+      Preserve the existing canonical REPAIR/reuse authority instead of inferring Executor
+      need from `NO_CHANGE` alone. A non-qualifying ordinary NO_CHANGE REPAIR with no explicit
+      Human Executor must return bounded `EXECUTOR_REQUIRED` before delegation, RUN creation,
+      or Admission Failure persistence; an actually eligible TASK-064 verification-only
+      continuation must invoke zero coding Executors without silently selecting/defaulting a
+      coding Executor as Human authority, while keeping frozen RUN/lineage truth explicit.
+      Delegated operation success and failure must remain one-operation-only and produce the
+      bounded versioned Human-surface outcome required by TASK-087, while the existing
+      Admission Failure v2 or RUN FAILURE remains the sole canonical failure artifact and no
+      retry, reroute, duplicate failure authority, or second operation is introduced. Add
+      focused regressions covering qualifying versus non-qualifying NO_CHANGE and delegated
+      pre-RUN versus admitted failure behavior, preserving all existing low-level command
+      semantics.
