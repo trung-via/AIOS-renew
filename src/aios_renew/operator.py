@@ -40,7 +40,6 @@ from .dispatcher import (
 from .dispatch_reconciliation import (
     DispatchError,
     DispatchInvocation,
-    TASK_ID_PATTERN,
     bind_dispatch_run,
     execute_dispatch,
 )
@@ -587,7 +586,12 @@ def resolve_repository(path: str | Path | None = None) -> Path:
 def _canonical_task_path(repo: str | Path, task_id: str) -> Path:
     """Validate one TASK identity before resolving its exact local path."""
 
-    if not isinstance(task_id, str) or not TASK_ID_PATTERN.fullmatch(task_id):
+    if (
+        not isinstance(task_id, str)
+        or not task_id
+        or "/" in task_id
+        or "\\" in task_id
+    ):
         raise OperatorError(f"invalid TASK id: {task_id!r}")
     return Path(repo) / ".ai" / "tasks" / f"{task_id}.yaml"
 

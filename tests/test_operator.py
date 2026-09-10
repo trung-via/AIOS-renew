@@ -3598,7 +3598,7 @@ def publish_upstream(
 
 
 @pytest.mark.parametrize(
-    "task_id", ["", "TASK/102", "TASK\\102", "../TASK-102", "NOT-A-TASK"]
+    "task_id", ["", "TASK/102", "TASK\\102", "../TASK-102"]
 )
 def test_continue_rejects_invalid_task_before_pre_resolution_sync(
     tmp_path: Path,
@@ -3623,6 +3623,35 @@ def test_continue_rejects_invalid_task_before_pre_resolution_sync(
 
     assert git(repo, "rev-parse", "HEAD") == before
     assert not list(operator_module._runtime_paths_readonly(repo).runs.glob("*.json"))
+
+
+def test_continue_existing_safe_non_prefixed_task_never_syncs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_id = "LEGACY-101"
+    repo = make_repo(tmp_path, task_source=None)
+    task_path = repo / ".ai" / "tasks" / f"{task_id}.yaml"
+    task_path.parent.mkdir(parents=True, exist_ok=True)
+    task_path.write_text(
+        TASK_SOURCE.replace("TASK-101", task_id), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "_preflight_primary_sync",
+        lambda *_args, **_kwargs: pytest.fail("safe local TASK triggered pre-sync"),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: _human_observation("NONE", task_id=task_id),
+    )
+
+    outcome, exit_code = operator_module.continue_task(task_id, repo=repo)
+
+    assert load_task(repo, task_id).task_id == task_id
+    assert exit_code == 0
+    assert outcome is not None
+    assert outcome.task_id == task_id
 
 
 @pytest.mark.parametrize(
@@ -3671,16 +3700,17 @@ def test_continue_existing_malformed_task_does_not_sync(
         operator_module.continue_task("TASK-101", repo=repo)
 
 
+@pytest.mark.parametrize("task_id", ["TASK-102", "LEGACY-102"])
 def test_continue_missing_upstream_task_syncs_then_reenters_fresh_primary(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, task_id: str,
 ) -> None:
     monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
     repo = make_repo(tmp_path, task_source=None)
-    task_source = TASK_SOURCE.replace("TASK-101", "TASK-102")
+    task_source = TASK_SOURCE.replace("TASK-101", task_id)
     published_sha = publish_upstream(
-        repo, {".ai/tasks/TASK-102.yaml": task_source}, "publish TASK-102"
+        repo, {f".ai/tasks/{task_id}.yaml": task_source}, f"publish {task_id}"
     )
-    argv = ["continue", "TASK-102", "--executor", "codex", "--repo", str(repo)]
+    argv = ["continue", task_id, "--executor", "codex", "--repo", str(repo)]
     events = []
     child_results = []
     git_calls = []
@@ -3692,8 +3722,8 @@ def test_continue_missing_upstream_task_syncs_then_reenters_fresh_primary(
 
     def observe(*_args, **_kwargs):
         events.append(("observe", git(repo, "rev-parse", "HEAD")))
-        assert load_task(repo, "TASK-102").task_id == "TASK-102"
-        return _human_observation("EXECUTE_PRIMARY", task_id="TASK-102")
+        assert load_task(repo, task_id).task_id == task_id
+        return _human_observation("EXECUTE_PRIMARY", task_id=task_id)
 
     def execute(*_args, **kwargs):
         events.append(("execute", kwargs["preflight_sha"]))
@@ -3704,7 +3734,7 @@ def test_continue_missing_upstream_task_syncs_then_reenters_fresh_primary(
         monkeypatch.setenv("AIOS_RESTART_ATTEMPTED", "1")
         child_results.append(
             operator_module.continue_task(
-                "TASK-102", executor="codex", repo=root, argv=argv
+                task_id, executor="codex", repo=root, argv=argv
             )
         )
         return child_results[-1][1]
@@ -3715,7 +3745,7 @@ def test_continue_missing_upstream_task_syncs_then_reenters_fresh_primary(
     monkeypatch.setattr(operator_module, "_restart_primary_invocation", restart)
 
     outcome, exit_code = operator_module.continue_task(
-        "TASK-102", executor="codex", repo=repo, argv=argv
+        task_id, executor="codex", repo=repo, argv=argv
     )
 
     assert outcome is None
