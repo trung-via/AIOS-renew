@@ -3160,6 +3160,7 @@ class _LifecycleRun:
     finding_id: str | None = None
     candidate_available: bool = True
     correction: Mapping[str, Any] | None = None
+    run_document: Mapping[str, Any] | None = None
 
 
 def _unified_blocked(
@@ -3410,6 +3411,7 @@ def _decode_remote_lifecycle(
                 finding_id,
                 item.candidate_available,
                 correction,
+                run_document,
             )
         )
     # A remediation points to the uniquely reviewed predecessor with the same
@@ -3531,12 +3533,16 @@ def _local_pending_runs(
     for path in state.runs.glob(f"{prefix}*.json"):
         run_id = path.stem
         raw = path.read_bytes()
+        run_document = json.loads(raw.decode("utf-8", errors="strict"))
+        if not isinstance(run_document, Mapping):
+            raise ValueError("persisted RUN must be a mapping")
         run, family, review_id, finding_id = _decode_lifecycle_run(raw, run_id=run_id)
         if run.task.id != task.task_id or run.task.revision != task.revision:
             continue
         if run.run_id != run_id or run.status != "ACTIVE":
             raise ValueError("persisted RUN identity is invalid")
         parent_run_id = None
+        correction = None
         repair_path = state.repairs / path.name
         if repair_path.is_file():
             if family != "PRIMARY":
@@ -3544,6 +3550,7 @@ def _local_pending_runs(
             repair_execution = json.loads(repair_path.read_text(encoding="utf-8"))
             if not isinstance(repair_execution, Mapping):
                 raise ValueError("persisted REPAIR execution must be a mapping")
+            correction = repair_execution
             parent_run_id = repair_execution.get("failed_run_id")
             failure = repair_execution.get("failure")
             authorization = repair_execution.get("repair")
@@ -3604,6 +3611,7 @@ def _local_pending_runs(
                     _LifecycleRun(
                         run_id, family, run, run.base_sha, "ACTIVE", {},
                         parent_run_id, review_id, finding_id,
+                        correction=correction, run_document=run_document,
                     )
                 )
             continue
@@ -3622,9 +3630,6 @@ def _local_pending_runs(
             )
             if not isinstance(candidate_sha, str) or not candidate_sha:
                 raise ValueError("persisted RESULT has no candidate head")
-            run_document = json.loads(raw.decode("utf-8", errors="strict"))
-            if not isinstance(run_document, Mapping):
-                raise ValueError("persisted RUN must be a mapping")
             _validate_lifecycle_result(
                 task=task,
                 run=run,
@@ -3648,10 +3653,23 @@ def _local_pending_runs(
             )
         same_run = [item for item in remote if item.run_id == run_id]
         if same_run:
+            canonical = same_run[0] if len(same_run) == 1 else None
             if (
-                len(same_run) != 1
+                canonical is None
                 or (run_id, kind) not in remote_kinds
-                or same_run[0].candidate_sha != candidate_sha
+                or canonical.candidate_sha != candidate_sha
+                or canonical.family != family
+                or canonical.parent_run_id != parent_run_id
+                or canonical.review_id != review_id
+                or canonical.finding_id != finding_id
+                or canonical.run_document is None
+                or dict(canonical.run_document) != dict(run_document)
+                or dict(canonical.terminal) != dict(value)
+                or (
+                    None if canonical.correction is None
+                    else dict(canonical.correction)
+                )
+                != (None if correction is None else dict(correction))
             ):
                 raise ValueError("local and canonical terminal state conflict")
             continue
@@ -3660,6 +3678,7 @@ def _local_pending_runs(
                 run_id, family, run, candidate_sha, kind, value,
                 parent_run_id=parent_run_id,
                 review_id=review_id, finding_id=finding_id,
+                correction=correction, run_document=run_document,
             )
         )
     return terminal_pending, active_pending

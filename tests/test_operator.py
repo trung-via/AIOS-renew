@@ -731,6 +731,54 @@ def test_unified_state_rejects_local_result_without_required_verification(
     assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
 
 
+def test_unified_state_rejects_contradictory_local_and_canonical_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = {
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    local_package = canonical_result_payload(run_id, head)
+    canonical_package = canonical_result_payload(run_id, head)
+    canonical_package["evidence"][0]["result"]["summary"] = "different proof"
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                run_id,
+                "RESULT",
+                head,
+                json.dumps(run).encode(),
+                json.dumps(canonical_package).encode(),
+            ),
+        ),
+        (), (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    state = runtime_paths(repo)
+    (state.runs / f"{run_id}.json").write_text(
+        json.dumps(run), encoding="utf-8"
+    )
+    (state.results / f"{run_id}.json").write_text(
+        json.dumps(local_package), encoding="utf-8"
+    )
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert (observation["lifecycle_state"], observation["next_action"]) == (
+        "BLOCKED", "NONE",
+    )
+    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+
 def test_unified_state_rejects_canonical_failure_with_malformed_run_binding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
