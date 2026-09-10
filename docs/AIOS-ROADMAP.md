@@ -22,12 +22,12 @@ Do not build AIOS-native replacements for capabilities already provided appropri
 The current machine-readable sequencing bookmark is [`.ai/roadmap-state.yaml`](../.ai/roadmap-state.yaml). It binds `control-plane-closure` as the active track with this ordered sequence:
 
 1. **Admission Failure v2 — DONE**: completed by TASK-081 at published SHA `65c1597eb59b06041fba1d749f2dea87e2c00833`.
-2. **Correction Preflight — NEXT**.
-3. **Unified State + Next Action — BLOCKED** by Correction Preflight.
-4. **Unified Human Surface — BLOCKED** by Unified State + Next Action.
+2. **Correction Preflight — DONE**: completed by TASK-085 at published SHA `36ff663675ac04b94da406536ac523e820b1b21e`.
+3. **Unified State + Next Action — DONE**: completed by TASK-086 at published SHA `e56abece22509dc6e7f4d3b641c9d5600798ec67`.
+4. **Unified Human Surface — NEXT**.
 5. **Downstream Adoption — BLOCKED** by Unified Human Surface.
 
-Absent an explicit new Human track or priority, generic **"continue roadmap"** means continue the unique `NEXT` item in this active sequence. It must not select A4, A5, A7, A9, A10, or other parallel work while Correction Preflight remains `NEXT`. An explicit current Human priority change outranks the bookmark prospectively and must be canonicalized there before a later generic continuation relies on it.
+Absent an explicit new Human track or priority, generic **"continue roadmap"** means continue the unique `NEXT` item in this active sequence. It must not select A4, A5, A7, A9, A10, or other parallel work while Unified Human Surface remains `NEXT`. An explicit current Human priority change outranks the bookmark prospectively and must be canonicalized there before a later generic continuation relies on it.
 
 This bookmark is Human/Brain planning state only. Exact canonical Git state and immutable TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR lineage remain the sole engineering-state truth. A `DONE` item requires an exact supporting TASK and published SHA; the bookmark neither proves implementation success nor makes a TASK or RUN complete, and it is never advanced automatically by execution, review, or publication.
 
@@ -156,7 +156,7 @@ A-Series does not block Python Agent product development. It provides subordinat
 
 1. **A1 — GitHub Actions Self-hosted Wakeup**: remote Human/Brain trigger to canonical Operator execution on a designated Windows self-hosted runner. Implemented by TASK-066 (`.github/workflows/aios-self-hosted-wakeup.yml`).
 2. **A2 — Durable Dispatch Identity + Reconciliation — DONE**: duplicate event becomes deterministic no-op; crash/restart remains attributable. Semantics established by TASK-068 and integrated onto the published current-main lineage by TASK-073 (`aios wakeup` plus repository-local `.git/aios` dispatch state).
-3. **A3 — Remote Status / Approval Surface — DONE BY TASK-074 UPON PUBLICATION**: bounded read-only dispatch observation and exact SHA-bound Human remediation approval, with no execution authority. This completion is authoritative only when the TASK-074 candidate is semantically reviewed PASS and published.
+3. **A3 — Remote Status / Approval Surface — DONE**: bounded read-only dispatch observation and exact SHA-bound Human remediation approval, with no execution authority. Completed by TASK-074.
 4. **A4 — Transport Extraction**: replace the compatibility transport only after the outer mechanism proves parity, then remove obsolete transport code. Separately gated.
 5. **A5 — Evidence Bundle Strengthening**: only where measured gaps justify additional evidence packaging. Separately gated.
 6. **A6 — Automated REVIEW-to-REMEDIATION Wakeup — DONE AS PARALLEL WORK**: completed by TASK-084 at published SHA `93cc833e03c15bd1c57a53093476af671c5f6027`. An exact existing A3 approval can be delivered once through a durable correction identity and explicit Executor into the unchanged canonical REMEDIATION path. TASK-082 established the reviewed semantics, but neither divergent TASK-082 candidate was published onto current main. A6 is not part of the active Control-plane Closure sequence and does not compete with its `NEXT` item.
@@ -216,7 +216,10 @@ DONE: A3 Remote Status / Approval Surface (TASK-074)
 DONE: A6 Automated REVIEW-to-REMEDIATION Wakeup (TASK-084)
         ↓
 ACTIVE SEQUENTIAL PRIORITY: Control-plane Closure
-NEXT: Correction Preflight
+DONE: Admission Failure v2 (TASK-081)
+DONE: Correction Preflight (TASK-085)
+DONE: Unified State + Next Action (TASK-086)
+NEXT: Unified Human Surface
 ```
 
 Separately gated A4, A5, A7, A9, A10, and other feasible parallel milestones do not become current work from generic continuation intent. Everything else must justify itself against explicit Human intent, the machine-readable active bookmark, the Manifesto, Constitution, observed evidence, and the North Star.
