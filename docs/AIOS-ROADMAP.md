@@ -24,10 +24,10 @@ The current machine-readable sequencing bookmark is [`.ai/roadmap-state.yaml`](.
 1. **Admission Failure v2 — DONE**: completed by TASK-081 at published SHA `65c1597eb59b06041fba1d749f2dea87e2c00833`.
 2. **Correction Preflight — DONE**: completed by TASK-085 at published SHA `36ff663675ac04b94da406536ac523e820b1b21e`.
 3. **Unified State + Next Action — DONE**: completed by TASK-086 at published SHA `e56abece22509dc6e7f4d3b641c9d5600798ec67`.
-4. **Unified Human Surface — NEXT**.
-5. **Downstream Adoption — BLOCKED** by Unified Human Surface.
+4. **Unified Human Surface — DONE**: completed by TASK-087 at published SHA `a607fb2cf1c57fe35a9a15504df0e98d28de2f5b`.
+5. **Downstream Adoption — NEXT**.
 
-Absent an explicit new Human track or priority, generic **"continue roadmap"** means continue the unique `NEXT` item in this active sequence. It must not select A4, A5, A7, A9, A10, or other parallel work while Unified Human Surface remains `NEXT`. An explicit current Human priority change outranks the bookmark prospectively and must be canonicalized there before a later generic continuation relies on it.
+Absent an explicit new Human track or priority, generic **"continue roadmap"** means continue the unique `NEXT` item in this active sequence. It must not select A4, A5, A7, A9, A10, or other parallel work while Downstream Adoption remains `NEXT`. An explicit current Human priority change outranks the bookmark prospectively and must be canonicalized there before a later generic continuation relies on it.
 
 This bookmark is Human/Brain planning state only. Exact canonical Git state and immutable TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR lineage remain the sole engineering-state truth. A `DONE` item requires an exact supporting TASK and published SHA; the bookmark neither proves implementation success nor makes a TASK or RUN complete, and it is never advanced automatically by execution, review, or publication.
 
@@ -219,7 +219,8 @@ ACTIVE SEQUENTIAL PRIORITY: Control-plane Closure
 DONE: Admission Failure v2 (TASK-081)
 DONE: Correction Preflight (TASK-085)
 DONE: Unified State + Next Action (TASK-086)
-NEXT: Unified Human Surface
+DONE: Unified Human Surface (TASK-087)
+NEXT: Downstream Adoption
 ```
 
 Separately gated A4, A5, A7, A9, A10, and other feasible parallel milestones do not become current work from generic continuation intent. Everything else must justify itself against explicit Human intent, the machine-readable active bookmark, the Manifesto, Constitution, observed evidence, and the North Star.
