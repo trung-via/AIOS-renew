@@ -16,10 +16,45 @@ from aios_renew.review_transport import (
     task_run_prefix,
     transport_failure,
     transport_post_pass,
+    validate_runtime_failure_binding,
 )
 
 
 TASK = {"id": "TASK-058", "revision": 2}
+
+
+def test_runtime_failure_binding_rejects_candidate_facts_that_cannot_be_repairable(
+) -> None:
+    failure = {
+        "kind": "FAILURE",
+        "run_id": "RUN-058-004",
+        "task": TASK,
+        "executor": "codex",
+        "base_sha": "a" * 40,
+        "failed_head_sha": "b" * 40,
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": True,
+            "descends_from_base": True,
+            "changed_files": ["subject.txt"],
+            "outside_task_scope": [],
+        },
+    }
+
+    with pytest.raises(ValueError, match="repair binding"):
+        validate_runtime_failure_binding(
+            failure,
+            run_id="RUN-058-004",
+            task_id="TASK-058",
+            task_revision=2,
+            executor="codex",
+            base_sha="a" * 40,
+            candidate_sha="b" * 40,
+            modification_scope=("subject.txt",),
+            actual_descends_from_base=True,
+            actual_changed_files={"subject.txt"},
+        )
 
 
 def git(repo: Path, *args: str) -> str:

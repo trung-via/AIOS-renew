@@ -27,6 +27,79 @@ class RemoteQueryError(ReviewTransportError):
         } else "UNKNOWN"
 
 
+def validate_runtime_failure_binding(
+    failure: Mapping[str, Any],
+    *,
+    run_id: str,
+    task_id: str,
+    task_revision: int,
+    executor: str,
+    base_sha: str,
+    candidate_sha: str,
+    modification_scope: tuple[str, ...],
+    actual_descends_from_base: bool | None = None,
+    actual_changed_files: set[str] | None = None,
+) -> None:
+    """Validate the Runtime FAILURE identity and repair-candidate contract."""
+
+    task = failure.get("task")
+    if (
+        failure.get("kind") != "FAILURE"
+        or failure.get("run_id") != run_id
+        or not isinstance(task, Mapping)
+        or dict(task) != {"id": task_id, "revision": task_revision}
+        or failure.get("executor") != executor
+        or failure.get("base_sha") != base_sha
+        or failure.get("failed_head_sha") != candidate_sha
+    ):
+        raise ValueError("FAILURE identity does not match RUN and candidate")
+
+    candidate = failure.get("candidate")
+    if not isinstance(candidate, Mapping):
+        raise ValueError("FAILURE candidate must be a mapping")
+    flags = (
+        candidate.get("transportable"),
+        candidate.get("repairable"),
+        candidate.get("dirty"),
+        candidate.get("descends_from_base"),
+    )
+    if not all(isinstance(value, bool) for value in flags):
+        raise ValueError("FAILURE candidate flags must be booleans")
+
+    def paths(name: str) -> list[str]:
+        value = candidate.get(name)
+        if (
+            not isinstance(value, list)
+            or not all(isinstance(item, str) and item for item in value)
+            or len(value) != len(set(value))
+        ):
+            raise ValueError(f"FAILURE candidate {name} is invalid")
+        return value
+
+    changed_files = paths("changed_files")
+    outside_scope = paths("outside_task_scope")
+    if set(outside_scope) != set(changed_files).difference(modification_scope):
+        raise ValueError("FAILURE candidate scope binding is invalid")
+    descends = candidate["descends_from_base"]
+    repairable = not candidate["dirty"] and descends
+    transportable = repairable and not outside_scope
+    if (
+        candidate["repairable"] is not repairable
+        or candidate["transportable"] is not transportable
+    ):
+        raise ValueError("FAILURE candidate repair binding is invalid")
+    if (
+        actual_descends_from_base is not None
+        and descends is not actual_descends_from_base
+    ):
+        raise ValueError("FAILURE candidate ancestry binding is invalid")
+    if (
+        actual_changed_files is not None
+        and set(changed_files) != actual_changed_files
+    ):
+        raise ValueError("FAILURE candidate changed-files binding is invalid")
+
+
 @dataclass(frozen=True)
 class RemoteRemediationLineage:
     """Immutable canonical inputs resolved from one remote remediation ref."""

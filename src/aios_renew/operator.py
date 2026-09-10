@@ -61,6 +61,7 @@ from .review_transport import (
     transport_admission_failure,
     transport_failure,
     transport_post_pass,
+    validate_runtime_failure_binding,
 )
 from .run import Run, RunLeaseRegistry, RunTaskReference
 from .run_observation import (
@@ -3244,8 +3245,79 @@ def _decode_lifecycle_run(
     return run, "PRIMARY", None, None
 
 
+def _validate_lifecycle_result(
+    *,
+    task: Task,
+    run: Run,
+    family: str,
+    run_document: Mapping[str, Any],
+    terminal: Mapping[str, Any],
+    candidate_sha: str,
+) -> ResultPackage:
+    """Validate one canonical/local ResultPackage before lifecycle reduction."""
+
+    result = validate_result(terminal["result"])
+    evidence_data = terminal["evidence"]
+    if not isinstance(evidence_data, list):
+        raise TypeError("ResultPackage evidence must be a list")
+    evidence = tuple(validate_evidence(item) for item in evidence_data)
+    package = ResultPackage(result=result, evidence=evidence)
+    if family == "REMEDIATION":
+        execution = _remediation_execution_from_data(run_document["execution"])
+        _require_remediation_package_contract(
+            execution, package, actual_head=result.head_sha
+        )
+    else:
+        validate_result_package(
+            task=task, run=run, result=result, evidence=evidence
+        )
+    if result.head_sha != candidate_sha:
+        raise ValueError("RESULT head does not match candidate ref")
+    return package
+
+
+def _validate_lifecycle_failure(
+    *,
+    repo: Path,
+    task: Task,
+    run: Run,
+    terminal: Mapping[str, Any],
+    candidate_sha: str,
+    candidate_available: bool,
+    continuation_of: str | None,
+) -> None:
+    """Bind one FAILURE to Runtime's exact RUN and candidate facts."""
+
+    actual_descends = None
+    actual_changed = None
+    if candidate_available:
+        try:
+            actual_descends = _git_is_ancestor(repo, run.base_sha, candidate_sha)
+            actual_changed = (
+                _committed_changed_files(repo, run.base_sha, candidate_sha)
+                if actual_descends
+                else set()
+            )
+        except OperatorError as exc:
+            raise ValueError("FAILURE candidate Git binding is invalid") from exc
+    validate_runtime_failure_binding(
+        terminal,
+        run_id=run.run_id,
+        task_id=task.task_id,
+        task_revision=task.revision,
+        executor=run.executor,
+        base_sha=run.base_sha,
+        candidate_sha=candidate_sha,
+        modification_scope=task.scope.modify,
+        actual_descends_from_base=actual_descends,
+        actual_changed_files=actual_changed,
+    )
+    if terminal.get("continuation_of") != continuation_of:
+        raise ValueError("FAILURE continuation does not match RUN family")
+
+
 def _decode_remote_lifecycle(
-    task: Task, lifecycle: RemoteTaskLifecycle
+    repo: Path, task: Task, lifecycle: RemoteTaskLifecycle
 ) -> tuple[list[_LifecycleRun], dict[str, Review]]:
     reviews: dict[str, Review] = {}
     for item in lifecycle.reviews:
@@ -3256,6 +3328,9 @@ def _decode_remote_lifecycle(
         )
     decoded: list[_LifecycleRun] = []
     for item in lifecycle.terminals:
+        run_document = json.loads(item.run.decode("utf-8", errors="strict"))
+        if not isinstance(run_document, Mapping):
+            raise ValueError("RUN must be a mapping")
         run, family, review_id, finding_id = _decode_lifecycle_run(
             item.run, run_id=item.run_id
         )
@@ -3304,21 +3379,24 @@ def _decode_remote_lifecycle(
         if not isinstance(terminal, Mapping):
             raise ValueError("terminal document must be a mapping")
         if item.kind == "RESULT":
-            result = validate_result(terminal["result"])
-            if result.head_sha != item.candidate_sha:
-                raise ValueError("RESULT head does not match candidate ref")
+            _validate_lifecycle_result(
+                task=task,
+                run=run,
+                family=family,
+                run_document=run_document,
+                terminal=terminal,
+                candidate_sha=item.candidate_sha,
+            )
         else:
-            failure_task = terminal.get("task")
-            if (
-                terminal.get("kind") != "FAILURE"
-                or terminal.get("run_id") != item.run_id
-                or terminal.get("failed_head_sha") != item.candidate_sha
-                or terminal.get("base_sha") != run.base_sha
-                or not isinstance(failure_task, Mapping)
-                or failure_task.get("id") != task.task_id
-                or failure_task.get("revision") != task.revision
-            ):
-                raise ValueError("FAILURE identity does not match candidate ref")
+            _validate_lifecycle_failure(
+                repo=repo,
+                task=task,
+                run=run,
+                terminal=terminal,
+                candidate_sha=item.candidate_sha,
+                candidate_available=item.candidate_available,
+                continuation_of=parent_run_id if family == "REPAIR" else None,
+            )
         decoded.append(
             _LifecycleRun(
                 item.run_id,
@@ -3438,6 +3516,7 @@ def _correction_prior_review(
 
 
 def _local_pending_runs(
+    repo: Path,
     state: RuntimePaths,
     task: Task,
     remote: list[_LifecycleRun],
@@ -3535,14 +3614,38 @@ def _local_pending_runs(
         if not isinstance(value, Mapping):
             raise ValueError("persisted terminal document must be a mapping")
         if has_result:
-            result = validate_result(value["result"])
-            candidate_sha = result.head_sha
+            result_data = value.get("result")
+            candidate_sha = (
+                result_data.get("head_sha")
+                if isinstance(result_data, Mapping)
+                else None
+            )
+            if not isinstance(candidate_sha, str) or not candidate_sha:
+                raise ValueError("persisted RESULT has no candidate head")
+            run_document = json.loads(raw.decode("utf-8", errors="strict"))
+            if not isinstance(run_document, Mapping):
+                raise ValueError("persisted RUN must be a mapping")
+            _validate_lifecycle_result(
+                task=task,
+                run=run,
+                family=family,
+                run_document=run_document,
+                terminal=value,
+                candidate_sha=candidate_sha,
+            )
         else:
-            if value.get("kind") != "FAILURE" or value.get("run_id") != run_id:
-                raise ValueError("persisted FAILURE identity is invalid")
             candidate_sha = value.get("failed_head_sha")
             if not isinstance(candidate_sha, str) or not candidate_sha:
                 raise ValueError("persisted FAILURE has no failed head")
+            _validate_lifecycle_failure(
+                repo=repo,
+                task=task,
+                run=run,
+                terminal=value,
+                candidate_sha=candidate_sha,
+                candidate_available=True,
+                continuation_of=parent_run_id if family == "REPAIR" else None,
+            )
         same_run = [item for item in remote if item.run_id == run_id]
         if same_run:
             if (
@@ -3600,9 +3703,9 @@ def observe_unified_state(
             lifecycle = resolve_remote_task_lifecycle(
                 observer, task_id=task.task_id, task_revision=task.revision
             )
-            remote, reviews = _decode_remote_lifecycle(task, lifecycle)
+            remote, reviews = _decode_remote_lifecycle(observer, task, lifecycle)
             pending_terminal, pending_active = _local_pending_runs(
-                state, task, remote, reviews
+                observer, state, task, remote, reviews
             )
             if (
                 len(pending_terminal) > 1

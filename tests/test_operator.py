@@ -155,6 +155,38 @@ def result_payload(
     }
 
 
+def canonical_result_payload(
+    run_id: str,
+    head_sha: str,
+    *,
+    changed_files: list[str] | None = None,
+) -> dict:
+    """Build a canonical package valid for PRIMARY and correction terminals."""
+
+    commands = ("git status --porcelain", "git diff --check")
+    evidence = [
+        {
+            "evidence_id": f"E-{run_id}-{index}",
+            "run_id": run_id,
+            "subject_sha": head_sha,
+            "type": "TEST",
+            "source": {"command": command},
+            "result": {"exit_code": 0, "summary": "verified"},
+            "raw": {"path": f".ai/evidence/{run_id}-{index}.log"},
+        }
+        for index, command in enumerate(commands, start=1)
+    ]
+    return {
+        "result": {
+            "head_sha": head_sha,
+            "claims": [],
+            "changed_files": [] if changed_files is None else changed_files,
+            "unresolved": [],
+        },
+        "evidence": evidence,
+    }
+
+
 def antigravity_envelope(
     payload: object | None = None,
     *,
@@ -357,10 +389,7 @@ def test_unified_state_local_active_wait_and_untransported_result_retry(
     )
 
     (state.results / f"{run_id}.json").write_text(
-        json.dumps({
-            "result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []},
-            "evidence": [],
-        }),
+        json.dumps(canonical_result_payload(run_id, head)),
         encoding="utf-8",
     )
     retry = observe_unified_state("TASK-101", repo=repo).as_dict()
@@ -395,15 +424,7 @@ def _local_correction_lifecycle(
         "status": "ACTIVE",
     }
     if family == "REMEDIATION":
-        terminal = {
-            "result": {
-                "head_sha": head,
-                "claims": [],
-                "changed_files": [],
-                "unresolved": [],
-            },
-            "evidence": [],
-        }
+        terminal = canonical_result_payload(parent_id, head)
         review = f"""review_id: REVIEW-101-001
 reviewed_sha: {head}
 mode: PRIMARY
@@ -468,7 +489,14 @@ findings:
             "executor": "codex",
             "base_sha": head,
             "failed_head_sha": head,
-            "candidate": {"repairable": True, "transportable": True},
+            "candidate": {
+                "repairable": True,
+                "transportable": True,
+                "dirty": False,
+                "descends_from_base": True,
+                "changed_files": [],
+                "outside_task_scope": [],
+            },
         }
         lifecycle = RemoteTaskLifecycle(
             head,
@@ -533,15 +561,7 @@ def test_unified_state_exact_local_correction_continues_remote_tip(
 
     head = git(repo, "rev-parse", "HEAD")
     (runtime_paths(repo).results / f"{run_id}.json").write_text(
-        json.dumps({
-            "result": {
-                "head_sha": head,
-                "claims": [],
-                "changed_files": [],
-                "unresolved": [],
-            },
-            "evidence": [],
-        }),
+        json.dumps(canonical_result_payload(run_id, head)),
         encoding="utf-8",
     )
     retry = observe_unified_state("TASK-101", repo=repo).as_dict()
@@ -619,10 +639,7 @@ def test_unified_state_runtime_pass_never_synthesizes_semantic_verdict(
     }).encode()
     terminal = RemoteLifecycleTerminal(
         run_id, "RESULT", head, run,
-        json.dumps({
-            "result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []},
-            "evidence": [],
-        }).encode(),
+        json.dumps(canonical_result_payload(run_id, head)).encode(),
         None,
     )
     lifecycle = RemoteTaskLifecycle(head, (terminal,), (), (), (), ())
@@ -633,6 +650,188 @@ def test_unified_state_runtime_pass_never_synthesizes_semantic_verdict(
     assert observation["lifecycle_state"] == "REVIEW"
     assert observation["next_action"] == "SEMANTIC_REVIEW"
     assert observation["review_id"] is None
+
+
+def test_unified_state_rejects_canonical_result_with_mismatched_evidence_subject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = {
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    package = canonical_result_payload(run_id, head)
+    package["evidence"][0]["subject_sha"] = "0" * 40
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                run_id,
+                "RESULT",
+                head,
+                json.dumps(run).encode(),
+                json.dumps(package).encode(),
+            ),
+        ),
+        (), (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert (observation["lifecycle_state"], observation["next_action"]) == (
+        "BLOCKED", "NONE",
+    )
+    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+
+def test_unified_state_rejects_local_result_without_required_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    lifecycle = RemoteTaskLifecycle(head, (), (), (), (), ())
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    state = runtime_paths(repo)
+    run_id = "RUN-101-001"
+    run = {
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    (state.runs / f"{run_id}.json").write_text(
+        json.dumps(run), encoding="utf-8"
+    )
+    package = canonical_result_payload(run_id, head)
+    package["evidence"] = [
+        item
+        for item in package["evidence"]
+        if item["source"]["command"] != "git status --porcelain"
+    ]
+    (state.results / f"{run_id}.json").write_text(
+        json.dumps(package), encoding="utf-8"
+    )
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert (observation["lifecycle_state"], observation["next_action"]) == (
+        "BLOCKED", "NONE",
+    )
+    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+
+def test_unified_state_rejects_canonical_failure_with_malformed_run_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = {
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    failure = {
+        "kind": "FAILURE",
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "antigravity",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                run_id,
+                "FAILURE",
+                head,
+                json.dumps(run).encode(),
+                json.dumps(failure).encode(),
+            ),
+        ),
+        (), (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert (observation["lifecycle_state"], observation["next_action"]) == (
+        "BLOCKED", "NONE",
+    )
+    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+
+def test_unified_state_rejects_local_failure_with_malformed_candidate_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    lifecycle = RemoteTaskLifecycle(head, (), (), (), (), ())
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    state = runtime_paths(repo)
+    run_id = "RUN-101-001"
+    run = {
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    failure = {
+        "kind": "FAILURE",
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": True,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }
+    (state.runs / f"{run_id}.json").write_text(
+        json.dumps(run), encoding="utf-8"
+    )
+    (state.failures / f"{run_id}.json").write_text(
+        json.dumps(failure), encoding="utf-8"
+    )
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert (observation["lifecycle_state"], observation["next_action"]) == (
+        "BLOCKED", "NONE",
+    )
+    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
 
 
 def test_unified_state_changes_required_preserves_finding_identity(
@@ -647,10 +846,7 @@ def test_unified_state_changes_required_preserves_finding_identity(
         "executor": "codex", "base_sha": head, "workspace": "bounded-away",
         "head_sha": None, "status": "ACTIVE",
     }).encode()
-    package = json.dumps({
-        "result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []},
-        "evidence": [],
-    }).encode()
+    package = json.dumps(canonical_result_payload(run_id, head)).encode()
     review = f"""review_id: REVIEW-101-001
 reviewed_sha: {head}
 mode: PRIMARY
@@ -687,15 +883,6 @@ def test_unified_state_delta_binds_exact_correction_predecessor_with_reused_find
 ) -> None:
     repo = make_repo(tmp_path)
     head = git(repo, "rev-parse", "HEAD")
-    package = json.dumps({
-        "result": {
-            "head_sha": head,
-            "claims": [],
-            "changed_files": [],
-            "unresolved": [],
-        },
-        "evidence": [],
-    }).encode()
 
     finding_f1 = {
         "id": "F1",
@@ -795,17 +982,18 @@ prior_finding_id: F1
         (
             RemoteLifecycleTerminal(
                 primary_id, "RESULT", head,
-                json.dumps(run_payload(primary_id)).encode(), package,
+                json.dumps(run_payload(primary_id)).encode(),
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
             ),
             RemoteLifecycleTerminal(
                 predecessor_id, "RESULT", head,
                 remediation_run(predecessor_id, "REVIEW-101-001", finding_f1),
-                package,
+                json.dumps(canonical_result_payload(predecessor_id, head)).encode(),
             ),
             RemoteLifecycleTerminal(
                 tip_id, "RESULT", head,
                 remediation_run(tip_id, "REVIEW-101-002", finding_f1),
-                package,
+                json.dumps(canonical_result_payload(tip_id, head)).encode(),
             ),
         ),
         (
@@ -830,8 +1018,14 @@ def test_unified_state_delta_binds_repair_of_failed_remediation(
 ) -> None:
     repo = make_repo(tmp_path)
     reviewed_sha = git(repo, "rev-parse", "HEAD")
-    failed_sha = "f" * 40
-    repaired_sha = "e" * 40
+    (repo / "OUTPUT.txt").write_text("failed\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "failed correction candidate")
+    failed_sha = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("repaired\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "repaired correction candidate")
+    repaired_sha = git(repo, "rev-parse", "HEAD")
     primary_id = "RUN-101-001"
     failed_remediation_id = "RUN-101-002"
     repair_id = "RUN-101-003"
@@ -883,7 +1077,14 @@ def test_unified_state_delta_binds_repair_of_failed_remediation(
         "executor": "codex",
         "base_sha": reviewed_sha,
         "failed_head_sha": failed_sha,
-        "candidate": {"repairable": True, "transportable": True},
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": ["OUTPUT.txt"],
+            "outside_task_scope": [],
+        },
     }
     repair_authorization = {
         "repair_id": "REPAIR-101-001",
@@ -904,15 +1105,6 @@ def test_unified_state_delta_binds_repair_of_failed_remediation(
         "repair": repair_authorization,
         "run": repair_run,
     }
-    package = json.dumps({
-        "result": {
-            "head_sha": repaired_sha,
-            "claims": [],
-            "changed_files": [],
-            "unresolved": [],
-        },
-        "evidence": [],
-    }).encode()
     primary_review = f"""review_id: REVIEW-101-001
 reviewed_sha: {reviewed_sha}
 mode: PRIMARY
@@ -946,15 +1138,9 @@ prior_finding_id: F1
             RemoteLifecycleTerminal(
                 primary_id, "RESULT", reviewed_sha,
                 json.dumps(primary_run).encode(),
-                json.dumps({
-                    "result": {
-                        "head_sha": reviewed_sha,
-                        "claims": [],
-                        "changed_files": [],
-                        "unresolved": [],
-                    },
-                    "evidence": [],
-                }).encode(),
+                json.dumps(
+                    canonical_result_payload(primary_id, reviewed_sha)
+                ).encode(),
             ),
             RemoteLifecycleTerminal(
                 failed_remediation_id, "FAILURE", failed_sha,
@@ -962,7 +1148,12 @@ prior_finding_id: F1
             ),
             RemoteLifecycleTerminal(
                 repair_id, "RESULT", repaired_sha,
-                json.dumps(repair_run).encode(), package,
+                json.dumps(repair_run).encode(),
+                json.dumps(
+                    canonical_result_payload(
+                        repair_id, repaired_sha, changed_files=["OUTPUT.txt"]
+                    )
+                ).encode(),
                 json.dumps(repair_execution).encode(),
             ),
         ),
@@ -993,10 +1184,7 @@ def test_unified_state_authored_remediation_consumes_exact_ready_preflight(
         "executor": "codex", "base_sha": head, "workspace": "bounded-away",
         "head_sha": None, "status": "ACTIVE",
     }).encode()
-    package = json.dumps({
-        "result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []},
-        "evidence": [],
-    }).encode()
+    package = json.dumps(canonical_result_payload(run_id, head)).encode()
     review = f"""review_id: REVIEW-101-001
 reviewed_sha: {head}
 mode: PRIMARY
@@ -1049,10 +1237,7 @@ def test_unified_state_pass_is_done_only_when_candidate_is_contained(
         "executor": "codex", "base_sha": head, "workspace": "bounded-away",
         "head_sha": None, "status": "ACTIVE",
     }).encode()
-    package = json.dumps({
-        "result": {"head_sha": head, "claims": [], "changed_files": [], "unresolved": []},
-        "evidence": [],
-    }).encode()
+    package = json.dumps(canonical_result_payload(run_id, head)).encode()
     review = f"""review_id: REVIEW-101-001
 reviewed_sha: {head}
 mode: PRIMARY
