@@ -1,0 +1,10 @@
+review_id: REVIEW-088-002
+reviewed_sha: 883974be6ec5922ae57021b50a48c84a0014dbfa
+mode: DELTA
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC7: PASS
+findings: []
+prior_finding_id: F1
