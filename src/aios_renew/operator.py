@@ -3657,14 +3657,19 @@ def observe_unified_state(
                 )
             prior_review = None
             if review.prior_finding_id is not None:
-                matches = [
-                    value for key, value in reviews.items()
-                    if key != tip.run_id
-                    and review.prior_finding_id in {finding.id for finding in value.findings}
-                ]
-                if len(matches) != 1:
+                prior_review = (
+                    reviews.get(tip.parent_run_id)
+                    if tip.family == "REMEDIATION"
+                    and tip.parent_run_id is not None
+                    else None
+                )
+                if (
+                    prior_review is None
+                    or prior_review.review_id != tip.review_id
+                    or prior_review.reviewed_sha != tip.run.base_sha
+                    or review.prior_finding_id != tip.finding_id
+                ):
                     raise ValueError("DELTA review predecessor is missing or ambiguous")
-                prior_review = matches[0]
             validate_review(task=task, result=result, review=review, prior_review=prior_review)
             if review.reviewed_sha != tip.candidate_sha:
                 raise ValueError("review decision does not bind candidate ref")

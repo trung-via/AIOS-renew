@@ -682,6 +682,149 @@ findings:
     assert observation["reviewed_sha"] == head
 
 
+def test_unified_state_delta_binds_exact_correction_predecessor_with_reused_finding_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    package = json.dumps({
+        "result": {
+            "head_sha": head,
+            "claims": [],
+            "changed_files": [],
+            "unresolved": [],
+        },
+        "evidence": [],
+    }).encode()
+
+    finding_f1 = {
+        "id": "F1",
+        "basis": "AC1",
+        "action": "CODE_FIX",
+        "location": "OUTPUT.txt",
+        "issue": "output is incomplete",
+        "expected": "output is complete",
+    }
+    finding_f2 = {
+        "id": "F2",
+        "basis": "AC1",
+        "action": "CODE_FIX",
+        "location": "OUTPUT.txt",
+        "issue": "output still needs a narrow correction",
+        "expected": "apply the final correction",
+    }
+
+    def run_payload(run_id: str) -> dict:
+        return {
+            "run_id": run_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": head,
+            "workspace": "bounded-away",
+            "head_sha": None,
+            "status": "ACTIVE",
+        }
+
+    def remediation_run(
+        run_id: str, review_id: str, finding: dict,
+    ) -> bytes:
+        return json.dumps({
+            "kind": "REMEDIATION",
+            "execution": {
+                "review_id": review_id,
+                "finding": finding,
+                "remediation": {
+                    "finding_id": finding["id"],
+                    "action": "CODE_FIX",
+                    "reviewed_sha": head,
+                    "modification_scope": ["OUTPUT.txt"],
+                    "affected_verification": ["git diff --check"],
+                    "constraints": {"hard": ["Commit the output."]},
+                },
+                "run": run_payload(run_id),
+                "original_constraints": ["Commit the output."],
+            },
+        }).encode()
+
+    primary_id = "RUN-101-001"
+    predecessor_id = "RUN-101-002"
+    tip_id = "RUN-101-003"
+    primary_review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: output is incomplete
+    expected: output is complete
+""".encode()
+    predecessor_review = f"""review_id: REVIEW-101-002
+reviewed_sha: {head}
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: output is incomplete
+    expected: output is complete
+prior_finding_id: F1
+""".encode()
+    tip_review = f"""review_id: REVIEW-101-003
+reviewed_sha: {head}
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: output still needs a narrow correction
+    expected: apply the final correction
+prior_finding_id: F1
+""".encode()
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head,
+                json.dumps(run_payload(primary_id)).encode(), package,
+            ),
+            RemoteLifecycleTerminal(
+                predecessor_id, "RESULT", head,
+                remediation_run(predecessor_id, "REVIEW-101-001", finding_f1),
+                package,
+            ),
+            RemoteLifecycleTerminal(
+                tip_id, "RESULT", head,
+                remediation_run(tip_id, "REVIEW-101-002", finding_f1),
+                package,
+            ),
+        ),
+        (
+            RemoteLifecycleReview(primary_id, head, primary_review),
+            RemoteLifecycleReview(predecessor_id, head, predecessor_review),
+            RemoteLifecycleReview(tip_id, head, tip_review),
+        ),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["next_action"] == "AUTHOR_REMEDIATION"
+    assert observation["source_run_id"] == tip_id
+    assert observation["review_id"] == "REVIEW-101-003"
+    assert observation["finding_id"] == finding_f2["id"]
+
+
 def test_unified_state_authored_remediation_consumes_exact_ready_preflight(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
