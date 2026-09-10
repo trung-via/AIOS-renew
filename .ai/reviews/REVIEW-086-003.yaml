@@ -1,0 +1,29 @@
+review_id: REVIEW-086-003
+reviewed_sha: f2f27d9cf271fd40fb58bb37dd2b1a178f1db107
+mode: DELTA
+prior_finding_id: F4
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC9: FAIL
+findings:
+  - id: F5
+    basis: AC9
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::observe_unified_state DELTA predecessor resolution for REPAIR tips
+    issue: >
+      RUN-086-003 removes the TASK-wide finding-id scan for REMEDIATION tips, but the
+      replacement binds prior_review only when tip.family is REMEDIATION. A valid REPAIR
+      continuation can also require DELTA review, including repair of a failed REMEDIATION.
+      In that case the canonical tip family is REPAIR and review.prior_finding_id is
+      non-null, so the current code leaves prior_review as None and rejects the exact
+      correction lineage as malformed/BLOCKED. The added regression exercises only a
+      REMEDIATION chain and therefore does not establish the correction-family-complete
+      behavior required by the F4 expectation and TASK-086 lineage-driven semantics.
+    expected: >
+      Resolve the applicable prior semantic review for both REMEDIATION and REPAIR
+      correction tips through exact immutable correction continuity, preserving parent RUN,
+      embedded review/finding identity, reviewed/failed SHA binding, and fail-closed
+      ambiguity. A valid REPAIR of a failed REMEDIATION with its exact DELTA review must
+      reduce deterministically rather than becoming MALFORMED_CANONICAL_STATE merely
+      because the tip family is REPAIR. Add a focused regression for that lineage without
+      restoring TASK-wide finding-id search, retry, reroute, or new authority.
