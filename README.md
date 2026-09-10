@@ -251,8 +251,66 @@ Historical Admission Failure v2 records are allowlisted forensic context only;
 their error prose is neither parsed nor allowed to override currently observable
 lifecycle state. REMEDIATION and REPAIR readiness consumes the existing Correction
 Preflight boundary rather than approximating its admission rules. Unified State is
-a derived observation, not a planner or router, and this release does not provide
-the later unified Human command grammar or any Executor/model recommendation.
+a derived observation, not a planner or router, and provides no Executor/model
+recommendation.
+
+### Unified Human continuation
+
+`aios continue <TASK_ID>` is the optional Human-facing front door over that exact
+Unified State reducer. It emits one bounded JSON object with
+`format=AIOS_HUMAN_SURFACE` and `version=1`. The result binds the TASK revision,
+observed `next_action`, disposition and authority, exact already-observed selector
+identities, Executor requirement/supply facts, and any RUN/head identity returned
+by the delegated operation. It never includes prompts, Executor output, logs,
+credentials, environment dumps, arbitrary paths, Git output, or artifact bodies.
+
+For a coding action the Human must choose explicitly:
+
+```powershell
+aios continue TASK-101 --executor codex
+aios continue TASK-101 --executor antigravity --repo C:\path\to\control-repo
+```
+
+There is no default, remembered, inferred, ranked, or recommended Executor.
+`--executor` is required for PRIMARY, REMEDIATION, and CODE_FIX or ordinary
+Executor-backed REPAIR. A deterministically eligible TASK-064 verification-only
+`NO_CHANGE` REPAIR may continue without it because that existing path invokes no
+coding Executor; supplying an Executor does not force a coding call. An Executor
+argument on transport, recovery, handoff, blocked, wait, or done state grants no
+additional authority.
+
+The command delegates at most one existing canonical operation and then stops:
+
+| Unified `next_action` | One invocation does |
+| --- | --- |
+| `EXECUTE_PRIMARY` | Existing PRIMARY admission, synchronization, execution, Runtime verification, and result/failure semantics |
+| `EXECUTE_REMEDIATION` | Existing REMEDIATION bound to the observed source RUN, finding, and remediation SHA |
+| `EXECUTE_REPAIR` | Existing REPAIR bound to the observed failed RUN and repair SHA |
+| `RETRY_TRANSPORT` | Existing terminal transport retry for the observed RUN |
+| `RECOVER_PRIMARY` | Existing exact PRIMARY recovery for the observed conflicting RUN |
+| `SEMANTIC_REVIEW` | `EXTERNAL_AUTHORITY_REQUIRED` for the Reviewer |
+| `AUTHOR_REMEDIATION`, `AUTHOR_REPAIR` | `EXTERNAL_AUTHORITY_REQUIRED` for the Brain |
+| `PUBLICATION` | `EXTERNAL_AUTHORITY_REQUIRED` for the Publisher |
+| `WAIT`, `DONE` | `NO_ACTION` |
+| `NONE` / BLOCKED | `BLOCKED` with the reducer's bounded blocker |
+
+The state observation is not cached admission authority. Every executable branch
+re-enters its existing admission/revalidation boundary. If a remediation or repair
+selector moves between observation and admission, continuation fails closed before
+a RUN instead of executing changed correction content. PRIMARY keeps its safe
+sync/restart behavior; a synchronized restart re-enters `aios continue` and derives
+Unified State again before any operation begins.
+
+One invocation does not observe again after delegation and does not automatically
+review, author a correction, publish, retry, recover, reroute, poll, or execute the
+newly derived next action. Pre-RUN rejection remains Admission Failure v2; an
+admitted failure remains the ordinary RUN FAILURE. The Human result does not create
+another failure artifact, RESULT, or EVIDENCE, and it never attempts a second run.
+
+`aios state <TASK_ID>` remains the read-only inspection surface. `aios continue`
+does not perform planning, semantic review, correction authoring, publication,
+downstream migration, roadmap mutation, autonomous workflow, or any change to the
+syntax and authority of the existing low-level commands.
 
 ### Admission Failure v2 and outcome boundaries
 

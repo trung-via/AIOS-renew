@@ -384,6 +384,9 @@ class UnifiedStateObservation:
     failed_head_sha: str | None = None
     correction_sha: str | None = None
     correction: Mapping[str, Any] | None = None
+    # Exact repair content is retained only for the immediate admission handoff.
+    # It is deliberately excluded from the Human/state renderings.
+    correction_document: Mapping[str, Any] | None = None
     blocker: Mapping[str, Any] | None = None
     admission_failures: tuple[Mapping[str, Any], ...] = ()
 
@@ -416,6 +419,82 @@ class UnifiedStateObservation:
             "executor_invoked": False,
             "verification_invoked": False,
             "state_mutated": False,
+        }
+
+    def render(self) -> str:
+        return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
+
+
+_HUMAN_DISPOSITIONS = frozenset({
+    "DELEGATED", "EXECUTOR_REQUIRED", "EXTERNAL_AUTHORITY_REQUIRED",
+    "NO_ACTION", "BLOCKED",
+})
+_HUMAN_AUTHORITIES = frozenset({
+    "RUNTIME", "BRAIN", "REVIEWER", "PUBLISHER", "HUMAN", "NONE",
+})
+
+
+@dataclass(frozen=True)
+class HumanSurfaceResult:
+    """One allowlisted result from the optional unified Human front door."""
+
+    task_id: str
+    task_revision: int
+    next_action: str
+    disposition: str
+    authority: str
+    delegated_operation: str | None = None
+    run_id: str | None = None
+    source_run_id: str | None = None
+    failed_run_id: str | None = None
+    review_id: str | None = None
+    finding_id: str | None = None
+    candidate_sha: str | None = None
+    reviewed_sha: str | None = None
+    failed_head_sha: str | None = None
+    correction_sha: str | None = None
+    executor_required: bool = False
+    executor_supplied: bool = False
+    executor: str | None = None
+    resulting_run_id: str | None = None
+    resulting_head_sha: str | None = None
+    blocker: Mapping[str, Any] | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        if self.disposition not in _HUMAN_DISPOSITIONS:
+            raise ValueError("invalid Human-surface disposition")
+        if self.authority not in _HUMAN_AUTHORITIES:
+            raise ValueError("invalid Human-surface authority")
+        return {
+            "format": "AIOS_HUMAN_SURFACE",
+            "version": 1,
+            "kind": "HUMAN_SURFACE_RESULT",
+            "task": {"id": self.task_id, "revision": self.task_revision},
+            "observed_next_action": self.next_action,
+            "disposition": self.disposition,
+            "authority": self.authority,
+            "delegated_operation": self.delegated_operation,
+            "selectors": {
+                "run_id": self.run_id,
+                "source_run_id": self.source_run_id,
+                "failed_run_id": self.failed_run_id,
+                "review_id": self.review_id,
+                "finding_id": self.finding_id,
+                "candidate_sha": self.candidate_sha,
+                "reviewed_sha": self.reviewed_sha,
+                "failed_head_sha": self.failed_head_sha,
+                "correction_sha": self.correction_sha,
+            },
+            "executor": {
+                "required": self.executor_required,
+                "supplied": self.executor_supplied,
+                "identity": self.executor,
+            },
+            "result": {
+                "run_id": self.resulting_run_id,
+                "head_sha": self.resulting_head_sha,
+            },
+            "blocker": dict(self.blocker) if self.blocker is not None else None,
         }
 
     def render(self) -> str:
@@ -1086,8 +1165,9 @@ def _persist_and_transport_failure(
 
 
 def run_repair(
-    failed_run_id: str, *, executor: str, repo: str | Path | None = None,
+    failed_run_id: str, *, executor: str | None, repo: str | Path | None = None,
     repair: Mapping[str, Any] | str | Path | None = None,
+    required_repair_sha: str | None = None,
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
     monotonic_clock: MonotonicClock = time.monotonic,
@@ -1110,6 +1190,7 @@ def run_repair(
     try:
         return _run_repair_impl(
             failed_run_id, executor=executor, repo=root, repair=repair,
+            required_repair_sha=required_repair_sha,
             native_runner=native_runner,
             verification_runner=verification_runner,
             attempt=attempt,
@@ -1610,6 +1691,7 @@ def _resolve_repair_admission(
     repo: Path,
     state: RuntimePaths,
     repair: Mapping[str, Any] | str | Path | None,
+    required_repair_sha: str | None = None,
     admission: dict[str, Any],
     remote_repo: Path | None = None,
 ) -> _RepairAdmission:
@@ -1687,6 +1769,37 @@ def _resolve_repair_admission(
     _set_admission_boundary(
         admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
     )
+    if required_repair_sha is not None:
+        from .review_transport import resolve_transport_remote
+
+        _set_admission_boundary(
+            admission,
+            "CANONICAL_CONTRACT_ADMISSION",
+            "CANONICAL_LINEAGE_INVALID",
+        )
+        try:
+            remote = resolve_transport_remote(repo)
+        except ReviewTransportError as exc:
+            raise OperatorError(
+                "canonical REPAIR selector is unavailable"
+            ) from exc
+        ref = f"refs/heads/aios/repair/{failed_run_id}"
+        try:
+            output = _git(repo, "ls-remote", remote, ref)
+        except OperatorError as exc:
+            raise OperatorError(
+                "canonical REPAIR selector is unavailable"
+            ) from exc
+        lines = [line.split() for line in output.splitlines() if line.strip()]
+        observed = (
+            lines[0][0]
+            if len(lines) == 1 and len(lines[0]) == 2 and lines[0][1] == ref
+            else None
+        )
+        if observed is not None:
+            _record_observed_refs(admission, ((ref, observed),))
+        if observed != required_repair_sha:
+            raise OperatorError("canonical REPAIR selector changed after observation")
     if repair is None:
         try:
             repair_data: Any = json.loads(
@@ -1776,15 +1889,16 @@ def _resolve_repair_admission(
 
 
 def _run_repair_impl(
-    failed_run_id: str, *, executor: str, repo: Path,
+    failed_run_id: str, *, executor: str | None, repo: Path,
     repair: Mapping[str, Any] | str | Path | None,
+    required_repair_sha: str | None,
     native_runner: NativeRunner,
     verification_runner: VerificationRunner,
     attempt: _RunAttempt,
     observation_tracker: RunObservationTracker,
     admission: dict[str, Any],
 ) -> RepairSummary:
-    if executor not in ("codex", "antigravity"):
+    if executor is not None and executor not in ("codex", "antigravity"):
         _set_admission_boundary(
             admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
         )
@@ -1795,6 +1909,7 @@ def _run_repair_impl(
         repo=repo,
         state=state,
         repair=repair,
+        required_repair_sha=required_repair_sha,
         admission=admission,
     )
     failure = resolved.failure
@@ -1806,6 +1921,12 @@ def _run_repair_impl(
     action = resolved.action
     scope = resolved.scope
     reusable_package = resolved.reusable_package
+    if executor is None and reusable_package is None:
+        raise OperatorError("coding Executor is required for REPAIR")
+    # TASK-064 reusable verification state bypasses dispatcher invocation.  Run
+    # still requires a schema-compatible executor label; this value is metadata,
+    # not a selected or invoked coding Executor.
+    run_executor = executor if executor is not None else "codex"
 
     _set_admission_boundary(
         admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
@@ -1846,7 +1967,7 @@ def _run_repair_impl(
             task.task_id, state.runs, reserved=reserved_run_ids
         )
         run = Run.from_task(
-            run_id=run_id, task=task, executor=executor,
+            run_id=run_id, task=task, executor=run_executor,
             base_sha=failed_head, workspace=str(subject_repo),
         )
         run_path = state.runs / f"{run_id}.json"
@@ -1874,7 +1995,7 @@ def _run_repair_impl(
                 authorizes_mutation=action == "CODE_FIX"
             )
             dispatcher = repair_dispatcher(
-                selected_executor=executor,
+                selected_executor=run_executor,
                 repo=subject_repo,
                 handoff_path=state.handoffs / f"{run_id}.json",
                 execution_policy=execution_policy,
@@ -1918,7 +2039,7 @@ def _run_repair_impl(
         )
         return RepairSummary(
             task_id=task.task_id, failed_run_id=failed_run_id, run_id=run_id,
-            executor=executor, failed_head_sha=failed_head,
+            executor=run_executor, failed_head_sha=failed_head,
             head_sha=completion.head_sha, result_path=completion.result_path,
         )
 
@@ -3870,6 +3991,7 @@ def observe_unified_state(
                     run_id=tip.run_id, failed_run_id=tip.run_id,
                     failed_head_sha=tip.candidate_sha, correction=correction,
                     correction_sha=selectors[0][1],
+                    correction_document=repair_authorization,
                     admission_failures=admission_context,
                 )
 
@@ -4007,6 +4129,218 @@ def observe_unified_state(
         return _unified_blocked(
             task, "MALFORMED_CANONICAL_STATE", admission_failures=admission_context
         )
+
+
+def _human_surface_result(
+    observation: UnifiedStateObservation,
+    *,
+    disposition: str,
+    authority: str,
+    executor: str | None,
+    executor_required: bool = False,
+    delegated_operation: str | None = None,
+    resulting_run_id: str | None = None,
+    resulting_head_sha: str | None = None,
+) -> HumanSurfaceResult:
+    return HumanSurfaceResult(
+        task_id=observation.task_id,
+        task_revision=observation.task_revision,
+        next_action=observation.next_action,
+        disposition=disposition,
+        authority=authority,
+        delegated_operation=delegated_operation,
+        run_id=observation.run_id,
+        source_run_id=observation.source_run_id,
+        failed_run_id=observation.failed_run_id,
+        review_id=observation.review_id,
+        finding_id=observation.finding_id,
+        candidate_sha=observation.candidate_sha,
+        reviewed_sha=observation.reviewed_sha,
+        failed_head_sha=observation.failed_head_sha,
+        correction_sha=observation.correction_sha,
+        executor_required=executor_required,
+        executor_supplied=executor is not None,
+        executor=executor,
+        resulting_run_id=resulting_run_id,
+        resulting_head_sha=resulting_head_sha,
+        blocker=observation.blocker,
+    )
+
+
+def continue_task(
+    task_id: str,
+    *,
+    executor: str | None = None,
+    repo: str | Path | None = None,
+    argv: list[str] | None = None,
+    native_runner: NativeRunner = subprocess.run,
+    verification_runner: VerificationRunner = subprocess.run,
+    monotonic_clock: MonotonicClock = time.monotonic,
+) -> tuple[HumanSurfaceResult | None, int]:
+    """Observe once and delegate at most one already-authoritative operation."""
+
+    root = resolve_repository(repo)
+    observation = observe_unified_state(task_id, repo=root)
+    action = observation.next_action
+    repair_action = (
+        observation.correction.get("action")
+        if isinstance(observation.correction, Mapping)
+        else None
+    )
+    executor_required = action in ("EXECUTE_PRIMARY", "EXECUTE_REMEDIATION") or (
+        action == "EXECUTE_REPAIR" and repair_action != "NO_CHANGE"
+    )
+    if executor_required and executor is None:
+        return (
+            _human_surface_result(
+                observation,
+                disposition="EXECUTOR_REQUIRED",
+                authority="HUMAN",
+                executor=None,
+                executor_required=True,
+            ),
+            0,
+        )
+
+    external = {
+        "SEMANTIC_REVIEW": "REVIEWER",
+        "AUTHOR_REMEDIATION": "BRAIN",
+        "AUTHOR_REPAIR": "BRAIN",
+        "PUBLICATION": "PUBLISHER",
+    }
+    if action in external:
+        return (
+            _human_surface_result(
+                observation,
+                disposition="EXTERNAL_AUTHORITY_REQUIRED",
+                authority=external[action],
+                executor=executor,
+            ),
+            0,
+        )
+    if action in ("WAIT", "DONE"):
+        return (
+            _human_surface_result(
+                observation,
+                disposition="NO_ACTION",
+                authority="NONE",
+                executor=executor,
+            ),
+            0,
+        )
+    if action == "NONE":
+        return (
+            _human_surface_result(
+                observation,
+                disposition="BLOCKED",
+                authority="NONE",
+                executor=executor,
+            ),
+            0,
+        )
+
+    resulting_run_id: str | None = None
+    resulting_head_sha: str | None = None
+    delegated_operation: str
+    if action == "EXECUTE_PRIMARY":
+        assert executor is not None
+        preflight = _preflight_primary_admission(
+            root,
+            task_id=task_id,
+            executor=executor,
+            argv=argv,
+            runner=native_runner,
+        )
+        if preflight.restart_code is not None:
+            # The synchronized child re-enters `continue` and derives state again.
+            return None, preflight.restart_code
+        summary = run_task(
+            task_id,
+            executor=executor,
+            repo=root,
+            native_runner=native_runner,
+            verification_runner=verification_runner,
+            monotonic_clock=monotonic_clock,
+            synchronize=False,
+            preflight_sha=preflight.preflight_sha,
+        )
+        delegated_operation = "PRIMARY"
+        resulting_run_id = summary.run_id
+        resulting_head_sha = summary.head_sha
+    elif action == "EXECUTE_REMEDIATION":
+        assert executor is not None
+        if not all((observation.source_run_id, observation.finding_id,
+                    observation.correction_sha)):
+            raise OperatorError("Unified State remediation selectors are incomplete")
+        summary = run_remediation(
+            task_id,
+            finding_id=observation.finding_id,
+            source_run_id=observation.source_run_id,
+            approved_remediation_sha=observation.correction_sha,
+            executor=executor,
+            repo=root,
+            native_runner=native_runner,
+            verification_runner=verification_runner,
+            monotonic_clock=monotonic_clock,
+        )
+        delegated_operation = "REMEDIATION"
+        resulting_run_id = summary.run_id
+        resulting_head_sha = summary.head_sha
+    elif action == "EXECUTE_REPAIR":
+        if (
+            observation.failed_run_id is None
+            or observation.correction_sha is None
+            or observation.correction_document is None
+        ):
+            raise OperatorError("Unified State repair selectors are incomplete")
+        summary = run_repair(
+            observation.failed_run_id,
+            executor=executor,
+            repo=root,
+            repair=observation.correction_document,
+            required_repair_sha=observation.correction_sha,
+            native_runner=native_runner,
+            verification_runner=verification_runner,
+            monotonic_clock=monotonic_clock,
+        )
+        delegated_operation = "REPAIR"
+        resulting_run_id = summary.run_id
+        resulting_head_sha = summary.head_sha
+    elif action == "RETRY_TRANSPORT":
+        if observation.run_id is None:
+            raise OperatorError("Unified State transport selector is incomplete")
+        retry_transport(observation.run_id, repo=root)
+        delegated_operation = "TRANSPORT"
+        resulting_run_id = observation.run_id
+        resulting_head_sha = observation.candidate_sha
+    elif action == "RECOVER_PRIMARY":
+        if observation.source_run_id is None:
+            raise OperatorError("Unified State recovery selector is incomplete")
+        summary = recover_primary(
+            observation.source_run_id,
+            repo=root,
+            verification_runner=verification_runner,
+            monotonic_clock=monotonic_clock,
+        )
+        delegated_operation = "RECOVER_PRIMARY"
+        resulting_run_id = summary.run_id
+        resulting_head_sha = summary.head_sha
+    else:
+        raise OperatorError("Unified State returned an unsupported next action")
+
+    return (
+        _human_surface_result(
+            observation,
+            disposition="DELEGATED",
+            authority="RUNTIME",
+            executor=executor,
+            executor_required=executor_required,
+            delegated_operation=delegated_operation,
+            resulting_run_id=resulting_run_id,
+            resulting_head_sha=resulting_head_sha,
+        ),
+        0,
+    )
 
 
 def preflight_repair(
@@ -5145,6 +5479,13 @@ def _parser() -> argparse.ArgumentParser:
     state_parser.add_argument("task_id")
     state_parser.add_argument("--repo")
 
+    continue_parser = commands.add_parser(
+        "continue", help="Delegate the exact Unified State next action once"
+    )
+    continue_parser.add_argument("task_id")
+    continue_parser.add_argument("--executor", choices=("codex", "antigravity"))
+    continue_parser.add_argument("--repo")
+
     run_parser = commands.add_parser("run", help="Execute a stored canonical TASK")
     run_parser.add_argument("task_id")
     run_parser.add_argument("--executor", required=True, choices=("codex", "antigravity"))
@@ -5255,6 +5596,19 @@ def main(
             print(describe_task(args.task_id, repo=args.repo).render())
         elif args.command == "state":
             print(observe_unified_state(args.task_id, repo=args.repo).render())
+        elif args.command == "continue":
+            outcome, exit_code = continue_task(
+                args.task_id,
+                executor=args.executor,
+                repo=args.repo,
+                argv=argv,
+                native_runner=native_runner,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
+            )
+            if outcome is not None:
+                print(outcome.render())
+            return exit_code
         elif args.command == "run":
             repo_root = resolve_repository(args.repo)
             preflight = _preflight_primary_admission(

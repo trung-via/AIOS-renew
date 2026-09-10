@@ -6,6 +6,7 @@ import tomllib
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -315,6 +316,319 @@ def _stub_unified_remote(
         "resolve_remote_task_lifecycle",
         lambda *_args, **_kwargs: lifecycle,
     )
+
+
+def _human_observation(
+    action: str, **facts,
+) -> operator_module.UnifiedStateObservation:
+    return operator_module.UnifiedStateObservation(
+        "TASK-101", 1, "TEST", action, **facts
+    )
+
+
+@pytest.mark.parametrize(
+    ("action", "disposition", "authority"),
+    [
+        ("SEMANTIC_REVIEW", "EXTERNAL_AUTHORITY_REQUIRED", "REVIEWER"),
+        ("AUTHOR_REMEDIATION", "EXTERNAL_AUTHORITY_REQUIRED", "BRAIN"),
+        ("AUTHOR_REPAIR", "EXTERNAL_AUTHORITY_REQUIRED", "BRAIN"),
+        ("PUBLICATION", "EXTERNAL_AUTHORITY_REQUIRED", "PUBLISHER"),
+        ("WAIT", "NO_ACTION", "NONE"),
+        ("DONE", "NO_ACTION", "NONE"),
+        ("NONE", "BLOCKED", "NONE"),
+    ],
+)
+def test_human_surface_non_delegated_actions_are_bounded_and_read_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    disposition: str,
+    authority: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    blocker = {"code": "TASK_086_BLOCKER"} if action == "NONE" else None
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: _human_observation(
+            action,
+            run_id="RUN-101-001",
+            blocker=blocker,
+        ),
+    )
+    forbidden = lambda *_args, **_kwargs: pytest.fail("operation was delegated")
+    monkeypatch.setattr(operator_module, "run_task", forbidden)
+    monkeypatch.setattr(operator_module, "run_remediation", forbidden)
+    monkeypatch.setattr(operator_module, "run_repair", forbidden)
+    monkeypatch.setattr(operator_module, "retry_transport", forbidden)
+    monkeypatch.setattr(operator_module, "recover_primary", forbidden)
+
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-101", executor="antigravity", repo=repo
+    )
+
+    assert exit_code == 0
+    assert outcome is not None
+    payload = outcome.as_dict()
+    assert payload["format"] == "AIOS_HUMAN_SURFACE"
+    assert payload["version"] == 1
+    assert payload["observed_next_action"] == action
+    assert payload["disposition"] == disposition
+    assert payload["authority"] == authority
+    assert payload["delegated_operation"] is None
+    assert payload["selectors"]["run_id"] == "RUN-101-001"
+    assert payload["blocker"] == blocker
+
+
+@pytest.mark.parametrize(
+    "action", ["EXECUTE_PRIMARY", "EXECUTE_REMEDIATION", "EXECUTE_REPAIR"]
+)
+def test_human_surface_requires_explicit_executor_before_coding_operation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    correction = {"action": "CODE_FIX"} if action == "EXECUTE_REPAIR" else None
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: _human_observation(
+            action, correction=correction
+        ),
+    )
+    forbidden = lambda *_args, **_kwargs: pytest.fail("operation was delegated")
+    monkeypatch.setattr(operator_module, "run_task", forbidden)
+    monkeypatch.setattr(operator_module, "run_remediation", forbidden)
+    monkeypatch.setattr(operator_module, "run_repair", forbidden)
+
+    outcome, exit_code = operator_module.continue_task("TASK-101", repo=repo)
+
+    assert exit_code == 0
+    assert outcome is not None
+    assert outcome.disposition == "EXECUTOR_REQUIRED"
+    assert outcome.authority == "HUMAN"
+    assert outcome.executor_required is True
+    assert outcome.executor_supplied is False
+
+
+def test_human_surface_delegates_exact_remediation_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    correction_sha = "a" * 40
+    observation = _human_observation(
+        "EXECUTE_REMEDIATION",
+        run_id="RUN-101-001",
+        source_run_id="RUN-101-001",
+        finding_id="F1",
+        correction_sha=correction_sha,
+    )
+    monkeypatch.setattr(
+        operator_module, "observe_unified_state", lambda *_args, **_kwargs: observation
+    )
+    calls = []
+
+    def remediation(*args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(run_id="RUN-101-002", head_sha="b" * 40)
+
+    monkeypatch.setattr(operator_module, "run_remediation", remediation)
+
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-101", executor="codex", repo=repo
+    )
+
+    assert exit_code == 0
+    assert len(calls) == 1
+    assert calls[0][1]["source_run_id"] == "RUN-101-001"
+    assert calls[0][1]["finding_id"] == "F1"
+    assert calls[0][1]["approved_remediation_sha"] == correction_sha
+    assert outcome is not None
+    assert outcome.delegated_operation == "REMEDIATION"
+    assert outcome.resulting_run_id == "RUN-101-002"
+
+
+def test_human_surface_elides_executor_only_for_ready_no_change_repair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    repair_sha = "c" * 40
+    repair = {
+        "repair_id": "REPAIR-101-001",
+        "failed_run_id": "RUN-101-001",
+        "failed_head_sha": "d" * 40,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "NO_CHANGE",
+        "modification_scope": [],
+        "instructions": ["Reuse the eligible verification state."],
+        "constraints": [],
+    }
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: _human_observation(
+            "EXECUTE_REPAIR",
+            run_id="RUN-101-001",
+            failed_run_id="RUN-101-001",
+            failed_head_sha="d" * 40,
+            correction_sha=repair_sha,
+            correction={"action": "NO_CHANGE", "status": "READY"},
+            correction_document=repair,
+        ),
+    )
+    calls = []
+
+    def execute_repair(*args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(run_id="RUN-101-002", head_sha="d" * 40)
+
+    monkeypatch.setattr(operator_module, "run_repair", execute_repair)
+
+    outcome, exit_code = operator_module.continue_task("TASK-101", repo=repo)
+
+    assert exit_code == 0
+    assert len(calls) == 1
+    assert calls[0][1]["executor"] is None
+    assert calls[0][1]["repair"] == repair
+    assert calls[0][1]["required_repair_sha"] == repair_sha
+    assert outcome is not None
+    assert outcome.executor_required is False
+    assert outcome.executor_supplied is False
+    assert outcome.delegated_operation == "REPAIR"
+
+
+@pytest.mark.parametrize("action", ["RETRY_TRANSPORT", "RECOVER_PRIMARY"])
+def test_human_surface_non_coding_delegation_uses_exact_run_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    run_id = "RUN-101-001"
+    observation = _human_observation(
+        action,
+        run_id=run_id,
+        source_run_id=run_id if action == "RECOVER_PRIMARY" else None,
+        candidate_sha="a" * 40,
+    )
+    monkeypatch.setattr(
+        operator_module, "observe_unified_state", lambda *_args, **_kwargs: observation
+    )
+    calls = []
+    forbidden = lambda *_args, **_kwargs: pytest.fail("coding operation was delegated")
+    monkeypatch.setattr(operator_module, "run_task", forbidden)
+    monkeypatch.setattr(operator_module, "run_remediation", forbidden)
+    monkeypatch.setattr(operator_module, "run_repair", forbidden)
+    if action == "RETRY_TRANSPORT":
+        monkeypatch.setattr(
+            operator_module,
+            "retry_transport",
+            lambda selected, **_kwargs: calls.append(selected),
+        )
+        monkeypatch.setattr(operator_module, "recover_primary", forbidden)
+    else:
+        monkeypatch.setattr(operator_module, "retry_transport", forbidden)
+
+        def recover(selected, **_kwargs):
+            calls.append(selected)
+            return SimpleNamespace(run_id="RUN-101-002", head_sha="b" * 40)
+
+        monkeypatch.setattr(operator_module, "recover_primary", recover)
+
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-101", executor="antigravity", repo=repo
+    )
+
+    assert exit_code == 0
+    assert calls == [run_id]
+    assert outcome is not None
+    assert outcome.disposition == "DELEGATED"
+    assert outcome.executor_required is False
+    assert outcome.executor_supplied is True
+    assert outcome.delegated_operation == (
+        "TRANSPORT" if action == "RETRY_TRANSPORT" else "RECOVER_PRIMARY"
+    )
+
+
+def test_human_surface_primary_restart_reenters_same_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    observations = []
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: observations.append("observed")
+        or _human_observation("EXECUTE_PRIMARY"),
+    )
+    captured = []
+
+    def preflight(*args, **kwargs):
+        captured.append(kwargs["argv"])
+        return operator_module.PreflightResult(restart_code=17)
+
+    monkeypatch.setattr(operator_module, "_preflight_primary_admission", preflight)
+    monkeypatch.setattr(
+        operator_module,
+        "run_task",
+        lambda *_args, **_kwargs: pytest.fail("stale PRIMARY was executed"),
+    )
+    argv = [
+        "continue", "TASK-101", "--executor", "codex", "--repo", str(repo)
+    ]
+
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-101", executor="codex", repo=repo, argv=argv
+    )
+
+    assert outcome is None
+    assert exit_code == 17
+    assert observations == ["observed"]
+    assert captured == [argv]
+
+
+def test_continue_cli_emits_one_versioned_human_surface_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = make_repo(tmp_path)
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: _human_observation(
+            "SEMANTIC_REVIEW",
+            run_id="RUN-101-001",
+            review_id="REVIEW-101-001",
+            candidate_sha="a" * 40,
+        ),
+    )
+
+    exit_code = operator_module.main(
+        [
+            "continue",
+            "TASK-101",
+            "--executor",
+            "codex",
+            "--repo",
+            str(repo),
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["format"] == "AIOS_HUMAN_SURFACE"
+    assert payload["version"] == 1
+    assert payload["task"] == {"id": "TASK-101", "revision": 1}
+    assert payload["observed_next_action"] == "SEMANTIC_REVIEW"
+    assert payload["disposition"] == "EXTERNAL_AUTHORITY_REQUIRED"
+    assert payload["authority"] == "REVIEWER"
+    assert payload["executor"] == {
+        "required": False,
+        "supplied": True,
+        "identity": "codex",
+    }
 
 
 def test_unified_state_fresh_task_is_read_only_execute_primary(
