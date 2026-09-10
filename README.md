@@ -205,6 +205,9 @@ bounded phase/reason code. They reuse the deterministic REMEDIATION and REPAIR
 lineage, contract, reusable-state, repository, historical-subject, and canonical
 RUN-namespace admission checks. A `NO_CHANGE` REPAIR inspects eligible reusable
 candidate state; a `CODE_FIX` REPAIR bypasses those reuse-only checks.
+For REPAIR, `executor_required` is true unless that exact admission proves an
+eligible verification-only reusable candidate; blocked observations report it as
+unknown.
 
 Preflight is read-only: it creates no RUN, lease, RESULT, FAILURE, EVIDENCE,
 Admission Failure v2 record, repair/remediation/dispatch state, or Executor
@@ -273,11 +276,15 @@ aios continue TASK-101 --executor antigravity --repo C:\path\to\control-repo
 
 There is no default, remembered, inferred, ranked, or recommended Executor.
 `--executor` is required for PRIMARY, REMEDIATION, and CODE_FIX or ordinary
-Executor-backed REPAIR. A deterministically eligible TASK-064 verification-only
-`NO_CHANGE` REPAIR may continue without it because that existing path invokes no
-coding Executor; supplying an Executor does not force a coding call. An Executor
-argument on transport, recovery, handoff, blocked, wait, or done state grants no
-additional authority.
+Executor-backed REPAIR, including a `NO_CHANGE` authorization for which canonical
+REPAIR preflight finds no eligible reusable candidate. Only a deterministically
+eligible TASK-064 verification-only `NO_CHANGE` REPAIR may continue without it:
+the existing REPAIR admission result must explicitly prove that no Executor is
+required. Supplying an Executor does not force a coding call on that path. When it
+is omitted, the continuation RUN preserves the failed candidate's Executor label
+as frozen lineage metadata; the Human result reports no supplied Executor and the
+RUN observation records that none was invoked. An Executor argument on transport,
+recovery, handoff, blocked, wait, or done state grants no additional authority.
 
 The command delegates at most one existing canonical operation and then stops:
 
@@ -300,6 +307,13 @@ selector moves between observation and admission, continuation fails closed befo
 a RUN instead of executing changed correction content. PRIMARY keeps its safe
 sync/restart behavior; a synchronized restart re-enters `aios continue` and derives
 Unified State again before any operation begins.
+
+If that one delegated operation rejects before RUN admission or fails after a RUN
+was admitted, `aios continue` still emits one `AIOS_HUMAN_SURFACE` result and exits
+nonzero. Its bounded `DELEGATED_OPERATION_FAILED` blocker is only a Human-surface
+outcome: the existing Admission Failure v2 or RUN FAILURE remains the sole failure
+artifact and authority. Continuation does not retry, reroute, re-observe, create a
+second failure record, or start another operation.
 
 One invocation does not observe again after delegation and does not automatically
 review, author a correction, publish, retry, recover, reroute, poll, or execute the
