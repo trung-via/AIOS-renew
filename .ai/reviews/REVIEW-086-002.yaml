@@ -1,0 +1,28 @@
+review_id: REVIEW-086-002
+reviewed_sha: 9a87ee26d31837a0d6231fc1e15a04d8f5d7c3e2
+mode: DELTA
+prior_finding_id: F1
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC2: PASS
+  AC9: FAIL
+findings:
+  - id: F4
+    basis: AC9
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::observe_unified_state DELTA prior-review resolution
+    issue: >
+      REVIEW-086-001 F1 is fixed: exact local REMEDIATION/REPAIR children of the canonical
+      remote tip now reduce to WAIT while active and RETRY_TRANSPORT when locally terminal,
+      while unrelated or multiple local tips remain fail-closed. However the separate
+      lineage defect previously recorded as REVIEW-086-001 F2 remains unchanged in this
+      candidate. DELTA review validation still finds `prior_review` by scanning all TASK
+      reviews for any finding whose id equals `prior_finding_id`. Finding ids are review-local,
+      so reuse of the same id in another review can make an exact correction lineage appear
+      ambiguous or can bind the wrong predecessor.
+    expected: >
+      Bind DELTA validation to the exact predecessor already established by correction
+      continuity: parent RUN identity, embedded review identity, reviewed SHA, and finding
+      identity. Do not search TASK-wide by finding id. Reused finding ids in unrelated review
+      decisions must have no effect. Add a focused deterministic regression proving exact
+      predecessor binding when the same finding id appears in another review.
