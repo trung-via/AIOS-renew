@@ -1,0 +1,226 @@
+task_id: TASK-088
+revision: 1
+
+goal: >
+  Harden the published Unified Human Surface so `aios continue <TASK_ID>` can safely
+  resolve a newly authored canonical TASK that exists on upstream main but is absent from
+  a stale clean local main, without requiring a Human `git pull`. When and only when the
+  requested TASK id is syntactically valid and its canonical local TASK file is absent,
+  allow one TASK-062-governed pre-resolution synchronization before Unified State loads
+  the TASK; if synchronization changes relevant state, re-enter the same `continue`
+  request under synchronized code and derive Unified State from scratch. Preserve all
+  existing correction, state, Executor, failure, and one-operation-per-invocation
+  boundaries.
+
+problem: >
+  Live downstream adoption exposed a bootstrap gap after TASK-087. Python Agent canonical
+  main contained newly authored TASK-178, but a repository-provided
+  `/aios-renew-worker CONTINUE TASK-178` invocation from a stale local checkout returned
+  `TASK not found: TASK-178` before any RUN existed. The current implementation resolves
+  the repository and immediately calls the TASK-086 Unified State reducer, which loads the
+  local TASK before the `EXECUTE_PRIMARY` branch can invoke TASK-062 synchronization.
+  Direct PRIMARY already synchronizes before TASK loading; Unified Human Surface therefore
+  regressed the Human goal of eliminating manual pull for the exact first invocation of a
+  newly authored remote TASK. The fix must close only this pre-resolution gap, not turn
+  `continue` into a generic sync command or weaken the read-only Unified State boundary.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-088 authoring is
+    7725f6a559b45c142d2d7ef15206d4f93826157c. TASK-087 was semantically reviewed and
+    published at source candidate a607fb2cf1c57fe35a9a15504df0e98d28de2f5b, and the
+    current roadmap bookmark records Unified Human Surface DONE and Downstream Adoption
+    as the unique NEXT item.
+  - >
+    TASK-062 revision 2 remains authoritative for safe PRIMARY pre-admission
+    synchronization: clean attached local main, exactly one configured upstream resolving
+    to upstream main, equal-or-behind ancestry, one native fast-forward-only integration,
+    no retry/fallback/recovery mutation, and one restart when synchronized kernel/TASK
+    state invalidates stale process code.
+  - >
+    TASK-086 remains the sole lifecycle-state and next-action authority. TASK-088 must not
+    inspect remote RUN/ref recency or build a second reducer in order to guess whether a
+    missing local TASK will become PRIMARY, correction, review, publication, blocked, or
+    done after synchronization.
+  - >
+    TASK-087 remains authoritative for the one-operation Human front door, explicit Human
+    Executor choice when required, zero-Executor states, exact correction selectors,
+    external Brain/Reviewer/Publisher handoffs, and no automatic second lifecycle action.
+  - >
+    TASK-081 failure taxonomy remains authoritative: a rejection before canonical RUN
+    creation is never converted into RUN FAILURE and must invoke zero Executors. This TASK
+    does not require a new admission-failure artifact schema or fabricate a TASK revision
+    before TASK parsing succeeds.
+  - >
+    The downstream Python Agent live incident is operational evidence motivating this
+    hardening. Downstream repository pin migration and the later live proof remain separate
+    downstream changes; TASK-088 changes AIOS-renew only.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-ROADMAP.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-062.yaml
+    - .ai/tasks/TASK-081.yaml
+    - .ai/tasks/TASK-086.yaml
+    - .ai/tasks/TASK-087.yaml
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - README.md
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - README.md
+
+non_goals:
+  - Change TASK-086 Unified State taxonomy, reducer authority, remote lineage semantics, or
+    `aios state` read-only behavior.
+  - Auto-synchronize every `continue` invocation, every existing TASK, REMEDIATION, REPAIR,
+    transport, recovery, direct-candidate, wakeup, approval, or correction-dispatch path.
+  - Synchronize merely because an existing local TASK is malformed, stale by revision,
+    blocked, under correction, reviewed, published, or otherwise inconvenient to execute.
+  - Add a Planner, router, executor recommendation, model selection, retry/fallback,
+    polling, recursive continuation, background watcher, daemon, queue, or generic sync DSL.
+  - Select, default, remember, infer, or change Codex versus Antigravity.
+  - Add selective checkout, cherry-pick, reset, stash, rebase, merge commits, force update,
+    rollback protocol, or hand-built Git ref/index/worktree integration.
+  - Change downstream Python Agent files, dependency pins, worker launchers, workflows, or
+    roadmaps in this TASK.
+  - Change publication, semantic review, correction authoring, RUN/RESULT/EVIDENCE/FAILURE
+    schemas, or create synthetic completion evidence for the live downstream incident.
+  - Claim Downstream Adoption DONE. That planning transition requires a later successful
+    downstream migration plus a real stale-checkout CONTINUE proof and semantic publication.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve TASK identity validation before any network or repository mutation. A
+      malformed/path-like TASK id must fail exactly as an invalid request and must not
+      trigger synchronization. Pre-resolution synchronization eligibility exists only for
+      an otherwise valid requested TASK whose exact canonical local path
+      `.ai/tasks/<TASK_ID>.yaml` is absent.
+    - >
+      If the canonical local TASK file already exists, `continue` must enter the existing
+      TASK-086 Unified State observation directly and must not perform this new
+      pre-resolution fetch/fast-forward. In particular, an existing TASK's correction,
+      review, publication, WAIT, DONE, BLOCKED, transport, and recovery states must not gain
+      an automatic main synchronization side effect.
+    - >
+      The missing-local-TASK path must reuse the established TASK-062 safe synchronization
+      authority and outcomes rather than implementing a second Git synchronization
+      algorithm. Require the same clean attached `main`, unique configured upstream main,
+      equal-or-local-behind ancestry, exactly one native fast-forward-only integration
+      attempt when behind, deterministic postconditions, no retry/fallback/rollback/merge
+      commit/rebase/reset/stash/force behavior, and no remote-main mutation.
+    - >
+      Pre-resolution synchronization must complete before Unified State TASK loading, RUN
+      creation, lease/handoff creation, Executor invocation, or canonical verification. No
+      stale Unified State observation may be retained across synchronization.
+    - >
+      When synchronization changes kernel or TASK state such that process re-entry is
+      required, transfer control exactly once to the same `continue` request using the
+      existing bounded restart mechanism. The synchronized invocation must validate/load
+      the TASK and derive Unified State again from current canonical state before deciding
+      whether any lifecycle operation is authorized. Never carry a pre-sync next_action,
+      selector, correction SHA, or Executor requirement across restart.
+    - >
+      If synchronization succeeds or is already equal but the requested TASK still does
+      not exist, fail closed before RUN creation and Executor invocation. Do not loop,
+      repeatedly fetch, fabricate a TASK revision, choose a nearby TASK, fall back to a
+      low-level command, or reinterpret the missing TASK as a fresh PRIMARY contract.
+    - >
+      If TASK-062 synchronization itself rejects or fails, preserve its safe repository
+      semantics and the Project Contract failure-category boundary: zero RUN and zero
+      Executor before admission, no automatic second attempt, and no conversion into a RUN
+      FAILURE. TASK-088 does not require a new Admission Failure schema or a synthetic
+      resolved TASK identity when parsing never succeeded.
+    - >
+      Executor choice remains orthogonal to pre-resolution synchronization. The sync may
+      occur even when `--executor` was omitted; after synchronized Unified State is derived,
+      existing TASK-087 `EXECUTOR_REQUIRED` behavior remains authoritative if the selected
+      action needs coding. A supplied Executor must never cause execution unless the fresh
+      post-sync Unified State action requires it.
+    - >
+      One Human invocation still delegates at most one canonical lifecycle operation after
+      successful resolution. A synchronization/restart is pre-admission control transfer,
+      not an additional lifecycle operation and not an Executor retry. After any delegated
+      operation succeeds or fails, stop exactly as TASK-087 requires.
+    - >
+      `aios state <TASK_ID>` remains mutation-free and must not inherit pre-resolution
+      synchronization. STATUS/read-only consumers may continue to report a missing local
+      TASK on a stale checkout; only the mutating Human `continue` front door receives this
+      bounded pre-resolution convenience.
+    - >
+      Existing direct `aios run` TASK-062 behavior and all low-level remediation, repair,
+      transport, recover-primary, preflight, wakeup, approval, correction-wakeup, and
+      accept-candidate behavior must remain compatible. Do not alter their sync eligibility
+      or correction exact-HEAD semantics.
+    - >
+      README must document the new-task stale-checkout behavior precisely: `continue` may
+      safely synchronize only to resolve an absent requested TASK before Unified State,
+      then re-derives state; existing local TASKs are not auto-synced by this new path;
+      `state` stays read-only; unsafe repository states fail closed; and there is no
+      retry/reroute or manual action selection hidden behind the feature.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A deterministic repository regression where clean local main is strictly behind its
+      unique upstream main and the requested valid TASK exists only upstream proves one
+      `aios continue TASK-X --executor <explicit>` pre-resolution synchronization occurs
+      before Unified State loading, fast-forwards to the exact upstream SHA, re-enters the
+      same continue request when required, derives fresh state, and delegates at most one
+      ordinary PRIMARY operation with the synchronized TASK/base.
+  - id: AC2
+    condition: >
+      A regression where the requested TASK already exists locally proves `continue` does
+      not invoke the new pre-resolution fetch/fast-forward path before Unified State,
+      including representative non-PRIMARY states such as correction and no-action/blocked
+      observations.
+  - id: AC3
+    condition: >
+      Deterministic missing-TASK regressions for dirty, detached, non-main, missing or
+      ambiguous upstream, local-ahead, diverged, fetch failure, and native fast-forward
+      failure preserve TASK-062 fail-closed behavior: no RUN, no Executor, at most one
+      integration attempt, and no retry/fallback/recovery mutation.
+  - id: AC4
+    condition: >
+      A regression where synchronization completes (or local equals upstream) but the
+      requested valid TASK remains absent fails with no fabricated TASK revision, no RUN,
+      no Executor, no repeated synchronization loop, and no fallback to PRIMARY or another
+      TASK.
+  - id: AC5
+    condition: >
+      Restart coverage proves no pre-sync Unified State decision or selector survives the
+      control transfer: if synchronized state resolves to REVIEW/Brain/Publisher/WAIT/DONE/
+      BLOCKED or another non-PRIMARY action, the fresh state is honored and no stale PRIMARY
+      execution occurs.
+  - id: AC6
+    condition: >
+      Executor-choice regressions prove pre-resolution sync itself does not require or infer
+      an Executor, post-sync Executor-required actions still return `EXECUTOR_REQUIRED` when
+      omitted, and a supplied Executor does not force coding on fresh zero-Executor states.
+  - id: AC7
+    condition: >
+      `aios state` and existing low-level run/remediate/repair/transport/recover-primary and
+      correction paths retain their prior synchronization and read-only/exact-lineage
+      behavior; no generic auto-sync authority leaks beyond the missing-local-TASK
+      `continue` boundary.
+  - id: AC8
+    condition: >
+      Focused Operator regressions and README establish that this is one observed-evidence
+      hardening of TASK-087 using TASK-062 synchronization authority, with no planner,
+      reviewer, publication, correction-authoring, executor-routing, retry/fallback/reroute,
+      downstream migration, workflow, or roadmap-completion authority added.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
