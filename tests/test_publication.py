@@ -1286,13 +1286,14 @@ def test_workflow_has_canonical_trigger_and_minimum_authority() -> None:
 def make_predecessor_lineage(
     root: Path,
     *,
+    pred_run_id: str = "RUN-063-001",
     predecessor_override: dict[str, object] | None = None,
     sibling_findings: bool = False,
     remediation_scope: tuple[str, ...] = ("product.txt",),
 ) -> dict[str, object]:
     repo = root / "repo"
     remote = root / "upstream.git"
-    repo.mkdir()
+    repo.mkdir(parents=True, exist_ok=True)
     git(repo, "init", "--quiet")
     git(repo, "config", "user.name", "AIOS Publication Test")
     git(repo, "config", "user.email", "publication@example.invalid")
@@ -1311,7 +1312,6 @@ def make_predecessor_lineage(
     state = root / "state"
     state.mkdir()
 
-    pred_run_id = "RUN-063-001"
     pred_run = {
         "run_id": pred_run_id,
         "task": {"id": "TASK-063", "revision": 2},
@@ -1590,3 +1590,212 @@ def test_predecessor_multi_finding_review_fails_closed_ac6(
     assert exc_info.value.report.outcome == "FAILED"
     assert "multiple findings" in exc_info.value.report.detail
     assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_publication_predecessor_parser_rejects_alias_and_conflicting_fields() -> None:
+    valid_payload = {
+        "source_run_id": "RUN-063-001",
+        "review_id": "REVIEW-063-001",
+        "finding_id": "R1",
+        "reviewed_sha": "0" * 40,
+    }
+    parsed = publication_module._parse_remediation_predecessor(valid_payload)
+    assert parsed.source_run_id == "RUN-063-001"
+    assert parsed.review_id == "REVIEW-063-001"
+    assert parsed.finding_id == "R1"
+    assert parsed.reviewed_sha == "0" * 40
+
+    # Non-mapping input fails closed
+    with pytest.raises(ValueError, match="REMEDIATION predecessor must be a mapping"):
+        publication_module._parse_remediation_predecessor("not-a-mapping")
+
+    # Alternate alias keys fail closed
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        publication_module._parse_remediation_predecessor({
+            "run_id": "RUN-063-001",
+            "review_id": "REVIEW-063-001",
+            "finding_id": "R1",
+            "reviewed_sha": "0" * 40,
+        })
+
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        publication_module._parse_remediation_predecessor({
+            "source_run_id": "RUN-063-001",
+            "source_review_id": "REVIEW-063-001",
+            "finding_id": "R1",
+            "reviewed_sha": "0" * 40,
+        })
+
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        publication_module._parse_remediation_predecessor({
+            "source_run_id": "RUN-063-001",
+            "review_id": "REVIEW-063-001",
+            "selected_finding_id": "R1",
+            "reviewed_sha": "0" * 40,
+        })
+
+    # Conflicting keys fail closed
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        publication_module._parse_remediation_predecessor({
+            **valid_payload,
+            "run_id": "RUN-063-999",
+        })
+
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        publication_module._parse_remediation_predecessor({
+            **valid_payload,
+            "source_review_id": "REVIEW-063-999",
+        })
+
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        publication_module._parse_remediation_predecessor({
+            **valid_payload,
+            "selected_finding_id": "R2",
+        })
+
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        publication_module._parse_remediation_predecessor({
+            **valid_payload,
+            "extra_field": "disallowed",
+        })
+
+
+def test_publication_predecessor_canonical_run_identity_consistent_ac3() -> None:
+    admissible_run_ids = [
+        "RUN-066-1",
+        "RUN-066-001",
+        "RUN-task.1-001",
+        "RUN-101-candidate",
+        "RUN-A_B-001",
+        "RUN-TASK-999-1",
+    ]
+    for run_id in admissible_run_ids:
+        payload = {
+            "source_run_id": run_id,
+            "review_id": "REVIEW-066-001",
+            "finding_id": "R1",
+            "reviewed_sha": "a" * 40,
+        }
+        parsed = publication_module._parse_remediation_predecessor(payload)
+        assert parsed.source_run_id == run_id
+
+    invalid_run_ids = [
+        "NOT-A-RUN",
+        "RUN-",
+        "RUN-/slash",
+        "RUN-\\backslash",
+        "TASK-101",
+        "RUN-@bad",
+    ]
+    for invalid_id in invalid_run_ids:
+        payload = {
+            "source_run_id": invalid_id,
+            "review_id": "REVIEW-066-001",
+            "finding_id": "R1",
+            "reviewed_sha": "a" * 40,
+        }
+        with pytest.raises(
+            ValueError,
+            match="REMEDIATION predecessor source RUN identity is invalid",
+        ):
+            publication_module._parse_remediation_predecessor(payload)
+
+
+def test_predecessor_alias_keys_fail_closed_ac3(
+    tmp_path: Path,
+) -> None:
+    lineage = make_predecessor_lineage(
+        tmp_path,
+        predecessor_override=lambda pred_id, base_sha: {
+            "run_id": pred_id,
+            "review_id": "REVIEW-063-001",
+            "finding_id": "R1",
+            "reviewed_sha": base_sha,
+        },
+    )
+    with pytest.raises(PublicationError) as exc_info:
+        publish(lineage)
+    assert exc_info.value.report.outcome == "FAILED"
+    assert "unexpected fields" in exc_info.value.report.detail
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_predecessor_conflicting_keys_fail_closed_ac3(
+    tmp_path: Path,
+) -> None:
+    # Conflicting source_run_id and run_id
+    lineage = make_predecessor_lineage(
+        tmp_path / "case1",
+        predecessor_override=lambda pred_id, base_sha: {
+            "source_run_id": pred_id,
+            "run_id": "RUN-063-999",
+            "review_id": "REVIEW-063-001",
+            "finding_id": "R1",
+            "reviewed_sha": base_sha,
+        },
+    )
+    with pytest.raises(PublicationError) as exc_info:
+        publish(lineage)
+    assert exc_info.value.report.outcome == "FAILED"
+    assert "unexpected fields" in exc_info.value.report.detail
+    assert remote_main(lineage) == lineage["base_sha"]
+
+    # Conflicting review_id and source_review_id
+    lineage2 = make_predecessor_lineage(
+        tmp_path / "case2",
+        predecessor_override=lambda pred_id, base_sha: {
+            "source_run_id": pred_id,
+            "review_id": "REVIEW-063-001",
+            "source_review_id": "REVIEW-063-999",
+            "finding_id": "R1",
+            "reviewed_sha": base_sha,
+        },
+    )
+    with pytest.raises(PublicationError) as exc_info2:
+        publish(lineage2)
+    assert exc_info2.value.report.outcome == "FAILED"
+    assert "unexpected fields" in exc_info2.value.report.detail
+    assert remote_main(lineage2) == lineage2["base_sha"]
+
+    # Conflicting finding_id and selected_finding_id
+    lineage3 = make_predecessor_lineage(
+        tmp_path / "case3",
+        predecessor_override=lambda pred_id, base_sha: {
+            "source_run_id": pred_id,
+            "review_id": "REVIEW-063-001",
+            "finding_id": "R1",
+            "selected_finding_id": "R2",
+            "reviewed_sha": base_sha,
+        },
+    )
+    with pytest.raises(PublicationError) as exc_info3:
+        publish(lineage3)
+    assert exc_info3.value.report.outcome == "FAILED"
+    assert "unexpected fields" in exc_info3.value.report.detail
+    assert remote_main(lineage3) == lineage3["base_sha"]
+
+
+def test_predecessor_canonically_admissible_run_identity_accepted_in_publication(
+    tmp_path: Path,
+) -> None:
+    lineage = make_predecessor_lineage(tmp_path, pred_run_id="RUN-063-1")
+    report = publish(lineage)
+
+    assert report.outcome == "PUBLISHED"
+    assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]

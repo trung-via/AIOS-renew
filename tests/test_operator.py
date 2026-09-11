@@ -6806,3 +6806,173 @@ def test_direct_candidate_and_approved_remediation_persist_predecessor_identity_
         "finding_id": "R1",
         "reviewed_sha": baseline,
     }
+
+
+def test_operator_predecessor_parser_rejects_alias_and_conflicting_fields() -> None:
+    valid_payload = {
+        "source_run_id": "RUN-101-000",
+        "review_id": "REVIEW-101-001",
+        "finding_id": "R1",
+        "reviewed_sha": "0" * 40,
+    }
+    parsed = operator_module._parse_remediation_predecessor(valid_payload)
+    assert parsed.source_run_id == "RUN-101-000"
+    assert parsed.review_id == "REVIEW-101-001"
+    assert parsed.finding_id == "R1"
+    assert parsed.reviewed_sha == "0" * 40
+
+    # Non-mapping input fails closed
+    with pytest.raises(TypeError, match="REMEDIATION predecessor must be a mapping"):
+        operator_module._parse_remediation_predecessor("not-a-mapping")
+
+    # Alternate alias keys fail closed
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        operator_module._parse_remediation_predecessor({
+            "run_id": "RUN-101-000",
+            "review_id": "REVIEW-101-001",
+            "finding_id": "R1",
+            "reviewed_sha": "0" * 40,
+        })
+
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        operator_module._parse_remediation_predecessor({
+            "source_run_id": "RUN-101-000",
+            "source_review_id": "REVIEW-101-001",
+            "finding_id": "R1",
+            "reviewed_sha": "0" * 40,
+        })
+
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        operator_module._parse_remediation_predecessor({
+            "source_run_id": "RUN-101-000",
+            "review_id": "REVIEW-101-001",
+            "selected_finding_id": "R1",
+            "reviewed_sha": "0" * 40,
+        })
+
+    # Conflicting keys fail closed
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        operator_module._parse_remediation_predecessor({
+            **valid_payload,
+            "run_id": "RUN-101-999",
+        })
+
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        operator_module._parse_remediation_predecessor({
+            **valid_payload,
+            "source_review_id": "REVIEW-101-999",
+        })
+
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        operator_module._parse_remediation_predecessor({
+            **valid_payload,
+            "selected_finding_id": "R2",
+        })
+
+    with pytest.raises(
+        ValueError, match="REMEDIATION predecessor contains unexpected fields"
+    ):
+        operator_module._parse_remediation_predecessor({
+            **valid_payload,
+            "extra_field": "disallowed",
+        })
+
+
+def test_operator_predecessor_canonical_run_identity_consistent_with_repository_grammar() -> None:
+    # Canonically admissible RUN identities supported by publication and task_run_prefix
+    admissible_run_ids = [
+        "RUN-066-1",
+        "RUN-066-001",
+        "RUN-task.1-001",
+        "RUN-101-candidate",
+        "RUN-A_B-001",
+        "RUN-TASK-999-1",
+    ]
+    for run_id in admissible_run_ids:
+        payload = {
+            "source_run_id": run_id,
+            "review_id": "REVIEW-066-001",
+            "finding_id": "R1",
+            "reviewed_sha": "a" * 40,
+        }
+        parsed = operator_module._parse_remediation_predecessor(payload)
+        assert parsed.source_run_id == run_id
+
+    # Inadmissible / invalid RUN identities fail closed
+    invalid_run_ids = [
+        "NOT-A-RUN",
+        "RUN-",
+        "RUN-/slash",
+        "RUN-\\backslash",
+        "TASK-101",
+        "RUN-@bad",
+    ]
+    for invalid_id in invalid_run_ids:
+        payload = {
+            "source_run_id": invalid_id,
+            "review_id": "REVIEW-066-001",
+            "finding_id": "R1",
+            "reviewed_sha": "a" * 40,
+        }
+        with pytest.raises(
+            ValueError,
+            match="REMEDIATION predecessor source RUN identity is invalid",
+        ):
+            operator_module._parse_remediation_predecessor(payload)
+
+
+def test_operator_prior_result_fails_closed_on_conflicting_or_alias_predecessor(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    task = load_task(repo, "TASK-101")
+    sha = git(repo, "rev-parse", "HEAD")
+    review, remediation = remediation_contract(repo, reviewed_sha=sha)
+    runner = RemediationRunner(repo)
+
+    summary = run_remediation(
+        "TASK-101",
+        review=review,
+        remediation=remediation,
+        executor="antigravity",
+        repo=repo,
+        native_runner=runner,
+    )
+    run_file = state.runs / f"{summary.run_id}.json"
+    run_data = json.loads(run_file.read_text(encoding="utf-8"))
+
+    # Legacy path: omitting predecessor entirely succeeds
+    legacy_data = dict(run_data)
+    del legacy_data["predecessor"]
+    run_file.write_text(json.dumps(legacy_data), encoding="utf-8")
+    result, run_id = operator_module._load_authoritative_prior_result(
+        state, task, summary.head_sha, repo=repo
+    )
+    assert run_id == summary.run_id
+
+    # Corrupt predecessor with conflicting alias field fails closed
+    conflicted_data = dict(run_data)
+    conflicted_data["predecessor"] = {
+        **run_data["predecessor"],
+        "run_id": "RUN-101-999",
+    }
+    run_file.write_text(json.dumps(conflicted_data), encoding="utf-8")
+    with pytest.raises(
+        OperatorError, match="authoritative prior RESULT lineage mismatch"
+    ):
+        operator_module._load_authoritative_prior_result(
+            state, task, summary.head_sha, repo=repo
+        )

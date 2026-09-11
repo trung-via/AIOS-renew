@@ -583,8 +583,11 @@ def _remote_run_reservations(
     return namespace.run_ids
 
 
-_RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9_-]+-\d{3,}$")
+_RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
 _SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+_CANONICAL_PREDECESSOR_FIELDS = frozenset(
+    {"source_run_id", "review_id", "finding_id", "reviewed_sha"}
+)
 
 
 @dataclass(frozen=True)
@@ -601,9 +604,11 @@ def _parse_remediation_predecessor(data: Any) -> RemediationPredecessor:
     root = data if isinstance(data, Mapping) else None
     if root is None:
         raise TypeError("REMEDIATION predecessor must be a mapping")
-    source_run_id = root.get("source_run_id") or root.get("run_id")
-    review_id = root.get("review_id") or root.get("source_review_id")
-    finding_id = root.get("finding_id") or root.get("selected_finding_id")
+    if set(root).difference(_CANONICAL_PREDECESSOR_FIELDS):
+        raise ValueError("REMEDIATION predecessor contains unexpected fields")
+    source_run_id = root.get("source_run_id")
+    review_id = root.get("review_id")
+    finding_id = root.get("finding_id")
     reviewed_sha = root.get("reviewed_sha")
     if not isinstance(source_run_id, str) or not _RUN_ID_PATTERN.fullmatch(source_run_id):
         raise ValueError("REMEDIATION predecessor source RUN identity is invalid")
@@ -613,17 +618,6 @@ def _parse_remediation_predecessor(data: Any) -> RemediationPredecessor:
         raise ValueError("REMEDIATION predecessor selected finding identity is invalid")
     if not isinstance(reviewed_sha, str) or not _SHA_PATTERN.fullmatch(reviewed_sha):
         raise ValueError("REMEDIATION predecessor reviewed_sha is invalid")
-    allowed = {
-        "source_run_id",
-        "run_id",
-        "review_id",
-        "source_review_id",
-        "finding_id",
-        "selected_finding_id",
-        "reviewed_sha",
-    }
-    if set(root).difference(allowed):
-        raise ValueError("REMEDIATION predecessor contains unexpected fields")
     return RemediationPredecessor(
         source_run_id=source_run_id,
         review_id=review_id,

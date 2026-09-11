@@ -215,6 +215,11 @@ def _single_optional_remote_sha(
     return lines[0][0]
 
 
+_CANONICAL_PREDECESSOR_FIELDS = frozenset(
+    {"source_run_id", "review_id", "finding_id", "reviewed_sha"}
+)
+
+
 @dataclass(frozen=True)
 class RemediationPredecessor:
     """Exact bounded predecessor identity for one canonical REMEDIATION RUN."""
@@ -229,20 +234,11 @@ def _parse_remediation_predecessor(
     data: Any, document: str = "REMEDIATION predecessor"
 ) -> RemediationPredecessor:
     root = _mapping(data, document)
-    allowed = {
-        "source_run_id",
-        "run_id",
-        "review_id",
-        "source_review_id",
-        "finding_id",
-        "selected_finding_id",
-        "reviewed_sha",
-    }
-    if set(root).difference(allowed):
+    if set(root).difference(_CANONICAL_PREDECESSOR_FIELDS):
         raise ValueError(f"{document} contains unexpected fields")
-    source_run_id = root.get("source_run_id") or root.get("run_id")
-    review_id = root.get("review_id") or root.get("source_review_id")
-    finding_id = root.get("finding_id") or root.get("selected_finding_id")
+    source_run_id = root.get("source_run_id")
+    review_id = root.get("review_id")
+    finding_id = root.get("finding_id")
     reviewed_sha = root.get("reviewed_sha")
     if not isinstance(source_run_id, str) or _RUN_ID.fullmatch(source_run_id) is None:
         raise ValueError(f"{document} source RUN identity is invalid")
