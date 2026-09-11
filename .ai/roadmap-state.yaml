@@ -32,11 +32,14 @@ sequence:
       task_id: TASK-092
       published_sha: "e72135cd5c5a1dec0d8374d9bb8994da5e458feb"
   - id: antigravity-minimax-executor-adoption
-    status: NEXT
-    task_id: TASK-091
+    status: DONE
+    completed_by:
+      task_id: TASK-091
+      published_sha: "a45e94294f0688e62dacfacd884f2736985fd616"
   - id: performance-closure
-    status: PENDING
-    blocked_by: antigravity-minimax-executor-adoption
+    status: NEXT
+    task_id: TASK-093
+    phase: P1-verification-granularity
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
   - id: downstream-adoption
     status: PENDING
