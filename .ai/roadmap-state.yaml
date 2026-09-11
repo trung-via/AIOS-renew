@@ -21,8 +21,16 @@ sequence:
     completed_by:
       task_id: TASK-087
       published_sha: "a607fb2cf1c57fe35a9a15504df0e98d28de2f5b"
-  - id: downstream-adoption
+  - id: safe-publication-continuation-compatibility
     status: NEXT
+    task_id: TASK-090
+    reason: >-
+      Human explicitly prioritized observed-evidence hardening of safe publication for the
+      published TASK-089 CONTINUE_IMPLEMENTATION REPAIR action before downstream adoption.
+  - id: downstream-adoption
+    status: PENDING
+    blocked_by:
+      - safe-publication-continuation-compatibility
 parallel_work:
   - id: approved-remediation-wakeup
     milestone: A6
