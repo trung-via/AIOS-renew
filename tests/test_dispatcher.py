@@ -1,10 +1,12 @@
 import inspect
 from collections.abc import Mapping
 from dataclasses import fields
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from aios_renew.antigravity_minimax_adapter import AntigravityMinimaxAdapter
 from aios_renew.artifacts import Claim, Result, ResultPackage
 from aios_renew.dispatcher import (
     Dispatcher,
@@ -93,7 +95,7 @@ class RecordingAdapter:
         return self._record("REPAIR", execution)
 
 
-@pytest.mark.parametrize("selected", ["codex", "antigravity"])
+@pytest.mark.parametrize("selected", ["codex", "antigravity", "antigravity-minimax"])
 def test_primary_resolves_only_selected_executor_and_invokes_once(
     selected: str,
 ) -> None:
@@ -101,8 +103,9 @@ def test_primary_resolves_only_selected_executor_and_invokes_once(
     adapters = {
         "codex": RecordingAdapter("codex"),
         "antigravity": RecordingAdapter("antigravity"),
+        "antigravity-minimax": RecordingAdapter("antigravity-minimax"),
     }
-    factory_calls = {"codex": 0, "antigravity": 0}
+    factory_calls = {"codex": 0, "antigravity": 0, "antigravity-minimax": 0}
 
     def factory(name: str):
         def create() -> RecordingAdapter:
@@ -125,7 +128,8 @@ def test_primary_resolves_only_selected_executor_and_invokes_once(
 
     assert package.result == adapters[selected].package.result
     assert factory_calls[selected] == 1
-    assert factory_calls[{"codex", "antigravity"}.difference({selected}).pop()] == 0
+    for other in {"codex", "antigravity", "antigravity-minimax"} - {selected}:
+        assert factory_calls[other] == 0
     assert adapters[selected].calls == [("PRIMARY", (task, run))]
 
     with pytest.raises(DispatcherError, match="already dispatched"):
@@ -264,3 +268,45 @@ def test_dispatcher_factory_surface_exposes_only_provider_neutral_policy() -> No
     assert "execution_policy" in signatures
     for provider_native_field in ("sandbox", "mode", "permission", "command"):
         assert provider_native_field not in signatures.lower()
+
+
+@pytest.mark.parametrize(
+    ("factory_func", "operation"),
+    [
+        (primary_dispatcher, "PRIMARY"),
+        (remediation_dispatcher, "REMEDIATION"),
+        (repair_dispatcher, "REPAIR"),
+    ],
+)
+def test_native_dispatcher_factories_resolve_antigravity_minimax(
+    tmp_path: Path, factory_func: Any, operation: str
+) -> None:
+    dispatcher = factory_func(
+        selected_executor="antigravity-minimax",
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+        execution_policy=resolve_native_execution_policy(
+            authorizes_mutation=True
+        ),
+        native_runner=lambda *args, **kwargs: None,
+    )
+    assert dispatcher._selected_executor == "antigravity-minimax"
+    assert dispatcher._operation == operation
+    adapter = dispatcher._adapter_factory()
+    assert isinstance(adapter, AntigravityMinimaxAdapter)
+    assert adapter.executor == "antigravity-minimax"
+
+
+def test_native_dispatcher_rejects_unrecognized_executor(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(DispatcherError, match="unsupported selected executor"):
+        primary_dispatcher(
+            selected_executor="unrecognized-executor",
+            repo=tmp_path,
+            handoff_path=tmp_path / "handoff.json",
+            execution_policy=resolve_native_execution_policy(
+                authorizes_mutation=True
+            ),
+            native_runner=lambda *args, **kwargs: None,
+        )

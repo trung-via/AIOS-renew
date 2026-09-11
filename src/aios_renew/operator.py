@@ -18,6 +18,10 @@ from pathlib import Path
 from typing import Any, BinaryIO, Iterator
 
 from .antigravity_adapter import AntigravityExecutionError, AntigravityOutputError
+from .antigravity_minimax_adapter import (
+    AntigravityMinimaxExecutionError,
+    AntigravityMinimaxOutputError,
+)
 from .artifacts import (
     ArtifactValidationError,
     Result,
@@ -1015,7 +1019,7 @@ def _run_task_impl(
         executor=executor,
         dispatch_id=dispatch_id,
     )
-    if executor not in ("codex", "antigravity"):
+    if executor not in ("codex", "antigravity", "antigravity-minimax"):
         _set_admission_boundary(
             admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
         )
@@ -1103,11 +1107,18 @@ def _run_task_impl(
                 lease=lease,
                 leases=leases,
             )
-        except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
+        except (
+            CodexOutputError,
+            AntigravityOutputError,
+            AntigravityMinimaxOutputError,
+            ArtifactValidationError,
+        ) as exc:
             raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
         except CodexExecutionError as exc:
             raise OperatorError(f"Codex invocation failed: {exc}") from exc
         except AntigravityExecutionError as exc:
+            raise OperatorError(str(exc)) from exc
+        except AntigravityMinimaxExecutionError as exc:
             raise OperatorError(str(exc)) from exc
         except ExecutorBoundaryError as exc:
             raise OperatorError(f"executor boundary failed: {exc}") from exc
@@ -1931,7 +1942,9 @@ def _run_repair_impl(
     observation_tracker: RunObservationTracker,
     admission: dict[str, Any],
 ) -> RepairSummary:
-    if executor is not None and executor not in ("codex", "antigravity"):
+    if executor is not None and executor not in (
+        "codex", "antigravity", "antigravity-minimax"
+    ):
         _set_admission_boundary(
             admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
         )
@@ -1960,7 +1973,9 @@ def _run_repair_impl(
     # schema-compatible RUN label preserves the frozen failed-RUN lineage; it is
     # not a defaulted, selected, or invoked coding Executor.
     inherited_executor = failure.get("executor")
-    if inherited_executor not in ("codex", "antigravity"):
+    if inherited_executor not in (
+        "codex", "antigravity", "antigravity-minimax"
+    ):
         raise OperatorError("failed RUN has invalid Executor lineage")
     run_executor = executor if executor is not None else inherited_executor
 
@@ -2041,11 +2056,18 @@ def _run_repair_impl(
             )
             try:
                 package = dispatcher.dispatch_repair(execution=execution)
-            except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
+            except (
+                CodexOutputError,
+                AntigravityOutputError,
+                AntigravityMinimaxOutputError,
+                ArtifactValidationError,
+            ) as exc:
                 raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
             except CodexExecutionError as exc:
                 raise OperatorError(f"Codex invocation failed: {exc}") from exc
             except AntigravityExecutionError as exc:
+                raise OperatorError(str(exc)) from exc
+            except AntigravityMinimaxExecutionError as exc:
                 raise OperatorError(str(exc)) from exc
             except DispatcherError as exc:
                 raise OperatorError(f"dispatcher failed: {exc}") from exc
@@ -3001,7 +3023,7 @@ def _persist_and_transport_admission_failure(
             },
         }
         requested_executor = admission.get("requested_executor")
-        if requested_executor in ("codex", "antigravity"):
+        if requested_executor in ("codex", "antigravity", "antigravity-minimax"):
             record["requested_executor"] = requested_executor
         task = admission.get("task")
         if (
@@ -3095,7 +3117,7 @@ def _new_admission(
     }
     if isinstance(task_id, str):
         admission["requested_task_id"] = task_id
-    if executor in ("codex", "antigravity"):
+    if executor in ("codex", "antigravity", "antigravity-minimax"):
         admission["requested_executor"] = executor
     admission.update(facts)
     return admission
@@ -4728,7 +4750,7 @@ def _run_remediation_impl(
     canonical_remediation = resolved.remediation
     task = resolved.task
     remote_mode = resolved.remote_mode
-    if executor not in ("codex", "antigravity"):
+    if executor not in ("codex", "antigravity", "antigravity-minimax"):
         raise OperatorError(f"unsupported executor: {executor}")
 
     _set_admission_boundary(
@@ -4831,11 +4853,18 @@ def _run_remediation_impl(
 
         try:
             package = dispatcher.dispatch_remediation(execution=execution)
-        except (CodexOutputError, AntigravityOutputError, ArtifactValidationError) as exc:
+        except (
+            CodexOutputError,
+            AntigravityOutputError,
+            AntigravityMinimaxOutputError,
+            ArtifactValidationError,
+        ) as exc:
             raise OperatorError(f"invalid structural ResultPackage: {exc}") from exc
         except CodexExecutionError as exc:
             raise OperatorError(f"Codex invocation failed: {exc}") from exc
         except AntigravityExecutionError as exc:
+            raise OperatorError(str(exc)) from exc
+        except AntigravityMinimaxExecutionError as exc:
             raise OperatorError(str(exc)) from exc
         except DispatcherError as exc:
             raise OperatorError(f"dispatcher failed: {exc}") from exc
@@ -4953,7 +4982,7 @@ def _accept_candidate_impl(
     attempt: _RunAttempt,
     admission: dict[str, Any],
 ) -> RemediationSummary:
-    if executor not in ("codex", "antigravity"):
+    if executor not in ("codex", "antigravity", "antigravity-minimax"):
         raise OperatorError(f"unsupported executor: {executor}")
     task = load_task(repo, task_id)
     _bind_admission_task(admission, task)
@@ -5629,12 +5658,16 @@ def _parser() -> argparse.ArgumentParser:
         "continue", help="Delegate the exact Unified State next action once"
     )
     continue_parser.add_argument("task_id")
-    continue_parser.add_argument("--executor", choices=("codex", "antigravity"))
+    continue_parser.add_argument(
+        "--executor", choices=("codex", "antigravity", "antigravity-minimax")
+    )
     continue_parser.add_argument("--repo")
 
     run_parser = commands.add_parser("run", help="Execute a stored canonical TASK")
     run_parser.add_argument("task_id")
-    run_parser.add_argument("--executor", required=True, choices=("codex", "antigravity"))
+    run_parser.add_argument(
+        "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
+    )
     run_parser.add_argument("--repo")
     wakeup_parser = commands.add_parser(
         "wakeup", help="Idempotently wake one canonical PRIMARY execution"
@@ -5642,7 +5675,7 @@ def _parser() -> argparse.ArgumentParser:
     wakeup_parser.add_argument("dispatch_id")
     wakeup_parser.add_argument("task_id")
     wakeup_parser.add_argument(
-        "--executor", required=True, choices=("codex", "antigravity")
+        "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
     wakeup_parser.add_argument("--repo")
     status_parser = commands.add_parser(
@@ -5665,7 +5698,7 @@ def _parser() -> argparse.ArgumentParser:
     correction_parser.add_argument("source_run_id")
     correction_parser.add_argument("finding_id")
     correction_parser.add_argument(
-        "--executor", required=True, choices=("codex", "antigravity")
+        "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
     correction_parser.add_argument("--repo")
     remediation_parser = commands.add_parser(
@@ -5677,7 +5710,7 @@ def _parser() -> argparse.ArgumentParser:
     remediation_parser.add_argument("--remediation")
     remediation_parser.add_argument("--prior-review")
     remediation_parser.add_argument(
-        "--executor", required=True, choices=("codex", "antigravity")
+        "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
     remediation_parser.add_argument("--repo")
     remediation_preflight_parser = commands.add_parser(
@@ -5696,7 +5729,7 @@ def _parser() -> argparse.ArgumentParser:
     candidate_parser.add_argument("task_id")
     candidate_parser.add_argument("--finding", required=True)
     candidate_parser.add_argument(
-        "--executor", required=True, choices=("codex", "antigravity")
+        "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
     candidate_parser.add_argument("--repo")
     repair_parser = commands.add_parser(
@@ -5705,7 +5738,7 @@ def _parser() -> argparse.ArgumentParser:
     repair_parser.add_argument("failed_run_id")
     repair_parser.add_argument("--repair")
     repair_parser.add_argument(
-        "--executor", required=True, choices=("codex", "antigravity")
+        "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
     repair_parser.add_argument("--repo")
     repair_preflight_parser = commands.add_parser(

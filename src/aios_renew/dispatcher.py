@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from .antigravity_adapter import AntigravityAdapter
+from .antigravity_minimax_adapter import AntigravityMinimaxAdapter
 from .artifacts import ResultPackage
 from .codex_adapter import CodexAdapter
 from .executor import ExecutorBoundary
@@ -237,6 +238,12 @@ def _native_dispatcher(
                 execution_policy=execution_policy,
             ),
             "antigravity": lambda: AntigravityAdapter(
+                runner=native_runner,
+                execution_policy=execution_policy,
+                repo=repo,
+                handoff_path=handoff_path,
+            ),
+            "antigravity-minimax": lambda: AntigravityMinimaxAdapter(
                 runner=native_runner,
                 execution_policy=execution_policy,
                 repo=repo,

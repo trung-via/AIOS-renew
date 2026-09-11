@@ -9217,3 +9217,121 @@ def test_correction_preflight_historical_repair_preserves_subject_and_blocks_dup
     assert _runtime_bytes(repo) == before_runtime
 
 
+@pytest.mark.parametrize(
+    ("subcommand", "extra_args"),
+    [
+        ("continue", ["TASK-101"]),
+        ("run", ["TASK-101"]),
+        ("wakeup", ["DISPATCH-001", "TASK-101"]),
+        ("approved-remediation-wakeup", ["CORR-001", "RUN-001", "F1"]),
+        ("remediate", ["TASK-101"]),
+        ("accept-candidate", ["TASK-101", "--finding", "F1"]),
+        ("repair", ["RUN-001"]),
+    ],
+)
+def test_cli_admits_antigravity_minimax_and_rejects_unsupported(
+    subcommand: str, extra_args: list[str]
+) -> None:
+    parser = operator_module._parser()
+
+    args = parser.parse_args(
+        [subcommand, *extra_args, "--executor", "antigravity-minimax"]
+    )
+    assert args.executor == "antigravity-minimax"
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [subcommand, *extra_args, "--executor", "unsupported-executor"]
+        )
+
+
+def test_operator_admission_fails_closed_on_unsupported_executor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+
+    with pytest.raises(
+        OperatorError, match="unsupported executor: unsupported-executor"
+    ):
+        run_task("TASK-101", executor="unsupported-executor", repo=repo)
+
+    with pytest.raises(
+        OperatorError, match="unsupported executor: unsupported-executor"
+    ):
+        run_repair("RUN-101-001", executor="unsupported-executor", repo=repo)
+
+    with pytest.raises(
+        OperatorError, match="unsupported executor: unsupported-executor"
+    ):
+        accept_candidate(
+            "TASK-101",
+            executor="unsupported-executor",
+            finding_id="F1",
+            repo=repo,
+        )
+
+    monkeypatch.setattr(
+        operator_module,
+        "_resolve_remediation_admission",
+        lambda *args, **kwargs: SimpleNamespace(
+            review=None, remediation=None, task=None, remote_mode=False
+        ),
+    )
+    with pytest.raises(
+        OperatorError, match="unsupported executor: unsupported-executor"
+    ):
+        run_remediation(
+            "TASK-101",
+            executor="unsupported-executor",
+            finding_id="F1",
+            repo=repo,
+        )
+
+
+def test_new_admission_records_antigravity_minimax() -> None:
+    admission = operator_module._new_admission(
+        "PRIMARY",
+        phase="ADMISSION",
+        reason_code="READY",
+        task_id="TASK-101",
+        executor="antigravity-minimax",
+    )
+    assert admission["requested_executor"] == "antigravity-minimax"
+
+    admission_unsupported = operator_module._new_admission(
+        "PRIMARY",
+        phase="ADMISSION",
+        reason_code="READY",
+        task_id="TASK-101",
+        executor="unsupported-executor",
+    )
+    assert "requested_executor" not in admission_unsupported
+
+
+def test_operator_admits_antigravity_minimax_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    dispatched = []
+
+    class DummyDispatcher:
+        def dispatch_primary(self, **kwargs):
+            dispatched.append(kwargs)
+            raise operator_module.OperatorError("stop after admission")
+
+    monkeypatch.setattr(
+        operator_module,
+        "primary_dispatcher",
+        lambda *, selected_executor, **kwargs: DummyDispatcher()
+        if selected_executor == "antigravity-minimax"
+        else pytest.fail(f"unexpected executor {selected_executor}"),
+    )
+
+    with pytest.raises(operator_module.OperatorError, match="stop after admission"):
+        run_task(
+            "TASK-101",
+            executor="antigravity-minimax",
+            repo=repo,
+        )
+    assert len(dispatched) == 1
