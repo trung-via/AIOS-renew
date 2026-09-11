@@ -1,0 +1,38 @@
+review_id: REVIEW-097-002
+reviewed_sha: 70e06f08e4809d0f40bd1a0736fcd2f7097d0af2
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings:
+  - id: F1
+    basis: AC3
+    action: CODE_FIX
+    location: src/aios_renew/operator.py::_parse_remediation_predecessor; src/aios_renew/publication.py::_parse_remediation_predecessor
+    issue: >
+      The new predecessor identity parser is not a single fail-closed canonical grammar.
+      Both Operator and publication accept alias keys (`run_id`, `source_review_id`,
+      `selected_finding_id`) in addition to the four Runtime-persisted canonical keys and
+      resolve them with `canonical_value or alias_value`. A malformed predecessor record
+      can therefore contain both forms with conflicting identities and still be accepted
+      because one value silently wins instead of the inconsistency failing closed. In
+      addition, Operator validates `source_run_id` with a new private regex that is narrower
+      than the existing canonical RUN/ref grammar used by publication and `task_run_prefix`,
+      so the same predecessor identity can be accepted by one boundary and rejected by the
+      other. This violates AC3's exact inconsistent-identity fail-closed requirement and
+      undermines one reproducible predecessor contract.
+    expected: >
+      Make predecessor-bearing lineage accept one unambiguous canonical four-field shape
+      (`source_run_id`, `review_id`, `finding_id`, `reviewed_sha`) and reject extra/alias or
+      conflicting identity representations rather than choosing one. Validate source RUN
+      identity consistently with the repository's existing canonical RUN namespace so the
+      Operator and publication boundaries cannot disagree. Add focused regressions proving
+      conflicting/alternate predecessor fields fail closed and a canonically admissible RUN
+      identity is interpreted consistently, while preserving the legacy no-predecessor path.
