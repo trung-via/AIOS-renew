@@ -38,13 +38,13 @@ sequence:
       published_sha: "a45e94294f0688e62dacfacd884f2736985fd616"
   - id: performance-closure
     status: NEXT
-    task_id: TASK-094
-    phase: P2-correction-preflight-extraction
+    task_id: TASK-095
+    phase: P2-unified-state-extraction
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
     last_completed:
-      task_id: TASK-093
-      phase: P1-verification-granularity
-      published_sha: "c6218fa97aa6a190fb68d253e8e4c35f1d321549"
+      task_id: TASK-094
+      phase: P2-correction-preflight-extraction
+      published_sha: "a2ed96ac8424d8f1b3cb4625571fa4775fcf39ab"
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
