@@ -1,0 +1,184 @@
+task_id: TASK-092
+revision: 1
+
+goal: >
+  Close the native Executor-instruction compatibility gap for the already-published
+  REPAIR action `CONTINUE_IMPLEMENTATION`, so Codex and Antigravity explicitly resume
+  unfinished original TASK implementation from the exact admitted failed lineage,
+  including bounded discovery or live-capture work required by that TASK, while
+  preserving the existing no-fresh-PRIMARY, no-retry, no-reroute, bounded-scope, and
+  Runtime-owned verification boundaries.
+
+problem: >
+  TASK-089 established `CONTINUE_IMPLEMENTATION` as an Executor-backed,
+  mutation-authorizing REPAIR for unfinished pre-verification implementation after a new
+  Human/external reason permits continuation. Current Codex and Antigravity REPAIR native
+  instructions still describe only CODE_FIX and NO_CHANGE and both broadly say not to
+  restart PRIMARY discovery. That wording is correct for preventing a fresh PRIMARY
+  lifecycle or redundant rediscovery, but it does not distinguish unfinished original
+  TASK implementation work. In a RUN-182-equivalent continuation, required remaining work
+  may itself include bounded discovery/live capture before the permitted repository
+  mutation can be produced. An Executor can therefore obey the stale prompt literally,
+  avoid the required unfinished work, return a clean candidate, and fail before Runtime
+  verification even though Runtime/Operator admission correctly granted
+  CONTINUE_IMPLEMENTATION mutation authority. This is an Executor instruction-boundary
+  defect, not a TASK-089 semantic defect and not a downstream Python Agent defect.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-092 authoring is
+    cfe125b48bb35e64463034e521977c4ffabdc84c.
+  - >
+    TASK-089 remains authoritative for CONTINUE_IMPLEMENTATION admission, exact
+    failed-run/root lineage, modification scope, explicit one-Executor dispatch,
+    mutation/completion requirements, Runtime-owned verification/evidence, and
+    no-retry/no-reroute behavior.
+  - >
+    TASK-090 remains authoritative for safe publication compatibility and is outside this
+    instruction-boundary correction.
+  - >
+    Current Codex `repair_prompt_for` and Antigravity REPAIR native instruction each state
+    CODE_FIX commit behavior and NO_CHANGE zero-mutation behavior but contain no explicit
+    CONTINUE_IMPLEMENTATION behavior.
+  - >
+    Preserved downstream Python Agent lineage RUN-182-001 -> RUN-182-002 -> RUN-182-003 is
+    observed cross-project evidence only. This TASK does not mutate, replay, repair, pin,
+    publish, or otherwise alter that downstream repository or lineage.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-089.yaml
+    - .ai/tasks/TASK-090.yaml
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_operator.py
+    - tests/test_repair_preverification_eligibility.py
+  modify:
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_operator.py
+
+non_goals:
+  - Modify Python Agent source, dependency pin, TASK-182, RUN-182 artifacts, browser profile,
+    CAPTCHA/session state, or downstream roadmap.
+  - Change CONTINUE_IMPLEMENTATION admission, repair artifact schema, correction preflight,
+    Unified State, Unified Human Surface, historical-subject recovery, completion gates,
+    Result.changed_files authority, evidence construction, review, or publication.
+  - Reclassify CONTINUE_IMPLEMENTATION as CODE_FIX, NO_CHANGE, fresh PRIMARY, retry, reroute,
+    fallback, or a new lifecycle.
+  - Broaden Executor authority outside the original TASK and authored REPAIR modification
+    scope, or permit unrelated repository-wide rediscovery/refactoring.
+  - Let an Executor own canonical verification, generate canonical EVIDENCE, probe the
+    external prerequisite as a Runtime gate, select another Executor, or recursively author
+    or launch another continuation.
+  - Change existing CODE_FIX or NO_CHANGE semantics, prompts, mutation authority, or
+    verification-only reuse eligibility except for wording refactoring strictly necessary
+    to keep their existing meaning explicit beside the third action.
+  - Change model selection, timeout/watchdog policy, sandbox/edit mode, lease behavior,
+    Dispatcher routing, or Runtime retry policy.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Native REPAIR instructions for both Codex and Antigravity must explicitly distinguish
+      exactly the three published actions: CODE_FIX, NO_CHANGE, and
+      CONTINUE_IMPLEMENTATION. No fourth action or alternate lifecycle may be introduced.
+    - >
+      For CONTINUE_IMPLEMENTATION, the selected Executor must be told to resume the
+      unfinished original TASK implementation from the supplied exact failed-lineage
+      context and to perform the remaining authorized TASK work necessary to produce the
+      permitted implementation delta.
+    - >
+      The CONTINUE_IMPLEMENTATION instruction must explicitly state that unfinished original
+      TASK work is not prohibited merely because equivalent work would normally occur during
+      PRIMARY. Necessary bounded repository inspection, discovery, or live capture required
+      by the original TASK is permitted when it is part of the unfinished implementation.
+      The Executor must not reinterpret this permission as authority for repository-wide
+      rediscovery, new intent, or work outside the TASK/REPAIR scope.
+    - >
+      The instruction must still forbid creating or restarting a fresh PRIMARY lineage,
+      allocating a new TASK/RUN, synchronizing to a different candidate, retrying the same
+      admitted continuation, rerouting/falling back to another Executor, widening scope,
+      recursively continuing, performing semantic review, or invoking AIOS operator/worker
+      launchers from inside the native Executor role.
+    - >
+      CONTINUE_IMPLEMENTATION remains mutation-authorizing and successful Executor work must
+      commit the final permitted repository state before returning, bind result.head_sha to
+      final committed HEAD, and remain limited to repair.modification_scope. Runtime retains
+      all existing independent completion/ancestry/scope checks.
+    - >
+      Runtime remains the sole canonical verification and EVIDENCE owner. Native instructions
+      must continue to forbid canonical TASK verification and EVIDENCE construction by the
+      Executor; only existing minimum implementation-local sanity checks remain permitted.
+    - >
+      CODE_FIX keeps its existing established-defect correction meaning and commit behavior.
+      NO_CHANGE keeps its existing zero-mutation behavior. Neither action may inherit
+      CONTINUE_IMPLEMENTATION permission to resume unfinished original implementation.
+    - >
+      The Codex and Antigravity instructions must be semantically equivalent for all three
+      REPAIR actions even if their native transport wording differs.
+    - >
+      Regression tests must exercise the instruction path through the real adapter entry
+      points rather than only testing a detached helper string. They must fail if
+      CONTINUE_IMPLEMENTATION is omitted, treated as NO_CHANGE/CODE_FIX, or paired with an
+      unconditional prohibition on unfinished TASK discovery/live capture.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Codex REPAIR prompt generation explicitly identifies CONTINUE_IMPLEMENTATION and tells
+      the selected Executor to resume unfinished original TASK implementation from the bound
+      failed lineage, including necessary bounded discovery/live capture required by the
+      original TASK, while preserving repair.modification_scope.
+  - id: AC2
+    condition: >
+      Antigravity native REPAIR instruction provides semantics equivalent to AC1 and does not
+      collapse CONTINUE_IMPLEMENTATION into CODE_FIX or NO_CHANGE.
+  - id: AC3
+    condition: >
+      Both native instructions still explicitly forbid fresh PRIMARY lineage, new TASK/RUN
+      creation, operator/worker relaunch, retry, reroute/fallback, scope widening, recursive
+      continuation, semantic review, and Executor-owned canonical verification/EVIDENCE.
+  - id: AC4
+    condition: >
+      A deterministic RUN-182-equivalent Codex regression invokes the real REPAIR adapter
+      instruction path with action CONTINUE_IMPLEMENTATION and proves the supplied Executor
+      contract permits unfinished discovery/capture implementation followed by a committed
+      in-scope delta instead of instructing the Executor to leave the candidate unchanged.
+  - id: AC5
+    condition: >
+      A deterministic RUN-182-equivalent Antigravity regression proves the same behavior
+      through its real native REPAIR instruction/transport path, with exactly one admitted
+      Executor invocation and no second dispatch.
+  - id: AC6
+    condition: >
+      CODE_FIX and NO_CHANGE adapter regressions remain green and prove unchanged semantics:
+      CODE_FIX is mutation-authorizing correction of an established defect; NO_CHANGE does
+      not mutate and does not receive permission to resume unfinished original implementation.
+  - id: AC7
+    condition: >
+      An operator-level deterministic regression binds a CONTINUE_IMPLEMENTATION REPAIR to an
+      exact pre-verification failed RUN and selected Executor, reaches the native adapter once,
+      and preserves the existing Runtime boundary after the adapter returns; no fresh PRIMARY,
+      retry, reroute, or Runtime verification ownership change is introduced.
+  - id: AC8
+    condition: >
+      Focused Codex/Antigravity/operator tests and `git diff --check` pass with no modified
+      production file outside the two native adapters.
+
+verification:
+  required:
+    - python -m pytest tests/test_codex_adapter.py tests/test_antigravity_adapter.py tests/test_operator.py -q
+    - git diff --check
