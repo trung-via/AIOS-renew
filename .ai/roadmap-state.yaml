@@ -27,10 +27,12 @@ sequence:
       task_id: TASK-090
       published_sha: "08e4a612377ac82be36061286a34138ea53ab0d1"
   - id: continue-implementation-executor-instruction-hardening
-    status: NEXT
-    task_id: TASK-092
+    status: DONE
+    completed_by:
+      task_id: TASK-092
+      published_sha: "e72135cd5c5a1dec0d8374d9bb8994da5e458feb"
   - id: antigravity-minimax-executor-adoption
-    status: PENDING
+    status: NEXT
     task_id: TASK-091
   - id: downstream-adoption
     status: PENDING
