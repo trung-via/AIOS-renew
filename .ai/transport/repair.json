@@ -1,0 +1,23 @@
+{
+  "repair_id": "REPAIR-093-004",
+  "failed_run_id": "RUN-093-004",
+  "failed_head_sha": "da43e0cbad4a25cbd38502768b7a3b08faa25c1e",
+  "task": {
+    "id": "TASK-093",
+    "revision": 1
+  },
+  "action": "CONTINUE_IMPLEMENTATION",
+  "modification_scope": [
+    "tests/test_operator.py",
+    "tests/test_operator_correction_preflight.py",
+    "tests/test_operator_unified_state.py",
+    "tests/test_operator_human_surface.py",
+    "tests/operator_test_support.py"
+  ],
+  "instructions": [
+    "Resume the unfinished original TASK-093 revision 1 implementation from exact failed lineage RUN-093-004.",
+    "RUN-093-004 produced no repository mutation; preserve the original test-only TASK scope, acceptance criteria, and constraints.",
+    "Complete TASK-093 directly, produce one committed clean candidate, and leave canonical verification to Runtime."
+  ],
+  "constraints": []
+}
