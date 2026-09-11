@@ -7,9 +7,15 @@ import pytest
 
 import aios_renew.operator as operator_module
 import aios_renew.publication as publication_module
+import aios_renew.unified_state as unified_state_module
+from aios_renew.unified_state import (
+    UnifiedStateObservation as DirectUnifiedStateObservation,
+    observe_unified_state as direct_observe_unified_state,
+)
 from aios_renew.operator import (
     CorrectionPreflightResult,
     OperatorError,
+    UnifiedStateObservation,
     observe_unified_state,
     runtime_paths,
     runtime_state_root,
@@ -1145,3 +1151,28 @@ def test_state_missing_task_remains_read_only_on_stale_checkout(
         observe_unified_state("TASK-102", repo=repo)
 
     assert git(repo, "rev-parse", "HEAD") == before
+
+
+def test_unified_state_module_boundary_and_operator_compatibility() -> None:
+    assert operator_module.UnifiedStateObservation is DirectUnifiedStateObservation
+    assert operator_module.observe_unified_state is direct_observe_unified_state
+    assert unified_state_module.UnifiedStateObservation is operator_module.UnifiedStateObservation
+    assert unified_state_module.observe_unified_state is operator_module.observe_unified_state
+
+
+def test_unified_state_direct_module_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    lifecycle = RemoteTaskLifecycle(head, (), (), (), (), ())
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = direct_observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["format"] == "AIOS_UNIFIED_STATE"
+    assert observation["version"] == 1
+    assert observation["task"] == {"id": "TASK-101", "revision": 1}
+    assert observation["lifecycle_state"] == "READY"
+    assert observation["next_action"] == "EXECUTE_PRIMARY"
+
