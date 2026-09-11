@@ -6,9 +6,16 @@ from types import SimpleNamespace
 
 import pytest
 
+import aios_renew.human_surface as human_surface_module
+from aios_renew.human_surface import (
+    HumanSurfaceResult as DirectHumanSurfaceResult,
+    continue_task as direct_continue_task,
+)
 import aios_renew.operator as operator_module
 from aios_renew.operator import (
+    HumanSurfaceResult,
     OperatorError,
+    continue_task,
     load_task,
     runtime_paths,
 )
@@ -902,3 +909,31 @@ def test_continue_restart_without_requested_task_does_not_sync_loop(
     assert len(sync_calls) == 1
     assert child_errors == ["TASK not found: TASK-102"]
     assert not list(operator_module._runtime_paths_readonly(repo).runs.glob("*.json"))
+
+
+def test_human_surface_module_boundary_and_operator_compatibility() -> None:
+    assert operator_module.HumanSurfaceResult is DirectHumanSurfaceResult
+    assert operator_module.continue_task is direct_continue_task
+    assert human_surface_module.HumanSurfaceResult is operator_module.HumanSurfaceResult
+    assert human_surface_module.continue_task is operator_module.continue_task
+
+
+def test_human_surface_direct_module_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: _human_observation("WAIT", run_id="RUN-101-001"),
+    )
+    outcome, exit_code = direct_continue_task("TASK-101", repo=repo)
+    assert exit_code == 0
+    assert outcome is not None
+    payload = outcome.as_dict()
+    assert payload["format"] == "AIOS_HUMAN_SURFACE"
+    assert payload["version"] == 1
+    assert payload["observed_next_action"] == "WAIT"
+    assert payload["disposition"] == "NO_ACTION"
+    assert payload["authority"] == "NONE"
+    assert payload["selectors"]["run_id"] == "RUN-101-001"
