@@ -1,0 +1,20 @@
+{
+  "repair_id": "REPAIR-089-001",
+  "failed_run_id": "RUN-089-001",
+  "failed_head_sha": "cef53c2cce4d225363d08230f2d2e95c30dcde17",
+  "task": {
+    "id": "TASK-089",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "tests/test_operator.py"
+  ],
+  "instructions": [
+    "Continue exactly from failed TASK-089 candidate cef53c2cce4d225363d08230f2d2e95c30dcde17 and correct only the two observed regression-test defects in tests/test_operator.py.",
+    "For test_human_surface_continue_implementation_requires_executor_and_delegates_once, preserve the semantic assertion that the exact failed RUN identity and observed repair selector are delegated exactly once, but do not require failed_run_id to be passed by a specific Python calling convention. The current canonical run_repair call validly binds the failed RUN positionally.",
+    "For test_unified_state_ready_continue_implementation_reduces_to_execute_repair, assert the CONTINUE_IMPLEMENTATION action through the existing canonical Unified State correction_preflight field produced from Correction Preflight. Do not invent, rename, or require a public correction field.",
+    "Do not modify production code, README, Runtime semantics, Unified State schema, CONTINUE_IMPLEMENTATION admission/completion behavior, CODE_FIX behavior, NO_CHANGE behavior, historical repair semantics, executor selection, retry/reroute behavior, or any file outside tests/test_operator.py. Preserve the intended semantic coverage of both regressions. Do not push."
+  ],
+  "constraints": []
+}
