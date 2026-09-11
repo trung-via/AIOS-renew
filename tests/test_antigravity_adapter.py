@@ -481,6 +481,194 @@ def test_native_repair_instruction_assigns_complete_changed_files_to_runtime(
     assert "complete original TASK delta" not in instruction
 
 
+def test_continue_implementation_native_repair_transport_allows_bounded_capture_once(
+    tmp_path: Path,
+) -> None:
+    task, _, _, _ = make_execution()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(("git", "init", "--quiet", str(repo)), check=True)
+    subprocess.run(
+        ("git", "-C", str(repo), "config", "user.name", "Antigravity Repair Test"),
+        check=True,
+    )
+    subprocess.run(
+        (
+            "git",
+            "-C",
+            str(repo),
+            "config",
+            "user.email",
+            "antigravity-repair@example.invalid",
+        ),
+        check=True,
+    )
+    (repo / "seed.txt").write_text("failed lineage\n", encoding="utf-8")
+    subprocess.run(("git", "-C", str(repo), "add", "seed.txt"), check=True)
+    subprocess.run(
+        ("git", "-C", str(repo), "commit", "--quiet", "-m", "failed lineage"),
+        check=True,
+    )
+    failed_head = subprocess.run(
+        ("git", "-C", str(repo), "rev-parse", "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    run = Run.from_task(
+        run_id="RUN-182-003",
+        task=task,
+        executor="antigravity",
+        base_sha=failed_head,
+        workspace=str(repo),
+    )
+    handoff_path = repo / ".git" / "aios" / "repair-handoff.json"
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        instruction = command[command.index("--print") + 1]
+        handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+        assert handoff["repair"]["action"] == "CONTINUE_IMPLEMENTATION"
+        assert handoff["failed_run_id"] == "RUN-182-002"
+        assert handoff["failed_head_sha"] == failed_head
+        assert (
+            "necessary bounded repository inspection, discovery, or live capture"
+            in instruction
+        )
+        assert "unfinished original TASK work is not prohibited" in instruction
+        assert (
+            "CODE_FIX authorizes mutation only to correct an established defect"
+            in instruction
+        )
+        assert "NO_CHANGE authorizes no repository mutation" in instruction
+        assert "recursively continue" in instruction
+        assert "invoke an AIOS operator or worker launcher" in instruction
+
+        (repo / "capture.json").write_text('{"captured": true}\n', encoding="utf-8")
+        subprocess.run(("git", "-C", str(repo), "add", "capture.json"), check=True)
+        subprocess.run(
+            (
+                "git",
+                "-C",
+                str(repo),
+                "commit",
+                "--quiet",
+                "-m",
+                "continue unfinished capture",
+            ),
+            check=True,
+        )
+        head_sha = subprocess.run(
+            ("git", "-C", str(repo), "rev-parse", "HEAD"),
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        payload = {
+            "result": {
+                "head_sha": head_sha,
+                "claims": [
+                    {
+                        "id": "C1",
+                        "satisfies": ["AC1"],
+                        "claim": "The unfinished capture was committed.",
+                        "evidence": [],
+                    }
+                ],
+                "changed_files": ["capture.json"],
+                "unresolved": [],
+            },
+            "evidence": [],
+        }
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {"status": "SUCCESS", "response": "", "structured_output": payload}
+            ),
+            stderr="",
+        )
+
+    result = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=handoff_path,
+    ).execute_repair(
+        execution={
+            "run": run,
+            "failed_run_id": "RUN-182-002",
+            "failed_head_sha": failed_head,
+            "root_base_sha": failed_head,
+            "repair": {
+                "action": "CONTINUE_IMPLEMENTATION",
+                "instructions": ["Finish the bounded live capture."],
+                "modification_scope": ["capture.json"],
+            },
+        }
+    )
+
+    assert len(calls) == 1
+    assert result.result.head_sha != failed_head
+    assert subprocess.run(
+        ("git", "-C", str(repo), "diff", "--name-only", failed_head, "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == "capture.json"
+
+
+def test_native_no_change_repair_instruction_preserves_zero_mutation_semantics(
+    tmp_path: Path,
+) -> None:
+    _, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    handoff_path = repo / "repair-handoff.json"
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["head_sha"] = run.base_sha
+    payload["result"]["changed_files"] = []
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        instruction = command[command.index("--print") + 1]
+        handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+        assert handoff["repair"]["action"] == "NO_CHANGE"
+        assert "NO_CHANGE authorizes no repository mutation" in instruction
+        assert (
+            "does not permit resuming unfinished original TASK implementation"
+            in instruction
+        )
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {"status": "SUCCESS", "response": "", "structured_output": payload}
+            ),
+            stderr="",
+        )
+
+    AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=handoff_path,
+    ).execute_repair(
+        execution={
+            "run": run,
+            "root_base_sha": run.base_sha,
+            "repair": {
+                "action": "NO_CHANGE",
+                "instructions": ["Return the unchanged candidate."],
+                "modification_scope": [],
+            },
+        }
+    )
+
+    assert len(calls) == 1
+
+
 def test_native_antigravity_timeout_is_terminal_to_one_invocation(
     tmp_path: Path,
 ) -> None:

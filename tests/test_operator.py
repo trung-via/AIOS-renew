@@ -6488,6 +6488,87 @@ def test_no_change_repair_retains_zero_mutation_contract(
         )
 
 
+def test_continue_implementation_repair_binds_exact_failed_run_and_preserves_runtime_boundary(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(
+        repo, action="CONTINUE_IMPLEMENTATION"
+    )
+    failed_head = repair["failed_head_sha"]
+    sequence = []
+    executions = []
+
+    def native_runner(command, **kwargs):
+        sequence.append("executor")
+        prompt = kwargs["input"].decode("utf-8")
+        execution = json.loads(prompt.split("REPAIR_INPUT:\n", 1)[1])
+        executions.append(execution)
+        assert execution["execution_context"]["operation"] == "REPAIR"
+        assert execution["execution_context"]["selected_executor"] == "codex"
+        assert execution["failed_run_id"] == failed_run_id
+        assert execution["failed_head_sha"] == failed_head
+        assert execution["failure"]["phase"] == "COMPLETION_GATE"
+        assert execution["run"]["base_sha"] == failed_head
+        assert execution["repair"]["action"] == "CONTINUE_IMPLEMENTATION"
+        assert execution["repair"]["modification_scope"] == ["OUTPUT.txt"]
+        assert (
+            "necessary bounded repository inspection, discovery, or live capture" in prompt
+        )
+
+        (repo / "OUTPUT.txt").write_text(
+            "continued after bounded capture\n", encoding="utf-8"
+        )
+        git(repo, "add", "OUTPUT.txt")
+        git(repo, "commit", "--quiet", "-m", "continue unfinished implementation")
+        head_sha = git(repo, "rev-parse", "HEAD")
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(result_payload("RUN-101-001", head_sha)),
+            stderr="",
+        )
+
+    def verification_runner(command, **kwargs):
+        sequence.append("verification")
+        assert len(executions) == 1
+        assert git(repo, "rev-parse", "HEAD") != failed_head
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=b"clean\n", stderr=b""
+        )
+
+    summary = run_repair(
+        failed_run_id,
+        executor="codex",
+        repo=repo,
+        repair=repair,
+        native_runner=native_runner,
+        verification_runner=verification_runner,
+    )
+
+    state = runtime_paths(repo)
+    repair_execution = json.loads(
+        (state.repairs / f"{summary.run_id}.json").read_text(encoding="utf-8")
+    )
+    observation = json.loads(
+        (state.observations / f"{summary.run_id}.json").read_text(encoding="utf-8")
+    )
+    assert sequence == ["executor", "verification"]
+    assert len(executions) == 1
+    assert summary.run_id == "RUN-101-001"
+    assert summary.failed_head_sha == failed_head
+    assert repair_execution["failed_run_id"] == failed_run_id
+    assert repair_execution["failed_head_sha"] == failed_head
+    assert repair_execution["repair"] == repair
+    assert observation["operation"] == "REPAIR"
+    assert observation["executor_invoked"] is True
+    assert observation["durations"]["verification_seconds"] is not None
+    assert sorted(path.name for path in state.runs.glob("*.json")) == [
+        "RUN-101-000.json",
+        "RUN-101-001.json",
+    ]
+
+
 def test_no_change_verification_only_continuations_reuse_exact_candidate(
     tmp_path: Path,
 ) -> None:

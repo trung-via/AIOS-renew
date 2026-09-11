@@ -373,6 +373,140 @@ def test_repair_prompt_marks_direct_already_admitted_executor_role() -> None:
     assert "do not reconstruct or enumerate that historical file set" in prompt
     assert "only the narrow repair delta or be empty" in prompt
     assert "complete original TASK delta" not in prompt
+    assert "CODE_FIX authorizes mutation only to correct an established defect" in prompt
+    assert "NO_CHANGE authorizes no repository mutation" in prompt
+    assert (
+        "NO_CHANGE authorizes no repository mutation and does not permit resuming "
+        "unfinished original TASK implementation" in prompt
+    )
+    assert (
+        "CONTINUE_IMPLEMENTATION authorizes mutation to resume the unfinished original "
+        "TASK implementation" in prompt
+    )
+
+
+def test_continue_implementation_repair_uses_real_prompt_path_for_bounded_capture_and_commit(
+    tmp_path,
+) -> None:
+    task, _, _, _ = make_execution()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(("git", "init", "--quiet", str(repo)), check=True)
+    subprocess.run(
+        ("git", "-C", str(repo), "config", "user.name", "Codex Repair Test"),
+        check=True,
+    )
+    subprocess.run(
+        (
+            "git",
+            "-C",
+            str(repo),
+            "config",
+            "user.email",
+            "codex-repair@example.invalid",
+        ),
+        check=True,
+    )
+    seed = repo / "seed.txt"
+    seed.write_text("failed lineage\n", encoding="utf-8")
+    subprocess.run(("git", "-C", str(repo), "add", "seed.txt"), check=True)
+    subprocess.run(
+        ("git", "-C", str(repo), "commit", "--quiet", "-m", "failed lineage"),
+        check=True,
+    )
+    failed_head = subprocess.run(
+        ("git", "-C", str(repo), "rev-parse", "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    run = Run.from_task(
+        run_id="RUN-182-003",
+        task=task,
+        executor="codex",
+        base_sha=failed_head,
+        workspace=str(repo),
+    )
+    calls = []
+
+    def runner(command, **kwargs):
+        prompt = kwargs["input"].decode("utf-8")
+        calls.append((command, prompt))
+        execution = json.loads(prompt.split("REPAIR_INPUT:\n", 1)[1])
+        assert execution["repair"]["action"] == "CONTINUE_IMPLEMENTATION"
+        assert execution["failed_run_id"] == "RUN-182-002"
+        assert execution["failed_head_sha"] == failed_head
+        assert (
+            "necessary bounded repository inspection, discovery, or live capture" in prompt
+        )
+        assert "unfinished original TASK work is not prohibited" in prompt
+        assert "repository-wide rediscovery, new intent" in prompt
+        assert "retry this admitted continuation" in prompt
+        assert "reroute or fall back to another Executor" in prompt
+
+        capture = repo / "capture.json"
+        capture.write_text('{"captured": true}\n', encoding="utf-8")
+        subprocess.run(("git", "-C", str(repo), "add", "capture.json"), check=True)
+        subprocess.run(
+            (
+                "git",
+                "-C",
+                str(repo),
+                "commit",
+                "--quiet",
+                "-m",
+                "continue unfinished capture",
+            ),
+            check=True,
+        )
+        head_sha = subprocess.run(
+            ("git", "-C", str(repo), "rev-parse", "HEAD"),
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        payload = {
+            "result": {
+                "head_sha": head_sha,
+                "claims": [
+                    {
+                        "id": "C1",
+                        "satisfies": ["AC1"],
+                        "claim": "The unfinished capture was committed.",
+                        "evidence": [],
+                    }
+                ],
+                "changed_files": ["capture.json"],
+                "unresolved": [],
+            },
+            "evidence": [],
+        }
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=json.dumps(payload), stderr=""
+        )
+
+    result = CodexAdapter(runner=runner).execute_repair(
+        execution={
+            "run": run,
+            "failed_run_id": "RUN-182-002",
+            "failed_head_sha": failed_head,
+            "root_base_sha": failed_head,
+            "repair": {
+                "action": "CONTINUE_IMPLEMENTATION",
+                "instructions": ["Finish the bounded live capture."],
+                "modification_scope": ["capture.json"],
+            },
+        }
+    )
+
+    assert len(calls) == 1
+    assert result.result.head_sha != failed_head
+    assert subprocess.run(
+        ("git", "-C", str(repo), "diff", "--name-only", failed_head, "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == "capture.json"
 
 
 def test_output_schema_is_passed() -> None:
