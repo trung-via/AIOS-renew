@@ -1,49 +1,74 @@
 task_id: TASK-091
-revision: 1
+revision: 2
 
 goal: >
-  Add `antigravity-minimax` as a third admitted native Executor backend by placing the
-  already-proven external `agym` transport behind the existing AIOS Executor/Dispatcher
-  boundary, so PRIMARY, REMEDIATION, and REPAIR can use the same canonical TASK/RUN,
-  ResultPackage, Runtime verification, review, lineage, lease, and publication semantics as
-  Codex and Antigravity without creating a second execution architecture.
+  Add `antigravity-minimax` as a third admitted native Executor backend as an explicit
+  Human-authorized post-freeze extension of the current AIOS-renew product, without
+  rewriting the frozen Kernel v0.1 baseline. Place the already-proven external `agym`
+  transport behind the existing AIOS Executor/Dispatcher boundary so PRIMARY,
+  REMEDIATION, and REPAIR use the same canonical TASK/RUN, ResultPackage, Runtime
+  verification, review, lineage, lease, and publication semantics as Codex and
+  Antigravity, with no second execution architecture, router, retry, or authority shift.
 
 problem: >
-  Canonical AIOS-renew currently admits only `codex` and `antigravity`. The Dispatcher already
-  exposes a provider-neutral one-selected-executor boundary, but its native factory registry and
-  several Operator admission/CLI allowlists contain only those two identities. Separately, the
-  Human has now proven an `agym` command that runs MiniMax through the Antigravity SDK harness
-  and returns a machine-readable `agym.result.v1` envelope with deterministic process status,
-  State Guard status, Git HEAD observations, timeout behavior, and a model response. AIOS has no
-  thin adapter that can consume that transport while preserving canonical ResultPackage and
-  Runtime authority. Directly teaching Runtime or Operator about MiniMax response prose, API
-  keys, proxy mechanics, or provider internals would fork authority and duplicate transport
-  concerns.
+  Canonical AIOS-renew currently admits only `codex` and `antigravity`, while the frozen
+  Kernel v0.1 specification and freeze record explicitly describe that two-executor
+  baseline. The freeze record also permits future kernel features or changes only through
+  separate tasks backed by observed evidence. TASK-091 revision 1 correctly proposed a
+  thin third adapter around the proven external `agym` transport, but it did not inspect
+  the freeze record or state explicitly that admitting a third Executor is a prospective
+  post-freeze product extension rather than a reinterpretation of frozen v0.1. It also
+  required a focused pytest suite followed by the full repository suite on the same
+  candidate plus `git diff --check`, causing avoidable duplicate canonical verification
+  contrary to the Manifesto/Constitution reuse and minimum-sufficient-work principles.
+
+  Since revision 1 was authored, TASK-092 has been semantically reviewed PASS and
+  published, hardening the Codex and Antigravity native REPAIR instruction boundary for
+  `CONTINUE_IMPLEMENTATION`. The third adapter must preserve those current native-contract
+  semantics rather than integrate against the older pre-TASK-092 baseline. Human has now
+  explicitly authorized both the third-Executor priority and this governance/efficiency
+  revision before TASK-091 execution.
 
 assumptions:
   - >
-    Canonical AIOS-renew main at TASK-091 authoring is
-    51114be70fb672ed890ce22964eca4abf85019e7, whose roadmap bookmark resumes
-    `downstream-adoption` after published TASK-090.
+    Canonical AIOS-renew main at TASK-091 revision-2 authoring is
+    410f0a87c86f3fef56802d23dc0b8cf22bb2c9f7.
   - >
-    Human has explicitly overridden that generic roadmap continuation to prioritize adding the
-    proven Antigravity+MiniMax transport before downstream adoption resumes.
+    REVIEW-092-001 is canonical PRIMARY PASS for exact reviewed SHA
+    e72135cd5c5a1dec0d8374d9bb8994da5e458feb with AC1 through AC8 PASS and no findings;
+    TASK-092 native CONTINUE_IMPLEMENTATION instruction hardening is therefore established
+    current product behavior that TASK-091 must preserve.
   - >
-    The existing `ExecutorBoundary` and `Dispatcher` are authoritative for exactly-one selected
-    native execution; Runtime remains canonical verification and evidence owner; Reviewer and
-    publication authorities remain unchanged.
+    `.ai/roadmap-state.yaml` records TASK-092 DONE at published SHA
+    e72135cd5c5a1dec0d8374d9bb8994da5e458feb and `antigravity-minimax-executor-adoption`
+    / TASK-091 as the unique NEXT item before downstream adoption.
   - >
-    A local external command named `agym` is installed outside this repository. Its proven v0.3
-    contract emits one `agym.result.v1` JSON envelope, uses exit code 0 only for transport PASS,
-    fails closed on dirty-workspace/state-guard violations and timeouts, and leaves MiniMax
-    credentials/provider plumbing outside AIOS-renew.
+    Frozen Kernel v0.1 at baseline 73747ec74e8669dbd0746ccf614558b6ee3d28aa remains an
+    immutable historical minimum contract whose native executor baseline names Codex and
+    Antigravity. The freeze record expressly allows later kernel features/changes when
+    separately authorized and backed by observed evidence. TASK-091 revision 2 is that
+    explicit prospective extension; it does not edit history or claim v0.1 originally
+    admitted a third Executor.
   - >
-    `agym` transport metadata is operational evidence only. Its `response` field may be consumed
-    only if it is exactly one structural AIOS ResultPackage JSON object; model prose and agym's
-    own `changed_files` observation are never canonical repository truth.
+    Human has explicitly authorized extending the current product's supported Executor set
+    with the proven Antigravity+MiniMax transport while preserving one-active-executor and
+    all existing authority boundaries.
   - >
-    Existing Codex and Antigravity native behavior is regression authority and must remain
-    unchanged.
+    The existing `ExecutorBoundary` and `Dispatcher` are authoritative for exactly-one
+    selected native execution; Runtime remains canonical verification and evidence owner;
+    Reviewer and publication authorities remain unchanged.
+  - >
+    A local external command named `agym` is installed outside this repository. Its proven
+    v0.3 contract emits one `agym.result.v1` JSON envelope, uses exit code 0 only for
+    transport PASS, fails closed on dirty-workspace/state-guard violations and timeouts,
+    and leaves MiniMax credentials/provider plumbing outside AIOS-renew.
+  - >
+    `agym` transport metadata is operational evidence only. Its `response` field may be
+    consumed only if it is exactly one structural AIOS ResultPackage JSON object; model
+    prose and agym's own `changed_files` observation are never canonical repository truth.
+  - >
+    Existing Codex and Antigravity native behavior, including TASK-092's three-action
+    REPAIR instruction semantics, is regression authority and must remain unchanged.
 
 scope:
   inspect:
@@ -52,9 +77,12 @@ scope:
     - docs/CHATGPT_PROJECT_CONTRACT.md
     - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
     - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
     - docs/AIOS-ROADMAP.md
     - .ai/roadmap-state.yaml
     - .ai/tasks/TASK-013.yaml
+    - .ai/tasks/TASK-089.yaml
+    - .ai/tasks/TASK-092.yaml
     - src/aios_renew/executor.py
     - src/aios_renew/dispatcher.py
     - src/aios_renew/operator.py
@@ -75,32 +103,51 @@ scope:
     - tests/test_operator.py
 
 non_goals:
+  - Edit, replace, unfreeze, or retroactively reinterpret the frozen Kernel v0.1
+    specification or freeze record. Frozen v0.1 remains the historical two-executor
+    baseline; this TASK changes current product capability prospectively only.
+  - Amend the AIOS Constitution or change Human, Brain, Executor, Runtime, Reviewer, or
+    Publisher authority.
   - Change TASK, RUN, RESULT, EVIDENCE, FAILURE, REVIEW, REMEDIATION, REPAIR, or publication
     schemas or semantic authority.
   - Change ExecutorBoundary, Runtime verification ownership, lease ownership, repository
     admission, completion gates, correction lineage, or safe publication semantics.
-  - Modify the external `agym` installation, vendor Antigravity SDK/MiniMax proxy code into this
-    repository, store or read MiniMax API keys, or make AIOS own provider authentication.
-  - Replace the existing `antigravity` executor, change Codex/Antigravity commands, or reinterpret
-    their output contracts.
-  - Add automatic executor selection, model routing, retry, fallback, reroute, failover, polling,
-    background execution, or a second dispatcher.
+  - Modify the external `agym` installation, vendor Antigravity SDK/MiniMax proxy code into
+    this repository, store or read MiniMax API keys, or make AIOS own provider
+    authentication.
+  - Replace the existing `antigravity` executor, change Codex/Antigravity commands, or
+    reinterpret their output or TASK-092 REPAIR instruction contracts.
+  - Add automatic executor selection, model routing, retry, fallback, reroute, failover,
+    polling, background execution, or a second dispatcher.
   - Treat `agym.result.v1` status, response prose, model identity, token accounting, or
     `changed_files` diagnostics as canonical completion truth.
-  - Add model-specific optimization, quota management, credit accounting, `agym doctor/models`,
-    or benchmark policy in this TASK.
+  - Add model-specific optimization, quota management, credit accounting,
+    `agym doctor/models`, benchmark policy, verification caching, test-selection heuristics,
+    Operator decomposition, or the broader Performance Closure work in this TASK.
+  - Require a full repository verification rerun merely for ceremony when the focused
+    canonical suite below is sufficient to establish this TASK's acceptance contract.
   - Push from Executor implementation execution.
 
 constraints:
   hard:
     - >
-      The new admitted executor identity is exactly `antigravity-minimax`. It must enter through
-      the existing Operator admission, RUN/lease binding, Dispatcher, and Executor boundaries;
-      no direct Runtime-to-agym path or alternate lifecycle is permitted.
+      This is an explicit Human-authorized post-freeze Executor-set extension. The current
+      product may admit the new backend only prospectively through this separately reviewed
+      TASK; no implementation or documentation may claim that frozen Kernel v0.1 itself
+      originally admitted `antigravity-minimax`.
     - >
-      PRIMARY, REMEDIATION, and REPAIR must all expose the same provider-neutral native adapter
-      surface already required by Dispatcher. The selected adapter may be invoked at most once
-      for one admitted execution, and native failure is terminal for that execution.
+      The new admitted executor identity is exactly `antigravity-minimax`. It must enter
+      through the existing Operator admission, RUN/lease binding, Dispatcher, and Executor
+      boundaries; no direct Runtime-to-agym path or alternate lifecycle is permitted.
+    - >
+      One-active-executor remains invariant. Adding a third supported identity changes the
+      selectable backend set only; it does not permit concurrent canonical mutation
+      authority, multi-agent voting, automatic routing, fallback, or failover.
+    - >
+      PRIMARY, REMEDIATION, and REPAIR must all expose the same provider-neutral native
+      adapter surface already required by Dispatcher. The selected adapter may be invoked
+      at most once for one admitted execution, and native failure is terminal for that
+      execution.
     - >
       Provider-specific invocation and envelope parsing must live in one thin
       `antigravity_minimax_adapter` boundary. Operator and Dispatcher may know the executor
@@ -109,89 +156,115 @@ constraints:
     - >
       Native invocation must use the external `agym` executable in the admitted repository
       workspace, request `--output-format json`, explicitly permit the Executor's authorized
-      commit-capable mutation path, and remain bounded by the existing provider-neutral native
-      execution watchdog. AIOS must not pass MiniMax credentials or provider URLs on the command
-      line.
+      commit-capable mutation path, and remain bounded by the existing provider-neutral
+      native execution watchdog. AIOS must not pass MiniMax credentials or provider URLs on
+      the command line.
     - >
-      The adapter must preserve the existing direct-native-executor contract: consume the exact
-      admitted TASK/RUN or correction handoff, do not launch another AIOS execution, do not push,
-      do not perform semantic review, and leave canonical verification/EVIDENCE construction to
-      Runtime. Any implementation-local sanity checking performed by the external harness remains
-      non-authoritative and must not replace or suppress Runtime verification.
+      The adapter must preserve the existing direct-native-executor contract: consume the
+      exact admitted TASK/RUN or correction handoff, do not launch another AIOS execution,
+      do not push, do not perform semantic review, and leave canonical verification/EVIDENCE
+      construction to Runtime. Any implementation-local sanity checking performed by the
+      external harness remains non-authoritative and must not replace or suppress Runtime
+      verification.
     - >
-      Successful transport requires one parseable `agym.result.v1` envelope whose process exit
-      code, envelope `exit_code`, `status`, and `state_guard` consistently represent PASS. The
-      envelope must bind to the admitted workspace and must not report an unexpected pre-existing
-      dirty state or State Guard violation.
+      For REPAIR, the third adapter must preserve the same published action semantics now
+      established for existing native adapters: CODE_FIX is established-defect mutation,
+      NO_CHANGE remains zero-mutation under its existing eligibility rules, and
+      CONTINUE_IMPLEMENTATION resumes unfinished authorized original TASK work from exact
+      failed lineage without creating a fresh PRIMARY, retry, reroute, or scope expansion.
     - >
-      The envelope `response` must be exactly one JSON structural ResultPackage for the current
-      operation, with no prose wrapper or markdown fencing. It must be normalized through the
-      existing structural Result/Evidence validators and then remain subject to the unchanged
-      Runtime/ExecutorBoundary canonical gates. The adapter must never synthesize a PASS package
-      from prose or missing fields.
+      Successful transport requires one parseable `agym.result.v1` envelope whose process
+      exit code, envelope `exit_code`, `status`, and `state_guard` consistently represent
+      PASS. The envelope must bind to the admitted workspace and must not report an
+      unexpected pre-existing dirty state or State Guard violation.
+    - >
+      The envelope `response` must be exactly one JSON structural ResultPackage for the
+      current operation, with no prose wrapper or markdown fencing. It must be normalized
+      through the existing structural Result/Evidence validators and then remain subject to
+      the unchanged Runtime/ExecutorBoundary canonical gates. The adapter must never
+      synthesize a PASS package from prose or missing fields.
     - >
       Git identity must fail closed: transport HEAD observations must be consistent with the
       admitted starting subject and returned Result head, while canonical final HEAD,
-      ancestry/scope, root-relative changed-files, completion, and evidence truth remain owned by
-      existing Runtime logic. `agym.changed_files` is diagnostics only and must never overwrite
-      Result.changed_files or Runtime-derived repository truth.
+      ancestry/scope, root-relative changed-files, completion, and evidence truth remain
+      owned by existing Runtime logic. `agym.changed_files` is diagnostics only and must
+      never overwrite Result.changed_files or Runtime-derived repository truth.
     - >
       Missing `agym`, timeout, nonzero process exit, malformed terminal JSON, wrong schema,
       non-PASS status, inconsistent exit code, State Guard failure, workspace/head mismatch,
-      missing/non-JSON response, or invalid structural ResultPackage must raise an executor-native
-      failure with bounded stdout/stderr diagnostics and no retry, fallback, reroute, or alternate
-      executor invocation.
+      missing/non-JSON response, or invalid structural ResultPackage must raise an
+      executor-native failure with bounded stdout/stderr diagnostics and no retry, fallback,
+      reroute, or alternate executor invocation.
     - >
-      Existing `codex` and `antigravity` admission choices, commands, factory behavior, tests, and
-      ResultPackage normalization must remain unchanged.
+      Existing `codex` and `antigravity` admission choices, commands, factory behavior,
+      tests, ResultPackage normalization, and TASK-092 native REPAIR instruction behavior
+      must remain unchanged.
+    - >
+      Canonical verification for this TASK must be minimum-sufficient and non-duplicative.
+      Runtime runs the single focused pytest command in `verification.required` exactly once
+      on the final candidate. Do not additionally rerun the full repository suite or repeat
+      an included subset against the same unchanged candidate merely for ceremony. Runtime's
+      existing repository/scope/completion gates remain authoritative and are not restated
+      as separate TASK verification commands.
     - Do not push from Executor implementation execution.
 
 acceptance:
   - id: AC1
     condition: >
       Operator Human-facing and wakeup/correction admission surfaces accept exactly the new
-      `antigravity-minimax` executor wherever a coding Executor is already accepted, while invalid
-      executor identities still fail closed and existing Codex/Antigravity behavior is unchanged.
+      `antigravity-minimax` executor wherever a coding Executor is already accepted, while
+      invalid executor identities still fail closed and existing Codex/Antigravity behavior
+      is unchanged.
   - id: AC2
     condition: >
-      Dispatcher resolves `antigravity-minimax` through the existing native adapter registry for
-      PRIMARY, REMEDIATION, and REPAIR, preserves selected-executor/RUN identity, and invokes at
-      most one adapter with no fallback or second dispatch on construction/native/output failure.
+      Dispatcher resolves `antigravity-minimax` through the existing native adapter registry
+      for PRIMARY, REMEDIATION, and REPAIR, preserves selected-executor/RUN identity, and
+      invokes at most one adapter with no fallback or second dispatch on construction,
+      native, or output failure.
   - id: AC3
     condition: >
-      Adapter command-contract tests prove the external `agym` transport is invoked in the exact
-      admitted repository with machine-readable JSON output, authorized commit-capable execution,
-      and the existing bounded native watchdog, without putting MiniMax credentials/provider URLs
-      in AIOS command arguments.
+      Adapter command-contract tests prove the external `agym` transport is invoked in the
+      exact admitted repository with machine-readable JSON output, authorized
+      commit-capable execution, and the existing bounded native watchdog, without putting
+      MiniMax credentials/provider URLs in AIOS command arguments.
   - id: AC4
     condition: >
-      Deterministic success fixtures for PRIMARY, REMEDIATION, and REPAIR provide a valid
-      `agym.result.v1` PASS envelope whose response is one structural operation-appropriate
-      ResultPackage; the adapter returns that package through the existing validators and Runtime
-      gates without treating agym prose/metadata as canonical evidence.
+      Deterministic success fixtures for PRIMARY, REMEDIATION, and all currently published
+      REPAIR actions provide a valid `agym.result.v1` PASS envelope whose response is one
+      structural operation-appropriate ResultPackage; the adapter returns that package
+      through existing validators and Runtime gates without treating agym prose/metadata as
+      canonical evidence or weakening TASK-092 CONTINUE_IMPLEMENTATION semantics.
   - id: AC5
     condition: >
-      Success coverage proves transport workspace/HEAD observations are bound consistently to the
-      admitted execution and returned Result head, while agym `changed_files` diagnostics neither
-      replace nor alter Result.changed_files or Runtime-derived repository truth.
+      Success coverage proves transport workspace/HEAD observations are bound consistently
+      to the admitted execution and returned Result head, while agym `changed_files`
+      diagnostics neither replace nor alter Result.changed_files or Runtime-derived
+      repository truth.
   - id: AC6
     condition: >
-      Negative coverage fails closed for missing executable, watchdog timeout, nonzero process
-      exit, malformed JSON, wrong schema, PASS/exit-code disagreement, dirty refusal, State Guard
-      violation, workspace/head mismatch, missing or prose-wrapped response, and structurally
-      invalid ResultPackage, preserving bounded native diagnostics and invoking no alternate
-      Executor.
+      Negative coverage fails closed for missing executable, watchdog timeout, nonzero
+      process exit, malformed JSON, wrong schema, PASS/exit-code disagreement, dirty
+      refusal, State Guard violation, workspace/head mismatch, missing or prose-wrapped
+      response, and structurally invalid ResultPackage, preserving bounded native
+      diagnostics and invoking no alternate Executor.
   - id: AC7
     condition: >
-      Existing Codex and Antigravity adapter/dispatcher/operator regressions remain green with no
-      command, output, retry, authority, verification, lease, or publication semantic change.
+      Existing Codex and Antigravity adapter/dispatcher/operator regressions remain green,
+      including TASK-092 three-action REPAIR instruction behavior, with no command, output,
+      retry, authority, verification, lease, or publication semantic change.
   - id: AC8
     condition: >
-      Focused executor/dispatcher/operator tests and the full repository test suite pass, and
-      `git diff --check` passes with no modified file outside TASK-091 scope.
+      The implementation is a prospective third-backend extension only: frozen Kernel v0.1
+      artifacts remain byte-unchanged, one-active-executor and all canonical authority
+      boundaries remain intact, and no router, retry/fallback/reroute, second lifecycle, or
+      alternate verification/evidence authority is introduced.
+  - id: AC9
+    condition: >
+      The single focused canonical regression suite covers the new adapter, Dispatcher,
+      Human-facing Operator admission, and existing Codex/Antigravity adapter compatibility
+      and passes on the final candidate without a second full-suite rerun against unchanged
+      relevant state.
 
 verification:
   required:
-    - python -m pytest tests/test_antigravity_minimax_adapter.py tests/test_dispatcher.py tests/test_operator.py -q
-    - python -m pytest -q
-    - git diff --check
+    - python -m pytest tests/test_antigravity_minimax_adapter.py tests/test_dispatcher.py tests/test_operator.py tests/test_antigravity_adapter.py tests/test_codex_adapter.py -q
