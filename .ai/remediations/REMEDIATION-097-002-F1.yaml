@@ -1,0 +1,11 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: 70e06f08e4809d0f40bd1a0736fcd2f7097d0af2
+modification_scope:
+  - src/aios_renew/operator.py
+  - src/aios_renew/publication.py
+  - tests/test_operator.py
+  - tests/test_publication.py
+affected_verification:
+  - python -m pytest tests/test_operator.py tests/test_publication.py -k "predecessor or admission_failures" -q
+constraints: []
