@@ -598,7 +598,7 @@ def test_human_surface_continue_implementation_requires_executor_and_delegates_o
     assert exit_code == 0
     assert len(calls) == 1
     assert calls[0][1]["executor"] == "codex"
-    assert calls[0][1]["failed_run_id"] == "RUN-101-001"
+    assert calls[0][0] == ("RUN-101-001",)
     assert calls[0][1]["required_repair_sha"] == repair_sha
     assert calls[0][1]["repair"] == repair
     assert outcome is not None
@@ -1407,8 +1407,11 @@ def test_unified_state_ready_continue_implementation_reduces_to_execute_repair(
     assert observation["failed_run_id"] == run_id
     assert observation["failed_head_sha"] == head
     assert observation["correction_sha"] == repair_sha
-    assert observation["correction"]["action"] == "CONTINUE_IMPLEMENTATION"
-    assert observation["correction"]["executor_required"] is True
+    assert (
+        observation["correction_preflight"]["action"]
+        == "CONTINUE_IMPLEMENTATION"
+    )
+    assert observation["correction_preflight"]["executor_required"] is True
     assert calls == [(run_id, {"repo": repo, "repair": repair})]
 
 
