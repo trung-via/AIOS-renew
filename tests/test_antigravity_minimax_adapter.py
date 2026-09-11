@@ -877,3 +877,81 @@ def test_negative_claims_referencing_non_empty_evidence_in_canonical_mode(
     # Claims have empty evidence, but canonical validation requires evidence
     with pytest.raises(AntigravityMinimaxOutputError):
         adapter.execute(task=task, run=run)
+
+
+def test_negative_zero_exit_bare_result_package_rejected(tmp_path: Path) -> None:
+    repo = tmp_path.resolve()
+    task, run, _, _ = make_execution(workspace=str(repo))
+    payload = successful_structural_payload(head_sha="def456")
+
+    # Zero-exit bare ResultPackage without agym.result.v1 envelope fails closed
+    def bare_runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(payload),
+            stderr="",
+        )
+
+    bare_adapter = AntigravityMinimaxAdapter(
+        runner=bare_runner,
+        repo=repo,
+        handoff_path=repo / "h.json",
+    )
+    with pytest.raises(
+        AntigravityMinimaxExecutionError, match="envelope schema"
+    ):
+        bare_adapter.execute(task=task, run=run)
+
+    # Bare ResultPackage passed via transport seam also fails closed
+    bare_transport_adapter = AntigravityMinimaxAdapter(
+        repo=repo,
+        handoff_path=repo / "h.json",
+        transport=lambda **kwargs: payload,
+    )
+    with pytest.raises(
+        AntigravityMinimaxExecutionError, match="envelope schema"
+    ):
+        bare_transport_adapter.execute(task=task, run=run)
+
+    # Bare ResultPackage instance passed via transport seam also fails closed
+    bare_instance_adapter = AntigravityMinimaxAdapter(
+        repo=repo,
+        handoff_path=repo / "h.json",
+        transport=lambda **kwargs: ResultPackage(
+            result=Result(
+                head_sha="def456",
+                claims=(),
+                changed_files=("src/aios_renew/antigravity_minimax_adapter.py",),
+                unresolved=(),
+            ),
+            evidence=(),
+        ),
+    )
+    with pytest.raises(AntigravityMinimaxExecutionError):
+        bare_instance_adapter.execute(task=task, run=run)
+
+    # Valid envelope success remains accepted
+    envelope = make_agym_envelope(
+        result_package=payload,
+        workspace=str(repo),
+        head_before=run.base_sha,
+        head_after="def456",
+    )
+
+    def envelope_runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(envelope),
+            stderr="",
+        )
+
+    valid_adapter = AntigravityMinimaxAdapter(
+        runner=envelope_runner,
+        repo=repo,
+        handoff_path=repo / "h.json",
+    )
+    package = valid_adapter.execute(task=task, run=run)
+    assert package.result.head_sha == "def456"
+

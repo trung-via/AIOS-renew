@@ -337,9 +337,6 @@ class AntigravityMinimaxAdapter:
         expected_head: str | None = None,
         structural: bool = False,
     ) -> ResultPackage:
-        if isinstance(output, ResultPackage):
-            return output
-
         raw_text = ""
         if isinstance(output, (bytes, str)):
             raw_text = _decode_utf8(output)
@@ -366,19 +363,11 @@ class AntigravityMinimaxAdapter:
                 stdout=raw_text,
             )
 
-        if "schema_version" in data:
-            return self._parse_envelope(
-                data,
-                raw_text=raw_text,
-                expected_head=expected_head,
-                structural=structural,
-            )
-        if "result" in data and "evidence" in data:
-            return self._normalize_package(data, structural=structural)
-
-        raise AntigravityMinimaxExecutionError(
-            "agym output is neither an agym.result.v1 envelope nor a ResultPackage",
-            stdout=raw_text,
+        return self._parse_envelope(
+            data,
+            raw_text=raw_text,
+            expected_head=expected_head,
+            structural=structural,
         )
 
     def _parse_envelope(
@@ -390,6 +379,11 @@ class AntigravityMinimaxAdapter:
         structural: bool = False,
     ) -> ResultPackage:
         schema_version = envelope.get("schema_version")
+        if not schema_version:
+            raise AntigravityMinimaxExecutionError(
+                "agym output missing required agym.result.v1 envelope schema",
+                stdout=raw_text,
+            )
         if schema_version != "agym.result.v1":
             raise AntigravityMinimaxExecutionError(
                 f"agym returned unsupported schema version: {schema_version!r}",
@@ -416,7 +410,8 @@ class AntigravityMinimaxAdapter:
                 else ""
             )
             detail = (error or "").strip() or viol_str
-            if "state_guard" in status.lower() or "state guard" in (detail or "").lower():
+            status_str = str(status or "")
+            if "state_guard" in status_str.lower() or "state guard" in (detail or "").lower():
                 msg = f"agym State Guard violation: status is {status}"
             else:
                 msg = f"agym status is {status}"
@@ -496,6 +491,12 @@ class AntigravityMinimaxAdapter:
         if not isinstance(payload, Mapping):
             raise AntigravityMinimaxExecutionError(
                 "agym response JSON must be a mapping",
+                stdout=raw_text,
+            )
+
+        if "schema_version" in payload:
+            raise AntigravityMinimaxOutputError(
+                "agym response payload must be a ResultPackage, not an envelope",
                 stdout=raw_text,
             )
 
