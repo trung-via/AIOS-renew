@@ -38,7 +38,8 @@ sequence:
       published_sha: "a45e94294f0688e62dacfacd884f2736985fd616"
   - id: performance-closure
     status: NEXT
-    phase: P3-correction-lineage-design
+    task_id: TASK-097
+    phase: P3A-exact-remediation-predecessor-identity
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
     last_completed:
       task_id: TASK-096
