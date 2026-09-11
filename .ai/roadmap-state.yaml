@@ -34,8 +34,13 @@ sequence:
   - id: antigravity-minimax-executor-adoption
     status: NEXT
     task_id: TASK-091
+  - id: performance-closure
+    status: PENDING
+    blocked_by: antigravity-minimax-executor-adoption
+    planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
   - id: downstream-adoption
     status: PENDING
+    blocked_by: performance-closure
 parallel_work:
   - id: approved-remediation-wakeup
     milestone: A6
