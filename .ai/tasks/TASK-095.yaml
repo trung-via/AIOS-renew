@@ -1,0 +1,171 @@
+task_id: TASK-095
+revision: 1
+
+goal: >
+  Continue Performance Closure P2 by extracting the existing Unified State + Next Action
+  read-only reducer from the oversized Human-facing Operator implementation into one narrow
+  production module, while preserving the exact Operator-facing API, lifecycle taxonomy,
+  authority separation, fail-closed behavior, and downstream Unified Human Surface contract.
+
+problem: >
+  TASK-093 established an independently runnable Unified State regression surface and
+  TASK-094 successfully extracted Correction Preflight from src/aios_renew/operator.py.
+  The next large read-only boundary still embedded in Operator is Unified State + Next Action.
+  Keeping that reducer mixed with Human delegation and execution paths unnecessarily expands
+  Executor context and makes focused verification harder. The useful next decomposition is to
+  isolate the already-established TASK-086 reducer without changing lifecycle semantics or
+  moving any execution authority.
+
+assumptions:
+  - >
+    Canonical main before TASK-095 authoring is
+    a2ed96ac8424d8f1b3cb4625571fa4775fcf39ab, the published TASK-094 candidate.
+  - >
+    REVIEW-094-002 is canonical PRIMARY PASS for that exact candidate and RUN-094-002
+    verified the unchanged TASK-094 candidate with 294 passing tests through a zero-Executor
+    NO_CHANGE continuation after the local Python verification environment was restored.
+  - >
+    TASK-086 remains authoritative for Unified State + Next Action semantics, including its
+    fixed lifecycle/next-action taxonomy, lineage-driven reduction, fail-closed ambiguity,
+    publication classification, Correction Preflight consumption, and read-only guarantees.
+  - >
+    TASK-094 remains authoritative for the dedicated Correction Preflight boundary. Unified
+    State must consume that authority rather than reintroducing preflight logic inside the new
+    module.
+  - >
+    tests/test_operator_unified_state.py is the stable focused regression surface for this
+    boundary. tests/test_operator_human_surface.py is the immediate downstream consumer and
+    must continue to pass unchanged through the existing Operator-facing API.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-PERFORMANCE-CLOSURE.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-086.yaml
+    - .ai/tasks/TASK-087.yaml
+    - .ai/tasks/TASK-093.yaml
+    - .ai/tasks/TASK-094.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/publication.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_human_surface.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - tests/test_operator_unified_state.py
+
+non_goals:
+  - Change any Unified State format/version, lifecycle state, next_action value, authority
+    mapping, blocker code, selector, publication classification, or readiness semantics.
+  - Change Correction Preflight semantics or move its authority back into Operator or the new
+    Unified State module.
+  - Extract or redesign Unified Human Surface, continue delegation, PRIMARY execution,
+    REMEDIATION/REPAIR execution, transport retry, recovery, publication, CLI parsing,
+    repository locking, or other Operator domains in this TASK.
+  - Add a second lifecycle reducer, planner, policy engine, router, retry, fallback, reroute,
+    scheduler, daemon, queue, model call, or autonomous operation selection.
+  - Change Runtime completion or verification ownership, REVIEW/REMEDIATION/REPAIR contracts,
+    publication authority, Executor adapters, Dispatcher, repository admission, or frozen
+    Kernel v0.1 artifacts.
+  - Add verification caching, REPAIR affected-verification, evidence reuse across changed SHAs,
+    or prospective verification-redundancy admission rules.
+  - Modify tests/test_operator_human_surface.py, tests/test_operator_correction_preflight.py,
+    or tests/test_operator.py merely to accommodate extraction.
+  - Delete, skip, xfail, weaken, or duplicate tests merely to simplify extraction.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve exactly one authoritative Unified State + Next Action implementation. After
+      extraction, Operator remains the Human-facing facade and may re-export/delegate this
+      boundary, but must not retain a second copy or divergent reducer implementation.
+    - >
+      Existing public imports and calls through aios_renew.operator must remain source-
+      compatible, including UnifiedStateObservation and observe_unified_state. Existing CLI,
+      Unified Human Surface, and tests must not require a new command or lower-level workflow.
+    - >
+      The extracted module remains purely observational and read-only. It must create no RUN,
+      lease, handoff, result/failure/evidence, correction, review, publication, roadmap, or
+      reconciliation artifact; invoke no Executor or canonical verification; and perform no
+      sync, retry, recovery, publication, mutation, or delegation operation.
+    - >
+      Preserve the TASK-086 fixed next_action taxonomy and exact authority mapping, including
+      EXECUTE_PRIMARY, WAIT, SEMANTIC_REVIEW, AUTHOR_REMEDIATION, EXECUTE_REMEDIATION,
+      AUTHOR_REPAIR, EXECUTE_REPAIR, RETRY_TRANSPORT, RECOVER_PRIMARY, PUBLICATION, DONE, and
+      NONE. Do not add, remove, merge, or reinterpret lifecycle classes in this extraction.
+    - >
+      Preserve lineage-driven rather than recency-driven reduction; exact current/historical
+      identities; malformed/ambiguous fail-closed behavior; local terminal transport retry;
+      primary recovery classification; semantic-review separation; remediation/repair
+      correction identities; publication DONE/PUBLICATION/divergence classification; and
+      bounded Admission Failure context exactly as established by TASK-086 and later fixes.
+    - >
+      Unified State must continue to consume the authoritative Correction Preflight boundary
+      established by TASK-094. The extraction must not duplicate REMEDIATION/REPAIR readiness
+      validation or introduce a second preflight implementation.
+    - >
+      tests/test_operator_human_surface.py, tests/test_operator_correction_preflight.py, and
+      tests/test_operator.py are unchanged regression consumers for this TASK. Their ability
+      to pass without modification is part of the compatibility proof.
+    - >
+      The extraction must materially reduce the Unified State implementation context in
+      src/aios_renew/operator.py rather than copying the reducer into a new file while leaving
+      the old implementation in place.
+    - >
+      Do not move semantic, execution, Runtime, Reviewer, publication, or Human intent
+      authority merely to reduce source size. This TASK changes ownership of code location,
+      not ownership of architectural authority.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      UnifiedStateObservation, observe_unified_state, and implementation helpers whose sole
+      responsibility is Unified State reduction are owned by one dedicated
+      src/aios_renew/unified_state.py boundary, while aios_renew.operator preserves the same
+      public objects and source-compatible calls for current consumers.
+  - id: AC2
+    condition: >
+      Fresh, active, terminal, transport-pending, review-pending, correction-pending,
+      repair-pending, publication, done, malformed, ambiguous, and recovery lifecycle cases
+      retain the established TASK-086 state/next_action outcomes and remain read-only.
+  - id: AC3
+    condition: >
+      Unified State continues to consume exactly the TASK-094 Correction Preflight authority
+      for REMEDIATION/REPAIR readiness and preserves NO_CHANGE, CODE_FIX, and
+      CONTINUE_IMPLEMENTATION correction semantics without duplicating readiness logic.
+  - id: AC4
+    condition: >
+      Existing Unified Human Surface behavior continues to consume the exact authoritative
+      Unified State observation through the unchanged Operator-facing interface; no second
+      lifecycle reducer, Human workflow, or execution path is introduced.
+  - id: AC5
+    condition: >
+      src/aios_renew/operator.py is materially smaller in the Unified State domain and retains
+      no duplicate reducer implementation, while src/aios_renew/unified_state.py owns no Human
+      delegation, execution, Runtime verification, semantic review, publication, retry/reroute,
+      or unrelated Operator authority.
+  - id: AC6
+    condition: >
+      The implementation delta is limited to the three authorized files, frozen Kernel and
+      canonical artifact schemas remain unchanged, and no regression test is deleted, skipped,
+      xfailed, duplicated, or semantically weakened.
+  - id: AC7
+    condition: >
+      The focused Unified State suite plus unchanged Human Surface, Correction Preflight, and
+      remaining Operator regressions pass together under one canonical verification command.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator_unified_state.py tests/test_operator_human_surface.py tests/test_operator_correction_preflight.py tests/test_operator.py -q
