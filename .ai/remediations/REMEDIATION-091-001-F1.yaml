@@ -1,0 +1,9 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: 927b088d55befc1f17d8a159a40939d3f893dd8c
+modification_scope:
+  - src/aios_renew/antigravity_minimax_adapter.py
+  - tests/test_antigravity_minimax_adapter.py
+affected_verification:
+  - python -m pytest tests/test_antigravity_minimax_adapter.py -q
+constraints: []
