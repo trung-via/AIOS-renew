@@ -1368,6 +1368,7 @@ def test_contract_admission_failures_are_executor_neutral_and_exact(
         "executor_invoked": False,
         "phase": "CANONICAL_CONTRACT_ADMISSION",
         "reason_code": "TASK_CONTRACT_REJECTED",
+        "source_run_id": "RUN-101-000",
         "finding_id": remediation.finding_id,
         "review_id": review.review_id,
         "reviewed_sha": remediation.reviewed_sha,
