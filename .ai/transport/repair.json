@@ -1,0 +1,26 @@
+{
+  "repair_id": "REPAIR-093-002",
+  "failed_run_id": "RUN-093-002",
+  "failed_head_sha": "da43e0cbad4a25cbd38502768b7a3b08faa25c1e",
+  "task": {
+    "id": "TASK-093",
+    "revision": 1
+  },
+  "action": "CONTINUE_IMPLEMENTATION",
+  "modification_scope": [
+    "tests/test_operator.py",
+    "tests/test_operator_correction_preflight.py",
+    "tests/test_operator_unified_state.py",
+    "tests/test_operator_human_surface.py",
+    "tests/operator_test_support.py"
+  ],
+  "instructions": [
+    "Continue exactly from failed TASK-093 RUN-093-002 at failed_head_sha da43e0cbad4a25cbd38502768b7a3b08faa25c1e. RUN-093-002 continued RUN-093-001 but failed before mutation because the native agym command was still not launchable from the AIOS process environment.",
+    "Human has now established a native Windows console launcher at C:\\TOOL\\Antigravity-MiniMax\\.venv\\Scripts\\agym.exe and proved from C:\\TOOL\\Projects\\AIOS-renew, using the Python environment that launches AIOS, that shutil.which('agym') resolves that executable and subprocess.run(['agym','--help'], cwd='C:\\TOOL\\Projects\\AIOS-renew') exits 0. Treat this only as a new reason to continue; Runtime remains responsible for actual execution truth.",
+    "Complete the original TASK-093 revision 1 implementation only. Decompose the oversized Operator correction-test surface into the three TASK-authorized semantic groups for Correction Preflight, Unified State / Next Action, and Unified Human Surface, preserving existing assertions, scenarios, fail-closed behavior, exact lineage coverage, and one-operation delegation semantics.",
+    "Keep this continuation test-only. Do not modify production code, Runtime verification/evidence semantics, REVIEW/REMEDIATION/REPAIR contracts, executor selection, publication, retry/reroute behavior, or frozen Kernel artifacts. Do not add unrelated refactors or widen the original TASK scope.",
+    "Use tests/operator_test_support.py only for shared test support if needed; it must not become a collected test suite or create duplicate/order-dependent collection. Leave it absent if unnecessary.",
+    "Produce one committed clean candidate descending from the exact failed_head_sha and rely on existing Runtime to execute TASK-093 canonical verification exactly once. Do not push from Executor implementation execution."
+  ],
+  "constraints": []
+}
