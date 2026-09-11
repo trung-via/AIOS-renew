@@ -542,6 +542,69 @@ def test_human_surface_requires_executor_for_non_reusable_no_change_repair(
     assert _runtime_bytes(repo) == before
 
 
+def test_human_surface_continue_implementation_requires_executor_and_delegates_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    repair_sha = "c" * 40
+    failed_head = "d" * 40
+    repair = {
+        "repair_id": "REPAIR-101-CONTINUE",
+        "failed_run_id": "RUN-101-001",
+        "failed_head_sha": failed_head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue the unfinished implementation."],
+        "constraints": [],
+    }
+    observation = _human_observation(
+        "EXECUTE_REPAIR",
+        run_id="RUN-101-001",
+        failed_run_id="RUN-101-001",
+        failed_head_sha=failed_head,
+        correction_sha=repair_sha,
+        correction={
+            "action": "CONTINUE_IMPLEMENTATION",
+            "status": "READY",
+            # The semantic action itself must fail closed even if an observed
+            # requirement flag is malformed or conflicting.
+            "executor_required": False,
+        },
+        correction_document=repair,
+    )
+    monkeypatch.setattr(
+        operator_module, "observe_unified_state", lambda *_args, **_kwargs: observation
+    )
+    calls = []
+
+    def execute_repair(*args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(run_id="RUN-101-002", head_sha="e" * 40)
+
+    monkeypatch.setattr(operator_module, "run_repair", execute_repair)
+
+    required, exit_code = operator_module.continue_task("TASK-101", repo=repo)
+
+    assert exit_code == 0
+    assert required is not None
+    assert required.disposition == "EXECUTOR_REQUIRED"
+    assert calls == []
+
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-101", executor="codex", repo=repo
+    )
+
+    assert exit_code == 0
+    assert len(calls) == 1
+    assert calls[0][1]["executor"] == "codex"
+    assert calls[0][1]["failed_run_id"] == "RUN-101-001"
+    assert calls[0][1]["required_repair_sha"] == repair_sha
+    assert calls[0][1]["repair"] == repair
+    assert outcome is not None
+    assert outcome.delegated_operation == "REPAIR"
+
+
 @pytest.mark.parametrize("admitted", [False, True])
 def test_continue_cli_bounds_delegated_repair_failure_without_second_artifact(
     tmp_path: Path,
@@ -1258,6 +1321,95 @@ def test_unified_state_rejects_canonical_failure_with_malformed_run_binding(
         "BLOCKED", "NONE",
     )
     assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+
+def test_unified_state_ready_continue_implementation_reduces_to_execute_repair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    repair_sha = "c" * 40
+    run = {
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    failure = {
+        "kind": "FAILURE",
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "phase": "COMPLETION_GATE",
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }
+    repair = {
+        "repair_id": "REPAIR-101-CONTINUE",
+        "failed_run_id": run_id,
+        "failed_head_sha": head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue the unfinished implementation."],
+        "constraints": ["Commit the output."],
+    }
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(
+            run_id,
+            "FAILURE",
+            head,
+            json.dumps(run).encode(),
+            json.dumps(failure).encode(),
+        ),),
+        (),
+        (),
+        ((run_id, repair_sha, json.dumps(repair).encode()),),
+        (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    calls = []
+
+    def ready_preflight(failed_run_id, **kwargs):
+        calls.append((failed_run_id, kwargs))
+        return operator_module.CorrectionPreflightResult(
+            family="REPAIR",
+            status="READY",
+            phase="READY",
+            reason_code="READY",
+            task_id="TASK-101",
+            task_revision=1,
+            failed_run_id=run_id,
+            failed_head_sha=head,
+            subject_mode="CURRENT",
+            action="CONTINUE_IMPLEMENTATION",
+            executor_required=True,
+        )
+
+    monkeypatch.setattr(operator_module, "preflight_repair", ready_preflight)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["next_action"] == "EXECUTE_REPAIR"
+    assert observation["failed_run_id"] == run_id
+    assert observation["failed_head_sha"] == head
+    assert observation["correction_sha"] == repair_sha
+    assert observation["correction"]["action"] == "CONTINUE_IMPLEMENTATION"
+    assert observation["correction"]["executor_required"] is True
+    assert calls == [(run_id, {"repo": repo, "repair": repair})]
 
 
 def test_unified_state_rejects_local_failure_with_malformed_candidate_binding(
@@ -2080,19 +2232,29 @@ def repair_contract(
     (state.runs / f"{failed_run_id}.json").write_text(
         json.dumps(run_data), encoding="utf-8"
     )
+    failure = {
+        "kind": "FAILURE",
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": failed_head,
+        "failed_head_sha": failed_head,
+        "candidate": {"repairable": True, "changed_files": []},
+    }
+    if action == "CONTINUE_IMPLEMENTATION":
+        failure.update({
+            "phase": "COMPLETION_GATE",
+            "candidate": {
+                "transportable": True,
+                "repairable": True,
+                "dirty": False,
+                "descends_from_base": True,
+                "changed_files": [],
+                "outside_task_scope": [],
+            },
+        })
     (state.failures / f"{failed_run_id}.json").write_text(
-        json.dumps(
-            {
-                "kind": "FAILURE",
-                "run_id": failed_run_id,
-                "task": {"id": "TASK-101", "revision": 1},
-                "executor": "codex",
-                "base_sha": failed_head,
-                "failed_head_sha": failed_head,
-                "candidate": {"repairable": True, "changed_files": []},
-            }
-        ),
-        encoding="utf-8",
+        json.dumps(failure), encoding="utf-8"
     )
     repair = {
         "repair_id": f"REPAIR-101-{action}",
@@ -2100,7 +2262,11 @@ def repair_contract(
         "failed_head_sha": failed_head,
         "task": {"id": "TASK-101", "revision": 1},
         "action": action,
-        "modification_scope": ["OUTPUT.txt"] if action == "CODE_FIX" else [],
+        "modification_scope": (
+            ["OUTPUT.txt"]
+            if action in ("CODE_FIX", "CONTINUE_IMPLEMENTATION")
+            else []
+        ),
         "instructions": ["Apply only the authorized correction."],
         "constraints": ["Commit the output."],
     }
@@ -8748,6 +8914,31 @@ def test_correction_preflight_repair_preserves_reuse_action_order_and_state(
     assert ready.subject_mode == "CURRENT"
     assert ready.failed_run_id == failed_run_id
     assert ready.action == "CODE_FIX"
+    assert ready.as_dict()["executor_invoked"] is False
+    assert _runtime_bytes(repo) == before_runtime
+
+
+def test_correction_preflight_continue_implementation_is_ready_and_bypasses_reuse(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, continuation = repair_contract(
+        repo, action="CONTINUE_IMPLEMENTATION"
+    )
+    state = runtime_paths(repo)
+    (state.preverification / f"{failed_run_id}.json").write_bytes(b"not-json")
+    before_runtime = _runtime_bytes(repo)
+
+    ready = preflight_repair(
+        failed_run_id, repo=repo, repair=continuation
+    )
+
+    assert ready.status == "READY", ready.as_dict()
+    assert ready.action == "CONTINUE_IMPLEMENTATION"
+    assert ready.executor_required is True
+    assert ready.failed_run_id == failed_run_id
+    assert ready.failed_head_sha == continuation["failed_head_sha"]
+    assert ready.subject_mode == "CURRENT"
     assert ready.as_dict()["executor_invoked"] is False
     assert _runtime_bytes(repo) == before_runtime
 

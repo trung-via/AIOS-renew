@@ -207,6 +207,10 @@ contract, reusable-state, repository, historical-subject, and canonical
 RUN-namespace admission checks. A `NO_CHANGE` REPAIR inspects eligible reusable
 candidate state; `executor_required=false` is emitted only when that exact state
 qualifies for TASK-064 reuse. A `CODE_FIX` REPAIR bypasses those reuse-only checks.
+So does `CONTINUE_IMPLEMENTATION`: when its exact pre-verification predecessor and
+non-empty authored scope are admissible, Preflight reports
+`executor_required=true` without reading or validating unused reusable-candidate
+state.
 
 Preflight is read-only: it creates no RUN, lease, RESULT, FAILURE, EVIDENCE,
 Admission Failure v2 record, repair/remediation/dispatch state, or Executor
@@ -274,8 +278,8 @@ aios continue TASK-101 --executor antigravity --repo C:\path\to\control-repo
 ```
 
 There is no default, remembered, inferred, ranked, or recommended Executor.
-`--executor` is required for PRIMARY, REMEDIATION, and CODE_FIX or ordinary
-Executor-backed REPAIR. A deterministically eligible TASK-064 verification-only
+`--executor` is required for PRIMARY, REMEDIATION, and every `CODE_FIX` or
+`CONTINUE_IMPLEMENTATION` REPAIR. A deterministically eligible TASK-064 verification-only
 `NO_CHANGE` REPAIR may continue without it because that existing path invokes no
 coding Executor. Its continuation RUN preserves the failed RUN's frozen Executor
 lineage metadata when the Human supplies none; that metadata is not a default or
@@ -469,6 +473,32 @@ When code is unchanged, that does not justify invoking a coding Executor merely 
 restate the same candidate. Runtime does not infer that external state changed,
 probe it, or authorize a retry.
 
+### REPAIR semantic actions
+
+The existing REPAIR lifecycle has three distinct Human/Brain-authored semantic
+actions:
+
+- `CODE_FIX` corrects an established product or code defect. It requires an
+  explicit selected coding Executor and a committed correction delta.
+- `NO_CHANGE` continues an unchanged candidate only under the existing
+  verification-only reuse rules. Eligible reuse invokes no coding Executor and
+  grants no mutation authority.
+- `CONTINUE_IMPLEMENTATION` continues unfinished original TASK work after a new
+  external or Human reason permits another attempt, without asserting a product
+  or code defect. It is limited to an exact repairable `EXECUTION` or
+  `COMPLETION_GATE` predecessor, requires a non-empty authored modification scope
+  and an explicit selected coding Executor, and must commit a non-empty delta from
+  the exact failed head inside that scope.
+
+`CONTINUE_IMPLEMENTATION` preserves the failed RUN, TASK revision, failed head,
+original root base, and ordinary REPAIR continuation lineage. Runtime neither
+infers this action from diagnostics nor probes the external prerequisite. This is
+one separately authorized continuation, not an automatic retry: if execution,
+completion, or canonical verification fails, the continuation produces one
+ordinary FAILURE and stops. `aios continue` still observes once, delegates at most
+one lifecycle operation, and never retries, converts, reroutes, or starts a fresh
+PRIMARY in the same invocation.
+
 ## Direct Candidate Acceptance
 
 For a committed candidate produced directly by one Human-selected Executor in
@@ -494,7 +524,8 @@ post-PASS review transport for ChatGPT DELTA review. See
 The Human supplies only the canonical command arguments shown above. Before the
 single selected Executor process starts, AIOS deterministically derives native
 capability from the canonical contract: mutation-authorizing PRIMARY,
-`CODE_FIX` REMEDIATION, and `CODE_FIX` REPAIR executions receive non-interactive
+`CODE_FIX` REMEDIATION, and `CODE_FIX` or `CONTINUE_IMPLEMENTATION` REPAIR
+executions receive non-interactive
 mutation capability; read-only PRIMARY, `EVIDENCE_ONLY` REMEDIATION, and
 `NO_CHANGE` REPAIR executions remain read-only. Permission or capability
 failure does not trigger retry, reroute, fallback, or another model invocation.
@@ -502,7 +533,8 @@ failure does not trigger retry, reroute, fallback, or another model invocation.
 Native capability is only a process prerequisite. TASK modification scope and
 the applicable REMEDIATION or REPAIR scope remain canonical authority, and the
 existing Runtime committed-delta, clean-worktree, and HEAD gates reject changes
-outside that authority. Every `CODE_FIX` completion path also requires an
+outside that authority. Every `CODE_FIX` completion path and every
+`CONTINUE_IMPLEMENTATION` REPAIR also requires an
 advanced HEAD with a non-empty committed delta inside its authorized correction
 scope; unchanged states and empty commits fail before affected verification or
 post-PASS review transport. `EVIDENCE_ONLY` and `NO_CHANGE` retain their

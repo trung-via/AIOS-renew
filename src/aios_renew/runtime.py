@@ -315,6 +315,13 @@ class RuntimeCompletion:
                 self._raise("final Git HEAD did not advance")
         if policy.kind == "REPAIR":
             assert policy.mutation_base_sha is not None
+            if (
+                policy.mutation_action == "CONTINUE_IMPLEMENTATION"
+                and not self._is_ancestor(policy.mutation_base_sha, actual_head)
+            ):
+                self._raise(
+                    "CONTINUE_IMPLEMENTATION final HEAD does not descend from failed HEAD"
+                )
             repair_changed = self._committed_changed_files(
                 policy.mutation_base_sha, actual_head
             )
@@ -322,13 +329,20 @@ class RuntimeCompletion:
                 self._raise(
                     "REPAIR committed paths outside authorized correction scope"
                 )
-            if policy.mutation_action == "CODE_FIX":
+            if policy.mutation_action in (
+                "CODE_FIX", "CONTINUE_IMPLEMENTATION"
+            ):
                 if actual_head == policy.mutation_base_sha:
-                    self._raise("CODE_FIX REPAIR did not advance HEAD")
-                if not repair_changed:
                     self._raise(
-                        "CODE_FIX REPAIR committed correction delta is empty"
+                        f"{policy.mutation_action} REPAIR did not advance HEAD"
                     )
+                if not repair_changed:
+                    message = (
+                        "CODE_FIX REPAIR committed correction delta is empty"
+                        if policy.mutation_action == "CODE_FIX"
+                        else "CONTINUE_IMPLEMENTATION REPAIR committed delta is empty"
+                    )
+                    self._raise(message)
             elif actual_head != policy.mutation_base_sha:
                 self._raise("NO_CHANGE REPAIR changed HEAD")
 
@@ -461,6 +475,12 @@ class RuntimeCompletion:
             strip_stdout=False,
         )
         return {path for path in output.split("\0") if path}
+
+    def _is_ancestor(self, ancestor: str, descendant: str) -> bool:
+        try:
+            return _git_is_ancestor(self.repo, ancestor, descendant)
+        except RuntimeError as exc:
+            self._raise(str(exc), cause=exc)
 
     def _git(self, *args: str, strip_stdout: bool = True) -> str:
         try:

@@ -52,6 +52,9 @@ class StubRuntimeCompletion(RuntimeCompletion):
     def _committed_changed_files(self, base_sha: str, head_sha: str) -> set[str]:
         return set(self.changed_files)
 
+    def _is_ancestor(self, ancestor: str, descendant: str) -> bool:
+        return True
+
 
 def completion_fixture(tmp_path: Path):
     task = Task(
@@ -326,6 +329,7 @@ def test_operation_policies_share_one_runtime_completion_lifecycle(
     assert completion.result_path.is_file()
 
 
+@pytest.mark.parametrize("action", ("CODE_FIX", "CONTINUE_IMPLEMENTATION"))
 @pytest.mark.parametrize(
     "declared_changed_files",
     (("SECOND.txt",), (), ("FIRST.txt",)),
@@ -333,6 +337,7 @@ def test_operation_policies_share_one_runtime_completion_lifecycle(
 def test_repair_persists_complete_root_delta_from_noncanonical_structural_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    action: str,
     declared_changed_files: tuple[str, ...],
 ) -> None:
     task, run, state, run_path, package = completion_fixture(tmp_path)
@@ -351,7 +356,7 @@ def test_repair_persists_complete_root_delta_from_noncanonical_structural_result
         task,
         root_base_sha="base",
         failed_head_sha="failed",
-        action="CODE_FIX",
+        action=action,
         modification_scope=("SECOND.txt",),
         lineage_path=tmp_path / "repairs" / "RUN-052-000.json",
     )
@@ -399,6 +404,92 @@ def test_repair_persists_complete_root_delta_from_noncanonical_structural_result
     assert stored["result"]["changed_files"] == ["FIRST.txt", "SECOND.txt"]
     assert verification_calls == [(("verify-one", "verify-two"), "head")]
     assert {item["subject_sha"] for item in stored["evidence"]} == {"head"}
+
+
+def test_continue_implementation_requires_failed_head_advancement_before_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    package = replace(
+        package,
+        result=replace(
+            package.result, head_sha="failed", changed_files=()
+        ),
+    )
+    calls = []
+    monkeypatch.setattr(
+        runtime_module,
+        "execute_verification",
+        lambda *args, **kwargs: calls.append("verification"),
+    )
+    policy = repair_completion_policy(
+        task,
+        root_base_sha="base",
+        failed_head_sha="failed",
+        action="CONTINUE_IMPLEMENTATION",
+        modification_scope=("OUTPUT.txt",),
+        lineage_path=tmp_path / "repairs" / "RUN-052-000.json",
+    )
+    boundary = StubRuntimeCompletion(
+        repo=tmp_path,
+        state=state,
+        task=task,
+        run=run,
+        run_path=run_path,
+        verification_runner=lambda *args, **kwargs: None,
+        observation_tracker=None,
+        error_type=BoundaryError,
+        head_sha="failed",
+        changed_files=set(),
+    )
+
+    with pytest.raises(
+        BoundaryError,
+        match="CONTINUE_IMPLEMENTATION REPAIR did not advance HEAD",
+    ):
+        boundary.complete(package, policy)
+
+    assert calls == []
+    assert not (state.preverification / f"{run.run_id}.json").exists()
+
+
+def test_continue_implementation_rejects_divergent_final_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    monkeypatch.setattr(
+        runtime_module,
+        "execute_verification",
+        lambda *args, **kwargs: pytest.fail("verification was invoked"),
+    )
+    policy = repair_completion_policy(
+        task,
+        root_base_sha="base",
+        failed_head_sha="failed",
+        action="CONTINUE_IMPLEMENTATION",
+        modification_scope=("OUTPUT.txt",),
+        lineage_path=tmp_path / "repairs" / "RUN-052-000.json",
+    )
+
+    class DivergentCompletion(StubRuntimeCompletion):
+        def _is_ancestor(self, ancestor: str, descendant: str) -> bool:
+            return False
+
+    boundary = DivergentCompletion(
+        repo=tmp_path,
+        state=state,
+        task=task,
+        run=run,
+        run_path=run_path,
+        verification_runner=lambda *args, **kwargs: None,
+        observation_tracker=None,
+        error_type=BoundaryError,
+        head_sha="head",
+        changed_files={"OUTPUT.txt"},
+    )
+
+    with pytest.raises(BoundaryError, match="does not descend from failed HEAD"):
+        boundary.complete(package, policy)
 
 
 def test_transport_failure_after_result_does_not_erase_canonical_result(

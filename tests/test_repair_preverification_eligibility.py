@@ -127,15 +127,20 @@ def repair(failure: dict, *, action: str) -> dict:
         "failed_head_sha": failure["failed_head_sha"],
         "task": failure["task"],
         "action": action,
-        "modification_scope": ["OUTPUT.txt"] if action == "CODE_FIX" else [],
+        "modification_scope": (
+            ["OUTPUT.txt"]
+            if action in ("CODE_FIX", "CONTINUE_IMPLEMENTATION")
+            else []
+        ),
         "instructions": ["Apply the authorized correction."],
         "constraints": ["Commit the output."],
     }
 
 
 class CodeFixRunner:
-    def __init__(self, repo: Path) -> None:
+    def __init__(self, repo: Path, *, expected_action: str = "CODE_FIX") -> None:
         self.repo = repo
+        self.expected_action = expected_action
         self.calls = 0
 
     def __call__(self, command, **kwargs):
@@ -144,9 +149,18 @@ class CodeFixRunner:
             kwargs["input"].decode("utf-8").split("REPAIR_INPUT:\n", 1)[1]
         )
         target_repo = Path(execution["run"]["workspace"])
-        (target_repo / "OUTPUT.txt").write_text("corrected\n", encoding="utf-8")
+        continuing = self.expected_action == "CONTINUE_IMPLEMENTATION"
+        (target_repo / "OUTPUT.txt").write_text(
+            "continued\n" if continuing else "corrected\n", encoding="utf-8"
+        )
         git(target_repo, "add", "OUTPUT.txt")
-        git(target_repo, "commit", "--quiet", "-m", "code fix")
+        git(
+            target_repo,
+            "commit",
+            "--quiet",
+            "-m",
+            "continue implementation" if continuing else "code fix",
+        )
         head = git(target_repo, "rev-parse", "HEAD")
         payload = {
             "result": {
@@ -162,7 +176,32 @@ class CodeFixRunner:
             },
             "evidence": [],
         }
-        assert execution["repair"]["action"] == "CODE_FIX"
+        assert execution["repair"]["action"] == self.expected_action
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+
+class UnchangedContinuationRunner:
+    def __init__(self, repo: Path) -> None:
+        self.repo = repo
+        self.calls = 0
+
+    def __call__(self, command, **kwargs):
+        self.calls += 1
+        head = git(self.repo, "rev-parse", "HEAD")
+        payload = {
+            "result": {
+                "head_sha": head,
+                "claims": [{
+                    "id": "C1",
+                    "satisfies": ["AC1"],
+                    "claim": "The continuation is complete.",
+                    "evidence": [],
+                }],
+                "changed_files": [],
+                "unresolved": [],
+            },
+            "evidence": [],
+        }
         return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
 
 
@@ -196,6 +235,128 @@ class PrimaryRunner:
 
 def passing_verification(command, **kwargs):
     return subprocess.CompletedProcess(command, 0, b"clean\n", b"")
+
+
+def persist_failure(repo: Path, failed_run_id: str, failure: dict) -> None:
+    (runtime_paths(repo).failures / f"{failed_run_id}.json").write_text(
+        json.dumps(failure), encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize("phase", ["EXECUTION", "COMPLETION_GATE"])
+def test_continue_implementation_dispatches_once_and_ignores_reuse_state(
+    tmp_path: Path, phase: str
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, failure = predecessor(repo)
+    failure["phase"] = phase
+    persist_failure(repo, failed_run_id, failure)
+    (runtime_paths(repo).preverification / f"{failed_run_id}.json").write_bytes(
+        b"{malformed reusable state"
+    )
+    runner = CodeFixRunner(repo, expected_action="CONTINUE_IMPLEMENTATION")
+    verification_calls = 0
+
+    def verify(command, **kwargs):
+        nonlocal verification_calls
+        verification_calls += 1
+        return passing_verification(command, **kwargs)
+
+    summary = run_repair(
+        failed_run_id,
+        executor="codex",
+        repo=repo,
+        repair=repair(failure, action="CONTINUE_IMPLEMENTATION"),
+        native_runner=runner,
+        verification_runner=verify,
+    )
+
+    assert runner.calls == 1
+    assert verification_calls == 1
+    assert summary.head_sha != failure["failed_head_sha"]
+    result = json.loads(summary.result_path.read_text(encoding="utf-8"))["result"]
+    assert result["changed_files"] == ["OUTPUT.txt"]
+
+
+def test_continue_implementation_requires_executor_scope_and_preverification_phase(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, failure = predecessor(repo)
+    failure["phase"] = "COMPLETION_GATE"
+    persist_failure(repo, failed_run_id, failure)
+    continuation = repair(failure, action="CONTINUE_IMPLEMENTATION")
+
+    with pytest.raises(OperatorError, match="coding Executor is required"):
+        run_repair(
+            failed_run_id,
+            executor=None,
+            repo=repo,
+            repair=continuation,
+            native_runner=CodeFixRunner(
+                repo, expected_action="CONTINUE_IMPLEMENTATION"
+            ),
+            verification_runner=passing_verification,
+        )
+
+    continuation["modification_scope"] = []
+    with pytest.raises(OperatorError, match="modification scope is empty"):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=continuation,
+            native_runner=CodeFixRunner(
+                repo, expected_action="CONTINUE_IMPLEMENTATION"
+            ),
+            verification_runner=passing_verification,
+        )
+
+    continuation["modification_scope"] = ["OUTPUT.txt"]
+    failure["phase"] = "VERIFICATION"
+    persist_failure(repo, failed_run_id, failure)
+    with pytest.raises(OperatorError, match="pre-verification failure"):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=continuation,
+            native_runner=CodeFixRunner(
+                repo, expected_action="CONTINUE_IMPLEMENTATION"
+            ),
+            verification_runner=passing_verification,
+        )
+
+
+def test_continue_implementation_unchanged_completion_fails_before_verification(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, failure = predecessor(repo)
+    failure["phase"] = "COMPLETION_GATE"
+    persist_failure(repo, failed_run_id, failure)
+    runner = UnchangedContinuationRunner(repo)
+    verification_calls = 0
+
+    def verify(command, **kwargs):
+        nonlocal verification_calls
+        verification_calls += 1
+        return passing_verification(command, **kwargs)
+
+    with pytest.raises(
+        OperatorError, match="CONTINUE_IMPLEMENTATION REPAIR did not advance HEAD"
+    ):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair(failure, action="CONTINUE_IMPLEMENTATION"),
+            native_runner=runner,
+            verification_runner=verify,
+        )
+
+    assert runner.calls == 1
+    assert verification_calls == 0
 
 
 def test_code_fix_with_valid_claimless_sidecar_uses_ordinary_executor_path(
@@ -353,6 +514,51 @@ def test_historical_code_fix_ignores_local_remote_sidecar_conflict(
 
     assert runner.calls == 1
     assert summary.head_sha != failure["failed_head_sha"]
+
+
+def test_historical_continue_implementation_uses_exact_failed_subject(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, failure = predecessor(repo)
+    failure["phase"] = "COMPLETION_GATE"
+    persist_failure(repo, failed_run_id, failure)
+    state = runtime_paths(repo)
+    transport_failure(
+        repo,
+        run_id=failed_run_id,
+        head_sha=failure["failed_head_sha"],
+        run_path=state.runs / f"{failed_run_id}.json",
+        failure_path=state.failures / f"{failed_run_id}.json",
+        publish_candidate=True,
+    )
+
+    (repo / "ADVANCE.txt").write_text("control advance\n", encoding="utf-8")
+    git(repo, "add", "ADVANCE.txt")
+    git(repo, "commit", "--quiet", "-m", "advance current control")
+    control = (
+        git(repo, "rev-parse", "HEAD"),
+        git(repo, "branch", "--show-current"),
+        git(repo, "status", "--porcelain"),
+    )
+    runner = CodeFixRunner(repo, expected_action="CONTINUE_IMPLEMENTATION")
+
+    summary = run_repair(
+        failed_run_id,
+        executor="codex",
+        repo=repo,
+        repair=repair(failure, action="CONTINUE_IMPLEMENTATION"),
+        native_runner=runner,
+        verification_runner=passing_verification,
+    )
+
+    assert runner.calls == 1
+    assert summary.head_sha != failure["failed_head_sha"]
+    assert (
+        git(repo, "rev-parse", "HEAD"),
+        git(repo, "branch", "--show-current"),
+        git(repo, "status", "--porcelain"),
+    ) == control
 
 
 def test_code_fix_preserves_independent_canonical_gates(tmp_path: Path) -> None:

@@ -1842,8 +1842,10 @@ def _resolve_repair_admission(
     if task.revision != failure["task"]["revision"]:
         raise OperatorError("TASK revision does not match failed RUN")
     action = repair_data.get("action")
-    if action not in ("CODE_FIX", "NO_CHANGE"):
-        raise OperatorError("REPAIR action must be CODE_FIX or NO_CHANGE")
+    if action not in ("CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION"):
+        raise OperatorError(
+            "REPAIR action must be CODE_FIX, NO_CHANGE, or CONTINUE_IMPLEMENTATION"
+        )
     scope = repair_data.get("modification_scope")
     instructions = repair_data.get("instructions")
     constraints = repair_data.get("constraints")
@@ -1861,6 +1863,24 @@ def _resolve_repair_admission(
         raise OperatorError("REPAIR constraints introduce new Human intent")
     if action == "NO_CHANGE" and scope:
         raise OperatorError("NO_CHANGE REPAIR modification scope must be empty")
+    if action == "CONTINUE_IMPLEMENTATION":
+        if not scope:
+            raise OperatorError(
+                "CONTINUE_IMPLEMENTATION REPAIR modification scope is empty"
+            )
+        if failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE"):
+            raise OperatorError(
+                "CONTINUE_IMPLEMENTATION requires a pre-verification failure"
+            )
+        if (
+            candidate.get("transportable") is not True
+            or candidate.get("dirty") is not False
+            or candidate.get("descends_from_base") is not True
+            or candidate.get("outside_task_scope") != []
+        ):
+            raise OperatorError(
+                "CONTINUE_IMPLEMENTATION requires a clean transportable candidate"
+            )
     admission["action"] = action
 
     reusable_package = None
@@ -2008,7 +2028,9 @@ def _run_repair_impl(
                 native_runner
             )
             execution_policy = resolve_native_execution_policy(
-                authorizes_mutation=action == "CODE_FIX"
+                authorizes_mutation=action in (
+                    "CODE_FIX", "CONTINUE_IMPLEMENTATION"
+                )
             )
             dispatcher = repair_dispatcher(
                 selected_executor=run_executor,
@@ -4255,8 +4277,29 @@ def continue_task(
         if isinstance(observation.correction, Mapping)
         else None
     )
+    repair_action = (
+        observation.correction.get("action")
+        if isinstance(observation.correction, Mapping)
+        else None
+    )
+    repair_document_action = (
+        observation.correction_document.get("action")
+        if isinstance(observation.correction_document, Mapping)
+        else None
+    )
+    if (
+        repair_action is not None
+        and repair_document_action is not None
+        and repair_action != repair_document_action
+    ):
+        raise OperatorError("Unified State repair action identity is inconsistent")
+    exact_repair_action = repair_document_action or repair_action
     executor_required = action in ("EXECUTE_PRIMARY", "EXECUTE_REMEDIATION") or (
-        action == "EXECUTE_REPAIR" and repair_executor_required is not False
+        action == "EXECUTE_REPAIR"
+        and (
+            exact_repair_action in ("CODE_FIX", "CONTINUE_IMPLEMENTATION")
+            or repair_executor_required is not False
+        )
     )
     if executor_required and executor is None:
         return (
@@ -4373,6 +4416,10 @@ def continue_task(
             or observation.correction_document is None
         ):
             raise OperatorError("Unified State repair selectors are incomplete")
+        if exact_repair_action == "CONTINUE_IMPLEMENTATION" and executor is None:
+            raise OperatorError(
+                "CONTINUE_IMPLEMENTATION requires an explicit coding Executor"
+            )
         try:
             summary = run_repair(
                 observation.failed_run_id,
