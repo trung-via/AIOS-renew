@@ -15,9 +15,5 @@
     "Do not broaden Admission Failure v2 beyond its pre-existing allowlist, do not change predecessor persistence/publication semantics, and do not weaken the exact-dict regression beyond the one newly-known source_run_id fact.",
     "Run only Runtime-authorized repair verification from the exact RUN-097-001 failed candidate lineage."
   ],
-  "constraints": [
-    "Do not change production files in this repair.",
-    "Preserve TASK-081 Admission Failure v2 semantics and TASK-097 exact predecessor semantics.",
-    "No retry, reroute, schema widening, or historical artifact mutation."
-  ]
+  "constraints": []
 }
