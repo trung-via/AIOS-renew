@@ -1,0 +1,197 @@
+task_id: TASK-091
+revision: 1
+
+goal: >
+  Add `antigravity-minimax` as a third admitted native Executor backend by placing the
+  already-proven external `agym` transport behind the existing AIOS Executor/Dispatcher
+  boundary, so PRIMARY, REMEDIATION, and REPAIR can use the same canonical TASK/RUN,
+  ResultPackage, Runtime verification, review, lineage, lease, and publication semantics as
+  Codex and Antigravity without creating a second execution architecture.
+
+problem: >
+  Canonical AIOS-renew currently admits only `codex` and `antigravity`. The Dispatcher already
+  exposes a provider-neutral one-selected-executor boundary, but its native factory registry and
+  several Operator admission/CLI allowlists contain only those two identities. Separately, the
+  Human has now proven an `agym` command that runs MiniMax through the Antigravity SDK harness
+  and returns a machine-readable `agym.result.v1` envelope with deterministic process status,
+  State Guard status, Git HEAD observations, timeout behavior, and a model response. AIOS has no
+  thin adapter that can consume that transport while preserving canonical ResultPackage and
+  Runtime authority. Directly teaching Runtime or Operator about MiniMax response prose, API
+  keys, proxy mechanics, or provider internals would fork authority and duplicate transport
+  concerns.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-091 authoring is
+    51114be70fb672ed890ce22964eca4abf85019e7, whose roadmap bookmark resumes
+    `downstream-adoption` after published TASK-090.
+  - >
+    Human has explicitly overridden that generic roadmap continuation to prioritize adding the
+    proven Antigravity+MiniMax transport before downstream adoption resumes.
+  - >
+    The existing `ExecutorBoundary` and `Dispatcher` are authoritative for exactly-one selected
+    native execution; Runtime remains canonical verification and evidence owner; Reviewer and
+    publication authorities remain unchanged.
+  - >
+    A local external command named `agym` is installed outside this repository. Its proven v0.3
+    contract emits one `agym.result.v1` JSON envelope, uses exit code 0 only for transport PASS,
+    fails closed on dirty-workspace/state-guard violations and timeouts, and leaves MiniMax
+    credentials/provider plumbing outside AIOS-renew.
+  - >
+    `agym` transport metadata is operational evidence only. Its `response` field may be consumed
+    only if it is exactly one structural AIOS ResultPackage JSON object; model prose and agym's
+    own `changed_files` observation are never canonical repository truth.
+  - >
+    Existing Codex and Antigravity native behavior is regression authority and must remain
+    unchanged.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-ROADMAP.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-013.yaml
+    - src/aios_renew/executor.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/runtime.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_codex_adapter.py
+    - tests/test_dispatcher.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/operator.py
+    - tests/test_antigravity_minimax_adapter.py
+    - tests/test_dispatcher.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change TASK, RUN, RESULT, EVIDENCE, FAILURE, REVIEW, REMEDIATION, REPAIR, or publication
+    schemas or semantic authority.
+  - Change ExecutorBoundary, Runtime verification ownership, lease ownership, repository
+    admission, completion gates, correction lineage, or safe publication semantics.
+  - Modify the external `agym` installation, vendor Antigravity SDK/MiniMax proxy code into this
+    repository, store or read MiniMax API keys, or make AIOS own provider authentication.
+  - Replace the existing `antigravity` executor, change Codex/Antigravity commands, or reinterpret
+    their output contracts.
+  - Add automatic executor selection, model routing, retry, fallback, reroute, failover, polling,
+    background execution, or a second dispatcher.
+  - Treat `agym.result.v1` status, response prose, model identity, token accounting, or
+    `changed_files` diagnostics as canonical completion truth.
+  - Add model-specific optimization, quota management, credit accounting, `agym doctor/models`,
+    or benchmark policy in this TASK.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      The new admitted executor identity is exactly `antigravity-minimax`. It must enter through
+      the existing Operator admission, RUN/lease binding, Dispatcher, and Executor boundaries;
+      no direct Runtime-to-agym path or alternate lifecycle is permitted.
+    - >
+      PRIMARY, REMEDIATION, and REPAIR must all expose the same provider-neutral native adapter
+      surface already required by Dispatcher. The selected adapter may be invoked at most once
+      for one admitted execution, and native failure is terminal for that execution.
+    - >
+      Provider-specific invocation and envelope parsing must live in one thin
+      `antigravity_minimax_adapter` boundary. Operator and Dispatcher may know the executor
+      identity and factory only; they must not parse MiniMax/agym response content or own
+      provider credentials.
+    - >
+      Native invocation must use the external `agym` executable in the admitted repository
+      workspace, request `--output-format json`, explicitly permit the Executor's authorized
+      commit-capable mutation path, and remain bounded by the existing provider-neutral native
+      execution watchdog. AIOS must not pass MiniMax credentials or provider URLs on the command
+      line.
+    - >
+      The adapter must preserve the existing direct-native-executor contract: consume the exact
+      admitted TASK/RUN or correction handoff, do not launch another AIOS execution, do not push,
+      do not perform semantic review, and leave canonical verification/EVIDENCE construction to
+      Runtime. Any implementation-local sanity checking performed by the external harness remains
+      non-authoritative and must not replace or suppress Runtime verification.
+    - >
+      Successful transport requires one parseable `agym.result.v1` envelope whose process exit
+      code, envelope `exit_code`, `status`, and `state_guard` consistently represent PASS. The
+      envelope must bind to the admitted workspace and must not report an unexpected pre-existing
+      dirty state or State Guard violation.
+    - >
+      The envelope `response` must be exactly one JSON structural ResultPackage for the current
+      operation, with no prose wrapper or markdown fencing. It must be normalized through the
+      existing structural Result/Evidence validators and then remain subject to the unchanged
+      Runtime/ExecutorBoundary canonical gates. The adapter must never synthesize a PASS package
+      from prose or missing fields.
+    - >
+      Git identity must fail closed: transport HEAD observations must be consistent with the
+      admitted starting subject and returned Result head, while canonical final HEAD,
+      ancestry/scope, root-relative changed-files, completion, and evidence truth remain owned by
+      existing Runtime logic. `agym.changed_files` is diagnostics only and must never overwrite
+      Result.changed_files or Runtime-derived repository truth.
+    - >
+      Missing `agym`, timeout, nonzero process exit, malformed terminal JSON, wrong schema,
+      non-PASS status, inconsistent exit code, State Guard failure, workspace/head mismatch,
+      missing/non-JSON response, or invalid structural ResultPackage must raise an executor-native
+      failure with bounded stdout/stderr diagnostics and no retry, fallback, reroute, or alternate
+      executor invocation.
+    - >
+      Existing `codex` and `antigravity` admission choices, commands, factory behavior, tests, and
+      ResultPackage normalization must remain unchanged.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Operator Human-facing and wakeup/correction admission surfaces accept exactly the new
+      `antigravity-minimax` executor wherever a coding Executor is already accepted, while invalid
+      executor identities still fail closed and existing Codex/Antigravity behavior is unchanged.
+  - id: AC2
+    condition: >
+      Dispatcher resolves `antigravity-minimax` through the existing native adapter registry for
+      PRIMARY, REMEDIATION, and REPAIR, preserves selected-executor/RUN identity, and invokes at
+      most one adapter with no fallback or second dispatch on construction/native/output failure.
+  - id: AC3
+    condition: >
+      Adapter command-contract tests prove the external `agym` transport is invoked in the exact
+      admitted repository with machine-readable JSON output, authorized commit-capable execution,
+      and the existing bounded native watchdog, without putting MiniMax credentials/provider URLs
+      in AIOS command arguments.
+  - id: AC4
+    condition: >
+      Deterministic success fixtures for PRIMARY, REMEDIATION, and REPAIR provide a valid
+      `agym.result.v1` PASS envelope whose response is one structural operation-appropriate
+      ResultPackage; the adapter returns that package through the existing validators and Runtime
+      gates without treating agym prose/metadata as canonical evidence.
+  - id: AC5
+    condition: >
+      Success coverage proves transport workspace/HEAD observations are bound consistently to the
+      admitted execution and returned Result head, while agym `changed_files` diagnostics neither
+      replace nor alter Result.changed_files or Runtime-derived repository truth.
+  - id: AC6
+    condition: >
+      Negative coverage fails closed for missing executable, watchdog timeout, nonzero process
+      exit, malformed JSON, wrong schema, PASS/exit-code disagreement, dirty refusal, State Guard
+      violation, workspace/head mismatch, missing or prose-wrapped response, and structurally
+      invalid ResultPackage, preserving bounded native diagnostics and invoking no alternate
+      Executor.
+  - id: AC7
+    condition: >
+      Existing Codex and Antigravity adapter/dispatcher/operator regressions remain green with no
+      command, output, retry, authority, verification, lease, or publication semantic change.
+  - id: AC8
+    condition: >
+      Focused executor/dispatcher/operator tests and the full repository test suite pass, and
+      `git diff --check` passes with no modified file outside TASK-091 scope.
+
+verification:
+  required:
+    - python -m pytest tests/test_antigravity_minimax_adapter.py tests/test_dispatcher.py tests/test_operator.py -q
+    - python -m pytest -q
+    - git diff --check
