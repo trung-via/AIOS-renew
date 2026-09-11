@@ -5,8 +5,15 @@ import subprocess
 
 import pytest
 
+import aios_renew.correction_preflight as correction_preflight_module
+from aios_renew.correction_preflight import (
+    CorrectionPreflightResult as DirectCorrectionPreflightResult,
+    preflight_remediation as direct_preflight_remediation,
+    preflight_repair as direct_preflight_repair,
+)
 import aios_renew.operator as operator_module
 from aios_renew.operator import (
+    CorrectionPreflightResult,
     preflight_remediation,
     preflight_repair,
     runtime_paths,
@@ -367,3 +374,12 @@ def test_correction_preflight_historical_repair_preserves_subject_and_blocks_dup
     assert blocked.phase == "FAILED_RUN_RESOLUTION"
     assert blocked.reason_code == "CANONICAL_LINEAGE_MISSING"
     assert _runtime_bytes(repo) == before_runtime
+
+
+def test_correction_preflight_module_boundary_and_operator_compatibility() -> None:
+    assert operator_module.CorrectionPreflightResult is DirectCorrectionPreflightResult
+    assert operator_module.preflight_remediation is direct_preflight_remediation
+    assert operator_module.preflight_repair is direct_preflight_repair
+    assert correction_preflight_module.CorrectionPreflightResult is operator_module.CorrectionPreflightResult
+    assert correction_preflight_module.preflight_remediation is operator_module.preflight_remediation
+    assert correction_preflight_module.preflight_repair is operator_module.preflight_repair
