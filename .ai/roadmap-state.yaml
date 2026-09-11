@@ -26,8 +26,11 @@ sequence:
     completed_by:
       task_id: TASK-090
       published_sha: "08e4a612377ac82be36061286a34138ea53ab0d1"
-  - id: downstream-adoption
+  - id: antigravity-minimax-executor-adoption
     status: NEXT
+    task_id: TASK-091
+  - id: downstream-adoption
+    status: PENDING
 parallel_work:
   - id: approved-remediation-wakeup
     milestone: A6
