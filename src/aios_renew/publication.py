@@ -194,9 +194,75 @@ def _run_from_data(data: Any, document: str) -> Run:
     )
 
 
-def _remediation_lineage(
+def _single_optional_remote_sha(
+    repo: Path, remote: str, ref: str, *, run_id: str
+) -> str | None:
+    code, output, _ = _git(
+        repo, "ls-remote", "--refs", remote, ref, allow_fail=True
+    )
+    if code:
+        raise _failed(run_id, f"cannot query canonical ref {ref}")
+    lines = [line.split() for line in output.splitlines() if line.strip()]
+    if not lines:
+        return None
+    if (
+        len(lines) != 1
+        or len(lines[0]) != 2
+        or lines[0][1] != ref
+        or _SHA.fullmatch(lines[0][0]) is None
+    ):
+        raise _failed(run_id, f"canonical ref {ref} is missing or ambiguous")
+    return lines[0][0]
+
+
+@dataclass(frozen=True)
+class RemediationPredecessor:
+    """Exact bounded predecessor identity for one canonical REMEDIATION RUN."""
+
+    source_run_id: str
+    review_id: str
+    finding_id: str
+    reviewed_sha: str
+
+
+def _parse_remediation_predecessor(
+    data: Any, document: str = "REMEDIATION predecessor"
+) -> RemediationPredecessor:
+    root = _mapping(data, document)
+    allowed = {
+        "source_run_id",
+        "run_id",
+        "review_id",
+        "source_review_id",
+        "finding_id",
+        "selected_finding_id",
+        "reviewed_sha",
+    }
+    if set(root).difference(allowed):
+        raise ValueError(f"{document} contains unexpected fields")
+    source_run_id = root.get("source_run_id") or root.get("run_id")
+    review_id = root.get("review_id") or root.get("source_review_id")
+    finding_id = root.get("finding_id") or root.get("selected_finding_id")
+    reviewed_sha = root.get("reviewed_sha")
+    if not isinstance(source_run_id, str) or _RUN_ID.fullmatch(source_run_id) is None:
+        raise ValueError(f"{document} source RUN identity is invalid")
+    if not isinstance(review_id, str) or not review_id or "/" in review_id or "\\" in review_id:
+        raise ValueError(f"{document} source REVIEW identity is invalid")
+    if not isinstance(finding_id, str) or not finding_id or "/" in finding_id or "\\" in finding_id:
+        raise ValueError(f"{document} selected finding identity is invalid")
+    if not isinstance(reviewed_sha, str) or _SHA.fullmatch(reviewed_sha) is None:
+        raise ValueError(f"{document} reviewed_sha is invalid")
+    return RemediationPredecessor(
+        source_run_id=source_run_id,
+        review_id=review_id,
+        finding_id=finding_id,
+        reviewed_sha=reviewed_sha,
+    )
+
+
+def _parse_remediation_run(
     run_data: Mapping[str, Any], *, run_id: str
-) -> tuple[Run, Remediation, Review]:
+) -> tuple[Run, Remediation]:
     execution = _mapping(run_data.get("execution"), "REMEDIATION.execution")
     run = _run_from_data(execution.get("run"), "REMEDIATION.execution.run")
     if run.run_id != run_id:
@@ -206,6 +272,23 @@ def _remediation_lineage(
         execution.get("remediation"), "REMEDIATION.execution.remediation"
     )
     remediation = parse_remediation(json.dumps(remediation_data))
+    original_constraints = execution.get("original_constraints", [])
+    if (
+        not isinstance(original_constraints, list)
+        or not all(isinstance(item, str) for item in original_constraints)
+        or tuple(original_constraints) != remediation.constraints
+    ):
+        raise ValueError(
+            "REMEDIATION original_constraints do not match its constraints"
+        )
+    return run, remediation
+
+
+def _remediation_lineage(
+    run_data: Mapping[str, Any], *, run_id: str
+) -> tuple[Run, Remediation, Review]:
+    run, remediation = _parse_remediation_run(run_data, run_id=run_id)
+    execution = _mapping(run_data.get("execution"), "REMEDIATION.execution")
     finding_data = _mapping(
         execution.get("finding"), "REMEDIATION.execution.finding"
     )
@@ -221,16 +304,105 @@ def _remediation_lineage(
             }
         )
     )
-    original_constraints = execution.get("original_constraints", [])
-    if (
-        not isinstance(original_constraints, list)
-        or not all(isinstance(item, str) for item in original_constraints)
-        or tuple(original_constraints) != remediation.constraints
-    ):
-        raise ValueError(
-            "REMEDIATION original_constraints do not match its constraints"
-        )
     return run, remediation, prior_review
+
+
+def _validate_predecessor_lineage(
+    repo: Path,
+    *,
+    remote: str,
+    publication_run_id: str,
+    run_data: Mapping[str, Any],
+    run: Run,
+    remediation: Remediation,
+    task: Any,
+) -> Review:
+    pred = _parse_remediation_predecessor(run_data.get("predecessor"))
+    execution = _mapping(run_data.get("execution"), "REMEDIATION.execution")
+
+    if pred.reviewed_sha != remediation.reviewed_sha:
+        raise ValueError("predecessor reviewed_sha does not match REMEDIATION reviewed_sha")
+    if pred.reviewed_sha != run.base_sha:
+        raise ValueError("predecessor reviewed_sha does not match REMEDIATION base_sha")
+    if pred.review_id != execution.get("review_id"):
+        raise ValueError("predecessor review_id does not match REMEDIATION review_id")
+    if pred.finding_id != remediation.finding_id:
+        raise ValueError("predecessor finding_id does not match REMEDIATION finding_id")
+    execution_finding = _mapping(execution.get("finding"), "REMEDIATION.execution.finding")
+    if pred.finding_id != execution_finding.get("id"):
+        raise ValueError("predecessor finding_id does not match REMEDIATION finding.id")
+
+    pred_artifacts_ref = f"refs/heads/aios/artifacts/{pred.source_run_id}"
+    pred_artifacts_sha = _single_remote_sha(repo, remote, pred_artifacts_ref, run_id=publication_run_id)
+    _fetch_object(repo, remote, pred_artifacts_sha, run_id=publication_run_id)
+    pred_run_bytes = _read_blob(repo, pred_artifacts_sha, ".ai/transport/run.json", run_id=publication_run_id)
+    pred_run_data = _mapping(_json_no_duplicates(pred_run_bytes, document="predecessor RUN"), "predecessor RUN")
+    if "kind" not in pred_run_data:
+        pred_run = _run_from_data(pred_run_data, "predecessor RUN")
+    elif pred_run_data.get("kind") == "REMEDIATION":
+        pred_execution = _mapping(pred_run_data.get("execution"), "predecessor REMEDIATION.execution")
+        pred_run = _run_from_data(pred_execution.get("run"), "predecessor REMEDIATION.execution.run")
+    else:
+        raise ValueError("unknown predecessor RUN kind")
+
+    if pred_run.run_id != pred.source_run_id:
+        raise ValueError("predecessor RUN run_id mismatch")
+    if pred_run.task.id != task.task_id or pred_run.task.revision != task.revision:
+        raise ValueError("predecessor RUN task mismatch")
+    if pred_run.status != ACTIVE:
+        raise ValueError("predecessor RUN status is not ACTIVE")
+
+    pred_result_bytes = _read_blob(repo, pred_artifacts_sha, ".ai/transport/result.json", run_id=publication_run_id)
+    pred_result_data = _mapping(_json_no_duplicates(pred_result_bytes, document="predecessor ResultPackage"), "predecessor ResultPackage")
+    pred_result = validate_result(pred_result_data["result"])
+    if pred_result.head_sha != pred.reviewed_sha:
+        raise ValueError("predecessor RESULT head_sha does not match reviewed_sha")
+
+    pred_review_ref = f"refs/heads/aios/review/{pred.source_run_id}"
+    pred_review_sha = _single_remote_sha(repo, remote, pred_review_ref, run_id=publication_run_id)
+    if pred_review_sha != pred.reviewed_sha:
+        raise ValueError("predecessor candidate review ref does not match reviewed_sha")
+
+    remediation_ref = f"refs/heads/aios/remediation/{pred.source_run_id}-{pred.finding_id}"
+    decision_ref = f"refs/heads/aios/review-decision/{pred.source_run_id}"
+    review_commit_sha = _single_optional_remote_sha(repo, remote, remediation_ref, run_id=publication_run_id)
+    if review_commit_sha is None:
+        review_commit_sha = _single_optional_remote_sha(repo, remote, decision_ref, run_id=publication_run_id)
+    if review_commit_sha is None:
+        raise ValueError(f"canonical predecessor review ref is missing for {pred.source_run_id}")
+
+    _fetch_object(repo, remote, review_commit_sha, run_id=publication_run_id)
+    code, tree, _ = _git(repo, "ls-tree", "-r", "--name-only", review_commit_sha, "--", ".ai/reviews", allow_fail=True)
+    if code:
+        raise ValueError(f"cannot inspect predecessor review decision for {pred.source_run_id}")
+    review_paths = [
+        path
+        for path in tree.splitlines()
+        if path.startswith(".ai/reviews/")
+        and path.endswith((".yaml", ".yml"))
+    ]
+    if len(review_paths) != 1:
+        raise ValueError(
+            f"predecessor review decision must contain exactly one REVIEW document for {pred.source_run_id}"
+        )
+    review_bytes = _read_blob(repo, review_commit_sha, review_paths[0], run_id=publication_run_id)
+    prior_review = parse_review(review_bytes.decode("utf-8", errors="strict"))
+
+    if prior_review.review_id != pred.review_id:
+        raise ValueError("predecessor REVIEW review_id mismatch")
+    if prior_review.reviewed_sha != pred.reviewed_sha:
+        raise ValueError("predecessor REVIEW reviewed_sha mismatch")
+    if prior_review.verdict != "CHANGES_REQUIRED":
+        raise ValueError("predecessor REVIEW verdict is not CHANGES_REQUIRED")
+    if not any(f.id == pred.finding_id for f in prior_review.findings):
+        raise ValueError("predecessor REVIEW does not contain selected finding")
+
+    if len(prior_review.findings) > 1:
+        raise ValueError(
+            "predecessor REVIEW contains multiple findings; cannot publish single-finding remediation before P3B"
+        )
+
+    return prior_review
 
 
 def _validate_remediation_package(
@@ -577,9 +749,23 @@ def _repair_review_lineage(
     if predecessor_run_data.get("kind") == "REMEDIATION":
         if predecessor_repair is not None:
             raise ValueError("REMEDIATION predecessor has conflicting REPAIR lineage")
-        predecessor_run, remediation, prior_review = _remediation_lineage(
-            predecessor_run_data, run_id=failed_run_id
-        )
+        if "predecessor" in predecessor_run_data:
+            predecessor_run, remediation = _parse_remediation_run(
+                predecessor_run_data, run_id=failed_run_id
+            )
+            prior_review = _validate_predecessor_lineage(
+                repo,
+                remote=remote,
+                publication_run_id=publication_run_id,
+                run_data=predecessor_run_data,
+                run=predecessor_run,
+                remediation=remediation,
+                task=task,
+            )
+        else:
+            predecessor_run, remediation, prior_review = _remediation_lineage(
+                predecessor_run_data, run_id=failed_run_id
+            )
         if (
             predecessor_run.task.id != task.task_id
             or predecessor_run.task.revision != task.revision
@@ -721,9 +907,14 @@ def _load_success_lineage(
                 raise ValueError("RUN-ID mismatch between decision ref and RUN")
             run = _run_from_data(run_data, "RUN")
         elif run_data.get("kind") == "REMEDIATION":
-            run, remediation, prior_review = _remediation_lineage(
-                run_data, run_id=run_id
-            )
+            if "predecessor" in run_data:
+                run, remediation = _parse_remediation_run(
+                    run_data, run_id=run_id
+                )
+            else:
+                run, remediation, prior_review = _remediation_lineage(
+                    run_data, run_id=run_id
+                )
         else:
             raise ValueError("unknown canonical RUN kind")
         if run.status != ACTIVE:
@@ -762,6 +953,17 @@ def _load_success_lineage(
         )
         task = parse_task(task_bytes.decode("utf-8", errors="strict"))
         repair_prior_review = None
+        if "predecessor" in run_data:
+            assert remediation is not None
+            prior_review = _validate_predecessor_lineage(
+                repo,
+                remote=remote,
+                publication_run_id=run_id,
+                run_data=run_data,
+                run=run,
+                remediation=remediation,
+                task=task,
+            )
         if repair_bytes is not None:
             if remediation is not None:
                 raise ValueError(

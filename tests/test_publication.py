@@ -1281,3 +1281,312 @@ def test_workflow_has_canonical_trigger_and_minimum_authority() -> None:
     assert "aios remediate" not in workflow
     assert "aios repair" not in workflow
     assert "pytest" not in workflow
+
+
+def make_predecessor_lineage(
+    root: Path,
+    *,
+    predecessor_override: dict[str, object] | None = None,
+    sibling_findings: bool = False,
+    remediation_scope: tuple[str, ...] = ("product.txt",),
+) -> dict[str, object]:
+    repo = root / "repo"
+    remote = root / "upstream.git"
+    repo.mkdir()
+    git(repo, "init", "--quiet")
+    git(repo, "config", "user.name", "AIOS Publication Test")
+    git(repo, "config", "user.email", "publication@example.invalid")
+    git(repo, "branch", "-M", "main")
+    task_dir = repo / ".ai" / "tasks"
+    task_dir.mkdir(parents=True)
+    (task_dir / "TASK-063.yaml").write_text(TASK_SOURCE, encoding="utf-8")
+    (repo / "product.txt").write_text("base\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "base")
+    base_sha = git(repo, "rev-parse", "HEAD")
+    subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
+
+    state = root / "state"
+    state.mkdir()
+
+    pred_run_id = "RUN-063-001"
+    pred_run = {
+        "run_id": pred_run_id,
+        "task": {"id": "TASK-063", "revision": 2},
+        "executor": "codex",
+        "base_sha": base_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    pred_run_path = state / "pred-run.json"
+    pred_result_path = state / "pred-result.json"
+    pred_run_path.write_text(json.dumps(pred_run), encoding="utf-8")
+    pred_result_path.write_text(
+        json.dumps(result_payload(pred_run_id, base_sha, remediation=False)),
+        encoding="utf-8",
+    )
+    transport_post_pass(
+        repo,
+        run_id=pred_run_id,
+        head_sha=base_sha,
+        run_path=pred_run_path,
+        result_path=pred_result_path,
+    )
+
+    review_dir = repo / ".ai" / "reviews"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    if sibling_findings:
+        pred_review_source = f"""review_id: REVIEW-063-001
+reviewed_sha: {base_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: FAIL
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: product.txt
+    issue: Primary candidate needs narrow correction.
+    expected: Commit the corrected product.
+  - id: R2
+    basis: AC2
+    action: CODE_FIX
+    location: product.txt
+    issue: Sibling finding on candidate.
+    expected: Sibling correction.
+"""
+    else:
+        pred_review_source = f"""review_id: REVIEW-063-001
+reviewed_sha: {base_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: product.txt
+    issue: Primary candidate needs narrow correction.
+    expected: Commit the corrected product.
+"""
+    (review_dir / "REVIEW-063-001.yaml").write_text(pred_review_source, encoding="utf-8")
+    remediation_dir = repo / ".ai" / "remediations"
+    remediation_dir.mkdir(parents=True, exist_ok=True)
+    (remediation_dir / "R1.yaml").write_text(
+        f"""finding_id: R1
+action: CODE_FIX
+reviewed_sha: {base_sha}
+modification_scope: [product.txt]
+affected_verification: [git diff --check]
+constraints: []
+""",
+        encoding="utf-8",
+    )
+    git(repo, "add", ".ai")
+    git(repo, "commit", "--quiet", "-m", "predecessor review and remediation")
+    git(repo, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/remediation/{pred_run_id}-R1")
+
+    git(repo, "reset", "--hard", "--quiet", base_sha)
+
+    (repo / "product.txt").write_text("remediated product\n", encoding="utf-8")
+    git(repo, "add", "product.txt")
+    git(repo, "commit", "--quiet", "-m", "remediation candidate")
+    candidate_sha = git(repo, "rev-parse", "HEAD")
+
+    rem_run_id = "RUN-063-002"
+    rem_operational_run = {
+        "run_id": rem_run_id,
+        "task": {"id": "TASK-063", "revision": 2},
+        "executor": "codex",
+        "base_sha": base_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    if callable(predecessor_override):
+        predecessor_record = predecessor_override(pred_run_id, base_sha)
+    elif predecessor_override is not None:
+        predecessor_record = predecessor_override
+    else:
+        predecessor_record = {
+            "source_run_id": pred_run_id,
+            "review_id": "REVIEW-063-001",
+            "finding_id": "R1",
+            "reviewed_sha": base_sha,
+        }
+    rem_run_payload = {
+        "kind": "REMEDIATION",
+        "predecessor": predecessor_record,
+        "execution": {
+            "review_id": "REVIEW-063-001",
+            "finding": {
+                "id": "R1",
+                "basis": "AC1",
+                "action": "CODE_FIX",
+                "location": "product.txt",
+                "issue": "Primary candidate needs narrow correction.",
+                "expected": "Commit the corrected product.",
+            },
+            "remediation": {
+                "finding_id": "R1",
+                "action": "CODE_FIX",
+                "reviewed_sha": base_sha,
+                "modification_scope": list(remediation_scope),
+                "affected_verification": ["git diff --check"],
+                "constraints": [],
+            },
+            "run": rem_operational_run,
+            "original_constraints": [],
+        },
+    }
+    rem_run_path = state / "rem-run.json"
+    rem_result_path = state / "rem-result.json"
+    rem_run_path.write_text(json.dumps(rem_run_payload), encoding="utf-8")
+    rem_result_path.write_text(
+        json.dumps(result_payload(rem_run_id, candidate_sha, remediation=True)),
+        encoding="utf-8",
+    )
+    transport_post_pass(
+        repo,
+        run_id=rem_run_id,
+        head_sha=candidate_sha,
+        run_path=rem_run_path,
+        result_path=rem_result_path,
+    )
+
+    review_dir = repo / ".ai" / "reviews"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "REVIEW-063-002.yaml").write_text(
+        f"""review_id: REVIEW-063-002
+reviewed_sha: {candidate_sha}
+mode: DELTA
+verdict: PASS
+prior_finding_id: R1
+acceptance:
+  AC1: PASS
+findings: []
+""",
+        encoding="utf-8",
+    )
+    git(repo, "add", ".ai")
+    git(repo, "commit", "--quiet", "-m", "remediation review decision")
+    decision_sha = git(repo, "rev-parse", "HEAD")
+    git(
+        repo,
+        "push",
+        "--quiet",
+        "origin",
+        f"HEAD:refs/heads/aios/review-decision/{rem_run_id}",
+    )
+
+    return {
+        "repo": repo,
+        "remote": remote,
+        "run_id": rem_run_id,
+        "pred_run_id": pred_run_id,
+        "base_sha": base_sha,
+        "candidate_sha": candidate_sha,
+        "decision_sha": decision_sha,
+    }
+
+
+def test_predecessor_bearing_remediation_publication_advances_main_ac5(
+    tmp_path: Path,
+) -> None:
+    lineage = make_predecessor_lineage(tmp_path)
+    report = publish(lineage)
+
+    assert report.outcome == "PUBLISHED"
+    assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+
+
+def test_predecessor_mismatched_source_run_fails_closed_ac3(
+    tmp_path: Path,
+) -> None:
+    lineage = make_predecessor_lineage(
+        tmp_path,
+        predecessor_override=lambda pred_id, base_sha: {
+            "source_run_id": "RUN-063-999",
+            "review_id": "REVIEW-063-001",
+            "finding_id": "R1",
+            "reviewed_sha": base_sha,
+        },
+    )
+    with pytest.raises(PublicationError) as exc_info:
+        publish(lineage)
+    assert exc_info.value.report.outcome == "FAILED"
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_predecessor_mismatched_review_id_fails_closed_ac3(
+    tmp_path: Path,
+) -> None:
+    lineage = make_predecessor_lineage(
+        tmp_path,
+        predecessor_override=lambda pred_id, base_sha: {
+            "source_run_id": pred_id,
+            "review_id": "REVIEW-063-WRONG",
+            "finding_id": "R1",
+            "reviewed_sha": base_sha,
+        },
+    )
+    with pytest.raises(PublicationError) as exc_info:
+        publish(lineage)
+    assert exc_info.value.report.outcome == "FAILED"
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_predecessor_mismatched_finding_id_fails_closed_ac3(
+    tmp_path: Path,
+) -> None:
+    lineage = make_predecessor_lineage(
+        tmp_path,
+        predecessor_override=lambda pred_id, base_sha: {
+            "source_run_id": pred_id,
+            "review_id": "REVIEW-063-001",
+            "finding_id": "R-WRONG",
+            "reviewed_sha": base_sha,
+        },
+    )
+    with pytest.raises(PublicationError) as exc_info:
+        publish(lineage)
+    assert exc_info.value.report.outcome == "FAILED"
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_predecessor_mismatched_reviewed_sha_fails_closed_ac3(
+    tmp_path: Path,
+) -> None:
+    lineage = make_predecessor_lineage(
+        tmp_path,
+        predecessor_override=lambda pred_id, base_sha: {
+            "source_run_id": pred_id,
+            "review_id": "REVIEW-063-001",
+            "finding_id": "R1",
+            "reviewed_sha": "0" * 40,
+        },
+    )
+    with pytest.raises(PublicationError) as exc_info:
+        publish(lineage)
+    assert exc_info.value.report.outcome == "FAILED"
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_predecessor_multi_finding_review_fails_closed_ac6(
+    tmp_path: Path,
+) -> None:
+    lineage = make_predecessor_lineage(tmp_path, sibling_findings=True)
+
+    with pytest.raises(PublicationError) as exc_info:
+        publish(lineage)
+    assert exc_info.value.report.outcome == "FAILED"
+    assert "multiple findings" in exc_info.value.report.detail
+    assert remote_main(lineage) == lineage["base_sha"]

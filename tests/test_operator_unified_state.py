@@ -1176,3 +1176,76 @@ def test_unified_state_direct_module_call(
     assert observation["lifecycle_state"] == "READY"
     assert observation["next_action"] == "EXECUTE_PRIMARY"
 
+
+
+def test_unified_state_observes_legacy_and_predecessor_remediation_runs_ac7(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    head = git(repo, "rev-parse", "HEAD")
+    parent_id = "RUN-101-000"
+    child_id = "RUN-101-001"
+
+    # 1. Legacy REMEDIATION run (no predecessor field)
+    legacy_run = {
+        "kind": "REMEDIATION",
+        "execution": {
+            "review_id": "REVIEW-101-000",
+            "finding": {
+                "id": "R1",
+                "basis": "AC1",
+                "action": "CODE_FIX",
+                "location": "OUTPUT.txt",
+                "issue": "Fix needed",
+                "expected": "Fixed",
+            },
+            "remediation": {
+                "finding_id": "R1",
+                "action": "CODE_FIX",
+                "reviewed_sha": head,
+                "modification_scope": ["OUTPUT.txt"],
+                "affected_verification": ["git diff --check"],
+                "constraints": [],
+            },
+            "run": {
+                "run_id": child_id,
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "codex",
+                "base_sha": head,
+                "workspace": str(repo),
+                "head_sha": None,
+                "status": "ACTIVE",
+            },
+            "original_constraints": [],
+        },
+    }
+    (state.runs / f"{child_id}.json").write_text(json.dumps(legacy_run), encoding="utf-8")
+    obs_legacy = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_legacy["lifecycle_state"] == "WAIT"
+    assert obs_legacy["next_action"] == "WAIT"
+    assert obs_legacy["run_id"] == child_id
+
+    # 2. Predecessor-bearing REMEDIATION run (with predecessor field)
+    pred_run = dict(legacy_run)
+    pred_run["predecessor"] = {
+        "source_run_id": parent_id,
+        "review_id": "REVIEW-101-000",
+        "finding_id": "R1",
+        "reviewed_sha": head,
+    }
+    (state.runs / f"{child_id}.json").write_text(json.dumps(pred_run), encoding="utf-8")
+    obs_pred = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_pred["lifecycle_state"] == "WAIT"
+    assert obs_pred["next_action"] == "WAIT"
+    assert obs_pred["run_id"] == child_id
+
+    # Add result to test RETRY_TRANSPORT
+    (state.results / f"{child_id}.json").write_text(
+        json.dumps(canonical_result_payload(child_id, head)),
+        encoding="utf-8",
+    )
+    obs_retry = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_retry["lifecycle_state"] == "TRANSPORT"
+    assert obs_retry["next_action"] == "RETRY_TRANSPORT"
+    assert obs_retry["run_id"] == child_id

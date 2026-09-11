@@ -6675,3 +6675,133 @@ def test_operator_admits_antigravity_minimax_primary(
             repo=repo,
         )
     assert len(dispatched) == 1
+
+
+def test_remediation_admission_persists_exact_predecessor_identity_ac1(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    sha = git(repo, "rev-parse", "HEAD")
+    review, remediation = remediation_contract(repo, reviewed_sha=sha)
+    runner = RemediationRunner(repo)
+
+    summary = run_remediation(
+        "TASK-101",
+        review=review,
+        remediation=remediation,
+        executor="antigravity",
+        repo=repo,
+        native_runner=runner,
+    )
+    run_file = runtime_paths(repo).runs / f"{summary.run_id}.json"
+    run_data = json.loads(run_file.read_text(encoding="utf-8"))
+
+    assert "predecessor" in run_data
+    assert run_data["predecessor"] == {
+        "source_run_id": "RUN-101-000",
+        "review_id": "REVIEW-101-001",
+        "finding_id": "R1",
+        "reviewed_sha": sha,
+    }
+
+
+def test_remediation_admission_rejects_mismatching_source_run_id(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        task_id="TASK-101",
+        task_revision=1,
+    )
+
+    with pytest.raises(OperatorError, match="canonical remote remediation lineage not found"):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            source_run_id="RUN-101-999",
+            executor="antigravity",
+            repo=repo,
+        )
+
+    sha = git(repo, "rev-parse", "HEAD")
+    review, remediation = remediation_contract(repo, reviewed_sha=sha)
+    runner = RemediationRunner(repo)
+    with pytest.raises(OperatorError, match="source RUN binding requires remote finding mode"):
+        run_remediation(
+            "TASK-101",
+            review=review,
+            remediation=remediation,
+            source_run_id="RUN-101-999",
+            executor="antigravity",
+            repo=repo,
+            native_runner=runner,
+        )
+
+
+def test_direct_candidate_and_approved_remediation_persist_predecessor_identity_ac2(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    baseline = git(repo, "rev-parse", "HEAD")
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        task_id="TASK-101",
+        task_revision=1,
+    )
+
+    # 1. Direct candidate acceptance
+    (repo / "OUTPUT.txt").write_text("direct candidate output\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "direct candidate fix")
+
+    direct_summary = accept_candidate(
+        "TASK-101",
+        finding_id="R1",
+        executor="antigravity",
+        repo=repo,
+    )
+    direct_run_file = runtime_paths(repo).runs / f"{direct_summary.run_id}.json"
+    direct_run_data = json.loads(direct_run_file.read_text(encoding="utf-8"))
+
+    assert direct_run_data["predecessor"] == {
+        "source_run_id": "RUN-101-000",
+        "review_id": "REVIEW-RUN-101-000",
+        "finding_id": "R1",
+        "reviewed_sha": baseline,
+    }
+
+    # 2. Approved remediation execution
+    approval = record_remote_approval(
+        repo=repo,
+        state_root=runtime_state_root(repo),
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        approver="human-reviewer",
+    )
+    git(repo, "reset", "--hard", "--quiet", baseline)
+    runner = RemediationRunner(repo)
+    approved_summary = run_remediation(
+        "TASK-101",
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        approved_remediation_sha=approval.remediation_sha,
+        executor="antigravity",
+        repo=repo,
+        native_runner=runner,
+    )
+    approved_run_file = runtime_paths(repo).runs / f"{approved_summary.run_id}.json"
+    approved_run_data = json.loads(approved_run_file.read_text(encoding="utf-8"))
+
+    assert approved_run_data["predecessor"] == {
+        "source_run_id": "RUN-101-000",
+        "review_id": "REVIEW-RUN-101-000",
+        "finding_id": "R1",
+        "reviewed_sha": baseline,
+    }

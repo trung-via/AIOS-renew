@@ -374,6 +374,7 @@ class _RemediationAdmission:
     prior_review: Review | None
     task: Task
     remote_mode: bool
+    source_run_id: str
 
 
 @dataclass(frozen=True)
@@ -582,16 +583,65 @@ def _remote_run_reservations(
     return namespace.run_ids
 
 
+_RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9_-]+-\d{3,}$")
+_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+
+
+@dataclass(frozen=True)
+class RemediationPredecessor:
+    """Exact bounded predecessor identity for one canonical REMEDIATION RUN."""
+
+    source_run_id: str
+    review_id: str
+    finding_id: str
+    reviewed_sha: str
+
+
+def _parse_remediation_predecessor(data: Any) -> RemediationPredecessor:
+    root = data if isinstance(data, Mapping) else None
+    if root is None:
+        raise TypeError("REMEDIATION predecessor must be a mapping")
+    source_run_id = root.get("source_run_id") or root.get("run_id")
+    review_id = root.get("review_id") or root.get("source_review_id")
+    finding_id = root.get("finding_id") or root.get("selected_finding_id")
+    reviewed_sha = root.get("reviewed_sha")
+    if not isinstance(source_run_id, str) or not _RUN_ID_PATTERN.fullmatch(source_run_id):
+        raise ValueError("REMEDIATION predecessor source RUN identity is invalid")
+    if not isinstance(review_id, str) or not review_id or "/" in review_id or "\\" in review_id:
+        raise ValueError("REMEDIATION predecessor source REVIEW identity is invalid")
+    if not isinstance(finding_id, str) or not finding_id or "/" in finding_id or "\\" in finding_id:
+        raise ValueError("REMEDIATION predecessor selected finding identity is invalid")
+    if not isinstance(reviewed_sha, str) or not _SHA_PATTERN.fullmatch(reviewed_sha):
+        raise ValueError("REMEDIATION predecessor reviewed_sha is invalid")
+    allowed = {
+        "source_run_id",
+        "run_id",
+        "review_id",
+        "source_review_id",
+        "finding_id",
+        "selected_finding_id",
+        "reviewed_sha",
+    }
+    if set(root).difference(allowed):
+        raise ValueError("REMEDIATION predecessor contains unexpected fields")
+    return RemediationPredecessor(
+        source_run_id=source_run_id,
+        review_id=review_id,
+        finding_id=finding_id,
+        reviewed_sha=reviewed_sha,
+    )
+
+
 def _load_authoritative_prior_result(
     state: RuntimePaths,
     task: Task,
     reviewed_sha: str,
     *,
     repo: Path,
-) -> Result:
+) -> tuple[Result, str]:
     """Load one persisted primary or remediation result with canonical lineage."""
 
-    matches: list[Result] = []
+    matches: list[tuple[Result, str]] = []
     lineage_mismatch = False
     for result_path in sorted(state.results.glob("*.json")):
         try:
@@ -633,6 +683,14 @@ def _load_authoritative_prior_result(
                 execution = _remediation_execution_from_data(run_data["execution"])
                 if execution.run.run_id != run_id:
                     raise ValueError("RESULT filename does not match RUN id")
+                if "predecessor" in run_data:
+                    pred = _parse_remediation_predecessor(run_data["predecessor"])
+                    if pred.review_id != execution.review_id:
+                        raise ValueError("predecessor review_id mismatch")
+                    if pred.finding_id != execution.finding.id:
+                        raise ValueError("predecessor finding_id mismatch")
+                    if pred.reviewed_sha != execution.remediation.reviewed_sha:
+                        raise ValueError("predecessor reviewed_sha mismatch")
                 _validate_persisted_remediation_result(
                     repo=repo,
                     task=task,
@@ -652,7 +710,7 @@ def _load_authoritative_prior_result(
         ):
             lineage_mismatch = True
             continue
-        matches.append(result)
+        matches.append((result, run_id))
 
     if len(matches) == 1 and not lineage_mismatch:
         return matches[0]
@@ -3026,6 +3084,11 @@ def _resolve_remediation_admission(
                 admission=admission,
             )
         )
+        resolved_source_run_id = admission.get("source_run_id")
+        if not resolved_source_run_id:
+            raise OperatorError("missing canonical source RUN identity")
+        if source_run_id is not None and source_run_id != resolved_source_run_id:
+            raise OperatorError("mismatched source RUN identity")
     else:
         if review is None or remediation is None:
             raise OperatorError(
@@ -3057,12 +3120,17 @@ def _resolve_remediation_admission(
                 else load_review(prior_review)
             )
         )
-        prior_result = _load_authoritative_prior_result(
+        prior_result, resolved_source_run_id = _load_authoritative_prior_result(
             state,
             task,
             canonical_review.reviewed_sha,
             repo=repo,
         )
+        if not resolved_source_run_id:
+            raise OperatorError("missing canonical source RUN identity")
+        if source_run_id is not None and source_run_id != resolved_source_run_id:
+            raise OperatorError("mismatched source RUN identity")
+        admission["source_run_id"] = resolved_source_run_id
     _record_admission_artifact_facts(
         admission, canonical_review, canonical_remediation
     )
@@ -3102,6 +3170,7 @@ def _resolve_remediation_admission(
         prior_review=canonical_prior_review,
         task=task,
         remote_mode=remote_mode,
+        source_run_id=resolved_source_run_id,
     )
 
 
@@ -3222,10 +3291,20 @@ def _run_remediation_impl(
             run=run,
             original_constraints=canonical_remediation.constraints,
         )
+        predecessor_record = {
+            "source_run_id": resolved.source_run_id,
+            "review_id": canonical_review.review_id,
+            "finding_id": canonical_remediation.finding_id,
+            "reviewed_sha": canonical_remediation.reviewed_sha,
+        }
         run_path = state.runs / f"{run_id}.json"
         _write_json(
             run_path,
-            {"kind": "REMEDIATION", "execution": asdict(execution)},
+            {
+                "kind": "REMEDIATION",
+                "predecessor": predecessor_record,
+                "execution": asdict(execution),
+            },
         )
         if attempt is not None:
             attempt.bind_run(run_path)
@@ -3487,6 +3566,15 @@ def _accept_candidate_impl(
             run=run,
             original_constraints=remediation.constraints,
         )
+        resolved_source_run_id = admission.get("source_run_id")
+        if not resolved_source_run_id:
+            raise OperatorError("missing canonical source RUN identity")
+        predecessor_record = {
+            "source_run_id": resolved_source_run_id,
+            "review_id": review.review_id,
+            "finding_id": finding_id,
+            "reviewed_sha": remediation.reviewed_sha,
+        }
         run_path = state.runs / f"{run_id}.json"
         _write_json(
             run_path,
@@ -3496,6 +3584,7 @@ def _accept_candidate_impl(
                     "mode": "DIRECT_CANDIDATE",
                     "candidate_head": candidate_head,
                 },
+                "predecessor": predecessor_record,
                 "execution": asdict(execution),
             },
         )
@@ -3871,6 +3960,18 @@ def _accepted_candidate_summary(
             or execution.finding.id != finding_id
         ):
             continue
+        predecessor_data = data.get("predecessor")
+        if predecessor_data is not None:
+            try:
+                pred = _parse_remediation_predecessor(predecessor_data)
+                if (
+                    pred.review_id != review.review_id
+                    or pred.finding_id != finding_id
+                    or pred.reviewed_sha != execution.remediation.reviewed_sha
+                ):
+                    continue
+            except (TypeError, ValueError):
+                continue
         result_path = state.results / run_path.name
         if not result_path.is_file():
             raise OperatorError("matching direct candidate RUN has no canonical RESULT")
