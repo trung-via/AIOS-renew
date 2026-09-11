@@ -361,7 +361,7 @@ def _validate_repair_authorization(
     ):
         raise ValueError("REPAIR authorization identity mismatch")
     action = authorization.get("action")
-    if action not in ("CODE_FIX", "NO_CHANGE"):
+    if action not in ("CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION"):
         raise ValueError("REPAIR authorization action is invalid")
     scope = authorization.get("modification_scope")
     instructions = authorization.get("instructions")
@@ -385,6 +385,10 @@ def _validate_repair_authorization(
         raise ValueError("REPAIR constraints introduce new Human intent")
     if action == "NO_CHANGE" and scope:
         raise ValueError("NO_CHANGE REPAIR modification scope must be empty")
+    if action == "CONTINUE_IMPLEMENTATION" and not scope:
+        raise ValueError(
+            "CONTINUE_IMPLEMENTATION REPAIR modification scope is empty"
+        )
     return authorization
 
 
@@ -537,6 +541,36 @@ def _repair_review_lineage(
     if embedded_authorization["action"] == "CODE_FIX":
         if child_head_sha == failed_head_sha or not mutation:
             raise ValueError("CODE_FIX REPAIR committed delta is empty")
+    elif embedded_authorization["action"] == "CONTINUE_IMPLEMENTATION":
+        if failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE"):
+            raise ValueError(
+                "CONTINUE_IMPLEMENTATION requires a pre-verification failure"
+            )
+        if (
+            candidate.get("transportable") is not True
+            or candidate.get("dirty") is not False
+            or candidate.get("descends_from_base") is not True
+            or candidate.get("outside_task_scope") != []
+        ):
+            raise ValueError(
+                "CONTINUE_IMPLEMENTATION requires a clean transportable candidate"
+            )
+        code, _, _ = _git(
+            repo,
+            "merge-base",
+            "--is-ancestor",
+            failed_head_sha,
+            child_head_sha,
+            allow_fail=True,
+        )
+        if code:
+            raise ValueError(
+                "CONTINUE_IMPLEMENTATION candidate does not descend from failed head"
+            )
+        if child_head_sha == failed_head_sha or not mutation:
+            raise ValueError(
+                "CONTINUE_IMPLEMENTATION REPAIR committed delta is empty"
+            )
     elif child_head_sha != failed_head_sha or mutation:
         raise ValueError("NO_CHANGE REPAIR changed repository HEAD")
 

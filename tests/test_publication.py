@@ -17,7 +17,7 @@ problem: Publication is a deterministic coordination step.
 assumptions: []
 scope:
   inspect: []
-  modify: [product.txt]
+  modify: [product.txt, secondary.txt]
 non_goals: [Do not publish review metadata.]
 constraints:
   hard: [Publish only canonical PASS state.]
@@ -71,7 +71,11 @@ acceptance: {acceptance}
 
 
 def result_payload(
-    run_id: str, head_sha: str, *, remediation: bool = False
+    run_id: str,
+    head_sha: str,
+    *,
+    remediation: bool = False,
+    changed_files: tuple[str, ...] = ("product.txt",),
 ) -> dict:
     claims = [] if remediation else [
         {
@@ -85,7 +89,7 @@ def result_payload(
         "result": {
             "head_sha": head_sha,
             "claims": claims,
-            "changed_files": ["product.txt"],
+            "changed_files": list(changed_files),
             "unresolved": [],
         },
         "evidence": [
@@ -276,6 +280,13 @@ def make_repair_lineage(
     *,
     predecessor_kind: str = "REMEDIATION",
     lineage_mutation: str | None = None,
+    action: str = "CODE_FIX",
+    phase: str | None = None,
+    repair_scope: tuple[str, ...] = ("product.txt",),
+    candidate_overrides: dict[str, object] | None = None,
+    failed_state: str = "mutation",
+    final_state: str = "mutation",
+    recursive_continue: bool = False,
 ) -> dict[str, object]:
     repo = root / "repo"
     remote = root / "upstream.git"
@@ -288,6 +299,7 @@ def make_repair_lineage(
     task_dir.mkdir(parents=True)
     (task_dir / "TASK-063.yaml").write_text(TASK_SOURCE, encoding="utf-8")
     (repo / "product.txt").write_text("base\n", encoding="utf-8")
+    (repo / "secondary.txt").write_text("base\n", encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "--quiet", "-m", "base")
     base_sha = git(repo, "rev-parse", "HEAD")
@@ -295,11 +307,75 @@ def make_repair_lineage(
     git(repo, "remote", "add", "origin", str(remote))
     git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
 
+    state = root / "state"
+    state.mkdir()
+    prior_lineage = None
+    if recursive_continue:
+        prior_failed_run_id = "RUN-063-002"
+        prior_run = {
+            "run_id": prior_failed_run_id,
+            "task": {"id": "TASK-063", "revision": 2},
+            "executor": "codex",
+            "base_sha": base_sha,
+            "workspace": str(repo),
+            "head_sha": None,
+            "status": "ACTIVE",
+        }
+        prior_failure = {
+            "kind": "FAILURE",
+            "run_id": prior_failed_run_id,
+            "task": {"id": "TASK-063", "revision": 2},
+            "executor": "codex",
+            "base_sha": base_sha,
+            "failed_head_sha": base_sha,
+            "phase": "COMPLETION_GATE",
+            "error": {"type": "RuntimeCompletionError", "message": "blocked"},
+            "candidate": {
+                "transportable": True,
+                "repairable": True,
+                "dirty": False,
+                "descends_from_base": True,
+                "changed_files": [],
+                "outside_task_scope": [],
+            },
+        }
+        prior_run_path = state / "prior-failed-run.json"
+        prior_failure_path = state / "prior-failure.json"
+        prior_run_path.write_text(json.dumps(prior_run), encoding="utf-8")
+        prior_failure_path.write_text(json.dumps(prior_failure), encoding="utf-8")
+        transport_failure(
+            repo,
+            run_id=prior_failed_run_id,
+            head_sha=base_sha,
+            run_path=prior_run_path,
+            failure_path=prior_failure_path,
+        )
+        prior_authorization = {
+            "repair_id": "REPAIR-063-002",
+            "failed_run_id": prior_failed_run_id,
+            "failed_head_sha": base_sha,
+            "task": {"id": "TASK-063", "revision": 2},
+            "action": "CONTINUE_IMPLEMENTATION",
+            "modification_scope": ["product.txt"],
+            "instructions": ["Continue the unfinished implementation."],
+            "constraints": [],
+        }
+        _push_repair_authorization(
+            repo,
+            failed_run_id=prior_failed_run_id,
+            authorization=prior_authorization,
+        )
+
     failed_run_id = "RUN-063-003"
     run_id = "RUN-063-004"
-    (repo / "product.txt").write_text("failed remediation state\n", encoding="utf-8")
-    git(repo, "add", "product.txt")
-    git(repo, "commit", "--quiet", "-m", "failed correction candidate")
+    if failed_state == "mutation":
+        (repo / "product.txt").write_text(
+            "failed remediation state\n", encoding="utf-8"
+        )
+        git(repo, "add", "product.txt")
+        git(repo, "commit", "--quiet", "-m", "failed correction candidate")
+    elif failed_state != "unchanged":
+        raise ValueError(f"unknown failed_state: {failed_state}")
     failed_head_sha = git(repo, "rev-parse", "HEAD")
     predecessor_run = {
         "run_id": failed_run_id,
@@ -337,6 +413,33 @@ def make_repair_lineage(
         }
     else:
         predecessor_payload = predecessor_run
+    if recursive_continue:
+        prior_lineage = {
+            "failed_run_id": "RUN-063-002",
+            "root_base_sha": base_sha,
+            "failed_head_sha": base_sha,
+            "failure": prior_failure,
+            "task": {"task_id": "TASK-063", "revision": 2},
+            "repair": prior_authorization,
+            "run": predecessor_run,
+        }
+    failed_changed_files = tuple(
+        path
+        for path in git(
+            repo, "diff", "--name-only", base_sha, failed_head_sha
+        ).splitlines()
+        if path
+    )
+    failure_candidate = {
+        "transportable": True,
+        "repairable": True,
+        "dirty": False,
+        "descends_from_base": True,
+        "changed_files": list(failed_changed_files),
+        "outside_task_scope": [],
+    }
+    if candidate_overrides:
+        failure_candidate.update(candidate_overrides)
     failure = {
         "kind": "FAILURE",
         "run_id": failed_run_id,
@@ -344,29 +447,35 @@ def make_repair_lineage(
         "executor": "codex",
         "base_sha": base_sha,
         "failed_head_sha": failed_head_sha,
-        "phase": "VERIFICATION",
+        "phase": (
+            phase
+            if phase is not None
+            else (
+                "COMPLETION_GATE"
+                if action == "CONTINUE_IMPLEMENTATION"
+                else "VERIFICATION"
+            )
+        ),
         "error": {"type": "RuntimeVerificationError", "message": "failed"},
-        "candidate": {
-            "transportable": True,
-            "repairable": True,
-            "dirty": False,
-            "descends_from_base": True,
-            "changed_files": ["product.txt"],
-            "outside_task_scope": [],
-        },
+        "candidate": failure_candidate,
     }
-    state = root / "state"
-    state.mkdir()
     failed_run_path = state / "failed-run.json"
     failure_path = state / "failure.json"
     failed_run_path.write_text(json.dumps(predecessor_payload), encoding="utf-8")
     failure_path.write_text(json.dumps(failure), encoding="utf-8")
+    predecessor_lineage_path = None
+    if prior_lineage is not None:
+        predecessor_lineage_path = state / "prior-repair.json"
+        predecessor_lineage_path.write_text(
+            json.dumps(prior_lineage), encoding="utf-8"
+        )
     transport_failure(
         repo,
         run_id=failed_run_id,
         head_sha=failed_head_sha,
         run_path=failed_run_path,
         failure_path=failure_path,
+        lineage_path=predecessor_lineage_path,
     )
 
     authorization = {
@@ -374,8 +483,8 @@ def make_repair_lineage(
         "failed_run_id": failed_run_id,
         "failed_head_sha": failed_head_sha,
         "task": {"id": "TASK-063", "revision": 2},
-        "action": "CODE_FIX",
-        "modification_scope": ["product.txt"],
+        "action": action,
+        "modification_scope": list(repair_scope),
         "instructions": ["Repair only the failed candidate."],
         "constraints": [],
     }
@@ -383,9 +492,27 @@ def make_repair_lineage(
         repo, failed_run_id=failed_run_id, authorization=authorization
     )
 
-    (repo / "product.txt").write_text("repaired candidate\n", encoding="utf-8")
-    git(repo, "add", "product.txt")
-    git(repo, "commit", "--quiet", "-m", "repair failed candidate")
+    if final_state == "mutation":
+        (repo / "product.txt").write_text(
+            "repaired candidate\n", encoding="utf-8"
+        )
+        git(repo, "add", "product.txt")
+        git(repo, "commit", "--quiet", "-m", "repair failed candidate")
+    elif final_state == "outside_scope":
+        (repo / "secondary.txt").write_text(
+            "unauthorized mutation\n", encoding="utf-8"
+        )
+        git(repo, "add", "secondary.txt")
+        git(repo, "commit", "--quiet", "-m", "mutate outside repair scope")
+    elif final_state == "empty_commit":
+        git(repo, "commit", "--quiet", "--allow-empty", "-m", "empty repair")
+    elif final_state == "divergent":
+        git(repo, "reset", "--hard", "--quiet", base_sha)
+        (repo / "product.txt").write_text("divergent candidate\n", encoding="utf-8")
+        git(repo, "add", "product.txt")
+        git(repo, "commit", "--quiet", "-m", "divergent repair candidate")
+    elif final_state != "unchanged":
+        raise ValueError(f"unknown final_state: {final_state}")
     candidate_sha = git(repo, "rev-parse", "HEAD")
     successful_run = {
         "run_id": run_id,
@@ -419,7 +546,20 @@ def make_repair_lineage(
     lineage_path = state / "repair.json"
     run_path.write_text(json.dumps(successful_run), encoding="utf-8")
     result_path.write_text(
-        json.dumps(result_payload(run_id, candidate_sha)), encoding="utf-8"
+        json.dumps(
+            result_payload(
+                run_id,
+                candidate_sha,
+                changed_files=tuple(
+                    path
+                    for path in git(
+                        repo, "diff", "--name-only", base_sha, candidate_sha
+                    ).splitlines()
+                    if path
+                ),
+            )
+        ),
+        encoding="utf-8",
     )
     lineage_path.write_text(json.dumps(lineage), encoding="utf-8")
     transport_post_pass(
@@ -458,6 +598,10 @@ def make_repair_lineage(
         "failed_head_sha": failed_head_sha,
         "candidate_sha": candidate_sha,
         "decision_sha": decision_sha,
+        "failure": failure,
+        "authorization": authorization,
+        "successful_run": successful_run,
+        "repair_lineage": lineage,
     }
 
 
@@ -521,6 +665,207 @@ def test_repair_before_semantic_finding_accepts_primary_review(
 
     assert report.outcome == "PUBLISHED"
     assert remote_main(lineage) == lineage["candidate_sha"]
+
+
+def test_no_change_repair_publication_remains_unchanged(tmp_path: Path) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="NO_CHANGE",
+        repair_scope=(),
+        final_state="unchanged",
+    )
+
+    report = publish(lineage)
+
+    assert report.outcome == "PUBLISHED"
+    assert report.reviewed_sha == lineage["failed_head_sha"]
+    assert remote_main(lineage) == lineage["failed_head_sha"]
+    assert remote_main(lineage) != lineage["decision_sha"]
+
+
+def test_continue_implementation_publication_preserves_exact_primary_lineage(
+    tmp_path: Path,
+) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CONTINUE_IMPLEMENTATION",
+        phase="COMPLETION_GATE",
+        failed_state="unchanged",
+    )
+
+    report = publish(lineage)
+
+    failure = lineage["failure"]
+    authorization = lineage["authorization"]
+    successful_run = lineage["successful_run"]
+    repair_lineage = lineage["repair_lineage"]
+    assert report.outcome == "PUBLISHED"
+    assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+    assert remote_main(lineage) != lineage["decision_sha"]
+    assert (
+        git(
+            lineage["remote"],
+            "show",
+            f"{remote_main(lineage)}:.ai/reviews/REVIEW-063-002.yaml",
+            check=False,
+        )
+        == ""
+    )
+    assert failure["run_id"] == authorization["failed_run_id"]
+    assert failure["task"] == authorization["task"] == {
+        "id": "TASK-063",
+        "revision": 2,
+    }
+    assert (
+        failure["failed_head_sha"]
+        == authorization["failed_head_sha"]
+        == successful_run["base_sha"]
+        == lineage["failed_head_sha"]
+    )
+    assert failure["base_sha"] == lineage["base_sha"]
+    assert repair_lineage["root_base_sha"] == lineage["base_sha"]
+    assert repair_lineage["failed_run_id"] == lineage["failed_run_id"]
+    assert repair_lineage["task"] == {"task_id": "TASK-063", "revision": 2}
+    assert repair_lineage["repair"] == authorization
+    assert authorization["action"] == "CONTINUE_IMPLEMENTATION"
+    assert authorization["modification_scope"] == ["product.txt"]
+    transported_result = json.loads(
+        git(
+            lineage["remote"],
+            "show",
+            f"refs/heads/aios/artifacts/{lineage['run_id']}:"
+            ".ai/transport/result.json",
+        )
+    )
+    assert transported_result["result"]["head_sha"] == lineage["candidate_sha"]
+    assert transported_result["result"]["changed_files"] == ["product.txt"]
+
+
+@pytest.mark.parametrize(
+    ("case", "kwargs", "match"),
+    [
+        (
+            "verification phase",
+            {"phase": "VERIFICATION", "failed_state": "unchanged"},
+            "requires a pre-verification failure",
+        ),
+        (
+            "not transportable",
+            {
+                "failed_state": "unchanged",
+                "candidate_overrides": {"transportable": False},
+            },
+            "requires a clean transportable candidate",
+        ),
+        (
+            "not repairable",
+            {
+                "failed_state": "unchanged",
+                "candidate_overrides": {"repairable": False},
+            },
+            "not authorized as repairable",
+        ),
+        (
+            "dirty",
+            {
+                "failed_state": "unchanged",
+                "candidate_overrides": {"dirty": True},
+            },
+            "requires a clean transportable candidate",
+        ),
+        (
+            "not descended from base",
+            {
+                "failed_state": "unchanged",
+                "candidate_overrides": {"descends_from_base": False},
+            },
+            "requires a clean transportable candidate",
+        ),
+        (
+            "outside task scope",
+            {
+                "failed_state": "unchanged",
+                "candidate_overrides": {"outside_task_scope": ["FOREIGN.txt"]},
+            },
+            "requires a clean transportable candidate",
+        ),
+        (
+            "empty authorization scope",
+            {"failed_state": "unchanged", "repair_scope": ()},
+            "modification scope is empty",
+        ),
+        (
+            "scope exceeds correction authority",
+            {
+                "failed_state": "unchanged",
+                "repair_scope": ("FOREIGN.txt",),
+            },
+            "scope exceeds correction authority",
+        ),
+        (
+            "canonical authorization conflict",
+            {"failed_state": "unchanged", "lineage_mutation": "unauthorized"},
+            "authorization is not canonical",
+        ),
+        (
+            "unchanged final head",
+            {"failed_state": "unchanged", "final_state": "unchanged"},
+            "committed delta is empty",
+        ),
+        (
+            "empty committed delta",
+            {"failed_state": "unchanged", "final_state": "empty_commit"},
+            "committed delta is empty",
+        ),
+        (
+            "divergent final head",
+            {"failed_state": "mutation", "final_state": "divergent"},
+            "does not descend from RUN base_sha",
+        ),
+        (
+            "mutation outside repair scope",
+            {"failed_state": "unchanged", "final_state": "outside_scope"},
+            "delta exceeds modification scope",
+        ),
+    ],
+)
+def test_invalid_continue_implementation_lineage_does_not_mutate_main(
+    tmp_path: Path, case: str, kwargs: dict[str, object], match: str
+) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CONTINUE_IMPLEMENTATION",
+        **kwargs,
+    )
+
+    with pytest.raises(PublicationError, match=match):
+        publish(lineage)
+
+    assert case
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_recursive_repair_lineage_accepts_historical_continue_implementation(
+    tmp_path: Path,
+) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        recursive_continue=True,
+    )
+
+    report = publish(lineage)
+
+    assert report.outcome == "PUBLISHED"
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert report.prior_main_sha == lineage["base_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+    assert remote_main(lineage) != lineage["decision_sha"]
 
 
 @pytest.mark.parametrize(
@@ -886,7 +1231,12 @@ def test_canonical_decision_replay_uses_immutable_identity_only(
 def test_publication_executes_git_coordination_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    lineage = make_lineage(tmp_path)
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CONTINUE_IMPLEMENTATION",
+        failed_state="unchanged",
+    )
     real_run = subprocess.run
     commands: list[tuple[str, ...]] = []
 
