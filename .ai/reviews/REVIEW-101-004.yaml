@@ -1,0 +1,37 @@
+review_id: REVIEW-101-004
+reviewed_sha: 27ae986e1d4fac876c538c7a41d8bf2cd50d4623
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: FAIL
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings:
+  - id: F101-003
+    basis: AC4
+    action: CODE_FIX
+    location: src/aios_renew/performance_observation.py
+    issue: >
+      The performance surface canonically validates run.json before classifying coverage,
+      but it does not fully bind the transported terminal document to that validated RUN.
+      RESULT terminals are accepted when they merely contain result/evidence keys, and
+      FAILURE terminals are accepted after checking only kind and run_id. A terminal whose
+      TASK revision, Executor, base SHA, failed-head/candidate identity, or RESULT package
+      identity conflicts with the validated RUN can therefore be treated as a legitimate
+      terminal (and, when observation.json is absent, as an ordinary coverage gap) instead
+      of failing closed. This violates the revision-2 requirement that transported RUN and
+      terminal identity be canonically validated before coverage classification.
+    expected: >
+      Reuse the existing canonical RESULT/FAILURE validation boundary, or an equivalently
+      strict existing binding helper, so each transported terminal is validated against the
+      exact canonical RUN before observation presence is classified. Conflicting or malformed
+      RESULT/FAILURE identity must fail closed even when observation.json is absent. Keep the
+      fix narrow to terminal validation and focused regression coverage; do not change the
+      aggregation formulas, snapshot authority, TASK-103 correction semantics, or unrelated
+      operator behavior.
