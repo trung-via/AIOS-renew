@@ -6428,6 +6428,21 @@ def test_remediation_lineage_from_different_revision_is_not_candidate(
     assert summary.review_id == "REVIEW-RUN-101-001"
     assert summary.reviewed_sha == sha_r2
     assert len(runner.calls) == 1
+    run_data = json.loads(
+        (runtime_paths(repo).runs / f"{summary.run_id}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert run_data["predecessor"] == {
+        "source_run_id": "RUN-101-001",
+        "review_id": "REVIEW-RUN-101-001",
+        "finding_id": "R1",
+        "reviewed_sha": sha_r2,
+    }
+    assert run_data["execution_base"] == {
+        "run_id": "RUN-101-001",
+        "candidate_sha": sha_r2,
+    }
 
 
 def test_remediation_malformed_lineage_for_exact_task_fails_closed_before_executor(

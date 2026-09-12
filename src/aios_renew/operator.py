@@ -3211,6 +3211,7 @@ def _resolve_remediation_admission(
                     review_id=canonical_review.review_id,
                     finding_id=canonical_remediation.finding_id,
                     reviewed_sha=canonical_remediation.reviewed_sha,
+                    semantic_review=canonical_review,
                 )
             )
         except (
@@ -3598,6 +3599,7 @@ def _accept_candidate_impl(
                         review_id=review.review_id,
                         finding_id=finding_id,
                         reviewed_sha=remediation.reviewed_sha,
+                        semantic_review=review,
                     )
                 )
             except (

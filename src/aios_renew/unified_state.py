@@ -687,10 +687,33 @@ def _resolve_cumulative_execution_base(
     review_id: str,
     finding_id: str,
     reviewed_sha: str,
+    semantic_review: Review | None = None,
 ) -> tuple[str, str]:
     """Resolve the exact operational tip while retaining semantic finding identity."""
 
     decoded, reviews = _decode_remote_lifecycle(repo, task, lifecycle)
+    if semantic_review is not None:
+        # A first correction may carry the canonical review only on its selected
+        # REMEDIATION lineage.  Reconstruct that decision solely for its exact
+        # current-revision source RESULT; never infer it from the operational tip.
+        if (
+            semantic_review.review_id != review_id
+            or semantic_review.reviewed_sha != reviewed_sha
+        ):
+            raise ValueError("selected semantic review identity is inconsistent")
+        sources = [
+            item
+            for item in decoded
+            if item.run_id == source_run_id
+            and item.terminal_kind == "RESULT"
+            and item.candidate_sha == reviewed_sha
+        ]
+        if len(sources) != 1:
+            raise ValueError("selected semantic review source is missing or ambiguous")
+        published_review = reviews.get(source_run_id)
+        if published_review is not None and published_review != semantic_review:
+            raise ValueError("selected semantic review conflicts with published review")
+        reviews.setdefault(source_run_id, semantic_review)
     children: dict[str, list[_LifecycleRun]] = {}
     for item in decoded:
         parent_id = _operational_parent(item)
