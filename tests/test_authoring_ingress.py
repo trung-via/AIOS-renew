@@ -280,6 +280,83 @@ def test_envelope_validation_rejection():
             "payload": TASK_105_SOURCE,
         })
 
+    # Envelope format alias rejection (AIOS_AUTHORING_INGRESS is rejected)
+    with pytest.raises(AuthoringIngressError, match="invalid envelope format"):
+        parse_envelope({
+            "format": "AIOS_AUTHORING_INGRESS",
+            "version": 1,
+            "operation": "AUTHOR_TASK",
+            "identity": {"task_id": "TASK-105"},
+            "expected_state": {"expected_main_sha": "a" * 40},
+            "payload": TASK_105_SOURCE,
+        })
+
+    # Top-level identity alias rejection
+    with pytest.raises(AuthoringIngressError, match="identity"):
+        parse_envelope({
+            "format": "AIOS_INGRESS_ENVELOPE",
+            "version": 1,
+            "operation": "AUTHOR_TASK",
+            "task_id": "TASK-105",
+            "expected_state": {"expected_main_sha": "a" * 40},
+            "payload": TASK_105_SOURCE,
+        })
+
+    # Duplicate identity representation (both top-level and in identity) fails closed
+    with pytest.raises(AuthoringIngressError, match="identity"):
+        parse_envelope({
+            "format": "AIOS_INGRESS_ENVELOPE",
+            "version": 1,
+            "operation": "AUTHOR_TASK",
+            "identity": {"task_id": "TASK-105"},
+            "task_id": "TASK-105",
+            "expected_state": {"expected_main_sha": "a" * 40},
+            "payload": TASK_105_SOURCE,
+        })
+
+    # Conflicting identity representation fails closed
+    with pytest.raises(AuthoringIngressError, match="identity"):
+        parse_envelope({
+            "format": "AIOS_INGRESS_ENVELOPE",
+            "version": 1,
+            "operation": "AUTHOR_TASK",
+            "identity": {"task_id": "TASK-105"},
+            "task_id": "TASK-999",
+            "expected_state": {"expected_main_sha": "a" * 40},
+            "payload": TASK_105_SOURCE,
+        })
+
+    # Missing identity mapping fails closed
+    with pytest.raises(AuthoringIngressError, match="identity is required and must be a mapping"):
+        parse_envelope({
+            "format": "AIOS_INGRESS_ENVELOPE",
+            "version": 1,
+            "operation": "AUTHOR_TASK",
+            "expected_state": {"expected_main_sha": "a" * 40},
+            "payload": TASK_105_SOURCE,
+        })
+
+    with pytest.raises(AuthoringIngressError, match="identity is required and must be a mapping"):
+        parse_envelope({
+            "format": "AIOS_INGRESS_ENVELOPE",
+            "version": 1,
+            "operation": "AUTHOR_TASK",
+            "identity": "TASK-105",
+            "expected_state": {"expected_main_sha": "a" * 40},
+            "payload": TASK_105_SOURCE,
+        })
+
+    # Unexpected keys in identity mapping fail closed
+    with pytest.raises(AuthoringIngressError, match="identity contains unexpected key"):
+        parse_envelope({
+            "format": "AIOS_INGRESS_ENVELOPE",
+            "version": 1,
+            "operation": "AUTHOR_TASK",
+            "identity": {"task_id": "TASK-105", "run_id": "RUN-105-001"},
+            "expected_state": {"expected_main_sha": "a" * 40},
+            "payload": TASK_105_SOURCE,
+        })
+
 
 def test_carrier_parsing(tmp_path):
     envelope_data = {

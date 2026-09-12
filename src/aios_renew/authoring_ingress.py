@@ -60,9 +60,8 @@ _ALLOWED_OPERATIONS = frozenset(
     {"AUTHOR_TASK", "SUBMIT_REVIEW", "AUTHOR_REMEDIATION", "AUTHOR_REPAIR"}
 )
 
-_ALLOWED_ENVELOPE_FORMATS = frozenset(
-    {"AIOS_INGRESS_ENVELOPE", "AIOS_AUTHORING_INGRESS"}
-)
+_CANONICAL_ENVELOPE_FORMAT = "AIOS_INGRESS_ENVELOPE"
+_ALLOWED_ENVELOPE_FORMATS = frozenset({_CANONICAL_ENVELOPE_FORMAT})
 
 _PROHIBITED_FIELD_NAMES = frozenset(
     {
@@ -105,13 +104,19 @@ _ALLOWED_TOP_LEVEL_KEYS = frozenset(
         "identity",
         "expected_state",
         "payload",
-        "task_id",
-        "run_id",
-        "source_run_id",
-        "finding_id",
-        "failed_run_id",
     }
 )
+
+_FORBIDDEN_TOP_LEVEL_IDENTITY_KEYS = frozenset(
+    {"task_id", "run_id", "source_run_id", "finding_id", "failed_run_id"}
+)
+
+_OPERATION_REQUIRED_IDENTITY_KEYS = {
+    "AUTHOR_TASK": frozenset({"task_id"}),
+    "SUBMIT_REVIEW": frozenset({"run_id"}),
+    "AUTHOR_REMEDIATION": frozenset({"source_run_id", "finding_id"}),
+    "AUTHOR_REPAIR": frozenset({"failed_run_id"}),
+}
 
 
 @dataclass(frozen=True)
@@ -185,12 +190,16 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
     unknown = set(data) - _ALLOWED_TOP_LEVEL_KEYS
     if unknown:
         fields = ", ".join(sorted(unknown))
+        if unknown & _FORBIDDEN_TOP_LEVEL_IDENTITY_KEYS:
+            raise AuthoringIngressError(
+                f"envelope contains unknown or misplaced identity field(s): {fields} (subject identity must be located within 'identity' mapping)"
+            )
         raise AuthoringIngressError(f"envelope contains unknown field(s): {fields}")
 
     envelope_format = data.get("format")
-    if not isinstance(envelope_format, str) or envelope_format not in _ALLOWED_ENVELOPE_FORMATS:
+    if not isinstance(envelope_format, str) or envelope_format != _CANONICAL_ENVELOPE_FORMAT:
         raise AuthoringIngressError(
-            f"invalid envelope format: expected one of {sorted(_ALLOWED_ENVELOPE_FORMATS)}, got {envelope_format!r}"
+            f"invalid envelope format: expected {_CANONICAL_ENVELOPE_FORMAT!r}, got {envelope_format!r}"
         )
 
     version = data.get("version")
@@ -203,18 +212,9 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
             f"invalid envelope operation: expected one of {sorted(_ALLOWED_OPERATIONS)}, got {operation!r}"
         )
 
-    identity_data = data.get("identity")
-    if identity_data is not None:
-        if not isinstance(identity_data, Mapping):
-            raise AuthoringIngressError("identity must be a mapping")
-        identity = dict(identity_data)
-    else:
-        identity = {}
-
-    # Extract top-level identity fields if present
-    for key in ("task_id", "run_id", "source_run_id", "finding_id", "failed_run_id"):
-        if key in data and key not in identity:
-            identity[key] = data[key]
+    if "identity" not in data or not isinstance(data.get("identity"), Mapping):
+        raise AuthoringIngressError("identity is required and must be a mapping")
+    identity = dict(data["identity"])
 
     expected_state = data.get("expected_state")
     if not isinstance(expected_state, Mapping):
@@ -255,6 +255,12 @@ def _scan_for_prohibited_fields(obj: Any, path: str = "") -> None:
 
 
 def _validate_operation_identity(operation: str, identity: Mapping[str, Any]) -> None:
+    expected_keys = _OPERATION_REQUIRED_IDENTITY_KEYS.get(operation, frozenset())
+    extra_keys = set(identity) - expected_keys
+    if extra_keys:
+        fields = ", ".join(sorted(extra_keys))
+        raise AuthoringIngressError(f"{operation} identity contains unexpected key(s): {fields}")
+
     if operation == "AUTHOR_TASK":
         task_id = identity.get("task_id")
         if not isinstance(task_id, str) or not re.fullmatch(r"^TASK-[A-Za-z0-9_-]+$", task_id):
