@@ -49,6 +49,11 @@ from .dispatch_reconciliation import (
     execute_dispatch,
 )
 from .executor import ExecutorBoundaryError
+from .performance_observation import (
+    PerformanceObservation,
+    PerformanceObservationError,
+    collect_performance_observation,
+)
 from .review_transport import (
     RemoteFailureArtifacts,
     RemoteRemediationLineage,
@@ -4353,6 +4358,27 @@ def _write_json(path: Path, data: Mapping[str, Any]) -> None:
     )
 
 
+def cmd_performance(
+    task_id: list[str], *, repo: str | Path | None = None
+) -> str:
+    """Read-only aggregation of canonical RUN_OBSERVATION facts.
+
+    Emits the deterministic ``AIOS_PERFORMANCE_OBSERVATION`` v1 envelope
+    JSON-encoded to stdout. No RUN creation, Executor invocation, Runtime
+    write, Git ref/worktree mutation, or publication side-effect is
+    performed. Remote state is consulted through the existing canonical
+    Git transport/query boundary and fails closed on any identity
+    conflict, malformed observation sidecar, or oversize snapshot.
+    """
+
+    try:
+        repository = resolve_repository(repo)
+    except OperatorError:
+        raise
+    payload = collect_performance_observation(repository, task_id)
+    return json.dumps(payload.render(), sort_keys=True, separators=(",", ":"))
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aios")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -4488,6 +4514,17 @@ def _parser() -> argparse.ArgumentParser:
         "--stdin", action="store_true", help="Read envelope from stdin"
     )
     ingress_parser.add_argument("--repo", help="Target Git repository path")
+
+    performance_parser = commands.add_parser(
+        "performance",
+        help="Aggregate canonical RUN_OBSERVATION facts for selected TASKs",
+    )
+    performance_parser.add_argument(
+        "task_id",
+        nargs="+",
+        help="TASK selector in the form TASK-NNN or TASK-NNN:REVISION",
+    )
+    performance_parser.add_argument("--repo", help="Target Git repository path")
     return parser
 
 
@@ -4769,6 +4806,12 @@ def main(
             except (OperatorError, AuthoringIngressError) as exc:
                 raise OperatorError(str(exc)) from exc
             print(summary.render())
+        elif args.command == "performance":
+            try:
+                repo_root = resolve_repository(args.repo)
+                print(cmd_performance(args.task_id, repo=repo_root))
+            except PerformanceObservationError as exc:
+                raise OperatorError(str(exc)) from exc
         else:
             retry_transport(args.run_id, repo=args.repo)
             print(f"AIOS TRANSPORT PASS\nrun: {args.run_id}")

@@ -194,6 +194,37 @@ class RemoteTaskLifecycle:
     observed_refs: tuple[tuple[str, str], ...]
 
 
+@dataclass(frozen=True)
+class RemotePerformanceTerminal:
+    """One validated RUN terminal bound to its identity for performance observation."""
+
+    run_id: str
+    task_id: str
+    task_revision: int
+    executor: str
+    base_sha: str
+    kind: str
+    candidate_sha: str
+    run_bytes: bytes
+    terminal_bytes: bytes
+    observation_bytes: bytes | None
+
+
+@dataclass(frozen=True)
+class RemotePerformanceNamespace:
+    """Bound performance terminal identities for one TASK before coverage classification."""
+
+    task_id: str
+    task_revision: int
+    terminals: tuple[RemotePerformanceTerminal, ...]
+    conflicting_run_ids: tuple[str, ...]
+    overflow: bool
+    observed_refs: tuple[tuple[str, str], ...]
+
+
+PERFORMANCE_MAX_TERMINAL_RUNS = 256
+
+
 def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = False) -> tuple[int, str, str]:
     try:
         completed = subprocess.run(
@@ -304,6 +335,250 @@ def resolve_remote_run_namespace(
     except ReviewTransportError as exc:
         exc.observed_refs = tuple(sorted(refs.items()))
         raise
+
+
+def resolve_remote_performance_namespace(
+    repo: Path, *, task_id: str, task_revision: int
+) -> RemotePerformanceNamespace:
+    """Resolve bound RUN terminal identities for one TASK before coverage classification.
+
+    Fails closed when:
+      - the TASK revision is malformed,
+      - any RUN has conflicting RESULT and FAILURE terminal refs,
+      - more than PERFORMANCE_MAX_TERMINAL_RUNS distinct terminals are observed, or
+      - canonical RUN/terminal lineage does not match the validated RUN identity.
+    """
+
+    if (
+        isinstance(task_revision, bool)
+        or not isinstance(task_revision, int)
+        or task_revision < 1
+    ):
+        raise ReviewTransportError("invalid TASK revision")
+    task_prefix = task_run_prefix(task_id)
+    remote = resolve_transport_remote(repo)
+    refs = _exact_remote_refs(
+        repo,
+        remote,
+        f"refs/heads/aios/failure-artifacts/{task_prefix}*",
+        f"refs/heads/aios/artifacts/{task_prefix}*",
+        f"refs/heads/aios/review/{task_prefix}*",
+        f"refs/heads/aios/failure/{task_prefix}*",
+    )
+    try:
+        return _remote_performance_namespace_from_refs(
+            repo,
+            remote,
+            task_id=task_id,
+            task_revision=task_revision,
+            task_prefix=task_prefix,
+            refs=refs,
+        )
+    except ReviewTransportError as exc:
+        exc.observed_refs = tuple(sorted(refs.items()))
+        raise
+
+
+def _remote_performance_namespace_from_refs(
+    repo: Path,
+    remote: str,
+    *,
+    task_id: str,
+    task_revision: int,
+    task_prefix: str,
+    refs: Mapping[str, str],
+) -> RemotePerformanceNamespace:
+    """Validate bound RUN terminal identities from one acquired ref mapping."""
+
+    run_pattern = re.compile(rf"^{re.escape(task_prefix)}\d{{3,}}$")
+    artifact_kinds: dict[str, str] = {}
+    artifact_shas: dict[str, str] = {}
+    run_bytes_cache: dict[str, bytes] = {}
+    terminals: list[RemotePerformanceTerminal] = []
+    conflicting: list[str] = []
+
+    for ref, artifact_sha in refs.items():
+        if ref.startswith("refs/heads/aios/failure-artifacts/"):
+            terminal_kind = "FAILURE"
+        elif ref.startswith("refs/heads/aios/artifacts/"):
+            terminal_kind = "RESULT"
+        elif ref.startswith("refs/heads/aios/failure/"):
+            continue
+        elif ref.startswith("refs/heads/aios/review/"):
+            continue
+        else:
+            raise ReviewTransportError("canonical RUN ref namespace mismatch")
+        run_id = ref.rsplit("/", 1)[-1]
+        if not run_pattern.fullmatch(run_id):
+            raise ReviewTransportError(
+                f"canonical RUN ref identity is invalid for {task_id}: {ref}"
+            )
+        existing = artifact_kinds.get(run_id)
+        if existing is not None and existing != terminal_kind:
+            conflicting.append(run_id)
+            continue
+        artifact_kinds[run_id] = terminal_kind
+        artifact_shas[run_id] = artifact_sha
+
+        run_bytes = run_bytes_cache.get(run_id)
+        if run_bytes is None:
+            run_bytes = _read_remote_blob(
+                repo, remote, artifact_sha, ".ai/transport/run.json"
+            )
+            if run_bytes is None:
+                raise ReviewTransportError(
+                    f"canonical RUN content missing at {ref}"
+                )
+            run_bytes_cache[run_id] = run_bytes
+
+        bound_task_id, bound_revision, bound_run_id = _decode_run_task_identity(
+            run_bytes, ref
+        )
+        if bound_run_id != run_id:
+            raise ReviewTransportError(
+                f"canonical RUN id mismatch at {ref}: expected {run_id}, "
+                f"got {bound_run_id}"
+            )
+        if bound_task_id != task_id:
+            raise ReviewTransportError(
+                f"canonical RUN TASK identity mismatch at {ref}"
+            )
+        if bound_revision != task_revision:
+            raise ReviewTransportError(
+                f"canonical RUN revision {bound_revision} does not match requested "
+                f"revision {task_revision} at {ref}"
+            )
+
+        terminal_path = (
+            ".ai/transport/failure.json"
+            if terminal_kind == "FAILURE"
+            else ".ai/transport/result.json"
+        )
+        terminal_bytes = _read_remote_blob(repo, remote, artifact_sha, terminal_path)
+        if terminal_bytes is None:
+            raise ReviewTransportError(
+                f"canonical {terminal_kind} content missing at {ref}"
+            )
+
+        candidate_ref = (
+            f"refs/heads/aios/failure/{run_id}"
+            if terminal_kind == "FAILURE"
+            else f"refs/heads/aios/review/{run_id}"
+        )
+        candidate_sha = refs.get(candidate_ref)
+        if candidate_sha is None:
+            raise ReviewTransportError(
+                f"canonical {terminal_kind} candidate ref is missing for {run_id}"
+            )
+
+        terminal_payload = _json_mapping(terminal_bytes, f"{terminal_kind} terminal")
+        if terminal_kind == "FAILURE":
+            if (
+                terminal_payload.get("kind") != "FAILURE"
+                or terminal_payload.get("run_id") != run_id
+                or dict(terminal_payload.get("task", {})) != {"id": task_id, "revision": task_revision}
+                or terminal_payload.get("executor") != _executor_from_run(run_bytes)
+                or terminal_payload.get("base_sha") != _base_sha_from_run(run_bytes)
+            ):
+                raise ReviewTransportError(
+                    f"canonical FAILURE identity does not match RUN for {run_id}"
+                )
+            failed_head = terminal_payload.get("failed_head_sha")
+            if not isinstance(failed_head, str) or not failed_head:
+                raise ReviewTransportError(
+                    f"canonical FAILURE missing failed_head_sha for {run_id}"
+                )
+            if failed_head != candidate_sha:
+                raise ReviewTransportError(
+                    f"canonical FAILURE failed_head_sha does not match candidate "
+                    f"ref for {run_id}"
+                )
+            head_sha = failed_head
+        else:
+            result_payload = terminal_payload.get("result")
+            if not isinstance(result_payload, Mapping):
+                raise ReviewTransportError(
+                    f"canonical RESULT missing result mapping for {run_id}"
+                )
+            head_sha = result_payload.get("head_sha")
+            if not isinstance(head_sha, str) or not head_sha:
+                raise ReviewTransportError(
+                    f"canonical RESULT missing head_sha for {run_id}"
+                )
+            if head_sha != candidate_sha:
+                raise ReviewTransportError(
+                    f"canonical RESULT head_sha does not match review ref for {run_id}"
+                )
+
+        observation_bytes = _read_remote_blob(
+            repo, remote, artifact_sha, ".ai/transport/observation.json"
+        )
+        terminals.append(
+            RemotePerformanceTerminal(
+                run_id=run_id,
+                task_id=bound_task_id,
+                task_revision=bound_revision,
+                executor=_executor_from_run(run_bytes),
+                base_sha=_base_sha_from_run(run_bytes),
+                kind=terminal_kind,
+                candidate_sha=head_sha,
+                run_bytes=run_bytes,
+                terminal_bytes=terminal_bytes,
+                observation_bytes=observation_bytes,
+            )
+        )
+
+    terminals.sort(key=lambda terminal: terminal.run_id)
+    overflow = len(terminals) > PERFORMANCE_MAX_TERMINAL_RUNS
+    return RemotePerformanceNamespace(
+        task_id=task_id,
+        task_revision=task_revision,
+        terminals=tuple(terminals),
+        conflicting_run_ids=tuple(sorted(set(conflicting))),
+        overflow=overflow,
+        observed_refs=tuple(sorted(refs.items())),
+    )
+
+
+def _executor_from_run(run_bytes: bytes) -> str:
+    """Return the canonical executor field from a transported run.json mapping.
+
+    Supports both primary RUNs and REMEDIATION execution envelopes.
+    """
+
+    data = _json_mapping(run_bytes, "RUN")
+    if data.get("kind") == "REMEDIATION":
+        execution = data.get("execution")
+        if not isinstance(execution, Mapping):
+            raise ReviewTransportError("canonical REMEDIATION execution missing")
+        source_run = execution.get("run")
+        if not isinstance(source_run, Mapping):
+            raise ReviewTransportError("canonical REMEDIATION run missing")
+        value = source_run.get("executor")
+    else:
+        value = data.get("executor")
+    if not isinstance(value, str) or not value:
+        raise ReviewTransportError("canonical RUN missing executor")
+    return value
+
+
+def _base_sha_from_run(run_bytes: bytes) -> str:
+    """Return the canonical base_sha field from a transported run.json mapping."""
+
+    data = _json_mapping(run_bytes, "RUN")
+    if data.get("kind") == "REMEDIATION":
+        execution = data.get("execution")
+        if not isinstance(execution, Mapping):
+            raise ReviewTransportError("canonical REMEDIATION execution missing")
+        source_run = execution.get("run")
+        if not isinstance(source_run, Mapping):
+            raise ReviewTransportError("canonical REMEDIATION run missing")
+        value = source_run.get("base_sha")
+    else:
+        value = data.get("base_sha")
+    if not isinstance(value, str) or not value:
+        raise ReviewTransportError("canonical RUN missing base_sha")
+    return value
 
 
 def resolve_remote_task_lifecycle(
