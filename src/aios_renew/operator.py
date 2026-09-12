@@ -57,6 +57,9 @@ from .review_transport import (
     RemoteTaskLifecycle,
     read_remote_repair,
     read_remote_task,
+    resolve_remote_performance_snapshot,
+    RemotePerformanceSnapshot,
+    RemoteTerminalArtifact,
     resolve_remote_primary_recovery,
     resolve_remote_repair_recovery,
     resolve_remote_remediation_lineages,
@@ -67,6 +70,11 @@ from .review_transport import (
     transport_failure,
     transport_post_pass,
     validate_runtime_failure_binding,
+)
+from .performance_observation import (
+    PerformanceObservation,
+    PerformanceObservationError,
+    observe_performance,
 )
 from .run import Run, RunLeaseRegistry, RunTaskReference
 from .run_observation import (
@@ -4428,6 +4436,17 @@ def _parser() -> argparse.ArgumentParser:
     )
     transport_parser.add_argument("run_id")
     transport_parser.add_argument("--repo")
+    performance_parser = commands.add_parser(
+        "performance",
+        help="Aggregate canonical performance telemetry for selected TASKs",
+    )
+    performance_parser.add_argument(
+        "task_ids",
+        nargs="+",
+        metavar="TASK_ID",
+        help="1-32 unique exact TASK identities",
+    )
+    performance_parser.add_argument("--repo")
     return parser
 
 
@@ -4691,11 +4710,12 @@ def main(
                 verification_runner=verification_runner,
                 monotonic_clock=monotonic_clock,
             )
-            print(summary.render())
+        elif args.command == "performance":
+            print(observe_performance(args.task_ids, repo=args.repo).render())
         else:
             retry_transport(args.run_id, repo=args.repo)
             print(f"AIOS TRANSPORT PASS\nrun: {args.run_id}")
-    except (OperatorError, DispatchError) as exc:
+    except (OperatorError, DispatchError, PerformanceObservationError) as exc:
         print(f"AIOS ERROR: {exc}", file=sys.stderr)
         return 1
     return 0

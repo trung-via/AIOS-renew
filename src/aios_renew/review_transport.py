@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -192,6 +192,28 @@ class RemoteTaskLifecycle:
     remediation_selectors: tuple[tuple[str, str, str], ...]
     repair_selectors: tuple[tuple[str, str, bytes], ...]
     observed_refs: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class RemoteTerminalArtifact:
+    """One immutable terminal artifact observed from canonical upstream refs."""
+
+    run_id: str
+    task_id: str
+    terminal_kind: str
+    artifact_sha: str
+    run: bytes
+    terminal: bytes
+    observation: bytes | None = None
+
+
+@dataclass(frozen=True)
+class RemotePerformanceSnapshot:
+    """Bounded snapshot of canonical remote terminal artifacts for selected TASKs."""
+
+    task_selectors: tuple[str, ...]
+    terminals: tuple[RemoteTerminalArtifact, ...]
+    observed_refs: tuple[tuple[str, str], ...] = ()
 
 
 def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = False) -> tuple[int, str, str]:
@@ -490,6 +512,118 @@ def resolve_remote_task_lifecycle(
             reviews=tuple(reviews),
             remediation_selectors=tuple(remediation_selectors),
             repair_selectors=tuple(repair_selectors),
+            observed_refs=tuple(sorted(refs.items())),
+        )
+    except ReviewTransportError as exc:
+        exc.observed_refs = tuple(sorted(refs.items()))
+        raise
+
+
+def resolve_remote_performance_snapshot(
+    repo: Path, *, task_ids: Sequence[str]
+) -> RemotePerformanceSnapshot:
+    """Resolve one bounded snapshot of canonical terminal refs for 1-32 TASKs."""
+
+    if not isinstance(task_ids, (list, tuple)) or not task_ids:
+        raise ReviewTransportError(
+            "task selectors must contain between 1 and 32 exact TASK identities"
+        )
+    if len(task_ids) > 32:
+        raise ReviewTransportError("task selectors exceed maximum bound of 32")
+    if len(task_ids) != len(set(task_ids)):
+        raise ReviewTransportError("task selectors contain duplicate identities")
+
+    task_patterns: dict[str, str] = {}
+    patterns: list[str] = []
+    for task_id in sorted(task_ids):
+        if not isinstance(task_id, str) or not re.fullmatch(r"^TASK-[A-Za-z0-9_-]+$", task_id):
+            raise ReviewTransportError(f"malformed TASK selector identity: {task_id!r}")
+        prefix = task_run_prefix(task_id)
+        task_patterns[task_id] = prefix
+        patterns.append(f"refs/heads/aios/failure-artifacts/{prefix}*")
+        patterns.append(f"refs/heads/aios/artifacts/{prefix}*")
+
+    remote = resolve_transport_remote(repo)
+    refs = _exact_remote_refs(repo, remote, *patterns)
+
+    try:
+        terminal_kinds: dict[str, set[str]] = {}
+        ref_records: list[tuple[str, str, str, str]] = []
+        for ref, artifact_sha in sorted(refs.items()):
+            if ref.startswith("refs/heads/aios/failure-artifacts/"):
+                kind = "FAILURE"
+                run_id = ref[len("refs/heads/aios/failure-artifacts/") :]
+            elif ref.startswith("refs/heads/aios/artifacts/"):
+                kind = "RESULT"
+                run_id = ref[len("refs/heads/aios/artifacts/") :]
+            else:
+                raise ReviewTransportError("canonical ref namespace mismatch")
+
+            matched_task = None
+            for tid, prefix in task_patterns.items():
+                if run_id.startswith(prefix) and re.fullmatch(rf"^{re.escape(prefix)}\d{{3,}}$", run_id):
+                    matched_task = tid
+                    break
+            if matched_task is None:
+                raise ReviewTransportError(
+                    f"canonical RUN ref identity is invalid: {ref}"
+                )
+
+            terminal_kinds.setdefault(run_id, set()).add(kind)
+            ref_records.append((run_id, matched_task, kind, ref))
+
+        for run_id, kinds in terminal_kinds.items():
+            if len(kinds) > 1:
+                raise ReviewTransportError(
+                    f"competing RESULT/FAILURE terminal identity for RUN: {run_id}"
+                )
+
+        if len(terminal_kinds) > 256:
+            raise ReviewTransportError(
+                f"terminal RUN snapshot exceeds maximum bound of 256: {len(terminal_kinds)}"
+            )
+
+        terminals: list[RemoteTerminalArtifact] = []
+        for run_id, task_id, kind, ref in ref_records:
+            artifact_sha = refs[ref]
+            run_bytes = _read_lifecycle_blob(
+                repo, remote, artifact_sha, ".ai/transport/run.json"
+            )
+            if run_bytes is None:
+                raise ReviewTransportError(
+                    f"canonical {kind} RUN content is missing for {run_id}"
+                )
+            terminal_path = (
+                ".ai/transport/failure.json"
+                if kind == "FAILURE"
+                else ".ai/transport/result.json"
+            )
+            terminal_bytes = _read_lifecycle_blob(
+                repo, remote, artifact_sha, terminal_path
+            )
+            if terminal_bytes is None:
+                raise ReviewTransportError(
+                    f"canonical {kind} content is missing for {run_id}"
+                )
+            observation_bytes = _read_lifecycle_blob(
+                repo, remote, artifact_sha, ".ai/transport/observation.json"
+            )
+            terminals.append(
+                RemoteTerminalArtifact(
+                    run_id=run_id,
+                    task_id=task_id,
+                    terminal_kind=kind,
+                    artifact_sha=artifact_sha,
+                    run=run_bytes,
+                    terminal=terminal_bytes,
+                    observation=observation_bytes,
+                )
+            )
+
+        terminals.sort(key=lambda t: t.run_id)
+        return RemotePerformanceSnapshot(
+            task_selectors=tuple(sorted(task_ids)),
+            terminals=tuple(terminals),
             observed_refs=tuple(sorted(refs.items())),
         )
     except ReviewTransportError as exc:

@@ -29,7 +29,10 @@ from aios_renew.operator import (
     accept_candidate,
     describe_task,
     load_task,
+    observe_performance,
     observe_unified_state,
+    PerformanceObservation,
+    PerformanceObservationError,
     preflight_remediation,
     preflight_repair,
     recover_primary,
@@ -7182,3 +7185,58 @@ def test_continue_pre_observation_preserves_unconfigured_branch_failure(
         "clean", "pull", "push",
     }
     assert not any(args and args[0] in prohibited for args in git_calls)
+
+
+def test_operator_performance_command_success(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = make_repo(tmp_path)
+    exit_code = operator_module.main(["performance", "TASK-101", "--repo", str(repo)])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert not captured.err
+    data = json.loads(captured.out)
+    assert data["format"] == "AIOS_PERFORMANCE_OBSERVATION"
+    assert data["version"] == 1
+    assert data["kind"] == "PERFORMANCE_OBSERVATION"
+    assert data["task_selectors"] == ["TASK-101"]
+    assert data["coverage"]["terminal_runs"] == 0
+
+
+def test_operator_performance_command_rejects_duplicate_selectors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = make_repo(tmp_path)
+    exit_code = operator_module.main(
+        ["performance", "TASK-101", "TASK-101", "--repo", str(repo)]
+    )
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "AIOS ERROR: task selectors contain duplicate identities" in captured.err
+
+
+def test_operator_performance_command_rejects_malformed_selector(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = make_repo(tmp_path)
+    exit_code = operator_module.main(
+        ["performance", "invalid_task", "--repo", str(repo)]
+    )
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "AIOS ERROR: malformed TASK selector identity" in captured.err
+
+
+def test_operator_performance_command_is_read_only(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    before_head = git(repo, "rev-parse", "HEAD")
+    before_branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    before_status = git(repo, "status", "--porcelain")
+
+    observation = observe_performance(["TASK-101"], repo=repo)
+    assert observation.task_selectors == ("TASK-101",)
+
+    assert git(repo, "rev-parse", "HEAD") == before_head
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == before_branch
+    assert git(repo, "status", "--porcelain") == before_status
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
