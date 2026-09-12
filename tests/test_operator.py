@@ -6800,6 +6800,10 @@ def test_direct_candidate_and_approved_remediation_persist_predecessor_identity_
         "finding_id": "R1",
         "reviewed_sha": baseline,
     }
+    assert direct_run_data["execution_base"] == {
+        "run_id": "RUN-101-000",
+        "candidate_sha": baseline,
+    }
 
     # 2. Approved remediation execution
     approval = record_remote_approval(
@@ -6829,6 +6833,578 @@ def test_direct_candidate_and_approved_remediation_persist_predecessor_identity_
         "finding_id": "R1",
         "reviewed_sha": baseline,
     }
+    assert approved_run_data["execution_base"] == {
+        "run_id": "RUN-101-000",
+        "candidate_sha": baseline,
+    }
+
+
+def test_remediation_revision_1_sibling_resolves_from_cumulative_tip_ac2_ac3(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    primary_sha = git(repo, "rev-parse", "HEAD")
+    primary_run_id = "RUN-101-000"
+    sibling_run_id = "RUN-101-001"
+
+    prim_run_file = state.runs / f"{primary_run_id}.json"
+    prim_res_file = state.results / f"{primary_run_id}.json"
+    prim_run_file.write_text(
+        json.dumps({
+            "run_id": primary_run_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": primary_sha,
+            "workspace": str(repo),
+            "head_sha": None,
+            "status": "ACTIVE",
+        }),
+        encoding="utf-8",
+    )
+    payload = static_payload()
+    payload["result"]["head_sha"] = primary_sha
+    payload["result"]["claims"][0]["evidence"] = ["E1"]
+    payload["evidence"] = [{
+        "evidence_id": "E1",
+        "run_id": primary_run_id,
+        "subject_sha": primary_sha,
+        "type": "TEST",
+        "source": {"command": "git status --porcelain"},
+        "result": {"exit_code": 0, "summary": "verified"},
+        "raw": {"path": ".ai/evidence/E1.log"},
+    }]
+    prim_res_file.write_text(json.dumps(payload), encoding="utf-8")
+    from aios_renew.review_transport import transport_post_pass
+    transport_post_pass(
+        repo,
+        run_id=primary_run_id,
+        head_sha=primary_sha,
+        run_path=prim_run_file,
+        result_path=prim_res_file,
+    )
+
+    author = tmp_path / f"author-{primary_run_id}"
+    subprocess.run(
+        ("git", "clone", "--quiet", str(tmp_path / "upstream.git"), str(author)),
+        check=True,
+    )
+    git(author, "config", "user.name", "AIOS Reviewer Test")
+    git(author, "config", "user.email", "reviewer@example.invalid")
+    review_content = f"""review_id: REVIEW-{primary_run_id}
+reviewed_sha: {primary_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The output is absent.
+    expected: Commit only the output.
+  - id: R2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The second output is absent.
+    expected: Commit only the second output.
+"""
+    for finding in ("R1", "R2"):
+        git(author, "checkout", "--quiet", "-B", f"branch-{finding}", "origin/main")
+        rev_dir = author / ".ai" / "reviews"
+        rem_dir = author / ".ai" / "remediations"
+        rev_dir.mkdir(parents=True, exist_ok=True)
+        rem_dir.mkdir(parents=True, exist_ok=True)
+        (rev_dir / f"REVIEW-{primary_run_id}.yaml").write_text(
+            review_content, encoding="utf-8"
+        )
+        (rem_dir / f"REMEDIATION-{primary_run_id}-{finding}.yaml").write_text(
+            f"""finding_id: {finding}
+action: CODE_FIX
+reviewed_sha: {primary_sha}
+modification_scope: [OUTPUT.txt]
+affected_verification: [git diff --check]
+constraints:
+  hard: [Commit the output.]
+""",
+            encoding="utf-8",
+        )
+        git(author, "add", ".ai")
+        git(author, "commit", "--quiet", "-m", f"remediation {finding}")
+        git(author, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/remediation/{primary_run_id}-{finding}")
+
+    git(author, "checkout", "--quiet", "-B", f"decision-{primary_run_id}", "origin/main")
+    dec_dir = author / ".ai" / "reviews"
+    dec_dir.mkdir(parents=True, exist_ok=True)
+    (dec_dir / f"REVIEW-{primary_run_id}.yaml").write_text(review_content, encoding="utf-8")
+    git(author, "add", ".ai")
+    git(author, "commit", "--quiet", "-m", f"review decision {primary_run_id}")
+    git(author, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/review-decision/{primary_run_id}")
+
+
+    (repo / "OUTPUT.txt").write_text("first correction for R1\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "first correction candidate")
+    sibling_sha = git(repo, "rev-parse", "HEAD")
+
+    sib_run_file = state.runs / f"{sibling_run_id}.json"
+    sib_res_file = state.results / f"{sibling_run_id}.json"
+    sib_run_file.write_text(
+        json.dumps({
+            "run_id": sibling_run_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "antigravity",
+            "base_sha": primary_sha,
+            "workspace": str(repo),
+            "head_sha": None,
+            "status": "ACTIVE",
+            "kind": "REMEDIATION",
+            "predecessor": {
+                "source_run_id": primary_run_id,
+                "review_id": f"REVIEW-{primary_run_id}",
+                "finding_id": "R1",
+                "reviewed_sha": primary_sha,
+            },
+            "execution_base": {
+                "run_id": primary_run_id,
+                "candidate_sha": primary_sha,
+            },
+            "execution": {
+                "review_id": f"REVIEW-{primary_run_id}",
+                "finding": {
+                    "id": "R1", "basis": "AC1", "action": "CODE_FIX",
+                    "location": "OUTPUT.txt", "issue": "The output is absent.",
+                    "expected": "Commit only the output.",
+                },
+                "remediation": {
+                    "finding_id": "R1", "action": "CODE_FIX",
+                    "reviewed_sha": primary_sha,
+                    "modification_scope": ["OUTPUT.txt"],
+                    "affected_verification": ["git diff --check"],
+                    "constraints": {"hard": ["Commit the output."]},
+                },
+                "run": {
+                    "run_id": sibling_run_id,
+                    "task": {"id": "TASK-101", "revision": 1},
+                    "executor": "antigravity",
+                    "base_sha": primary_sha,
+                    "workspace": str(repo),
+                    "head_sha": None,
+                    "status": "ACTIVE",
+                },
+                "original_constraints": ["Commit the output."],
+            },
+        }),
+        encoding="utf-8",
+    )
+    sib_payload = static_payload()
+    sib_payload["result"]["head_sha"] = sibling_sha
+    sib_payload["result"]["claims"] = []
+    sib_payload["evidence"] = [{
+        "evidence_id": "E2",
+        "run_id": sibling_run_id,
+        "subject_sha": sibling_sha,
+        "type": "TEST",
+        "source": {"command": "git diff --check"},
+        "result": {"exit_code": 0, "summary": "verified"},
+        "raw": {"path": ".ai/evidence/E2.log"},
+    }]
+    sib_res_file.write_text(json.dumps(sib_payload), encoding="utf-8")
+    transport_post_pass(
+        repo,
+        run_id=sibling_run_id,
+        head_sha=sibling_sha,
+        run_path=sib_run_file,
+        result_path=sib_res_file,
+    )
+
+    author_decision = tmp_path / f"decision-{sibling_run_id}"
+    subprocess.run(
+        ("git", "clone", "--quiet", str(tmp_path / "upstream.git"), str(author_decision)),
+        check=True,
+    )
+    git(author_decision, "config", "user.name", "AIOS Reviewer Test")
+    git(author_decision, "config", "user.email", "reviewer@example.invalid")
+    dec_review_dir = author_decision / ".ai" / "reviews"
+    dec_review_dir.mkdir(parents=True, exist_ok=True)
+    (dec_review_dir / f"REVIEW-{sibling_run_id}.yaml").write_text(
+        f"""review_id: REVIEW-{sibling_run_id}
+reviewed_sha: {sibling_sha}
+mode: DELTA
+verdict: PASS
+prior_finding_id: R1
+acceptance:
+  AC1: PASS
+findings: []
+""",
+        encoding="utf-8",
+    )
+    git(author_decision, "add", ".ai")
+    git(author_decision, "commit", "--quiet", "-m", f"review decision {sibling_run_id}")
+    git(author_decision, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/review-decision/{sibling_run_id}")
+
+    runner = RemediationRunner(repo)
+    summary = run_remediation(
+        "TASK-101",
+        finding_id="R2",
+        executor="antigravity",
+        repo=repo,
+        native_runner=runner,
+    )
+
+    assert summary.run_id == "RUN-101-002"
+    assert summary.review_id == f"REVIEW-{primary_run_id}"
+    assert summary.reviewed_sha == primary_sha
+    assert len(runner.calls) == 1
+
+    run_data = json.loads(
+        (state.runs / f"{summary.run_id}.json").read_text(encoding="utf-8")
+    )
+    assert run_data["predecessor"] == {
+        "source_run_id": primary_run_id,
+        "review_id": f"REVIEW-{primary_run_id}",
+        "finding_id": "R2",
+        "reviewed_sha": primary_sha,
+    }
+    assert run_data["execution_base"] == {
+        "run_id": sibling_run_id,
+        "candidate_sha": sibling_sha,
+    }
+    assert operator_module._git_is_ancestor(repo, sibling_sha, summary.head_sha)
+    assert operator_module._git_is_ancestor(repo, primary_sha, summary.head_sha)
+
+
+def test_remediation_revision_1_fails_closed_on_invalid_cumulative_state_ac5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        reviewed_sha=head,
+    )
+
+    orphan = make_repo(tmp_path / "orphan")
+    orphan_sha = git(orphan, "rev-parse", "HEAD")
+    primary_id = "RUN-101-000"
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    review = f"""review_id: REVIEW-RUN-101-000
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue
+    expected: fixed
+""".encode()
+    lifecycle_invalid = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", orphan_sha, primary_run,
+                json.dumps(canonical_result_payload(primary_id, orphan_sha)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, orphan_sha, review),),
+        (), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle_invalid,
+    )
+
+    runner = RemediationRunner(repo)
+    with pytest.raises(OperatorError, match="cumulative execution base rejected"):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="antigravity",
+            repo=repo,
+            native_runner=runner,
+        )
+    assert len(runner.calls) == 0
+
+    (repo / "MAIN.txt").write_text("main advance\n", encoding="utf-8")
+    git(repo, "add", "MAIN.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main ahead of tip")
+    new_main = git(repo, "rev-parse", "HEAD")
+
+    lifecycle_integration = RemoteTaskLifecycle(
+        new_main,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, head, review),),
+        (), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle_integration,
+    )
+
+    with pytest.raises(OperatorError, match="cumulative execution base rejected"):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="antigravity",
+            repo=repo,
+            native_runner=runner,
+        )
+    assert len(runner.calls) == 0
+
+
+def test_remediation_direct_candidate_revision_1_sibling_preserves_cumulative_tip_ac2_ac3(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    primary_sha = git(repo, "rev-parse", "HEAD")
+    primary_run_id = "RUN-101-000"
+    sibling_run_id = "RUN-101-001"
+
+    prim_run_file = state.runs / f"{primary_run_id}.json"
+    prim_res_file = state.results / f"{primary_run_id}.json"
+    prim_run_file.write_text(
+        json.dumps({
+            "run_id": primary_run_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": primary_sha,
+            "workspace": str(repo),
+            "head_sha": None,
+            "status": "ACTIVE",
+        }),
+        encoding="utf-8",
+    )
+    payload = static_payload()
+    payload["result"]["head_sha"] = primary_sha
+    payload["result"]["claims"][0]["evidence"] = ["E1"]
+    payload["evidence"] = [{
+        "evidence_id": "E1",
+        "run_id": primary_run_id,
+        "subject_sha": primary_sha,
+        "type": "TEST",
+        "source": {"command": "git status --porcelain"},
+        "result": {"exit_code": 0, "summary": "verified"},
+        "raw": {"path": ".ai/evidence/E1.log"},
+    }]
+    prim_res_file.write_text(json.dumps(payload), encoding="utf-8")
+    from aios_renew.review_transport import transport_post_pass
+    transport_post_pass(
+        repo,
+        run_id=primary_run_id,
+        head_sha=primary_sha,
+        run_path=prim_run_file,
+        result_path=prim_res_file,
+    )
+
+    author = tmp_path / f"author-{primary_run_id}"
+    subprocess.run(
+        ("git", "clone", "--quiet", str(tmp_path / "upstream.git"), str(author)),
+        check=True,
+    )
+    git(author, "config", "user.name", "AIOS Reviewer Test")
+    git(author, "config", "user.email", "reviewer@example.invalid")
+    review_content = f"""review_id: REVIEW-{primary_run_id}
+reviewed_sha: {primary_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The output is absent.
+    expected: Commit only the output.
+  - id: R2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The second output is absent.
+    expected: Commit only the second output.
+"""
+    for finding in ("R1", "R2"):
+        git(author, "checkout", "--quiet", "-B", f"branch-{finding}", "origin/main")
+        rev_dir = author / ".ai" / "reviews"
+        rem_dir = author / ".ai" / "remediations"
+        rev_dir.mkdir(parents=True, exist_ok=True)
+        rem_dir.mkdir(parents=True, exist_ok=True)
+        (rev_dir / f"REVIEW-{primary_run_id}.yaml").write_text(
+            review_content, encoding="utf-8"
+        )
+        (rem_dir / f"REMEDIATION-{primary_run_id}-{finding}.yaml").write_text(
+            f"""finding_id: {finding}
+action: CODE_FIX
+reviewed_sha: {primary_sha}
+modification_scope: [OUTPUT.txt]
+affected_verification: [git diff --check]
+constraints:
+  hard: [Commit the output.]
+""",
+            encoding="utf-8",
+        )
+        git(author, "add", ".ai")
+        git(author, "commit", "--quiet", "-m", f"remediation {finding}")
+        git(author, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/remediation/{primary_run_id}-{finding}")
+
+    git(author, "checkout", "--quiet", "-B", f"decision-{primary_run_id}", "origin/main")
+    dec_dir = author / ".ai" / "reviews"
+    dec_dir.mkdir(parents=True, exist_ok=True)
+    (dec_dir / f"REVIEW-{primary_run_id}.yaml").write_text(review_content, encoding="utf-8")
+    git(author, "add", ".ai")
+    git(author, "commit", "--quiet", "-m", f"review decision {primary_run_id}")
+    git(author, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/review-decision/{primary_run_id}")
+
+
+
+    (repo / "OUTPUT.txt").write_text("first correction for R1\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "first correction candidate")
+    sibling_sha = git(repo, "rev-parse", "HEAD")
+
+    sib_run_file = state.runs / f"{sibling_run_id}.json"
+    sib_res_file = state.results / f"{sibling_run_id}.json"
+    sib_run_file.write_text(
+        json.dumps({
+            "run_id": sibling_run_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "antigravity",
+            "base_sha": primary_sha,
+            "workspace": str(repo),
+            "head_sha": None,
+            "status": "ACTIVE",
+            "kind": "REMEDIATION",
+            "predecessor": {
+                "source_run_id": primary_run_id,
+                "review_id": f"REVIEW-{primary_run_id}",
+                "finding_id": "R1",
+                "reviewed_sha": primary_sha,
+            },
+            "execution_base": {
+                "run_id": primary_run_id,
+                "candidate_sha": primary_sha,
+            },
+            "execution": {
+                "review_id": f"REVIEW-{primary_run_id}",
+                "finding": {
+                    "id": "R1", "basis": "AC1", "action": "CODE_FIX",
+                    "location": "OUTPUT.txt", "issue": "The output is absent.",
+                    "expected": "Commit only the output.",
+                },
+                "remediation": {
+                    "finding_id": "R1", "action": "CODE_FIX",
+                    "reviewed_sha": primary_sha,
+                    "modification_scope": ["OUTPUT.txt"],
+                    "affected_verification": ["git diff --check"],
+                    "constraints": {"hard": ["Commit the output."]},
+                },
+                "run": {
+                    "run_id": sibling_run_id,
+                    "task": {"id": "TASK-101", "revision": 1},
+                    "executor": "antigravity",
+                    "base_sha": primary_sha,
+                    "workspace": str(repo),
+                    "head_sha": None,
+                    "status": "ACTIVE",
+                },
+                "original_constraints": ["Commit the output."],
+            },
+        }),
+        encoding="utf-8",
+    )
+    sib_payload = static_payload()
+    sib_payload["result"]["head_sha"] = sibling_sha
+    sib_payload["result"]["claims"] = []
+    sib_payload["evidence"] = [{
+        "evidence_id": "E2",
+        "run_id": sibling_run_id,
+        "subject_sha": sibling_sha,
+        "type": "TEST",
+        "source": {"command": "git diff --check"},
+        "result": {"exit_code": 0, "summary": "verified"},
+        "raw": {"path": ".ai/evidence/E2.log"},
+    }]
+    sib_res_file.write_text(json.dumps(sib_payload), encoding="utf-8")
+    transport_post_pass(
+        repo,
+        run_id=sibling_run_id,
+        head_sha=sibling_sha,
+        run_path=sib_run_file,
+        result_path=sib_res_file,
+    )
+
+    author_decision = tmp_path / f"decision-{sibling_run_id}"
+    subprocess.run(
+        ("git", "clone", "--quiet", str(tmp_path / "upstream.git"), str(author_decision)),
+        check=True,
+    )
+    git(author_decision, "config", "user.name", "AIOS Reviewer Test")
+    git(author_decision, "config", "user.email", "reviewer@example.invalid")
+    dec_review_dir = author_decision / ".ai" / "reviews"
+    dec_review_dir.mkdir(parents=True, exist_ok=True)
+    (dec_review_dir / f"REVIEW-{sibling_run_id}.yaml").write_text(
+        f"""review_id: REVIEW-{sibling_run_id}
+reviewed_sha: {sibling_sha}
+mode: DELTA
+verdict: PASS
+prior_finding_id: R1
+acceptance:
+  AC1: PASS
+findings: []
+""",
+        encoding="utf-8",
+    )
+    git(author_decision, "add", ".ai")
+    git(author_decision, "commit", "--quiet", "-m", f"review decision {sibling_run_id}")
+    git(author_decision, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/review-decision/{sibling_run_id}")
+
+    (repo / "OUTPUT.txt").write_text("second correction for R2\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "second direct candidate fix")
+
+    direct_summary = accept_candidate(
+        "TASK-101",
+        finding_id="R2",
+        executor="antigravity",
+        repo=repo,
+    )
+    direct_run_file = state.runs / f"{direct_summary.run_id}.json"
+    direct_run_data = json.loads(direct_run_file.read_text(encoding="utf-8"))
+
+    assert direct_run_data["predecessor"] == {
+        "source_run_id": primary_run_id,
+        "review_id": f"REVIEW-{primary_run_id}",
+        "finding_id": "R2",
+        "reviewed_sha": primary_sha,
+    }
+    assert direct_run_data["execution_base"] == {
+        "run_id": sibling_run_id,
+        "candidate_sha": sibling_sha,
+    }
+    assert operator_module._git_is_ancestor(repo, sibling_sha, direct_summary.head_sha)
+    assert operator_module._git_is_ancestor(repo, primary_sha, direct_summary.head_sha)
 
 
 def test_operator_execution_base_parser_is_exact_and_rejects_aliases() -> None:

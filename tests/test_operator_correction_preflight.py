@@ -20,11 +20,15 @@ from aios_renew.operator import (
 )
 from aios_renew.review_transport import (
     RemoteFailureArtifacts,
+    RemoteLifecycleReview,
+    RemoteLifecycleTerminal,
     RemoteRepairRecovery,
+    RemoteTaskLifecycle,
 )
 from tests.operator_test_support import (
     TASK_SOURCE,
     _runtime_bytes,
+    canonical_result_payload,
     git,
     make_repo,
     publish_test_remediation_lineage,
@@ -70,6 +74,12 @@ def test_correction_preflight_remediation_is_read_only_for_current_and_historica
     assert current.subject_mode == "CURRENT"
     assert current.source_run_id == "RUN-101-000"
     assert current.reviewed_sha == reviewed_sha
+    assert current.execution_base_run_id == "RUN-101-000"
+    assert current.execution_base_sha == reviewed_sha
+    assert current.as_dict()["execution_base"] == {
+        "run_id": "RUN-101-000",
+        "candidate_sha": reviewed_sha,
+    }
     assert current.as_dict()["run_created"] is False
     assert current.as_dict()["executor_invoked"] is False
     assert _runtime_bytes(repo) == before_runtime
@@ -89,6 +99,12 @@ def test_correction_preflight_remediation_is_read_only_for_current_and_historica
     assert historical.status == "READY"
     assert historical.subject_mode == "HISTORICAL"
     assert historical.reviewed_sha == reviewed_sha
+    assert historical.execution_base_run_id == "RUN-101-000"
+    assert historical.execution_base_sha == reviewed_sha
+    assert historical.as_dict()["execution_base"] == {
+        "run_id": "RUN-101-000",
+        "candidate_sha": reviewed_sha,
+    }
     assert (
         git(repo, "rev-parse", "HEAD"),
         git(repo, "rev-parse", "--abbrev-ref", "HEAD"),
@@ -385,3 +401,268 @@ def test_correction_preflight_module_boundary_and_operator_compatibility() -> No
     assert correction_preflight_module.CorrectionPreflightResult is operator_module.CorrectionPreflightResult
     assert correction_preflight_module.preflight_remediation is operator_module.preflight_remediation
     assert correction_preflight_module.preflight_repair is operator_module.preflight_repair
+
+
+def test_correction_preflight_remediation_resolves_cumulative_sibling_execution_base_ac2_ac7(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+
+    ref = publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        task_id="TASK-101",
+        task_revision=1,
+        reviewed_sha=head,
+    )
+
+    (repo / "OUTPUT.txt").write_text("sibling output\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "advance sibling candidate")
+    sibling_sha = git(repo, "rev-parse", "HEAD")
+
+    primary_id = "RUN-101-000"
+    sibling_id = "RUN-101-001"
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    sibling_run = json.dumps({
+        "run_id": sibling_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+        "kind": "REMEDIATION",
+        "predecessor": {
+            "source_run_id": primary_id,
+            "review_id": "REVIEW-RUN-101-000",
+            "finding_id": "R1",
+            "reviewed_sha": head,
+        },
+        "execution_base": {
+            "run_id": primary_id,
+            "candidate_sha": head,
+        },
+        "execution": {
+            "review_id": "REVIEW-RUN-101-000",
+            "finding": {
+                "id": "R1", "basis": "AC1", "action": "CODE_FIX",
+                "location": "OUTPUT.txt", "issue": "The output is absent.",
+                "expected": "Commit only the output.",
+            },
+            "remediation": {
+                "finding_id": "R1", "action": "CODE_FIX", "reviewed_sha": head,
+                "modification_scope": ["OUTPUT.txt"],
+                "affected_verification": ["git diff --check"],
+                "constraints": {"hard": ["Commit the output."]},
+            },
+            "run": {
+                "run_id": sibling_id,
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "antigravity",
+                "base_sha": head,
+                "workspace": "bounded-away",
+                "head_sha": None,
+                "status": "ACTIVE",
+            },
+            "original_constraints": ["Commit the output."],
+        },
+    }).encode()
+    primary_review = f"""review_id: REVIEW-RUN-101-000
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The output is absent.
+    expected: Commit only the output.
+  - id: R2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The second output is absent.
+    expected: Commit only the second output.
+""".encode()
+    sibling_review = f"""review_id: REVIEW-RUN-101-001
+reviewed_sha: {sibling_sha}
+mode: DELTA
+verdict: PASS
+prior_finding_id: R1
+acceptance: {{AC1: PASS}}
+findings: []
+""".encode()
+
+    author = tmp_path / "author-R2"
+    subprocess.run(
+        ("git", "clone", "--quiet", str(tmp_path / "upstream.git"), str(author)),
+        check=True,
+    )
+    git(author, "config", "user.name", "AIOS Reviewer Test")
+    git(author, "config", "user.email", "reviewer@example.invalid")
+    rev_dir = author / ".ai" / "reviews"
+    rem_dir = author / ".ai" / "remediations"
+    rev_dir.mkdir(parents=True, exist_ok=True)
+    rem_dir.mkdir(parents=True, exist_ok=True)
+    (rev_dir / "REVIEW-RUN-101-000.yaml").write_text(
+        primary_review.decode(), encoding="utf-8"
+    )
+    (rem_dir / "REMEDIATION-RUN-101-000-R2.yaml").write_text(
+        f"""finding_id: R2
+action: CODE_FIX
+reviewed_sha: {head}
+modification_scope: [OUTPUT.txt]
+affected_verification: [git diff --check]
+constraints:
+  hard: [Commit the output.]
+""",
+        encoding="utf-8",
+    )
+    git(author, "add", ".ai")
+    git(author, "commit", "--quiet", "-m", "R2 remediation")
+    git(author, "push", "--quiet", "origin", "HEAD:refs/heads/aios/remediation/RUN-101-000-R2")
+
+    sib_result = canonical_result_payload(sibling_id, sibling_sha)
+    sib_result["result"]["claims"] = []
+    sib_result["evidence"][0]["source"]["command"] = "git diff --check"
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                sibling_id, "RESULT", sibling_sha, sibling_run,
+                json.dumps(sib_result).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(primary_id, head, primary_review),
+            RemoteLifecycleReview(sibling_id, sibling_sha, sibling_review),
+        ),
+        (), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle,
+    )
+
+    preflight = preflight_remediation("TASK-101", finding_id="R2", repo=repo)
+
+    assert preflight.status == "READY"
+    assert preflight.task_id == "TASK-101"
+    assert preflight.task_revision == 1
+    assert preflight.source_run_id == primary_id
+    assert preflight.review_id == "REVIEW-RUN-101-000"
+    assert preflight.finding_id == "R2"
+    assert preflight.reviewed_sha == head
+    assert preflight.execution_base_run_id == sibling_id
+    assert preflight.execution_base_sha == sibling_sha
+    assert preflight.as_dict()["execution_base"] == {
+        "run_id": sibling_id,
+        "candidate_sha": sibling_sha,
+    }
+
+
+def test_correction_preflight_remediation_fails_closed_on_invalid_cumulative_state_ac5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        reviewed_sha=head,
+    )
+
+    orphan = make_repo(tmp_path / "orphan")
+    orphan_sha = git(orphan, "rev-parse", "HEAD")
+    primary_id = "RUN-101-000"
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    review = f"""review_id: REVIEW-RUN-101-000
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The output is absent.
+    expected: Commit only the output.
+""".encode()
+    lifecycle_invalid = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", orphan_sha, primary_run,
+                json.dumps(canonical_result_payload(primary_id, orphan_sha)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, orphan_sha, review),),
+        (), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle_invalid,
+    )
+
+    preflight_invalid = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight_invalid.status == "BLOCKED"
+    assert preflight_invalid.phase == "REPOSITORY_ADMISSION"
+    assert preflight_invalid.reason_code == "CUMULATIVE_BASE_REJECTED"
+
+    (repo / "MAIN.txt").write_text("main advance\n", encoding="utf-8")
+    git(repo, "add", "MAIN.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main ahead of tip")
+    new_main = git(repo, "rev-parse", "HEAD")
+
+    lifecycle_integration = RemoteTaskLifecycle(
+        new_main,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, head, review),),
+        (), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle_integration,
+    )
+
+    preflight_int = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight_int.status == "BLOCKED"
+    assert preflight_int.phase == "REPOSITORY_ADMISSION"
+    assert preflight_int.reason_code == "INTEGRATION_REQUIRED"

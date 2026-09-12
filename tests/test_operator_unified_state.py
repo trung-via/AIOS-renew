@@ -1182,6 +1182,7 @@ findings:
             "REMEDIATION", "READY", "READY", "READY",
             task_id="TASK-101", task_revision=1, source_run_id=run_id,
             review_id="REVIEW-101-001", finding_id="F1", reviewed_sha=head,
+            execution_base_run_id=run_id, execution_base_sha=head,
             subject_mode="CURRENT", action="CODE_FIX",
         ),
     )
@@ -1190,7 +1191,15 @@ findings:
 
     assert observation["next_action"] == "EXECUTE_REMEDIATION"
     assert observation["correction_sha"] == correction_sha
+    assert observation["execution_base"] == {
+        "run_id": run_id,
+        "candidate_sha": head,
+    }
     assert observation["correction_preflight"]["status"] == "READY"
+    assert observation["correction_preflight"]["execution_base"] == {
+        "run_id": run_id,
+        "candidate_sha": head,
+    }
 
 
 def test_unified_state_pass_is_done_only_when_candidate_is_contained(
@@ -1345,3 +1354,300 @@ def test_unified_state_observes_legacy_and_predecessor_remediation_runs_ac7(
     assert obs_retry["lifecycle_state"] == "TRANSPORT"
     assert obs_retry["next_action"] == "RETRY_TRANSPORT"
     assert obs_retry["run_id"] == child_id
+
+
+@pytest.mark.parametrize("task_revision", [1, 2])
+def test_unified_state_and_preflight_agree_on_cumulative_execution_base_regardless_of_task_revision_ac7(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, task_revision: int,
+) -> None:
+    repo = make_repo(tmp_path)
+    if task_revision != 1:
+        (repo / ".ai" / "tasks" / "TASK-101.yaml").write_text(
+            TASK_SOURCE.replace("revision: 1", f"revision: {task_revision}"),
+            encoding="utf-8",
+        )
+        git(repo, "add", ".ai/tasks/TASK-101.yaml")
+        git(repo, "commit", "--quiet", "-m", "bump revision")
+    head = git(repo, "rev-parse", "HEAD")
+
+    (repo / "OUTPUT.txt").write_text("sibling content\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "advance sibling candidate")
+    sibling_sha = git(repo, "rev-parse", "HEAD")
+
+    primary_id = "RUN-101-001"
+    sibling_id = "RUN-101-002"
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": task_revision},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    sibling_run = json.dumps({
+        "run_id": sibling_id,
+        "task": {"id": "TASK-101", "revision": task_revision},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+        "kind": "REMEDIATION",
+        "predecessor": {
+            "source_run_id": primary_id,
+            "review_id": "REVIEW-101-001",
+            "finding_id": "F1",
+            "reviewed_sha": head,
+        },
+        "execution_base": {
+            "run_id": primary_id,
+            "candidate_sha": head,
+        },
+        "execution": {
+            "review_id": "REVIEW-101-001",
+            "finding": {
+                "id": "F1", "basis": "AC1", "action": "CODE_FIX",
+                "location": "OUTPUT.txt", "issue": "first issue", "expected": "fixed",
+            },
+            "remediation": {
+                "finding_id": "F1", "action": "CODE_FIX", "reviewed_sha": head,
+                "modification_scope": ["OUTPUT.txt"],
+                "affected_verification": ["git diff --check"],
+                "constraints": {"hard": ["fix output"]},
+            },
+            "run": {
+                "run_id": sibling_id,
+                "task": {"id": "TASK-101", "revision": task_revision},
+                "executor": "codex",
+                "base_sha": head,
+                "workspace": "bounded-away",
+                "head_sha": None,
+                "status": "ACTIVE",
+            },
+            "original_constraints": ["fix output"],
+        },
+    }).encode()
+
+    primary_review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: first issue
+    expected: fixed
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: second issue
+    expected: fixed
+""".encode()
+    sibling_review = f"""review_id: REVIEW-101-002
+reviewed_sha: {sibling_sha}
+mode: DELTA
+verdict: PASS
+prior_finding_id: F1
+acceptance: {{AC1: PASS}}
+findings: []
+""".encode()
+    selector_sha = "c" * 40
+    sib_result = canonical_result_payload(sibling_id, sibling_sha)
+    sib_result["result"]["claims"] = []
+    sib_result["evidence"][0]["source"]["command"] = "git diff --check"
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                sibling_id, "RESULT", sibling_sha, sibling_run,
+                json.dumps(sib_result).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(primary_id, head, primary_review),
+            RemoteLifecycleReview(sibling_id, sibling_sha, sibling_review),
+        ),
+        ((primary_id, "F2", selector_sha),), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    monkeypatch.setattr(
+        operator_module,
+        "preflight_remediation",
+        lambda *_args, **_kwargs: CorrectionPreflightResult(
+            "REMEDIATION", "READY", "READY", "READY",
+            task_id="TASK-101", task_revision=task_revision, source_run_id=primary_id,
+            review_id="REVIEW-101-001", finding_id="F2", reviewed_sha=head,
+            execution_base_run_id=sibling_id, execution_base_sha=sibling_sha,
+            subject_mode="CURRENT", action="CODE_FIX",
+        ),
+    )
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["next_action"] == "EXECUTE_REMEDIATION"
+    assert observation["source_run_id"] == primary_id
+    assert observation["review_id"] == "REVIEW-101-001"
+    assert observation["finding_id"] == "F2"
+    assert observation["reviewed_sha"] == head
+    assert observation["execution_base"] == {
+        "run_id": sibling_id,
+        "candidate_sha": sibling_sha,
+    }
+    assert observation["correction_preflight"]["execution_base"] == {
+        "run_id": sibling_id,
+        "candidate_sha": sibling_sha,
+    }
+
+
+def test_unified_state_revision_1_blocks_invalid_and_integration_required_cumulative_state_ac5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+
+    # 1. Non-descendant candidate fails closed with CUMULATIVE_BASE_INVALID
+    git(repo, "checkout", "--quiet", "--orphan", "orphan-branch")
+    git(repo, "commit", "--allow-empty", "--quiet", "-m", "orphan commit")
+    orphan_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "--quiet", "main")
+
+
+    primary_id = "RUN-101-001"
+    sibling_id = "RUN-101-002"
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    sibling_run = json.dumps({
+        "run_id": sibling_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+        "kind": "REMEDIATION",
+        "predecessor": {
+            "source_run_id": primary_id,
+            "review_id": "REVIEW-101-001",
+            "finding_id": "F1",
+            "reviewed_sha": head,
+        },
+        "execution_base": {
+            "run_id": primary_id,
+            "candidate_sha": head,
+        },
+        "execution": {
+            "review_id": "REVIEW-101-001",
+            "finding": {
+                "id": "F1", "basis": "AC1", "action": "CODE_FIX",
+                "location": "OUTPUT.txt", "issue": "first issue", "expected": "fixed",
+            },
+            "remediation": {
+                "finding_id": "F1", "action": "CODE_FIX", "reviewed_sha": head,
+                "modification_scope": ["OUTPUT.txt"],
+                "affected_verification": ["git diff --check"],
+                "constraints": {"hard": ["fix output"]},
+            },
+            "run": {
+                "run_id": sibling_id,
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "codex",
+                "base_sha": head,
+                "workspace": "bounded-away",
+                "head_sha": None,
+                "status": "ACTIVE",
+            },
+            "original_constraints": ["fix output"],
+        },
+    }).encode()
+    review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: first issue
+    expected: fixed
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: second issue
+    expected: fixed
+""".encode()
+    sibling_review = f"""review_id: REVIEW-101-002
+reviewed_sha: {orphan_sha}
+mode: DELTA
+verdict: PASS
+prior_finding_id: F1
+acceptance: {{AC1: PASS}}
+findings: []
+""".encode()
+    sib_res = canonical_result_payload(sibling_id, orphan_sha)
+    sib_res["result"]["claims"] = []
+    sib_res["evidence"][0]["source"]["command"] = "git diff --check"
+
+    lifecycle_invalid = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                sibling_id, "RESULT", orphan_sha, sibling_run,
+                json.dumps(sib_res).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(primary_id, head, review),
+            RemoteLifecycleReview(sibling_id, orphan_sha, sibling_review),
+        ),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle_invalid)
+    obs_invalid = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_invalid["next_action"] == "NONE"
+    assert obs_invalid["blocker"] == {"code": "CUMULATIVE_BASE_INVALID"}
+
+    # 2. Tip that does not contain main fails closed with INTEGRATION_REQUIRED
+    (repo / "MAIN.txt").write_text("main advance\n", encoding="utf-8")
+    git(repo, "add", "MAIN.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main ahead of tip")
+    new_main = git(repo, "rev-parse", "HEAD")
+
+    lifecycle_integration = RemoteTaskLifecycle(
+        new_main,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, head, review),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle_integration)
+    obs_integration = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_integration["next_action"] == "NONE"
+    assert obs_integration["blocker"] == {"code": "INTEGRATION_REQUIRED"}
