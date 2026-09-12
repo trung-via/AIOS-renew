@@ -38,13 +38,13 @@ sequence:
       published_sha: "a45e94294f0688e62dacfacd884f2736985fd616"
   - id: performance-closure
     status: NEXT
-    task_id: TASK-098
-    phase: P3B-outstanding-finding-frontier
+    task_id: TASK-099
+    phase: P3C1-outstanding-finding-observation
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
     last_completed:
-      task_id: TASK-097
-      phase: P3A-exact-remediation-predecessor-identity
-      published_sha: "9cb95eb6553131800ff2cb89728147614de2b79d"
+      task_id: TASK-098
+      phase: P3B-outstanding-finding-frontier
+      published_sha: "4df6a12779e254cfe07b5f54de0d89955c321054"
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
