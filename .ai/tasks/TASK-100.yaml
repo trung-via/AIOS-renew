@@ -1,0 +1,129 @@
+task_id: TASK-100
+revision: 1
+
+goal: >
+  Continue Performance Closure P4 by extending future Runtime-owned RUN_OBSERVATION
+  sidecars with one exact, operation-specific soft Executor-budget classification so long
+  admitted executions are visible as bounded escalation information without changing any
+  execution, timeout, retry, reroute, review, verification, or publication authority.
+
+problem: >
+  AIOS-renew already records admitted-run, Executor, and verification elapsed time in the
+  TASK-046 RUN_OBSERVATION sidecar, while Dispatcher retains a 60-minute native response
+  budget and a 65-minute process watchdog. The current telemetry can reconstruct duration
+  after the fact but does not classify whether an observed Executor attempt crossed a
+  Brain-authorized soft budget. Recent canonical Performance Closure observations show
+  materially different operation profiles: representative PRIMARY Executor time reached
+  about 1467 seconds, REMEDIATION about 463 seconds, and REPAIR about 727 seconds. P4 needs
+  bounded escalation information before P5 aggregates telemetry, but must not turn that
+  information into automatic cancellation, retry, reroute, Executor selection, or a new
+  hard timeout.
+
+assumptions:
+  - TASK-099 revision 2 is semantically PASS and published, completing Performance Closure P3C.
+  - TASK-046 remains authoritative for the non-semantic RUN_OBSERVATION sidecar and historical observations require no migration or backfill.
+  - Dispatcher hard execution behavior remains unchanged at a 60-minute native response budget and 65-minute process watchdog.
+  - >
+    A conservative soft Executor budget derived from recent canonical Performance Closure
+    observations is 1800 seconds for PRIMARY and 900 seconds for both REMEDIATION and REPAIR.
+    These values are escalation/observation thresholds only and may be revised prospectively
+    only through new Human/Brain intent grounded in later evidence.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-PERFORMANCE-CLOSURE.md
+    - .ai/tasks/TASK-046.yaml
+    - .ai/tasks/TASK-093.yaml
+    - .ai/tasks/TASK-099.yaml
+    - src/aios_renew/run_observation.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/operator.py
+    - tests/test_run_observation.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/run_observation.py
+    - tests/test_run_observation.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change Dispatcher native response budget, process watchdog, adapter timeout flags, subprocess timeout behavior, or any hard execution budget.
+  - Terminate, interrupt, retry, reroute, fallback, pause, poll, or automatically escalate an active Executor because a soft budget is crossed.
+  - Add a planner, scheduler, background monitor, timer thread, model call, Executor selector, model scorer, quota manager, or autonomous control loop.
+  - Change TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, REPAIR, FAILURE, publication, verification, or correction-authority semantics.
+  - Make RUN_OBSERVATION or soft-budget status semantic evidence, acceptance proof, completion proof, or publication eligibility.
+  - Backfill, rewrite, reinterpret, or require migration of historical RUN_OBSERVATION sidecars.
+  - Build the aggregate Performance Observation Surface; that remains P5 after P4 is published.
+  - Add provider-specific telemetry fields, infer missing token usage, or record prompts, reasoning, transcripts, secrets, credentials, or environment values.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      New terminal RUN_OBSERVATION sidecars produced after this change expose exactly one
+      bounded soft_budget object containing threshold_seconds and status. Status is one of
+      WITHIN, EXCEEDED, or NOT_APPLICABLE.
+    - >
+      The authoritative soft thresholds are operation-specific and fixed for this revision:
+      PRIMARY=1800 seconds, REMEDIATION=900 seconds, REPAIR=900 seconds. A RUN with an
+      invoked Executor is EXCEEDED only when its measured Executor elapsed time is greater
+      than the exact operation threshold; otherwise it is WITHIN. A RUN where no Executor
+      was invoked is NOT_APPLICABLE.
+    - >
+      Soft-budget classification is derived only from the existing trusted monotonic
+      Executor elapsed measurement and the admitted operation. It must not depend on TASK
+      prose, model output, timestamps, run numbering, token usage, current checkout, or a
+      heuristic/model judgment.
+    - >
+      Historical RUN_OBSERVATION documents without soft_budget remain valid and round-trip
+      without acquiring the new field. New observations include the field whenever a
+      trustworthy observation is finalized.
+    - >
+      The new field remains subordinate telemetry. Its presence, absence, WITHIN, EXCEEDED,
+      NOT_APPLICABLE, validation failure, persistence failure, or transport failure must not
+      change execution truth, invoke an additional Executor, alter verification, synthesize
+      FAILURE/RESULT semantics, or authorize any continuation action.
+    - >
+      Existing transport continues to carry the observation sidecar byte-exactly; no second
+      telemetry artifact or second observation authority is introduced.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Future PRIMARY, REMEDIATION, and REPAIR observations produced by RunObservationTracker
+      contain the exact soft_budget shape and the 1800/900/900-second operation thresholds.
+  - id: AC2
+    condition: >
+      Invoked Executor observations deterministically classify WITHIN versus EXCEEDED from
+      measured executor_seconds, including exact boundary behavior; non-invoked Executor
+      observations classify NOT_APPLICABLE.
+  - id: AC3
+    condition: >
+      Historical observation documents without soft_budget still validate and round-trip
+      unchanged with no migration or backfill requirement.
+  - id: AC4
+    condition: >
+      Malformed, extra-field, conflicting-threshold, or invalid-status soft_budget data fails
+      observation validation rather than being guessed or normalized.
+  - id: AC5
+    condition: >
+      Soft-budget status does not alter Executor invocation count, RESULT/FAILURE truth,
+      Runtime verification, retry/reroute/fallback, correction authority, semantic review,
+      publication, or the existing 60/65-minute hard native execution behavior.
+  - id: AC6
+    condition: >
+      Existing success, failure, no-Executor, persistence-failure, and transport/retry
+      observation paths preserve their established behavior, and transported sidecars remain
+      byte-exact with the new field when present.
+  - id: AC7
+    condition: >
+      Delta is limited to the authorized observation implementation and focused regression
+      tests; no tests are deleted, skipped, xfailed, duplicated, or weakened.
+
+verification:
+  required:
+    - python -m pytest tests/test_run_observation.py -q
+    - python -m pytest tests/test_operator.py -k "observation" -q
