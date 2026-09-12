@@ -1,0 +1,21 @@
+{
+  "repair_id": "REPAIR-103-002",
+  "failed_run_id": "RUN-103-002",
+  "failed_head_sha": "844e4cd3a5d42e357133763dcf2f98b1fe1a5c21",
+  "task": {
+    "id": "TASK-103",
+    "revision": 2
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "src/aios_renew/operator.py",
+    "tests/test_operator.py"
+  ],
+  "instructions": [
+    "Continue exactly from failed candidate 844e4cd3a5d42e357133763dcf2f98b1fe1a5c21 for RUN-103-002. Preserve the revision-neutral cumulative-remediation behavior already proven by the passing Correction Preflight and Unified State verification, and do not restart PRIMARY, reset to main, rewrite TASK-103 revision-1 history, or weaken TASK-103 semantics.",
+    "The failed operator verification shows that the candidate removed the TASK-revision gate too broadly: legacy/historical revision-1 remediation and direct-candidate fixtures that do not establish prospective cumulative execution-base lineage are being forced through the cumulative resolver and now fail with integration-required or missing/ambiguous predecessor errors. Correct the boundary so prospective cumulative semantics are selected from canonical correction lineage/artifact meaning rather than TASK revision, while historical remediation artifacts without prospective cumulative metadata retain their established legacy interpretation.",
+    "Preserve both sides of the contract simultaneously: a genuine prospective revision-1 sibling correction with an outstanding finding after a reviewed correction must resolve and persist the exact cumulative execution base, while historical/legacy remediation and direct-candidate paths that lack the prospective cumulative lineage signal must continue to use their established reviewed-subject behavior. Do not restore task.revision >= 2 as a capability gate and do not fabricate cumulative metadata for legacy artifacts.",
+    "Fix the causal regression rather than special-casing the five failing tests. The affected operator verification must recover test_remediation_repair_and_candidate_do_not_auto_sync_upstream_main, test_remote_remediation_executes_historical_reviewed_subject_in_isolation, test_historical_remediation_failure_persists_exact_subject_candidate, test_historical_remediation_workspace_failure_precedes_run_and_executor, and test_direct_candidate_and_approved_remediation_persist_predecessor_identity_ac2 while keeping the new revision-1 cumulative-sibling regression green. Keep the correction minimal within the authorized files; Runtime owns the unchanged TASK-103 verification commands and no push or manual Runtime-state mutation is allowed."
+  ],
+  "constraints": []
+}
