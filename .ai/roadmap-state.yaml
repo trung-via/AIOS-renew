@@ -41,22 +41,35 @@ sequence:
     completed_by:
       task_id: TASK-102
       published_sha: "2599202afedb0622e9e9bdc7b5a15f34da01cc27"
-  - id: performance-closure
+  - id: cumulative-remediation-revision-neutral-hardening
     status: NEXT
+    task_id: TASK-103
+    task_revision: 2
+    note: >-
+      Explicit Human priority override. TASK-103 revision 1 ended in immutable
+      non-repairable RUN-103-001 after Executor quota exhaustion before any committed
+      implementation delta. Revision 2 preserves that history and hardens prospective
+      cumulative remediation so execution-base semantics do not depend on TASK revision.
+      Performance Closure resumes only after this hardening is semantically reviewed PASS
+      and published.
+  - id: performance-closure
+    status: PENDING
     task_id: TASK-101
     task_revision: 1
     phase: P5-performance-observation-surface
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
+    blocked_by: cumulative-remediation-revision-neutral-hardening
     last_completed:
       task_id: TASK-100
       task_revision: 1
       phase: P4-execution-budget-observability-and-escalation
       published_sha: "8067ac257c15779367f4e1463e7af8b5b5059e46"
     note: >-
-      P1-P4 are published. TASK-102 has removed the stale-local CONTINUE synchronization
-      blocker, so TASK-101 resumes as the authored final Performance Closure slice. Downstream
-      adoption remains blocked until P5 is semantically reviewed PASS, auto-published, and the
-      Performance Closure bookmark is reconciled as complete.
+      P1-P4 are published. TASK-101 implementation correction reached a semantic PASS
+      candidate, but publication exposed a correction-frontier lineage problem whose safe
+      continuation depends on revision-neutral cumulative remediation admission. Resume
+      TASK-101 only after TASK-103 is published and the original outstanding finding can be
+      executed from the exact cumulative correction tip.
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
