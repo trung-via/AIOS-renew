@@ -22,7 +22,7 @@ problem: >
   another revision-1 FIX.
 
 assumptions:
-  - Canonical revision-2 base is bb1e18560d4ccc0e3a1d53a720dacd66382e8c74.
+  - Runtime resolves and binds the exact canonical main/base SHA at revision-2 admission; TASK does not predeclare an execution SHA.
   - P3A/TASK-097 and P3B/TASK-098 are semantically PASS and published.
   - TASK-099 revision-1 lineage RUN-099-001 -> RUN-099-002 and REVIEW-099-001/002 remains immutable historical evidence and does not establish revision-2 completion.
   - Human explicitly authorized P3 correction-lineage evolution including P3C2.
