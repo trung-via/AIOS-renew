@@ -1,0 +1,50 @@
+review_id: REVIEW-099-001
+reviewed_sha: 991de3e551c6c0ba41edbc10768ac713d8f8ddc1
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: FAIL
+findings:
+  - id: F1
+    basis: AC6
+    action: CODE_FIX
+    location: src/aios_renew/unified_state.py::_derive_tip_frontier / _decode_remote_lifecycle
+    issue: >
+      P3C1 consumes prospective predecessor-bearing REMEDIATION RUN data as a raw mapping
+      and passes that mapping into CorrectionFrontier advancement without first applying
+      the canonical P3A four-field predecessor parser. The P3B frontier helper accepts the
+      canonical keys from a Mapping but does not reject unexpected/alias keys. Therefore
+      a malformed predecessor containing a valid source_run_id plus an extra or conflicting
+      alias such as run_id can be interpreted by Unified State even though canonical
+      publication rejects the same predecessor shape. Unified State and publication can
+      consequently disagree on exact predecessor identity instead of the malformed lineage
+      failing closed.
+    expected: >
+      Route every prospective predecessor-bearing REMEDIATION identity consumed by Unified
+      State through the existing canonical P3A predecessor validator before frontier
+      derivation. Unexpected, alias, conflicting, malformed, or identity-inconsistent
+      predecessor fields must fail closed to MALFORMED_CANONICAL_STATE. Preserve the
+      explicitly bounded legacy no-predecessor compatibility path without creating a second
+      predecessor grammar.
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: src/aios_renew/unified_state.py::UnifiedStateObservation.outstanding_findings / _reduce_correction_frontier
+    issue: >
+      The new outstanding_findings observation copies every frontier item into Unified State
+      and Human Surface with no fixed maximum and no over-bound fail-closed behavior. REVIEW
+      findings have no canonical count bound, so one canonical review can make the supposedly
+      bounded Human/state observation arbitrarily large. This violates AC1 and the P3C1 hard
+      constraint that outstanding state be bounded.
+    expected: >
+      Enforce one deterministic fixed bound for outstanding-finding observation. The surface
+      must never silently truncate, prioritize, or hide known findings; if a canonical
+      frontier exceeds the bound, Unified State must fail closed with bounded structural
+      state rather than emitting an unbounded collection. Normal within-bound ordering and
+      exact four-field identities must remain unchanged.
