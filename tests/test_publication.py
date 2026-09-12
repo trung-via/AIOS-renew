@@ -1580,7 +1580,7 @@ def test_predecessor_mismatched_reviewed_sha_fails_closed_ac3(
     assert remote_main(lineage) == lineage["base_sha"]
 
 
-def test_predecessor_multi_finding_review_fails_closed_ac6(
+def test_predecessor_multi_finding_review_fails_closed_ac5(
     tmp_path: Path,
 ) -> None:
     lineage = make_predecessor_lineage(tmp_path, sibling_findings=True)
@@ -1588,8 +1588,12 @@ def test_predecessor_multi_finding_review_fails_closed_ac6(
     with pytest.raises(PublicationError) as exc_info:
         publish(lineage)
     assert exc_info.value.report.outcome == "FAILED"
-    assert "multiple findings" in exc_info.value.report.detail
+    assert "outstanding findings in correction frontier: R2" in exc_info.value.report.detail
+    assert "R1" not in exc_info.value.report.detail
     assert remote_main(lineage) == lineage["base_sha"]
+
+
+test_predecessor_multi_finding_review_fails_closed_ac6 = test_predecessor_multi_finding_review_fails_closed_ac5
 
 
 def test_publication_predecessor_parser_rejects_alias_and_conflicting_fields() -> None:

@@ -18,6 +18,7 @@ from .artifacts import (
     validate_result,
     validate_result_package,
 )
+from .correction_frontier import CorrectionFrontier, CorrectionFrontierError
 from .review import (
     Remediation,
     Review,
@@ -393,12 +394,107 @@ def _validate_predecessor_lineage(
     if not any(f.id == pred.finding_id for f in prior_review.findings):
         raise ValueError("predecessor REVIEW does not contain selected finding")
 
-    if len(prior_review.findings) > 1:
-        raise ValueError(
-            "predecessor REVIEW contains multiple findings; cannot publish single-finding remediation before P3B"
+    return prior_review
+
+
+def _derive_publication_frontier(
+    repo: Path,
+    *,
+    remote: str,
+    publication_run_id: str,
+    run_data: Mapping[str, Any],
+    delta_review: Review,
+) -> CorrectionFrontier:
+    steps: list[tuple[str, RemediationPredecessor, Review]] = [
+        (
+            publication_run_id,
+            _parse_remediation_predecessor(run_data["predecessor"]),
+            delta_review,
+        )
+    ]
+    seen = {publication_run_id}
+    current_pred = steps[0][1]
+
+    while True:
+        source_id = current_pred.source_run_id
+        if source_id in seen:
+            raise ValueError("cyclic predecessor lineage")
+        seen.add(source_id)
+
+        pred_artifacts_ref = f"refs/heads/aios/artifacts/{source_id}"
+        pred_artifacts_sha = _single_remote_sha(
+            repo, remote, pred_artifacts_ref, run_id=publication_run_id
+        )
+        _fetch_object(repo, remote, pred_artifacts_sha, run_id=publication_run_id)
+        pred_run_bytes = _read_blob(
+            repo, pred_artifacts_sha, ".ai/transport/run.json", run_id=publication_run_id
+        )
+        pred_run_data = _mapping(
+            _json_no_duplicates(pred_run_bytes, document="predecessor RUN"),
+            "predecessor RUN",
         )
 
-    return prior_review
+        remediation_ref = f"refs/heads/aios/remediation/{source_id}-{current_pred.finding_id}"
+        decision_ref = f"refs/heads/aios/review-decision/{source_id}"
+        review_commit_sha = _single_optional_remote_sha(
+            repo, remote, remediation_ref, run_id=publication_run_id
+        )
+        if review_commit_sha is None:
+            review_commit_sha = _single_optional_remote_sha(
+                repo, remote, decision_ref, run_id=publication_run_id
+            )
+        if review_commit_sha is None:
+            raise ValueError(f"canonical predecessor review ref is missing for {source_id}")
+
+        _fetch_object(repo, remote, review_commit_sha, run_id=publication_run_id)
+        code, tree, _ = _git(
+            repo,
+            "ls-tree",
+            "-r",
+            "--name-only",
+            review_commit_sha,
+            "--",
+            ".ai/reviews",
+            allow_fail=True,
+        )
+        if code:
+            raise ValueError(f"cannot inspect predecessor review decision for {source_id}")
+        review_paths = [
+            path
+            for path in tree.splitlines()
+            if path.startswith(".ai/reviews/")
+            and path.endswith((".yaml", ".yml"))
+        ]
+        if len(review_paths) != 1:
+            raise ValueError(
+                f"predecessor review decision must contain exactly one REVIEW document for {source_id}"
+            )
+        review_bytes = _read_blob(
+            repo, review_commit_sha, review_paths[0], run_id=publication_run_id
+        )
+        prior_review = parse_review(review_bytes.decode("utf-8", errors="strict"))
+
+        if "predecessor" in pred_run_data:
+            parent_pred = _parse_remediation_predecessor(pred_run_data["predecessor"])
+            steps.append((source_id, parent_pred, prior_review))
+            current_pred = parent_pred
+        else:
+            primary_run_id = source_id
+            primary_review = prior_review
+            break
+
+    try:
+        frontier = CorrectionFrontier.from_primary(primary_run_id, primary_review)
+        for step_run_id, step_pred, step_review in reversed(steps):
+            frontier = frontier.advance(
+                delta_run_id=step_run_id,
+                delta_review=step_review,
+                predecessor=step_pred,
+            )
+    except CorrectionFrontierError as exc:
+        raise ValueError(f"invalid correction frontier advancement: {exc}") from exc
+
+    return frontier
 
 
 def _validate_remediation_package(
@@ -1033,7 +1129,7 @@ def _load_success_lineage(
         else:
             if review.mode != "DELTA":
                 raise ValueError("REMEDIATION candidate requires a DELTA REVIEW")
-            if review.prior_finding_id != prior_review.findings[0].id:
+            if review.prior_finding_id != remediation.finding_id:
                 raise ValueError(
                     "DELTA REVIEW prior finding does not match REMEDIATION"
                 )
@@ -1053,6 +1149,21 @@ def _load_success_lineage(
             raise ValueError(
                 "RESULT head_sha does not match canonical source ref"
             )
+        if "predecessor" in run_data:
+            frontier = _derive_publication_frontier(
+                repo,
+                remote=remote,
+                publication_run_id=run_id,
+                run_data=run_data,
+                delta_review=review,
+            )
+            if not frontier.is_empty:
+                outstanding_ids = ", ".join(
+                    sorted(f.finding_id for f in frontier.findings)
+                )
+                raise ValueError(
+                    f"predecessor lineage contains outstanding findings in correction frontier: {outstanding_ids}"
+                )
     except (KeyError, TypeError, ValueError, UnicodeError) as exc:
         reviewed_sha = locals().get("reviewed_sha", source_sha)
         raise _failed(
