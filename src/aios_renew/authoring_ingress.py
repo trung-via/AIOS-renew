@@ -16,8 +16,20 @@ from typing import Any
 
 import yaml
 
-from .artifacts import validate_result
-from .publication import _validate_repair_authorization
+from .artifacts import (
+    ArtifactValidationError,
+    Evidence,
+    Result,
+    ResultPackage,
+    validate_evidence,
+    validate_result,
+    validate_result_package,
+)
+from .publication import (
+    _parse_remediation_run,
+    _validate_remediation_package,
+    _validate_repair_authorization,
+)
 from .review import (
     Finding,
     Remediation,
@@ -29,6 +41,13 @@ from .review import (
     validate_review,
 )
 from .review_transport import ReviewTransportError, resolve_transport_remote
+from .run import (
+    ACTIVE,
+    Run,
+    RunTaskReference,
+    RunValidationError,
+    SUPPORTED_EXECUTORS,
+)
 from .task import Task, TaskValidationError, parse_task
 from .unified_state import observe_unified_state
 
@@ -545,26 +564,120 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
 
     run_data = _json_no_dups(run_bytes, "RUN")
     result_data = _json_no_dups(result_bytes, "ResultPackage")
-    result_pkg = result_data.get("result", result_data)
-    result = validate_result(result_pkg)
+
+    remediation = None
+    if run_data.get("kind") == "REMEDIATION":
+        if "predecessor" in run_data:
+            try:
+                run, remediation = _parse_remediation_run(run_data, run_id=run_id)
+            except (ValueError, TypeError, RunValidationError) as exc:
+                raise AuthoringIngressError(f"invalid canonical REMEDIATION RUN: {exc}") from exc
+        else:
+            exec_data = run_data.get("execution")
+            if not isinstance(exec_data, Mapping):
+                raise AuthoringIngressError("REMEDIATION execution must be a mapping")
+            run = _run_from_data(exec_data.get("run"), "REMEDIATION.execution.run")
+            if run.run_id != run_id:
+                raise AuthoringIngressError(
+                    f"RUN run_id mismatch: identity specified {run_id}, artifacts contain {run.run_id}"
+                )
+            rem_data = exec_data.get("remediation")
+            if not isinstance(rem_data, Mapping):
+                raise AuthoringIngressError("REMEDIATION remediation must be a mapping")
+            remediation = parse_remediation(yaml.safe_dump(dict(rem_data)))
+    elif "kind" not in run_data:
+        if run_data.get("run_id") != run_id:
+            raise AuthoringIngressError(
+                f"RUN run_id mismatch: identity specified {run_id}, artifacts contain {run_data.get('run_id')!r}"
+            )
+        run = _run_from_data(run_data, "RUN")
+    else:
+        raise AuthoringIngressError(f"unknown canonical RUN kind: {run_data.get('kind')!r}")
+
+    if run.status != ACTIVE:
+        raise AuthoringIngressError(
+            f"canonical successful RUN status is invalid: {run.status!r}"
+        )
+
+    _fetch_if_remote(repo, remote, run.base_sha)
+    code, kind, _ = _git(repo, "cat-file", "-t", run.base_sha, allow_fail=True)
+    if code != 0 or kind != "commit":
+        raise AuthoringIngressError(f"RUN base_sha is not a canonical commit: {run.base_sha}")
+
+    code, _, _ = _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        run.base_sha,
+        candidate_sha,
+        allow_fail=True,
+    )
+    if code != 0:
+        raise AuthoringIngressError(
+            f"reviewed candidate {candidate_sha} does not descend from RUN base_sha {run.base_sha}"
+        )
+
+    # Load task from candidate
+    task_bytes = _read_commit_blob(repo, candidate_sha, f".ai/tasks/{run.task.id}.yaml")
+    if task_bytes is None:
+        raise AuthoringIngressError(
+            f"canonical TASK {run.task.id} missing from candidate {candidate_sha}"
+        )
+    try:
+        task = parse_task(task_bytes.decode("utf-8"))
+    except TaskValidationError as exc:
+        raise AuthoringIngressError(f"invalid canonical TASK contract: {exc}") from exc
+
+    if not isinstance(result_data, Mapping) or "result" not in result_data:
+        raise AuthoringIngressError("canonical ResultPackage must contain 'result'")
+    try:
+        result = validate_result(result_data["result"])
+    except (ArtifactValidationError, TypeError, ValueError) as exc:
+        raise AuthoringIngressError(f"invalid canonical RESULT: {exc}") from exc
 
     if result.head_sha != candidate_sha:
         raise AuthoringIngressError(
             f"RESULT head_sha does not match candidate: result={result.head_sha}, candidate={candidate_sha}"
         )
 
-    # Load task from candidate
-    task_id = _extract_task_id(run_data)
-    task_bytes = _read_commit_blob(repo, candidate_sha, f".ai/tasks/{task_id}.yaml")
-    if task_bytes is None:
-        raise AuthoringIngressError(
-            f"canonical TASK {task_id} missing from candidate {candidate_sha}"
-        )
-    task = parse_task(task_bytes.decode("utf-8"))
+    evidence_data = result_data.get("evidence")
+    if not isinstance(evidence_data, list):
+        raise AuthoringIngressError("canonical ResultPackage evidence must be a list")
+    try:
+        evidence = tuple(validate_evidence(item) for item in evidence_data)
+    except (ArtifactValidationError, TypeError, ValueError) as exc:
+        raise AuthoringIngressError(f"invalid canonical EVIDENCE: {exc}") from exc
 
     prior_review = None
     if review.mode == "DELTA":
         prior_review = _resolve_prior_review(repo, remote, run_data, review)
+
+    try:
+        if remediation is None:
+            validate_result_package(
+                task=task,
+                run=run,
+                result=result,
+                evidence=evidence,
+            )
+        else:
+            if prior_review is None:
+                raise AuthoringIngressError("DELTA review requires prior review")
+            _validate_remediation_package(
+                repo,
+                source_sha=candidate_sha,
+                task=task,
+                run=run,
+                remediation=remediation,
+                prior_review=prior_review,
+                result=result,
+                evidence=evidence,
+                execution_base_sha=(
+                    run.base_sha if "execution_base" in run_data else None
+                ),
+            )
+    except (ArtifactValidationError, ValueError, TypeError) as exc:
+        raise AuthoringIngressError(f"result package validation failed: {exc}") from exc
 
     try:
         validate_review(
@@ -987,6 +1100,32 @@ def _get_expected_sha(expected_state: Mapping[str, Any], *candidate_keys: str) -
     raise AuthoringIngressError(
         f"expected_state must specify a valid 40-char SHA for {keys_str}"
     )
+
+
+def _run_from_data(data: Any, document: str = "RUN") -> Run:
+    if not isinstance(data, Mapping):
+        raise AuthoringIngressError(f"{document} must be a mapping")
+    task_data = data.get("task")
+    if not isinstance(task_data, Mapping):
+        raise AuthoringIngressError(f"{document}.task must be a mapping")
+    task_id = task_data.get("id")
+    task_rev = task_data.get("revision")
+    if not isinstance(task_id, str) or not task_id:
+        raise AuthoringIngressError(f"{document}.task.id must be a non-empty string")
+    if isinstance(task_rev, bool) or not isinstance(task_rev, int) or task_rev < 1:
+        raise AuthoringIngressError(f"{document}.task.revision must be a positive integer")
+    try:
+        return Run(
+            run_id=str(data.get("run_id") or ""),
+            task=RunTaskReference(id=task_id, revision=task_rev),
+            executor=str(data.get("executor") or ""),
+            base_sha=str(data.get("base_sha") or ""),
+            workspace=str(data.get("workspace") or ""),
+            head_sha=data.get("head_sha"),
+            status=str(data.get("status") or ""),
+        )
+    except (RunValidationError, TypeError, ValueError) as exc:
+        raise AuthoringIngressError(f"invalid canonical {document}: {exc}") from exc
 
 
 def _extract_task_id(run_data: Mapping[str, Any]) -> str:

@@ -106,6 +106,8 @@ def setup_candidate_lineage(
     task_source: str = TASK_105_SOURCE,
     candidate_file: str = "src/sample.py",
     candidate_content: str = "def sample(): return True\n",
+    run_override: dict[str, object] | None = None,
+    result_override: dict[str, object] | None = None,
 ) -> dict[str, object]:
     repo, remote, base_sha = setup_test_repo(root)
     task_dir = repo / ".ai" / "tasks"
@@ -165,6 +167,26 @@ def setup_candidate_lineage(
             }
         ],
     }
+    if run_override:
+        run_payload.update(run_override)
+    if result_override:
+        for k, v in result_override.items():
+            if k == "result" and isinstance(v, dict):
+                v_copy = dict(v)
+                if v_copy.get("head_sha") == "candidate_sha":
+                    v_copy["head_sha"] = candidate_sha
+                result_payload["result"] = v_copy
+            elif k == "evidence" and isinstance(v, list):
+                ev_list = []
+                for item in v:
+                    item_copy = dict(item)
+                    if item_copy.get("subject_sha") == "candidate_sha":
+                        item_copy["subject_sha"] = candidate_sha
+                    ev_list.append(item_copy)
+                result_payload["evidence"] = ev_list
+            else:
+                result_payload[k] = v
+
     run_path.write_text(json.dumps(run_payload), encoding="utf-8")
     result_path.write_text(json.dumps(result_payload), encoding="utf-8")
 
@@ -467,6 +489,347 @@ findings:
     assert obs.lifecycle_state == "CORRECTION"
     assert obs.next_action == "AUTHOR_REMEDIATION"
     assert obs.finding_id == "F1"
+
+
+def test_submit_review_rejects_run_identity_and_task_revision_mismatches(tmp_path):
+    # 1. RUN run_id mismatch
+    p1 = tmp_path / "case1"
+    lineage1 = setup_candidate_lineage(
+        p1,
+        run_override={"run_id": "RUN-105-999"},
+    )
+    repo1 = lineage1["repo"]
+    run_id1 = lineage1["run_id"]
+    candidate_sha1 = lineage1["candidate_sha"]
+    env1 = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="SUBMIT_REVIEW",
+        identity={"run_id": run_id1},
+        expected_state={"expected_candidate_sha": candidate_sha1},
+        payload=f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha1}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+""",
+    )
+    with pytest.raises(AuthoringIngressError, match="RUN run_id mismatch"):
+        execute_ingress(env1, repo=repo1)
+
+    # 2. TASK revision mismatch (RUN references r2, but candidate has r1)
+    p2 = tmp_path / "case2"
+    lineage2 = setup_candidate_lineage(
+        p2,
+        run_override={"task": {"id": "TASK-105", "revision": 2}},
+    )
+    repo2 = lineage2["repo"]
+    run_id2 = lineage2["run_id"]
+    candidate_sha2 = lineage2["candidate_sha"]
+    env2 = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="SUBMIT_REVIEW",
+        identity={"run_id": run_id2},
+        expected_state={"expected_candidate_sha": candidate_sha2},
+        payload=f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha2}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+""",
+    )
+    with pytest.raises(AuthoringIngressError, match="RUN does not reference the supplied TASK"):
+        execute_ingress(env2, repo=repo2)
+
+
+def test_submit_review_rejects_evidence_and_verification_mismatches(tmp_path):
+    # 1. Evidence run_id mismatch
+    p1 = tmp_path / "case1"
+    lineage1 = setup_candidate_lineage(
+        p1,
+        result_override={
+            "evidence": [
+                {
+                    "evidence_id": "E1",
+                    "run_id": "RUN-OTHER-999",
+                    "subject_sha": "candidate_sha",
+                    "type": "verification",
+                    "source": {"command": "git diff --check"},
+                    "result": {"exit_code": 0, "summary": "clean"},
+                    "raw": {"path": ".git/aios/evidence/E1.log"},
+                }
+            ]
+        },
+    )
+    repo1 = lineage1["repo"]
+    run_id1 = lineage1["run_id"]
+    candidate_sha1 = lineage1["candidate_sha"]
+    env1 = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="SUBMIT_REVIEW",
+        identity={"run_id": run_id1},
+        expected_state={"expected_candidate_sha": candidate_sha1},
+        payload=f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha1}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+""",
+    )
+    with pytest.raises(AuthoringIngressError, match="does not reference RUN"):
+        execute_ingress(env1, repo=repo1)
+
+    # 2. Evidence subject_sha mismatch
+    p2 = tmp_path / "case2"
+    lineage2 = setup_candidate_lineage(
+        p2,
+        result_override={
+            "evidence": [
+                {
+                    "evidence_id": "E1",
+                    "run_id": "RUN-105-001",
+                    "subject_sha": "0" * 40,
+                    "type": "verification",
+                    "source": {"command": "git diff --check"},
+                    "result": {"exit_code": 0, "summary": "clean"},
+                    "raw": {"path": ".git/aios/evidence/E1.log"},
+                }
+            ]
+        },
+    )
+    repo2 = lineage2["repo"]
+    run_id2 = lineage2["run_id"]
+    candidate_sha2 = lineage2["candidate_sha"]
+    env2 = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="SUBMIT_REVIEW",
+        identity={"run_id": run_id2},
+        expected_state={"expected_candidate_sha": candidate_sha2},
+        payload=f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha2}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+""",
+    )
+    with pytest.raises(AuthoringIngressError, match="subject_sha does not match RESULT head_sha"):
+        execute_ingress(env2, repo=repo2)
+
+    # 3. Missing required verification evidence
+    p3 = tmp_path / "case3"
+    lineage3 = setup_candidate_lineage(
+        p3,
+        result_override={
+            "result": {
+                "head_sha": "candidate_sha",
+                "claims": [
+                    {
+                        "id": "C1",
+                        "satisfies": ["AC1"],
+                        "claim": "The candidate is valid.",
+                        "evidence": ["E2"],
+                    }
+                ],
+                "changed_files": ["src/sample.py"],
+                "unresolved": [],
+            },
+            "evidence": [
+                {
+                    "evidence_id": "E2",
+                    "run_id": "RUN-105-001",
+                    "subject_sha": "candidate_sha",
+                    "type": "verification",
+                    "source": {"command": "other-command"},
+                    "result": {"exit_code": 0, "summary": "clean"},
+                    "raw": {"path": ".git/aios/evidence/E2.log"},
+                }
+            ],
+        },
+    )
+    repo3 = lineage3["repo"]
+    run_id3 = lineage3["run_id"]
+    candidate_sha3 = lineage3["candidate_sha"]
+    env3 = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="SUBMIT_REVIEW",
+        identity={"run_id": run_id3},
+        expected_state={"expected_candidate_sha": candidate_sha3},
+        payload=f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha3}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+""",
+    )
+    with pytest.raises(AuthoringIngressError, match="missing verification evidence for required command"):
+        execute_ingress(env3, repo=repo3)
+
+
+def test_submit_review_rejects_base_sha_ancestry_and_invalid_run_status(tmp_path):
+    # 1. Candidate does not descend from RUN base_sha
+    p1 = tmp_path / "case1"
+    repo1, remote1, _ = setup_test_repo(p1)
+    task_dir1 = repo1 / ".ai" / "tasks"
+    task_dir1.mkdir(parents=True, exist_ok=True)
+    (task_dir1 / "TASK-105.yaml").write_text(TASK_105_SOURCE, encoding="utf-8")
+    git(repo1, "add", ".")
+    git(repo1, "commit", "--quiet", "-m", "add TASK-105")
+    git(repo1, "push", "--quiet", "origin", "main")
+
+    # Create orphaned commit on unrelated branch to use as RUN base_sha
+    git(repo1, "checkout", "--orphan", "unrelated-branch")
+    git(repo1, "rm", "-rf", ".")
+    (repo1 / "unrelated.txt").write_text("unrelated\n", encoding="utf-8")
+    git(repo1, "add", "unrelated.txt")
+    git(repo1, "commit", "--quiet", "-m", "unrelated commit")
+    unrelated_base = git(repo1, "rev-parse", "HEAD")
+    git(repo1, "checkout", "main")
+
+    sample_path1 = repo1 / "src" / "sample.py"
+    sample_path1.parent.mkdir(parents=True, exist_ok=True)
+    sample_path1.write_text("def sample(): return True\n", encoding="utf-8")
+    git(repo1, "add", "src/sample.py")
+    git(repo1, "commit", "--quiet", "-m", "candidate implementation")
+    candidate_sha1 = git(repo1, "rev-parse", "HEAD")
+
+    run_id1 = "RUN-105-001"
+    state1 = p1 / "state"
+    state1.mkdir(parents=True, exist_ok=True)
+    run_path1 = state1 / "run.json"
+    result_path1 = state1 / "result.json"
+
+    run_payload1 = {
+        "run_id": run_id1,
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "antigravity",
+        "base_sha": unrelated_base,
+        "workspace": str(repo1),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    result_payload1 = {
+        "result": {
+            "head_sha": candidate_sha1,
+            "claims": [
+                {
+                    "id": "C1",
+                    "satisfies": ["AC1"],
+                    "claim": "The candidate is valid.",
+                    "evidence": ["E1"],
+                }
+            ],
+            "changed_files": ["src/sample.py"],
+            "unresolved": [],
+        },
+        "evidence": [
+            {
+                "evidence_id": "E1",
+                "run_id": run_id1,
+                "subject_sha": candidate_sha1,
+                "type": "verification",
+                "source": {"command": "git diff --check"},
+                "result": {"exit_code": 0, "summary": "clean"},
+                "raw": {"path": ".git/aios/evidence/E1.log"},
+            }
+        ],
+    }
+    run_path1.write_text(json.dumps(run_payload1), encoding="utf-8")
+    result_path1.write_text(json.dumps(result_payload1), encoding="utf-8")
+    transport_post_pass(
+        repo1,
+        run_id=run_id1,
+        head_sha=candidate_sha1,
+        run_path=run_path1,
+        result_path=result_path1,
+    )
+
+    env1 = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="SUBMIT_REVIEW",
+        identity={"run_id": run_id1},
+        expected_state={"expected_candidate_sha": candidate_sha1},
+        payload=f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha1}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+""",
+    )
+    with pytest.raises(AuthoringIngressError, match="does not descend from RUN base_sha"):
+        execute_ingress(env1, repo=repo1)
+
+    # 2. RUN status is not ACTIVE
+    p2 = tmp_path / "case2"
+    lineage2 = setup_candidate_lineage(p2, run_override={"status": "FAILED"})
+    repo2 = lineage2["repo"]
+    run_id2 = lineage2["run_id"]
+    candidate_sha2 = lineage2["candidate_sha"]
+    env2 = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="SUBMIT_REVIEW",
+        identity={"run_id": run_id2},
+        expected_state={"expected_candidate_sha": candidate_sha2},
+        payload=f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha2}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+""",
+    )
+    with pytest.raises(AuthoringIngressError, match="canonical successful RUN status is invalid"):
+        execute_ingress(env2, repo=repo2)
+
+    # 3. Invalid executor in RUN
+    p3 = tmp_path / "case3"
+    lineage3 = setup_candidate_lineage(p3, run_override={"executor": "unsupported_executor"})
+    repo3 = lineage3["repo"]
+    run_id3 = lineage3["run_id"]
+    candidate_sha3 = lineage3["candidate_sha"]
+    env3 = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="SUBMIT_REVIEW",
+        identity={"run_id": run_id3},
+        expected_state={"expected_candidate_sha": candidate_sha3},
+        payload=f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha3}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+""",
+    )
+    with pytest.raises(AuthoringIngressError, match="invalid canonical RUN"):
+        execute_ingress(env3, repo=repo3)
 
 
 # ===========================================================================
