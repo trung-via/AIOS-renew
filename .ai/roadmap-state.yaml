@@ -38,23 +38,19 @@ sequence:
       published_sha: "a45e94294f0688e62dacfacd884f2736985fd616"
   - id: performance-closure
     status: NEXT
-    task_id: TASK-099
-    task_revision: 2
-    phase: P3C-bounded-observation-and-cumulative-correction
+    task_id: TASK-100
+    task_revision: 1
+    phase: P4-execution-budget-observability-and-escalation
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
-    prior_revision:
-      revision: 1
-      status: SUPERSEDED_BY_NEW_INTENT
-      latest_reviewed_run: RUN-099-002
-      latest_reviewed_sha: "5d96ad13213f1b842af5a44c13b242ffb2cdffba"
-      outstanding_finding: F2
-      note: >-
-        Immutable revision-1 lineage remains evidence. It is not published, completed,
-        or reclassified as fixed; P3C2 is new intent and is carried by revision 2.
     last_completed:
-      task_id: TASK-098
-      phase: P3B-outstanding-finding-frontier
-      published_sha: "4df6a12779e254cfe07b5f54de0d89955c321054"
+      task_id: TASK-099
+      task_revision: 2
+      phase: P3C-bounded-observation-and-cumulative-correction
+      published_sha: "2f359706f7972baeb7e88bfa243c77c6eb0bdc36"
+    note: >-
+      TASK-099 revision 1 lineage remains immutable historical evidence under its
+      superseded-by-new-intent classification. Revision 2 is the published P3C completion;
+      Performance Closure itself remains active because P4 and P5 are still pending.
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
