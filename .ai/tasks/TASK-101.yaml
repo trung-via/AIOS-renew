@@ -61,7 +61,8 @@ constraints:
 
 acceptance:
   - id: AC1
-    condition: `aios performance` returns stable AIOS_PERFORMANCE_OBSERVATION v1 for 1-32 exact unique TASK selectors.
+    condition: >
+      `aios performance` returns stable AIOS_PERFORMANCE_OBSERVATION v1 for 1-32 exact unique TASK selectors.
   - id: AC2
     condition: Canonical remote terminal refs alone define the bounded snapshot; overflow, competing terminals, heuristic recency and local-state substitution are rejected.
   - id: AC3
