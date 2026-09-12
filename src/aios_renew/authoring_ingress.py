@@ -30,6 +30,7 @@ from .review import (
 )
 from .review_transport import ReviewTransportError, resolve_transport_remote
 from .task import Task, TaskValidationError, parse_task
+from .unified_state import observe_unified_state
 
 
 class AuthoringIngressError(ValueError):
@@ -757,7 +758,24 @@ def _execute_author_remediation(envelope: IngressEnvelope, repo: Path) -> Ingres
         )
         if code == 0 and main_sha != review.reviewed_sha:
             # Main has advanced past reviewed_sha; verify finding isn't already resolved
-            pass
+            try:
+                obs = observe_unified_state(task_id, repo=repo)
+            except Exception as exc:
+                raise AuthoringIngressError(
+                    f"failed to resolve canonical correction state: {exc}"
+                ) from exc
+
+            is_outstanding = any(
+                f.get("source_run_id") == source_run_id
+                and f.get("finding_id") == finding_id
+                and f.get("review_id") == review.review_id
+                and f.get("reviewed_sha") == review.reviewed_sha
+                for f in obs.outstanding_findings
+            )
+            if not is_outstanding:
+                raise AuthoringIngressError(
+                    f"finding {finding_id} is already resolved, superseded, or otherwise no longer outstanding"
+                )
 
     # Create remediation commit containing both review and remediation
     blob_review = _hash_blob(repo, review_bytes)

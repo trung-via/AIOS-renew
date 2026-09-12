@@ -592,6 +592,83 @@ constraints:
         execute_ingress(wide_env, repo=repo)
 
 
+def test_author_remediation_rejects_already_resolved_finding(tmp_path):
+    lineage = setup_candidate_lineage(tmp_path)
+    repo = lineage["repo"]
+    run_id = lineage["run_id"]
+    candidate_sha = lineage["candidate_sha"]
+
+    # Submit CHANGES_REQUIRED review with finding F1
+    cr_review = f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: src/sample.py
+    issue: Defect found.
+    expected: Fix defect.
+"""
+    execute_ingress(
+        IngressEnvelope(
+            format="AIOS_INGRESS_ENVELOPE",
+            version=1,
+            operation="SUBMIT_REVIEW",
+            identity={"run_id": run_id},
+            expected_state={"expected_candidate_sha": candidate_sha},
+            payload=cr_review,
+        ),
+        repo=repo,
+    )
+
+    remediation_payload = f"""\
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: {candidate_sha}
+modification_scope:
+  - src/sample.py
+affected_verification:
+  - git diff --check
+constraints:
+  hard:
+    - Bounded mutation authority only.
+"""
+    rem_env = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="AUTHOR_REMEDIATION",
+        identity={"source_run_id": run_id, "finding_id": "F1"},
+        expected_state={"expected_reviewed_sha": candidate_sha},
+        payload=remediation_payload,
+    )
+
+    # Advance canonical main past reviewed candidate (simulating publication of later lineage)
+    sample_path = repo / "src" / "sample.py"
+    sample_path.write_text("def sample(): return 'resolved'\n", encoding="utf-8")
+    git(repo, "add", "src/sample.py")
+    git(repo, "commit", "--quiet", "-m", "resolve finding on main")
+    advanced_main_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "update-ref", "refs/heads/main", advanced_main_sha)
+    git(repo, "push", "--quiet", "origin", "main")
+
+    # Rejection: finding is no longer outstanding after canonical main advanced past reviewed_sha
+    with pytest.raises(
+        AuthoringIngressError,
+        match="already resolved, superseded, or otherwise no longer outstanding",
+    ):
+        execute_ingress(rem_env, repo=repo)
+
+    # Verify no remediation ref was created
+    rem_ref = f"refs/heads/aios/remediation/{run_id}-F1"
+    output = git(repo, "ls-remote", "--refs", "origin", rem_ref)
+    assert not output.strip()
+
+
 def test_author_repair_success_and_rejections(tmp_path):
     repo, remote, base_sha = setup_test_repo(tmp_path)
     task_dir = repo / ".ai" / "tasks"
