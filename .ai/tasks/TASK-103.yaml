@@ -60,7 +60,10 @@ constraints:
     - Invalid, missing, ambiguous, stale, non-descendant, or integration-required cumulative state must fail closed before RUN creation or Executor invocation and must not fall back to the older reviewed candidate.
     - Existing historical remediation artifacts without cumulative execution-base metadata remain readable under their established legacy interpretation; absence of prospective metadata must not be guessed into cumulative meaning.
     - Correction Preflight, Unified State, and execution must agree on the same cumulative execution base for prospective remediation regardless of TASK revision.
-    - Existing authority boundaries remain unchanged: Brain authors semantics, exactly one Executor owns implementation, Runtime owns admission and verification, and Reviewer owns semantic judgment.
+    - >
+      Existing authority boundaries remain unchanged: Brain authors semantics, exactly one
+      Executor owns implementation, Runtime owns admission and verification, and Reviewer
+      owns semantic judgment.
     - No new planner, selector, frontier authority, lifecycle reducer, retry, reroute, fallback, merge, or rebase behavior is introduced.
     - Do not push from Executor implementation execution.
 
