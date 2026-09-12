@@ -302,6 +302,18 @@ def _decode_lifecycle_run(
         execution = op._remediation_execution_from_data(value.get("execution"))
         if execution.run.base_sha != execution.remediation.reviewed_sha:
             raise ValueError("REMEDIATION RUN base does not match reviewed SHA")
+        if "predecessor" in value:
+            predecessor = publication_module._parse_remediation_predecessor(
+                value["predecessor"]
+            )
+            if (
+                predecessor.review_id != execution.review_id
+                or predecessor.finding_id != execution.finding.id
+                or predecessor.reviewed_sha != execution.remediation.reviewed_sha
+            ):
+                raise ValueError(
+                    "REMEDIATION predecessor does not match execution identity"
+                )
         return (
             execution.run,
             "REMEDIATION",
@@ -494,25 +506,21 @@ def _decode_remote_lifecycle(
         if item.family != "REMEDIATION":
             resolved.append(item)
             continue
-        pred = (
-            item.run_document.get("predecessor")
-            if isinstance(item.run_document, Mapping)
-            else None
-        )
-        if isinstance(pred, Mapping) and "source_run_id" in pred:
-            pred_source_run_id = pred.get("source_run_id")
-            pred_review_id = pred.get("review_id")
-            pred_finding_id = pred.get("finding_id")
-            pred_reviewed_sha = pred.get("reviewed_sha")
+        if item.run_document is not None and "predecessor" in item.run_document:
+            pred = publication_module._parse_remediation_predecessor(
+                item.run_document["predecessor"]
+            )
             parents = [
                 parent
                 for parent in by_candidate.get(item.run.base_sha, ())
                 if parent.terminal_kind == "RESULT"
-                and parent.run_id == pred_source_run_id
+                and parent.run_id == pred.source_run_id
                 and parent.run_id in reviews
-                and reviews[parent.run_id].review_id == pred_review_id
-                and reviews[parent.run_id].reviewed_sha == pred_reviewed_sha
-                and pred_finding_id in {finding.id for finding in reviews[parent.run_id].findings}
+                and reviews[parent.run_id].review_id == pred.review_id
+                and reviews[parent.run_id].reviewed_sha == pred.reviewed_sha
+                and pred.finding_id in {
+                    finding.id for finding in reviews[parent.run_id].findings
+                }
             ]
         else:
             parents = [
@@ -642,13 +650,13 @@ def _derive_tip_frontier(
         return curr
 
     def _get_predecessor_data(remediation_item: _LifecycleRun) -> Any:
-        pred = (
-            remediation_item.run_document.get("predecessor")
-            if isinstance(remediation_item.run_document, Mapping)
-            else None
-        )
-        if isinstance(pred, Mapping):
-            return pred
+        if (
+            remediation_item.run_document is not None
+            and "predecessor" in remediation_item.run_document
+        ):
+            return publication_module._parse_remediation_predecessor(
+                remediation_item.run_document["predecessor"]
+            )
         if (
             remediation_item.parent_run_id is not None
             and remediation_item.review_id is not None
@@ -896,9 +904,11 @@ def _local_pending_runs(
                     finding.id for finding in reviews[parent.run_id].findings
                 }
             ]
-            pred = local_value.get("predecessor")
-            if isinstance(pred, Mapping) and "source_run_id" in pred:
-                parents = [p for p in parents if p.run_id == pred["source_run_id"]]
+            if "predecessor" in local_value:
+                pred = publication_module._parse_remediation_predecessor(
+                    local_value["predecessor"]
+                )
+                parents = [p for p in parents if p.run_id == pred.source_run_id]
             if len(parents) == 1:
                 parent_run_id = parents[0].run_id
         if family == "REPAIR":

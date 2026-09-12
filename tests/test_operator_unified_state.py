@@ -1826,7 +1826,62 @@ prior_finding_id: F99
     assert obs_malformed["lifecycle_state"] == "BLOCKED"
     assert obs_malformed["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
 
-    # 3. Observation is read-only: runtime state has not mutated
+    # 3. Canonical predecessor fields cannot be supplemented or replaced by aliases.
+    finding_f1 = {
+        "id": "F1",
+        "basis": "AC1",
+        "action": "CODE_FIX",
+        "location": "OUTPUT.txt",
+        "issue": "issue 1",
+        "expected": "fix 1",
+    }
+    delta_run_data["execution"]["finding"] = finding_f1
+    delta_run_data["execution"]["remediation"]["finding_id"] = "F1"
+    valid_predecessor = {
+        "source_run_id": run_id,
+        "review_id": "REVIEW-101-001",
+        "finding_id": "F1",
+        "reviewed_sha": head,
+    }
+    delta_review_f1 = delta_review.replace(
+        b"prior_finding_id: F99", b"prior_finding_id: F1"
+    )
+    malformed_predecessors = (
+        {**valid_predecessor, "run_id": run_id},
+        {**valid_predecessor, "sourceRunId": run_id},
+        {
+            "run_id": run_id,
+            "review_id": "REVIEW-101-001",
+            "finding_id": "F1",
+            "reviewed_sha": head,
+        },
+    )
+    for malformed_predecessor in malformed_predecessors:
+        delta_run_data["predecessor"] = malformed_predecessor
+        malformed_alias_lifecycle = RemoteTaskLifecycle(
+            head,
+            (
+                RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),
+                RemoteLifecycleTerminal(
+                    delta_id,
+                    "RESULT",
+                    head,
+                    json.dumps(delta_run_data).encode(),
+                    delta_package,
+                ),
+            ),
+            (
+                RemoteLifecycleReview(run_id, head, rev_order2),
+                RemoteLifecycleReview(delta_id, head, delta_review_f1),
+            ),
+            (), (), (),
+        )
+        _stub_unified_remote(monkeypatch, repo, malformed_alias_lifecycle)
+        obs_alias = observe_unified_state("TASK-101", repo=repo).as_dict()
+        assert obs_alias["lifecycle_state"] == "BLOCKED"
+        assert obs_alias["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+    # 4. Observation is read-only: runtime state has not mutated
     before_runtime = _runtime_bytes(repo)
     observe_unified_state("TASK-101", repo=repo)
     assert _runtime_bytes(repo) == before_runtime
