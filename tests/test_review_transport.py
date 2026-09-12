@@ -8,6 +8,7 @@ import aios_renew.review_transport as review_transport
 from aios_renew.review_transport import (
     ReviewTransportError,
     read_remote_task,
+    resolve_remote_performance_snapshot,
     resolve_remote_primary_recovery,
     resolve_remote_repair_recovery,
     resolve_remote_remediation_lineages,
@@ -1081,3 +1082,178 @@ def test_two_valid_lineages_for_exact_task_revision_returned(
         repo, finding_id="F1", task_id="TASK-066", task_revision=1
     )
     assert len(lineages) == 2
+
+
+def test_resolve_remote_performance_snapshot_success(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path)
+    files = tmp_path / "facts"
+    root = git(repo, "rev-parse", "HEAD")
+    c1 = commit_candidate(repo, "primary candidate")
+
+    obs = {
+        "kind": "RUN_OBSERVATION",
+        "run_id": "RUN-058-001",
+        "task": {"id": "TASK-058", "revision": 2},
+        "operation": "PRIMARY",
+        "executor": "codex",
+        "base_sha": root,
+        "terminal_kind": "RESULT",
+        "executor_invoked": True,
+        "durations": {
+            "admitted_run_seconds": 12.0,
+            "executor_seconds": 8.0,
+            "verification_seconds": 3.0,
+        },
+        "token_usage": None,
+    }
+    dir1 = files / "RUN-058-001"
+    dir1.mkdir(parents=True)
+    obs_path = dir1 / "observation.json"
+    write_json(obs_path, obs)
+    run_path = dir1 / "run.json"
+    result_path = dir1 / "result.json"
+    write_json(
+        run_path,
+        {
+            "run_id": "RUN-058-001",
+            "task": {"id": "TASK-058", "revision": 2},
+            "executor": "codex",
+            "base_sha": root,
+            "workspace": "w",
+            "status": "ACTIVE",
+        },
+    )
+    write_json(
+        result_path,
+        {
+            "result": {
+                "head_sha": c1,
+                "claims": [],
+                "changed_files": [],
+                "unresolved": [],
+            },
+            "evidence": [],
+        },
+    )
+    transport_post_pass(
+        repo,
+        run_id="RUN-058-001",
+        head_sha=c1,
+        run_path=run_path,
+        result_path=result_path,
+        observation_path=obs_path,
+    )
+
+    c2 = commit_candidate(repo, "failed primary candidate")
+    publish_failure(
+        repo,
+        files,
+        run_id="RUN-058-002",
+        candidate_sha=c2,
+        root_base_sha=root,
+    )
+
+    snapshot = resolve_remote_performance_snapshot(repo, task_ids=["TASK-058"])
+    assert snapshot.task_selectors == ("TASK-058",)
+    assert len(snapshot.terminals) == 2
+    t1, t2 = snapshot.terminals
+    assert t1.run_id == "RUN-058-001"
+    assert t1.terminal_kind == "RESULT"
+    assert t1.observation is not None
+    assert t2.run_id == "RUN-058-002"
+    assert t2.terminal_kind == "FAILURE"
+    assert t2.observation is None
+
+
+def test_resolve_remote_performance_snapshot_competing_terminals_fails_closed(
+    tmp_path: Path,
+) -> None:
+    repo, remote = make_repo(tmp_path)
+    files = tmp_path / "facts"
+    root = git(repo, "rev-parse", "HEAD")
+    c1 = commit_candidate(repo, "cand1")
+
+    dir1 = files / "RUN-058-001"
+    dir1.mkdir(parents=True)
+    run_path = dir1 / "run.json"
+    result_path = dir1 / "result.json"
+    write_json(
+        run_path,
+        {
+            "run_id": "RUN-058-001",
+            "task": {"id": "TASK-058", "revision": 2},
+            "executor": "codex",
+            "base_sha": root,
+            "workspace": "w",
+            "status": "ACTIVE",
+        },
+    )
+    write_json(
+        result_path,
+        {
+            "result": {
+                "head_sha": c1,
+                "claims": [],
+                "changed_files": [],
+                "unresolved": [],
+            },
+            "evidence": [],
+        },
+    )
+    transport_post_pass(
+        repo,
+        run_id="RUN-058-001",
+        head_sha=c1,
+        run_path=run_path,
+        result_path=result_path,
+    )
+
+    publish_failure(
+        repo,
+        files,
+        run_id="RUN-058-001",
+        candidate_sha=c1,
+        root_base_sha=root,
+    )
+
+    with pytest.raises(ReviewTransportError, match="competing RESULT/FAILURE"):
+        resolve_remote_performance_snapshot(repo, task_ids=["TASK-058"])
+
+
+def test_resolve_remote_performance_snapshot_selector_validation(
+    tmp_path: Path,
+) -> None:
+    repo, remote = make_repo(tmp_path)
+
+    with pytest.raises(ReviewTransportError, match="between 1 and 32"):
+        resolve_remote_performance_snapshot(repo, task_ids=[])
+
+    with pytest.raises(ReviewTransportError, match="maximum bound of 32"):
+        resolve_remote_performance_snapshot(
+            repo, task_ids=[f"TASK-{i:03d}" for i in range(33)]
+        )
+
+    with pytest.raises(ReviewTransportError, match="duplicate identities"):
+        resolve_remote_performance_snapshot(
+            repo, task_ids=["TASK-001", "TASK-001"]
+        )
+
+    with pytest.raises(ReviewTransportError, match="malformed TASK selector identity"):
+        resolve_remote_performance_snapshot(repo, task_ids=["invalid_task"])
+
+
+def test_resolve_remote_performance_snapshot_overflow_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, remote = make_repo(tmp_path)
+    fake_refs = {
+        f"refs/heads/aios/artifacts/RUN-058-{i:03d}": "a" * 40
+        for i in range(257)
+    }
+    monkeypatch.setattr(
+        review_transport,
+        "_exact_remote_refs",
+        lambda *args, **kwargs: fake_refs,
+    )
+    with pytest.raises(ReviewTransportError, match="exceeds maximum bound of 256"):
+        resolve_remote_performance_snapshot(repo, task_ids=["TASK-058"])
