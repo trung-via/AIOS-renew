@@ -1,0 +1,19 @@
+{
+  "repair_id": "REPAIR-099-003",
+  "failed_run_id": "RUN-099-003",
+  "failed_head_sha": "344a4720e4977adbb91a54155dd9daa53834f8ca",
+  "task": {
+    "id": "TASK-099",
+    "revision": 2
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "tests/test_operator_correction_preflight.py"
+  ],
+  "instructions": [
+    "Preserve the TASK-099 revision-2 production implementation unchanged. Update only the exact Correction Preflight REPAIR regression expectations so the revision-2 bounded observation shape includes execution_base: null for REPAIR states where no cumulative remediation execution base exists.",
+    "Update every exact READY/BLOCKED REPAIR expectation affected by this additive nullable field. Do not weaken exact-dict assertions, do not remove or conditionally hide the execution_base field from production, and do not change REPAIR admission, failed-head, executor-required, failure-taxonomy, or correction-authority semantics.",
+    "Continue from the exact RUN-099-003 failed candidate lineage; no unrelated test or production changes are authorized."
+  ],
+  "constraints": []
+}
