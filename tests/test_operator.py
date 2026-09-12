@@ -7016,3 +7016,129 @@ def test_operator_prior_result_fails_closed_on_conflicting_or_alias_predecessor(
         operator_module._load_authoritative_prior_result(
             state, task, summary.head_sha, repo=repo
         )
+
+
+@pytest.mark.parametrize(
+    "local_task_source",
+    [
+        "task_id: TASK-101\n",
+        TASK_SOURCE,
+    ],
+    ids=["malformed-local-task", "older-valid-local-task"],
+)
+def test_continue_refreshes_existing_stale_task_before_parsing_and_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    local_task_source: str,
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo = make_repo(tmp_path, task_source=local_task_source)
+    synchronized_task = TASK_SOURCE.replace("revision: 1", "revision: 2")
+    synchronized_sha = publish_upstream(
+        repo,
+        {
+            ".ai/tasks/TASK-101.yaml": synchronized_task,
+            "src/aios_renew/synchronized_marker.py": "# synchronized kernel\n",
+        },
+        "publish corrected current task and kernel",
+    )
+    argv = ["continue", "TASK-101", "--repo", str(repo)]
+    events: list[tuple[str, str]] = []
+    child_results = []
+    git_calls = []
+    real_git = operator_module._git
+    real_observe = operator_module.observe_unified_state
+
+    def recording_git(root, *args, **kwargs):
+        git_calls.append(args)
+        return real_git(root, *args, **kwargs)
+
+    def observe(task_id, *, repo=None):
+        events.append(("observe", git(repo, "rev-parse", "HEAD")))
+        return real_observe(task_id, repo=repo)
+
+    def restart(root, *, argv=None, runner=subprocess.run):
+        events.append(("restart", git(root, "rev-parse", "HEAD")))
+        monkeypatch.setenv("AIOS_RESTART_ATTEMPTED", "1")
+        child_results.append(
+            operator_module.continue_task("TASK-101", repo=root, argv=argv)
+        )
+        return child_results[-1][1]
+
+    monkeypatch.setattr(operator_module, "_git", recording_git)
+    monkeypatch.setattr(operator_module, "observe_unified_state", observe)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", restart)
+
+    parent, exit_code = operator_module.continue_task(
+        "TASK-101", repo=repo, argv=argv
+    )
+
+    assert parent is None
+    assert exit_code == 0
+    assert events == [
+        ("restart", synchronized_sha),
+        ("observe", synchronized_sha),
+    ]
+    assert len(child_results) == 1
+    child, child_code = child_results[0]
+    assert child_code == 0
+    assert child is not None
+    assert child.task_revision == 2
+    assert child.disposition == "EXECUTOR_REQUIRED"
+    assert load_task(repo, "TASK-101").revision == 2
+    assert len(
+        [args for args in git_calls if args[:2] == ("merge", "--ff-only")]
+    ) == 1
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+@pytest.mark.parametrize(
+    "state", ["equal", "ahead", "diverged", "dirty", "detached", "non-main"]
+)
+def test_continue_pre_observation_preserves_non_behind_valid_task_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    state: str,
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo = make_repo(tmp_path)
+    if state == "ahead":
+        git(repo, "commit", "--allow-empty", "--quiet", "-m", "local ahead")
+    elif state == "diverged":
+        publish_upstream(repo, {"REMOTE.txt": "remote\n"}, "remote advance")
+        git(repo, "commit", "--allow-empty", "--quiet", "-m", "local advance")
+    elif state == "dirty":
+        (repo / "DIRTY.txt").write_text("dirty\n", encoding="utf-8")
+    elif state == "detached":
+        git(repo, "checkout", "--quiet", "--detach")
+    elif state == "non-main":
+        git(repo, "checkout", "--quiet", "-b", "feature")
+
+    before_head = git(repo, "rev-parse", "HEAD")
+    before_branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    before_status = git(repo, "status", "--porcelain")
+    git_calls = []
+    real_git = operator_module._git
+
+    def recording_git(root, *args, **kwargs):
+        git_calls.append(args)
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", recording_git)
+
+    outcome, exit_code = operator_module.continue_task("TASK-101", repo=repo)
+
+    assert exit_code == 0
+    assert outcome is not None
+    assert outcome.task_revision == 1
+    assert outcome.disposition == "EXECUTOR_REQUIRED"
+    assert git(repo, "rev-parse", "HEAD") == before_head
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == before_branch
+    assert git(repo, "status", "--porcelain") == before_status
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not any(args[:2] == ("merge", "--ff-only") for args in git_calls)
+    prohibited = {
+        "read-tree", "update-ref", "rebase", "reset", "checkout", "stash",
+        "clean", "pull", "push",
+    }
+    assert not any(args and args[0] in prohibited for args in git_calls)

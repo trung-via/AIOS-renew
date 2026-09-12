@@ -2487,16 +2487,23 @@ def _synchronize_primary_branch(
     root: Path,
     *,
     allow_restart: bool = False,
+    only_if_behind: bool = False,
 ) -> bool:
     """Align a clean attached main branch to its configured upstream main by exact native FF."""
 
     if _git(root, "status", "--porcelain"):
+        if only_if_behind:
+            return False
         raise OperatorError("repository dirty")
     try:
         branch = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
     except OperatorError as exc:
+        if only_if_behind:
+            return False
         raise OperatorError("repository HEAD is detached") from exc
     if branch != "main":
+        if only_if_behind:
+            return False
         raise OperatorError("current branch is not main")
     try:
         upstream = _git(
@@ -2507,6 +2514,8 @@ def _synchronize_primary_branch(
             "@{upstream}",
         )
     except OperatorError as exc:
+        if only_if_behind:
+            return False
         raise OperatorError("current branch has no resolved upstream") from exc
     try:
         remotes = _git(
@@ -2516,15 +2525,23 @@ def _synchronize_primary_branch(
             root, "config", "--get-all", f"branch.{branch}.merge"
         ).splitlines()
     except OperatorError as exc:
+        if only_if_behind:
+            return False
         raise OperatorError("current branch has no resolved upstream") from exc
 
     if len(remotes) != 1 or len(merge_refs) != 1:
+        if only_if_behind:
+            return False
         raise OperatorError("configured upstream is ambiguous")
     remote = remotes[0].strip()
     merge_ref = merge_refs[0].strip()
     if not remote or not merge_ref:
+        if only_if_behind:
+            return False
         raise OperatorError("current branch has no resolved upstream")
     if merge_ref != "refs/heads/main" or not upstream.endswith("/main"):
+        if only_if_behind:
+            return False
         raise OperatorError("configured upstream does not resolve to main")
 
     try:
@@ -2541,8 +2558,12 @@ def _synchronize_primary_branch(
         raise OperatorError("unsafe reload/restart condition")
 
     if _git_is_ancestor(root, upstream_sha, local_sha):
+        if only_if_behind:
+            return False
         raise OperatorError("local branch is ahead of upstream")
     if not _git_is_ancestor(root, local_sha, upstream_sha):
+        if only_if_behind:
+            return False
         raise OperatorError("local branch has diverged from upstream")
 
     diff_output = _git(
@@ -2628,6 +2649,27 @@ def _preflight_primary_sync(
     state = runtime_paths(root)
     with RepositoryLock(state.lock):
         needs_restart = _synchronize_primary_branch(root, allow_restart=True)
+        preflight_sha = _git(root, "rev-parse", "HEAD")
+    if needs_restart:
+        return PreflightResult(
+            restart_code=_restart_primary_invocation(root, argv=argv, runner=runner)
+        )
+    return PreflightResult(preflight_sha=preflight_sha)
+
+
+def _preflight_continue_sync(
+    root: Path,
+    *,
+    argv: list[str] | None = None,
+    runner: NativeRunner = subprocess.run,
+) -> PreflightResult:
+    """Refresh only a proven clean stale-behind control main before observation."""
+
+    state = runtime_paths(root)
+    with RepositoryLock(state.lock):
+        needs_restart = _synchronize_primary_branch(
+            root, allow_restart=True, only_if_behind=True
+        )
         preflight_sha = _git(root, "rev-parse", "HEAD")
     if needs_restart:
         return PreflightResult(

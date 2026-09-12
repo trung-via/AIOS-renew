@@ -319,24 +319,27 @@ the attempted operation, and the bounded `DELEGATED_OPERATION_FAILED` blocker;
 arbitrary exception text and canonical failure contents are not copied into it.
 
 `aios state <TASK_ID>` remains the read-only inspection surface. `aios continue`
-adds one narrowly bounded stale-checkout convenience: only when a syntactically
-valid requested TASK is absent at its exact local `.ai/tasks/<TASK_ID>.yaml` path,
-it uses the existing TASK-062 synchronization authority before Unified State loads
-the TASK. A clean attached local `main` with one upstream `main` may be fetched and
-fast-forwarded once; synchronized kernel or TASK changes transfer control once to
-the same `continue` request, which validates the TASK and derives Unified State
-again from current state. If the TASK remains absent, or the repository is dirty,
-detached, non-`main`, lacks one unambiguous upstream `main`, is ahead or diverged,
-or fetch/fast-forward fails, continuation fails closed before a RUN or Executor.
+adds one narrowly bounded stale-checkout convenience before it resolves or parses
+the requested TASK. A clean attached local `main` that is strictly behind its one
+configured upstream `main` is fetched and fast-forwarded once through the existing
+TASK-062 synchronization authority. This applies whether the local TASK is absent,
+malformed, or valid but older than the upstream revision. Synchronized kernel or
+TASK changes transfer control exactly once to the same `continue` request, which
+then validates the current TASK and derives Unified State again from synchronized
+state before any RUN or Executor invocation.
 
-An existing local TASK never enters this new pre-resolution synchronization path,
-regardless of whether its derived action is PRIMARY, correction, review,
-publication, transport, recovery, wait, done, or blocked. `aios state` remains
-mutation-free and may report a missing TASK on a stale checkout. This hardening of
-the TASK-087 surface reuses TASK-062; it adds no manual action selection, Executor
-routing, retry, fallback, reroute, planning, semantic review, correction authoring,
-publication, downstream migration, workflow, roadmap completion, or change to the
-syntax and authority of the existing low-level commands.
+An already-equal clean `main` makes no committed or worktree change. Local-ahead,
+diverged, dirty, detached, non-`main`, or ambiguously configured checkouts are not
+reset, merged, rebased, stashed, force-updated, or otherwise integrated by this
+pre-observation boundary. A locally valid TASK in those states retains ordinary
+Unified Human observation behavior; a missing or invalid TASK fails closed and may
+require explicit Human repository resolution. A required fetch or fast-forward
+failure also fails closed before a RUN or Executor, without retry or fallback.
+`aios state` remains mutation-free and may report a missing TASK on a stale
+checkout. This hardening of the TASK-087 surface reuses TASK-062; it adds no manual
+action selection, Executor routing, reroute, planning, semantic review, correction
+authoring, publication, downstream migration, workflow, roadmap completion, or
+change to the syntax and authority of the existing low-level commands.
 
 ### Admission Failure v2 and outcome boundaries
 

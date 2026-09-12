@@ -192,16 +192,16 @@ def _pre_resolve_continue_task(
     argv: list[str] | None = None,
     runner: NativeRunner = subprocess.run,
 ) -> PreflightResult:
-    """Resolve an absent valid TASK once before Unified State observation."""
+    """Safely refresh a stale-behind control main before TASK observation."""
 
     op = _operator()
     task_path = op._canonical_task_path(root, task_id)
-    if task_path.is_file():
-        return op.PreflightResult()
     if os.environ.get("AIOS_RESTART_ATTEMPTED") == "1":
-        raise op.OperatorError(f"TASK not found: {task_id}")
+        if not task_path.is_file():
+            raise op.OperatorError(f"TASK not found: {task_id}")
+        return op.PreflightResult(preflight_sha=op._git(root, "rev-parse", "HEAD"))
 
-    preflight = op._preflight_primary_sync(root, argv=argv, runner=runner)
+    preflight = op._preflight_continue_sync(root, argv=argv, runner=runner)
     if preflight.restart_code is not None:
         return preflight
     if not task_path.is_file():
