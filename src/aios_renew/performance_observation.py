@@ -161,6 +161,12 @@ class PerformanceObservation:
         return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
 
 
+def _operator():
+    import aios_renew.operator as op
+
+    return op
+
+
 def build_performance_observation(
     snapshot: RemotePerformanceSnapshot,
 ) -> PerformanceObservation:
@@ -181,61 +187,50 @@ def build_performance_observation(
                 f"run.json must be a mapping for {terminal.run_id}"
             )
 
-        if run_data.get("kind") == "REMEDIATION":
-            execution = run_data.get("execution")
-            if not isinstance(execution, Mapping):
-                raise PerformanceObservationError(
-                    f"REMEDIATION execution must be a mapping for {terminal.run_id}"
-                )
-            source_run = execution.get("run")
-            if not isinstance(source_run, Mapping):
-                raise PerformanceObservationError(
-                    f"REMEDIATION source run must be a mapping for {terminal.run_id}"
-                )
-            run_dict = source_run
-        elif "kind" not in run_data:
-            run_dict = run_data
-        else:
+        if "kind" in run_data and run_data.get("kind") != "REMEDIATION":
             raise PerformanceObservationError(
                 f"unknown run kind at {terminal.run_id}"
             )
 
-        run_id = run_dict.get("run_id")
-        if run_id != terminal.run_id:
+        try:
+            op = _operator()
+            if run_data.get("kind") == "REMEDIATION":
+                execution = op._remediation_execution_from_data(
+                    run_data.get("execution")
+                )
+                if "predecessor" in run_data:
+                    pred = op._parse_remediation_predecessor(
+                        run_data["predecessor"]
+                    )
+                    if (
+                        pred.review_id != execution.review_id
+                        or pred.finding_id != execution.finding.id
+                        or pred.reviewed_sha != execution.remediation.reviewed_sha
+                    ):
+                        raise ValueError("predecessor mismatch")
+                if "execution_base" in run_data:
+                    base = op._parse_remediation_execution_base(
+                        run_data["execution_base"]
+                    )
+                    if base.candidate_sha != execution.run.base_sha:
+                        raise ValueError("execution_base mismatch")
+                canonical_run = execution.run
+            else:
+                canonical_run = op._run_from_data(run_data)
+        except (KeyError, TypeError, ValueError) as exc:
             raise PerformanceObservationError(
-                f"run.json run_id mismatch: expected {terminal.run_id}, got {run_id}"
-            )
-        task_data = run_dict.get("task")
-        if not isinstance(task_data, Mapping):
+                f"invalid run.json for {terminal.run_id}: {exc}"
+            ) from exc
+
+        if canonical_run.run_id != terminal.run_id:
             raise PerformanceObservationError(
-                f"run.json task must be a mapping for {terminal.run_id}"
+                f"run.json run_id mismatch: expected {terminal.run_id}, got {canonical_run.run_id}"
             )
-        task_id = task_data.get("id")
-        revision = task_data.get("revision")
-        if task_id != terminal.task_id:
+        if canonical_run.task.id != terminal.task_id:
             raise PerformanceObservationError(
-                f"run.json task.id mismatch: expected {terminal.task_id}, got {task_id}"
+                f"run.json task.id mismatch: expected {terminal.task_id}, got {canonical_run.task.id}"
             )
-        if (
-            isinstance(revision, bool)
-            or not isinstance(revision, int)
-            or revision < 1
-        ):
-            raise PerformanceObservationError(
-                f"run.json task.revision must be positive integer for {terminal.run_id}"
-            )
-        executor = run_dict.get("executor")
-        base_sha = run_dict.get("base_sha")
-        status = run_dict.get("status")
-        if not isinstance(executor, str) or not executor:
-            raise PerformanceObservationError(
-                f"run.json executor is invalid for {terminal.run_id}"
-            )
-        if not isinstance(base_sha, str) or not base_sha:
-            raise PerformanceObservationError(
-                f"run.json base_sha is invalid for {terminal.run_id}"
-            )
-        if status != "ACTIVE":
+        if canonical_run.status != "ACTIVE":
             raise PerformanceObservationError(
                 f"run.json status is not ACTIVE for {terminal.run_id}"
             )
@@ -290,17 +285,17 @@ def build_performance_observation(
                 raise PerformanceObservationError(
                     f"observation task_id mismatch: expected {terminal.task_id}, got {obs.task_id}"
                 )
-            if obs.task_revision != revision:
+            if obs.task_revision != canonical_run.task.revision:
                 raise PerformanceObservationError(
-                    f"observation task_revision mismatch: expected {revision}, got {obs.task_revision}"
+                    f"observation task_revision mismatch: expected {canonical_run.task.revision}, got {obs.task_revision}"
                 )
-            if obs.executor != executor:
+            if obs.executor != canonical_run.executor:
                 raise PerformanceObservationError(
-                    f"observation executor mismatch: expected {executor}, got {obs.executor}"
+                    f"observation executor mismatch: expected {canonical_run.executor}, got {obs.executor}"
                 )
-            if obs.base_sha != base_sha:
+            if obs.base_sha != canonical_run.base_sha:
                 raise PerformanceObservationError(
-                    f"observation base_sha mismatch: expected {base_sha}, got {obs.base_sha}"
+                    f"observation base_sha mismatch: expected {canonical_run.base_sha}, got {obs.base_sha}"
                 )
             if obs.terminal_kind != terminal.terminal_kind:
                 raise PerformanceObservationError(
@@ -684,7 +679,7 @@ def observe_performance(
     """Read-only observational aggregation of canonical remote RUN_OBSERVATION facts."""
 
     validated_selectors = validate_task_selectors(task_ids)
-    import aios_renew.operator as op
+    op = _operator()
 
     root = op.resolve_repository(repo)
     try:

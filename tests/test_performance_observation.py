@@ -86,17 +86,113 @@ def make_terminal_artifact(
     terminal_kind: str = "RESULT",
     executor: str = "codex",
     base_sha: str = "a" * 40,
+    workspace: str = "w",
     observation: RunObservation | None = None,
     corrupt_observation: bytes | None = None,
+    run_override: dict | None = None,
 ) -> RemoteTerminalArtifact:
-    run_doc = {
-        "run_id": run_id,
-        "task": {"id": task_id, "revision": task_revision},
-        "executor": executor,
-        "base_sha": base_sha,
-        "workspace": "w",
-        "status": "ACTIVE",
+    if run_override is not None:
+        run_doc = run_override
+    else:
+        run_doc = {
+            "run_id": run_id,
+            "task": {"id": task_id, "revision": task_revision},
+            "executor": executor,
+            "base_sha": base_sha,
+            "workspace": workspace,
+            "status": "ACTIVE",
+        }
+    if terminal_kind == "RESULT":
+        terminal_doc: dict = {
+            "result": {"head_sha": "b" * 40, "claims": [], "changed_files": [], "unresolved": []},
+            "evidence": [],
+        }
+    else:
+        terminal_doc = {
+            "kind": "FAILURE",
+            "run_id": run_id,
+            "task": {"id": task_id, "revision": task_revision},
+            "executor": executor,
+            "base_sha": base_sha,
+            "failed_head_sha": "c" * 40,
+            "candidate": {
+                "transportable": True,
+                "repairable": True,
+                "dirty": False,
+                "descends_from_base": True,
+                "changed_files": [],
+                "outside_task_scope": [],
+            },
+        }
+
+    obs_bytes = None
+    if corrupt_observation is not None:
+        obs_bytes = corrupt_observation
+    elif observation is not None:
+        obs_bytes = json.dumps(observation_data(observation)).encode("utf-8")
+
+    return RemoteTerminalArtifact(
+        run_id=run_id,
+        task_id=task_id,
+        terminal_kind=terminal_kind,
+        artifact_sha="f" * 40,
+        run=json.dumps(run_doc).encode("utf-8"),
+        terminal=json.dumps(terminal_doc).encode("utf-8"),
+        observation=obs_bytes,
+    )
+
+
+def make_remediation_terminal_artifact(
+    run_id: str,
+    task_id: str = "TASK-101",
+    task_revision: int = 1,
+    terminal_kind: str = "RESULT",
+    executor: str = "antigravity",
+    base_sha: str = "a" * 40,
+    workspace: str = "w",
+    observation: RunObservation | None = None,
+    corrupt_observation: bytes | None = None,
+    execution_override: dict | None = None,
+    predecessor: dict | None = None,
+) -> RemoteTerminalArtifact:
+    if execution_override is not None:
+        execution = execution_override
+    else:
+        execution = {
+            "review_id": "REVIEW-101-001",
+            "finding": {
+                "id": "F101-001",
+                "basis": "AC3",
+                "action": "CODE_FIX",
+                "location": "src/foo.py",
+                "issue": "issue text",
+                "expected": "expected text",
+            },
+            "remediation": {
+                "finding_id": "F101-001",
+                "action": "CODE_FIX",
+                "reviewed_sha": base_sha,
+                "constraints": [],
+                "modification_scope": ["src/foo.py"],
+            },
+            "run": {
+                "run_id": run_id,
+                "task": {"id": task_id, "revision": task_revision},
+                "executor": executor,
+                "base_sha": base_sha,
+                "workspace": workspace,
+                "status": "ACTIVE",
+            },
+            "original_constraints": [],
+        }
+
+    run_doc: dict = {
+        "kind": "REMEDIATION",
+        "execution": execution,
     }
+    if predecessor is not None:
+        run_doc["predecessor"] = predecessor
+
     if terminal_kind == "RESULT":
         terminal_doc: dict = {
             "result": {"head_sha": "b" * 40, "claims": [], "changed_files": [], "unresolved": []},
@@ -537,3 +633,165 @@ def test_validate_performance_observation_catches_invalid_payloads() -> None:
     }
     with pytest.raises(PerformanceObservationError, match="cached_input_tokens must not exceed"):
         validate_performance_observation(bad)
+
+
+def test_malformed_run_metadata_fails_closed_even_without_observation() -> None:
+    # Unsupported executor fails closed even when observation is missing
+    term = make_terminal_artifact("RUN-101-001", executor="unsupported_executor", observation=None)
+    with pytest.raises(PerformanceObservationError, match="invalid run.json"):
+        build_performance_observation(RemotePerformanceSnapshot(("TASK-101",), (term,)))
+
+    # Empty workspace fails closed even when observation is missing
+    term = make_terminal_artifact("RUN-101-001", workspace="", observation=None)
+    with pytest.raises(PerformanceObservationError, match="invalid run.json"):
+        build_performance_observation(RemotePerformanceSnapshot(("TASK-101",), (term,)))
+
+    # Missing workspace fails closed even when observation is missing
+    term = make_terminal_artifact(
+        "RUN-101-001",
+        run_override={
+            "run_id": "RUN-101-001",
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": "a" * 40,
+            "status": "ACTIVE",
+        },
+        observation=None,
+    )
+    with pytest.raises(PerformanceObservationError, match="invalid run.json"):
+        build_performance_observation(RemotePerformanceSnapshot(("TASK-101",), (term,)))
+
+    # Non-positive revision fails closed
+    term = make_terminal_artifact("RUN-101-001", task_revision=0, observation=None)
+    with pytest.raises(PerformanceObservationError, match="invalid run.json"):
+        build_performance_observation(RemotePerformanceSnapshot(("TASK-101",), (term,)))
+
+    # Non-ACTIVE status fails closed
+    term = make_terminal_artifact(
+        "RUN-101-001",
+        run_override={
+            "run_id": "RUN-101-001",
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": "a" * 40,
+            "workspace": "w",
+            "status": "TERMINATED",
+        },
+        observation=None,
+    )
+    with pytest.raises(PerformanceObservationError, match="status is not ACTIVE"):
+        build_performance_observation(RemotePerformanceSnapshot(("TASK-101",), (term,)))
+
+    # run_id mismatch fails closed
+    term = make_terminal_artifact(
+        "RUN-101-001",
+        run_override={
+            "run_id": "RUN-101-999",
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": "a" * 40,
+            "workspace": "w",
+            "status": "ACTIVE",
+        },
+        observation=None,
+    )
+    with pytest.raises(PerformanceObservationError, match="run.json run_id mismatch"):
+        build_performance_observation(RemotePerformanceSnapshot(("TASK-101",), (term,)))
+
+    # task_id mismatch fails closed
+    term = make_terminal_artifact(
+        "RUN-101-001",
+        run_override={
+            "run_id": "RUN-101-001",
+            "task": {"id": "TASK-999", "revision": 1},
+            "executor": "codex",
+            "base_sha": "a" * 40,
+            "workspace": "w",
+            "status": "ACTIVE",
+        },
+        observation=None,
+    )
+    with pytest.raises(PerformanceObservationError, match="run.json task.id mismatch"):
+        build_performance_observation(RemotePerformanceSnapshot(("TASK-101",), (term,)))
+
+    # Unknown run kind fails closed
+    term = make_terminal_artifact(
+        "RUN-101-001",
+        run_override={
+            "kind": "UNKNOWN",
+            "run_id": "RUN-101-001",
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": "a" * 40,
+            "workspace": "w",
+            "status": "ACTIVE",
+        },
+        observation=None,
+    )
+    with pytest.raises(PerformanceObservationError, match="unknown run kind"):
+        build_performance_observation(RemotePerformanceSnapshot(("TASK-101",), (term,)))
+
+
+def test_remediation_run_wrapper_validation() -> None:
+    # Valid remediation run with missing observation is treated as coverage gap
+    term = make_remediation_terminal_artifact("RUN-101-001", observation=None)
+    obs = build_performance_observation(RemotePerformanceSnapshot(("TASK-101",), (term,)))
+    assert obs.coverage.terminal_runs == 1
+    assert obs.coverage.valid_observations == 0
+    assert obs.coverage.missing_observations == 1
+
+    # Valid remediation run with valid observation succeeds
+    obs_item = RunObservation(
+        run_id="RUN-101-001",
+        task_id="TASK-101",
+        task_revision=1,
+        operation="REMEDIATION",
+        executor="antigravity",
+        base_sha="a" * 40,
+        terminal_kind="RESULT",
+        executor_invoked=True,
+        admitted_run_elapsed_seconds=10.0,
+        executor_elapsed_seconds=5.0,
+        verification_elapsed_seconds=2.0,
+    )
+    term_valid = make_remediation_terminal_artifact("RUN-101-001", observation=obs_item)
+    obs_valid = build_performance_observation(
+        RemotePerformanceSnapshot(("TASK-101",), (term_valid,))
+    )
+    assert obs_valid.coverage.terminal_runs == 1
+    assert obs_valid.coverage.valid_observations == 1
+    assert obs_valid.coverage.missing_observations == 0
+
+    # Remediation run with missing execution fails closed
+    term_bad_exec = make_remediation_terminal_artifact(
+        "RUN-101-001",
+        execution_override={"run": {}},
+        observation=None,
+    )
+    with pytest.raises(PerformanceObservationError, match="invalid run.json"):
+        build_performance_observation(
+            RemotePerformanceSnapshot(("TASK-101",), (term_bad_exec,))
+        )
+
+    # Remediation run with unsupported executor in execution.run fails closed
+    term_bad_exec_run = make_remediation_terminal_artifact(
+        "RUN-101-001",
+        executor="unsupported_executor",
+        observation=None,
+    )
+    with pytest.raises(PerformanceObservationError, match="invalid run.json"):
+        build_performance_observation(
+            RemotePerformanceSnapshot(("TASK-101",), (term_bad_exec_run,))
+        )
+
+    # Remediation run with empty workspace in execution.run fails closed
+    term_bad_workspace = make_remediation_terminal_artifact(
+        "RUN-101-001",
+        workspace="",
+        observation=None,
+    )
+    with pytest.raises(PerformanceObservationError, match="invalid run.json"):
+        build_performance_observation(
+            RemotePerformanceSnapshot(("TASK-101",), (term_bad_workspace,))
+        )
+
