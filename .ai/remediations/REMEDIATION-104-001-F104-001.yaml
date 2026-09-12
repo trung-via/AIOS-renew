@@ -1,0 +1,14 @@
+finding_id: F104-001
+action: CODE_FIX
+reviewed_sha: ef482961c0322cd0aa928c72f7e4b85ee17f8e5e
+scope:
+  modify:
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_authoring_ingress.py
+verification:
+  affected:
+    - python -m pytest tests/test_authoring_ingress.py -q
+    - git diff --check
+constraints:
+  - Existing Runtime transport, Unified State, correction preflight, semantic review, publication, and historical artifact interpretation remain behaviorally compatible. No second lifecycle reducer, Reviewer, publication authority, correction frontier, or generic repository writer is introduced.
+  - Do not push from Executor implementation execution.
