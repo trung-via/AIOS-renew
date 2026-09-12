@@ -4472,6 +4472,22 @@ def _parser() -> argparse.ArgumentParser:
     )
     transport_parser.add_argument("run_id")
     transport_parser.add_argument("--repo")
+    ingress_parser = commands.add_parser(
+        "ingress",
+        aliases=["ingest"],
+        help="Ingest one Brain/Reviewer-authored control-plane artifact envelope",
+    )
+    ingress_parser.add_argument(
+        "source",
+        nargs="?",
+        default=None,
+        help="Path to envelope file (or '-' for stdin)",
+    )
+    ingress_parser.add_argument("--file", help="Path to envelope file")
+    ingress_parser.add_argument(
+        "--stdin", action="store_true", help="Read envelope from stdin"
+    )
+    ingress_parser.add_argument("--repo", help="Target Git repository path")
     return parser
 
 
@@ -4735,6 +4751,23 @@ def main(
                 verification_runner=verification_runner,
                 monotonic_clock=monotonic_clock,
             )
+        elif args.command in ("ingress", "ingest"):
+            from .authoring_ingress import AuthoringIngressError, ingest_carrier
+
+            try:
+                repo_root = resolve_repository(args.repo)
+                if args.file and args.stdin:
+                    raise OperatorError("cannot specify both --file and --stdin")
+                if args.file and args.source:
+                    raise OperatorError("cannot specify both positional source and --file")
+                if args.stdin and args.source and args.source != "-":
+                    raise OperatorError("cannot specify both positional source and --stdin")
+                source = args.file if args.file is not None else args.source
+                if args.stdin:
+                    source = "-"
+                summary = ingest_carrier(source=source, repo=repo_root)
+            except (OperatorError, AuthoringIngressError) as exc:
+                raise OperatorError(str(exc)) from exc
             print(summary.render())
         else:
             retry_transport(args.run_id, repo=args.repo)

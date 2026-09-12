@@ -7750,3 +7750,70 @@ def test_continue_pre_observation_preserves_unconfigured_branch_failure(
         "clean", "pull", "push",
     }
     assert not any(args and args[0] in prohibited for args in git_calls)
+
+
+def test_operator_cli_ingress_and_ingest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = make_repo(tmp_path)
+    main_sha = git(repo, "rev-parse", "HEAD")
+
+    task_payload = """\
+task_id: TASK-200
+revision: 1
+goal: CLI ingress test.
+problem: Test operator CLI.
+assumptions:
+  - Canonical main is established.
+scope:
+  inspect: []
+  modify: [README.md]
+non_goals: []
+constraints:
+  hard:
+    - Hard constraint.
+acceptance:
+  - id: AC1
+    condition: Works.
+verification:
+  required:
+    - git diff --check
+"""
+    envelope = {
+        "format": "AIOS_INGRESS_ENVELOPE",
+        "version": 1,
+        "operation": "AUTHOR_TASK",
+        "identity": {"task_id": "TASK-200"},
+        "expected_state": {"expected_main_sha": main_sha},
+        "payload": task_payload,
+    }
+
+    envelope_file = tmp_path / "envelope.json"
+    envelope_file.write_text(json.dumps(envelope), encoding="utf-8")
+
+    # Test positional file argument with 'ingress'
+    code = operator_module.main(["ingress", str(envelope_file), "--repo", str(repo)])
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "AIOS INGRESS PASS" in captured.out
+    assert "operation: AUTHOR_TASK" in captured.out
+    assert "status: CANONICALIZED" in captured.out
+
+    # Test alias 'ingest' with idempotent replay
+    code = operator_module.main(["ingest", "--file", str(envelope_file), "--repo", str(repo)])
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "AIOS INGRESS PASS" in captured.out
+    assert "status: IDEMPOTENT" in captured.out
+
+    # Test ambiguous arguments
+    code = operator_module.main(["ingress", "--file", str(envelope_file), "--stdin", "--repo", str(repo)])
+    assert code == 1
+    captured = capsys.readouterr()
+    assert "AIOS ERROR:" in captured.err
+
+    # Test failure on invalid envelope
+    invalid_file = tmp_path / "invalid.json"
+    invalid_file.write_text(json.dumps({"format": "INVALID"}), encoding="utf-8")
+    code = operator_module.main(["ingress", str(invalid_file), "--repo", str(repo)])
+    assert code == 1
+    captured = capsys.readouterr()
+    assert "AIOS ERROR:" in captured.err

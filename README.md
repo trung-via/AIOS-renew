@@ -551,3 +551,80 @@ package and preserves any exact `result.unresolved` strings as structured
 Missing or invalid staging adds no executor diagnostics and never replaces the
 original failure. Failure transport publishes that Runtime-authored artifact
 without parsing Executor output.
+
+## Generic Brain-to-Repository Authoring Ingress
+
+AIOS provides a bounded, transport-neutral control-plane ingress that accepts
+Brain/Reviewer-authored semantic artifacts (`TASK`, `REVIEW`, `REMEDIATION`, and `REPAIR`),
+validates them against existing canonical contracts and exact repository lineage, and lets
+deterministic Runtime-owned Git mechanics canonicalize them without granting generic
+repository write or shell mutation capability to the model host.
+
+### Architecture & Authority Separation
+
+The Brain owns semantic intent (**WHAT** and **WHY**), while Runtime owns Git mutation
+mechanics and transport. Rather than granting external model hosts broad GitHub write tokens
+or branch/file creation privileges—which could allow arbitrary file writes or accidentally
+commit review metadata onto implementation `main`—the Brain produces a bounded semantic
+envelope.
+
+Runtime validates the envelope against canonical contracts and optimistic-concurrency
+preconditions, derives the single permitted canonical destination, and performs the
+deterministic Git mutation on behalf of the Brain.
+
+### Ingress Envelope Contract
+
+The envelope format is versioned (`format: AIOS_INGRESS_ENVELOPE`, `version: 1`) and supports
+exactly four allowlisted operations:
+
+| Operation | Subject Identity | Derived Canonical Destination | Expected Predecessor State |
+| --- | --- | --- | --- |
+| `AUTHOR_TASK` | `task_id` | `.ai/tasks/TASK-<id>.yaml` (on `main`) | `expected_main_sha` |
+| `SUBMIT_REVIEW` | `run_id` | `refs/heads/aios/review-decision/<run_id>` | `expected_candidate_sha` |
+| `AUTHOR_REMEDIATION` | `source_run_id`, `finding_id` | `refs/heads/aios/remediation/<source_run_id>-<finding_id>` | `expected_reviewed_sha` |
+| `AUTHOR_REPAIR` | `failed_run_id` | `refs/heads/aios/repair/<failed_run_id>` | `expected_failed_head_sha` |
+
+The envelope strictly rejects:
+- Unknown operations or aliases;
+- Caller-selected destination paths (`destination`, `path`, `target_file`);
+- Caller-selected Git refs (`ref`, `branch`);
+- Command-like or shell execution requests (`command`, `cmd`, `shell`, `exec`, `git_command`);
+- Extra authority overrides or credential fields (`credentials`, `token`, `force`, `override`).
+
+### Human-Facing Carrier (File & Stdin)
+
+The repository provides a bounded CLI surface via `aios ingress` (alias `aios ingest`):
+
+```powershell
+# From local file:
+aios ingress envelope.json
+aios ingress --file envelope.json
+
+# From standard input:
+cat envelope.json | aios ingress
+aios ingress -
+aios ingress --stdin
+```
+
+Carrier parsing (`read_carrier_input`) is strictly decoupled from semantic validation and
+mutation (`execute_ingress`). External integrations (such as ChatGPT Custom Actions,
+Gemini extensions, Claude tool use, or GitHub webhooks) can supply the exact same structured
+envelope without changing semantic validation or acquiring broad write permissions.
+
+### Concurrency, Fail-Closed, and Idempotency Rules
+
+- **Optimistic Concurrency**: Every operation validates its exact expected canonical
+  predecessor immediately before mutation (`expected_main_sha`, `expected_candidate_sha`,
+  `expected_reviewed_sha`, or `expected_failed_head_sha`). If canonical state moved since
+  the Brain authored the envelope, ingress fails closed without automatic merge, rebase,
+  or reinterpretation.
+- **Revision Continuity**: `AUTHOR_TASK` requires revision 1 for new tasks and exact
+  continuity (`revision = existing + 1`) for revisions, allowing zero unrelated committed delta.
+- **Lineage Integrity**: `SUBMIT_REVIEW` binds the exact reviewed candidate SHA and immutable
+  `ResultPackage`; review metadata is committed exclusively to the control-plane decision ref
+  and never onto implementation `main`. `AUTHOR_REMEDIATION` binds one exact outstanding
+  finding from a `CHANGES_REQUIRED` review. `AUTHOR_REPAIR` requires an eligible, repairable
+  failed candidate and rejects stale or continued lineage.
+- **Idempotency**: Exact replay of an already-canonicalized operation returns `IDEMPOTENT`
+  with `replayed: true` and the existing canonical SHA. Replaying the same identity with
+  different content or a changed predecessor fails closed as a conflict.
