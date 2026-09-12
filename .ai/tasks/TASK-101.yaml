@@ -1,0 +1,83 @@
+task_id: TASK-101
+revision: 1
+
+goal: >
+  Complete Performance Closure P5 with one bounded read-only Human-facing surface that aggregates canonical transported RUN_OBSERVATION facts for explicitly selected TASKs.
+
+problem: >
+  TASK-046 and TASK-100 record per-RUN operational telemetry, but reproducing recent performance still requires manual inspection of individual terminal artifact refs. P5 needs one deterministic summary without turning analytics into engineering truth.
+
+assumptions:
+  - Canonical main before authoring is 8067ac257c15779367f4e1463e7af8b5b5059e46.
+  - REVIEW-100-001 is PRIMARY PASS with no findings, so P4 is complete.
+  - TASK-046 owns RUN_OBSERVATION semantics and TASK-100 owns soft_budget semantics.
+  - Missing historical observation sidecars remain valid absence and are never inferred.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-PERFORMANCE-CLOSURE.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/tasks/TASK-046.yaml
+    - .ai/tasks/TASK-100.yaml
+    - src/aios_renew/run_observation.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operator.py
+    - tests/test_run_observation.py
+    - tests/test_review_transport.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/performance_observation.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operator.py
+    - tests/test_performance_observation.py
+    - tests/test_review_transport.py
+    - tests/test_operator.py
+
+non_goals:
+  - Change RUN_OBSERVATION production, persistence, transport, Dispatcher budgets, Runtime verification, or terminal truth.
+  - Add a database, daemon, background collector, scheduler, dashboard server, planner, router, retry, fallback, Executor scoring, or autonomous policy.
+  - Infer semantic PASS, missing telemetry, model identity, quota, monetary cost, or timeout cause.
+  - Define recency from timestamps, RUN numbering, ref order, commit order, or filesystem order.
+  - Reconstruct correction depth or create a second lifecycle reducer.
+  - Rewrite or backfill historical artifacts.
+  - Modify frozen Kernel v0.1 artifacts.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - Expose `aios performance <TASK_ID> [<TASK_ID> ...]` with optional `--repo`; accept 1-32 unique exact TASK identities and fail closed on malformed or duplicate selectors.
+    - Read only configured canonical upstream `aios/artifacts/<RUN>` and `aios/failure-artifacts/<RUN>` namespaces for selected TASKs; local Runtime state and ordering metadata must not select or substitute telemetry.
+    - Bound one snapshot to at most 256 distinct terminal RUN identities; overflow or competing RESULT/FAILURE identity for one RUN fails closed without truncation.
+    - Validate transported run.json and terminal family; when observation.json exists, validate it with the existing RUN_OBSERVATION contract and require exact RUN id, TASK id/revision, Executor, base SHA and terminal-kind binding. Missing observation.json is an explicit coverage gap; malformed or conflicting telemetry fails closed.
+    - Emit deterministic JSON format AIOS_PERFORMANCE_OBSERVATION version 1 with sorted TASK selectors, coverage, counts by operation/terminal kind/Executor/TASK revision/available soft-budget status, duration summaries, failure_rate, verification_share, and trusted token-usage sample coverage and totals.
+    - Duration p50/p95 use nearest-rank over exact non-null values: sort ascending and select one-based rank ceil(p*n/100); no interpolation or pre-rounding; empty samples return null.
+    - failure_rate is FAILURE observations divided by valid observations. verification_share is summed non-null verification_seconds divided by summed admitted_run_seconds across valid observations, treating unavailable verification duration as zero; return null when there are no valid observations or admitted time sums to zero. Token and soft-budget totals count only observations where those complete fields are present and report sample counts.
+    - Invocation is observational only: no RUN creation, Executor call, verification, Runtime write, Git ref/worktree/index mutation, publication, roadmap mutation, or Unified State/Human Surface action change.
+    - Reuse the existing canonical Git transport/query boundary rather than introducing a second independent remote-state authority.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: `aios performance` returns stable AIOS_PERFORMANCE_OBSERVATION v1 for 1-32 exact unique TASK selectors.
+  - id: AC2
+    condition: Canonical remote terminal refs alone define the bounded snapshot; overflow, competing terminals, heuristic recency and local-state substitution are rejected.
+  - id: AC3
+    condition: Present observations are validated and exactly bound to RUN/TASK/Executor/base SHA/terminal kind; missing observations are explicit coverage gaps and malformed ones fail closed.
+  - id: AC4
+    condition: Coverage and counts by operation, terminal kind, Executor, TASK revision and available soft-budget status are deterministic and never fabricate historical classification.
+  - id: AC5
+    condition: p50/p95, failure_rate and verification_share follow the exact defined formulas and empty samples return null.
+  - id: AC6
+    condition: Token totals use only complete trusted token_usage groups with explicit sample coverage and no inferred or provider-specific usage.
+  - id: AC7
+    condition: The surface is read-only and semantically inert with no execution, verification, publication, roadmap or lifecycle authority change.
+  - id: AC8
+    condition: Delta stays within authorized files and focused tests; no tests are deleted, skipped, xfailed, duplicated or weakened.
+
+verification:
+  required:
+    - python -m pytest tests/test_performance_observation.py tests/test_review_transport.py -q
+    - python -m pytest tests/test_operator.py -k "performance" -q
