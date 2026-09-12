@@ -53,9 +53,11 @@ constraints:
     - Bound one snapshot to at most 256 distinct terminal RUN identities; overflow or competing RESULT/FAILURE identity for one RUN fails closed without truncation.
     - Validate transported run.json and terminal family; when observation.json exists, validate it with the existing RUN_OBSERVATION contract and require exact RUN id, TASK id/revision, Executor, base SHA and terminal-kind binding. Missing observation.json is an explicit coverage gap; malformed or conflicting telemetry fails closed.
     - Emit deterministic JSON format AIOS_PERFORMANCE_OBSERVATION version 1 with sorted TASK selectors, coverage, counts by operation/terminal kind/Executor/TASK revision/available soft-budget status, duration summaries, failure_rate, verification_share, and trusted token-usage sample coverage and totals.
-    - Duration p50/p95 use nearest-rank over exact non-null values: sort ascending and select one-based rank ceil(p*n/100); no interpolation or pre-rounding; empty samples return null.
+    - >
+      Duration p50/p95 use nearest-rank over exact non-null values: sort ascending and select one-based rank ceil(p*n/100); no interpolation or pre-rounding; empty samples return null.
     - failure_rate is FAILURE observations divided by valid observations. verification_share is summed non-null verification_seconds divided by summed admitted_run_seconds across valid observations, treating unavailable verification duration as zero; return null when there are no valid observations or admitted time sums to zero. Token and soft-budget totals count only observations where those complete fields are present and report sample counts.
-    - Invocation is observational only: no RUN creation, Executor call, verification, Runtime write, Git ref/worktree/index mutation, publication, roadmap mutation, or Unified State/Human Surface action change.
+    - >
+      Invocation is observational only: no RUN creation, Executor call, verification, Runtime write, Git ref/worktree/index mutation, publication, roadmap mutation, or Unified State/Human Surface action change.
     - Reuse the existing canonical Git transport/query boundary rather than introducing a second independent remote-state authority.
     - Do not push from Executor implementation execution.
 
