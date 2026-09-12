@@ -52,18 +52,18 @@ sequence:
       Revision 2 completed the generic hardening and is semantically reviewed PASS and
       published at the exact current-main SHA above.
   - id: brain-authoring-ingress
-    status: NEXT
-    task_id: TASK-104
-    task_revision: 1
-    phase: generic-control-plane-ingress
+    status: DONE
+    completed_by:
+      task_id: TASK-104
+      task_revision: 1
+      published_sha: "cdd230fedbb332f4e13a81a9607fea23976de36d"
     note: >-
-      Explicit Human priority change. Resolve the generic Brain-to-repository authoring
-      transport gap before resuming Performance Closure P5.
+      TASK-104 revision 1 completed the generic Brain-to-repository authoring ingress,
+      was semantically reviewed PASS, and was published at the exact SHA above.
   - id: performance-closure
-    status: PENDING
-    blocked_by: brain-authoring-ingress
+    status: NEXT
     task_id: TASK-101
-    task_revision: 2
+    task_revision: 3
     phase: P5-performance-observation-surface
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
     last_completed:
@@ -72,12 +72,13 @@ sequence:
       phase: P4-execution-budget-observability-and-escalation
       published_sha: "8067ac257c15779367f4e1463e7af8b5b5059e46"
     note: >-
-      P1-P4 are published. TASK-101 revision 1 remains immutable historical correction
-      lineage: its cumulative tip diverges from current main after TASK-103 publication and
-      P3 therefore requires integration to fail closed rather than auto-merge or rebase.
-      TASK-101 revision 2 remains the fresh current-main P5 contract but is explicitly paused
-      until TASK-104 is semantically reviewed PASS and published. Downstream adoption remains
-      blocked until the ingress blocker and Performance Closure are reconciled complete.
+      P1-P4 are published. TASK-101 revisions 1 and 2 remain immutable historical
+      evidence. Revision 2 reached RUN-101-004 and REVIEW-101-004 CHANGES_REQUIRED
+      F101-003, but its candidate diverges from current main after TASK-104 publication;
+      its authored remediation was not executed and must not be continued as current
+      implementation. Revision 3 is the fresh post-TASK-104 P5 contract and carries
+      the F101-003 terminal-binding requirement forward without rewriting historical
+      lineage. Downstream adoption remains blocked until Performance Closure is complete.
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
