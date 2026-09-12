@@ -1,0 +1,13 @@
+finding_id: F104-002
+action: CODE_FIX
+reviewed_sha: ef482961c0322cd0aa928c72f7e4b85ee17f8e5e
+scope:
+  modify:
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_authoring_ingress.py
+verification:
+  affected:
+  - python -m pytest tests/test_authoring_ingress.py tests/test_review_transport.py
+    tests/test_publication.py -q
+  - git diff --check
+constraints: []
