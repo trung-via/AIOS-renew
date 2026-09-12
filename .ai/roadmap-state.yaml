@@ -42,34 +42,33 @@ sequence:
       task_id: TASK-102
       published_sha: "2599202afedb0622e9e9bdc7b5a15f34da01cc27"
   - id: cumulative-remediation-revision-neutral-hardening
-    status: NEXT
-    task_id: TASK-103
-    task_revision: 2
+    status: DONE
+    completed_by:
+      task_id: TASK-103
+      task_revision: 2
+      published_sha: "3b7d1aa3035e7cf2794867b788bc8197e2c9f29f"
     note: >-
-      Explicit Human priority override. TASK-103 revision 1 ended in immutable
-      non-repairable RUN-103-001 after Executor quota exhaustion before any committed
-      implementation delta. Revision 2 preserves that history and hardens prospective
-      cumulative remediation so execution-base semantics do not depend on TASK revision.
-      Performance Closure resumes only after this hardening is semantically reviewed PASS
-      and published.
+      TASK-103 revision 1 remains immutable non-repairable historical failure evidence.
+      Revision 2 completed the generic hardening and is semantically reviewed PASS and
+      published at the exact current-main SHA above.
   - id: performance-closure
-    status: PENDING
+    status: NEXT
     task_id: TASK-101
-    task_revision: 1
+    task_revision: 2
     phase: P5-performance-observation-surface
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
-    blocked_by: cumulative-remediation-revision-neutral-hardening
     last_completed:
       task_id: TASK-100
       task_revision: 1
       phase: P4-execution-budget-observability-and-escalation
       published_sha: "8067ac257c15779367f4e1463e7af8b5b5059e46"
     note: >-
-      P1-P4 are published. TASK-101 implementation correction reached a semantic PASS
-      candidate, but publication exposed a correction-frontier lineage problem whose safe
-      continuation depends on revision-neutral cumulative remediation admission. Resume
-      TASK-101 only after TASK-103 is published and the original outstanding finding can be
-      executed from the exact cumulative correction tip.
+      P1-P4 are published. TASK-101 revision 1 remains immutable historical correction
+      lineage: its cumulative tip diverges from current main after TASK-103 publication and
+      P3 therefore requires integration to fail closed rather than auto-merge or rebase.
+      TASK-101 revision 2 is the fresh current-main P5 contract and is the unique NEXT item.
+      Downstream adoption remains blocked until this revision is semantically reviewed PASS,
+      published, and Performance Closure is reconciled complete.
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
