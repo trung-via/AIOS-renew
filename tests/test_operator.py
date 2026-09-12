@@ -6808,6 +6808,23 @@ def test_direct_candidate_and_approved_remediation_persist_predecessor_identity_
     }
 
 
+def test_operator_execution_base_parser_is_exact_and_rejects_aliases() -> None:
+    parsed = operator_module._parse_remediation_execution_base({
+        "run_id": "RUN-101-001", "candidate_sha": "a" * 40,
+    })
+    assert parsed.run_id == "RUN-101-001"
+    assert parsed.candidate_sha == "a" * 40
+    with pytest.raises(ValueError, match="fields do not match"):
+        operator_module._parse_remediation_execution_base({
+            "run_id": "RUN-101-001", "candidate_sha": "a" * 40,
+            "base_sha": "a" * 40,
+        })
+    with pytest.raises(ValueError, match="fields do not match"):
+        operator_module._parse_remediation_execution_base({
+            "source_run_id": "RUN-101-001", "candidate_sha": "a" * 40,
+        })
+
+
 def test_operator_predecessor_parser_rejects_alias_and_conflicting_fields() -> None:
     valid_payload = {
         "source_run_id": "RUN-101-000",

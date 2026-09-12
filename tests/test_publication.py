@@ -1596,6 +1596,20 @@ def test_predecessor_multi_finding_review_fails_closed_ac5(
 test_predecessor_multi_finding_review_fails_closed_ac6 = test_predecessor_multi_finding_review_fails_closed_ac5
 
 
+def test_publication_execution_base_parser_is_exact() -> None:
+    parsed = publication_module._parse_remediation_execution_base({
+        "run_id": "RUN-101-001", "candidate_sha": "a" * 40,
+    })
+    assert parsed == publication_module.RemediationExecutionBase(
+        "RUN-101-001", "a" * 40
+    )
+    with pytest.raises(ValueError, match="fields do not match"):
+        publication_module._parse_remediation_execution_base({
+            "run_id": "RUN-101-001", "candidate_sha": "a" * 40,
+            "reviewed_sha": "a" * 40,
+        })
+
+
 def test_publication_predecessor_parser_rejects_alias_and_conflicting_fields() -> None:
     valid_payload = {
         "source_run_id": "RUN-063-001",

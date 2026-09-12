@@ -39,6 +39,8 @@ _ADMISSION_REASONS = frozenset(
         "RUN_NAMESPACE_CONFLICT",
         "HISTORICAL_SUBJECT_REJECTED",
         "REUSABLE_STATE_REJECTED",
+        "CUMULATIVE_BASE_REJECTED",
+        "INTEGRATION_REQUIRED",
     }
 )
 
@@ -69,6 +71,8 @@ class CorrectionPreflightResult:
     review_id: str | None = None
     finding_id: str | None = None
     reviewed_sha: str | None = None
+    execution_base_run_id: str | None = None
+    execution_base_sha: str | None = None
     failed_head_sha: str | None = None
     subject_mode: str | None = None
     action: str | None = None
@@ -93,6 +97,15 @@ class CorrectionPreflightResult:
             "review_id": self.review_id,
             "finding_id": self.finding_id,
             "reviewed_sha": self.reviewed_sha,
+            "execution_base": (
+                {
+                    "run_id": self.execution_base_run_id,
+                    "candidate_sha": self.execution_base_sha,
+                }
+                if self.execution_base_run_id is not None
+                and self.execution_base_sha is not None
+                else None
+            ),
             "failed_head_sha": self.failed_head_sha,
             "subject_mode": self.subject_mode,
             "action": self.action,
@@ -156,6 +169,8 @@ def _blocked_correction_preflight(
         review_id=fact("review_id"),
         finding_id=fact("finding_id"),
         reviewed_sha=fact("reviewed_sha", 64),
+        execution_base_run_id=fact("execution_base_run_id"),
+        execution_base_sha=fact("execution_base_sha", 64),
         failed_head_sha=fact("failed_head_sha", 64),
         subject_mode=subject_mode,
         action=action,
@@ -205,7 +220,7 @@ def preflight_remediation(
                 admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
             )
             current_head = op._git(root, "rev-parse", "HEAD")
-            historical = current_head != resolved.remediation.reviewed_sha
+            historical = current_head != resolved.execution_base_sha
             subject_mode = "HISTORICAL" if historical else "CURRENT"
             admission["subject_mode"] = subject_mode
             if op._git(root, "status", "--porcelain"):
@@ -220,7 +235,7 @@ def preflight_remediation(
                     remote_repo,
                     "cat-file",
                     "-e",
-                    f"{resolved.remediation.reviewed_sha}^{{commit}}",
+                    f"{resolved.execution_base_sha}^{{commit}}",
                 )
             op._set_admission_boundary(
                 admission, "RUN_RESERVATION", "RUN_NAMESPACE_CONFLICT"
@@ -239,6 +254,8 @@ def preflight_remediation(
             review_id=resolved.review.review_id,
             finding_id=resolved.remediation.finding_id,
             reviewed_sha=resolved.remediation.reviewed_sha,
+            execution_base_run_id=resolved.execution_base_run_id,
+            execution_base_sha=resolved.execution_base_sha,
             subject_mode=subject_mode,
             action=resolved.remediation.action,
         )

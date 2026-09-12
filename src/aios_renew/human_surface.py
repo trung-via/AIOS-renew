@@ -53,6 +53,9 @@ class HumanSurfaceResult:
     reviewed_sha: str | None = None
     failed_head_sha: str | None = None
     correction_sha: str | None = None
+    execution_base_run_id: str | None = None
+    execution_base_sha: str | None = None
+    outstanding_findings: tuple[Mapping[str, str], ...] = ()
     executor_required: bool = False
     executor_supplied: bool = False
     executor: str | None = None
@@ -85,6 +88,18 @@ class HumanSurfaceResult:
                 "failed_head_sha": self.failed_head_sha,
                 "correction_sha": self.correction_sha,
             },
+            "execution_base": (
+                {
+                    "run_id": self.execution_base_run_id,
+                    "candidate_sha": self.execution_base_sha,
+                }
+                if self.execution_base_run_id is not None
+                and self.execution_base_sha is not None
+                else None
+            ),
+            "outstanding_findings": [
+                dict(item) for item in self.outstanding_findings
+            ],
             "executor": {
                 "required": self.executor_required,
                 "supplied": self.executor_supplied,
@@ -135,6 +150,9 @@ def _human_surface_result(
         reviewed_sha=observation.reviewed_sha,
         failed_head_sha=observation.failed_head_sha,
         correction_sha=observation.correction_sha,
+        execution_base_run_id=observation.execution_base_run_id,
+        execution_base_sha=observation.execution_base_sha,
+        outstanding_findings=observation.outstanding_findings,
         executor_required=executor_required,
         executor_supplied=executor is not None,
         executor=executor,

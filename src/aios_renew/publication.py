@@ -219,6 +219,7 @@ def _single_optional_remote_sha(
 _CANONICAL_PREDECESSOR_FIELDS = frozenset(
     {"source_run_id", "review_id", "finding_id", "reviewed_sha"}
 )
+_CANONICAL_EXECUTION_BASE_FIELDS = frozenset({"run_id", "candidate_sha"})
 
 
 @dataclass(frozen=True)
@@ -229,6 +230,27 @@ class RemediationPredecessor:
     review_id: str
     finding_id: str
     reviewed_sha: str
+
+
+@dataclass(frozen=True)
+class RemediationExecutionBase:
+    run_id: str
+    candidate_sha: str
+
+
+def _parse_remediation_execution_base(
+    data: Any, document: str = "REMEDIATION execution_base"
+) -> RemediationExecutionBase:
+    root = _mapping(data, document)
+    if set(root) != _CANONICAL_EXECUTION_BASE_FIELDS:
+        raise ValueError(f"{document} fields do not match the contract")
+    run_id = root.get("run_id")
+    candidate_sha = root.get("candidate_sha")
+    if not isinstance(run_id, str) or _RUN_ID.fullmatch(run_id) is None:
+        raise ValueError(f"{document} RUN identity is invalid")
+    if not isinstance(candidate_sha, str) or _SHA.fullmatch(candidate_sha) is None:
+        raise ValueError(f"{document} candidate SHA is invalid")
+    return RemediationExecutionBase(run_id=run_id, candidate_sha=candidate_sha)
 
 
 def _parse_remediation_predecessor(
@@ -281,6 +303,61 @@ def _parse_remediation_run(
     return run, remediation
 
 
+def _validate_execution_base(
+    repo: Path,
+    *,
+    remote: str,
+    publication_run_id: str,
+    run_data: Mapping[str, Any],
+    run: Run,
+    semantic_reviewed_sha: str,
+) -> RemediationExecutionBase:
+    if "execution_base" not in run_data:
+        if run.base_sha != semantic_reviewed_sha:
+            raise ValueError("legacy REMEDIATION base_sha does not match reviewed_sha")
+        predecessor = _parse_remediation_predecessor(run_data.get("predecessor"))
+        return RemediationExecutionBase(predecessor.source_run_id, semantic_reviewed_sha)
+    base = _parse_remediation_execution_base(run_data["execution_base"])
+    if base.candidate_sha != run.base_sha:
+        raise ValueError("execution_base candidate SHA does not match RUN base_sha")
+    code, _, _ = _git(
+        repo, "merge-base", "--is-ancestor", semantic_reviewed_sha,
+        base.candidate_sha, allow_fail=True,
+    )
+    if code:
+        raise ValueError("execution_base does not descend from semantic reviewed SHA")
+    artifacts_sha = _single_remote_sha(
+        repo, remote, f"refs/heads/aios/artifacts/{base.run_id}",
+        run_id=publication_run_id,
+    )
+    _fetch_object(repo, remote, artifacts_sha, run_id=publication_run_id)
+    base_run_data = _mapping(
+        _json_no_duplicates(
+            _read_blob(repo, artifacts_sha, ".ai/transport/run.json", run_id=publication_run_id),
+            document="execution-base RUN",
+        ),
+        "execution-base RUN",
+    )
+    if base_run_data.get("kind") == "REMEDIATION":
+        base_run, _ = _parse_remediation_run(base_run_data, run_id=base.run_id)
+    elif "kind" not in base_run_data:
+        base_run = _run_from_data(base_run_data, "execution-base RUN")
+    else:
+        raise ValueError("execution-base RUN kind is invalid")
+    if base_run.run_id != base.run_id or base_run.task != run.task:
+        raise ValueError("execution-base RUN identity mismatch")
+    base_result_data = _mapping(
+        _json_no_duplicates(
+            _read_blob(repo, artifacts_sha, ".ai/transport/result.json", run_id=publication_run_id),
+            document="execution-base ResultPackage",
+        ),
+        "execution-base ResultPackage",
+    )
+    if validate_result(base_result_data.get("result")).head_sha != base.candidate_sha:
+        raise ValueError("execution-base candidate does not match canonical RESULT")
+    return base
+
+
 def _remediation_lineage(
     run_data: Mapping[str, Any], *, run_id: str
 ) -> tuple[Run, Remediation, Review]:
@@ -319,8 +396,14 @@ def _validate_predecessor_lineage(
 
     if pred.reviewed_sha != remediation.reviewed_sha:
         raise ValueError("predecessor reviewed_sha does not match REMEDIATION reviewed_sha")
-    if pred.reviewed_sha != run.base_sha:
-        raise ValueError("predecessor reviewed_sha does not match REMEDIATION base_sha")
+    _validate_execution_base(
+        repo,
+        remote=remote,
+        publication_run_id=publication_run_id,
+        run_data=run_data,
+        run=run,
+        semantic_reviewed_sha=pred.reviewed_sha,
+    )
     if pred.review_id != execution.get("review_id"):
         raise ValueError("predecessor review_id does not match REMEDIATION review_id")
     if pred.finding_id != remediation.finding_id:
@@ -405,20 +488,22 @@ def _derive_publication_frontier(
     run_data: Mapping[str, Any],
     delta_review: Review,
 ) -> CorrectionFrontier:
+    current_pred = _parse_remediation_predecessor(run_data["predecessor"])
     steps: list[tuple[str, RemediationPredecessor, Review]] = [
-        (
-            publication_run_id,
-            _parse_remediation_predecessor(run_data["predecessor"]),
-            delta_review,
-        )
+        (publication_run_id, current_pred, delta_review)
     ]
+    if "execution_base" in run_data:
+        current_base = _parse_remediation_execution_base(run_data["execution_base"])
+    else:
+        current_base = RemediationExecutionBase(
+            current_pred.source_run_id, current_pred.reviewed_sha
+        )
     seen = {publication_run_id}
-    current_pred = steps[0][1]
 
     while True:
-        source_id = current_pred.source_run_id
+        source_id = current_base.run_id
         if source_id in seen:
-            raise ValueError("cyclic predecessor lineage")
+            raise ValueError("cyclic cumulative correction lineage")
         seen.add(source_id)
 
         pred_artifacts_ref = f"refs/heads/aios/artifacts/{source_id}"
@@ -433,8 +518,31 @@ def _derive_publication_frontier(
             _json_no_duplicates(pred_run_bytes, document="predecessor RUN"),
             "predecessor RUN",
         )
+        pred_result = validate_result(
+            _mapping(
+                _json_no_duplicates(
+                    _read_blob(
+                        repo, pred_artifacts_sha, ".ai/transport/result.json",
+                        run_id=publication_run_id,
+                    ),
+                    document="predecessor ResultPackage",
+                ),
+                "predecessor ResultPackage",
+            ).get("result")
+        )
+        if pred_result.head_sha != current_base.candidate_sha:
+            raise ValueError("cumulative execution-base candidate mismatch")
 
-        remediation_ref = f"refs/heads/aios/remediation/{source_id}-{current_pred.finding_id}"
+        source_pred = (
+            _parse_remediation_predecessor(pred_run_data["predecessor"])
+            if "predecessor" in pred_run_data
+            else None
+        )
+        remediation_ref = (
+            f"refs/heads/aios/remediation/{source_id}-{source_pred.finding_id}"
+            if source_pred is not None
+            else f"refs/heads/aios/remediation/{source_id}-{current_pred.finding_id}"
+        )
         decision_ref = f"refs/heads/aios/review-decision/{source_id}"
         review_commit_sha = _single_optional_remote_sha(
             repo, remote, remediation_ref, run_id=publication_run_id
@@ -474,10 +582,26 @@ def _derive_publication_frontier(
         )
         prior_review = parse_review(review_bytes.decode("utf-8", errors="strict"))
 
-        if "predecessor" in pred_run_data:
-            parent_pred = _parse_remediation_predecessor(pred_run_data["predecessor"])
-            steps.append((source_id, parent_pred, prior_review))
-            current_pred = parent_pred
+        if source_pred is not None:
+            pred_run, pred_remediation = _parse_remediation_run(
+                pred_run_data, run_id=source_id
+            )
+            if source_pred.reviewed_sha != pred_remediation.reviewed_sha:
+                raise ValueError("cumulative semantic predecessor mismatch")
+            steps.append((source_id, source_pred, prior_review))
+            current_pred = source_pred
+            if "execution_base" in pred_run_data:
+                current_base = _parse_remediation_execution_base(
+                    pred_run_data["execution_base"]
+                )
+                if current_base.candidate_sha != pred_run.base_sha:
+                    raise ValueError("cumulative execution-base RUN mismatch")
+            else:
+                if pred_run.base_sha != source_pred.reviewed_sha:
+                    raise ValueError("legacy cumulative base mismatch")
+                current_base = RemediationExecutionBase(
+                    source_pred.source_run_id, source_pred.reviewed_sha
+                )
         else:
             primary_run_id = source_id
             primary_review = prior_review
@@ -507,11 +631,17 @@ def _validate_remediation_package(
     prior_review: Review,
     result: Any,
     evidence: tuple[Any, ...],
+    execution_base_sha: str | None = None,
 ) -> ResultPackage:
     if run.task.id != task.task_id or run.task.revision != task.revision:
         raise ValueError("REMEDIATION RUN does not reference the supplied TASK")
-    if run.base_sha != remediation.reviewed_sha:
-        raise ValueError("REMEDIATION RUN base_sha does not match reviewed_sha")
+    expected_base = (
+        remediation.reviewed_sha
+        if execution_base_sha is None
+        else execution_base_sha
+    )
+    if run.base_sha != expected_base:
+        raise ValueError("legacy REMEDIATION RUN base_sha does not match reviewed_sha")
     validate_remediation(
         review=prior_review, remediation=remediation, task=task
     )
@@ -556,7 +686,7 @@ def _validate_remediation_package(
         "--name-only",
         "--no-renames",
         "-z",
-        remediation.reviewed_sha,
+        run.base_sha,
         source_sha,
         allow_fail=True,
     )
@@ -572,9 +702,9 @@ def _validate_remediation_package(
             + ", ".join(sorted(outside_scope))
         )
     if remediation.action == "EVIDENCE_ONLY":
-        if source_sha != remediation.reviewed_sha or changed_files:
+        if source_sha != run.base_sha or changed_files:
             raise ValueError("EVIDENCE_ONLY remediation changed repository HEAD")
-    elif source_sha == remediation.reviewed_sha or not changed_files:
+    elif source_sha == run.base_sha or not changed_files:
         raise ValueError("CODE_FIX remediation committed delta is empty")
     return ResultPackage(result=result, evidence=evidence)
 
@@ -1045,6 +1175,7 @@ def _load_success_lineage(
         )
         task = parse_task(task_bytes.decode("utf-8", errors="strict"))
         repair_prior_review = None
+        cumulative_base = None
         if "predecessor" in run_data:
             assert remediation is not None
             prior_review = _validate_predecessor_lineage(
@@ -1056,6 +1187,10 @@ def _load_success_lineage(
                 remediation=remediation,
                 task=task,
             )
+            if "execution_base" in run_data:
+                cumulative_base = _parse_remediation_execution_base(
+                    run_data["execution_base"]
+                )
         if repair_bytes is not None:
             if remediation is not None:
                 raise ValueError(
@@ -1095,6 +1230,9 @@ def _load_success_lineage(
                 prior_review=prior_review,
                 result=result,
                 evidence=evidence,
+                execution_base_sha=(
+                    run.base_sha if "execution_base" in run_data else None
+                ),
             )
         if package.result.unresolved:
             raise ValueError("successful RESULT contains unresolved items")
@@ -1149,6 +1287,23 @@ def _load_success_lineage(
             raise ValueError(
                 "RESULT head_sha does not match canonical source ref"
             )
+        if cumulative_base is not None:
+            main_sha = _single_remote_sha(
+                repo, remote, "refs/heads/main", run_id=run_id
+            )
+            _fetch_object(repo, remote, main_sha, run_id=run_id)
+            main_is_safe_base, _, _ = _git(
+                repo, "merge-base", "--is-ancestor", main_sha,
+                cumulative_base.candidate_sha, allow_fail=True,
+            )
+            candidate_already_contained, _, _ = _git(
+                repo, "merge-base", "--is-ancestor", source_sha, main_sha,
+                allow_fail=True,
+            )
+            if main_is_safe_base and candidate_already_contained:
+                raise ValueError(
+                    "current main is not safely contained by cumulative execution base"
+                )
         if "predecessor" in run_data:
             frontier = _derive_publication_frontier(
                 repo,

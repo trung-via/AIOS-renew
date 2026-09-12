@@ -34,6 +34,7 @@ from .codex_adapter import (
     CodexExecutionError,
     CodexOutputError,
 )
+from .correction_frontier import CorrectionFrontierError
 from .dispatcher import (
     DispatcherError,
     primary_dispatcher,
@@ -375,6 +376,8 @@ class _RemediationAdmission:
     task: Task
     remote_mode: bool
     source_run_id: str
+    execution_base_run_id: str
+    execution_base_sha: str
 
 
 @dataclass(frozen=True)
@@ -588,6 +591,7 @@ _SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 _CANONICAL_PREDECESSOR_FIELDS = frozenset(
     {"source_run_id", "review_id", "finding_id", "reviewed_sha"}
 )
+_CANONICAL_EXECUTION_BASE_FIELDS = frozenset({"run_id", "candidate_sha"})
 
 
 @dataclass(frozen=True)
@@ -598,6 +602,29 @@ class RemediationPredecessor:
     review_id: str
     finding_id: str
     reviewed_sha: str
+
+
+@dataclass(frozen=True)
+class RemediationExecutionBase:
+    """Exact operational candidate from which a prospective correction starts."""
+
+    run_id: str
+    candidate_sha: str
+
+
+def _parse_remediation_execution_base(data: Any) -> RemediationExecutionBase:
+    root = data if isinstance(data, Mapping) else None
+    if root is None:
+        raise TypeError("REMEDIATION execution_base must be a mapping")
+    if set(root) != _CANONICAL_EXECUTION_BASE_FIELDS:
+        raise ValueError("REMEDIATION execution_base fields do not match the contract")
+    run_id = root.get("run_id")
+    candidate_sha = root.get("candidate_sha")
+    if not isinstance(run_id, str) or not _RUN_ID_PATTERN.fullmatch(run_id):
+        raise ValueError("REMEDIATION execution_base RUN identity is invalid")
+    if not isinstance(candidate_sha, str) or not _SHA_PATTERN.fullmatch(candidate_sha):
+        raise ValueError("REMEDIATION execution_base candidate SHA is invalid")
+    return RemediationExecutionBase(run_id=run_id, candidate_sha=candidate_sha)
 
 
 def _parse_remediation_predecessor(data: Any) -> RemediationPredecessor:
@@ -690,6 +717,7 @@ def _load_authoritative_prior_result(
                     task=task,
                     execution=execution,
                     package=ResultPackage(result=result, evidence=evidence),
+                    run_document=run_data,
                 )
             else:
                 raise ValueError("unknown RUN kind")
@@ -766,14 +794,21 @@ def _validate_persisted_remediation_result(
     task: Task,
     execution: RemediationExecution,
     package: ResultPackage,
+    run_document: Mapping[str, Any] | None = None,
 ) -> None:
     """Validate persisted remediation lineage against its actual result contract."""
 
     run = execution.run
     if run.task.id != task.task_id or run.task.revision != task.revision:
         raise ValueError("REMEDIATION RUN does not reference the supplied TASK")
-    if run.base_sha != execution.remediation.reviewed_sha:
-        raise ValueError("REMEDIATION RUN base_sha does not match reviewed_sha")
+    if run_document is not None and "execution_base" in run_document:
+        execution_base = _parse_remediation_execution_base(
+            run_document["execution_base"]
+        )
+        if execution_base.candidate_sha != run.base_sha:
+            raise ValueError("REMEDIATION execution_base does not match RUN base_sha")
+    elif run.base_sha != execution.remediation.reviewed_sha:
+        raise ValueError("legacy REMEDIATION RUN base_sha does not match reviewed_sha")
     _require_remediation_result(
         repo,
         execution,
@@ -2309,6 +2344,7 @@ def _derive_remediation_source_root(
                     task=task,
                     execution=source_execution,
                     package=package,
+                    run_document=run_data,
                 )
                 prior_review = Review(
                     review_id=source_execution.review_id,
@@ -3157,6 +3193,42 @@ def _resolve_remediation_admission(
     if not canonical_remediation.affected_verification:
         raise OperatorError("REMEDIATION affected verification is empty")
 
+    execution_base_run_id = resolved_source_run_id
+    execution_base_sha = canonical_remediation.reviewed_sha
+    if remote_mode and task.revision >= 2:
+        try:
+            lifecycle = resolve_remote_task_lifecycle(
+                repo, task_id=task.task_id, task_revision=task.revision
+            )
+            from .unified_state import _resolve_cumulative_execution_base
+
+            execution_base_run_id, execution_base_sha = (
+                _resolve_cumulative_execution_base(
+                    repo,
+                    task,
+                    lifecycle,
+                    source_run_id=resolved_source_run_id,
+                    review_id=canonical_review.review_id,
+                    finding_id=canonical_remediation.finding_id,
+                    reviewed_sha=canonical_remediation.reviewed_sha,
+                )
+            )
+        except (
+            CorrectionFrontierError, OperatorError, ReviewTransportError,
+            TypeError, ValueError,
+        ) as exc:
+            reason = (
+                "INTEGRATION_REQUIRED"
+                if "require integration" in str(exc)
+                else "CUMULATIVE_BASE_REJECTED"
+            )
+            _set_admission_boundary(
+                admission, "REPOSITORY_ADMISSION", reason
+            )
+            raise OperatorError(f"cumulative execution base rejected: {exc}") from exc
+    admission["execution_base_run_id"] = execution_base_run_id
+    admission["execution_base_sha"] = execution_base_sha
+
     return _RemediationAdmission(
         review=canonical_review,
         remediation=canonical_remediation,
@@ -3165,6 +3237,8 @@ def _resolve_remediation_admission(
         task=task,
         remote_mode=remote_mode,
         source_run_id=resolved_source_run_id,
+        execution_base_run_id=execution_base_run_id,
+        execution_base_sha=execution_base_sha,
     )
 
 
@@ -3229,7 +3303,7 @@ def _run_remediation_impl(
             raise OperatorError("repository dirty")
         historical = (
             remote_mode
-            and actual_baseline != canonical_remediation.reviewed_sha
+            and actual_baseline != resolved.execution_base_sha
         )
         if (
             not remote_mode
@@ -3246,7 +3320,7 @@ def _run_remediation_impl(
                 "HISTORICAL_SUBJECT_REJECTED",
             )
             historical_workspace = _create_historical_workspace(
-                root, canonical_remediation.reviewed_sha
+                root, resolved.execution_base_sha
             )
             subject_repo = historical_workspace
             _require_control_checkout_unchanged(
@@ -3270,7 +3344,7 @@ def _run_remediation_impl(
             run_id=run_id,
             task=task,
             executor=executor,
-            base_sha=canonical_remediation.reviewed_sha,
+            base_sha=resolved.execution_base_sha,
             workspace=str(subject_repo),
         )
         finding = next(
@@ -3291,15 +3365,19 @@ def _run_remediation_impl(
             "finding_id": canonical_remediation.finding_id,
             "reviewed_sha": canonical_remediation.reviewed_sha,
         }
+        execution_base_record = {
+            "run_id": resolved.execution_base_run_id,
+            "candidate_sha": resolved.execution_base_sha,
+        }
         run_path = state.runs / f"{run_id}.json"
-        _write_json(
-            run_path,
-            {
-                "kind": "REMEDIATION",
-                "predecessor": predecessor_record,
-                "execution": asdict(execution),
-            },
-        )
+        run_document = {
+            "kind": "REMEDIATION",
+            "predecessor": predecessor_record,
+            "execution": asdict(execution),
+        }
+        if task.revision >= 2:
+            run_document["execution_base"] = execution_base_record
+        _write_json(run_path, run_document)
         if attempt is not None:
             attempt.bind_run(run_path)
         if correction_dispatch_id is not None:
@@ -3349,13 +3427,9 @@ def _run_remediation_impl(
                 root, head_sha=actual_baseline, branch=control_branch
             )
             historical_candidate = _git(subject_repo, "rev-parse", "HEAD")
-            if not _git_is_ancestor(
-                subject_repo,
-                canonical_remediation.reviewed_sha,
-                historical_candidate,
-            ):
+            if not _git_is_ancestor(subject_repo, run.base_sha, historical_candidate):
                 raise OperatorError(
-                    "historical remediation candidate does not descend from reviewed_sha"
+                    "historical remediation candidate does not descend from execution base"
                 )
 
         runtime_completion = RuntimeCompletion(
@@ -3371,9 +3445,12 @@ def _run_remediation_impl(
         )
         if attempt is not None:
             attempt.bind_completion(runtime_completion)
-        completion = runtime_completion.complete(
-            package, remediation_completion_policy(execution)
-        )
+        completion_policy = remediation_completion_policy(execution)
+        if task.revision >= 2:
+            completion_policy = replace(
+                completion_policy, result_base_sha=run.base_sha
+            )
+        completion = runtime_completion.complete(package, completion_policy)
         if historical:
             _require_control_checkout_unchanged(
                 root, head_sha=actual_baseline, branch=control_branch
@@ -3503,13 +3580,38 @@ def _accept_candidate_impl(
             raise OperatorError("CODE_FIX remediation modification scope is empty")
         if not remediation.affected_verification:
             raise OperatorError("REMEDIATION affected verification is empty")
-        if candidate_head == remediation.reviewed_sha:
+        execution_base_run_id = admission.get("source_run_id")
+        execution_base_sha = remediation.reviewed_sha
+        if task.revision >= 2:
+            if not isinstance(execution_base_run_id, str):
+                raise OperatorError("missing canonical source RUN identity")
+            try:
+                lifecycle = resolve_remote_task_lifecycle(
+                    repo, task_id=task.task_id, task_revision=task.revision
+                )
+                from .unified_state import _resolve_cumulative_execution_base
+
+                execution_base_run_id, execution_base_sha = (
+                    _resolve_cumulative_execution_base(
+                        repo, task, lifecycle,
+                        source_run_id=execution_base_run_id,
+                        review_id=review.review_id,
+                        finding_id=finding_id,
+                        reviewed_sha=remediation.reviewed_sha,
+                    )
+                )
+            except (
+                CorrectionFrontierError, OperatorError, ReviewTransportError,
+                TypeError, ValueError,
+            ) as exc:
+                raise OperatorError(f"cumulative execution base rejected: {exc}") from exc
+        if candidate_head == execution_base_sha:
             raise OperatorError("CODE_FIX candidate did not advance HEAD")
-        if not _git_is_ancestor(repo, remediation.reviewed_sha, candidate_head):
-            raise OperatorError("candidate HEAD does not descend from reviewed_sha")
+        if not _git_is_ancestor(repo, execution_base_sha, candidate_head):
+            raise OperatorError("candidate HEAD does not descend from execution base")
 
         changed_files = _committed_changed_files(
-            repo, remediation.reviewed_sha, candidate_head
+            repo, execution_base_sha, candidate_head
         )
         if not changed_files:
             raise OperatorError("CODE_FIX candidate committed delta is empty")
@@ -3534,6 +3636,10 @@ def _accept_candidate_impl(
             review=review,
             finding_id=finding_id,
             candidate_head=candidate_head,
+            execution_base_run_id=(
+                execution_base_run_id if task.revision >= 2 else None
+            ),
+            execution_base_sha=(execution_base_sha if task.revision >= 2 else None),
         )
         if existing_summary is not None:
             return existing_summary
@@ -3549,7 +3655,7 @@ def _accept_candidate_impl(
             run_id=run_id,
             task=task,
             executor=executor,
-            base_sha=remediation.reviewed_sha,
+            base_sha=execution_base_sha,
             workspace=str(repo),
         )
         finding = next(item for item in review.findings if item.id == finding_id)
@@ -3570,9 +3676,7 @@ def _accept_candidate_impl(
             "reviewed_sha": remediation.reviewed_sha,
         }
         run_path = state.runs / f"{run_id}.json"
-        _write_json(
-            run_path,
-            {
+        run_document = {
                 "kind": "REMEDIATION",
                 "acceptance": {
                     "mode": "DIRECT_CANDIDATE",
@@ -3580,8 +3684,13 @@ def _accept_candidate_impl(
                 },
                 "predecessor": predecessor_record,
                 "execution": asdict(execution),
-            },
-        )
+            }
+        if task.revision >= 2:
+            run_document["execution_base"] = {
+                "run_id": execution_base_run_id,
+                "candidate_sha": execution_base_sha,
+            }
+        _write_json(run_path, run_document)
         attempt.bind_run(run_path)
         observation_tracker.admit(run)
 
@@ -3603,7 +3712,10 @@ def _accept_candidate_impl(
             error_type=OperatorError,
         ).complete(
             structural_package,
-            remediation_completion_policy(execution, direct_candidate=True),
+            replace(
+                remediation_completion_policy(execution, direct_candidate=True),
+                result_base_sha=execution_base_sha,
+            ),
         )
         return RemediationSummary(
             task_id=task_id,
@@ -3868,6 +3980,7 @@ def _parse_remote_direct_lineage_impl(
                 task=lineage_task,
                 execution=prior_execution,
                 package=package,
+                run_document=run_data,
             )
         if result.head_sha != review.reviewed_sha:
             raise ValueError("REVIEW does not bind to authoritative source RESULT")
@@ -3938,6 +4051,8 @@ def _accepted_candidate_summary(
     review: Review,
     finding_id: str,
     candidate_head: str,
+    execution_base_run_id: str | None = None,
+    execution_base_sha: str | None = None,
 ) -> RemediationSummary | None:
     for run_path in sorted(state.runs.glob("*.json")):
         try:
@@ -3966,6 +4081,18 @@ def _accepted_candidate_summary(
                     continue
             except (TypeError, ValueError):
                 continue
+        if execution_base_run_id is not None or execution_base_sha is not None:
+            try:
+                execution_base = _parse_remediation_execution_base(
+                    data.get("execution_base")
+                )
+            except (TypeError, ValueError):
+                continue
+            if (
+                execution_base.run_id != execution_base_run_id
+                or execution_base.candidate_sha != execution_base_sha
+            ):
+                continue
         result_path = state.results / run_path.name
         if not result_path.is_file():
             raise OperatorError("matching direct candidate RUN has no canonical RESULT")
@@ -3978,6 +4105,7 @@ def _accepted_candidate_summary(
                 task=task,
                 execution=execution,
                 package=ResultPackage(result=result, evidence=evidence),
+                run_document=data,
             )
         except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise OperatorError(f"invalid accepted direct candidate state: {exc}") from exc
@@ -4032,7 +4160,7 @@ def _require_remediation_repository_state(
         "--name-only",
         "--no-renames",
         "-z",
-        execution.remediation.reviewed_sha,
+        execution.run.base_sha,
         actual_head,
         strip_stdout=False,
     )
@@ -4048,10 +4176,10 @@ def _require_remediation_repository_state(
             + ", ".join(sorted(outside_scope))
         )
     if execution.remediation.action == "EVIDENCE_ONLY":
-        if actual_head != execution.remediation.reviewed_sha or actual_changed:
+        if actual_head != execution.run.base_sha or actual_changed:
             raise OperatorError("EVIDENCE_ONLY remediation changed repository HEAD")
     else:
-        if actual_head == execution.remediation.reviewed_sha:
+        if actual_head == execution.run.base_sha:
             raise OperatorError("CODE_FIX remediation did not advance HEAD")
         if not actual_changed:
             raise OperatorError("CODE_FIX remediation committed delta is empty")

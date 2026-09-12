@@ -750,6 +750,102 @@ findings:
     assert observation["reviewed_sha"] == head
 
 
+def test_unified_state_exposes_bounded_multi_finding_frontier_without_selector(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = json.dumps({
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex", "base_sha": head, "workspace": "bounded-away",
+        "head_sha": None, "status": "ACTIVE",
+    }).encode()
+    review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: second
+    expected: fixed
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: first
+    expected: fixed
+""".encode()
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(
+            run_id, "RESULT", head, run,
+            json.dumps(canonical_result_payload(run_id, head)).encode(),
+        ),),
+        (RemoteLifecycleReview(run_id, head, review),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["next_action"] == "AUTHOR_REMEDIATION"
+    assert observation["authority"] == "BRAIN"
+    assert observation["finding_id"] is None
+    assert [item["finding_id"] for item in observation["outstanding_findings"]] == [
+        "F1", "F2",
+    ]
+    assert all(set(item) == {
+        "source_run_id", "review_id", "finding_id", "reviewed_sha",
+    } for item in observation["outstanding_findings"])
+
+
+def test_unified_state_over_bound_frontier_fails_closed_without_truncation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = json.dumps({
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex", "base_sha": head, "workspace": "bounded-away",
+        "head_sha": None, "status": "ACTIVE",
+    }).encode()
+    findings = "\n".join(
+        f"  - id: F{i:02d}\n    basis: AC1\n    action: CODE_FIX\n"
+        "    location: OUTPUT.txt\n    issue: issue\n    expected: fixed"
+        for i in range(33)
+    )
+    review = (
+        f"review_id: REVIEW-101-001\nreviewed_sha: {head}\nmode: PRIMARY\n"
+        f"verdict: CHANGES_REQUIRED\nacceptance: {{AC1: FAIL}}\nfindings:\n{findings}\n"
+    ).encode()
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(
+            run_id, "RESULT", head, run,
+            json.dumps(canonical_result_payload(run_id, head)).encode(),
+        ),),
+        (RemoteLifecycleReview(run_id, head, review),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["next_action"] == "NONE"
+    assert observation["blocker"] == {
+        "code": "OUTSTANDING_FINDINGS_BOUND_EXCEEDED", "count": 33, "limit": 32,
+    }
+    assert observation["outstanding_findings"] == []
+
+
 def test_unified_state_delta_binds_exact_correction_predecessor_with_reused_finding_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
