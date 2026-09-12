@@ -55,6 +55,7 @@ from .review_transport import (
     ReviewTransportError,
     RemoteQueryError,
     RemoteTaskLifecycle,
+    RemoteLifecycleTerminal,
     read_remote_repair,
     read_remote_task,
     resolve_remote_primary_recovery,
@@ -382,6 +383,7 @@ class _RemediationAdmission:
     source_run_id: str
     execution_base_run_id: str
     execution_base_sha: str
+    cumulative: bool = False
 
 
 @dataclass(frozen=True)
@@ -3110,7 +3112,24 @@ _ADMISSION_OPERATIONS = frozenset(
 )
 
 
+def _terminal_has_execution_base(terminal: RemoteLifecycleTerminal) -> bool:
+    try:
+        data = json.loads(terminal.run.decode("utf-8", errors="strict"))
+        return isinstance(data, Mapping) and "execution_base" in data
+    except Exception:
+        return False
 
+
+def _terminal_is_correction(terminal: RemoteLifecycleTerminal) -> bool:
+    if terminal.correction is not None:
+        return True
+    try:
+        data = json.loads(terminal.run.decode("utf-8", errors="strict"))
+        if not isinstance(data, Mapping):
+            return False
+        return data.get("kind") in ("REMEDIATION", "REPAIR") or "predecessor" in data
+    except Exception:
+        return False
 
 
 def _resolve_remediation_admission(
@@ -3241,38 +3260,48 @@ def _resolve_remediation_admission(
 
     execution_base_run_id = resolved_source_run_id
     execution_base_sha = canonical_remediation.reviewed_sha
+    cumulative = False
     if remote_mode:
-        try:
-            lifecycle = resolve_remote_task_lifecycle(
-                repo, task_id=task.task_id, task_revision=task.revision
-            )
-            from .unified_state import _resolve_cumulative_execution_base
+        lifecycle = resolve_remote_task_lifecycle(
+            repo, task_id=task.task_id, task_revision=task.revision
+        )
+        has_explicit_cumulative_signal = bool(lifecycle.reviews) or any(
+            _terminal_has_execution_base(t) for t in lifecycle.terminals
+        )
+        first_correction_aligned_with_main = (
+            not any(_terminal_is_correction(t) for t in lifecycle.terminals)
+            and _git_is_ancestor(repo, lifecycle.main_sha, canonical_remediation.reviewed_sha)
+        )
+        if has_explicit_cumulative_signal or first_correction_aligned_with_main:
+            try:
+                from .unified_state import _resolve_cumulative_execution_base
 
-            execution_base_run_id, execution_base_sha = (
-                _resolve_cumulative_execution_base(
-                    repo,
-                    task,
-                    lifecycle,
-                    source_run_id=resolved_source_run_id,
-                    review_id=canonical_review.review_id,
-                    finding_id=canonical_remediation.finding_id,
-                    reviewed_sha=canonical_remediation.reviewed_sha,
-                    semantic_review=canonical_review,
+                execution_base_run_id, execution_base_sha = (
+                    _resolve_cumulative_execution_base(
+                        repo,
+                        task,
+                        lifecycle,
+                        source_run_id=resolved_source_run_id,
+                        review_id=canonical_review.review_id,
+                        finding_id=canonical_remediation.finding_id,
+                        reviewed_sha=canonical_remediation.reviewed_sha,
+                        semantic_review=canonical_review,
+                    )
                 )
-            )
-        except (
-            CorrectionFrontierError, OperatorError, ReviewTransportError,
-            TypeError, ValueError,
-        ) as exc:
-            reason = (
-                "INTEGRATION_REQUIRED"
-                if "require integration" in str(exc)
-                else "CUMULATIVE_BASE_REJECTED"
-            )
-            _set_admission_boundary(
-                admission, "REPOSITORY_ADMISSION", reason
-            )
-            raise OperatorError(f"cumulative execution base rejected: {exc}") from exc
+                cumulative = True
+            except (
+                CorrectionFrontierError, OperatorError, ReviewTransportError,
+                TypeError, ValueError,
+            ) as exc:
+                reason = (
+                    "INTEGRATION_REQUIRED"
+                    if "require integration" in str(exc)
+                    else "CUMULATIVE_BASE_REJECTED"
+                )
+                _set_admission_boundary(
+                    admission, "REPOSITORY_ADMISSION", reason
+                )
+                raise OperatorError(f"cumulative execution base rejected: {exc}") from exc
     admission["execution_base_run_id"] = execution_base_run_id
     admission["execution_base_sha"] = execution_base_sha
 
@@ -3286,6 +3315,7 @@ def _resolve_remediation_admission(
         source_run_id=resolved_source_run_id,
         execution_base_run_id=execution_base_run_id,
         execution_base_sha=execution_base_sha,
+        cumulative=cumulative,
     )
 
 
@@ -3421,8 +3451,9 @@ def _run_remediation_impl(
             "kind": "REMEDIATION",
             "predecessor": predecessor_record,
             "execution": asdict(execution),
-            "execution_base": execution_base_record,
         }
+        if resolved.cumulative:
+            run_document["execution_base"] = execution_base_record
         _write_json(run_path, run_document)
         if attempt is not None:
             attempt.bind_run(run_path)
@@ -3491,10 +3522,11 @@ def _run_remediation_impl(
         )
         if attempt is not None:
             attempt.bind_completion(runtime_completion)
-        completion_policy = replace(
-            remediation_completion_policy(execution),
-            result_base_sha=run.base_sha,
-        )
+        completion_policy = remediation_completion_policy(execution)
+        if resolved.cumulative:
+            completion_policy = replace(
+                completion_policy, result_base_sha=run.base_sha
+            )
         completion = runtime_completion.complete(package, completion_policy)
         if historical:
             _require_control_checkout_unchanged(
@@ -3629,27 +3661,33 @@ def _accept_candidate_impl(
         execution_base_sha = remediation.reviewed_sha
         if not isinstance(execution_base_run_id, str):
             raise OperatorError("missing canonical source RUN identity")
-        try:
-            lifecycle = resolve_remote_task_lifecycle(
-                repo, task_id=task.task_id, task_revision=task.revision
-            )
-            from .unified_state import _resolve_cumulative_execution_base
+        cumulative = False
+        lifecycle = resolve_remote_task_lifecycle(
+            repo, task_id=task.task_id, task_revision=task.revision
+        )
+        has_explicit_cumulative_signal = bool(lifecycle.reviews) or any(
+            _terminal_has_execution_base(t) for t in lifecycle.terminals
+        )
+        if has_explicit_cumulative_signal:
+            try:
+                from .unified_state import _resolve_cumulative_execution_base
 
-            execution_base_run_id, execution_base_sha = (
-                _resolve_cumulative_execution_base(
-                    repo, task, lifecycle,
-                    source_run_id=execution_base_run_id,
-                    review_id=review.review_id,
-                    finding_id=finding_id,
-                    reviewed_sha=remediation.reviewed_sha,
-                    semantic_review=review,
+                execution_base_run_id, execution_base_sha = (
+                    _resolve_cumulative_execution_base(
+                        repo, task, lifecycle,
+                        source_run_id=execution_base_run_id,
+                        review_id=review.review_id,
+                        finding_id=finding_id,
+                        reviewed_sha=remediation.reviewed_sha,
+                        semantic_review=review,
+                    )
                 )
-            )
-        except (
-            CorrectionFrontierError, OperatorError, ReviewTransportError,
-            TypeError, ValueError,
-        ) as exc:
-            raise OperatorError(f"cumulative execution base rejected: {exc}") from exc
+                cumulative = True
+            except (
+                CorrectionFrontierError, OperatorError, ReviewTransportError,
+                TypeError, ValueError,
+            ) as exc:
+                raise OperatorError(f"cumulative execution base rejected: {exc}") from exc
         if candidate_head == execution_base_sha:
             raise OperatorError("CODE_FIX candidate did not advance HEAD")
         if not _git_is_ancestor(repo, execution_base_sha, candidate_head):
@@ -3681,8 +3719,10 @@ def _accept_candidate_impl(
             review=review,
             finding_id=finding_id,
             candidate_head=candidate_head,
-            execution_base_run_id=execution_base_run_id,
-            execution_base_sha=execution_base_sha,
+            execution_base_run_id=(
+                execution_base_run_id if cumulative else None
+            ),
+            execution_base_sha=(execution_base_sha if cumulative else None),
         )
         if existing_summary is not None:
             return existing_summary
@@ -3727,11 +3767,12 @@ def _accept_candidate_impl(
             },
             "predecessor": predecessor_record,
             "execution": asdict(execution),
-            "execution_base": {
+        }
+        if cumulative:
+            run_document["execution_base"] = {
                 "run_id": execution_base_run_id,
                 "candidate_sha": execution_base_sha,
-            },
-        }
+            }
         _write_json(run_path, run_document)
         attempt.bind_run(run_path)
         observation_tracker.admit(run)
@@ -3743,6 +3784,14 @@ def _accept_candidate_impl(
             unresolved=(),
         )
         structural_package = ResultPackage(result=structural_result, evidence=())
+        completion_policy = (
+            replace(
+                remediation_completion_policy(execution, direct_candidate=True),
+                result_base_sha=execution_base_sha,
+            )
+            if cumulative
+            else remediation_completion_policy(execution, direct_candidate=True)
+        )
         completion = RuntimeCompletion(
             repo=repo,
             state=state,
@@ -3754,10 +3803,7 @@ def _accept_candidate_impl(
             error_type=OperatorError,
         ).complete(
             structural_package,
-            replace(
-                remediation_completion_policy(execution, direct_candidate=True),
-                result_base_sha=execution_base_sha,
-            ),
+            completion_policy,
         )
         return RemediationSummary(
             task_id=task_id,

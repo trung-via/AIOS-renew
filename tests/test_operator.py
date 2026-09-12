@@ -6800,10 +6800,6 @@ def test_direct_candidate_and_approved_remediation_persist_predecessor_identity_
         "finding_id": "R1",
         "reviewed_sha": baseline,
     }
-    assert direct_run_data["execution_base"] == {
-        "run_id": "RUN-101-000",
-        "candidate_sha": baseline,
-    }
 
     # 2. Approved remediation execution
     approval = record_remote_approval(
@@ -6832,10 +6828,6 @@ def test_direct_candidate_and_approved_remediation_persist_predecessor_identity_
         "review_id": "REVIEW-RUN-101-000",
         "finding_id": "R1",
         "reviewed_sha": baseline,
-    }
-    assert approved_run_data["execution_base"] == {
-        "run_id": "RUN-101-000",
-        "candidate_sha": baseline,
     }
 
 
