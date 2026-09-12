@@ -1,0 +1,78 @@
+task_id: TASK-103
+revision: 1
+
+goal: >
+  Make prospective cumulative remediation independent of TASK revision while preserving exact correction lineage.
+
+problem: >
+  Current remediation admission uses TASK revision as a gate for cumulative execution-base resolution, which can make a revision-1 sibling correction start from an older reviewed candidate instead of the current correction tip.
+
+assumptions:
+  - Canonical main at authoring is adb5bd82bc3cb34a615e3a1485e05721d8ad3957.
+  - TASK-099 revision 2 defines the published cumulative correction contract.
+  - TASK-101 remains blocked and is not modified by this task.
+
+scope:
+  inspect:
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/P3-DESIGN-NOTE.md
+    - .ai/tasks/TASK-099.yaml
+    - .ai/tasks/TASK-101.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/correction_preflight.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_unified_state.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_unified_state.py
+
+non_goals:
+  - Modify TASK-101 implementation or historical artifacts.
+  - Change review, frontier, publication, retry, routing, or integration authority.
+  - Backfill historical remediation artifacts.
+
+constraints:
+  hard:
+    - Prospective cumulative remediation must be selected from canonical correction lineage, not TASK revision number.
+    - Original semantic predecessor identity and cumulative execution-base identity must remain distinct.
+    - A later sibling correction must start from the exact current correction tip so prior reviewed corrections remain ancestors.
+    - Invalid or ambiguous cumulative state must fail closed before RUN creation or Executor invocation.
+    - Existing historical remediation artifacts without cumulative metadata remain readable under their established interpretation.
+    - Correction Preflight, Unified State, and execution must agree on the same cumulative execution base.
+    - No new planner, selector, frontier authority, lifecycle reducer, retry, reroute, fallback, merge, or rebase behavior is introduced.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A revision-1 task with an outstanding sibling after a reviewed correction resolves that sibling from the exact cumulative correction tip while retaining its original semantic predecessor.
+  - id: AC2
+    condition: >
+      The admitted remediation RUN binds its base and execution-base identity to the cumulative tip and preserves the prior correction as an ancestor.
+  - id: AC3
+    condition: >
+      A first correction with no newer correction tip remains behaviorally compatible with the existing path.
+  - id: AC4
+    condition: >
+      Invalid, ambiguous, non-descendant, stale, or integration-required cumulative state fails closed without falling back to the older reviewed candidate.
+  - id: AC5
+    condition: >
+      Historical remediation artifacts without cumulative metadata remain readable without rewrite or backfill.
+  - id: AC6
+    condition: >
+      Correction Preflight, Unified State, and execution agree on the same cumulative base regardless of TASK revision.
+  - id: AC7
+    condition: >
+      Existing authority boundaries and exact correction lineage semantics remain unchanged.
+  - id: AC8
+    condition: >
+      Changes stay within authorized files and add focused regression coverage without weakening existing tests.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator_correction_preflight.py tests/test_operator_unified_state.py -q
+    - python -m pytest tests/test_operator.py -k "remediation" -q
