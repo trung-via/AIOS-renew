@@ -1,0 +1,191 @@
+task_id: TASK-102
+revision: 1
+
+goal: >
+  Harden the Unified Human `aios continue` front door so a clean attached local main that
+  is strictly behind its unique configured upstream main is safely fast-forwarded before
+  any existing local TASK content can be parsed or used to derive lifecycle state. A stale,
+  missing, malformed, or older-but-valid local TASK must therefore not require a Human
+  manual `git pull` before CONTINUE can consume the current canonical TASK.
+
+problem: >
+  TASK-062 established safe fast-forward-only synchronization before PRIMARY TASK loading
+  and admission, and TASK-087 required the Unified Human Surface to preserve that behavior.
+  The current CONTINUE pre-resolution path synchronizes only when the requested TASK file is
+  absent locally. If the file already exists, it returns immediately and Unified State parses
+  that local file before PRIMARY synchronization. This allows a clean local main that is
+  behind upstream to fail on a stale malformed TASK or to derive lifecycle state from an
+  older-but-valid TASK revision. The Human then has to perform the manual pull that TASK-062
+  was intended to remove.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-102 authoring is
+    8868b6ad2ac7884aa8097f9958f229441fbe9891.
+  - >
+    TASK-101 revision 1 is authored for Performance Closure P5 but has no canonical RUN;
+    observed attempts were rejected before RUN creation while stale local TASK content was
+    being parsed.
+  - >
+    TASK-062 revision 2 remains authoritative for safe clean-main synchronization,
+    fast-forward-only integration, restart protection, mutation locking, and the prohibition
+    on retry, reset, merge, rebase, stash, force update, or custom Git ref/index transactions.
+  - >
+    TASK-086 remains authoritative for read-only Unified State semantics. `aios state` must
+    remain read-only and must not inherit synchronization authority from this TASK.
+  - >
+    TASK-087 remains authoritative for one-operation Unified Human continuation, exact
+    lifecycle action selection, Human Executor choice, and external Brain/Reviewer/Publisher
+    handoffs.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-062.yaml
+    - .ai/tasks/TASK-081.yaml
+    - .ai/tasks/TASK-086.yaml
+    - .ai/tasks/TASK-087.yaml
+    - .ai/tasks/TASK-101.yaml
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - README.md
+  modify:
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - README.md
+
+non_goals:
+  - >
+    Change TASK-101 semantics, Performance Closure P5 behavior, or create a RUN for TASK-101.
+  - >
+    Make `aios state` mutating or add synchronization to the read-only Unified State query.
+  - >
+    Auto-fast-forward direct REMEDIATION, REPAIR, accept-candidate, transport, recovery, or
+    other correction commands whose exact execution subject is governed by existing lineage.
+  - >
+    Reset, merge, rebase, stash, force-update, discard, overwrite, or otherwise integrate a
+    local-ahead/diverged candidate merely to make CONTINUE match upstream.
+  - >
+    Add automatic Git retry, fallback, conflict resolution, background polling, daemon,
+    scheduler, watcher, or general repository auto-update behavior.
+  - >
+    Change Executor selection, model defaults, Runtime verification/evidence, review,
+    publication, failure taxonomy, or frozen Kernel artifacts.
+  - >
+    Modify any downstream repository, downstream AIOS pin, `$aios-worker` skill, or
+    `/aios-renew-worker` workflow.
+  - >
+    Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Before `aios continue <TASK_ID>` parses an existing local TASK or invokes Unified State,
+      it must determine whether the current control checkout is a clean attached local main
+      that is strictly behind its unique configured upstream main. When that exact safe state
+      is established, CONTINUE must reuse the TASK-062 fast-forward-only synchronization and
+      restart boundary before TASK parsing or lifecycle reduction.
+    - >
+      The pre-observation refresh must cover all stale-behind TASK cases equally: requested
+      TASK absent locally, requested TASK present but malformed, and requested TASK present and
+      locally valid but older than the synchronized canonical TASK. Local file existence or
+      successful local TASK parsing must never be sufficient reason to skip a proven-required
+      behind-to-upstream fast-forward.
+    - >
+      If local main is already equal to upstream, the new pre-observation boundary makes no
+      committed/worktree change and CONTINUE proceeds with existing semantics. If local state
+      is ahead, diverged, dirty, detached, or non-main, this new boundary must not reset,
+      merge, rebase, stash, force-update, discard, or otherwise mutate that state merely to
+      refresh the TASK. A locally valid TASK in such a state retains existing Unified Human
+      observation behavior; a missing or invalid TASK that cannot be safely refreshed fails
+      closed rather than fabricating state.
+    - >
+      A successful fast-forward that changes kernel source or TASK state must transfer control
+      exactly once to synchronized code before TASK parsing and Unified State observation.
+      The restarted CONTINUE request must derive lifecycle state again from synchronized state;
+      stale pre-sync code or a stale pre-sync next-action decision may not create a RUN or
+      invoke an Executor. Re-entry must remain loop-guarded.
+    - >
+      Synchronization must preserve TASK-062 one-active-mutation authority, configured-upstream
+      validation, native Git fast-forward-only integration, postcondition checks, and fail-closed
+      repository-integrity behavior. Do not duplicate Git transaction authority in the Human
+      surface or implement a second custom integration protocol.
+    - >
+      After pre-observation synchronization completes or is not applicable, TASK-086 remains
+      the sole lifecycle reducer and TASK-087 remains the sole Human action-delegation mapping.
+      One CONTINUE invocation still delegates at most one already-authoritative operation and
+      never recursively continues, retries, reviews, authors corrections, or publishes.
+    - >
+      A synchronization failure before trustworthy lifecycle observation creates no RUN and
+      invokes no coding Executor or canonical verification. Existing Admission Failure versus
+      admitted RUN FAILURE semantics must not be collapsed or duplicated by the Human surface.
+    - >
+      Direct `aios run` keeps TASK-062 PRIMARY synchronization behavior. Direct `aios state`
+      remains read-only. Direct remediation/repair/transport/recovery commands retain their
+      existing exact lineage and no-auto-fast-forward behavior.
+    - >
+      README must document that normal `aios continue` automatically refreshes a safe
+      stale-behind control main before TASK resolution, while local-ahead/diverged/dirty states
+      remain fail-closed/non-destructive and may require explicit Human resolution rather than
+      automatic integration.
+    - >
+      Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A deterministic regression with clean local main strictly behind upstream and an
+      existing malformed local TASK proves `aios continue` fast-forwards before parsing that
+      TASK, re-enters synchronized code when required, and derives state from the corrected
+      upstream TASK without a manual pull, RUN creation from stale code, or Executor invocation
+      before synchronization.
+  - id: AC2
+    condition: >
+      A deterministic regression with clean local main strictly behind upstream and an
+      existing locally valid but older TASK revision proves CONTINUE synchronizes first and
+      binds its Unified State/Human Surface output to the synchronized current TASK revision,
+      never to the stale local revision.
+  - id: AC3
+    condition: >
+      Existing missing-TASK synchronization remains compatible, and an already-equal clean
+      main proves the pre-observation boundary is a no-op before ordinary Unified State
+      reduction and one-operation continuation.
+  - id: AC4
+    condition: >
+      Deterministic local-ahead candidate coverage proves CONTINUE performs no automatic
+      reset/merge/rebase/stash/force-update and preserves the existing valid candidate/state
+      observation path instead of rejecting it merely because upstream is behind that local
+      candidate.
+  - id: AC5
+    condition: >
+      Diverged, dirty, detached, non-main, and failed-fast-forward coverage proves no
+      destructive or fallback mutation, no retry loop, no RUN creation, and no Executor
+      invocation merely to obtain newer TASK content; missing/invalid unrefreshable TASK state
+      fails closed.
+  - id: AC6
+    condition: >
+      A synchronization-changing-kernel/TASK regression proves exactly one restart into
+      synchronized code occurs before TASK parsing/Unified State, with loop protection and no
+      stale pre-sync action or duplicate delegated lifecycle operation.
+  - id: AC7
+    condition: >
+      Regression coverage proves `aios state` remains mutation-free and direct PRIMARY,
+      REMEDIATION, REPAIR, transport, and recovery commands preserve their published authority
+      and synchronization behavior outside this CONTINUE pre-observation hardening.
+  - id: AC8
+    condition: >
+      The implementation stays within authorized files, documentation reflects the automatic
+      safe-refresh behavior, focused/full Operator regressions remain green, and no test is
+      deleted, skipped, xfailed, duplicated, or weakened.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
