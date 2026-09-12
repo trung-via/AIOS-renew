@@ -36,6 +36,7 @@ from aios_renew.operator import (
     preflight_remediation,
     preflight_repair,
     recover_primary,
+    RecoverySummary,
     resolve_repository,
     retry_transport,
     run_repair,
@@ -6166,6 +6167,44 @@ def test_recover_primary_allocates_after_four_digit_remote_namespace(
     recovered = recover_primary(success.run_id, repo=fresh)
 
     assert recovered.run_id == "RUN-101-1001"
+
+
+def test_operator_recover_primary_command_renders_summary(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expected_summary = RecoverySummary(
+        task_id="TASK-101",
+        source_run_id="RUN-101-001",
+        run_id="RUN-101-002",
+        executor="codex",
+        base_sha="0" * 40,
+        head_sha="1" * 40,
+        result_path=Path("/tmp/result.json"),
+    )
+    passed_args = {}
+
+    def fake_recover_primary(
+        source_run_id,
+        *,
+        repo=None,
+        verification_runner=None,
+        monotonic_clock=None,
+    ):
+        passed_args["source_run_id"] = source_run_id
+        passed_args["repo"] = repo
+        return expected_summary
+
+    monkeypatch.setattr(operator_module, "recover_primary", fake_recover_primary)
+
+    exit_code = operator_module.main(
+        ["recover-primary", "RUN-101-001", "--repo", "/test/repo"]
+    )
+    assert exit_code == 0
+    assert passed_args["source_run_id"] == "RUN-101-001"
+    assert passed_args["repo"] == "/test/repo"
+    captured = capsys.readouterr()
+    assert not captured.err
+    assert captured.out == f"{expected_summary.render()}\n"
 
 
 def test_remediation_ignores_unrelated_cross_task_collision_and_preserves_admission(

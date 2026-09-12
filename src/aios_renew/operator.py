@@ -4710,6 +4710,7 @@ def main(
                 verification_runner=verification_runner,
                 monotonic_clock=monotonic_clock,
             )
+            print(summary.render())
         elif args.command == "performance":
             print(observe_performance(args.task_ids, repo=args.repo).render())
         else:
