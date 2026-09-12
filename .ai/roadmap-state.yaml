@@ -36,22 +36,32 @@ sequence:
     completed_by:
       task_id: TASK-091
       published_sha: "a45e94294f0688e62dacfacd884f2736985fd616"
-  - id: performance-closure
+  - id: continue-pre-observation-sync-hardening
     status: NEXT
+    task_id: TASK-102
+    task_revision: 1
+    phase: unified-human-safe-refresh-regression-hardening
+    note: >-
+      Explicit Human priority override after TASK-101 admission attempts exposed a stale-local
+      CONTINUE gap. Complete and publish TASK-102 before resuming Performance Closure P5 so a
+      safe clean local main behind upstream no longer requires manual git pull before TASK
+      resolution.
+  - id: performance-closure
+    status: PENDING
     task_id: TASK-101
     task_revision: 1
     phase: P5-performance-observation-surface
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
+    blocked_by: continue-pre-observation-sync-hardening
     last_completed:
       task_id: TASK-100
       task_revision: 1
       phase: P4-execution-budget-observability-and-escalation
       published_sha: "8067ac257c15779367f4e1463e7af8b5b5059e46"
     note: >-
-      P1-P4 are published. TASK-101 is the final planned Performance Closure slice: a
-      bounded read-only canonical performance observation surface. Downstream adoption
-      remains blocked until P5 is semantically reviewed PASS, auto-published, and the
-      Performance Closure bookmark is reconciled as complete.
+      P1-P4 are published and TASK-101 remains the authored final Performance Closure slice.
+      P5 is temporarily paused by explicit Human priority until TASK-102 removes the
+      stale-local CONTINUE synchronization defect; no TASK-101 RUN has been admitted.
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
