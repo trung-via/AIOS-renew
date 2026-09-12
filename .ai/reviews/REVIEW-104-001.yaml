@@ -1,0 +1,66 @@
+review_id: REVIEW-104-001
+reviewed_sha: ef482961c0322cd0aa928c72f7e4b85ee17f8e5e
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings:
+  - id: F104-001
+    basis: AC6
+    action: CODE_FIX
+    location: src/aios_renew/authoring_ingress.py
+    issue: >
+      AUTHOR_REMEDIATION does not enforce the TASK-104 requirement to reject an
+      already-resolved finding before mutation. After detecting that canonical main
+      descends past review.reviewed_sha, the implementation contains only a placeholder
+      pass and proceeds to create the remediation ref. This leaves the correction frontier
+      capable of accepting stale semantic authorization after the finding has already been
+      resolved by later canonical lineage.
+    expected: >
+      Resolve the current canonical correction state using the existing correction/review
+      lineage authority and fail closed when the selected finding is already resolved,
+      superseded, or otherwise no longer outstanding. Add focused regression evidence for
+      the resolved-finding case without introducing a second lifecycle reducer.
+  - id: F104-002
+    basis: AC3
+    action: CODE_FIX
+    location: src/aios_renew/authoring_ingress.py
+    issue: >
+      SUBMIT_REVIEW does not fully bind the canonical RUN, ResultPackage, and EVIDENCE
+      lineage before accepting a semantic REVIEW. It parses run.json only far enough to
+      extract task_id, validates only result.json.result with validate_result, and checks
+      result.head_sha against the candidate, while ignoring canonical evidence binding and
+      the exact RUN identity/revision/executor/base relationship. The existing canonical
+      validate_result_package boundary performs those bindings, so malformed or mismatched
+      artifact identity can reach review validation instead of failing closed.
+    expected: >
+      Reuse the existing canonical RUN/RESULT/EVIDENCE validation boundary (or an exactly
+      equivalent existing helper) so the requested run_id, TASK revision, candidate SHA,
+      ResultPackage claims/evidence, and evidence run_id/subject_sha are all bound before
+      validate_review is allowed to canonicalize a decision.
+  - id: F104-003
+    basis: AC1
+    action: CODE_FIX
+    location: src/aios_renew/authoring_ingress.py
+    issue: >
+      The ingress parser exposes more than one canonical envelope representation. It accepts
+      both AIOS_INGRESS_ENVELOPE and AIOS_AUTHORING_INGRESS formats and also accepts subject
+      identity both inside identity and as top-level task_id/run_id/source_run_id/finding_id/
+      failed_run_id fields. When the same identity key is supplied in both places with
+      conflicting values, the nested identity silently wins instead of the envelope failing
+      closed. TASK-104 requires one versioned semantic ingress envelope and deterministic,
+      unambiguous subject identity.
+    expected: >
+      Define one canonical envelope format and one canonical subject-identity location.
+      Reject undocumented aliases and duplicate/conflicting identity representations rather
+      than normalizing or silently selecting one representation. Preserve exactly the four
+      allowlisted operations and the file/stdin carrier separation.
