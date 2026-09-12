@@ -1,0 +1,45 @@
+review_id: REVIEW-101-001
+reviewed_sha: 7611b6a8e12d9d7a5abc00447e3cb521e7a0c7f0
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: FAIL
+  AC8: PASS
+findings:
+  - id: F101-001
+    basis: AC3
+    action: CODE_FIX
+    location: src/aios_renew/performance_observation.py
+    issue: >
+      The performance surface does not fully validate transported canonical run.json before
+      treating a terminal as a valid snapshot member. It manually checks only run_id, task,
+      positive revision, non-empty executor/base_sha and ACTIVE status; it does not enforce
+      the canonical Run contract for fields such as supported executor identity and non-empty
+      workspace. When observation.json is missing, such malformed RUN metadata can therefore
+      be reported as an ordinary telemetry coverage gap instead of failing closed.
+    expected: >
+      Reuse or exactly preserve the existing canonical RUN validation semantics for every
+      transported run.json before aggregation, including the remediation wrapper path, so a
+      malformed RUN fails closed independently of whether observation.json exists. Keep
+      missing observation.json as a coverage gap only after the RUN and terminal family are
+      themselves valid canonical artifacts.
+  - id: F101-002
+    basis: AC7
+    action: CODE_FIX
+    location: src/aios_renew/operator.py
+    issue: >
+      Adding the new performance command accidentally removed the existing
+      print(summary.render()) call from the recover-primary CLI branch. As a result,
+      TASK-101 changes observable behavior of an unrelated lifecycle command even though P5
+      is required to be observational and semantically inert outside the new surface.
+    expected: >
+      Restore recover-primary CLI output exactly as before TASK-101 while adding the
+      performance branch without changing any existing lifecycle command behavior. Add a
+      focused regression that would fail if recover-primary summary rendering is dropped
+      again.
