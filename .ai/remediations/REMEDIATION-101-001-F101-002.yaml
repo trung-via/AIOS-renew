@@ -1,0 +1,11 @@
+finding_id: F101-002
+action: CODE_FIX
+reviewed_sha: 7611b6a8e12d9d7a5abc00447e3cb521e7a0c7f0
+scope:
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+verification:
+  affected:
+    - python -m pytest tests/test_operator.py -k "recover_primary or performance" -q
+constraints: []
