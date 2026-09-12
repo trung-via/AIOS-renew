@@ -1,0 +1,26 @@
+review_id: REVIEW-101-002
+reviewed_sha: 273f9bef8db913bf808996e87ca4ca6b9fca4185
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC3: PASS
+  AC7: FAIL
+  AC8: PASS
+findings:
+  - id: F101-002
+    basis: AC7
+    action: CODE_FIX
+    location: src/aios_renew/operator.py
+    issue: >
+      The F101-001 remediation correctly restores canonical RUN validation for the
+      performance surface, including malformed primary and remediation run metadata,
+      and introduces no material defect in that correction. The pre-existing F101-002
+      defect from REVIEW-101-001 remains unchanged on this candidate: the recover-primary
+      CLI branch assigns the RecoverySummary but does not print summary.render(), so
+      TASK-101 still changes observable behavior of an unrelated lifecycle command.
+    expected: >
+      Restore recover-primary CLI output exactly as before TASK-101 while preserving the
+      new performance command and all F101-001 validation behavior. Add a focused regression
+      that fails if recover-primary summary rendering is dropped again, without changing
+      lifecycle authority or unrelated command behavior.
+prior_finding_id: F101-001
