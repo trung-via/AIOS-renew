@@ -1,0 +1,21 @@
+{
+  "repair_id": "REPAIR-102-001",
+  "failed_run_id": "RUN-102-001",
+  "failed_head_sha": "6f0e9b6c2104c30de152e8d31a0935bb4fb158b5",
+  "task": {
+    "id": "TASK-102",
+    "revision": 1
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "tests/test_operator.py"
+  ],
+  "instructions": [
+    "Repair the verification regression in RUN-102-001 without redesigning Unified State or remote observation. The current parameterized test incorrectly requires detached and non-main repositories to return the same EXECUTOR_REQUIRED Human-surface outcome as equal/ahead/diverged/dirty main states, even though TASK-102 requires those states to preserve existing Unified Human behavior rather than introducing new branch-agnostic remote-observation semantics.",
+    "Keep deterministic success coverage for equal, local-ahead, diverged, and dirty states where the existing Unified State path remains observable. For detached and non-main states, prove the TASK-102 requirement that CONTINUE performs no automatic fast-forward, reset, merge, rebase, stash, force update, cleanup, RUN creation, Executor invocation, or other mutation merely to obtain newer TASK content, while preserving the pre-existing fail-closed/operator-error behavior when Unified State cannot resolve configured branch/upstream context.",
+    "Do not modify production code, README, TASK semantics, Unified State remote-observation authority, or TASK-062 synchronization behavior in this repair. Do not make detached HEAD or an unconfigured feature branch synthetically inherit main/upstream identity just to satisfy the failed test.",
+    "Retain and do not weaken the existing stale-malformed TASK, older-valid TASK, synchronized restart, equal-main, local-ahead/diverged/dirty preservation, no-destructive-Git-operation, no-RUN-before-sync, and one-restart regression coverage. Change only the minimum assertions/parameterization needed to align the failed tests with the published TASK-086/TASK-087 behavior and TASK-102 AC4/AC5.",
+    "Continue from the exact RUN-102-001 failed candidate lineage. No file outside tests/test_operator.py is authorized for mutation."
+  ],
+  "constraints": []
+}
