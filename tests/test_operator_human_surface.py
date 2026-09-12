@@ -937,3 +937,62 @@ def test_human_surface_direct_module_call(
     assert payload["disposition"] == "NO_ACTION"
     assert payload["authority"] == "NONE"
     assert payload["selectors"]["run_id"] == "RUN-101-001"
+
+
+def test_human_surface_ac5_exposes_outstanding_findings_and_does_not_delegate_multi_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    finding_1 = human_surface_module.OutstandingFindingIdentity(
+        source_run_id="RUN-101-001",
+        review_id="REVIEW-101-001",
+        finding_id="F1",
+        reviewed_sha="a" * 40,
+    )
+    finding_2 = human_surface_module.OutstandingFindingIdentity(
+        source_run_id="RUN-101-001",
+        review_id="REVIEW-101-001",
+        finding_id="F2",
+        reviewed_sha="a" * 40,
+    )
+    observation = operator_module.UnifiedStateObservation(
+        "TASK-101",
+        1,
+        "CORRECTION",
+        "AUTHOR_REMEDIATION",
+        run_id="RUN-101-001",
+        source_run_id="RUN-101-001",
+        review_id="REVIEW-101-001",
+        finding_id=None,
+        candidate_sha="a" * 40,
+        reviewed_sha="a" * 40,
+        outstanding_findings=(finding_1, finding_2),
+    )
+    monkeypatch.setattr(
+        operator_module, "observe_unified_state", lambda *_args, **_kwargs: observation
+    )
+    forbidden = lambda *_args, **_kwargs: pytest.fail("operation was delegated")
+    monkeypatch.setattr(operator_module, "run_task", forbidden)
+    monkeypatch.setattr(operator_module, "run_remediation", forbidden)
+    monkeypatch.setattr(operator_module, "run_repair", forbidden)
+
+    # AC5: Supplying an Executor must not grant selection authority or cause a multi-finding correction to execute
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-101", executor="antigravity", repo=repo
+    )
+
+    assert exit_code == 0
+    assert outcome is not None
+    payload = outcome.as_dict()
+    assert payload["format"] == "AIOS_HUMAN_SURFACE"
+    assert payload["version"] == 1
+    assert payload["observed_next_action"] == "AUTHOR_REMEDIATION"
+    assert payload["disposition"] == "EXTERNAL_AUTHORITY_REQUIRED"
+    assert payload["authority"] == "BRAIN"
+    assert payload["delegated_operation"] is None
+    assert payload["selectors"]["finding_id"] is None
+    assert payload["selectors"]["source_run_id"] == "RUN-101-001"
+    assert payload["executor"]["supplied"] is True
+    assert payload["executor"]["identity"] == "antigravity"
+    assert len(payload["outstanding_findings"]) == 2
+    assert payload["outstanding_findings"] == [dict(finding_1), dict(finding_2)]

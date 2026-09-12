@@ -16,7 +16,7 @@ import time
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 from .dispatch_reconciliation import DispatchError
-from .unified_state import UnifiedStateObservation
+from .unified_state import OutstandingFindingIdentity, UnifiedStateObservation
 
 if TYPE_CHECKING:
     from .operator import PreflightResult
@@ -58,7 +58,22 @@ class HumanSurfaceResult:
     executor: str | None = None
     resulting_run_id: str | None = None
     resulting_head_sha: str | None = None
+    outstanding_findings: tuple[OutstandingFindingIdentity, ...] = ()
     blocker: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.outstanding_findings, tuple) or any(
+            not isinstance(item, OutstandingFindingIdentity)
+            for item in self.outstanding_findings
+        ):
+            object.__setattr__(
+                self,
+                "outstanding_findings",
+                tuple(
+                    OutstandingFindingIdentity.from_item(item)
+                    for item in self.outstanding_findings
+                ),
+            )
 
     def as_dict(self) -> dict[str, Any]:
         if self.disposition not in _HUMAN_DISPOSITIONS:
@@ -85,6 +100,7 @@ class HumanSurfaceResult:
                 "failed_head_sha": self.failed_head_sha,
                 "correction_sha": self.correction_sha,
             },
+            "outstanding_findings": [dict(item) for item in self.outstanding_findings],
             "executor": {
                 "required": self.executor_required,
                 "supplied": self.executor_supplied,
@@ -140,6 +156,7 @@ def _human_surface_result(
         executor=executor,
         resulting_run_id=resulting_run_id,
         resulting_head_sha=resulting_head_sha,
+        outstanding_findings=observation.outstanding_findings,
         blocker=blocker if blocker is not None else observation.blocker,
     )
 

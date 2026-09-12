@@ -27,6 +27,7 @@ from aios_renew.review_transport import (
 )
 from tests.operator_test_support import (
     TASK_SOURCE,
+    _runtime_bytes,
     canonical_result_payload,
     git,
     make_repo,
@@ -1249,3 +1250,584 @@ def test_unified_state_observes_legacy_and_predecessor_remediation_runs_ac7(
     assert obs_retry["lifecycle_state"] == "TRANSPORT"
     assert obs_retry["next_action"] == "RETRY_TRANSPORT"
     assert obs_retry["run_id"] == child_id
+
+
+def test_unified_state_ac1_outstanding_findings_bounded_identity_exposure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = json.dumps({
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    package = json.dumps(canonical_result_payload(run_id, head)).encode()
+    review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 2
+    expected: fix 2
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 1
+    expected: fix 1
+""".encode()
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),),
+        (RemoteLifecycleReview(run_id, head, review),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo)
+
+    # AC1: deterministic bounded collection of exact outstanding-finding identities
+    assert len(observation.outstanding_findings) == 2
+    f1_item, f2_item = observation.outstanding_findings
+    assert f1_item.finding_id == "F1"
+    assert f1_item.source_run_id == run_id
+    assert f1_item.review_id == "REVIEW-101-001"
+    assert f1_item.reviewed_sha == head
+    assert f1_item["finding_id"] == "F1"
+    assert dict(f1_item) == {
+        "source_run_id": run_id,
+        "review_id": "REVIEW-101-001",
+        "finding_id": "F1",
+        "reviewed_sha": head,
+    }
+    assert f2_item.finding_id == "F2"
+
+    payload = observation.as_dict()
+    assert payload["outstanding_findings"] == [dict(f1_item), dict(f2_item)]
+    assert payload["next_action"] == "AUTHOR_REMEDIATION"
+
+
+def test_unified_state_ac2_multi_finding_primary_changes_required(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = json.dumps({
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    package = json.dumps(canonical_result_payload(run_id, head)).encode()
+    review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 1
+    expected: fix 1
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 2
+    expected: fix 2
+""".encode()
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),),
+        (RemoteLifecycleReview(run_id, head, review),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    obs = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    # AC2: Multi-finding PRIMARY CHANGES_REQUIRED reduces to CORRECTION/AUTHOR_REMEDIATION
+    # with full outstanding identities and NO implicitly selected finding_id
+    assert obs["lifecycle_state"] == "CORRECTION"
+    assert obs["next_action"] == "AUTHOR_REMEDIATION"
+    assert obs["finding_id"] is None
+    assert obs["source_run_id"] == run_id
+    assert obs["review_id"] == "REVIEW-101-001"
+    assert obs["blocker"] is None
+    assert len(obs["outstanding_findings"]) == 2
+    finding_ids = [item["finding_id"] for item in obs["outstanding_findings"]]
+    assert finding_ids == ["F1", "F2"]
+
+
+def test_unified_state_ac3_delta_pass_with_remaining_siblings_reduces_to_correction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    primary_id = "RUN-101-001"
+    delta_id = "RUN-101-002"
+
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    primary_package = json.dumps(canonical_result_payload(primary_id, head)).encode()
+    primary_review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 1
+    expected: fix 1
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 2
+    expected: fix 2
+""".encode()
+
+    delta_run_data = {
+        "kind": "REMEDIATION",
+        "predecessor": {
+            "source_run_id": primary_id,
+            "review_id": "REVIEW-101-001",
+            "finding_id": "F1",
+            "reviewed_sha": head,
+        },
+        "execution": {
+            "review_id": "REVIEW-101-001",
+            "finding": {
+                "id": "F1",
+                "basis": "AC1",
+                "action": "CODE_FIX",
+                "location": "OUTPUT.txt",
+                "issue": "issue 1",
+                "expected": "fix 1",
+            },
+            "remediation": {
+                "finding_id": "F1",
+                "action": "CODE_FIX",
+                "reviewed_sha": head,
+                "modification_scope": ["OUTPUT.txt"],
+                "affected_verification": ["git diff --check"],
+                "constraints": {"hard": ["Commit the output."]},
+            },
+            "run": {
+                "run_id": delta_id,
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "codex",
+                "base_sha": head,
+                "workspace": "bounded-away",
+                "head_sha": None,
+                "status": "ACTIVE",
+            },
+            "original_constraints": ["Commit the output."],
+        },
+    }
+    delta_run = json.dumps(delta_run_data).encode()
+    delta_package = json.dumps(canonical_result_payload(delta_id, head)).encode()
+    delta_review = f"""review_id: REVIEW-101-002
+reviewed_sha: {head}
+mode: DELTA
+verdict: PASS
+acceptance: {{AC1: PASS}}
+findings: []
+prior_finding_id: F1
+""".encode()
+
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(primary_id, "RESULT", head, primary_run, primary_package),
+            RemoteLifecycleTerminal(delta_id, "RESULT", head, delta_run, delta_package),
+        ),
+        (
+            RemoteLifecycleReview(primary_id, head, primary_review),
+            RemoteLifecycleReview(delta_id, head, delta_review),
+        ),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    obs = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    # AC3: DELTA PASS with remaining siblings reduces to correction-authoring state with those siblings exposed
+    assert obs["lifecycle_state"] == "CORRECTION"
+    assert obs["next_action"] == "AUTHOR_REMEDIATION"
+    assert obs["run_id"] == delta_id
+    assert obs["source_run_id"] == primary_id
+    assert obs["review_id"] == "REVIEW-101-001"
+    assert obs["finding_id"] == "F2"
+    assert obs["blocker"] is None
+    assert len(obs["outstanding_findings"]) == 1
+    assert obs["outstanding_findings"][0]["finding_id"] == "F2"
+    assert obs["outstanding_findings"][0]["source_run_id"] == primary_id
+
+
+def test_unified_state_ac3_delta_pass_with_empty_frontier_continues_to_done(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    primary_id = "RUN-101-001"
+    delta_id = "RUN-101-002"
+
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    primary_package = json.dumps(canonical_result_payload(primary_id, head)).encode()
+    primary_review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 1
+    expected: fix 1
+""".encode()
+
+    delta_run_data = {
+        "kind": "REMEDIATION",
+        "predecessor": {
+            "source_run_id": primary_id,
+            "review_id": "REVIEW-101-001",
+            "finding_id": "F1",
+            "reviewed_sha": head,
+        },
+        "execution": {
+            "review_id": "REVIEW-101-001",
+            "finding": {
+                "id": "F1",
+                "basis": "AC1",
+                "action": "CODE_FIX",
+                "location": "OUTPUT.txt",
+                "issue": "issue 1",
+                "expected": "fix 1",
+            },
+            "remediation": {
+                "finding_id": "F1",
+                "action": "CODE_FIX",
+                "reviewed_sha": head,
+                "modification_scope": ["OUTPUT.txt"],
+                "affected_verification": ["git diff --check"],
+                "constraints": {"hard": ["Commit the output."]},
+            },
+            "run": {
+                "run_id": delta_id,
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "codex",
+                "base_sha": head,
+                "workspace": "bounded-away",
+                "head_sha": None,
+                "status": "ACTIVE",
+            },
+            "original_constraints": ["Commit the output."],
+        },
+    }
+    delta_run = json.dumps(delta_run_data).encode()
+    delta_package = json.dumps(canonical_result_payload(delta_id, head)).encode()
+    delta_review = f"""review_id: REVIEW-101-002
+reviewed_sha: {head}
+mode: DELTA
+verdict: PASS
+acceptance: {{AC1: PASS}}
+findings: []
+prior_finding_id: F1
+""".encode()
+
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(primary_id, "RESULT", head, primary_run, primary_package),
+            RemoteLifecycleTerminal(delta_id, "RESULT", head, delta_run, delta_package),
+        ),
+        (
+            RemoteLifecycleReview(primary_id, head, primary_review),
+            RemoteLifecycleReview(delta_id, head, delta_review),
+        ),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+    monkeypatch.setattr(
+        publication_module, "_load_success_lineage", lambda *_args, **_kwargs: (head, None)
+    )
+
+    obs = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert obs["lifecycle_state"] == "DONE"
+    assert obs["next_action"] == "DONE"
+    assert obs["run_id"] == delta_id
+    assert obs["outstanding_findings"] == []
+
+
+def test_unified_state_ac4_single_finding_author_and_execute_remediation_compatibility(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = json.dumps({
+        "run_id": run_id, "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex", "base_sha": head, "workspace": "bounded-away",
+        "head_sha": None, "status": "ACTIVE",
+    }).encode()
+    package = json.dumps(canonical_result_payload(run_id, head)).encode()
+    review = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: output is incomplete
+    expected: output is complete
+""".encode()
+    correction_sha = "c" * 40
+
+    # 1. No selector -> AUTHOR_REMEDIATION with exact finding_id
+    lifecycle_no_sel = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),),
+        (RemoteLifecycleReview(run_id, head, review),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle_no_sel)
+    obs_author = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_author["next_action"] == "AUTHOR_REMEDIATION"
+    assert obs_author["finding_id"] == "F1"
+    assert len(obs_author["outstanding_findings"]) == 1
+
+    # 2. Approved selector + READY preflight -> EXECUTE_REMEDIATION
+    lifecycle_sel = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),),
+        (RemoteLifecycleReview(run_id, head, review),),
+        ((run_id, "F1", correction_sha),), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle_sel)
+    monkeypatch.setattr(
+        operator_module,
+        "preflight_remediation",
+        lambda *_args, **_kwargs: CorrectionPreflightResult(
+            "REMEDIATION", "READY", "READY", "READY",
+            task_id="TASK-101", task_revision=1, source_run_id=run_id,
+            review_id="REVIEW-101-001", finding_id="F1", reviewed_sha=head,
+            subject_mode="CURRENT", action="CODE_FIX",
+        ),
+    )
+    obs_exec = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_exec["next_action"] == "EXECUTE_REMEDIATION"
+    assert obs_exec["finding_id"] == "F1"
+    assert obs_exec["correction_sha"] == correction_sha
+    assert len(obs_exec["outstanding_findings"]) == 1
+
+    # 3. Approved selector + BLOCKED preflight -> CORRECTION_PREFLIGHT_BLOCKED
+    monkeypatch.setattr(
+        operator_module,
+        "preflight_remediation",
+        lambda *_args, **_kwargs: CorrectionPreflightResult(
+            "REMEDIATION", "BLOCKED", "PREFLIGHT", "CORRECTION_INPUT_INVALID",
+            task_id="TASK-101", task_revision=1, source_run_id=run_id,
+            review_id="REVIEW-101-001", finding_id="F1", reviewed_sha=head,
+            subject_mode="CURRENT", action="CODE_FIX",
+        ),
+    )
+    obs_blocked = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_blocked["lifecycle_state"] == "BLOCKED"
+    assert obs_blocked["blocker"]["code"] == "CORRECTION_PREFLIGHT_BLOCKED"
+    assert len(obs_blocked["outstanding_findings"]) == 1
+
+
+def test_unified_state_ac6_order_independence_and_malformed_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-101-001"
+    run = json.dumps({
+        "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    package = json.dumps(canonical_result_payload(run_id, head)).encode()
+
+    rev_order1 = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 2
+    expected: fix 2
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 1
+    expected: fix 1
+""".encode()
+    lifecycle1 = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),),
+        (RemoteLifecycleReview(run_id, head, rev_order1),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle1)
+    obs1 = observe_unified_state("TASK-101", repo=repo)
+
+    rev_order2 = f"""review_id: REVIEW-101-001
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 1
+    expected: fix 1
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: issue 2
+    expected: fix 2
+""".encode()
+    lifecycle2 = RemoteTaskLifecycle(
+        head,
+        (RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),),
+        (RemoteLifecycleReview(run_id, head, rev_order2),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle2)
+    obs2 = observe_unified_state("TASK-101", repo=repo)
+
+    # 1. Observation order does not imply priority; results are identical
+    assert obs1.outstanding_findings == obs2.outstanding_findings
+    assert [f.finding_id for f in obs1.outstanding_findings] == ["F1", "F2"]
+
+    # 2. Malformed / inconsistent frontier lineage fails closed as MALFORMED_CANONICAL_STATE
+    delta_id = "RUN-101-002"
+    delta_run_data = {
+        "kind": "REMEDIATION",
+        "predecessor": {
+            "source_run_id": run_id,
+            "review_id": "REVIEW-101-001",
+            "finding_id": "F99",
+            "reviewed_sha": head,
+        },
+        "execution": {
+            "review_id": "REVIEW-101-001",
+            "finding": {
+                "id": "F99",
+                "basis": "AC1",
+                "action": "CODE_FIX",
+                "location": "OUTPUT.txt",
+                "issue": "issue 99",
+                "expected": "fix 99",
+            },
+            "remediation": {
+                "finding_id": "F99",
+                "action": "CODE_FIX",
+                "reviewed_sha": head,
+                "modification_scope": ["OUTPUT.txt"],
+                "affected_verification": ["git diff --check"],
+                "constraints": {"hard": ["Commit the output."]},
+            },
+            "run": {
+                "run_id": delta_id,
+                "task": {"id": "TASK-101", "revision": 1},
+                "executor": "codex",
+                "base_sha": head,
+                "workspace": "bounded-away",
+                "head_sha": None,
+                "status": "ACTIVE",
+            },
+            "original_constraints": ["Commit the output."],
+        },
+    }
+    delta_run = json.dumps(delta_run_data).encode()
+    delta_package = json.dumps(canonical_result_payload(delta_id, head)).encode()
+    delta_review = f"""review_id: REVIEW-101-002
+reviewed_sha: {head}
+mode: DELTA
+verdict: PASS
+acceptance: {{AC1: PASS}}
+findings: []
+prior_finding_id: F99
+""".encode()
+    lifecycle_malformed = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(run_id, "RESULT", head, run, package),
+            RemoteLifecycleTerminal(delta_id, "RESULT", head, delta_run, delta_package),
+        ),
+        (
+            RemoteLifecycleReview(run_id, head, rev_order2),
+            RemoteLifecycleReview(delta_id, head, delta_review),
+        ),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle_malformed)
+    obs_malformed = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_malformed["lifecycle_state"] == "BLOCKED"
+    assert obs_malformed["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+    # 3. Observation is read-only: runtime state has not mutated
+    before_runtime = _runtime_bytes(repo)
+    observe_unified_state("TASK-101", repo=repo)
+    assert _runtime_bytes(repo) == before_runtime
+

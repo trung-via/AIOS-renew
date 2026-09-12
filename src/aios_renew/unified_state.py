@@ -20,6 +20,11 @@ from .artifacts import (
     validate_result,
     validate_result_package,
 )
+from .correction_frontier import (
+    CorrectionFrontier,
+    CorrectionFrontierError,
+    OutstandingFinding,
+)
 from .correction_preflight import (
     CorrectionPreflightResult,
     preflight_remediation,
@@ -70,6 +75,65 @@ _UNIFIED_AUTHORITIES = {
 
 
 @dataclass(frozen=True)
+class OutstandingFindingIdentity(Mapping[str, Any]):
+    """Exact semantic lineage identity of one outstanding finding."""
+
+    source_run_id: str
+    review_id: str
+    finding_id: str
+    reviewed_sha: str
+
+    def __getitem__(self, key: str) -> Any:
+        if key == "source_run_id":
+            return self.source_run_id
+        if key == "review_id":
+            return self.review_id
+        if key == "finding_id":
+            return self.finding_id
+        if key == "reviewed_sha":
+            return self.reviewed_sha
+        raise KeyError(key)
+
+    def __iter__(self):
+        yield "source_run_id"
+        yield "review_id"
+        yield "finding_id"
+        yield "reviewed_sha"
+
+    def __len__(self) -> int:
+        return 4
+
+    @property
+    def key(self) -> tuple[str, str, str, str]:
+        return (self.source_run_id, self.review_id, self.finding_id, self.reviewed_sha)
+
+    def __lt__(self, other: Any) -> bool:
+        if isinstance(other, OutstandingFindingIdentity):
+            return self.key < other.key
+        if hasattr(other, "key"):
+            return self.key < other.key
+        return NotImplemented
+
+    @classmethod
+    def from_item(cls, item: Any) -> OutstandingFindingIdentity:
+        if isinstance(item, cls):
+            return item
+        if isinstance(item, Mapping):
+            return cls(
+                source_run_id=str(item["source_run_id"]),
+                review_id=str(item["review_id"]),
+                finding_id=str(item["finding_id"]),
+                reviewed_sha=str(item["reviewed_sha"]),
+            )
+        return cls(
+            source_run_id=str(getattr(item, "source_run_id")),
+            review_id=str(getattr(item, "review_id")),
+            finding_id=str(getattr(item, "finding_id")),
+            reviewed_sha=str(getattr(item, "reviewed_sha")),
+        )
+
+
+@dataclass(frozen=True)
 class UnifiedStateObservation:
     """Versioned, bounded and mutation-free lifecycle reduction."""
 
@@ -90,8 +154,23 @@ class UnifiedStateObservation:
     # Exact repair content is retained only for the immediate admission handoff.
     # It is deliberately excluded from the Human/state renderings.
     correction_document: Mapping[str, Any] | None = None
+    outstanding_findings: tuple[OutstandingFindingIdentity, ...] = ()
     blocker: Mapping[str, Any] | None = None
     admission_failures: tuple[Mapping[str, Any], ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.outstanding_findings, tuple) or any(
+            not isinstance(item, OutstandingFindingIdentity)
+            for item in self.outstanding_findings
+        ):
+            object.__setattr__(
+                self,
+                "outstanding_findings",
+                tuple(
+                    OutstandingFindingIdentity.from_item(item)
+                    for item in self.outstanding_findings
+                ),
+            )
 
     def as_dict(self) -> dict[str, Any]:
         if self.next_action not in _UNIFIED_NEXT_ACTIONS:
@@ -116,6 +195,7 @@ class UnifiedStateObservation:
             "correction_preflight": (
                 dict(self.correction) if self.correction is not None else None
             ),
+            "outstanding_findings": [dict(item) for item in self.outstanding_findings],
             "blocker": dict(self.blocker) if self.blocker is not None else None,
             "admission_failures": [dict(item) for item in self.admission_failures],
             "run_created": False,
@@ -414,14 +494,35 @@ def _decode_remote_lifecycle(
         if item.family != "REMEDIATION":
             resolved.append(item)
             continue
-        parents = [
-            parent
-            for parent in by_candidate.get(item.run.base_sha, ())
-            if parent.terminal_kind == "RESULT"
-            and parent.run_id in reviews
-            and reviews[parent.run_id].review_id == item.review_id
-            and item.finding_id in {finding.id for finding in reviews[parent.run_id].findings}
-        ]
+        pred = (
+            item.run_document.get("predecessor")
+            if isinstance(item.run_document, Mapping)
+            else None
+        )
+        if isinstance(pred, Mapping) and "source_run_id" in pred:
+            pred_source_run_id = pred.get("source_run_id")
+            pred_review_id = pred.get("review_id")
+            pred_finding_id = pred.get("finding_id")
+            pred_reviewed_sha = pred.get("reviewed_sha")
+            parents = [
+                parent
+                for parent in by_candidate.get(item.run.base_sha, ())
+                if parent.terminal_kind == "RESULT"
+                and parent.run_id == pred_source_run_id
+                and parent.run_id in reviews
+                and reviews[parent.run_id].review_id == pred_review_id
+                and reviews[parent.run_id].reviewed_sha == pred_reviewed_sha
+                and pred_finding_id in {finding.id for finding in reviews[parent.run_id].findings}
+            ]
+        else:
+            parents = [
+                parent
+                for parent in by_candidate.get(item.run.base_sha, ())
+                if parent.terminal_kind == "RESULT"
+                and parent.run_id in reviews
+                and reviews[parent.run_id].review_id == item.review_id
+                and item.finding_id in {finding.id for finding in reviews[parent.run_id].findings}
+            ]
         if len(parents) != 1:
             raise ValueError("REMEDIATION predecessor is missing or ambiguous")
         resolved.append(replace(item, parent_run_id=parents[0].run_id))
@@ -507,6 +608,223 @@ def _correction_prior_review(
     return prior_review
 
 
+def _derive_tip_frontier(
+    tip: _LifecycleRun,
+    remote: list[_LifecycleRun],
+    reviews: Mapping[str, Review],
+) -> CorrectionFrontier:
+    tip_review = reviews.get(tip.run_id)
+    if tip_review is None:
+        raise ValueError(f"tip run {tip.run_id} has no review")
+
+    if tip.family == "PRIMARY":
+        return CorrectionFrontier.from_primary(tip.run_id, tip_review)
+
+    by_run_id: dict[str, _LifecycleRun] = {}
+    for item in remote:
+        if item.run_id in by_run_id:
+            raise ValueError(f"duplicate run_id in remote: {item.run_id}")
+        by_run_id[item.run_id] = item
+
+    def _get_remediation_item(run_item: _LifecycleRun) -> _LifecycleRun:
+        curr = run_item
+        seen_repairs: set[str] = set()
+        while curr.family == "REPAIR":
+            if curr.run_id in seen_repairs or curr.parent_run_id is None:
+                raise ValueError("REPAIR predecessor is missing or cyclic")
+            seen_repairs.add(curr.run_id)
+            parent = by_run_id.get(curr.parent_run_id)
+            if parent is None:
+                raise ValueError("REPAIR predecessor is missing from remote lifecycle")
+            curr = parent
+        if curr.family != "REMEDIATION":
+            raise ValueError("correction predecessor is not a REMEDIATION")
+        return curr
+
+    def _get_predecessor_data(remediation_item: _LifecycleRun) -> Any:
+        pred = (
+            remediation_item.run_document.get("predecessor")
+            if isinstance(remediation_item.run_document, Mapping)
+            else None
+        )
+        if isinstance(pred, Mapping):
+            return pred
+        if (
+            remediation_item.parent_run_id is not None
+            and remediation_item.review_id is not None
+            and remediation_item.finding_id is not None
+        ):
+            parent_rev = reviews.get(remediation_item.parent_run_id)
+            if parent_rev is not None:
+                return {
+                    "source_run_id": remediation_item.parent_run_id,
+                    "review_id": remediation_item.review_id,
+                    "finding_id": remediation_item.finding_id,
+                    "reviewed_sha": parent_rev.reviewed_sha,
+                }
+        raise ValueError("REMEDIATION predecessor is missing")
+
+    steps: list[tuple[str, Any, Review]] = []
+    seen: set[str] = {tip.run_id}
+
+    tip_remediation = _get_remediation_item(tip)
+    tip_pred = _get_predecessor_data(tip_remediation)
+    steps.append((tip.run_id, tip_pred, tip_review))
+    current_pred = tip_pred
+
+    while True:
+        if isinstance(current_pred, Mapping):
+            source_id = current_pred.get("source_run_id")
+        else:
+            source_id = getattr(current_pred, "source_run_id", None)
+        if not isinstance(source_id, str):
+            raise ValueError("invalid predecessor source_run_id")
+        if source_id in seen:
+            raise ValueError(f"cyclic predecessor lineage at {source_id}")
+        seen.add(source_id)
+
+        parent_item = by_run_id.get(source_id)
+        if parent_item is None:
+            raise ValueError(f"predecessor run {source_id} not found in remote lifecycle")
+        parent_review = reviews.get(source_id)
+        if parent_review is None:
+            raise ValueError(f"predecessor review missing for {source_id}")
+
+        if parent_item.family == "PRIMARY":
+            primary_run_id = source_id
+            primary_review = parent_review
+            break
+
+        parent_remediation = _get_remediation_item(parent_item)
+        parent_pred = _get_predecessor_data(parent_remediation)
+        steps.append((source_id, parent_pred, parent_review))
+        current_pred = parent_pred
+
+    frontier = CorrectionFrontier.from_primary(primary_run_id, primary_review)
+    for step_run_id, step_pred, step_review in reversed(steps):
+        frontier = frontier.advance(
+            delta_run_id=step_run_id,
+            delta_review=step_review,
+            predecessor=step_pred,
+        )
+    return frontier
+
+
+def _reduce_correction_frontier(
+    task: Task,
+    root: Path,
+    tip: _LifecycleRun,
+    review: Review,
+    lifecycle: RemoteTaskLifecycle,
+    frontier: CorrectionFrontier,
+    admission_context: tuple[Mapping[str, Any], ...],
+) -> UnifiedStateObservation:
+    op = _operator()
+    outstanding_identities = tuple(
+        OutstandingFindingIdentity.from_item(f) for f in frontier.findings
+    )
+    frontier_keys = {(f.source_run_id, f.finding_id) for f in frontier.findings}
+    matching_selectors = [
+        item for item in lifecycle.remediation_selectors
+        if (item[0], item[1]) in frontier_keys
+    ]
+
+    if not matching_selectors:
+        if len(frontier.findings) == 1:
+            sole = frontier.findings[0]
+            return UnifiedStateObservation(
+                task.task_id,
+                task.revision,
+                "CORRECTION",
+                "AUTHOR_REMEDIATION",
+                run_id=tip.run_id,
+                source_run_id=sole.source_run_id,
+                review_id=sole.review_id,
+                finding_id=sole.finding_id,
+                candidate_sha=tip.candidate_sha,
+                reviewed_sha=sole.reviewed_sha,
+                outstanding_findings=outstanding_identities,
+                admission_failures=admission_context,
+            )
+        source_run_ids = {f.source_run_id for f in frontier.findings}
+        review_ids = {f.review_id for f in frontier.findings}
+        reviewed_shas = {f.reviewed_sha for f in frontier.findings}
+        return UnifiedStateObservation(
+            task.task_id,
+            task.revision,
+            "CORRECTION",
+            "AUTHOR_REMEDIATION",
+            run_id=tip.run_id,
+            source_run_id=next(iter(source_run_ids)) if len(source_run_ids) == 1 else None,
+            review_id=next(iter(review_ids)) if len(review_ids) == 1 else None,
+            finding_id=None,
+            candidate_sha=tip.candidate_sha,
+            reviewed_sha=next(iter(reviewed_shas)) if len(reviewed_shas) == 1 else None,
+            outstanding_findings=outstanding_identities,
+            admission_failures=admission_context,
+        )
+
+    if len(matching_selectors) != 1:
+        return _unified_blocked(
+            task,
+            "COMPETING_REMEDIATIONS",
+            admission_failures=admission_context,
+            run_id=tip.run_id,
+            review_id=review.review_id,
+            reviewed_sha=review.reviewed_sha,
+            outstanding_findings=outstanding_identities,
+        )
+
+    chosen_selector = matching_selectors[0]
+    chosen_finding = next(
+        f for f in frontier.findings
+        if f.source_run_id == chosen_selector[0] and f.finding_id == chosen_selector[1]
+    )
+    preflight_remediation_fn = getattr(
+        op, "preflight_remediation", preflight_remediation
+    )
+    preflight = preflight_remediation_fn(
+        task.task_id,
+        finding_id=chosen_finding.finding_id,
+        source_run_id=chosen_finding.source_run_id,
+        approved_remediation_sha=chosen_selector[2],
+        repo=root,
+    )
+    correction = preflight.as_dict()
+    if preflight.status != "READY":
+        return _unified_blocked(
+            task,
+            "CORRECTION_PREFLIGHT_BLOCKED",
+            phase=preflight.phase,
+            reason_code=preflight.reason_code,
+            admission_failures=admission_context,
+            run_id=tip.run_id,
+            source_run_id=chosen_finding.source_run_id,
+            review_id=chosen_finding.review_id,
+            finding_id=chosen_finding.finding_id,
+            reviewed_sha=chosen_finding.reviewed_sha,
+            correction_sha=chosen_selector[2],
+            correction=correction,
+            outstanding_findings=outstanding_identities,
+        )
+    return UnifiedStateObservation(
+        task.task_id,
+        task.revision,
+        "CORRECTION",
+        "EXECUTE_REMEDIATION",
+        run_id=tip.run_id,
+        source_run_id=chosen_finding.source_run_id,
+        review_id=chosen_finding.review_id,
+        finding_id=chosen_finding.finding_id,
+        candidate_sha=tip.candidate_sha,
+        reviewed_sha=chosen_finding.reviewed_sha,
+        correction_sha=chosen_selector[2],
+        correction=correction,
+        outstanding_findings=outstanding_identities,
+        admission_failures=admission_context,
+    )
+
+
 def _local_pending_runs(
     repo: Path,
     state: Any,
@@ -578,6 +896,9 @@ def _local_pending_runs(
                     finding.id for finding in reviews[parent.run_id].findings
                 }
             ]
+            pred = local_value.get("predecessor")
+            if isinstance(pred, Mapping) and "source_run_id" in pred:
+                parents = [p for p in parents if p.run_id == pred["source_run_id"]]
             if len(parents) == 1:
                 parent_run_id = parents[0].run_id
         if family == "REPAIR":
@@ -904,56 +1225,10 @@ def observe_unified_state(
                     run_id=tip.run_id, review_id=review.review_id,
                     candidate_sha=tip.candidate_sha, reviewed_sha=review.reviewed_sha,
                 )
-            if review.verdict == "CHANGES_REQUIRED":
-                if len(review.findings) != 1:
-                    return _unified_blocked(
-                        task, "AMBIGUOUS_FINDINGS", admission_failures=admission_context,
-                        run_id=tip.run_id, review_id=review.review_id,
-                        reviewed_sha=review.reviewed_sha,
-                    )
-                finding = review.findings[0]
-                selectors = [
-                    item for item in lifecycle.remediation_selectors
-                    if item[0] == tip.run_id and item[1] == finding.id
-                ]
-                if not selectors:
-                    return UnifiedStateObservation(
-                        task.task_id, task.revision, "CORRECTION", "AUTHOR_REMEDIATION",
-                        run_id=tip.run_id, source_run_id=tip.run_id,
-                        review_id=review.review_id, finding_id=finding.id,
-                        candidate_sha=tip.candidate_sha, reviewed_sha=review.reviewed_sha,
-                        admission_failures=admission_context,
-                    )
-                if len(selectors) != 1:
-                    return _unified_blocked(
-                        task, "COMPETING_REMEDIATIONS", admission_failures=admission_context,
-                        run_id=tip.run_id, review_id=review.review_id,
-                        finding_id=finding.id, reviewed_sha=review.reviewed_sha,
-                    )
-                preflight_remediation_fn = getattr(
-                    op, "preflight_remediation", preflight_remediation
-                )
-                preflight = preflight_remediation_fn(
-                    task.task_id, finding_id=finding.id, source_run_id=tip.run_id,
-                    approved_remediation_sha=selectors[0][2], repo=root,
-                )
-                correction = preflight.as_dict()
-                if preflight.status != "READY":
-                    return _unified_blocked(
-                        task, "CORRECTION_PREFLIGHT_BLOCKED",
-                        phase=preflight.phase, reason_code=preflight.reason_code,
-                        admission_failures=admission_context, run_id=tip.run_id,
-                        source_run_id=tip.run_id, review_id=review.review_id,
-                        finding_id=finding.id, reviewed_sha=review.reviewed_sha,
-                        correction_sha=selectors[0][2], correction=correction,
-                    )
-                return UnifiedStateObservation(
-                    task.task_id, task.revision, "CORRECTION", "EXECUTE_REMEDIATION",
-                    run_id=tip.run_id, source_run_id=tip.run_id,
-                    review_id=review.review_id, finding_id=finding.id,
-                    candidate_sha=tip.candidate_sha, reviewed_sha=review.reviewed_sha,
-                    correction_sha=selectors[0][2], correction=correction,
-                    admission_failures=admission_context,
+            frontier = _derive_tip_frontier(tip, remote, reviews)
+            if review.verdict == "CHANGES_REQUIRED" or not frontier.is_empty:
+                return _reduce_correction_frontier(
+                    task, root, tip, review, lifecycle, frontier, admission_context
                 )
             # Reuse the safe-publication lineage validator in the isolated
             # observer before classifying ancestry.  Runtime PASS and a parsed
@@ -1015,6 +1290,7 @@ def observe_unified_state(
 
 
 __all__ = [
+    "OutstandingFindingIdentity",
     "UnifiedStateObservation",
     "observe_unified_state",
 ]
