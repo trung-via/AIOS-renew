@@ -39,8 +39,18 @@ sequence:
   - id: performance-closure
     status: NEXT
     task_id: TASK-099
-    phase: P3C1-outstanding-finding-observation
+    task_revision: 2
+    phase: P3C-bounded-observation-and-cumulative-correction
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
+    prior_revision:
+      revision: 1
+      status: SUPERSEDED_BY_NEW_INTENT
+      latest_reviewed_run: RUN-099-002
+      latest_reviewed_sha: "5d96ad13213f1b842af5a44c13b242ffb2cdffba"
+      outstanding_finding: F2
+      note: >-
+        Immutable revision-1 lineage remains evidence. It is not published, completed,
+        or reclassified as fixed; P3C2 is new intent and is carried by revision 2.
     last_completed:
       task_id: TASK-098
       phase: P3B-outstanding-finding-frontier
