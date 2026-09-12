@@ -1,0 +1,7 @@
+task_id: TASK-101
+revision: 1
+
+acceptance:
+  - id: AC1
+    condition: >
+      `aios performance` returns stable AIOS_PERFORMANCE_OBSERVATION v1 for 1-32 exact unique TASK selectors.
