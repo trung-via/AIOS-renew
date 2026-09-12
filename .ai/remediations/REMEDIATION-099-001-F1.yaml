@@ -1,0 +1,9 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: 991de3e551c6c0ba41edbc10768ac713d8f8ddc1
+modification_scope:
+  - src/aios_renew/unified_state.py
+  - tests/test_operator_unified_state.py
+affected_verification:
+  - python -m pytest tests/test_operator_unified_state.py -k "predecessor or outstanding or malformed" -q
+constraints: []
