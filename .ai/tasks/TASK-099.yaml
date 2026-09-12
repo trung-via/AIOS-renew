@@ -1,0 +1,124 @@
+task_id: TASK-099
+revision: 1
+
+goal: >
+  Establish P3C1 read-only outstanding-finding exposure through Unified State and
+  Unified Human Surface so known sibling findings remain visible to Human/Brain
+  without Runtime selecting, ranking, or executing one implicitly.
+
+problem: >
+  TASK-098/P3B now preserves an exact outstanding-finding frontier and publication
+  fails closed while that frontier is non-empty. Unified State still treats a
+  CHANGES_REQUIRED review with multiple findings as AMBIGUOUS_FINDINGS, and a DELTA
+  PASS with remaining siblings falls into publication-lineage invalidation instead
+  of surfacing the known outstanding semantic state. Human/Brain therefore cannot
+  consume the P3B frontier through the canonical Human-facing workflow.
+
+assumptions:
+  - Canonical implementation base is 4df6a12779e254cfe07b5f54de0d89955c321054.
+  - P3A/TASK-097 and P3B/TASK-098 are semantically PASS and published.
+  - Human authorized the P3 post-freeze correction-lineage evolution.
+  - docs/P3-DESIGN-NOTE.md now splits P3C into P3C1 observation and P3C2 cumulative correction continuation.
+  - P3C1 must not claim to solve sibling correction execution-base continuity.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-PERFORMANCE-CLOSURE.md
+    - docs/P3-DESIGN-NOTE.md
+    - .ai/tasks/TASK-087.yaml
+    - .ai/tasks/TASK-097.yaml
+    - .ai/tasks/TASK-098.yaml
+    - src/aios_renew/correction_frontier.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/publication.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_human_surface.py
+  modify:
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/human_surface.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_human_surface.py
+
+non_goals:
+  - Change P3A predecessor shape or P3B frontier semantics.
+  - Change REMEDIATION execution base, historical workspace behavior, or cumulative sibling correction execution; that belongs to P3C2.
+  - Auto-select, rank, prioritize, batch, or execute one finding from a multi-finding frontier.
+  - Change REVIEW/REMEDIATION schemas, publication authority, Executor behavior, verification ownership, REPAIR, retry, or reroute semantics.
+  - Rewrite historical artifacts.
+
+constraints:
+  hard:
+    - >
+      Unified State must consume the existing P3B CorrectionFrontier authority; it
+      must not recreate a second frontier reducer or derive outstanding state from
+      timestamps, RUN numbering, candidate equality, or finding-id search alone.
+    - >
+      Outstanding state exposed by Unified State must be deterministic, bounded, and
+      identity-complete: each item carries source RUN id, REVIEW id, finding id, and
+      reviewed SHA. Representation order must not imply selection priority.
+    - >
+      A PRIMARY CHANGES_REQUIRED review with multiple findings must no longer become
+      BLOCKED solely because of multiplicity. If no finding has been explicitly
+      selected by correction authority, Unified State must expose the full frontier
+      and return Brain-owned AUTHOR_REMEDIATION without setting one finding_id as the
+      chosen selector.
+    - >
+      A DELTA PASS with a non-empty P3B frontier must surface the remaining exact
+      outstanding findings as correction state rather than misclassifying the state
+      as publication-lineage invalid.
+    - >
+      Existing single-finding behavior remains compatible: when exactly one exact
+      outstanding finding is present, current AUTHOR_REMEDIATION / approved-remediation
+      preflight behavior and selectors remain valid.
+    - >
+      Human Surface must mirror the bounded outstanding-finding observation and keep
+      AUTHOR_REMEDIATION as external BRAIN authority. Supplying an Executor must not
+      grant selection authority or cause a multi-finding correction to execute.
+    - >
+      P3C1 must not introduce a new next-action router, mutation authority, hidden
+      planner, automatic continuation loop, or publication shortcut.
+    - >
+      Publication/P3B empty-frontier gating, exact SHA binding, correction preflight,
+      failure taxonomy, and one-active-mutation authority remain unchanged.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      UnifiedStateObservation exposes a deterministic bounded collection of exact
+      outstanding-finding identities without removing or reinterpreting existing selectors.
+  - id: AC2
+    condition: >
+      Multi-finding PRIMARY CHANGES_REQUIRED reduces to CORRECTION/AUTHOR_REMEDIATION
+      with full outstanding identities and no implicitly selected finding_id.
+  - id: AC3
+    condition: >
+      DELTA PASS with remaining siblings reduces to correction-authoring state with
+      those siblings exposed, while an empty frontier continues toward publication/DONE.
+  - id: AC4
+    condition: >
+      Existing single-finding AUTHOR_REMEDIATION and EXECUTE_REMEDIATION behavior remains
+      compatible and still uses exact canonical preflight selectors.
+  - id: AC5
+    condition: >
+      HumanSurfaceResult exposes the same bounded outstanding identities and does not
+      delegate a multi-finding correction merely because an Executor was supplied.
+  - id: AC6
+    condition: >
+      Tests prove observation order does not create priority, malformed/inconsistent
+      frontier lineage fails closed, and no Unified State/Human Surface mutation authority expands.
+  - id: AC7
+    condition: >
+      No P3A/P3B, publication, REVIEW/REMEDIATION, REMEDIATION execution-base, REPAIR,
+      retry, reroute, or historical-artifact semantics change.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator_unified_state.py tests/test_operator_human_surface.py -q
