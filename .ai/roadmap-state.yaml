@@ -38,19 +38,20 @@ sequence:
       published_sha: "a45e94294f0688e62dacfacd884f2736985fd616"
   - id: performance-closure
     status: NEXT
-    task_id: TASK-100
+    task_id: TASK-101
     task_revision: 1
-    phase: P4-execution-budget-observability-and-escalation
+    phase: P5-performance-observation-surface
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
     last_completed:
-      task_id: TASK-099
-      task_revision: 2
-      phase: P3C-bounded-observation-and-cumulative-correction
-      published_sha: "2f359706f7972baeb7e88bfa243c77c6eb0bdc36"
+      task_id: TASK-100
+      task_revision: 1
+      phase: P4-execution-budget-observability-and-escalation
+      published_sha: "8067ac257c15779367f4e1463e7af8b5b5059e46"
     note: >-
-      TASK-099 revision 1 lineage remains immutable historical evidence under its
-      superseded-by-new-intent classification. Revision 2 is the published P3C completion;
-      Performance Closure itself remains active because P4 and P5 are still pending.
+      P1-P4 are published. TASK-101 is the final planned Performance Closure slice: a
+      bounded read-only canonical performance observation surface. Downstream adoption
+      remains blocked until P5 is semantically reviewed PASS, auto-published, and the
+      Performance Closure bookmark is reconciled as complete.
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
