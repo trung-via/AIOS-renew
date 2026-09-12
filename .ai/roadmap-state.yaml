@@ -51,8 +51,17 @@ sequence:
       TASK-103 revision 1 remains immutable non-repairable historical failure evidence.
       Revision 2 completed the generic hardening and is semantically reviewed PASS and
       published at the exact current-main SHA above.
-  - id: performance-closure
+  - id: brain-authoring-ingress
     status: NEXT
+    task_id: TASK-104
+    task_revision: 1
+    phase: generic-control-plane-ingress
+    note: >-
+      Explicit Human priority change. Resolve the generic Brain-to-repository authoring
+      transport gap before resuming Performance Closure P5.
+  - id: performance-closure
+    status: PENDING
+    blocked_by: brain-authoring-ingress
     task_id: TASK-101
     task_revision: 2
     phase: P5-performance-observation-surface
@@ -66,9 +75,9 @@ sequence:
       P1-P4 are published. TASK-101 revision 1 remains immutable historical correction
       lineage: its cumulative tip diverges from current main after TASK-103 publication and
       P3 therefore requires integration to fail closed rather than auto-merge or rebase.
-      TASK-101 revision 2 is the fresh current-main P5 contract and is the unique NEXT item.
-      Downstream adoption remains blocked until this revision is semantically reviewed PASS,
-      published, and Performance Closure is reconciled complete.
+      TASK-101 revision 2 remains the fresh current-main P5 contract but is explicitly paused
+      until TASK-104 is semantically reviewed PASS and published. Downstream adoption remains
+      blocked until the ingress blocker and Performance Closure are reconciled complete.
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
