@@ -1,0 +1,24 @@
+{
+  "repair_id": "REPAIR-099-004",
+  "failed_run_id": "RUN-099-004",
+  "failed_head_sha": "f638f928a2c55dc484ad8f032e4b5c5bdd27b84f",
+  "task": {
+    "id": "TASK-099",
+    "revision": 2
+  },
+  "action": "CODE_FIX",
+  "modification_scope": [
+    "src/aios_renew/operator.py",
+    "src/aios_renew/unified_state.py",
+    "tests/test_operator.py",
+    "tests/test_operator_unified_state.py"
+  ],
+  "instructions": [
+    "Repair the TASK-099 revision-2 cumulative remediation execution-base path so an exact, otherwise-valid current-revision remote REMEDIATION lineage remains admissible for its first correction when the operational execution tip is still the selected semantic source candidate. Preserve exact task-revision isolation: older-revision lineage must remain non-candidate.",
+    "Preserve the TASK-099 revision-2 separation between immutable semantic predecessor identity and Runtime-owned cumulative execution-base identity. Do not fall back to run numbering, timestamps, list order, current checkout, executor/model heuristics, or any other implicit selection mechanism; ambiguous or competing cumulative lineage must continue to fail closed.",
+    "Do not weaken correction-frontier, publication, ancestry, integration-required, or repository-admission safety semantics. The repair must address the missing or insufficient review reconstruction, or equivalent cumulative-base admission condition, without treating a structurally invalid lineage as valid and without reclassifying revision-1 lineage into revision 2.",
+    "Keep RUN-099-004's already-passing Correction Preflight / Unified State / Human Surface and publication verification behavior intact. Add or adjust only narrowly relevant regression coverage needed to prove the exact revision-2 first-correction compatibility and cross-revision exclusion behavior; do not weaken existing assertions merely to obtain a green suite.",
+    "Continue from the exact RUN-099-004 failed candidate lineage; no unrelated production or test changes are authorized."
+  ],
+  "constraints": []
+}
