@@ -1,0 +1,11 @@
+finding_id: F101-003
+action: CODE_FIX
+reviewed_sha: 27ae986e1d4fac876c538c7a41d8bf2cd50d4623
+scope:
+  modify:
+    - src/aios_renew/performance_observation.py
+    - tests/test_performance_observation.py
+verification:
+  affected:
+    - python -m pytest tests/test_performance_observation.py tests/test_review_transport.py -q
+constraints: []
