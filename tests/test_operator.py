@@ -5711,6 +5711,10 @@ def test_primary_observation_uses_controlled_monotonic_phase_durations(
         "executor_seconds": 7.0,
         "verification_seconds": 3.0,
     }
+    assert observation["soft_budget"] == {
+        "threshold_seconds": 1800,
+        "status": "WITHIN",
+    }
     canonical = json.loads(summary.result_path.read_text(encoding="utf-8"))
     assert set(canonical) == {"result", "evidence"}
 
@@ -5787,6 +5791,10 @@ def test_post_admission_pre_executor_failure_records_not_invoked(
         "admitted_run_seconds": 5.0,
         "executor_seconds": None,
         "verification_seconds": None,
+    }
+    assert observation["soft_budget"] == {
+        "threshold_seconds": 1800,
+        "status": "NOT_APPLICABLE",
     }
 
 

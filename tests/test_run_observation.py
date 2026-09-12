@@ -8,6 +8,7 @@ from aios_renew.run import Run, RunTaskReference
 from aios_renew.run_observation import (
     RunObservationError,
     RunObservationTracker,
+    SoftBudget,
     TokenUsage,
     observation_data,
     persist_observation,
@@ -61,6 +62,7 @@ def test_controlled_monotonic_clock_measures_all_three_phases() -> None:
     assert observation.verification_elapsed_seconds == 3.0
     assert observation.token_usage is not None
     assert observation.token_usage.cached_input_tokens == 5
+    assert observation.soft_budget == SoftBudget(1800, "WITHIN")
 
 
 def test_post_admission_failure_before_executor_is_truthful() -> None:
@@ -76,6 +78,7 @@ def test_post_admission_failure_before_executor_is_truthful() -> None:
     assert observation.executor_invoked is False
     assert observation.executor_elapsed_seconds is None
     assert observation.verification_elapsed_seconds is None
+    assert observation.soft_budget == SoftBudget(900, "NOT_APPLICABLE")
 
 
 @pytest.mark.parametrize(
@@ -182,7 +185,7 @@ def test_provider_specific_field_names_not_in_run_observation_module() -> None:
         })
 
 
-def test_historical_observations_with_token_usage_null_validate_without_migration() -> None:
+def test_historical_observation_without_soft_budget_round_trips_unchanged() -> None:
     data = {
         "kind": "RUN_OBSERVATION",
         "run_id": "RUN-046-001",
@@ -201,9 +204,104 @@ def test_historical_observations_with_token_usage_null_validate_without_migratio
     }
     observation = validate_observation(data)
     assert observation.token_usage is None
+    assert observation.soft_budget is None
     exported = observation_data(observation)
     assert exported["token_usage"] is None
     assert exported == data
+
+
+@pytest.mark.parametrize(
+    ("operation", "elapsed", "threshold", "status"),
+    [
+        ("PRIMARY", 1800.0, 1800, "WITHIN"),
+        ("PRIMARY", 1800.001, 1800, "EXCEEDED"),
+        ("REMEDIATION", 900.0, 900, "WITHIN"),
+        ("REMEDIATION", 900.001, 900, "EXCEEDED"),
+        ("REPAIR", 900.0, 900, "WITHIN"),
+        ("REPAIR", 900.001, 900, "EXCEEDED"),
+    ],
+)
+def test_tracker_classifies_exact_operation_soft_budget_boundary(
+    operation: str, elapsed: float, threshold: int, status: str
+) -> None:
+    tracker = RunObservationTracker(
+        operation,
+        monotonic_clock=ControlledClock(0.0, 1.0, 1.0 + elapsed, 2000.0),
+    )
+    tracker.admit(run_record())
+    tracker.wrap_native_runner(lambda: "done")()
+
+    observation = tracker.finalize("RESULT")
+
+    assert observation is not None
+    assert observation.soft_budget == SoftBudget(threshold, status)
+    assert observation_data(observation)["soft_budget"] == {
+        "threshold_seconds": threshold,
+        "status": status,
+    }
+
+
+@pytest.mark.parametrize(
+    "soft_budget",
+    [
+        None,
+        {},
+        {"threshold_seconds": 1800},
+        {"threshold_seconds": 1800, "status": "WITHIN", "extra": True},
+        {"threshold_seconds": 1800.0, "status": "WITHIN"},
+        {"threshold_seconds": 900, "status": "WITHIN"},
+        {"threshold_seconds": 1800, "status": "INVALID"},
+        {"threshold_seconds": 1800, "status": "EXCEEDED"},
+        {"threshold_seconds": 1800, "status": "NOT_APPLICABLE"},
+    ],
+)
+def test_soft_budget_validation_rejects_malformed_or_conflicting_data(
+    soft_budget: object,
+) -> None:
+    data = {
+        "kind": "RUN_OBSERVATION",
+        "run_id": "RUN-046-001",
+        "task": {"id": "TASK-046", "revision": 2},
+        "operation": "PRIMARY",
+        "executor": "codex",
+        "base_sha": "abc123",
+        "terminal_kind": "RESULT",
+        "executor_invoked": True,
+        "durations": {
+            "admitted_run_seconds": 1800.0,
+            "executor_seconds": 1800.0,
+            "verification_seconds": 0.0,
+        },
+        "token_usage": None,
+        "soft_budget": soft_budget,
+    }
+    with pytest.raises(RunObservationError):
+        validate_observation(data)
+
+
+def test_non_invoked_soft_budget_requires_not_applicable() -> None:
+    data = {
+        "kind": "RUN_OBSERVATION",
+        "run_id": "RUN-046-001",
+        "task": {"id": "TASK-046", "revision": 2},
+        "operation": "REMEDIATION",
+        "executor": "codex",
+        "base_sha": "abc123",
+        "terminal_kind": "FAILURE",
+        "executor_invoked": False,
+        "durations": {
+            "admitted_run_seconds": 1.0,
+            "executor_seconds": None,
+            "verification_seconds": None,
+        },
+        "token_usage": None,
+        "soft_budget": {
+            "threshold_seconds": 900,
+            "status": "WITHIN",
+        },
+    }
+    with pytest.raises(RunObservationError, match="conflicts"):
+        validate_observation(data)
 
 
 def test_tracker_record_token_usage_lifecycle() -> None:

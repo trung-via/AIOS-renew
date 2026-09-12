@@ -19,6 +19,12 @@ T = TypeVar("T")
 
 OPERATIONS = frozenset({"PRIMARY", "REMEDIATION", "REPAIR"})
 TERMINAL_KINDS = frozenset({"RESULT", "FAILURE"})
+SOFT_BUDGET_THRESHOLDS = {
+    "PRIMARY": 1800,
+    "REMEDIATION": 900,
+    "REPAIR": 900,
+}
+SOFT_BUDGET_STATUSES = frozenset({"WITHIN", "EXCEEDED", "NOT_APPLICABLE"})
 
 
 class RunObservationError(ValueError):
@@ -32,6 +38,14 @@ class TokenUsage:
     input_tokens: int
     cached_input_tokens: int
     output_tokens: int
+
+
+@dataclass(frozen=True)
+class SoftBudget:
+    """Operation threshold and deterministic Executor elapsed classification."""
+
+    threshold_seconds: int
+    status: str
 
 
 @dataclass(frozen=True)
@@ -50,6 +64,7 @@ class RunObservation:
     executor_elapsed_seconds: float | None
     verification_elapsed_seconds: float | None
     token_usage: TokenUsage | None = None
+    soft_budget: SoftBudget | None = None
 
 
 def validate_token_usage(data: Any) -> TokenUsage:
@@ -92,7 +107,10 @@ def validate_observation(data: Any) -> RunObservation:
         "durations",
         "token_usage",
     }
-    if set(data) != required or data.get("kind") != "RUN_OBSERVATION":
+    fields = set(data)
+    if fields not in (required, required | {"soft_budget"}) or data.get(
+        "kind"
+    ) != "RUN_OBSERVATION":
         raise RunObservationError("RUN_OBSERVATION fields do not match the contract")
     task = data["task"]
     durations = data["durations"]
@@ -134,6 +152,15 @@ def validate_observation(data: Any) -> RunObservation:
     if usage is not None and not invoked:
         raise RunObservationError("token_usage requires an invoked Executor")
 
+    soft_budget = None
+    if "soft_budget" in data:
+        soft_budget = _validate_soft_budget(
+            data["soft_budget"],
+            operation=operation,
+            executor_invoked=invoked,
+            executor_elapsed=executor_elapsed,
+        )
+
     executor = _bounded_string(data["executor"], "executor")
     if executor not in SUPPORTED_EXECUTORS:
         raise RunObservationError("executor is not supported")
@@ -155,6 +182,7 @@ def validate_observation(data: Any) -> RunObservation:
             durations["verification_seconds"], "durations.verification_seconds"
         ),
         token_usage=usage,
+        soft_budget=soft_budget,
     )
 
 
@@ -189,6 +217,11 @@ def observation_data(observation: RunObservation) -> dict[str, Any]:
             }
         ),
     }
+    if observation.soft_budget is not None:
+        data["soft_budget"] = {
+            "threshold_seconds": observation.soft_budget.threshold_seconds,
+            "status": observation.soft_budget.status,
+        }
     validate_observation(data)
     return data
 
@@ -359,6 +392,14 @@ class RunObservationTracker:
                     "output_tokens": self._token_usage.output_tokens,
                 }
             ),
+            "soft_budget": {
+                "threshold_seconds": SOFT_BUDGET_THRESHOLDS[self.operation],
+                "status": _soft_budget_status(
+                    executor_invoked=self._executor_invoked,
+                    executor_elapsed=self._executor_elapsed,
+                    threshold=SOFT_BUDGET_THRESHOLDS[self.operation],
+                ),
+            },
         }
         try:
             return validate_observation(data)
@@ -396,6 +437,60 @@ def _bounded_string(value: Any, path: str) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > 512:
         raise RunObservationError(f"{path} must be bounded non-empty text")
     return value
+
+
+def _validate_soft_budget(
+    data: Any,
+    *,
+    operation: str,
+    executor_invoked: bool,
+    executor_elapsed: float | None,
+) -> SoftBudget:
+    if not isinstance(data, Mapping) or set(data) != {
+        "threshold_seconds",
+        "status",
+    }:
+        raise RunObservationError(
+            "soft_budget must contain exactly threshold_seconds and status"
+        )
+    threshold = data["threshold_seconds"]
+    expected_threshold = SOFT_BUDGET_THRESHOLDS[operation]
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, int)
+        or threshold != expected_threshold
+    ):
+        raise RunObservationError(
+            "soft_budget.threshold_seconds conflicts with operation"
+        )
+    status = data["status"]
+    if not isinstance(status, str) or status not in SOFT_BUDGET_STATUSES:
+        raise RunObservationError("soft_budget.status is invalid")
+    expected_status = _soft_budget_status(
+        executor_invoked=executor_invoked,
+        executor_elapsed=executor_elapsed,
+        threshold=threshold,
+    )
+    if status != expected_status:
+        raise RunObservationError(
+            "soft_budget.status conflicts with Executor observation"
+        )
+    return SoftBudget(threshold_seconds=threshold, status=status)
+
+
+def _soft_budget_status(
+    *,
+    executor_invoked: bool,
+    executor_elapsed: float | None,
+    threshold: int,
+) -> str:
+    if not executor_invoked:
+        return "NOT_APPLICABLE"
+    if executor_elapsed is None:
+        raise RunObservationError(
+            "invoked Executor soft budget requires executor elapsed time"
+        )
+    return "EXCEEDED" if executor_elapsed > threshold else "WITHIN"
 
 
 def _elapsed(value: Any, path: str) -> float:
