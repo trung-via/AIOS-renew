@@ -38,13 +38,13 @@ sequence:
       published_sha: "a45e94294f0688e62dacfacd884f2736985fd616"
   - id: performance-closure
     status: NEXT
-    task_id: TASK-097
-    phase: P3A-exact-remediation-predecessor-identity
+    task_id: TASK-098
+    phase: P3B-outstanding-finding-frontier
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
     last_completed:
-      task_id: TASK-096
-      phase: P2-unified-human-surface-extraction
-      published_sha: "e37817bce8335e6a158e9aedcae6f90867751c02"
+      task_id: TASK-097
+      phase: P3A-exact-remediation-predecessor-identity
+      published_sha: "9cb95eb6553131800ff2cb89728147614de2b79d"
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
