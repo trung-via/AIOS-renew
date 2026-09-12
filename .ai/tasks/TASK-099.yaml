@@ -1,25 +1,33 @@
 task_id: TASK-099
-revision: 1
+revision: 2
 
 goal: >
-  Establish P3C1 read-only outstanding-finding exposure through Unified State and
-  Unified Human Surface so known sibling findings remain visible to Human/Brain
-  without Runtime selecting, ranking, or executing one implicitly.
+  Complete P3C by exposing bounded exact outstanding-finding state through the
+  canonical Human-facing surface and by separating each finding's immutable P3A
+  semantic predecessor from the exact cumulative candidate used as the next
+  REMEDIATION execution base, so serial sibling corrections preserve prior reviewed
+  corrections without Runtime selecting findings or weakening publication safety.
 
 problem: >
-  TASK-098/P3B now preserves an exact outstanding-finding frontier and publication
-  fails closed while that frontier is non-empty. Unified State still treats a
-  CHANGES_REQUIRED review with multiple findings as AMBIGUOUS_FINDINGS, and a DELTA
-  PASS with remaining siblings falls into publication-lineage invalidation instead
-  of surfacing the known outstanding semantic state. Human/Brain therefore cannot
-  consume the P3B frontier through the canonical Human-facing workflow.
+  Revision 1 proved that P3B correctly preserves sibling findings, but it also exposed
+  a contract deadlock. REVIEW-099-001 reported F1 and F2; RUN-099-002 resolved F1 and
+  publication correctly retained F2. The remaining F2 cannot safely use the existing
+  REMEDIATION path because Run.base_sha and the historical workspace are still forced
+  to REMEDIATION.reviewed_sha, so correcting an older sibling would execute from the
+  original reviewed candidate and can discard the already reviewed F1 delta. Creating
+  a separate P3C2 task while revision 1 remains open would also advance main onto a
+  sibling branch and manufacture an integration problem. P3C2 is new intent relative
+  to revision 1, which explicitly excluded cumulative execution-base semantics, so
+  revision 2 establishes one prospective contract rather than disguising the change as
+  another revision-1 FIX.
 
 assumptions:
-  - Canonical implementation base is 4df6a12779e254cfe07b5f54de0d89955c321054.
+  - Canonical revision-2 base is bb1e18560d4ccc0e3a1d53a720dacd66382e8c74.
   - P3A/TASK-097 and P3B/TASK-098 are semantically PASS and published.
-  - Human authorized the P3 post-freeze correction-lineage evolution.
-  - docs/P3-DESIGN-NOTE.md now splits P3C into P3C1 observation and P3C2 cumulative correction continuation.
-  - P3C1 must not claim to solve sibling correction execution-base continuity.
+  - TASK-099 revision-1 lineage RUN-099-001 -> RUN-099-002 and REVIEW-099-001/002 remains immutable historical evidence and does not establish revision-2 completion.
+  - Human explicitly authorized P3 correction-lineage evolution including P3C2.
+  - Remote lifecycle acquisition already filters engineering state by exact TASK revision while reserving the shared RUN namespace across revisions.
+  - A cumulative execution base is operational state; it must never replace or rewrite the original P3A semantic predecessor identity of the selected finding.
 
 scope:
   inspect:
@@ -31,94 +39,149 @@ scope:
     - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
     - docs/AIOS-PERFORMANCE-CLOSURE.md
     - docs/P3-DESIGN-NOTE.md
-    - .ai/tasks/TASK-087.yaml
     - .ai/tasks/TASK-097.yaml
     - .ai/tasks/TASK-098.yaml
     - src/aios_renew/correction_frontier.py
-    - src/aios_renew/unified_state.py
+    - src/aios_renew/correction_preflight.py
     - src/aios_renew/human_surface.py
+    - src/aios_renew/operator.py
     - src/aios_renew/publication.py
-    - tests/test_operator_unified_state.py
-    - tests/test_operator_human_surface.py
-  modify:
+    - src/aios_renew/review.py
+    - src/aios_renew/review_transport.py
     - src/aios_renew/unified_state.py
-    - src/aios_renew/human_surface.py
-    - tests/test_operator_unified_state.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
     - tests/test_operator_human_surface.py
+    - tests/test_operator_unified_state.py
+    - tests/test_publication.py
+  modify:
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/unified_state.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_human_surface.py
+    - tests/test_operator_unified_state.py
+    - tests/test_publication.py
 
 non_goals:
-  - Change P3A predecessor shape or P3B frontier semantics.
-  - Change REMEDIATION execution base, historical workspace behavior, or cumulative sibling correction execution; that belongs to P3C2.
-  - Auto-select, rank, prioritize, batch, or execute one finding from a multi-finding frontier.
-  - Change REVIEW/REMEDIATION schemas, publication authority, Executor behavior, verification ownership, REPAIR, retry, or reroute semantics.
-  - Rewrite historical artifacts.
+  - Rewrite, delete, relabel, or declare resolved any TASK-099 revision-1 RUN, REVIEW, finding, remediation, result, or evidence artifact.
+  - Auto-select, rank, prioritize, batch, or silently sequence one outstanding finding.
+  - Auto-merge, rebase, cherry-pick, or otherwise integrate a diverged current main with a correction candidate; divergence must fail closed for separately authorized integration.
+  - Change P3A's four-field semantic predecessor identity or P3B's finding-frontier meaning.
+  - Change REVIEW or REMEDIATION authoring authority, Executor selection, canonical verification ownership, REPAIR, retry, reroute, or fallback semantics.
+  - Introduce a planner, second lifecycle reducer, second frontier authority, or autonomous correction loop.
 
 constraints:
   hard:
     - >
-      Unified State must consume the existing P3B CorrectionFrontier authority; it
-      must not recreate a second frontier reducer or derive outstanding state from
-      timestamps, RUN numbering, candidate equality, or finding-id search alone.
+      P3A predecessor identity remains the semantic identity of the selected finding:
+      source RUN id, REVIEW id, finding id, and original reviewed SHA. Cumulative
+      continuation must never overwrite those four facts with a newer execution tip.
     - >
-      Outstanding state exposed by Unified State must be deterministic, bounded, and
-      identity-complete: each item carries source RUN id, REVIEW id, finding id, and
-      reviewed SHA. Representation order must not imply selection priority.
+      Prospective REMEDIATION RUNs must persist a distinct bounded Runtime-owned exact
+      execution-base identity. The execution base must bind the canonical candidate on
+      which the Executor actually starts; Run.base_sha must equal that candidate SHA.
     - >
-      A PRIMARY CHANGES_REQUIRED review with multiple findings must no longer become
-      BLOCKED solely because of multiplicity. If no finding has been explicitly
-      selected by correction authority, Unified State must expose the full frontier
-      and return Brain-owned AUTHOR_REMEDIATION without setting one finding_id as the
-      chosen selector.
+      The execution base for an outstanding sibling must be derived from exact canonical
+      correction lineage and P3B frontier state, never from RUN numbering, timestamps,
+      list order, finding-id search alone, current checkout coincidence, or a model
+      heuristic. The selected semantic finding must still be outstanding at that tip.
     - >
-      A DELTA PASS with a non-empty P3B frontier must surface the remaining exact
-      outstanding findings as correction state rather than misclassifying the state
-      as publication-lineage invalid.
+      A cumulative execution base must contain every already reviewed correction in the
+      exact lineage and must descend from the selected finding's original reviewed SHA.
+      If the candidate is missing, ambiguous, inconsistent, non-descendant, or no longer
+      contains the required correction tip, admission and publication must fail closed.
     - >
-      Existing single-finding behavior remains compatible: when exactly one exact
-      outstanding finding is present, current AUTHOR_REMEDIATION / approved-remediation
-      preflight behavior and selectors remain valid.
+      Current canonical main must be an ancestor of or equal to the chosen cumulative
+      execution base before mutation is admitted. If main and the correction tip have
+      diverged, Runtime must report bounded integration-required state and must not
+      automatically merge, rebase, replay, or mutate either lineage.
     - >
-      Human Surface must mirror the bounded outstanding-finding observation and keep
-      AUTHOR_REMEDIATION as external BRAIN authority. Supplying an Executor must not
-      grant selection authority or cause a multi-finding correction to execute.
+      CODE_FIX repository delta, Result.changed_files, modification-scope enforcement,
+      and affected verification for a prospective cumulative REMEDIATION must be measured
+      against its exact execution base, not against the older semantic reviewed SHA.
+      Semantic REVIEW/REMEDIATION validation remains bound to the original predecessor.
     - >
-      P3C1 must not introduce a new next-action router, mutation authority, hidden
-      planner, automatic continuation loop, or publication shortcut.
+      Publication must independently validate both identities: the original P3A semantic
+      predecessor and the prospective cumulative execution base. It may publish only the
+      exact reviewed candidate when the P3B frontier is empty and current main ancestry is
+      safe; malformed or unprovable cumulative lineage fails closed.
     - >
-      Publication/P3B empty-frontier gating, exact SHA binding, correction preflight,
-      failure taxonomy, and one-active-mutation authority remain unchanged.
+      Legacy REMEDIATION RUNs that predate cumulative execution-base metadata remain
+      readable under their already-established equality rule. Historical artifacts are
+      immutable and absence of new metadata must never be guessed into cumulative meaning.
+    - >
+      Unified State and Correction Preflight must consume the same authoritative cumulative
+      base facts used by execution/publication. Human Surface may expose those bounded facts
+      but must not acquire finding-selection or mutation authority.
+    - >
+      Outstanding-finding observation is deterministically bounded. It must never silently
+      truncate, hide, or prioritize findings; an over-bound canonical frontier fails closed
+      with bounded structural state. Every emitted item retains exact source RUN, REVIEW,
+      finding, and reviewed-SHA identity.
+    - >
+      Unexpected, alias, conflicting, or malformed prospective predecessor data must pass
+      through the existing canonical P3A validator and fail closed consistently across
+      Unified State, execution, preflight, and publication.
     - Do not push from Executor implementation execution.
 
 acceptance:
   - id: AC1
     condition: >
-      UnifiedStateObservation exposes a deterministic bounded collection of exact
-      outstanding-finding identities without removing or reinterpreting existing selectors.
+      Unified State and Human Surface expose a deterministic fixed-bounded collection of
+      exact outstanding-finding identities; multi-finding state yields Brain-owned
+      AUTHOR_REMEDIATION with no implicit finding selector, and over-bound state fails closed
+      without truncation or priority inference.
   - id: AC2
     condition: >
-      Multi-finding PRIMARY CHANGES_REQUIRED reduces to CORRECTION/AUTHOR_REMEDIATION
-      with full outstanding identities and no implicitly selected finding_id.
+      Prospective predecessor-bearing lineage is validated by the canonical P3A four-field
+      grammar everywhere it is consumed; malformed, alias, extra, or conflicting identity
+      forms cannot be interpreted differently by Unified State and publication.
   - id: AC3
     condition: >
-      DELTA PASS with remaining siblings reduces to correction-authoring state with
-      those siblings exposed, while an empty frontier continues toward publication/DONE.
+      A PRIMARY CHANGES_REQUIRED frontier and a DELTA PASS with unresolved siblings preserve
+      all exact outstanding identities, while an empty frontier alone may proceed toward
+      publication/DONE.
   - id: AC4
     condition: >
-      Existing single-finding AUTHOR_REMEDIATION and EXECUTE_REMEDIATION behavior remains
-      compatible and still uses exact canonical preflight selectors.
+      For a first correction whose canonical tip is its semantic source candidate, the new
+      execution-base contract preserves existing REMEDIATION behavior and exact selectors.
   - id: AC5
     condition: >
-      HumanSurfaceResult exposes the same bounded outstanding identities and does not
-      delegate a multi-finding correction merely because an Executor was supplied.
+      For a later sibling whose semantic predecessor is older than the current correction
+      tip, admission deterministically binds a distinct exact cumulative execution base,
+      persists both identities without conflation, and starts the Executor from that base so
+      previously reviewed sibling corrections remain ancestors of the new candidate.
   - id: AC6
     condition: >
-      Tests prove observation order does not create priority, malformed/inconsistent
-      frontier lineage fails closed, and no Unified State/Human Surface mutation authority expands.
+      Prospective cumulative CODE_FIX completion and scope validation use the exact execution
+      base for changed-files and affected-verification authority while the finding and
+      REMEDIATION contract remain bound to the original reviewed SHA.
   - id: AC7
     condition: >
-      No P3A/P3B, publication, REVIEW/REMEDIATION, REMEDIATION execution-base, REPAIR,
-      retry, reroute, or historical-artifact semantics change.
+      Correction Preflight and Unified State report the same cumulative base readiness as
+      execution; ambiguous, missing, non-descendant, or main-diverged bases fail closed before
+      Executor invocation, with no automatic integration.
+  - id: AC8
+    condition: >
+      Publication validates semantic predecessor, cumulative execution base, final candidate
+      ancestry, DELTA lineage, and P3B frontier independently and refuses publication while
+      any sibling remains outstanding or current main is not safely contained.
+  - id: AC9
+    condition: >
+      Historical REMEDIATION artifacts without the new execution-base metadata retain their
+      established interpretation, and TASK-099 revision-1 lineage remains immutable and
+      excluded from revision-2 lifecycle completion.
+  - id: AC10
+    condition: >
+      No finding auto-selection, retry, reroute, fallback, hidden planner, automatic merge,
+      REVIEW/REMEDIATION authority transfer, or verification-ownership change is introduced.
 
 verification:
   required:
-    - python -m pytest tests/test_operator_unified_state.py tests/test_operator_human_surface.py -q
+    - python -m pytest tests/test_operator_correction_preflight.py tests/test_operator_unified_state.py tests/test_operator_human_surface.py -q
+    - python -m pytest tests/test_publication.py -k "predecessor or frontier or remediation or cumulative" -q
+    - python -m pytest tests/test_operator.py -k "remediation" -q
