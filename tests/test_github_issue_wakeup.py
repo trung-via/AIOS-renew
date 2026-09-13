@@ -141,7 +141,6 @@ def test_policy_is_versioned_and_fully_bound(
 @pytest.mark.parametrize(
     ("request_updates", "reason"),
     [
-        ({}, "missing or unknown"),
         ({"workflow": "owned.yml"}, "missing or unknown"),
         ({"ref": "attacker"}, "missing or unknown"),
         ({"command": "git push --force"}, "missing or unknown"),

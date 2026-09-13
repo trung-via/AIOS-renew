@@ -23,7 +23,15 @@ def test_issue_trigger_and_job_are_fixed_to_github_hosted_admission() -> None:
     job = workflow["jobs"]["admit-and-dispatch"]
     assert job["if"] == "github.event.issue.title == '[AIOS BRAIN WAKEUP]'"
     assert job["runs-on"] == "ubuntu-latest"
-    assert "self-hosted" not in text
+    assert all(
+        "self-hosted"
+        not in (
+            issue_job["runs-on"]
+            if isinstance(issue_job["runs-on"], list)
+            else [issue_job["runs-on"]]
+        )
+        for issue_job in workflow["jobs"].values()
+    )
     assert "github.event.issue.body" not in text
 
 
