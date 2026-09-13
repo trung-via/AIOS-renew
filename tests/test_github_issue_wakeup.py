@@ -139,7 +139,7 @@ def test_policy_is_versioned_and_fully_bound(
 
 
 @pytest.mark.parametrize(
-    ("request", "reason"),
+    ("request_updates", "reason"),
     [
         ({}, "missing or unknown"),
         ({"workflow": "owned.yml"}, "missing or unknown"),
@@ -157,10 +157,10 @@ def test_policy_is_versioned_and_fully_bound(
     ],
 )
 def test_unknown_authority_fields_and_malicious_values_are_rejected(
-    request: dict[str, object], reason: str
+    request_updates: dict[str, object], reason: str
 ) -> None:
     with pytest.raises(carrier.GitHubIssueWakeupError, match=reason):
-        carrier.parse_request(_body(**request))
+        carrier.parse_request(_body(**request_updates))
 
 
 def test_missing_field_and_duplicate_key_fail_closed() -> None:
