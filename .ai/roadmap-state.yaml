@@ -58,12 +58,31 @@ sequence:
       task_revision: 1
       published_sha: "cdd230fedbb332f4e13a81a9607fea23976de36d"
     note: >-
-      TASK-104 revision 1 completed the generic Brain-to-repository authoring ingress,
-      was semantically reviewed PASS, and was published at the exact SHA above.
+      TASK-104 revision 1 introduced the generic Brain-to-repository authoring ingress
+      and was published at the SHA above. Subsequent production incident evidence proved
+      that its SUBMIT_REVIEW, AUTHOR_REMEDIATION, and AUTHOR_REPAIR Git snapshot
+      construction did not preserve predecessor trees. TASK-104 lineage and malformed
+      historical control-plane refs remain immutable evidence; current safe ingress
+      semantics require the TASK-105 structural recovery recorded below.
+  - id: brain-authoring-ingress-structural-recovery
+    status: DONE
+    completed_by:
+      task_id: TASK-105
+      task_revision: 1
+      published_sha: "3c39371632a07efceecb5ff5aa83892aeaca3579"
+    note: >-
+      TASK-105 repaired the TASK-104 control-plane regression for REVIEW, REMEDIATION,
+      and REPAIR by restoring exact predecessor-tree inheritance and operation-specific
+      structural postconditions before ref publication. REVIEW-105-001 PASS was
+      bootstrapped through a bounded incident-recovery path, its decision commit preserved
+      the full candidate snapshot with only REVIEW metadata added, GitHub auto-publication
+      completed successfully, and a post-publication SUBMIT_REVIEW replay returned the
+      exact existing decision as IDEMPOTENT. Historical malformed refs are preserved and
+      are not rewritten.
   - id: performance-closure
     status: NEXT
     task_id: TASK-101
-    task_revision: 3
+    task_revision: 4
     phase: P5-performance-observation-surface
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
     last_completed:
@@ -73,12 +92,18 @@ sequence:
       published_sha: "8067ac257c15779367f4e1463e7af8b5b5059e46"
     note: >-
       P1-P4 are published. TASK-101 revisions 1 and 2 remain immutable historical
-      evidence. Revision 2 reached RUN-101-004 and REVIEW-101-004 CHANGES_REQUIRED
-      F101-003, but its candidate diverges from current main after TASK-104 publication;
-      its authored remediation was not executed and must not be continued as current
-      implementation. Revision 3 is the fresh post-TASK-104 P5 contract and carries
-      the F101-003 terminal-binding requirement forward without rewriting historical
-      lineage. Downstream adoption remains blocked until Performance Closure is complete.
+      evidence. Revision 3 was authored from the post-TASK-104 main and later reached
+      RUN-101-006 through repair continuation. RUN-101-006 preserved clean transportable
+      candidate 208242eb3e7cd329c05e05da3a1ea17eaf3cdb96 but terminated at the
+      completion gate after the antigravity-minimax executor emitted an invalid
+      write_journal tool call. That revision-3 lineage remains immutable evidence and
+      must not be directly repaired, published, merged, rebased, or cherry-picked after
+      TASK-105 advanced canonical main. Revision 4 is the selected next Brain-authoring
+      action and must establish a fresh lifecycle from current post-TASK-105 main while
+      carrying forward the F101-003 terminal-binding requirement and reusing still-valid
+      revision-3 implementation knowledge without treating its candidate as current
+      implementation state. Downstream adoption remains blocked until Performance
+      Closure is complete.
   - id: downstream-adoption
     status: PENDING
     blocked_by: performance-closure
