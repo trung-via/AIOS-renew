@@ -1,0 +1,255 @@
+task_id: TASK-107
+revision: 1
+
+goal: >
+  Eliminate the recurring Human PowerShell/file-courier step from Brain authoring by
+  adding one bounded GitHub-Issue delivery carrier for the existing post-TASK-105
+  Brain Authoring Ingress. The carrier must let an authorized Brain host submit the
+  exact canonical ingress envelope through a non-code GitHub Issue, while repository-
+  owned deterministic automation authenticates the carrier event and invokes the
+  existing ingress exactly once. GitHub Issue delivery remains a replaceable transport
+  mechanism and gains no TASK, REVIEW, correction, execution, or publication authority.
+
+problem: >
+  TASK-104 established a transport-neutral semantic ingress and TASK-105 recovered its
+  Git snapshot/lineage semantics, but the only repository-provided carrier remains local
+  file/stdin. In real downstream use, ChatGPT Brain can read canonical GitHub state and
+  can now create a normal GitHub Issue under the connected Human GitHub identity, while
+  generic code/ref mutations such as direct create-file/create-branch paths may be
+  blocked by the model-host platform before GitHub or AIOS receives them. Issue #6 in
+  AIOS-renew is observed evidence that a Brain-hosted GitHub Issue write succeeds without
+  generic source mutation authority. Today the Human must still download or paste an
+  envelope and run PowerShell locally so the safe ingress can receive it. That courier
+  step is repetitive, non-semantic Human effort and prevents the Brain-to-Repo authoring
+  flow from being zero-touch after Human intent is given. Add a repository-owned Issue
+  carrier around the existing ingress rather than reopening generic Git write authority
+  or moving semantic meaning into GitHub Issues/Actions.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-107 authoring is
+    b44a5d8a31f7c12fec1cab7e4e23d47f3d284318, the reviewed and source-published
+    TASK-106 implementation.
+  - >
+    TASK-104 revision 1 remains the generic semantic-ingress origin and TASK-105 revision
+    1 remains the authoritative structural recovery for REVIEW, REMEDIATION, and REPAIR.
+    Historical malformed TASK-104-era refs remain immutable evidence.
+  - >
+    Current authoring ingress already owns envelope parsing, operation allowlisting,
+    semantic validation, destination derivation, optimistic concurrency, idempotency,
+    Git object/ref mutation, and structural postconditions for AUTHOR_TASK,
+    SUBMIT_REVIEW, AUTHOR_REMEDIATION, and AUTHOR_REPAIR.
+  - >
+    The current file/stdin carrier remains valid and is not removed. The new GitHub-Issue
+    carrier is an additional replaceable delivery mechanism over the same semantic ingress.
+  - >
+    On 2026-09-13, ChatGPT Brain successfully created AIOS-renew GitHub Issue #6 under
+    GitHub login trung-via. The Issue was explicitly non-canonical and requested no source
+    mutation. This is observed transport-capability evidence, not canonical engineering truth.
+  - >
+    Current Human intent explicitly prioritizes removal of recurring manual PowerShell
+    courier work before continuing generic downstream-adoption roadmap work. The existing
+    roadmap bookmark remains Brain-owned planning state and is not implementation authority.
+  - >
+    Downstream repositories remain pinned to their own exact AIOS revision. They gain this
+    carrier only through a separate explicit downstream migration that adopts a reviewed,
+    source-published AIOS revision containing TASK-107 and repository-specific carrier policy.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-104.yaml
+    - .ai/tasks/TASK-105.yaml
+    - .ai/tasks/TASK-106.yaml
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/operator.py
+    - .github/workflows/aios-auto-publish.yml
+    - tests/test_authoring_ingress.py
+    - tests/test_operator.py
+    - README.md
+  modify:
+    - .ai/brain-ingress-carriers.yaml
+    - .github/workflows/aios-brain-ingress.yml
+    - src/aios_renew/github_issue_ingress.py
+    - tests/test_github_issue_ingress.py
+    - tests/test_github_issue_ingress_workflow.py
+    - README.md
+
+non_goals:
+  - >
+    Change the four-operation semantic ingress envelope, TASK/REVIEW/REMEDIATION/REPAIR
+    semantics, destination derivation, structural postconditions, idempotency, publication
+    semantics, correction frontier, Unified State, Runtime verification, or Executor behavior.
+  - >
+    Reopen direct generic GitHub source/ref write authority for the Brain, or let an Issue
+    specify repository paths, Git refs, Git commands, shell commands, credentials, or
+    publication destinations outside the canonical ingress envelope.
+  - >
+    Treat GitHub Issue state, title, author, comment, label, workflow status, or workflow
+    output as canonical TASK/REVIEW/correction/publication truth.
+  - >
+    Accept issue comments, issue edits, issue reopen events, pull requests, discussions,
+    workflow-dispatch inputs, email, Slack, browser automation, or another carrier family in
+    this TASK. One Issue-opened carrier is sufficient for the observed gap.
+  - >
+    Add an HTTP service, GitHub App backend, webhook server, message broker, queue, database,
+    scheduler, poller, long-lived daemon, background retry worker, or remote secret product.
+  - >
+    Automatically retry, merge, rebase, normalize, reroute, reinterpret, or repair a rejected
+    or stale ingress envelope. A failed delivery requires fresh Brain synchronization and a
+    new authorized carrier event.
+  - >
+    Let the carrier create an engineering RUN, invoke a coding Executor, perform semantic
+    review, author a correction, or publish implementation main except indirectly through
+    the already-existing canonical semantics of the exact submitted ingress operation.
+  - >
+    Change the existing auto-publication workflow or use the new Issue workflow as an
+    alternate implementation publisher.
+  - >
+    Migrate any downstream repository in this TASK or assume current AIOS-renew main is
+    downstream authority.
+  - >
+    Modify .ai/roadmap-state.yaml or frozen Kernel/governance artifacts.
+  - >
+    Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Define one versioned repository policy file for the GitHub-Issue carrier. The policy
+      must bind the exact repository identity and an explicit allowlist of GitHub actor
+      logins authorized to deliver Brain ingress envelopes. AIOS-renew's initial policy must
+      bind repository trung-via/AIOS-renew and actor trung-via. Policy changes are canonical
+      source changes and are never inferred from Issue content.
+    - >
+      The workflow must trigger only from a newly opened Issue whose title uses one exact
+      AIOS ingress marker. Issue comments, edits, reopen events, labels, and arbitrary issue
+      titles must not invoke the carrier.
+    - >
+      Carrier admission must validate the event action, repository full name, Issue number,
+      Issue author login, configured actor allowlist, exact title marker, UTF-8 body type,
+      non-empty body, and a bounded maximum body size before any semantic ingress call or Git
+      mutation is possible. Unauthorized or malformed carrier events fail closed.
+    - >
+      The Issue body is the complete ingress envelope. Carrier code must obtain it from the
+      immutable GitHub event payload file supplied to the workflow and pass those envelope
+      bytes to the existing authoring ingress without evaluating, templating, shell-expanding,
+      rewriting, normalizing, summarizing, or semantically interpreting the body.
+    - >
+      The new carrier may call the existing semantic ingress exactly once per admitted Issue
+      event. It must not call Unified State first, invoke another lifecycle operation after
+      ingress returns, retry on failure, recursively process another event, or synthesize a
+      second authoring result.
+    - >
+      Existing authoring_ingress.py semantic and Git-mutation authority remains unchanged.
+      The GitHub-Issue carrier must reuse that module as the sole semantic/mutation boundary;
+      no duplicate AUTHOR_TASK/SUBMIT_REVIEW/AUTHOR_REMEDIATION/AUTHOR_REPAIR implementation
+      may appear in carrier code or workflow shell.
+    - >
+      Workflow handling must avoid interpolating Issue-body content into shell commands.
+      The body may be transferred only through event-file parsing and bounded temporary-file
+      or direct byte input. Issue content is data, never executable syntax.
+    - >
+      The workflow may receive only the minimum GitHub permissions required for the carrier:
+      repository contents write for existing ingress Git mutation and Issues write for a
+      bounded delivery receipt. It must not request Actions administration, pull-request
+      write, packages, deployments, secrets, id-token, or other unrelated permission.
+    - >
+      Accepted carrier events must be serialized with cancel-in-progress false so two Brain
+      envelopes cannot race through one checkout. Existing ingress CAS/idempotency remains
+      authoritative; serialization must not convert stale state into automatic retry or merge.
+    - >
+      After the single ingress call, the workflow may post one bounded receipt comment to
+      the source Issue containing carrier identity plus the existing ingress PASS result, or
+      a bounded failure reason. The receipt and Issue state are observability only and never
+      canonical authority or replay input. Receipt creation must not trigger another ingress.
+    - >
+      A successful Issue may be closed after its receipt to keep the mailbox bounded; a
+      failed Issue may remain open for inspection. Closing or remaining open has no semantic
+      meaning and must not affect canonical replay/idempotency.
+    - >
+      Tests must prove that all four valid envelope operation families are transported as
+      opaque body bytes through the same single carrier call, and that authorization/framing
+      failures occur before the semantic ingress function is invoked.
+    - >
+      Tests must prove that malicious Issue-body strings containing shell metacharacters,
+      Git-like commands, destination-looking fields, multiline YAML/JSON, and command
+      substitutions are never executed or interpolated by the carrier. Semantic prohibited
+      fields remain rejected by the existing ingress rather than carrier-specific rewriting.
+    - >
+      Workflow regression must prove exact trigger family, bounded permissions, serialized
+      concurrency, checkout of current canonical main with full history, event-file-based
+      extraction, one ingress invocation, bounded Issue receipt behavior, and absence of any
+      direct create-file/create-branch/force-push or alternate publication path.
+    - >
+      README must document the steady-state zero-touch flow:
+      Human intent -> Brain authors envelope -> Brain creates authorized Issue -> repository
+      carrier -> canonical ingress -> canonical repo. It must state that the Issue is only
+      transport, direct Brain source mutation remains unnecessary, manual file/stdin remains
+      an emergency/debug carrier, and each downstream must explicitly adopt/configure the
+      carrier under its exact pinned AIOS revision.
+    - >
+      No automatic downstream migration follows TASK-107 publication. A downstream project
+      must separately update its exact pin and repository carrier policy/workflow before Brain
+      Issue delivery becomes authoritative transport there.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      An authorized newly opened GitHub Issue with the exact marker and an AUTHOR_TASK
+      envelope body reaches the existing canonical ingress exactly once and can canonicalize
+      the TASK with the same validation, CAS, idempotency, destination, and structural
+      semantics as file/stdin delivery.
+  - id: AC2
+    condition: >
+      SUBMIT_REVIEW, AUTHOR_REMEDIATION, and AUTHOR_REPAIR bodies traverse the same opaque
+      carrier path without carrier-specific semantic logic, and existing ingress remains the
+      only authority that accepts or rejects their canonical mutation.
+  - id: AC3
+    condition: >
+      Wrong repository, unauthorized actor, wrong event action/title, missing or oversized
+      body, malformed event, and disabled/malformed carrier policy fail before ingress is
+      invoked and cannot mutate Git or create an engineering RUN.
+  - id: AC4
+    condition: >
+      Issue-body content cannot execute shell/Git syntax or select paths/refs through workflow
+      interpolation; semantic prohibited-field attempts reach the existing ingress only as
+      inert data and fail under its established contract.
+  - id: AC5
+    condition: >
+      The Issue workflow uses only contents:write and issues:write, serializes admitted events
+      without cancellation/retry, checks out current canonical main with full history, and
+      invokes exactly one repository-owned carrier command that delegates to existing ingress.
+  - id: AC6
+    condition: >
+      Success and failure produce bounded Issue receipts useful to the Brain for observation;
+      receipt/comment/Issue-open-or-closed state never becomes canonical semantic or
+      publication authority and cannot self-trigger ingress.
+  - id: AC7
+    condition: >
+      Existing file/stdin authoring ingress, TASK-105 structural recovery guarantees,
+      review-decision auto-publication, normal execution, and historical malformed-ref
+      interpretation remain behaviorally compatible and no authoring-ingress semantic code is
+      duplicated into the carrier.
+  - id: AC8
+    condition: >
+      README clearly defines the generic cross-project adoption boundary and steady-state
+      zero-touch Brain-to-Repo flow, while downstream repositories remain isolated until a
+      separate exact-pin migration adds their own reviewed carrier policy/workflow.
+  - id: AC9
+    condition: >
+      Delta remains within the six authorized carrier/workflow/test/docs files, required
+      deterministic offline verification and git diff --check pass, and RESULT contains zero
+      unresolved items.
+
+verification:
+  required:
+    - python -m pytest tests/test_github_issue_ingress.py tests/test_github_issue_ingress_workflow.py tests/test_authoring_ingress.py -q
+    - git diff --check
