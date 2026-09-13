@@ -1,0 +1,8 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: cfe3390b639676517227f57572aa2f9eedd32d25
+modification_scope:
+  - .github/workflows/aios-brain-ingress.yml
+  - tests/test_github_issue_ingress_workflow.py
+affected_verification:
+  - python -m pytest tests/test_github_issue_ingress.py tests/test_github_issue_ingress_workflow.py -q
