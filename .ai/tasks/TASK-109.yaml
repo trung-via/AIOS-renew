@@ -1,0 +1,228 @@
+task_id: TASK-109
+revision: 1
+
+goal: >
+  Reconcile the Brain-owned AIOS-renew Control-plane Closure roadmap after exact
+  canonical Python Agent evidence proves that bounded Downstream Adoption and its
+  subsequent AIOS pin recovery are complete. Mark downstream-adoption DONE with
+  cross-repository provenance, close the active control-plane-closure sequence,
+  and establish a deterministic completion handoff so a later generic
+  "continue roadmap" performs a fresh BRAIN SYNC of the downstream Python Agent
+  repository and follows that repository's own canonical roadmap instead of
+  reopening completed AIOS work or assuming current AIOS-renew main is its kernel.
+
+problem: >
+  AIOS-renew .ai/roadmap-state.yaml still records downstream-adoption as the
+  unique NEXT item. Since that bookmark was established, canonical
+  trung-via/python_complete_agent lineage completed its downstream adoption
+  baseline through TASK-192 and later recovered/migrated the sole active AIOS
+  authority through TASK-198. Python Agent current canonical main is
+  759bbeeb67e8761d21d6b8e9fe8d23b6e734a05d, its exact active AIOS pin is
+  a3b723b49cd65677f548c5694a52a6fc006a9e2a, and its own Brain-owned roadmap has
+  already returned to Python Agent Governance Foundation with a distinct current
+  NEXT milestone. Leaving AIOS-renew downstream-adoption as NEXT would cause a
+  fresh generic continuation to revisit already-completed adoption work. At the
+  same time AIOS-renew has since published TASK-106, TASK-107, and TASK-108;
+  downstream isolation means those later upstream capabilities do not
+  automatically change Python Agent and their existence alone is not authority
+  for a new downstream migration.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-109 authoring is
+    d5d906431dd8ef38099ed21b2b4b0a0002a99618. TASK-108 RUN-108-003 has canonical
+    verification PASS, REVIEW-108-001 is PRIMARY PASS with AC1-AC9 PASS and no
+    findings, and that reviewed source SHA is current main.
+  - >
+    Canonical Python Agent main observed during BRAIN SYNC is
+    759bbeeb67e8761d21d6b8e9fe8d23b6e734a05d. Its sole active downstream AIOS
+    authority is exactly a3b723b49cd65677f548c5694a52a6fc006a9e2a under policy
+    EXACT_REVIEWED_SOURCE_PUBLISHED_ONLY; mutable AIOS-renew main is not
+    downstream runtime authority.
+  - >
+    Python Agent TASK-192 established the downstream adoption baseline. Its final
+    RUN-192-003 reviewed source is dcb7432abc58ed983e6c26d5456ace1423e49981;
+    REVIEW-192-003 is DELTA PASS with no findings and that source is present in
+    later canonical Python Agent history.
+  - >
+    Python Agent TASK-198 recovered the downstream pin and pinned Brain-ingress
+    provenance after the TASK-104/TASK-105 incident lineage. RUN-198-002 reviewed
+    source 539bcf36e4d6cad65e700e1aa099ec2ab6116395 has REVIEW-198-002 PRIMARY PASS
+    with AC1-AC9 PASS and no findings, is an ancestor of current Python Agent main,
+    and establishes the current exact pin a3b723b49cd65677f548c5694a52a6fc006a9e2a.
+  - >
+    Python Agent .ai/roadmap-state.yaml currently records AIOS downstream parity
+    completion by TASK-192, TASK-198 upstream recovery as ADOPTED_BY_PIN and
+    non-blocking, Python Agent Governance Foundation as ACTIVE, and
+    CHATGPT_PROJECT_CONTRACT_RECONCILIATION as its unique NEXT. This downstream
+    NEXT is downstream-owned planning state and must be re-read fresh on future
+    handoff rather than copied into AIOS-renew as durable authority.
+  - >
+    AIOS-renew TASK-106 is bounded Human-surface presentation hardening and does
+    not automatically migrate downstream. TASK-107 and TASK-108 are bounded
+    repository-owned Issue carriers whose contracts explicitly preserve downstream
+    isolation and require separate downstream adoption; none is a prerequisite for
+    recognizing the already-completed Python Agent adoption baseline/recovery.
+  - >
+    Current Human intent is generic "continue roadmap" with no new competing
+    track or priority. Therefore the canonical unique NEXT downstream-adoption
+    item is the work to reconcile now.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-ROADMAP.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-083.yaml
+    - .ai/tasks/TASK-106.yaml
+    - .ai/tasks/TASK-107.yaml
+    - .ai/tasks/TASK-108.yaml
+  modify:
+    - .ai/roadmap-state.yaml
+    - docs/AIOS-ROADMAP.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+
+non_goals:
+  - >
+    Modify trung-via/python_complete_agent, its AIOS pin, worker surfaces,
+    Brain-ingress carrier, product/governance roadmap, tasks, source, tests, or
+    publication state.
+  - >
+    Migrate Python Agent from a3b723b49cd65677f548c5694a52a6fc006a9e2a to
+    AIOS-renew current main or any TASK-106/TASK-107/TASK-108-containing source.
+  - >
+    Claim TASK-106, TASK-107, or TASK-108 is adopted downstream, or classify a
+    future downstream migration/adoption task on Python Agent's behalf.
+  - >
+    Implement or revise Kernel, Runtime, Unified State, Human Surface,
+    authoring/wakeup transport, Dispatcher, Executor adapters, verification,
+    review, remediation, repair, publication, or any A-Series capability.
+  - >
+    Select A4, A5, A7, A9, A10, or another separately gated AIOS milestone as a
+    replacement NEXT item merely because Control-plane Closure completes.
+  - >
+    Make AIOS-renew authoritative for Python Agent domain architecture or copy a
+    downstream current NEXT identifier into upstream as durable roadmap authority.
+  - >
+    Add a planner, scheduler, poller, autonomous cross-project router, retry,
+    fallback, reroute, second lifecycle reducer, or automatic roadmap advancement.
+  - >
+    Modify frozen Kernel specification/freeze artifacts, Manifesto,
+    Constitution, historical TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR
+    lineage, or source implementation.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve every existing DONE Control-plane Closure sequence item and its
+      exact task/revision/published-SHA provenance unchanged. Change only the
+      downstream-adoption planning item from NEXT to DONE and add bounded
+      completion/handoff metadata required by this TASK.
+    - >
+      downstream-adoption completion must identify the downstream repository
+      trung-via/python_complete_agent and record exact evidence sufficient to
+      distinguish baseline adoption from later recovery: TASK-192 source
+      dcb7432abc58ed983e6c26d5456ace1423e49981 and TASK-198 source
+      539bcf36e4d6cad65e700e1aa099ec2ab6116395. It must also record the exact
+      downstream main observed at reconciliation
+      759bbeeb67e8761d21d6b8e9fe8d23b6e734a05d and exact AIOS pin observed there
+      a3b723b49cd65677f548c5694a52a6fc006a9e2a, while explicitly stating these
+      observations do not make upstream main downstream runtime authority.
+    - >
+      After reconciliation the active control-plane-closure sequence has zero
+      NEXT items and is explicitly complete. Do not manufacture a new AIOS NEXT
+      merely to preserve a one-NEXT invariant after the terminal item is DONE.
+    - >
+      Add one bounded machine-readable completion handoff in .ai/roadmap-state.yaml
+      identifying trung-via/python_complete_agent as the downstream repository
+      whose own roadmap must be freshly reconciled next. The handoff may record
+      exact repository/pin observations at this reconciliation point, but it must
+      not freeze, mirror, or claim durable authority over the downstream current
+      NEXT milestone.
+    - >
+      Generic continuation semantics after this completed active track must be
+      fail-closed and deterministic: BRAIN SYNC the downstream repository's
+      current main, exact AIOS dependency pin, downstream roadmap/adoption state,
+      governance, and relevant immutable lineage; only then follow that
+      repository's own canonical unique NEXT. Missing/conflicting downstream state
+      yields SYNC BLOCKED rather than an inferred AIOS task or a remembered
+      downstream priority.
+    - >
+      docs/AIOS-ROADMAP.md must record Control-plane Closure as complete through
+      bounded Downstream Adoption, preserve the Hard Gate that returns work to
+      downstream Python Agent, and make clear that later upstream TASK-106/107/108
+      do not retroactively migrate or alter the downstream exact pin.
+    - >
+      docs/CHATGPT_PROJECT_CONTRACT.md Brain Sync Protocol must distinguish an
+      incomplete active track with one unique NEXT from a completed active track
+      with an explicit downstream completion handoff. The latter performs fresh
+      downstream BRAIN SYNC rather than selecting optional AIOS work or relying on
+      cached downstream state.
+    - >
+      Preserve roadmap authority: roadmap state remains Human/Brain planning state,
+      not engineering truth; Runtime, Executor, review, publication, workflow, or
+      downstream activity never auto-advances it. This TASK is the explicit
+      Human/Brain-authorized reconciliation grounded in canonical evidence.
+    - >
+      TASK-106 presentation hardening and TASK-107/TASK-108 repository-specific
+      carrier capabilities remain separate upstream facts. Their availability is
+      not a blocker to closing Downstream Adoption and does not authorize any
+      downstream migration or capability claim in this TASK.
+    - >
+      The delta is documentation/planning-state only and confined to the three
+      authorized files. No Python source, tests, workflows, carrier policy, frozen
+      governance/kernel artifact, or downstream repository file may change.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      .ai/roadmap-state.yaml marks downstream-adoption DONE with exact
+      trung-via/python_complete_agent baseline/recovery provenance, observed main
+      759bbeeb67e8761d21d6b8e9fe8d23b6e734a05d, and observed exact pin
+      a3b723b49cd65677f548c5694a52a6fc006a9e2a while preserving all prior DONE
+      sequence evidence unchanged.
+  - id: AC2
+    condition: >
+      control-plane-closure is explicitly complete with zero NEXT items and one
+      bounded downstream completion handoff; no optional/separately gated AIOS
+      milestone is promoted to NEXT.
+  - id: AC3
+    condition: >
+      Completion-handoff semantics require a fresh BRAIN SYNC of
+      trung-via/python_complete_agent and its exact pin/roadmap/adoption/governance/
+      lineage before downstream roadmap selection, and fail closed on missing or
+      conflicting state without caching downstream NEXT as upstream authority.
+  - id: AC4
+    condition: >
+      docs/AIOS-ROADMAP.md reflects completed Control-plane Closure and the existing
+      Python Agent handoff while documenting that TASK-106/TASK-107/TASK-108 do not
+      automatically migrate downstream or block recognizing completed adoption.
+  - id: AC5
+    condition: >
+      docs/CHATGPT_PROJECT_CONTRACT.md Brain Sync handles both the normal
+      one-unique-NEXT case and the completed-track downstream-handoff case without
+      changing Human/Brain/Runtime/Executor/Reviewer/Publisher authority boundaries.
+  - id: AC6
+    condition: >
+      No downstream repository, AIOS dependency pin, runtime/source implementation,
+      workflow, transport, frozen artifact, or historical lineage is modified or
+      reinterpreted, and no TASK-106/TASK-107/TASK-108 downstream adoption claim is
+      introduced.
+  - id: AC7
+    condition: >
+      Required deterministic verification passes, the delta remains within the
+      three authorized planning/documentation files, and RESULT has zero unresolved
+      items.
+
+verification:
+  required:
+    - >-
+      python -c "from pathlib import Path; import yaml; d=yaml.safe_load(Path('.ai/roadmap-state.yaml').read_text(encoding='utf-8')); seq=d['sequence']; x=next(i for i in seq if i['id']=='downstream-adoption'); assert x['status']=='DONE'; assert sum(i['status']=='NEXT' for i in seq)==0; assert d.get('active_track_status')=='COMPLETE'; h=d['completion_handoff']; assert h['repository']=='trung-via/python_complete_agent'; assert h['downstream_main_observed']=='759bbeeb67e8761d21d6b8e9fe8d23b6e734a05d'; assert h['downstream_aios_pin_observed']=='a3b723b49cd65677f548c5694a52a6fc006a9e2a'"
+    - git diff --check
