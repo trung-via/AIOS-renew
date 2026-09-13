@@ -4387,6 +4387,11 @@ def _parser() -> argparse.ArgumentParser:
     continue_parser.add_argument(
         "--executor", choices=("codex", "antigravity", "antigravity-minimax")
     )
+    continue_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the AIOS_HUMAN_SURFACE v1 machine result",
+    )
     continue_parser.add_argument("--repo")
 
     run_parser = commands.add_parser("run", help="Execute a stored canonical TASK")
@@ -4538,7 +4543,7 @@ def main(
                 monotonic_clock=monotonic_clock,
             )
             if outcome is not None:
-                print(outcome.render())
+                print(outcome.render() if args.json else outcome.render_human())
             return exit_code
         elif args.command == "run":
             repo_root = resolve_repository(args.repo)

@@ -7752,6 +7752,245 @@ def test_continue_pre_observation_preserves_unconfigured_branch_failure(
     assert not any(args and args[0] in prohibited for args in git_calls)
 
 
+def _continuation_presentation_result(**changes):
+    values = {
+        "task_id": "TASK-106",
+        "task_revision": 1,
+        "next_action": "EXECUTE_PRIMARY",
+        "disposition": "DELEGATED",
+        "authority": "RUNTIME",
+        "delegated_operation": "PRIMARY",
+        "executor_required": True,
+        "executor_supplied": True,
+        "executor": "codex",
+        "resulting_run_id": "RUN-106-001",
+        "resulting_head_sha": "a" * 40,
+    }
+    values.update(changes)
+    return operator_module.HumanSurfaceResult(**values)
+
+
+def test_continue_default_presents_delegated_primary_as_stable_human_text(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = _continuation_presentation_result()
+    calls = []
+
+    def continue_once(*args, **kwargs):
+        calls.append((args, kwargs))
+        return result, 0
+
+    monkeypatch.setattr(operator_module, "continue_task", continue_once)
+
+    exit_code = operator_module.main(
+        ["continue", "TASK-106", "--executor", "codex"]
+    )
+
+    assert exit_code == 0
+    assert len(calls) == 1
+    assert capsys.readouterr().out == (
+        "AIOS CONTINUE\n"
+        "task: TASK-106\n"
+        "revision: 1\n"
+        "observed_next_action: EXECUTE_PRIMARY\n"
+        "disposition: DELEGATED\n"
+        "authority: RUNTIME\n"
+        "delegated_operation: PRIMARY\n"
+        "executor_required: true\n"
+        "executor: codex\n"
+        "resulting_run_id: RUN-106-001\n"
+        f"resulting_head_sha: {'a' * 40}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("result", "exit_code", "required_lines", "absent_text"),
+    [
+        (
+            _continuation_presentation_result(
+                disposition="EXECUTOR_REQUIRED",
+                authority="HUMAN",
+                delegated_operation=None,
+                executor_supplied=False,
+                executor=None,
+                resulting_run_id=None,
+                resulting_head_sha=None,
+            ),
+            0,
+            ("disposition: EXECUTOR_REQUIRED", "authority: HUMAN", "executor_required: true"),
+            "executor: ",
+        ),
+        (
+            _continuation_presentation_result(
+                next_action="SEMANTIC_REVIEW",
+                disposition="EXTERNAL_AUTHORITY_REQUIRED",
+                authority="REVIEWER",
+                delegated_operation=None,
+                run_id="RUN-106-001",
+                candidate_sha="b" * 40,
+                outstanding_findings=(
+                    {"id": "R1", "action": "CODE_FIX"},
+                    {"id": "R2", "action": "CODE_FIX"},
+                ),
+                executor_required=False,
+                executor_supplied=False,
+                executor=None,
+                resulting_run_id=None,
+                resulting_head_sha=None,
+            ),
+            0,
+            (
+                "disposition: EXTERNAL_AUTHORITY_REQUIRED",
+                "authority: REVIEWER",
+                "selector_run_id: RUN-106-001",
+                f"selector_candidate_sha: {'b' * 40}",
+                "outstanding_findings: 2",
+            ),
+            "CODE_FIX",
+        ),
+        (
+            _continuation_presentation_result(
+                next_action="WAIT",
+                disposition="NO_ACTION",
+                authority="NONE",
+                delegated_operation=None,
+                executor_required=False,
+                executor_supplied=False,
+                executor=None,
+                resulting_run_id=None,
+                resulting_head_sha=None,
+            ),
+            0,
+            ("disposition: NO_ACTION", "authority: NONE"),
+            "resulting_run_id:",
+        ),
+        (
+            _continuation_presentation_result(
+                next_action="NONE",
+                disposition="BLOCKED",
+                authority="NONE",
+                delegated_operation=None,
+                executor_required=False,
+                executor_supplied=False,
+                executor=None,
+                resulting_run_id=None,
+                resulting_head_sha=None,
+                blocker={"code": "BOUNDED_BLOCKER", "detail": "must stay hidden"},
+            ),
+            0,
+            ("disposition: BLOCKED", "authority: NONE", "blocker_code: BOUNDED_BLOCKER"),
+            "must stay hidden",
+        ),
+        (
+            _continuation_presentation_result(
+                disposition="DELEGATED",
+                authority="RUNTIME",
+                delegated_operation="PRIMARY",
+                resulting_run_id=None,
+                resulting_head_sha=None,
+                blocker={
+                    "code": "DELEGATED_OPERATION_FAILED",
+                    "detail": "canonical exception text must stay hidden",
+                },
+            ),
+            1,
+            (
+                "disposition: DELEGATED",
+                "authority: RUNTIME",
+                "delegated_operation: PRIMARY",
+                "blocker_code: DELEGATED_OPERATION_FAILED",
+            ),
+            "canonical exception text",
+        ),
+    ],
+    ids=(
+        "executor-required",
+        "external-authority-required",
+        "no-action",
+        "blocked",
+        "delegated-failure",
+    ),
+)
+def test_continue_human_outcomes_report_only_bounded_result_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    result,
+    exit_code: int,
+    required_lines: tuple[str, ...],
+    absent_text: str,
+) -> None:
+    calls = []
+
+    def continue_once(*args, **kwargs):
+        calls.append((args, kwargs))
+        return result, exit_code
+
+    monkeypatch.setattr(operator_module, "continue_task", continue_once)
+
+    observed_exit = operator_module.main(["continue", "TASK-106"])
+    output = capsys.readouterr().out
+
+    assert observed_exit == exit_code
+    assert len(calls) == 1
+    assert all(line in output.splitlines() for line in required_lines)
+    assert absent_text not in output
+    assert "AIOS_HUMAN_SURFACE" not in output
+    assert not output.lstrip().startswith("{")
+
+
+def test_continue_json_is_same_result_and_presentation_does_not_change_path(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = _continuation_presentation_result(
+        run_id="RUN-105-001",
+        source_run_id="RUN-105-001",
+        correction_sha="c" * 40,
+    )
+    calls = []
+
+    def continue_once(*args, **kwargs):
+        calls.append((args, kwargs))
+        return result, 0
+
+    monkeypatch.setattr(operator_module, "continue_task", continue_once)
+
+    assert operator_module.main(
+        ["continue", "TASK-106", "--executor", "codex"]
+    ) == 0
+    human_output = capsys.readouterr().out
+    assert operator_module.main(
+        ["continue", "TASK-106", "--executor", "codex", "--json"]
+    ) == 0
+    machine_output = capsys.readouterr().out
+
+    assert len(calls) == 2
+    assert [call[1]["executor"] for call in calls] == ["codex", "codex"]
+    assert json.loads(machine_output) == result.as_dict()
+    assert "AIOS CONTINUE\n" in human_output
+    assert "AIOS_HUMAN_SURFACE" not in human_output
+
+
+def test_continue_json_selection_survives_existing_restart_argv_path(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls = []
+
+    def restart_result(*args, **kwargs):
+        calls.append((args, kwargs))
+        return None, 17
+
+    monkeypatch.setattr(operator_module, "continue_task", restart_result)
+    argv = ["continue", "TASK-106", "--executor", "codex", "--json"]
+
+    assert operator_module.main(argv) == 17
+    assert len(calls) == 1
+    assert calls[0][1]["argv"] == argv
+    assert capsys.readouterr().out == ""
+
+
 def test_operator_cli_ingress_and_ingest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     repo = make_repo(tmp_path)
     main_sha = git(repo, "rev-parse", "HEAD")

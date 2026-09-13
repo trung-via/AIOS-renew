@@ -263,8 +263,12 @@ recommendation.
 ### Unified Human continuation
 
 `aios continue <TASK_ID>` is the optional Human-facing front door over that exact
-Unified State reducer. It emits one bounded JSON object with
-`format=AIOS_HUMAN_SURFACE` and `version=1`. The result binds the TASK revision,
+Unified State reducer. By default it emits a concise, deterministic line-oriented
+Human summary. Use `aios continue <TASK_ID> --json` for the established bounded
+machine object with `format=AIOS_HUMAN_SURFACE` and `version=1`. Both presentations
+are projections of the same single authoritative `HumanSurfaceResult`; choosing a
+presentation does not re-observe state or change selection, delegation, execution,
+verification, failure, or exit-status behavior. The result binds the TASK revision,
 observed `next_action`, disposition and authority, exact already-observed selector
 identities, Executor requirement/supply facts, and any RUN/head identity returned
 by the delegated operation. It never includes prompts, Executor output, logs,
@@ -275,6 +279,37 @@ For a coding action the Human must choose explicitly:
 ```powershell
 aios continue TASK-101 --executor codex
 aios continue TASK-101 --executor antigravity --repo C:\path\to\control-repo
+aios continue TASK-101 --executor codex --json
+```
+
+A delegated PRIMARY is presented for Human scanning like this (identities are
+representative):
+
+```text
+AIOS CONTINUE
+task: TASK-101
+revision: 1
+observed_next_action: EXECUTE_PRIMARY
+disposition: DELEGATED
+authority: RUNTIME
+delegated_operation: PRIMARY
+executor_required: true
+executor: codex
+resulting_run_id: RUN-101-001
+resulting_head_sha: 0123456789abcdef0123456789abcdef01234567
+```
+
+An external handoff remains explicit and grants the command no external authority:
+
+```text
+AIOS CONTINUE
+task: TASK-101
+revision: 1
+observed_next_action: SEMANTIC_REVIEW
+disposition: EXTERNAL_AUTHORITY_REQUIRED
+authority: REVIEWER
+selector_run_id: RUN-101-001
+selector_candidate_sha: 0123456789abcdef0123456789abcdef01234567
 ```
 
 There is no default, remembered, inferred, ranked, or recommended Executor.
@@ -317,6 +352,9 @@ another failure artifact, RESULT, or EVIDENCE, and it never attempts a second ru
 Delegated failures still emit the single versioned Human result with exit status 1,
 the attempted operation, and the bounded `DELEGATED_OPERATION_FAILED` blocker;
 arbitrary exception text and canonical failure contents are not copied into it.
+Human formatting creates no lifecycle, review, correction-authoring, or publication
+authority. Machine consumers must request `--json`; `aios state` remains the
+read-only machine-oriented Unified State surface.
 
 `aios state <TASK_ID>` remains the read-only inspection surface. `aios continue`
 adds one narrowly bounded stale-checkout convenience before it resolves or parses
@@ -340,6 +378,8 @@ checkout. This hardening of the TASK-087 surface reuses TASK-062; it adds no man
 action selection, Executor routing, reroute, planning, semantic review, correction
 authoring, publication, downstream migration, workflow, roadmap completion, or
 change to the syntax and authority of the existing low-level commands.
+Downstream repositories receive this presentation only through a separate explicit
+migration to a reviewed and source-published AIOS revision that contains it.
 
 ### Admission Failure v2 and outcome boundaries
 

@@ -113,7 +113,54 @@ class HumanSurfaceResult:
         }
 
     def render(self) -> str:
+        """Render the established version-1 machine projection."""
+
         return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
+
+    def render_human(self) -> str:
+        """Render a concise presentation-only projection of this result."""
+
+        payload = self.as_dict()
+        lines = [
+            "AIOS CONTINUE",
+            f"task: {payload['task']['id']}",
+            f"revision: {payload['task']['revision']}",
+            f"observed_next_action: {payload['observed_next_action']}",
+            f"disposition: {payload['disposition']}",
+            f"authority: {payload['authority']}",
+        ]
+        if payload["delegated_operation"] is not None:
+            lines.append(f"delegated_operation: {payload['delegated_operation']}")
+        if payload["executor"]["required"]:
+            lines.append("executor_required: true")
+        if payload["executor"]["identity"] is not None:
+            lines.append(f"executor: {payload['executor']['identity']}")
+        if payload["result"]["run_id"] is not None:
+            lines.append(f"resulting_run_id: {payload['result']['run_id']}")
+        if payload["result"]["head_sha"] is not None:
+            lines.append(f"resulting_head_sha: {payload['result']['head_sha']}")
+
+        lines.extend(
+            f"selector_{name}: {value}"
+            for name, value in payload["selectors"].items()
+            if value is not None
+        )
+        if payload["execution_base"] is not None:
+            lines.extend((
+                f"execution_base_run_id: {payload['execution_base']['run_id']}",
+                "execution_base_candidate_sha: "
+                f"{payload['execution_base']['candidate_sha']}",
+            ))
+        if payload["outstanding_findings"]:
+            lines.append(
+                f"outstanding_findings: {len(payload['outstanding_findings'])}"
+            )
+        if (
+            payload["blocker"] is not None
+            and payload["blocker"].get("code") is not None
+        ):
+            lines.append(f"blocker_code: {payload['blocker']['code']}")
+        return "\n".join(lines)
 
 
 def _operator():
