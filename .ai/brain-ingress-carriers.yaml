@@ -1,0 +1,9 @@
+format: AIOS_BRAIN_INGRESS_CARRIERS_POLICY
+version: 1
+github_issue:
+  enabled: true
+  repository: trung-via/AIOS-renew
+  authorized_actors:
+    - trung-via
+  title_marker: "[AIOS BRAIN INGRESS]"
+  max_body_bytes: 131072

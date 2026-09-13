@@ -631,9 +631,32 @@ The envelope strictly rejects:
 - Command-like or shell execution requests (`command`, `cmd`, `shell`, `exec`, `git_command`);
 - Extra authority overrides or credential fields (`credentials`, `token`, `force`, `override`).
 
-### Human-Facing Carrier (File & Stdin)
+### Replaceable delivery carriers
 
-The repository provides a bounded CLI surface via `aios ingress` (alias `aios ingest`):
+The steady-state GitHub flow removes the recurring Human courier step:
+
+`Human intent -> Brain authors envelope -> Brain creates authorized Issue -> repository carrier -> canonical ingress -> canonical repo`
+
+For AIOS-renew, the Brain opens a new Issue in `trung-via/AIOS-renew` with the exact
+title `[AIOS BRAIN INGRESS]` while authenticated as an actor allowlisted in the
+reviewed `.ai/brain-ingress-carriers.yaml` policy. The complete Issue body is the
+unchanged ingress envelope. Repository automation reads that body only from GitHub's
+immutable event payload, authenticates the transport framing, and passes the opaque
+UTF-8 bytes to the existing semantic ingress exactly once. An Issue, its state, and
+its bounded receipt comment are transport observations only; they never become TASK,
+REVIEW, correction, execution, or publication authority. Direct Brain source mutation
+is neither necessary nor granted.
+
+The carrier accepts only the `issues.opened` event with the exact marker, repository,
+and actor configured in source policy. It rejects malformed or oversized events before
+semantic ingress. The workflow serializes admitted deliveries, does not retry them,
+and closes an Issue only after a successful delivery receipt. A failed delivery stays
+open for inspection and requires the Brain to synchronize canonical state and submit a
+fresh authorized Issue; Issue comments, edits, reopen events, labels, and receipts never
+replay ingress.
+
+File and standard input remain available as an emergency/debug carrier through the
+bounded CLI surface `aios ingress` (alias `aios ingest`):
 
 ```powershell
 # From local file:
@@ -647,9 +670,15 @@ aios ingress --stdin
 ```
 
 Carrier parsing (`read_carrier_input`) is strictly decoupled from semantic validation and
-mutation (`execute_ingress`). External integrations (such as ChatGPT Custom Actions,
-Gemini extensions, Claude tool use, or GitHub webhooks) can supply the exact same structured
-envelope without changing semantic validation or acquiring broad write permissions.
+mutation (`execute_ingress`). Both repository carriers terminate at that same authority;
+neither duplicates operation semantics, derives a destination, or evaluates envelope text.
+
+The GitHub-Issue carrier is a generic adoption boundary, not an automatic downstream
+migration. Each downstream repository remains isolated under its currently pinned AIOS
+revision until a separate reviewed migration updates that exact pin and adds its own exact
+repository identity, actor allowlist, carrier policy, and workflow. Only then may authorized
+Brain Issue delivery act as transport for that project; TASK-107 publication alone changes
+nothing downstream.
 
 ### Concurrency, Fail-Closed, and Idempotency Rules
 
