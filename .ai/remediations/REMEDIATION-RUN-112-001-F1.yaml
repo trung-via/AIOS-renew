@@ -1,0 +1,8 @@
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: c4320db81172aa586b179252b90c95f8a32d4dab
+modification_scope:
+  - .github/workflows/aios-brain-remediation-intent.yml
+  - tests/test_github_issue_remediation_intent_workflow.py
+affected_verification:
+  - python -m pytest tests/test_github_issue_remediation_intent_workflow.py -q
