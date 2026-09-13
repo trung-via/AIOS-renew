@@ -1,0 +1,195 @@
+task_id: TASK-105
+revision: 1
+
+goal: >
+  Recover the TASK-104 Brain Authoring Ingress control plane by restoring the
+  canonical Git snapshot and lineage semantics of REVIEW, REMEDIATION, and REPAIR
+  mutations and by enforcing deterministic structural postconditions before any
+  new control-plane ref is canonicalized, without rewriting historical malformed
+  refs or changing semantic authority.
+
+problem: >
+  TASK-104 introduced a generic Brain-to-repository authoring ingress, but production
+  evidence proves that SUBMIT_REVIEW, AUTHOR_REMEDIATION, and AUTHOR_REPAIR construct
+  new root trees from metadata entries only and then pass the intended predecessor
+  merely as commit-tree parent metadata. Git commit parents do not overlay omitted
+  tree entries, so these operations create sparse repository snapshots that represent
+  unrelated paths as deleted. REVIEW-104-004 decision commit
+  61cd3e17fac3e5bfc976f26ee44d7712ee84adab preserved only REVIEW metadata and
+  therefore removed the repository-provided auto-publication workflow from the event
+  SHA. REPAIR-101-005 commit a969851a7b84746880f092152056258e5ef1a1ec
+  similarly preserved only repair metadata while deleting the rest of the snapshot,
+  although downstream readers were still able to consume repair.json. The current
+  AUTHOR_REMEDIATION implementation contains the same sparse-root defect and also
+  changes the historical remediation parent topology by parenting the remediation
+  commit directly to review.reviewed_sha instead of the exact review-decision commit.
+  Pre-TASK-104 canonical REVIEW, REMEDIATION, and REPAIR evidence demonstrates full
+  predecessor-tree preservation with only the authorized metadata path added.
+  Existing tests validate payload identity, destination derivation, idempotency,
+  semantic contracts, and main purity but do not establish the exact commit parent,
+  changed-path set, or predecessor-tree preservation. This allowed deterministic
+  Runtime mechanics to enforce an incomplete structural contract.
+
+assumptions:
+  - Canonical main at TASK-105 authoring is 4a97af4e465811b762c6c55fb5ef2a49fd0446ff.
+  - TASK-104 revision 1 remains immutable published history at cdd230fedbb332f4e13a81a9607fea23976de36d; its prior semantic PASS is historical evidence and is not rewritten by this TASK.
+  - REVIEW-104-004 decision commit 61cd3e17fac3e5bfc976f26ee44d7712ee84adab is immutable malformed incident evidence and must not be rewritten.
+  - REPAIR-101-005 commit a969851a7b84746880f092152056258e5ef1a1ec is immutable malformed incident evidence and must not be rewritten.
+  - Pre-TASK-104 REVIEW commit 4179361a2fc713f8dc366cb5a92e091ef1774dbd demonstrates a reviewed-candidate parent with only the REVIEW metadata path added.
+  - Pre-TASK-104 REMEDIATION commit 48fdca175aa64ee099c62cc54e28e8c196c5845e demonstrates a review-decision parent with only the REMEDIATION metadata path added.
+  - Pre-TASK-104 REPAIR commit f2f30da4561aaebcbfd7f4102dd49ccdb46e586b demonstrates a failed-head parent with only .ai/transport/repair.json added.
+  - AUTHOR_TASK currently builds from the complete canonical main tree and validates its exact TASK-file delta; that operation is not part of the observed sparse-tree regression.
+  - TASK-101 revision 3 is paused. RUN-101-006 FAILURE preserves implementation candidate 208242eb3e7cd329c05e05da3a1ea17eaf3cdb96 and no TASK-101 execution, REVIEW, REPAIR, or publication is authorized by this TASK.
+  - Existing TASK, REVIEW, REMEDIATION, REPAIR, publication, correction-frontier, and Unified State semantic validators remain authoritative unless this TASK explicitly constrains Git structural mutation semantics.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-104.yaml
+    - .ai/tasks/TASK-101.yaml
+    - .github/workflows/aios-auto-publish.yml
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/unified_state.py
+    - tests/test_authoring_ingress.py
+    - tests/test_review_transport.py
+    - tests/test_publication.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_authoring_ingress.py
+
+non_goals:
+  - Rebuild repository content that remains intact on canonical main and implementation candidate history.
+  - Rewrite, delete, move, replace, force-update, or otherwise repair historical malformed REVIEW, REMEDIATION, or REPAIR refs in place.
+  - Rewrite TASK-104, its REVIEW lineage, its published implementation commit, or its historical semantic decision.
+  - Continue, repair, review, rebase, cherry-pick, merge, or publish TASK-101 revision 3 or candidate 208242eb3e7cd329c05e05da3a1ea17eaf3cdb96.
+  - Change the four-operation ingress envelope, Brain semantic authority, Reviewer authority, Executor authority, Runtime verification ownership, publication authority, correction frontier, or Unified State lifecycle model.
+  - Modify the GitHub Actions auto-publication workflow or use workflow changes to mask malformed decision snapshots.
+  - Introduce a generic Git writer, caller-selected path/ref mutation, shell authority, arbitrary commit construction surface, retry loop, background worker, or alternate lifecycle reducer.
+  - Automatically normalize, reconstruct, or reinterpret historical malformed control-plane commits as structurally valid.
+  - Modify frozen Kernel v0.1 artifacts.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      SUBMIT_REVIEW must canonicalize a review-decision commit whose sole parent is
+      the exact canonical reviewed candidate SHA. Relative to that parent, the exact
+      changed-path set must contain only .ai/reviews/<REVIEW_ID>.yaml carrying the
+      validated REVIEW bytes. Every other repository path, mode, and blob identity
+      from the candidate snapshot must remain unchanged.
+    - >
+      AUTHOR_REMEDIATION must canonicalize a remediation commit whose sole parent is
+      the exact canonical review-decision commit that contains the selected outstanding
+      CHANGES_REQUIRED finding. Relative to that parent, the exact changed-path set
+      must contain only the derived .ai/remediations/REMEDIATION-<SOURCE_RUN_ID>-<FINDING_ID>.yaml
+      carrying the validated REMEDIATION bytes. Existing REVIEW metadata and every
+      unrelated predecessor path must be inherited unchanged rather than reconstructed
+      into a new sparse root.
+    - >
+      AUTHOR_REPAIR must canonicalize a repair-authorization commit whose sole parent
+      is the exact canonical failed-head SHA. Relative to that parent, the exact
+      changed-path set must contain only .ai/transport/repair.json carrying the validated
+      REPAIR authorization bytes. Every unrelated failed-head path must remain unchanged.
+    - >
+      Before any new REVIEW, REMEDIATION, or REPAIR destination ref is updated locally
+      or pushed remotely, Runtime must deterministically establish the operation-specific
+      structural postcondition: exact expected parent, exact authorized changed-path set,
+      exact authored metadata content at the derived destination, and preservation of
+      predecessor content outside that allowlisted delta. A structural mismatch fails
+      closed before canonical ref mutation.
+    - >
+      A SUBMIT_REVIEW decision snapshot must retain the exact candidate copy of
+      .github/workflows/aios-auto-publish.yml when that path exists on the candidate,
+      so the existing push-trigger publication mechanism remains present at the
+      review-decision event SHA. No publication-workflow mutation is authorized.
+    - >
+      Historical malformed control-plane refs, including
+      61cd3e17fac3e5bfc976f26ee44d7712ee84adab and
+      a969851a7b84746880f092152056258e5ef1a1ec, remain immutable readable evidence.
+      Existing observation/publication/correction readers must not require historical
+      ref rewriting. A new authoring replay that encounters an existing destination
+      whose structural parent/delta contract is malformed must fail closed rather than
+      overwrite the ref or silently certify the malformed snapshot as newly valid.
+    - >
+      Existing structurally valid canonical REVIEW, REMEDIATION, and REPAIR destinations
+      retain exact idempotent replay behavior. Same-identity different-content attempts,
+      stale predecessor state, ambiguous lineage, and conflicting destinations continue
+      to fail closed.
+    - >
+      AUTHOR_TASK semantics remain behaviorally unchanged: canonical main is the
+      predecessor, the TASK path is the only authorized delta, and no REVIEW,
+      REMEDIATION, or REPAIR hardening may broaden AUTHOR_TASK mutation authority.
+    - >
+      REVIEW and correction metadata remain control-plane metadata only. None of the
+      repaired ingress operations may mutate implementation main, directly publish a
+      candidate, invoke an Executor, create an engineering RUN, or acquire semantic
+      review/correction authority.
+    - >
+      Structural enforcement must be operation-specific and bounded to the exact
+      canonical predecessor and derived metadata destination. Do not introduce generic
+      caller-controlled Git tree, ref, path, commit, or command authority.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      SUBMIT_REVIEW produces a commit with the exact reviewed candidate as sole parent
+      and an exact one-path REVIEW metadata delta; direct Git inspection proves no other
+      candidate path is removed, replaced, or modified.
+  - id: AC2
+    condition: >
+      AUTHOR_REMEDIATION produces a commit with the exact source review-decision commit
+      as sole parent and an exact one-path REMEDIATION metadata delta while preserving
+      inherited REVIEW metadata and all unrelated predecessor content.
+  - id: AC3
+    condition: >
+      AUTHOR_REPAIR produces a commit with the exact failed-head commit as sole parent
+      and an exact one-path .ai/transport/repair.json delta while preserving all unrelated
+      failed-head content.
+  - id: AC4
+    condition: >
+      REVIEW, REMEDIATION, and REPAIR mutation paths establish their exact structural
+      parent/content/delta postconditions before canonical ref publication, and injected
+      or constructed structural mismatches fail closed without creating or moving the
+      destination remote ref.
+  - id: AC5
+    condition: >
+      PASS and CHANGES_REQUIRED review-decision snapshots preserve the candidate's
+      .github/workflows/aios-auto-publish.yml blob when present, while SUBMIT_REVIEW
+      itself leaves implementation main unchanged and existing publication validation
+      remains the only authority that may advance main.
+  - id: AC6
+    condition: >
+      Historical malformed incident refs remain unchanged and readable by existing
+      lineage consumers, while authoring replay against a structurally malformed existing
+      destination fails closed instead of overwriting it or returning a structurally-valid
+      success claim.
+  - id: AC7
+    condition: >
+      Existing structurally valid REVIEW, REMEDIATION, and REPAIR replay remains
+      idempotent; stale, ambiguous, mismatched, or same-identity different-content
+      attempts remain fail-closed with no semantic or mutation-authority expansion.
+  - id: AC8
+    condition: >
+      AUTHOR_TASK behavior and authority remain unchanged and its existing exact
+      main-to-TASK-file delta guarantees continue to pass regression coverage.
+  - id: AC9
+    condition: >
+      Focused regression tests directly inspect commit parents and Git changed-path/tree
+      preservation for all three repaired control-plane mutation families, retain existing
+      semantic/publication/correction regressions, and do not delete, skip, xfail, duplicate,
+      or weaken relevant tests.
+
+verification:
+  required:
+    - python -m pytest tests/test_authoring_ingress.py tests/test_review_transport.py tests/test_publication.py -q
+    - python -m pytest tests/test_operator.py -k "ingress or review or remediation or repair or publication" -q
+    - git diff --check
