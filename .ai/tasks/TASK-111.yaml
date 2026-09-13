@@ -1,51 +1,56 @@
 task_id: TASK-111
-revision: 1
+revision: 2
 
 goal: >
-  Close the observed Failure-to-REPAIR continuation transport gap by adding one dedicated,
-  Brain-callable, bounded remote REPAIR wakeup path that starts only from an already
-  canonical AUTHOR_REPAIR authorization, preserves REPAIR as a semantic authority distinct
-  from PRIMARY and REMEDIATION, and delegates exactly once into the existing Runtime
-  run_repair authority with durable crash-safe attribution.
+  Close GAP-B by adding one dedicated, Brain-callable, bounded remote REPAIR wakeup
+  path that starts only from an already-canonical AUTHOR_REPAIR authorization, keeps
+  FAILURE/REPAIR authority distinct from PRIMARY and REMEDIATION, and delegates at
+  most once into the existing Runtime run_repair authority with exact durable RUN
+  attribution. For coding REPAIR actions, one explicit Human Executor choice is the
+  complete Human execution intent and may be redelivered through another supported
+  carrier without asking the Human to select or approve the same correction again.
 
 problem: >
-  TASK-108 live execution produced two canonical failures, RUN-108-001 and RUN-108-002.
-  Brain correctly reviewed each exact FAILURE and canonicalized REPAIR authorizations
-  REPAIR-108-001 and REPAIR-108-002 with action CODE_FIX, but current main exposes no remote
-  REPAIR wakeup. Unified State then reports EXECUTE_REPAIR and the Human-facing surface can
-  delegate locally into run_repair, so the Human had to run a local aios continue command
-  for each correction. Existing A6 approved REMEDIATION transport cannot fill this gap:
-  its contract is correction_dispatch_id + source_run_id + finding_id + executor and it
-  delegates only to approved-remediation-wakeup. PRIMARY transport also cannot be reused
-  because A2 identity and admission semantics are PRIMARY-specific. Reusing either carrier
-  would collapse frozen correction authority boundaries. Add a separate bounded REPAIR
-  delivery transport instead.
+  TASK-108 proved the Failure-to-REPAIR continuation gap: exact canonical FAILURE and
+  AUTHOR_REPAIR state can exist while remote continuation still requires a Human to
+  invoke the local Human-facing surface. TASK-111 revision 1 correctly separated a
+  dedicated REPAIR delivery family from PRIMARY and REMEDIATION, but its assumptions
+  predate published TASK-110 and TASK-112. Current main has now live-proven automatic
+  Review-to-Publication dispatch and published Human approval-coalescing/transport
+  semantics. It has also observed that ChatGPT GitHub mutation calls can be blocked by
+  an outer OpenAI host safety gate before GitHub receives any request. GAP-B therefore
+  needs the original dedicated REPAIR dispatch authority plus the newer transport
+  invariants: host-side delivery failure creates no AIOS state, identical immutable
+  intent can use a bounded fallback carrier without renewed Human intent, carrier
+  acceptance requires actual successful dispatch, and transport receipts never claim
+  REPAIR RUN, verification, review, or publication success.
 
 assumptions:
   - >
-    Canonical AIOS-renew main at TASK-111 authoring is
-    e717ac6c4ca163f1cc8006fb7b7a1db5ebb9c2e7, which canonically authors TASK-110 r1 but
-    does not yet implement it. TASK-110 is the separate Review-to-Publication transport gap
-    and must remain semantically independent from this TASK.
+    Canonical AIOS-renew main at TASK-111 revision-2 authoring is
+    e1147eb02e1fe6f6b8fec6340906b0a3476e2186, the semantically reviewed and
+    automatically published TASK-112 correction candidate.
   - >
-    TASK-108 canonical lineage contains failure refs for RUN-108-001 and RUN-108-002 and
-    repair refs for both failed runs. The two observed manual REPAIR continuations are the
-    concrete evidence for this transport gap.
+    TASK-110 Review-to-Publication transport is published and live-proven: the
+    RUN-112-002 DELTA PASS ingress produced publication_dispatch ACCEPTED and the safe
+    Publisher advanced main automatically. Publication remains a separate authority.
   - >
-    The existing Unified Human Surface already distinguishes EXECUTE_REPAIR from
-    EXECUTE_REMEDIATION and delegates EXECUTE_REPAIR to run_repair using exact
-    failed_run_id, canonical correction_document, and required_repair_sha. This existing
-    Runtime/Operator REPAIR authority remains authoritative.
+    TASK-112 is published and establishes the applicable transport lesson for bounded
+    Human intent: outer host safety blocking before GitHub admission is transport
+    unavailability, not canonical AIOS failure; immutable intent may be redelivered
+    through another supported carrier; changing a bound selector is new intent.
   - >
-    TASK-082/TASK-084 A6 remediation work established an important crash-safety lesson:
-    outer correction delivery may not attribute a later metadata-matching RUN merely from
-    a pre-invocation namespace snapshot; exact RUN ownership must be durably bound at the
-    canonical admission boundary before execution can later be reconciled.
+    TASK-112 does not grant REPAIR authority. Existing FAILURE, AUTHOR_REPAIR,
+    Unified State EXECUTE_REPAIR, correction preflight, run_repair, Runtime
+    verification, RESULT/FAILURE persistence, review, and publication semantics remain
+    authoritative for REPAIR.
   - >
-    TASK-108 live probe on 2026-09-13 replayed exact PRIMARY dispatch identity
-    brain-task108-codex-20260913-001 and returned the existing terminal RUN-108-001 with
-    replayed true and no new RUN. That proves the desired outer idempotency property but
-    does not grant PRIMARY dispatch semantics authority over REPAIR.
+    TASK-108 canonical lineage contains concrete failed RUN and REPAIR authorization
+    evidence demonstrating the original manual REPAIR continuation gap. Historical
+    evidence remains immutable and need not be rerun merely to prove the gap again.
+  - >
+    Current explicit Human priority is to close GAP-B before GAP-C. This TASK does not
+    itself revise roadmap planning state or implement Runtime-to-Brain reverse handoff.
 
 scope:
   inspect:
@@ -56,22 +61,25 @@ scope:
     - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
     - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
     - .ai/roadmap-state.yaml
-    - .ai/tasks/TASK-082.yaml
     - .ai/tasks/TASK-084.yaml
-    - .ai/tasks/TASK-089.yaml
     - .ai/tasks/TASK-108.yaml
-    - .ai/tasks/TASK-109.yaml
     - .ai/tasks/TASK-110.yaml
-    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - .ai/tasks/TASK-111.yaml
+    - .ai/tasks/TASK-112.yaml
+    - .ai/brain-remediation-intent-carriers.yaml
+    - .github/workflows/aios-brain-remediation-intent.yml
+    - .github/workflows/aios-approved-remediation-intent.yml
     - .github/workflows/aios-brain-wakeup.yml
     - .github/workflows/aios-self-hosted-wakeup.yml
     - src/aios_renew/correction_dispatch.py
     - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/github_issue_remediation_intent.py
     - src/aios_renew/github_issue_wakeup.py
     - src/aios_renew/human_surface.py
     - src/aios_renew/operator.py
     - src/aios_renew/review_transport.py
     - tests/test_correction_dispatch.py
+    - tests/test_github_issue_remediation_intent_workflow.py
     - tests/test_github_issue_wakeup.py
     - tests/test_github_issue_wakeup_workflow.py
     - tests/test_operator.py
@@ -89,115 +97,154 @@ scope:
     - tests/test_operator.py
 
 non_goals:
-  - Reuse, widen, or add an operation selector to the TASK-108 PRIMARY Issue carrier, A1/A2
-    PRIMARY dispatch, or A6 approved REMEDIATION wakeup.
-  - Treat REPAIR and REMEDIATION as aliases, infer a REVIEW finding for a FAILURE, convert a
-    REPAIR into REMEDIATION, or let one dispatch identity cross correction families.
-  - Author REPAIR automatically from FAILURE, choose a REPAIR action, choose a coding
-    Executor when Human choice is required, or infer correction scope from diagnostics.
-  - Change REPAIR semantic actions, repair admission/preverification, Runtime verification,
-    Reviewer authority, publication authority, or frozen FAILURE/REPAIR meanings.
-  - Add a generic lifecycle router, queue, scheduler, poller, automatic retry/reroute,
-    fallback Executor, database, service daemon, PAT dependency, or alternate correction
-    lifecycle.
-  - Change TASK-110 Review-to-Publication transport, downstream pins, or TASK-109 roadmap
-    reconciliation in this TASK.
+  - >
+    Reuse, widen, or add a generic operation selector to PRIMARY A1/A2 carriers,
+    TASK-108 PRIMARY wakeup, A3/A6 REMEDIATION transport, TASK-112 remediation-intent
+    carrier, Brain authoring ingress, or Publisher workflows.
+  - >
+    Treat REPAIR and REMEDIATION as aliases; infer a REVIEW finding from FAILURE;
+    convert REPAIR to REMEDIATION; or let one dispatch identity cross correction
+    families.
+  - >
+    Author REPAIR automatically from FAILURE, choose a REPAIR action, infer correction
+    scope, automatically choose/default/reroute an Executor, retry a failed REPAIR RUN,
+    or add fix-until-PASS/autonomous correction loops.
+  - >
+    Circumvent, evade, weaken, or work around OpenAI/ChatGPT host safety checks. A host
+    safety block before GitHub receives the request is transport evidence only.
+  - >
+    Implement GAP-C Runtime-terminal-to-Brain signaling, polling, notifications,
+    completion outboxes, autonomous review, or any reverse handoff mechanism.
+  - >
+    Change REPAIR semantic actions, Runtime verification, review authority, publication
+    authority, frozen Kernel/governance semantics, downstream pins, or TASK-109 roadmap
+    reconciliation.
+  - >
+    Add a generic lifecycle router, queue, scheduler, poller, service daemon, database,
+    PAT/service-account dependency, fallback Executor, or alternate publication authority.
   - Push or publish from Executor implementation execution.
 
 constraints:
   hard:
     - >
-      Define one dedicated versioned REPAIR wakeup request family and repository-owned
-      carrier policy. Its GitHub Issue title marker, parser, workflow, and self-hosted target
-      must be distinct from PRIMARY and general Brain authoring ingress. The request must not
-      contain a generic operation selector.
+      Define one dedicated versioned REPAIR wakeup request family, policy, parser,
+      GitHub-hosted admission workflow, and fixed self-hosted REPAIR target. Its exact
+      title/marker and state namespace must be distinct from PRIMARY, REMEDIATION intent,
+      and Brain authoring ingress; no generic operation selector is permitted.
     - >
-      One request must bind a stable repair_dispatch_id, exact failed_run_id, exact canonical
-      REPAIR authorization SHA, and only the Executor choice required by that REPAIR action.
-      Task identity, repair action, modification scope, failed head, and execution meaning
-      must be resolved from canonical FAILURE/REPAIR state rather than trusted from Issue
-      content.
+      One immutable REPAIR delivery intent binds exactly repair_dispatch_id,
+      failed_run_id, exact current canonical REPAIR authorization SHA, and the Executor
+      selector required by the canonical REPAIR action. Task identity, repair action,
+      scope, failed head, verification commands, repository path, model, workflow/ref,
+      shell command, publication data, and arbitrary Git refs are never trusted from the
+      carrier request.
     - >
-      Carrier admission must be GitHub-hosted, validate exact repository/actor/title/event
-      framing under repository-owned policy, treat Issue body as inert data, and dispatch one
-      fixed self-hosted REPAIR workflow on main with only sanitized bounded selectors. Issue
-      receipt may report dispatch acceptance but must explicitly not claim RUN success,
-      verification success, review PASS, or publication.
+      CODE_FIX and CONTINUE_IMPLEMENTATION require one explicit supported coding
+      Executor selected by the Human. That single selection is the Human execution intent
+      for the immutable REPAIR delivery and must not be requested again solely because a
+      carrier was unavailable or the identical delivery is replayed. NO_CHANGE must not
+      require, infer, or fabricate a coding Executor.
     - >
-      The self-hosted REPAIR wakeup must independently resolve exact canonical FAILURE and
-      REPAIR authorization, require current canonical correction identity to match the
-      requested REPAIR SHA, and fail closed if Unified State/correction preflight no longer
-      authorizes EXECUTE_REPAIR for that failed run.
+      The self-hosted target independently resolves the exact canonical FAILURE and
+      REPAIR authorization and requires the requested REPAIR SHA to be current. Unified
+      State/correction preflight must still authorize EXECUTE_REPAIR for the failed RUN;
+      stale, missing, malformed, ambiguous, conflicting, or unauthorized correction state
+      fails closed before a new REPAIR RUN executes.
     - >
-      CODE_FIX and CONTINUE_IMPLEMENTATION require one explicit supported coding Executor.
-      NO_CHANGE must preserve its existing non-coding semantics and must not create coding
-      authority merely because the transport supports executor-bearing REPAIR actions.
+      Outer REPAIR dispatch state is operational-only and separate from PRIMARY A2 and
+      REMEDIATION A6 state. Identical replay preserves the original immutable selectors,
+      exact admitted RUN identity, Executor where applicable, and terminal outcome;
+      reuse of repair_dispatch_id with conflicting failed_run_id, repair SHA, or Executor
+      binding fails closed.
     - >
-      Outer REPAIR dispatch state must be separate from PRIMARY A2 dispatch state and A6
-      correction-dispatch state. The same repair_dispatch_id replay with identical binding
-      must never execute run_repair twice; reuse with conflicting failed_run_id, repair SHA,
-      or Executor binding must fail closed as an immutable collision.
+      Crash safety requires exact durable ownership at canonical REPAIR RUN admission.
+      Before Executor execution can proceed, the outer dispatch must be bound to the exact
+      admitted continuation RUN. An unbound dispatch must never claim a later
+      metadata-matching RUN. Only its exact already-bound RUN may be reconciled from
+      canonical RESULT/FAILURE without re-execution; uncertain state cannot launch a
+      second invocation.
     - >
-      Crash safety must use exact durable ownership at canonical REPAIR RUN admission. Before
-      Executor execution can proceed, the outer repair dispatch must be bound to the exact
-      admitted continuation RUN. A re-delivery with no such exact durable binding must not
-      claim a later metadata-matching REPAIR RUN merely because it appeared after a namespace
-      snapshot. Only the exact already-bound RUN may be reconciled from existing terminal
-      RESULT/FAILURE without re-execution.
+      Successful delivery delegates into existing run_repair authority rather than
+      duplicating repair admission, Executor invocation, canonical verification,
+      RESULT/FAILURE persistence, or correction semantics in carrier/dispatch code.
+      Existing direct aios continue/direct repair surfaces remain valid local/debug
+      mechanisms.
     - >
-      Successful remote delivery must delegate into the existing run_repair authority rather
-      than duplicate repair admission, Executor invocation, verification, result/failure
-      persistence, or transport logic in carrier code. Existing direct aios continue and
-      direct repair paths remain valid local/debug surfaces.
+      GitHub-Issue admission runs on a GitHub-hosted runner, validates exact repository,
+      authorized actor, opened event, exact title, body size, versioned request shape and
+      selector grammar, treats body as inert data, and passes only sanitized bounded
+      selectors to one fixed repository-owned self-hosted workflow on main.
     - >
-      Terminal replay must preserve the original RUN identity and outcome; nonterminal
-      replay must either report the exact bound operation as in progress/blocked or reconcile
-      from canonical state without launching a second RUN. Transport status is operational
-      observability only, never canonical engineering truth.
+      Carrier success means delivery to the fixed REPAIR workflow completed successfully,
+      not merely that the reusable job was non-skipped. A failed, cancelled, or skipped
+      dispatch is REJECTED/not accepted, must not close the Issue as successful, and must
+      preserve a failing carrier outcome. Receipt text must never assert REPAIR RUN,
+      verification, semantic review, or publication success.
     - >
-      Tests must prove distinct carrier framing, malicious body inertness, exact selector
-      validation, explicit Executor rules, collision rejection, terminal replay, crash
-      reconciliation with exact admission binding, no-reexecution, and absence of calls into
-      PRIMARY/A6 dispatch functions.
+      A host-side transport block before GitHub receives an Issue creates no GitHub or
+      AIOS authority/state and is classified only as outer transport unavailable unless
+      evidence proves another category. The same immutable Human/Brain REPAIR intent may
+      be redelivered through manual workflow_dispatch or the bounded local operator
+      surface without a second Human Executor-selection decision. No implementation may
+      attempt to bypass the host safety gate.
+    - >
+      Existing PRIMARY A2 dispatch, TASK-108 PRIMARY Issue carrier, A3/A6/TASK-112
+      REMEDIATION paths, Unified Human Surface direct EXECUTE_REPAIR, Runtime
+      verification, semantic review, and safe Publisher remain behaviorally compatible
+      and authority-separated.
     - Do not push from Executor implementation execution.
 
 acceptance:
   - id: AC1
     condition: >
-      An authorized Brain REPAIR wakeup Issue for a canonical CODE_FIX or
-      CONTINUE_IMPLEMENTATION REPAIR reaches exactly one fixed self-hosted REPAIR wakeup and
-      delegates exactly once into existing run_repair with the Human-selected Executor.
+      An authorized dedicated REPAIR wakeup for canonical CODE_FIX or
+      CONTINUE_IMPLEMENTATION state reaches exactly one fixed self-hosted REPAIR target
+      and delegates exactly once into existing run_repair using the one Human-selected
+      supported Executor.
   - id: AC2
     condition: >
-      A canonical NO_CHANGE REPAIR can use the same dedicated family without fabricating a
-      coding Executor requirement, while existing NO_CHANGE Runtime verification/reuse
-      semantics remain unchanged.
+      A canonical NO_CHANGE REPAIR uses the same dedicated family without accepting or
+      fabricating coding-Executor authority and preserves existing NO_CHANGE
+      verification/evidence-reuse semantics.
   - id: AC3
     condition: >
-      Wrong repo/actor/title/format, malformed selectors, stale or mismatched repair SHA,
-      missing required Executor, conflicting repair_dispatch_id reuse, non-EXECUTE_REPAIR
-      state, or unauthorized correction fails closed before a new REPAIR RUN is executed.
+      Wrong repo/actor/title/event/format, malformed selectors, stale or mismatched REPAIR
+      SHA, missing required Executor, forbidden Executor on NO_CHANGE, non-EXECUTE_REPAIR
+      state, or conflicting repair_dispatch_id reuse fails closed before new REPAIR
+      execution.
   - id: AC4
     condition: >
-      Exact duplicate delivery is at-most-once: after terminal completion it returns the
-      original bound RUN/outcome with replay attribution and creates no additional RUN; while
-      active it cannot launch a second invocation.
+      Exact duplicate delivery across Issue, workflow_dispatch, and bounded local fallback
+      is at-most-once: terminal replay returns the original bound RUN/outcome and performs
+      no new Executor invocation; active/uncertain replay cannot start a second RUN.
   - id: AC5
     condition: >
-      Crash/restart regression proves an unbound repair dispatch cannot claim a later
+      Crash/restart regressions prove an unbound outer repair dispatch cannot claim a later
       metadata-matching RUN, while an exact RUN durably bound at canonical REPAIR admission
-      can be reconciled from its existing RESULT/FAILURE without re-execution.
+      can reconcile existing RESULT/FAILURE without re-execution.
   - id: AC6
     condition: >
-      PRIMARY A2 dispatch, TASK-108 PRIMARY Issue wakeup, A6 approved REMEDIATION wakeup,
-      direct aios continue EXECUTE_REPAIR behavior, Runtime verification, semantic review,
-      and safe publication remain behaviorally compatible and authority-separated.
+      Carrier receipt reports accepted only when both admission and the fixed REPAIR
+      dispatch complete successfully; failure/cancel/skip remains rejected, does not close
+      the Issue as successful, and never fabricates RUN/verification/review/publication
+      success.
   - id: AC7
     condition: >
-      Required focused verification and git diff --check pass with no modified file outside
-      TASK-111 scope and RESULT contains zero unresolved items.
+      Host safety blocking before GitHub admission leaves repository and local AIOS state
+      unchanged, and the same immutable intent can be delivered through another supported
+      bounded carrier without renewed Human Executor selection and without any safety-gate
+      bypass mechanism.
+  - id: AC8
+    condition: >
+      PRIMARY, REMEDIATION/TASK-112, direct aios continue EXECUTE_REPAIR, Runtime
+      verification, semantic review, and safe publication remain behaviorally compatible
+      and authority-separated; no GAP-C reverse-handoff authority is introduced.
+  - id: AC9
+    condition: >
+      Required focused verification and git diff --check pass, every modified file is in
+      TASK-111 revision-2 scope, and RESULT contains zero unresolved items.
 
 verification:
   required:
-    - python -m pytest tests/test_github_issue_repair_wakeup.py tests/test_github_issue_repair_wakeup_workflow.py tests/test_repair_dispatch.py tests/test_operator.py tests/test_operator_human_surface.py tests/test_correction_dispatch.py tests/test_github_issue_wakeup.py tests/test_github_issue_wakeup_workflow.py -q
+    - python -m pytest tests/test_github_issue_repair_wakeup.py tests/test_github_issue_repair_wakeup_workflow.py tests/test_repair_dispatch.py tests/test_operator.py tests/test_operator_human_surface.py tests/test_correction_dispatch.py tests/test_github_issue_wakeup.py tests/test_github_issue_wakeup_workflow.py tests/test_github_issue_remediation_intent_workflow.py -q
     - git diff --check
