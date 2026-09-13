@@ -341,6 +341,56 @@ def publish_success(
     )
 
 
+@pytest.mark.parametrize("terminal_kind", ["RESULT", "FAILURE"])
+def test_terminal_transport_notifies_only_after_canonical_artifact_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_kind: str,
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    files = tmp_path / "attention-files"
+    root = git(repo, "rev-parse", "HEAD")
+    candidate = commit_candidate(repo, f"{terminal_kind.lower()} candidate")
+    calls: list[tuple[str, str, str]] = []
+
+    def observe_attention(
+        observed_repo: Path,
+        *,
+        remote: str,
+        run_id: str,
+        terminal_kind: str,
+        artifact_sha: str,
+    ) -> str:
+        namespace = "artifacts" if terminal_kind == "RESULT" else "failure-artifacts"
+        terminal_ref = f"refs/heads/aios/{namespace}/{run_id}"
+        assert git(observed_repo, "ls-remote", "--refs", remote, terminal_ref) == (
+            f"{artifact_sha}\t{terminal_ref}"
+        )
+        calls.append((run_id, terminal_kind, artifact_sha))
+        return "PUBLISHED"
+
+    monkeypatch.setattr(review_transport, "publish_terminal_attention", observe_attention)
+    if terminal_kind == "RESULT":
+        publish_success(
+            repo,
+            files,
+            run_id="RUN-058-090",
+            head_sha=candidate,
+            root_base_sha=root,
+        )
+    else:
+        publish_failure(
+            repo,
+            files,
+            run_id="RUN-058-090",
+            candidate_sha=candidate,
+            root_base_sha=root,
+        )
+
+    assert len(calls) == 1
+    assert calls[0][:2] == ("RUN-058-090", terminal_kind)
+
+
 def test_resolves_canonical_failed_correction_chain_with_exact_transported_facts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

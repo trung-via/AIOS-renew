@@ -12,6 +12,11 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from .terminal_attention import (
+    TerminalAttentionError,
+    publish_terminal_attention,
+)
+
 
 class ReviewTransportError(RuntimeError):
     """Raised when post-PASS review or artifact transport fails."""
@@ -1952,6 +1957,7 @@ def transport_failure(
                 raise ReviewTransportError(f"remote failure ref {candidate_ref} conflict")
         else:
             specs.append(f"{head_sha}:{candidate_ref}")
+    terminal_artifact_sha = refs.get(artifacts_ref)
     if artifacts_ref in refs:
         for path, content in expected.items():
             if _read_remote_blob(repo, remote, refs[artifacts_ref], path) != content:
@@ -1989,11 +1995,25 @@ def transport_failure(
             observation_path=observation_path,
             preverification_path=preverification_path,
         )
+        terminal_artifact_sha = commit
         specs.append(f"{commit}:{artifacts_ref}")
     if specs:
         code, _, stderr = _git_cmd(repo, "push", "--no-tags", remote, *specs, allow_fail=True)
         if code:
             raise ReviewTransportError(f"failed to push transport refs to {remote}: {stderr}")
+    assert terminal_artifact_sha is not None
+    try:
+        publish_terminal_attention(
+            repo,
+            remote=remote,
+            run_id=run_id,
+            terminal_kind="FAILURE",
+            artifact_sha=terminal_artifact_sha,
+        )
+    except TerminalAttentionError as exc:
+        raise ReviewTransportError(
+            f"terminal FAILURE is canonical but attention delivery failed: {exc}"
+        ) from exc
 
 
 def transport_admission_failure(
@@ -2195,25 +2215,38 @@ def transport_post_pass(
                 f"remote artifacts ref {artifacts_ref} exists with different artifact content"
             )
 
-    if not push_review and not push_artifacts:
-        return
-
-    artifacts_commit_sha = _create_artifacts_commit(
-        repo,
-        run_path=run_path,
-        result_path=result_path,
-        run_id=run_id,
-        lineage_path=lineage_path,
-        observation_path=observation_path,
-    )
+    artifacts_commit_sha = existing_remote_refs.get(artifacts_ref)
+    if push_artifacts:
+        artifacts_commit_sha = _create_artifacts_commit(
+            repo,
+            run_path=run_path,
+            result_path=result_path,
+            run_id=run_id,
+            lineage_path=lineage_path,
+            observation_path=observation_path,
+        )
 
     push_specs: list[str] = []
     if push_review:
         push_specs.append(f"{head_sha}:{review_ref}")
     if push_artifacts:
+        assert artifacts_commit_sha is not None
         push_specs.append(f"{artifacts_commit_sha}:{artifacts_ref}")
 
     if push_specs:
         code, _, stderr = _git_cmd(repo, "push", "--no-tags", remote, *push_specs, allow_fail=True)
         if code != 0:
             raise ReviewTransportError(f"failed to push transport refs to {remote}: {stderr}")
+    assert artifacts_commit_sha is not None
+    try:
+        publish_terminal_attention(
+            repo,
+            remote=remote,
+            run_id=run_id,
+            terminal_kind="RESULT",
+            artifact_sha=artifacts_commit_sha,
+        )
+    except TerminalAttentionError as exc:
+        raise ReviewTransportError(
+            f"terminal RESULT is canonical but attention delivery failed: {exc}"
+        ) from exc

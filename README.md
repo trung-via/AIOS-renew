@@ -725,6 +725,41 @@ Missing or invalid staging adds no executor diagnostics and never replaces the
 original failure. Failure transport publishes that Runtime-authored artifact
 without parsing Executor output.
 
+## Runtime terminal attention
+
+Canonical terminal truth remains only the immutable success ref
+`refs/heads/aios/artifacts/<RUN>` or failure ref
+`refs/heads/aios/failure-artifacts/<RUN>`. After publishing exactly one of those
+refs, terminal transport emits one subordinate operational ref under
+`refs/heads/aios/terminal-attention/<RESULT|FAILURE>/<RUN>/<artifact-sha>`. The
+attention ref points to reviewed published `main`, not to the terminal artifact or
+candidate commit. It records notification/replay identity only; it is not a second
+terminal store, RESULT, FAILURE, REVIEW, correction, approval, or publication
+artifact.
+
+The GitHub-hosted terminal-attention workflow independently revalidates the exact
+repository, event family, signal-ref grammar, canonical terminal ref, artifact SHA,
+absence of the competing terminal kind, and published-main lineage before using
+`issues: write`. It then creates or reuses one Issue titled exactly
+`[AIOS TERMINAL ATTENTION]`. The strict versioned Issue body contains only
+`run_id`, `terminal_kind`, and `artifact_sha` selectors plus its format and version.
+Exact replay is side-effect free. A conflicting RUN/kind/SHA identity fails closed
+without rebinding the ref or creating another Issue.
+
+An attention Issue is a durable carrier for Human/Brain notice; GitHub does not
+directly invoke ChatGPT or establish that any particular conversation received it.
+Handling always begins with a fresh Brain sync of the exact canonical terminal ref,
+artifact, and relevant lineage. RESULT may then enter semantic REVIEW, while
+FAILURE may be inspected before separately authorized REPAIR authoring. Neither the
+Issue nor its workflow outcome grants either authority or makes a semantic claim.
+
+If attention delivery fails, the already-published RESULT or FAILURE remains
+unchanged. The bounded `workflow_dispatch` inputs (`run_id`, `terminal_kind`, and
+`artifact_sha`) provide manual notification replay of the existing immutable
+selector. The existing `aios retry-transport <RUN>` path may also redeliver it from
+persisted terminal state. Both are transport recovery only: they do not rerun
+verification, invoke an Executor, retry execution, review, repair, or publish.
+
 ## Generic Brain-to-Repository Authoring Ingress
 
 AIOS provides a bounded, transport-neutral control-plane ingress that accepts

@@ -1,0 +1,136 @@
+name: AIOS terminal attention carrier
+
+on:
+  push:
+    branches:
+      - "aios/terminal-attention/**"
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Exact canonical RUN id"
+        required: true
+        type: string
+      terminal_kind:
+        description: "Canonical terminal kind"
+        required: true
+        type: choice
+        options:
+          - RESULT
+          - FAILURE
+      artifact_sha:
+        description: "Exact canonical terminal artifact commit SHA"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: aios-terminal-attention-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  admit-and-notify:
+    if: >-
+      (github.event_name == 'push' &&
+       startsWith(github.ref, 'refs/heads/aios/terminal-attention/')) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out published main with complete lineage
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install reviewed published-main admission code
+        run: python -m pip install --disable-pip-version-check .
+
+      - name: Independently admit exact terminal and attention refs
+        id: admission
+        run: >-
+          python -m aios_renew.terminal_attention
+          --event "$GITHUB_EVENT_PATH"
+          --event-name "$GITHUB_EVENT_NAME"
+          --event-sha "$GITHUB_SHA"
+          --repository "$GITHUB_REPOSITORY"
+          --policy .ai/brain-terminal-attention-carriers.yaml
+          --repo .
+          --remote origin
+          --output "$GITHUB_OUTPUT"
+
+      - name: Create or reuse the strict Brain-attention Issue
+        id: notify
+        uses: actions/github-script@v7
+        env:
+          AIOS_RUN_ID: ${{ steps.admission.outputs.run_id }}
+          AIOS_TERMINAL_KIND: ${{ steps.admission.outputs.terminal_kind }}
+          AIOS_ARTIFACT_SHA: ${{ steps.admission.outputs.artifact_sha }}
+        with:
+          script: |
+            const title = '[AIOS TERMINAL ATTENTION]';
+            const runId = process.env.AIOS_RUN_ID;
+            const terminalKind = process.env.AIOS_TERMINAL_KIND;
+            const artifactSha = process.env.AIOS_ARTIFACT_SHA;
+            const body = [
+              'format: AIOS_TERMINAL_ATTENTION',
+              'version: 1',
+              `run_id: ${runId}`,
+              `terminal_kind: ${terminalKind}`,
+              `artifact_sha: ${artifactSha}`,
+              '',
+            ].join('\n');
+            const grammar = /^format: AIOS_TERMINAL_ATTENTION\nversion: 1\nrun_id: (RUN-[A-Za-z0-9][A-Za-z0-9._-]*)\nterminal_kind: (RESULT|FAILURE)\nartifact_sha: ([0-9a-f]{40})\n$/;
+            const issues = await github.paginate(
+              github.rest.issues.listForRepo,
+              { owner: context.repo.owner, repo: context.repo.repo, state: 'all', per_page: 100 },
+            );
+            const exact = [];
+            for (const issue of issues) {
+              if (issue.pull_request || issue.title !== title) continue;
+              const match = grammar.exec((issue.body || '').replaceAll('\r\n', '\n'));
+              if (!match) {
+                core.setFailed('Existing terminal-attention Issue has a non-canonical body.');
+                return;
+              }
+              const [, existingRun, existingKind, existingSha] = match;
+              if (existingRun !== runId) continue;
+              if (existingKind !== terminalKind || existingSha !== artifactSha) {
+                core.setFailed('RUN already has a conflicting terminal-attention Issue.');
+                return;
+              }
+              exact.push(issue);
+            }
+            if (exact.length > 1) {
+              core.setFailed('Duplicate terminal-attention Issues already exist.');
+              return;
+            }
+            if (exact.length === 1) {
+              core.setOutput('notification_status', 'REUSED');
+              core.setOutput('issue_number', String(exact[0].number));
+              return;
+            }
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+            });
+            core.setOutput('notification_status', 'CREATED');
+            core.setOutput('issue_number', String(created.data.number));
+
+      - name: Record operational carrier status only
+        env:
+          AIOS_NOTIFICATION_STATUS: ${{ steps.notify.outputs.notification_status }}
+          AIOS_ISSUE_NUMBER: ${{ steps.notify.outputs.issue_number }}
+        run: |
+          echo "notification_status=$AIOS_NOTIFICATION_STATUS"
+          echo "attention_issue_number=$AIOS_ISSUE_NUMBER"

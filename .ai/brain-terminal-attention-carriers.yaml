@@ -1,0 +1,8 @@
+format: AIOS_BRAIN_TERMINAL_ATTENTION_CARRIERS_POLICY
+version: 1
+github_issue:
+  enabled: true
+  repository: trung-via/AIOS-renew
+  main_ref: refs/heads/main
+  signal_prefix: refs/heads/aios/terminal-attention
+  title_marker: "[AIOS TERMINAL ATTENTION]"
