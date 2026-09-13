@@ -1107,6 +1107,7 @@ def run_repair(
     failed_run_id: str, *, executor: str | None, repo: str | Path | None = None,
     repair: Mapping[str, Any] | str | Path | None = None,
     required_repair_sha: str | None = None,
+    repair_dispatch_id: str | None = None,
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
     monotonic_clock: MonotonicClock = time.monotonic,
@@ -1114,6 +1115,8 @@ def run_repair(
     """Accept and execute one GitHub-authored REPAIR as a continuation RUN."""
 
     root = resolve_repository(repo)
+    if repair_dispatch_id is not None and required_repair_sha is None:
+        raise OperatorError("repair dispatch requires the exact canonical REPAIR SHA")
     state = runtime_paths(root)
     observation_tracker = RunObservationTracker(
         "REPAIR", monotonic_clock=monotonic_clock
@@ -1130,6 +1133,7 @@ def run_repair(
         return _run_repair_impl(
             failed_run_id, executor=executor, repo=root, repair=repair,
             required_repair_sha=required_repair_sha,
+            repair_dispatch_id=repair_dispatch_id,
             native_runner=native_runner,
             verification_runner=verification_runner,
             attempt=attempt,
@@ -1851,6 +1855,7 @@ def _run_repair_impl(
     failed_run_id: str, *, executor: str | None, repo: Path,
     repair: Mapping[str, Any] | str | Path | None,
     required_repair_sha: str | None,
+    repair_dispatch_id: str | None,
     native_runner: NativeRunner,
     verification_runner: VerificationRunner,
     attempt: _RunAttempt,
@@ -1952,6 +1957,15 @@ def _run_repair_impl(
         persisted_execution = dict(execution)
         persisted_execution["run"] = asdict(run)
         _write_json(state.repairs / f"{run_id}.json", persisted_execution)
+
+        if repair_dispatch_id is not None:
+            from .repair_dispatch import bind_repair_run
+
+            bind_repair_run(
+                state_root=state.root,
+                repair_dispatch_id=repair_dispatch_id,
+                run_id=run_id,
+            )
 
         if reusable_package is None:
             observed_native_runner = observation_tracker.wrap_native_runner(
@@ -4467,6 +4481,114 @@ def run_approved_remediation_intent(
     return approval_summary, dispatch_outcome
 
 
+def run_repair_wakeup(
+    repair_dispatch_id: str,
+    failed_run_id: str,
+    repair_sha: str,
+    *,
+    executor: str | None,
+    repo: str | Path | None = None,
+    native_runner: NativeRunner = subprocess.run,
+    verification_runner: VerificationRunner = subprocess.run,
+    monotonic_clock: MonotonicClock = time.monotonic,
+) -> Any:
+    """Deliver one immutable REPAIR intent through the durable outer boundary."""
+
+    from .repair_dispatch import (
+        RepairDispatchError,
+        RepairInvocation,
+        execute_repair_dispatch,
+        reject_existing_selector_collision,
+        replay_existing_repair_dispatch,
+    )
+
+    try:
+        root = resolve_repository(repo)
+        state_root = runtime_state_root(root)
+        reject_existing_selector_collision(
+            state_root=state_root,
+            repair_dispatch_id=repair_dispatch_id,
+            failed_run_id=failed_run_id,
+            repair_sha=repair_sha,
+            executor=executor,
+        )
+        replay = replay_existing_repair_dispatch(
+            state_root=state_root,
+            repair_dispatch_id=repair_dispatch_id,
+            failed_run_id=failed_run_id,
+            repair_sha=repair_sha,
+            executor=executor,
+        )
+        if replay is not None:
+            return replay
+
+        # This is observation only. It discovers no authority: the exact current
+        # canonical REPAIR and Unified State must already authorize continuation.
+        preflight = preflight_repair(failed_run_id, repo=root)
+        if preflight.status != "READY" or preflight.task_id is None:
+            raise OperatorError("canonical REPAIR preflight does not authorize execution")
+        observation = observe_unified_state(preflight.task_id, repo=root)
+        if (
+            observation.next_action != "EXECUTE_REPAIR"
+            or observation.failed_run_id != failed_run_id
+            or observation.correction_sha != repair_sha
+            or observation.correction_document is None
+        ):
+            raise OperatorError(
+                "Unified State does not authorize the requested exact REPAIR"
+            )
+        action = observation.correction_document.get("action")
+        if action not in ("CODE_FIX", "CONTINUE_IMPLEMENTATION", "NO_CHANGE"):
+            raise OperatorError("canonical REPAIR action is invalid")
+        correction = observation.correction
+        executor_required = (
+            correction.get("executor_required")
+            if isinstance(correction, Mapping)
+            else None
+        )
+        if action in ("CODE_FIX", "CONTINUE_IMPLEMENTATION"):
+            if executor is None:
+                raise OperatorError("coding REPAIR requires an explicit Executor")
+            if executor_required is not True:
+                raise OperatorError("canonical coding REPAIR authority is inconsistent")
+        else:
+            if executor is not None:
+                raise OperatorError("NO_CHANGE REPAIR forbids a coding Executor")
+            if executor_required is not False:
+                raise OperatorError("NO_CHANGE REPAIR lacks reusable verification state")
+
+        def invoke_repair() -> RepairInvocation:
+            try:
+                summary = run_repair(
+                    failed_run_id,
+                    executor=executor,
+                    repo=root,
+                    repair=observation.correction_document,
+                    required_repair_sha=repair_sha,
+                    repair_dispatch_id=repair_dispatch_id,
+                    native_runner=native_runner,
+                    verification_runner=verification_runner,
+                    monotonic_clock=monotonic_clock,
+                )
+                return RepairInvocation(0, summary.run_id)
+            except (OperatorError, RepairDispatchError) as exc:
+                print(f"AIOS ERROR: {exc}", file=sys.stderr)
+                return RepairInvocation(1)
+
+        return execute_repair_dispatch(
+            state_root=state_root,
+            repair_dispatch_id=repair_dispatch_id,
+            failed_run_id=failed_run_id,
+            repair_sha=repair_sha,
+            executor=executor,
+            task_id=observation.task_id,
+            action=action,
+            invoke_repair=invoke_repair,
+        )
+    except RepairDispatchError as exc:
+        raise OperatorError(str(exc)) from exc
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aios")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -4585,6 +4707,17 @@ def _parser() -> argparse.ArgumentParser:
         "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
     repair_parser.add_argument("--repo")
+    repair_wakeup_parser = commands.add_parser(
+        "repair-wakeup",
+        help="Idempotently deliver one exact canonical REPAIR authorization",
+    )
+    repair_wakeup_parser.add_argument("repair_dispatch_id")
+    repair_wakeup_parser.add_argument("failed_run_id")
+    repair_wakeup_parser.add_argument("repair_sha")
+    repair_wakeup_parser.add_argument(
+        "--executor", choices=("codex", "antigravity")
+    )
+    repair_wakeup_parser.add_argument("--repo")
     repair_preflight_parser = commands.add_parser(
         "preflight-repair",
         help="Inspect exact REPAIR readiness without execution",
@@ -4892,6 +5025,19 @@ def main(
                 monotonic_clock=monotonic_clock,
             )
             print(summary.render())
+        elif args.command == "repair-wakeup":
+            outcome = run_repair_wakeup(
+                args.repair_dispatch_id,
+                args.failed_run_id,
+                args.repair_sha,
+                executor=args.executor,
+                repo=args.repo,
+                native_runner=native_runner,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
+            )
+            print(outcome.render())
+            return outcome.exit_code
         elif args.command == "preflight-repair":
             observation = preflight_repair(
                 args.failed_run_id,

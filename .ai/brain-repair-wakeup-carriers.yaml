@@ -1,0 +1,9 @@
+format: AIOS_BRAIN_REPAIR_WAKEUP_CARRIERS_POLICY
+version: 1
+github_issue:
+  enabled: true
+  repository: trung-via/AIOS-renew
+  authorized_actors:
+    - trung-via
+  title_marker: "[AIOS REPAIR WAKEUP]"
+  max_body_bytes: 4096

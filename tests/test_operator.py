@@ -37,6 +37,7 @@ from aios_renew.operator import (
     retry_transport,
     run_approved_remediation_intent,
     run_repair,
+    run_repair_wakeup,
     run_remediation,
     run_task,
     runtime_paths,
@@ -8207,3 +8208,145 @@ def test_performance_cli_rejects_duplicate_and_revision_qualified_selectors(
         ["performance", "TASK-101:4", "--repo", str(repo)]
     ) == 1
     assert "AIOS ERROR:" in capsys.readouterr().err
+
+
+def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from aios_renew.repair_dispatch import bind_repair_run
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    state = root / ".git" / "aios"
+    repair_document = {
+        "failed_run_id": "RUN-111-001",
+        "action": "CODE_FIX",
+    }
+    observation = SimpleNamespace(
+        next_action="EXECUTE_REPAIR",
+        failed_run_id="RUN-111-001",
+        correction_sha="a" * 40,
+        correction_document=repair_document,
+        correction={"executor_required": True},
+        task_id="TASK-111",
+    )
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: root)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+    monkeypatch.setattr(
+        operator_module,
+        "preflight_repair",
+        lambda failed_run_id, repo: CorrectionPreflightResult(
+            family="REPAIR",
+            status="READY",
+            phase="READY",
+            reason_code="READY",
+            task_id="TASK-111",
+            task_revision=2,
+            failed_run_id=failed_run_id,
+            action="CODE_FIX",
+            executor_required=True,
+        ),
+    )
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda task, repo: observation)
+    calls: list[str] = []
+
+    def repair_once(failed_run_id: str, **kwargs):
+        calls.append(failed_run_id)
+        (state / "runs").mkdir(parents=True, exist_ok=True)
+        (state / "repairs").mkdir(parents=True, exist_ok=True)
+        run = {
+            "run_id": "RUN-111-002",
+            "task": {"id": "TASK-111", "revision": 2},
+            "executor": "codex",
+        }
+        (state / "runs/RUN-111-002.json").write_text(
+            json.dumps(run), encoding="utf-8"
+        )
+        (state / "repairs/RUN-111-002.json").write_text(
+            json.dumps(
+                {
+                    "failed_run_id": failed_run_id,
+                    "repair": repair_document,
+                    "run": run,
+                }
+            ),
+            encoding="utf-8",
+        )
+        bind_repair_run(
+            state_root=state,
+            repair_dispatch_id=kwargs["repair_dispatch_id"],
+            run_id="RUN-111-002",
+        )
+        (state / "results").mkdir(parents=True, exist_ok=True)
+        (state / "results/RUN-111-002.json").write_text("{}", encoding="utf-8")
+        return SimpleNamespace(run_id="RUN-111-002")
+
+    monkeypatch.setattr(operator_module, "run_repair", repair_once)
+    first = run_repair_wakeup(
+        "repair-111",
+        "RUN-111-001",
+        "a" * 40,
+        executor="codex",
+        repo=root,
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "preflight_repair",
+        lambda *args, **kwargs: pytest.fail("terminal replay repeated preflight"),
+    )
+    replay = run_repair_wakeup(
+        "repair-111",
+        "RUN-111-001",
+        "a" * 40,
+        executor="codex",
+        repo=root,
+    )
+    assert calls == ["RUN-111-001"]
+    assert first.status == replay.status == "SUCCEEDED"
+    assert replay.replayed is True
+
+
+def test_repair_wakeup_rejects_executor_authority_inconsistent_with_action(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: root)
+    monkeypatch.setattr(
+        operator_module, "runtime_state_root", lambda repo: root / ".git" / "aios"
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "preflight_repair",
+        lambda failed_run_id, repo: CorrectionPreflightResult(
+            family="REPAIR",
+            status="READY",
+            phase="READY",
+            reason_code="READY",
+            task_id="TASK-111",
+            task_revision=2,
+        ),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda task, repo: SimpleNamespace(
+            next_action="EXECUTE_REPAIR",
+            failed_run_id="RUN-111-001",
+            correction_sha="a" * 40,
+            correction_document={
+                "failed_run_id": "RUN-111-001",
+                "action": "NO_CHANGE",
+            },
+            correction={"executor_required": False},
+            task_id="TASK-111",
+        ),
+    )
+    with pytest.raises(OperatorError, match="forbids"):
+        run_repair_wakeup(
+            "repair-no-change-111",
+            "RUN-111-001",
+            "a" * 40,
+            executor="codex",
+            repo=root,
+        )
