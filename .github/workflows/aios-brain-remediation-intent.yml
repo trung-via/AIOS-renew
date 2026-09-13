@@ -1,0 +1,116 @@
+name: AIOS Brain remediation intent carrier
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: aios-brain-remediation-intent-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  admit:
+    if: github.event.issue.title == '[AIOS REMEDIATION INTENT]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      correction_dispatch_id: ${{ steps.admission.outputs.correction_dispatch_id }}
+      source_run_id: ${{ steps.admission.outputs.source_run_id }}
+      finding_id: ${{ steps.admission.outputs.finding_id }}
+      executor: ${{ steps.admission.outputs.executor }}
+    steps:
+      - name: Check out fixed canonical main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the reviewed repository package
+        run: python -m pip install --disable-pip-version-check .
+
+      - name: Admit and sanitize one remediation intent
+        id: admission
+        env:
+          AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-remediation-intent-receipt.txt
+        run: >-
+          python -m aios_renew.github_issue_remediation_intent
+          --event "$GITHUB_EVENT_PATH"
+          --policy .ai/brain-remediation-intent-carriers.yaml
+          --output "$GITHUB_OUTPUT"
+          --receipt "$AIOS_RECEIPT_PATH"
+
+  dispatch:
+    needs: admit
+    uses: ./.github/workflows/aios-approved-remediation-intent.yml
+    with:
+      correction_dispatch_id: ${{ needs.admit.outputs.correction_dispatch_id }}
+      source_run_id: ${{ needs.admit.outputs.source_run_id }}
+      finding_id: ${{ needs.admit.outputs.finding_id }}
+      executor: ${{ needs.admit.outputs.executor }}
+
+  receipt:
+    if: always()
+    needs: [admit, dispatch]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post bounded carrier receipt
+        uses: actions/github-script@v7
+        env:
+          AIOS_ADMISSION_RESULT: ${{ needs.admit.result }}
+          AIOS_DISPATCH_RESULT: ${{ needs.dispatch.result }}
+          AIOS_CORRECTION_DISPATCH_ID: ${{ needs.admit.outputs.correction_dispatch_id }}
+          AIOS_SOURCE_RUN_ID: ${{ needs.admit.outputs.source_run_id }}
+          AIOS_FINDING_ID: ${{ needs.admit.outputs.finding_id }}
+          AIOS_EXECUTOR: ${{ needs.admit.outputs.executor }}
+        with:
+          script: |
+            const admitted = process.env.AIOS_ADMISSION_RESULT === 'success';
+            const dispatched = process.env.AIOS_DISPATCH_RESULT !== 'skipped';
+            const lines = [
+              'AIOS REMEDIATION INTENT CARRIER RECEIPT',
+              `status: ${admitted && dispatched ? 'DISPATCH_ACCEPTED' : 'REJECTED'}`,
+              `dispatch_accepted: ${admitted && dispatched}`,
+              'a3_approval: not_asserted_by_carrier',
+              'remediation_run_outcome: not_asserted_by_carrier',
+            ];
+            if (admitted) {
+              lines.push(
+                `correction_dispatch_id: ${process.env.AIOS_CORRECTION_DISPATCH_ID}`,
+                `source_run_id: ${process.env.AIOS_SOURCE_RUN_ID}`,
+                `finding_id: ${process.env.AIOS_FINDING_ID}`,
+                `executor: ${process.env.AIOS_EXECUTOR}`,
+                'detail: Carrier delivery is not A3 approval, RUN, verification, DELTA review, or publication success.',
+              );
+            } else {
+              lines.push('reason: GitHub rejected the repository-owned carrier admission.');
+            }
+            const receipt = lines.join('\n').replaceAll('\0', '?').slice(0, 3500);
+            await github.rest.issues.createComment({
+              owner: 'trung-via',
+              repo: 'AIOS-renew',
+              issue_number: context.issue.number,
+              body: receipt,
+            });
+            if (admitted && dispatched) {
+              await github.rest.issues.update({
+                owner: 'trung-via',
+                repo: 'AIOS-renew',
+                issue_number: context.issue.number,
+                state: 'closed',
+              });
+            }
+
+      - name: Preserve rejected carrier outcome
+        if: needs.admit.result != 'success' || needs.dispatch.result == 'skipped'
+        run: exit 1

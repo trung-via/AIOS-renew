@@ -35,6 +35,7 @@ from aios_renew.operator import (
     recover_primary,
     resolve_repository,
     retry_transport,
+    run_approved_remediation_intent,
     run_repair,
     run_remediation,
     run_task,
@@ -6256,6 +6257,117 @@ def test_remote_approval_binds_exact_source_lineage_and_is_idempotent(
         "remediation_sha": first.remediation_sha,
         "approver": "human-reviewer",
     }
+
+
+def test_one_remediation_intent_records_a3_then_replays_terminal_a6_once(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+    )
+    runner = RemediationRunner(repo)
+
+    first_approval, first_dispatch = run_approved_remediation_intent(
+        "intent-101-r1",
+        "RUN-101-000",
+        "R1",
+        executor="codex",
+        approver="human-reviewer",
+        repo=repo,
+        native_runner=runner,
+    )
+    second_approval, second_dispatch = run_approved_remediation_intent(
+        "intent-101-r1",
+        "RUN-101-000",
+        "R1",
+        executor="codex",
+        approver="human-reviewer",
+        repo=repo,
+        native_runner=runner,
+    )
+
+    assert first_approval.replayed is False
+    assert second_approval.replayed is True
+    assert first_dispatch.replayed is False
+    assert second_dispatch.replayed is True
+    assert second_dispatch.run_id == first_dispatch.run_id
+    assert second_dispatch.remediation_sha == first_approval.remediation_sha
+    assert len(runner.calls) == 1
+
+
+def test_remediation_intent_a3_persistence_can_be_replayed_into_a6(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import aios_renew.correction_dispatch as correction_module
+
+    repo = make_repo(tmp_path)
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+    )
+    real_execute = correction_module.execute_correction_dispatch
+
+    def interrupt_after_a3(**_kwargs):
+        raise correction_module.CorrectionDispatchError("interrupted after A3")
+
+    monkeypatch.setattr(
+        correction_module, "execute_correction_dispatch", interrupt_after_a3
+    )
+    with pytest.raises(OperatorError, match="interrupted after A3"):
+        run_approved_remediation_intent(
+            "intent-101-replay",
+            "RUN-101-000",
+            "R1",
+            executor="antigravity",
+            approver="human-reviewer",
+            repo=repo,
+        )
+    approval_path = next((runtime_state_root(repo) / "approvals").glob("*.json"))
+    before = approval_path.read_bytes()
+
+    monkeypatch.setattr(correction_module, "execute_correction_dispatch", real_execute)
+    runner = RemediationRunner(repo)
+    approval, dispatch = run_approved_remediation_intent(
+        "intent-101-replay",
+        "RUN-101-000",
+        "R1",
+        executor="antigravity",
+        approver="human-reviewer",
+        repo=repo,
+        native_runner=runner,
+    )
+
+    assert approval.replayed is True
+    assert approval_path.read_bytes() == before
+    assert dispatch.status == "SUCCEEDED"
+    assert len(runner.calls) == 1
+
+
+def test_remediation_intent_parser_requires_explicit_supported_executor_and_approver() -> None:
+    parser = operator_module._parser()
+    argv = [
+        "approved-remediation-intent",
+        "intent-112",
+        "RUN-110-001",
+        "F1",
+        "--executor",
+        "codex",
+        "--approver",
+        "trung-via",
+    ]
+    args = parser.parse_args(argv)
+    assert args.executor == "codex"
+    assert args.approver == "trung-via"
+
+    with pytest.raises(SystemExit):
+        parser.parse_args([*argv[:-4], "--executor", "antigravity-minimax"])
 
 
 def test_current_approval_resolution_rejects_stale_remediation_ref(

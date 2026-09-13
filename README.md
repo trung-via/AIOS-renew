@@ -213,6 +213,84 @@ configured persistent `AIOS_REPO_ROOT`, read-only GitHub contents permission, no
 checkout, and event values passed as command data. It introduces no GitHub write
 credential, scheduler, queue, retry, router, fallback, or model call.
 
+### One-action approved remediation intent
+
+TASK-112 adds a steady-state Human surface over the existing A3 and A6 steps. One
+explicit Human action approves the exact current canonical remediation and selects
+exactly one coding Executor (`codex` or `antigravity`). The bounded command is:
+
+```powershell
+aios approved-remediation-intent DELIVERY_ID RUN-101-001 F1 `
+  --executor codex --approver HUMAN_ID
+```
+
+The command first invokes the existing A3 lineage resolution and approval
+persistence, then re-resolves that exact SHA-bound approval and enters the existing
+A6 correction dispatch with the same stable `correction_dispatch_id`, source RUN,
+finding, and Executor. These remain two separately observable authority boundaries:
+the content-addressed A3 approval does not execute anything, while the A6 journal
+continues to own at-most-once invocation, RUN attribution, terminal replay, and crash
+reconciliation. Missing, stale, malformed, conflicting, or ambiguous lineage fails
+closed before coding execution. A Brain-authored remediation supplies no approval;
+the approver must come from a trusted Human carrier context or the explicit bounded
+local fallback.
+
+The fixed `.github/workflows/aios-approved-remediation-intent.yml` workflow supports
+manual `workflow_dispatch` and the repository-owned reusable call from the Issue
+carrier. It accepts only the four immutable intent selectors and derives Human
+attribution from trusted `github.actor`. It runs on
+`[self-hosted, windows, x64, aios-renew]`, uses persistent `AIOS_REPO_ROOT`, checks
+out no event-controlled code, grants only `contents: read`, and injects no new write
+credential into AIOS or the selected Executor. The older direct A3 and A6 workflows
+remain valid diagnostic/emergency surfaces.
+
+For the optional Issue courier, the authorized actor opens one new Issue in
+`trung-via/AIOS-renew` with the exact title `[AIOS REMEDIATION INTENT]` and a body:
+
+```yaml
+format: AIOS_REMEDIATION_INTENT_REQUEST
+version: 1
+correction_dispatch_id: remediation-intent-110-f1
+source_run_id: RUN-110-001
+finding_id: F1
+executor: antigravity
+```
+
+`.github/workflows/aios-brain-remediation-intent.yml` and the versioned
+`.ai/brain-remediation-intent-carriers.yaml` policy validate the exact repository,
+opened event, Issue author/sender, title, positive Issue number, UTF-8 4096-byte body,
+strict request shape, and selector grammar on a GitHub-hosted runner. The body cannot
+provide TASK/revision, REVIEW, action, reviewed SHA, remediation ref/SHA, repository
+path, workflow/ref, command, model, runner, verification, credential, or publication
+authority. After admission, only the four sanitized selectors enter the one fixed
+coalesced workflow; raw Issue content is inert and never enters PowerShell, AIOS, or
+the coding Executor.
+
+An exact duplicate delivery through the Issue, manual workflow, or local command is
+side-effect free: retain the same four selectors and the same Human attribution.
+It reuses the original A3 approval and A6 dispatch/RUN/outcome and never starts a
+second coding invocation. A replay after A3 persisted but before A6 became terminal
+uses that same semantic approval and lets A6 perform only its existing conservative
+reconciliation. Changing any bound selector is a new Human intent; reusing a stable
+delivery id with changed source RUN, finding, Executor, or remediation SHA fails
+closed.
+
+Courier availability is not engineering authority. If a model host safety gate
+blocks Issue creation before GitHub receives it, GitHub and local AIOS state remain
+unchanged. Classify that only as an outer transport blocker; do not reclassify it as
+approval rejection, Runtime admission, RUN, review, permission, or publication
+failure, and do not bypass or weaken the host gate. The Human may redeliver the same
+immutable intent through manual `workflow_dispatch` or the local bounded command;
+that courier retry is not a second semantic approval. Carrier receipts report only
+admission/delivery and never claim A3 persistence, RUN success, verification, DELTA
+review, or publication.
+
+TASK-112 grants no REPAIR authority and does not execute TASK-111. After TASK-112 is
+published, TASK-111 must be re-synchronized and reviewed for staleness before any
+FAILURE-to-REPAIR wakeup execution begins. Existing PRIMARY, direct remediation,
+authoring ingress, Runtime verification, DELTA review, and safe-publication
+boundaries remain unchanged.
+
 
 ## Canonical remediation
 

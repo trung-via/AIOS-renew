@@ -4366,6 +4366,107 @@ def cmd_performance(
     return observe_performance(task_ids, repo=repo).render()
 
 
+def run_approved_remediation_intent(
+    correction_dispatch_id: str,
+    source_run_id: str,
+    finding_id: str,
+    *,
+    executor: str,
+    approver: str,
+    repo: str | Path | None = None,
+    native_runner: NativeRunner = subprocess.run,
+    verification_runner: VerificationRunner = subprocess.run,
+    monotonic_clock: MonotonicClock = time.monotonic,
+) -> tuple[Any, Any]:
+    """Record/replay A3, then enter the existing durable A6 boundary."""
+
+    from .correction_dispatch import (
+        CorrectionDispatchError,
+        CorrectionInvocation,
+        execute_correction_dispatch,
+        reject_existing_selector_collision,
+    )
+    from .remote_surface import (
+        RemoteSurfaceError,
+        record_remote_approval,
+        require_current_approval,
+    )
+
+    try:
+        repo_root = resolve_repository(repo)
+        state_root = runtime_state_root(repo_root)
+        reject_existing_selector_collision(
+            state_root=state_root,
+            correction_dispatch_id=correction_dispatch_id,
+            source_run_id=source_run_id,
+            finding_id=finding_id,
+            executor=executor,
+        )
+
+        # An existing A6 identity must still resolve through its old exact A3
+        # authority before this delivery may record anything. This prevents a
+        # stable correction id from being rebound after a remediation ref moves.
+        correction_key = hashlib.sha256(
+            correction_dispatch_id.encode("ascii")
+        ).hexdigest()
+        correction_record = (
+            state_root / "correction-dispatches" / f"{correction_key}.json"
+        )
+        if correction_record.is_file():
+            require_current_approval(
+                repo=repo_root,
+                state_root=state_root,
+                source_run_id=source_run_id,
+                finding_id=finding_id,
+            )
+
+        approval_summary = record_remote_approval(
+            repo=repo_root,
+            state_root=state_root,
+            source_run_id=source_run_id,
+            finding_id=finding_id,
+            approver=approver,
+        )
+        approval = require_current_approval(
+            repo=repo_root,
+            state_root=state_root,
+            source_run_id=source_run_id,
+            finding_id=finding_id,
+        )
+
+        def invoke_remediation() -> CorrectionInvocation:
+            try:
+                summary = run_remediation(
+                    approval.task_id,
+                    finding_id=finding_id,
+                    source_run_id=source_run_id,
+                    approved_remediation_sha=approval.remediation_sha,
+                    correction_dispatch_id=correction_dispatch_id,
+                    executor=executor,
+                    repo=repo_root,
+                    native_runner=native_runner,
+                    verification_runner=verification_runner,
+                    monotonic_clock=monotonic_clock,
+                )
+                return CorrectionInvocation(0, summary.run_id)
+            except OperatorError as exc:
+                print(f"AIOS ERROR: {exc}", file=sys.stderr)
+                return CorrectionInvocation(1)
+
+        dispatch_outcome = execute_correction_dispatch(
+            state_root=state_root,
+            correction_dispatch_id=correction_dispatch_id,
+            source_run_id=source_run_id,
+            finding_id=finding_id,
+            executor=executor,
+            approval=approval,
+            invoke_remediation=invoke_remediation,
+        )
+    except (RemoteSurfaceError, CorrectionDispatchError) as exc:
+        raise OperatorError(str(exc)) from exc
+    return approval_summary, dispatch_outcome
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aios")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -4432,6 +4533,18 @@ def _parser() -> argparse.ArgumentParser:
         "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
     correction_parser.add_argument("--repo")
+    intent_parser = commands.add_parser(
+        "approved-remediation-intent",
+        help="Record exact Human approval and wake that REMEDIATION once",
+    )
+    intent_parser.add_argument("correction_dispatch_id")
+    intent_parser.add_argument("source_run_id")
+    intent_parser.add_argument("finding_id")
+    intent_parser.add_argument(
+        "--executor", required=True, choices=("codex", "antigravity")
+    )
+    intent_parser.add_argument("--approver", required=True)
+    intent_parser.add_argument("--repo")
     remediation_parser = commands.add_parser(
         "remediate", help="Execute one canonical narrow REMEDIATION"
     )
@@ -4661,6 +4774,21 @@ def main(
                 )
                 raise OperatorError(message) from exc
             print(summary.render())
+        elif args.command == "approved-remediation-intent":
+            approval, outcome = run_approved_remediation_intent(
+                args.correction_dispatch_id,
+                args.source_run_id,
+                args.finding_id,
+                executor=args.executor,
+                approver=args.approver,
+                repo=args.repo,
+                native_runner=native_runner,
+                verification_runner=verification_runner,
+                monotonic_clock=monotonic_clock,
+            )
+            print(approval.render())
+            print(outcome.render())
+            return outcome.exit_code
         elif args.command == "approved-remediation-wakeup":
             from .correction_dispatch import (
                 CorrectionDispatchError,
