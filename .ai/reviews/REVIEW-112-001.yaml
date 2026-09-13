@@ -1,0 +1,20 @@
+review_id: REVIEW-112-001
+reviewed_sha: c4320db81172aa586b179252b90c95f8a32d4dab
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: FAIL
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings:
+  - id: F1
+    basis: AC5
+    action: CODE_FIX
+    location: .github/workflows/aios-brain-remediation-intent.yml and tests/test_github_issue_remediation_intent_workflow.py
+    issue: The carrier treats any reusable-workflow result other than skipped as dispatch accepted. A failed or cancelled dispatch job therefore produces DISPATCH_ACCEPTED, closes the Issue, and does not trip the terminal fail-closed step even though the coalesced remediation workflow did not complete successfully.
+    expected: Carrier acceptance must require the dispatch job result to be success. Failure, cancellation, or skip must remain observable as rejected/not accepted, must not close the Issue as successful, and must preserve a failing carrier outcome without fabricating A3, RUN, verification, review, or publication success.
