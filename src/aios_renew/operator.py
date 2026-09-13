@@ -2690,12 +2690,25 @@ def _preflight_continue_sync(
 ) -> PreflightResult:
     """Refresh only a proven clean stale-behind control main before observation."""
 
-    state = runtime_paths(root)
-    with RepositoryLock(state.lock):
-        needs_restart = _synchronize_primary_branch(
-            root, allow_restart=True, only_if_behind=True
-        )
-        preflight_sha = _git(root, "rev-parse", "HEAD")
+    state = _runtime_paths_readonly(root)
+    lock_existed = state.lock.exists()
+    state_root_existed = state.root.exists()
+    lock_acquired = False
+    try:
+        with RepositoryLock(state.lock):
+            lock_acquired = True
+            needs_restart = _synchronize_primary_branch(
+                root, allow_restart=True, only_if_behind=True
+            )
+            preflight_sha = _git(root, "rev-parse", "HEAD")
+    finally:
+        if lock_acquired and not lock_existed:
+            state.lock.unlink(missing_ok=True)
+        if lock_acquired and not state_root_existed:
+            try:
+                state.root.rmdir()
+            except OSError:
+                pass
     if needs_restart:
         return PreflightResult(
             restart_code=_restart_primary_invocation(root, argv=argv, runner=runner)
@@ -4789,7 +4802,13 @@ def main(
                 monotonic_clock=monotonic_clock,
             )
             if outcome is not None:
-                print(outcome.render() if args.json else outcome.render_human())
+                # Preserve the established explicit-repository machine surface;
+                # the cwd-oriented interactive surface keeps its concise view.
+                print(
+                    outcome.render()
+                    if args.json or args.repo is not None
+                    else outcome.render_human()
+                )
             return exit_code
         elif args.command == "run":
             repo_root = resolve_repository(args.repo)

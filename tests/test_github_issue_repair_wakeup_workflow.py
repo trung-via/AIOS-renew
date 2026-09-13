@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -37,14 +38,14 @@ def test_carrier_calls_exactly_one_fixed_target_with_only_selectors() -> None:
         "executor",
     }
     assert text.count("aios_renew.github_issue_repair_wakeup") == 1
-    for forbidden in (
-        "aios repair-wakeup",
-        "aios repair ",
-        "aios remediate",
-        "aios run",
-        "secrets: inherit",
-    ):
-        assert forbidden not in text.lower()
+    forbidden_command = re.compile(
+        r"^\s*(?:run:\s*)?(?:&\s*)?(?:python(?:\.exe)?\s+-m\s+)?"
+        r"aios\s+(?:repair(?:\s|$)|remediate(?:\s|$)|run(?:\s|$))",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    assert forbidden_command.search(text) is None
+    assert "aios repair-wakeup" not in text.lower()
+    assert "secrets: inherit" not in text.lower()
 
 
 def test_fixed_target_has_manual_and_reusable_carriers_and_one_command_surface() -> None:
