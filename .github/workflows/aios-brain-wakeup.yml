@@ -1,0 +1,131 @@
+name: AIOS Brain PRIMARY Wakeup Carrier
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+concurrency:
+  group: aios-brain-wakeup-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  admit-and-dispatch:
+    if: github.event.issue.title == '[AIOS BRAIN WAKEUP]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out fixed canonical main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the reviewed repository package
+        run: python -m pip install --disable-pip-version-check .
+
+      - name: Admit and sanitize one wakeup request
+        id: admission
+        continue-on-error: true
+        env:
+          AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-brain-wakeup-receipt.txt
+        run: >-
+          python -m aios_renew.github_issue_wakeup
+          --event "$GITHUB_EVENT_PATH"
+          --policy .ai/brain-wakeup-carriers.yaml
+          --output "$GITHUB_OUTPUT"
+          --receipt "$AIOS_RECEIPT_PATH"
+
+      - name: Dispatch the fixed A1 workflow once
+        id: dispatch
+        if: steps.admission.outcome == 'success'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          AIOS_DISPATCH_ID: ${{ steps.admission.outputs.dispatch_id }}
+          AIOS_TASK_ID: ${{ steps.admission.outputs.task_id }}
+          AIOS_EXECUTOR: ${{ steps.admission.outputs.executor }}
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'trung-via',
+              repo: 'AIOS-renew',
+              workflow_id: 'aios-self-hosted-wakeup.yml',
+              ref: 'main',
+              inputs: {
+                dispatch_id: process.env.AIOS_DISPATCH_ID,
+                task_id: process.env.AIOS_TASK_ID,
+                executor: process.env.AIOS_EXECUTOR,
+              },
+            });
+
+      - name: Post bounded carrier receipt
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-brain-wakeup-receipt.txt
+          AIOS_ADMISSION_OUTCOME: ${{ steps.admission.outcome }}
+          AIOS_DISPATCH_OUTCOME: ${{ steps.dispatch.outcome }}
+          AIOS_DISPATCH_ID: ${{ steps.admission.outputs.dispatch_id }}
+          AIOS_TASK_ID: ${{ steps.admission.outputs.task_id }}
+          AIOS_EXECUTOR: ${{ steps.admission.outputs.executor }}
+        with:
+          script: |
+            const fs = require('fs');
+            const accepted = process.env.AIOS_ADMISSION_OUTCOME === 'success'
+              && process.env.AIOS_DISPATCH_OUTCOME === 'success';
+            let receipt;
+            if (accepted) {
+              receipt = [
+                'AIOS BRAIN WAKEUP RECEIPT',
+                'status: DISPATCH_ACCEPTED',
+                'dispatch_accepted: true',
+                'execution_outcome: not_observed',
+                `dispatch_id: ${process.env.AIOS_DISPATCH_ID}`,
+                `task_id: ${process.env.AIOS_TASK_ID}`,
+                `executor: ${process.env.AIOS_EXECUTOR}`,
+                'detail: GitHub accepted one fixed A1 workflow dispatch; this is not RUN, verification, review, or publication success.',
+              ].join('\n');
+            } else if (process.env.AIOS_ADMISSION_OUTCOME === 'success') {
+              receipt = [
+                'AIOS BRAIN WAKEUP RECEIPT',
+                'status: REJECTED',
+                'dispatch_accepted: false',
+                'execution_outcome: not_observed',
+                'reason: GitHub did not accept the fixed A1 workflow dispatch.',
+              ].join('\n');
+            } else {
+              receipt = 'AIOS BRAIN WAKEUP RECEIPT\nstatus: REJECTED\ndispatch_accepted: false\nexecution_outcome: not_observed\nreason: carrier produced no receipt';
+              try {
+                receipt = fs.readFileSync(process.env.AIOS_RECEIPT_PATH, 'utf8');
+              } catch (_) {}
+            }
+            receipt = receipt.replaceAll('\0', '?').slice(0, 3500);
+            await github.rest.issues.createComment({
+              owner: 'trung-via',
+              repo: 'AIOS-renew',
+              issue_number: context.issue.number,
+              body: receipt,
+            });
+            if (accepted) {
+              await github.rest.issues.update({
+                owner: 'trung-via',
+                repo: 'AIOS-renew',
+                issue_number: context.issue.number,
+                state: 'closed',
+              });
+            }
+
+      - name: Preserve rejected carrier outcome
+        if: always() && (steps.admission.outcome != 'success' || steps.dispatch.outcome != 'success')
+        run: exit 1

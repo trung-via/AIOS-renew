@@ -62,6 +62,61 @@ Trigger through GitHub's workflow-dispatch surfaces:
   ```
 - **GitHub REST API**: `POST /repos/{owner}/{repo}/actions/workflows/aios-self-hosted-wakeup.yml/dispatches` with `ref` and `inputs` containing exactly `dispatch_id`, `task_id`, and `executor`.
 
+### Bounded Brain Issue Wakeup Carrier
+
+TASK-108 adds a narrow transport convenience in front of A1; it does not add a
+second PRIMARY path. The Human must first explicitly choose the coding Executor,
+exactly `codex` or `antigravity`. The Brain may then open one new Issue in
+`trung-via/AIOS-renew`, as the allowlisted actor `trung-via`, with the exact title
+`[AIOS BRAIN WAKEUP]` and a body such as:
+
+```yaml
+format: AIOS_PRIMARY_WAKEUP_REQUEST
+version: 1
+dispatch_id: brain-wakeup-108
+task_id: TASK-108
+executor: codex
+```
+
+The complete flow is deliberately one-way and bounded:
+
+`Human chooses Executor -> Brain opens small Issue -> GitHub-hosted admission -> fixed A1 workflow_dispatch on main -> A2 dispatch identity -> dedicated self-hosted AIOS -> selected Executor`
+
+`.github/workflows/aios-brain-wakeup.yml` handles only newly opened Issues and
+runs entirely on a GitHub-hosted runner. It authenticates the exact repository,
+Issue author/event actor, action, title marker, positive Issue number, UTF-8 body,
+and the reviewed 4096-byte limit from `.ai/brain-wakeup-carriers.yaml`. The body
+must contain exactly `format`, `version`, `dispatch_id`, `task_id`, and `executor`;
+missing, extra, malformed, or unsupported values fail before Actions dispatch.
+Request data cannot choose a workflow, ref, path, command, runner, model,
+reasoning setting, verification behavior, or credential authority.
+
+After admission, the GitHub-hosted job makes exactly one request for the fixed
+`.github/workflows/aios-self-hosted-wakeup.yml` workflow on fixed ref `main`,
+forwarding only the validated `dispatch_id`, `task_id`, and `executor`. Raw Issue
+data and that job's `actions: write` token never enter the separate self-hosted
+A1 run, AIOS process, or coding Executor. A1 still performs the sole self-hosted
+`aios wakeup`, and A2 remains the sole durable binding, collision, terminal replay,
+and no-reexecution authority for `dispatch_id`.
+
+Carrier handling is one-shot: there is no polling, retry, fallback Executor,
+reroute, completion reconciliation, correction, verification, review, or
+publication. Its bounded Issue receipt distinguishes GitHub acceptance of the A1
+dispatch from the downstream execution outcome; acceptance is not a RUN, RESULT,
+verification, review, or publication success claim. The original manual A1
+`workflow_dispatch` methods above remain the emergency fallback if Issue creation
+or carrier delivery is unavailable.
+
+A model-host platform may independently block a Brain's attempt to write the
+Issue before GitHub receives it. This repository carrier cannot and does not
+bypass that external safety gate, so it does not guarantee universal zero-touch
+completion and does not implement A9. TASK-107 authoring ingress, A3 status and
+approval, A6 approved-remediation wakeup, direct AIOS commands, Runtime
+verification, Reviewer authority, and publisher authority remain separate and
+unchanged. Downstream repositories receive none of this behavior automatically:
+each remains governed by its exact pinned AIOS revision until a separate reviewed
+adoption updates that pin and repository-specific policy.
+
 Before the first PRIMARY call, A2 stores a path-safe, hashed dispatch record under repository-local `.git/aios/dispatches`. This is operational control/telemetry state outside the product worktree and canonical artifact schemas. It provides delivery and RUN attribution only; it is not TASK truth, RESULT/EVIDENCE, review input, publication proof, or semantic completion truth. The separate A3 status surface can observe this record but cannot reconcile or mutate it.
 
 A duplicate terminal delivery performs no re-execution. A successful dispatch returns the same dispatch/RUN attribution with success; a failed dispatch preserves its prior nonzero outcome. Reusing a `dispatch_id` with a different TASK or Executor fails closed. After a process or host interruption, re-delivery only observes the recorded pre-invocation RUN namespace and canonical `.git/aios` RUN/RESULT/FAILURE state. It can link one uniquely attributable terminal RUN, report an execution still in progress, or return reconciliation blocked. This is attribution and no re-execution, not automatic retry or recovery: it never starts a second RUN, invokes an Executor again, repairs an incomplete RUN, or synthesizes terminal artifacts.
