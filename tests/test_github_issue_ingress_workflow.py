@@ -72,8 +72,39 @@ def test_workflow_posts_one_bounded_receipt_and_only_closes_success() -> None:
     assert text.count("github.rest.issues.createComment") == 1
     assert ".slice(0, 3500)" in text
     assert text.count("github.rest.issues.update") == 1
-    assert "AIOS_DELIVERY_OUTCOME === 'success'" in text
-    assert "always() && steps.ingress.outcome != 'success'" in text
+    assert receipt_step["env"] == {
+        "AIOS_RECEIPT_PATH": "${{ runner.temp }}/aios-brain-ingress-receipt.txt",
+        "AIOS_INGRESS_OUTCOME": "${{ steps.ingress.outcome }}",
+        "AIOS_DISPATCH_OUTCOME": "${{ steps.dispatch.outcome }}",
+        "AIOS_PUBLICATION_RUN_ID": "${{ steps.ingress.outputs.publication_run_id }}",
+    }
+    assert "if (fullySuccessful)" in text
+    assert (
+        "always() && (steps.ingress.outcome != 'success' || (steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome != 'success'))"
+        in text
+    )
+
+
+def test_workflow_distinguishes_ingress_success_from_publication_dispatch_acceptance() -> None:
+    _, text = _workflow()
+    assert "publication_dispatch: ACCEPTED" in text
+    assert "dispatch_accepted: true" in text
+    assert (
+        "detail: GitHub accepted safe publication dispatch; this is not publication success or verdict."
+        in text
+    )
+    assert "publication_dispatch: REJECTED" in text
+    assert "dispatch_accepted: false" in text
+    assert "reason: GitHub did not accept safe publication dispatch." in text
+
+
+def test_workflow_fails_closed_when_publication_dispatch_is_not_accepted() -> None:
+    workflow, _ = _workflow()
+    steps = workflow["jobs"]["deliver"]["steps"]
+    fail_step = steps[-1]
+    assert fail_step["name"] == "Preserve failed delivery outcome"
+    assert "steps.dispatch.outcome != 'success'" in fail_step["if"]
+    assert "steps.ingress.outputs.publication_run_id != ''" in fail_step["if"]
 
 
 def test_workflow_dispatches_safe_publisher_once_with_only_canonical_run_selector() -> None:

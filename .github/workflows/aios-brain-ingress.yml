@@ -65,14 +65,46 @@ jobs:
         uses: actions/github-script@v7
         env:
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-brain-ingress-receipt.txt
-          AIOS_DELIVERY_OUTCOME: ${{ steps.ingress.outcome }}
+          AIOS_INGRESS_OUTCOME: ${{ steps.ingress.outcome }}
+          AIOS_DISPATCH_OUTCOME: ${{ steps.dispatch.outcome }}
+          AIOS_PUBLICATION_RUN_ID: ${{ steps.ingress.outputs.publication_run_id }}
         with:
           script: |
             const fs = require('fs');
+            const ingressOutcome = process.env.AIOS_INGRESS_OUTCOME;
+            const dispatchOutcome = process.env.AIOS_DISPATCH_OUTCOME;
+            const publicationRunId = process.env.AIOS_PUBLICATION_RUN_ID || '';
+            const publicationRequested = Boolean(publicationRunId);
+            const dispatchAccepted = dispatchOutcome === 'success';
+            const fullySuccessful = ingressOutcome === 'success' && (!publicationRequested || dispatchAccepted);
+
             let receipt = 'AIOS BRAIN INGRESS RECEIPT\nstatus: FAIL\nreason: carrier produced no receipt';
             try {
-              receipt = fs.readFileSync(process.env.AIOS_RECEIPT_PATH, 'utf8');
+              receipt = fs.readFileSync(process.env.AIOS_RECEIPT_PATH, 'utf8').trimEnd();
             } catch (_) {}
+
+            if (ingressOutcome === 'success' && publicationRequested) {
+              if (dispatchAccepted) {
+                receipt += [
+                  '',
+                  '',
+                  'publication_dispatch: ACCEPTED',
+                  'dispatch_accepted: true',
+                  `publication_run_id: ${publicationRunId}`,
+                  'detail: GitHub accepted safe publication dispatch; this is not publication success or verdict.',
+                ].join('\n');
+              } else {
+                receipt += [
+                  '',
+                  '',
+                  'publication_dispatch: REJECTED',
+                  'dispatch_accepted: false',
+                  `publication_run_id: ${publicationRunId}`,
+                  'reason: GitHub did not accept safe publication dispatch.',
+                ].join('\n');
+              }
+            }
+
             receipt = receipt.replaceAll('\0', '?').slice(0, 3500);
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -80,7 +112,7 @@ jobs:
               issue_number: context.issue.number,
               body: receipt,
             });
-            if (process.env.AIOS_DELIVERY_OUTCOME === 'success') {
+            if (fullySuccessful) {
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -90,5 +122,5 @@ jobs:
             }
 
       - name: Preserve failed delivery outcome
-        if: always() && steps.ingress.outcome != 'success'
+        if: always() && (steps.ingress.outcome != 'success' || (steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome != 'success'))
         run: exit 1
