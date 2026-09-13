@@ -1,0 +1,183 @@
+task_id: TASK-110
+revision: 1
+
+goal: >
+  Close the observed Review-to-Publication transport gap for reviews canonicalized through
+  the authorized GitHub-Issue Brain Authoring Ingress. After one SUBMIT_REVIEW is accepted
+  and its canonical review-decision ref exists, repository-owned transport must wake the
+  already-existing safe Publisher without Human workflow_dispatch replay, while preserving
+  the Publisher as the sole publication authority and preserving all existing review,
+  ancestry, race, lineage, and exact-candidate checks.
+
+problem: >
+  TASK-107 made GitHub Issues a bounded carrier for the existing authoring ingress and
+  TASK-108 made GitHub Issues a bounded PRIMARY wakeup carrier. During TASK-108 live use,
+  Issue #9 submitted REVIEW-108-001 for RUN-108-003 through SUBMIT_REVIEW and the ingress
+  canonicalized review-decision SHA 9e33035b11fc755f148e775c107bb2e8c373dcd4. The
+  existing aios-auto-publish workflow declares a push trigger for
+  aios/review-decision/**, but the exact decision SHA produced zero push-triggered workflow
+  runs. Publication occurred only after a Human workflow_dispatch replay for RUN-108-003,
+  which then safely published reviewed source d5d906431dd8ef38099ed21b2b4b0a0002a99618.
+  This is an outer transport discontinuity caused by the review-decision ref being created
+  from a GitHub Actions GITHUB_TOKEN context; it is not a review semantic defect and not a
+  reason to weaken or duplicate safe publication.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-110 authoring is
+    a4c945f67d4272b6d855e20bf48d71e96b12cc0a. TASK-109 revision 1 is authored on that
+    main but has not been executed, reviewed, or published as implementation; current Human
+    intent explicitly requires the two observed control-plane transport gaps to close before
+    final downstream-adoption/track reconciliation.
+  - >
+    Issue #9 is canonical transport evidence for RUN-108-003 SUBMIT_REVIEW: ingress PASS,
+    destination refs/heads/aios/review-decision/RUN-108-003, decision SHA
+    9e33035b11fc755f148e775c107bb2e8c373dcd4, replayed false.
+  - >
+    GitHub Actions evidence for decision SHA 9e33035b11fc755f148e775c107bb2e8c373dcd4
+    contains zero event=push workflow runs, while workflow_dispatch run 34752302900 later
+    invoked the existing safe publisher for RUN-108-003 and published exact reviewed source
+    d5d906431dd8ef38099ed21b2b4b0a0002a99618.
+  - >
+    The existing aios-auto-publish workflow already owns a bounded workflow_dispatch input
+    run_id and delegates publication to the existing deterministic publication boundary.
+    Its publication semantics remain authoritative; this TASK closes transport only.
+  - >
+    TASK-107 remains authoritative that GitHub Issue content and receipts are transport and
+    observability, not semantic truth. This TASK narrowly supersedes only TASK-107's
+    historical non-goal that the Issue workflow cannot wake publication after canonical
+    SUBMIT_REVIEW, because observed GITHUB_TOKEN recursion suppression now proves that an
+    explicit bounded continuation transport is required.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-063.yaml
+    - .ai/tasks/TASK-090.yaml
+    - .ai/tasks/TASK-107.yaml
+    - .ai/tasks/TASK-108.yaml
+    - .ai/tasks/TASK-109.yaml
+    - .github/workflows/aios-brain-ingress.yml
+    - .github/workflows/aios-auto-publish.yml
+    - src/aios_renew/github_issue_ingress.py
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/publication.py
+    - tests/test_github_issue_ingress.py
+    - tests/test_github_issue_ingress_workflow.py
+    - tests/test_authoring_ingress.py
+    - tests/test_publication.py
+  modify:
+    - .github/workflows/aios-brain-ingress.yml
+    - .github/workflows/aios-auto-publish.yml
+    - src/aios_renew/github_issue_ingress.py
+    - tests/test_github_issue_ingress.py
+    - tests/test_github_issue_ingress_workflow.py
+
+non_goals:
+  - Change REVIEW semantics, SUBMIT_REVIEW semantic validation, review-decision destination
+    derivation, TASK/REMEDIATION/REPAIR semantics, Runtime verification, Executor behavior,
+    or safe-publication semantic validation.
+  - Let the Issue ingress workflow publish implementation main directly, call publication.py
+    directly as an alternate authority, or move reviewed source selection into Issue data.
+  - Add a generic operation router, scheduler, poller, retry worker, queue, database, daemon,
+    PAT/service-account dependency, browser automation, or Human approval bypass.
+  - Trust Issue title/body/comment/receipt, workflow output, timestamps, or arbitrary payload
+    fields as publication truth after canonical review-decision creation.
+  - Wake publication for AUTHOR_TASK, AUTHOR_REMEDIATION, AUTHOR_REPAIR, failed ingress,
+    CHANGES_REQUIRED review, malformed review, or any state lacking canonical publication
+    eligibility.
+  - Re-run Runtime verification or semantic review during publication continuation.
+  - Change GAP-B / REPAIR continuation transport, A6 approved REMEDIATION wakeup, PRIMARY
+    wakeup, downstream pins, or TASK-109 roadmap reconciliation in this TASK.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      The transport continuation must occur only after the existing semantic ingress has
+      successfully canonicalized SUBMIT_REVIEW. Failed carrier admission, failed semantic
+      ingress, and all non-SUBMIT_REVIEW operations must not request publication.
+    - >
+      The continuation may carry only a bounded canonical selector sufficient for the
+      existing Publisher to independently resolve the exact review-decision and source RUN.
+      It must not carry or trust a candidate SHA, destination ref, main SHA override,
+      publication command, force flag, review verdict override, or arbitrary workflow name.
+    - >
+      The existing safe Publisher remains the sole publication authority. On wakeup it must
+      independently consume canonical PASS state and preserve exact reviewed-candidate,
+      lineage, ancestry, current-main compare-and-swap/race, review-metadata isolation, and
+      idempotent publication protections. Transport acceptance is not publication success.
+    - >
+      The solution must not depend on the suppressed review-decision push event firing. It
+      must use a bounded GitHub-supported continuation path that is valid from the Issue
+      ingress Actions context, without introducing a PAT or long-lived credential product.
+    - >
+      The Issue ingress remains one semantic ingress invocation per admitted Issue. Any
+      post-ingress publication wakeup is outer deterministic coordination over the returned
+      canonical ingress result and must not invoke another authoring operation or reinterpret
+      the submitted review payload.
+    - >
+      Replay must be safe. Re-delivery of an identical already-canonical SUBMIT_REVIEW may
+      at most wake the same existing Publisher again; existing publication idempotency must
+      ensure it cannot create a second semantic publication or publish a different source.
+    - >
+      CHANGES_REQUIRED reviews must remain canonical review decisions but must not advance
+      product main. If the bounded continuation wakes the Publisher for such a decision, the
+      Publisher must fail/no-op under existing authority rather than carrier code inventing
+      PASS. Prefer avoiding the wakeup when the canonical ingress result itself already
+      proves no publication-eligible PASS decision, but do not duplicate Reviewer semantics.
+    - >
+      Workflow permissions must remain least-privilege and tests must make any newly required
+      Actions permission explicit. Unrelated write permissions remain forbidden.
+    - >
+      Existing file/stdin ingress behavior, all four authoring operation families, TASK-108
+      PRIMARY wakeup, A6 REMEDIATION wakeup, direct manual publisher workflow_dispatch as an
+      emergency/debug fallback, and publication.py semantics remain behaviorally compatible.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Deterministic workflow/carrier regressions prove that one successful GitHub-Issue
+      SUBMIT_REVIEW canonicalization produces exactly one bounded wakeup request to the
+      existing safe Publisher using only the canonical RUN selector, with no direct main
+      mutation or candidate selection in the ingress carrier.
+  - id: AC2
+    condition: >
+      AUTHOR_TASK, AUTHOR_REMEDIATION, AUTHOR_REPAIR, rejected ingress, malformed carrier
+      events, and ingress exceptions produce no publication wakeup.
+  - id: AC3
+    condition: >
+      Publication continuation does not rely on the review-decision push trigger and works
+      from the same GITHUB_TOKEN-based Issue workflow context without PAT or external secret
+      authority, while transport acceptance remains distinguishable from publication result.
+  - id: AC4
+    condition: >
+      The existing Publisher independently re-resolves canonical review-decision/source RUN
+      and retains all safe-publication protections; no review verdict, candidate SHA, target
+      ref, force flag, or publication command is accepted from Issue content or carrier
+      output.
+  - id: AC5
+    condition: >
+      Identical SUBMIT_REVIEW replay cannot publish twice or choose a new candidate, and a
+      CHANGES_REQUIRED/non-publishable decision cannot advance main.
+  - id: AC6
+    condition: >
+      Existing Issue ingress, file/stdin ingress, publication workflow_dispatch fallback,
+      publication.py regressions, TASK-108 PRIMARY wakeup, and A6 REMEDIATION behavior remain
+      compatible; no new generic lifecycle router or semantic authority is introduced.
+  - id: AC7
+    condition: >
+      Required focused verification and git diff --check pass with no modified file outside
+      TASK-110 scope and RESULT contains zero unresolved items.
+
+verification:
+  required:
+    - python -m pytest tests/test_github_issue_ingress.py tests/test_github_issue_ingress_workflow.py tests/test_authoring_ingress.py tests/test_publication.py -q
+    - git diff --check
