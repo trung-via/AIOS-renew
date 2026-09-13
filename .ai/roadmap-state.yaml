@@ -1,5 +1,6 @@
 version: 1
 active_track: control-plane-closure
+active_track_status: COMPLETE
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -96,13 +97,28 @@ sequence:
       REVIEW, REMEDIATION, REPAIR, RESULT, FAILURE, and candidate lineage remain
       immutable historical evidence and do not supersede revision-4 completion.
   - id: downstream-adoption
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-109
+      downstream_repository: trung-via/python_complete_agent
+      migration_task_id: TASK-201
+      downstream_aios_pin: "f0237a3b98985ce6ebbaf41af1e06fa3eb4e998e"
     note: >-
-      Performance Closure is now complete. The next planning action is bounded
-      downstream adoption. Each downstream repository must first be inspected for its
-      exact pinned AIOS dependency; current AIOS-renew main must never be assumed to be
-      that downstream repository's active kernel until an explicit migration changes
-      the pin.
+      Downstream Adoption closed only after canonical Python Agent TASK-201 received
+      semantic PASS, its reviewed source was published, and a fresh downstream BRAIN
+      SYNC proved that the sole active AIOS dependency pin equals the immutable SHA
+      above. This records bounded cross-repository provenance; it does not make
+      mutable AIOS-renew main downstream authority or automatically activate
+      AIOS-renew repository-specific outer automation in Python Agent.
+completion_handoff: >-
+  Control-plane Closure has no NEXT item. Before following Python Agent's own
+  canonical priority, perform a fresh downstream BRAIN SYNC of
+  trung-via/python_complete_agent current main, its exact AIOS pin, roadmap and
+  adoption state, governance, and relevant immutable TASK, RUN, RESULT, FAILURE,
+  REVIEW, REMEDIATION, and REPAIR lineage. Do not copy a downstream NEXT identifier
+  into this upstream bookmark as durable authority. Python Agent Governance
+  Foundation and CHATGPT_PROJECT_CONTRACT_RECONCILIATION remain downstream-owned;
+  this migration neither completes nor supersedes them.
 parallel_work:
   - id: approved-remediation-wakeup
     milestone: A6

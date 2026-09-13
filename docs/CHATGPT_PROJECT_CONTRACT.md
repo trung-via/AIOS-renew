@@ -163,7 +163,7 @@ Do not import downstream application worker UX into this repository unless expli
 
 ## 10. Downstream Boundary
 
-Current AIOS-renew main is not automatically the runtime used by downstream repositories.
+Mutable AIOS-renew `main` is not automatically the runtime used by downstream repositories.
 
 For every downstream project, read its exact dependency pin.
 
@@ -174,6 +174,20 @@ AIOS current main == downstream active kernel
 ```
 
 Updating a downstream pin requires an explicit downstream migration/change.
+
+For `trung-via/python_complete_agent`, canonical TASK-201 explicitly migrated the
+sole active AIOS dependency to the reviewed and source-published immutable pin
+`f0237a3b98985ce6ebbaf41af1e06fa3eb4e998e`. That exact pin—not the later value of
+AIOS-renew `main`—is the downstream runtime authority until another explicit,
+reviewed downstream migration changes it. A later upstream movement requires fresh
+Human/Brain reconciliation; it must not silently retarget the downstream project.
+
+The migration does not automatically port or activate AIOS-renew repository-specific
+outer automation in Python Agent. Carrier, wakeup, terminal-attention,
+remediation-intent, and similar repository-specific adoption remains explicit and
+downstream-owned. Python Agent Governance Foundation and
+`CHATGPT_PROJECT_CONTRACT_RECONCILIATION` remain active downstream commitments; this
+upstream reconciliation neither completes nor supersedes them.
 
 ## 11. Task Design Audit
 
@@ -216,6 +230,13 @@ At the beginning of a fresh ChatGPT work context:
 8. When `.ai/roadmap-state.yaml` is present, read it before selecting roadmap work and reconcile its bookmark against explicit current Human intent and the exact engineering lineage.
 9. Select roadmap work only after that reconciliation. For generic "continue roadmap" intent, use the unique `NEXT` item in the active track; parallel or separately gated work must not compete with it. An explicit current Human track or priority change outranks the pointer prospectively and must be canonicalized before later generic continuation relies on it.
 10. Produce a short SYNC CHECKPOINT.
+
+When AIOS-renew Control-plane Closure is complete and hands work back downstream,
+do not reuse a previously observed Python Agent priority. Perform a fresh downstream
+BRAIN SYNC of `trung-via/python_complete_agent` current main, exact AIOS pin,
+roadmap/adoption state, governance, and relevant immutable TASK/RUN/RESULT/FAILURE/
+REVIEW/REMEDIATION/REPAIR lineage before following that repository's own canonical
+priority. Do not copy its `NEXT` identifier into AIOS-renew as durable authority.
 
 The roadmap bookmark is subordinate to the authority hierarchy in section 2. It is Human/Brain planning state, not engineering evidence: it cannot override a conflict with canonical Git or immutable TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR lineage, fabricate completion, make a TASK or RUN complete, or advance itself after execution, review, or publication. Fail closed and surface any conflict before selecting roadmap work.
 

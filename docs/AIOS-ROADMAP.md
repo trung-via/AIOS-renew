@@ -17,7 +17,7 @@ AIOS-renew must remain a small governed engineering execution kernel. It owns ca
 
 Do not build AIOS-native replacements for capabilities already provided appropriately by Codex or Antigravity, including generic worktree management, subagent orchestration, skills, hooks, MCP, sandbox engines, browser agents, agent planners, model routers, or agent-swarm infrastructure.
 
-## Active Sequential Priority — Control-plane Closure
+## Completed Sequential Priority — Control-plane Closure
 
 The current machine-readable sequencing bookmark is [`.ai/roadmap-state.yaml`](../.ai/roadmap-state.yaml). It binds `control-plane-closure` as the active track with this ordered sequence:
 
@@ -25,9 +25,13 @@ The current machine-readable sequencing bookmark is [`.ai/roadmap-state.yaml`](.
 2. **Correction Preflight — DONE**: completed by TASK-085 at published SHA `36ff663675ac04b94da406536ac523e820b1b21e`.
 3. **Unified State + Next Action — DONE**: completed by TASK-086 at published SHA `e56abece22509dc6e7f4d3b641c9d5600798ec67`.
 4. **Unified Human Surface — DONE**: completed by TASK-087 at published SHA `a607fb2cf1c57fe35a9a15504df0e98d28de2f5b`.
-5. **Downstream Adoption — NEXT**.
+5. **Downstream Adoption — DONE**: closed by TASK-109 only after canonical Python Agent TASK-201 received semantic PASS, its reviewed source was published, and a fresh downstream BRAIN SYNC proved that `trung-via/python_complete_agent` had migrated its sole active AIOS dependency to the exact immutable pin `f0237a3b98985ce6ebbaf41af1e06fa3eb4e998e`.
 
-Absent an explicit new Human track or priority, generic **"continue roadmap"** means continue the unique `NEXT` item in this active sequence. It must not select A4, A5, A7, A9, A10, or other parallel work while Downstream Adoption remains `NEXT`. An explicit current Human priority change outranks the bookmark prospectively and must be canonicalized there before a later generic continuation relies on it.
+Control-plane Closure is `COMPLETE` and has zero `NEXT` items. Completion does not promote A4, A5, A7, A9, A10, or any other optional or separately gated milestone merely to keep an upstream `NEXT` item. An explicit current Human priority change must be canonicalized before later generic continuation relies on it.
+
+Downstream Adoption required an explicit reviewed Python Agent migration from its prior exact pin to `f0237a3b98985ce6ebbaf41af1e06fa3eb4e998e`; the presence of capabilities on mutable AIOS-renew `main` was never sufficient. The adopted exact pin remains the downstream runtime authority until another explicit downstream migration changes it. AIOS-renew repository-specific outer automation—including its GitHub Issue carriers, self-hosted wakeups, terminal-attention workflow, and remediation-intent workflow—is not automatically active in Python Agent merely because TASK-106 through TASK-113 are available at that pin. TASK-201 owns the downstream adoption classification.
+
+The completed-track handoff does not copy Python Agent's roadmap pointer into this upstream roadmap. Before following that repository's own canonical priority, perform a fresh downstream BRAIN SYNC of its current main, exact AIOS pin, roadmap and adoption state, governance, and relevant immutable lineage. Python Agent Governance Foundation and `CHATGPT_PROJECT_CONTRACT_RECONCILIATION` remain downstream-owned and are neither completed nor superseded by this upstream reconciliation.
 
 This bookmark is Human/Brain planning state only. Exact canonical Git state and immutable TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR lineage remain the sole engineering-state truth. A `DONE` item requires an exact supporting TASK and published SHA; the bookmark neither proves implementation success nor makes a TASK or RUN complete, and it is never advanced automatically by execution, review, or publication.
 
@@ -215,12 +219,12 @@ DONE: A2 Durable Dispatch Identity + Reconciliation (TASK-068, current-main inte
 DONE: A3 Remote Status / Approval Surface (TASK-074)
 DONE: A6 Automated REVIEW-to-REMEDIATION Wakeup (TASK-084)
         ↓
-ACTIVE SEQUENTIAL PRIORITY: Control-plane Closure
+COMPLETE SEQUENTIAL TRACK: Control-plane Closure
 DONE: Admission Failure v2 (TASK-081)
 DONE: Correction Preflight (TASK-085)
 DONE: Unified State + Next Action (TASK-086)
 DONE: Unified Human Surface (TASK-087)
-NEXT: Downstream Adoption
+DONE: Downstream Adoption (TASK-109 after Python Agent TASK-201 migration to exact AIOS pin f0237a3b98985ce6ebbaf41af1e06fa3eb4e998e)
 ```
 
-Separately gated A4, A5, A7, A9, A10, and other feasible parallel milestones do not become current work from generic continuation intent. Everything else must justify itself against explicit Human intent, the machine-readable active bookmark, the Manifesto, Constitution, observed evidence, and the North Star.
+Control-plane Closure has zero `NEXT` items. Separately gated A4, A5, A7, A9, A10, and other feasible parallel milestones do not become current work from generic continuation intent. Everything else must justify itself against explicit Human intent, the machine-readable bookmark, the Manifesto, Constitution, observed evidence, and the North Star.
