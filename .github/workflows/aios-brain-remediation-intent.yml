@@ -76,7 +76,7 @@ jobs:
         with:
           script: |
             const admitted = process.env.AIOS_ADMISSION_RESULT === 'success';
-            const dispatched = process.env.AIOS_DISPATCH_RESULT !== 'skipped';
+            const dispatched = process.env.AIOS_DISPATCH_RESULT === 'success';
             const lines = [
               'AIOS REMEDIATION INTENT CARRIER RECEIPT',
               `status: ${admitted && dispatched ? 'DISPATCH_ACCEPTED' : 'REJECTED'}`,
@@ -112,5 +112,5 @@ jobs:
             }
 
       - name: Preserve rejected carrier outcome
-        if: needs.admit.result != 'success' || needs.dispatch.result == 'skipped'
+        if: needs.admit.result != 'success' || needs.dispatch.result != 'success'
         run: exit 1

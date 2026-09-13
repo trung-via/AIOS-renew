@@ -74,13 +74,18 @@ def test_fixed_intent_workflow_preserves_self_hosted_boundary_and_a3_a6_command(
 
 
 def test_receipt_never_fabricates_downstream_semantic_success() -> None:
-    _, text = _workflow(CARRIER_PATH)
+    workflow, text = _workflow(CARRIER_PATH)
     assert text.count("github.rest.issues.createComment") == 1
     assert ".slice(0, 3500)" in text
+    assert "const dispatched = process.env.AIOS_DISPATCH_RESULT === 'success';" in text
     assert "status: ${admitted && dispatched ? 'DISPATCH_ACCEPTED' : 'REJECTED'}" in text
     assert "a3_approval: not_asserted_by_carrier" in text
     assert "remediation_run_outcome: not_asserted_by_carrier" in text
     assert "not A3 approval, RUN, verification, DELTA review, or publication success" in text
+    preserve_rejected = workflow["jobs"]["receipt"]["steps"][1]
+    assert preserve_rejected["if"] == (
+        "needs.admit.result != 'success' || needs.dispatch.result != 'success'"
+    )
 
 
 def test_policy_is_distinct_and_exact() -> None:
