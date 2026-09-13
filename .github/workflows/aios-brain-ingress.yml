@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   issues: write
+  actions: write
 
 concurrency:
   group: aios-brain-ingress-${{ github.repository }}
@@ -38,7 +39,26 @@ jobs:
         env:
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-brain-ingress-receipt.txt
         run: |
-          python -m aios_renew.github_issue_ingress --event "$GITHUB_EVENT_PATH" --policy .ai/brain-ingress-carriers.yaml --repo . > "$AIOS_RECEIPT_PATH"
+          python -m aios_renew.github_issue_ingress --event "$GITHUB_EVENT_PATH" --policy .ai/brain-ingress-carriers.yaml --repo . --output "$GITHUB_OUTPUT" > "$AIOS_RECEIPT_PATH"
+
+      - name: Dispatch safe publication once
+        id: dispatch
+        if: steps.ingress.outcome == 'success' && steps.ingress.outputs.publication_run_id != ''
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          AIOS_RUN_ID: ${{ steps.ingress.outputs.publication_run_id }}
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'aios-auto-publish.yml',
+              ref: 'main',
+              inputs: {
+                run_id: process.env.AIOS_RUN_ID,
+              },
+            });
 
       - name: Post bounded transport receipt
         if: always()

@@ -191,3 +191,193 @@ def test_receipts_are_bounded() -> None:
     failure = carrier.render_failure(ValueError("x" * 10_000))
     assert len(failure) <= 3_500
     assert failure.endswith("[truncated]")
+
+
+def test_successful_submit_review_emits_publication_run_id_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = "format: AIOS_INGRESS_ENVELOPE\nversion: 1\noperation: SUBMIT_REVIEW\n"
+    event_path = _write_event(tmp_path, _event(body))
+    policy_path = _write_policy(tmp_path)
+
+    fake_result = IngressResult(
+        operation="SUBMIT_REVIEW",
+        status="CANONICALIZED",
+        canonical_destination="refs/heads/aios/review-decision/RUN-108-003",
+        canonical_sha="b" * 40,
+        replayed=False,
+        detail="canonicalized PASS review decision for RUN-108-003",
+    )
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **kw: fake_result)
+
+    delivery = carrier.deliver_event(event_path, policy_path, repo=tmp_path)
+    assert delivery.publication_run_id == "RUN-108-003"
+    assert (
+        delivery.github_outputs()
+        == "publication_run_id=RUN-108-003\nrun_id=RUN-108-003\n"
+    )
+
+
+def test_changes_required_submit_review_emits_no_publication_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = "format: AIOS_INGRESS_ENVELOPE\nversion: 1\noperation: SUBMIT_REVIEW\n"
+    event_path = _write_event(tmp_path, _event(body))
+    policy_path = _write_policy(tmp_path)
+
+    fake_result = IngressResult(
+        operation="SUBMIT_REVIEW",
+        status="CANONICALIZED",
+        canonical_destination="refs/heads/aios/review-decision/RUN-108-003",
+        canonical_sha="b" * 40,
+        replayed=False,
+        detail="canonicalized CHANGES_REQUIRED review decision for RUN-108-003",
+    )
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **kw: fake_result)
+
+    delivery = carrier.deliver_event(event_path, policy_path, repo=tmp_path)
+    assert delivery.publication_run_id is None
+    assert delivery.github_outputs() == ""
+
+
+@pytest.mark.parametrize(
+    ("operation", "destination"),
+    [
+        ("AUTHOR_TASK", ".ai/tasks/TASK-110.yaml"),
+        ("AUTHOR_REMEDIATION", "refs/heads/aios/remediation/RUN-108-001-F1"),
+        ("AUTHOR_REPAIR", "refs/heads/aios/repair/RUN-108-002"),
+    ],
+)
+def test_non_submit_review_operations_emit_no_publication_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str, destination: str
+) -> None:
+    body = f"format: AIOS_INGRESS_ENVELOPE\nversion: 1\noperation: {operation}\n"
+    event_path = _write_event(tmp_path, _event(body))
+    policy_path = _write_policy(tmp_path)
+
+    fake_result = IngressResult(
+        operation=operation,
+        status="CANONICALIZED",
+        canonical_destination=destination,
+        canonical_sha="c" * 40,
+        replayed=False,
+        detail="ok",
+    )
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **kw: fake_result)
+
+    delivery = carrier.deliver_event(event_path, policy_path, repo=tmp_path)
+    assert delivery.publication_run_id is None
+    assert delivery.github_outputs() == ""
+
+
+def test_submit_review_replay_emits_canonical_run_selector(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = "format: AIOS_INGRESS_ENVELOPE\nversion: 1\noperation: SUBMIT_REVIEW\n"
+    event_path = _write_event(tmp_path, _event(body))
+    policy_path = _write_policy(tmp_path)
+
+    fake_result = IngressResult(
+        operation="SUBMIT_REVIEW",
+        status="IDEMPOTENT",
+        canonical_destination="refs/heads/aios/review-decision/RUN-108-003",
+        canonical_sha="d" * 40,
+        replayed=True,
+        detail="identical REVIEW already canonicalized for RUN-108-003",
+    )
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **kw: fake_result)
+
+    delivery = carrier.deliver_event(event_path, policy_path, repo=tmp_path)
+    assert delivery.publication_run_id == "RUN-108-003"
+    assert (
+        delivery.github_outputs()
+        == "publication_run_id=RUN-108-003\nrun_id=RUN-108-003\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_destination",
+    [
+        "refs/heads/main",
+        "refs/heads/aios/review-decision/",
+        "refs/heads/aios/review-decision/not-a-run",
+        "refs/heads/aios/review-decision/RUN-bad;inject",
+        "refs/heads/aios/review-decision/TASK-108",
+    ],
+)
+def test_malformed_decision_destination_emits_no_publication_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_destination: str
+) -> None:
+    fake_delivery = carrier.IssueDelivery(
+        carrier_identity="github-issue:trung-via/AIOS-renew#1@trung-via",
+        ingress_result=IngressResult(
+            operation="SUBMIT_REVIEW",
+            status="CANONICALIZED",
+            canonical_destination=bad_destination,
+            canonical_sha="e" * 40,
+            detail="canonicalized PASS review decision for RUN-x",
+        ),
+    )
+    assert fake_delivery.publication_run_id is None
+    assert fake_delivery.github_outputs() == ""
+
+
+def test_main_cli_writes_github_output_when_requested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    event_path = _write_event(tmp_path, _event("body"))
+    policy_path = _write_policy(tmp_path)
+    output_path = tmp_path / "github_output.txt"
+
+    pass_result = IngressResult(
+        operation="SUBMIT_REVIEW",
+        status="CANONICALIZED",
+        canonical_destination="refs/heads/aios/review-decision/RUN-108-003",
+        canonical_sha="f" * 40,
+        replayed=False,
+        detail="canonicalized PASS review decision for RUN-108-003",
+    )
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **kw: pass_result)
+
+    code = carrier.main(
+        [
+            "--event",
+            str(event_path),
+            "--policy",
+            str(policy_path),
+            "--repo",
+            str(tmp_path),
+            "--output",
+            str(output_path),
+        ]
+    )
+    assert code == 0
+    assert output_path.read_text(encoding="utf-8") == (
+        "publication_run_id=RUN-108-003\nrun_id=RUN-108-003\n"
+    )
+
+    # Now verify AUTHOR_TASK does not write publication outputs
+    task_output = tmp_path / "task_output.txt"
+    task_result = IngressResult(
+        operation="AUTHOR_TASK",
+        status="CANONICALIZED",
+        canonical_destination=".ai/tasks/TASK-110.yaml",
+        canonical_sha="1" * 40,
+        detail="canonicalized TASK-110 r1",
+    )
+    monkeypatch.setattr(carrier, "ingest_carrier", lambda *a, **kw: task_result)
+
+    code = carrier.main(
+        [
+            "--event",
+            str(event_path),
+            "--policy",
+            str(policy_path),
+            "--repo",
+            str(tmp_path),
+            "--output",
+            str(task_output),
+        ]
+    )
+    assert code == 0
+    assert not task_output.exists() or task_output.read_text(encoding="utf-8") == ""

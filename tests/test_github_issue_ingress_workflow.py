@@ -27,7 +27,11 @@ def test_workflow_has_only_the_opened_issue_trigger_and_exact_marker_gate() -> N
 
 def test_workflow_permissions_and_concurrency_are_minimal_and_serial() -> None:
     workflow, _ = _workflow()
-    assert workflow["permissions"] == {"contents": "write", "issues": "write"}
+    assert workflow["permissions"] == {
+        "contents": "write",
+        "issues": "write",
+        "actions": "write",
+    }
     assert workflow["concurrency"] == {
         "group": "aios-brain-ingress-${{ github.repository }}",
         "cancel-in-progress": "false",
@@ -47,6 +51,7 @@ def test_workflow_has_one_event_file_carrier_invocation_and_no_body_interpolatio
     carrier_calls = [run for run in runs if "aios_renew.github_issue_ingress" in run]
     assert len(carrier_calls) == 1
     assert '--event "$GITHUB_EVENT_PATH"' in carrier_calls[0]
+    assert '--output "$GITHUB_OUTPUT"' in carrier_calls[0]
     assert "github.event.issue.body" not in text
     assert "aios ingress" not in text
     assert "aios ingest" not in text
@@ -58,13 +63,78 @@ def test_workflow_has_one_event_file_carrier_invocation_and_no_body_interpolatio
 
 def test_workflow_posts_one_bounded_receipt_and_only_closes_success() -> None:
     workflow, text = _workflow()
-    receipt_step = workflow["jobs"]["deliver"]["steps"][4]
+    receipt_step = next(
+        step
+        for step in workflow["jobs"]["deliver"]["steps"]
+        if step.get("name") == "Post bounded transport receipt"
+    )
     assert receipt_step["if"] == "always()"
     assert text.count("github.rest.issues.createComment") == 1
     assert ".slice(0, 3500)" in text
     assert text.count("github.rest.issues.update") == 1
     assert "AIOS_DELIVERY_OUTCOME === 'success'" in text
     assert "always() && steps.ingress.outcome != 'success'" in text
+
+
+def test_workflow_dispatches_safe_publisher_once_with_only_canonical_run_selector() -> None:
+    workflow, text = _workflow()
+    steps = workflow["jobs"]["deliver"]["steps"]
+    dispatch = next(
+        (step for step in steps if step.get("id") == "dispatch"),
+        None,
+    )
+    assert dispatch is not None
+    assert dispatch["uses"] == "actions/github-script@v7"
+    assert (
+        dispatch["if"]
+        == "steps.ingress.outcome == 'success' && steps.ingress.outputs.publication_run_id != ''"
+    )
+    assert dispatch["env"] == {
+        "AIOS_RUN_ID": "${{ steps.ingress.outputs.publication_run_id }}"
+    }
+
+    script = dispatch["with"]["script"]
+    assert text.count("createWorkflowDispatch") == 1
+    assert "workflow_id: 'aios-auto-publish.yml'" in script
+    assert "ref: 'main'" in script
+    assert "run_id: process.env.AIOS_RUN_ID" in script
+    assert "owner: context.repo.owner" in script
+    assert "repo: context.repo.repo" in script
+
+    for forbidden in (
+        "github.event.issue.body",
+        "GITHUB_EVENT_PATH",
+        "candidate_sha",
+        "target_ref",
+        "force",
+        "verdict",
+        "command",
+    ):
+        assert forbidden not in script
+
+
+def test_carrier_workflow_never_directly_mutates_main_or_invokes_publication_module() -> None:
+    _, text = _workflow()
+    lowered = text.lower()
+    for forbidden in (
+        "git push",
+        "git update-ref",
+        "aios_renew.publication",
+        "publication.py",
+        "createorupdatefilecontents",
+        "createref",
+    ):
+        assert forbidden not in lowered
+
+
+def test_auto_publish_workflow_contract_retains_push_and_workflow_dispatch() -> None:
+    auto_publish_path = ROOT / ".github" / "workflows" / "aios-auto-publish.yml"
+    auto_publish = yaml.load(auto_publish_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    assert "push" in auto_publish["on"]
+    assert auto_publish["on"]["push"]["branches"] == ["aios/review-decision/**"]
+    assert "workflow_dispatch" in auto_publish["on"]
+    assert "run_id" in auto_publish["on"]["workflow_dispatch"]["inputs"]
+    assert auto_publish["on"]["workflow_dispatch"]["inputs"]["run_id"]["required"] == "true"
 
 
 def test_reviewed_policy_binds_exact_repository_actor_and_marker() -> None:

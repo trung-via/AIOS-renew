@@ -39,6 +39,8 @@ _LOGIN_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 _REPOSITORY_PATTERN = re.compile(
     r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9])?/[A-Za-z0-9_.-]+$"
 )
+_RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
+_DECISION_REF_PREFIX = "refs/heads/aios/review-decision/"
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,33 @@ class AdmittedIssue:
 class IssueDelivery:
     carrier_identity: str
     ingress_result: IngressResult
+
+    @property
+    def publication_run_id(self) -> str | None:
+        """Extract bounded canonical RUN identity for publication continuation if eligible."""
+        if self.ingress_result.operation != "SUBMIT_REVIEW":
+            return None
+        if self.ingress_result.status not in ("CANONICALIZED", "IDEMPOTENT"):
+            return None
+        dest = self.ingress_result.canonical_destination
+        if not dest.startswith(_DECISION_REF_PREFIX):
+            return None
+        run_id = dest[len(_DECISION_REF_PREFIX) :]
+        if not _RUN_ID_PATTERN.fullmatch(run_id):
+            return None
+        if self.ingress_result.status == "CANONICALIZED":
+            # Avoid publication wakeup when canonical ingress result proves non-PASS
+            detail = self.ingress_result.detail
+            if "CHANGES_REQUIRED" in detail or "PASS" not in detail:
+                return None
+        return run_id
+
+    def github_outputs(self) -> str:
+        """Render bounded step outputs for outer workflow coordination."""
+        run_id = self.publication_run_id
+        if run_id is None:
+            return ""
+        return f"publication_run_id={run_id}\nrun_id={run_id}\n"
 
     def render_receipt(self) -> str:
         receipt = (
@@ -234,11 +263,22 @@ def render_failure(reason: BaseException) -> str:
     return _bounded_text(f"AIOS BRAIN INGRESS RECEIPT\nstatus: FAIL\nreason: {detail}")
 
 
+def _write_outputs(output_path: str | Path, outputs: str) -> None:
+    path = Path(output_path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(outputs)
+    except OSError as exc:
+        raise GitHubIssueIngressError(f"cannot write carrier output: {exc}") from exc
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Deliver one GitHub Issue to AIOS ingress")
     parser.add_argument("--event", default=os.environ.get("GITHUB_EVENT_PATH"))
     parser.add_argument("--policy", default=".ai/brain-ingress-carriers.yaml")
     parser.add_argument("--repo", default=".")
+    parser.add_argument("--output", default=os.environ.get("GITHUB_OUTPUT"))
     return parser
 
 
@@ -249,6 +289,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     try:
         delivery = deliver_event(args.event, args.policy, repo=args.repo)
+        if args.output:
+            outputs = delivery.github_outputs()
+            if outputs:
+                _write_outputs(args.output, outputs)
     except (GitHubIssueIngressError, AuthoringIngressError, OSError) as exc:
         print(render_failure(exc))
         return 1

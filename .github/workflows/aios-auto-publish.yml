@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Canonical RUN identity whose existing review decision is replayed
+        description: Canonical RUN identity whose existing review decision is published or replayed
         required: true
         type: string
 
