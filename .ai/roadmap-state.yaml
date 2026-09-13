@@ -80,33 +80,29 @@ sequence:
       exact existing decision as IDEMPOTENT. Historical malformed refs are preserved and
       are not rewritten.
   - id: performance-closure
-    status: NEXT
-    task_id: TASK-101
-    task_revision: 4
+    status: DONE
+    completed_by:
+      task_id: TASK-101
+      task_revision: 4
+      published_sha: "a3b723b49cd65677f548c5694a52a6fc006a9e2a"
     phase: P5-performance-observation-surface
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
-    last_completed:
-      task_id: TASK-100
-      task_revision: 1
-      phase: P4-execution-budget-observability-and-escalation
-      published_sha: "8067ac257c15779367f4e1463e7af8b5b5059e46"
     note: >-
-      P1-P4 are published. TASK-101 revisions 1 and 2 remain immutable historical
-      evidence. Revision 3 was authored from the post-TASK-104 main and later reached
-      RUN-101-006 through repair continuation. RUN-101-006 preserved clean transportable
-      candidate 208242eb3e7cd329c05e05da3a1ea17eaf3cdb96 but terminated at the
-      completion gate after the antigravity-minimax executor emitted an invalid
-      write_journal tool call. That revision-3 lineage remains immutable evidence and
-      must not be directly repaired, published, merged, rebased, or cherry-picked after
-      TASK-105 advanced canonical main. Revision 4 is the selected next Brain-authoring
-      action and must establish a fresh lifecycle from current post-TASK-105 main while
-      carrying forward the F101-003 terminal-binding requirement and reusing still-valid
-      revision-3 implementation knowledge without treating its candidate as current
-      implementation state. Downstream adoption remains blocked until Performance
-      Closure is complete.
+      Performance Closure P1-P5 is complete. TASK-101 revision 4 established the
+      bounded read-only AIOS_PERFORMANCE_OBSERVATION v1 surface from the post-TASK-105
+      canonical base. RUN-101-007 completed canonical Runtime verification, PRIMARY
+      REVIEW-101-007 returned PASS for AC1-AC9, and the reviewed candidate was
+      auto-published at the exact SHA above. TASK-101 revisions 1-3 and their RUN,
+      REVIEW, REMEDIATION, REPAIR, RESULT, FAILURE, and candidate lineage remain
+      immutable historical evidence and do not supersede revision-4 completion.
   - id: downstream-adoption
-    status: PENDING
-    blocked_by: performance-closure
+    status: NEXT
+    note: >-
+      Performance Closure is now complete. The next planning action is bounded
+      downstream adoption. Each downstream repository must first be inspected for its
+      exact pinned AIOS dependency; current AIOS-renew main must never be assumed to be
+      that downstream repository's active kernel until an explicit migration changes
+      the pin.
 parallel_work:
   - id: approved-remediation-wakeup
     milestone: A6
