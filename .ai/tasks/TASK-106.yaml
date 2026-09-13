@@ -1,0 +1,242 @@
+task_id: TASK-106
+revision: 1
+
+goal: >
+  Harden the presentation layer of the existing Unified Human Surface so normal
+  Human use of `aios continue <TASK_ID>` returns a concise deterministic
+  human-readable summary instead of exposing the compact machine JSON directly,
+  while preserving the exact versioned AIOS_HUMAN_SURFACE v1 machine result
+  through an explicit JSON output mode. Improve Human scanability without changing
+  Unified State, lifecycle selection, delegation, execution, correction, review,
+  publication, failure, or authority semantics.
+
+problem: >
+  TASK-087 established the Unified Human Surface correctly as a thin deterministic
+  front door over Unified State and intentionally standardized one bounded
+  AIOS_HUMAN_SURFACE v1 machine result. The current HumanSurfaceResult renderer
+  serializes that object directly as compact JSON, and `aios continue` always
+  prints that renderer. Real downstream use has now demonstrated that the
+  semantics are correct but the default Human experience is unnecessarily hard to
+  scan: a successful PRIMARY continuation appears as a dense JSON object instead
+  of the concise PASS-style summaries already used by direct RUN, REMEDIATION,
+  REPAIR, and recovery surfaces. Separate Human presentation from the canonical
+  structured result without creating a second lifecycle reducer or breaking
+  machine access to the established v1 result.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-106 authoring is
+    df65e3f9468d1cc408739ebd89165880ea18afd7. This is a Brain-owned roadmap
+    reconciliation commit whose exact source parent
+    a3b723b49cd65677f548c5694a52a6fc006a9e2a is the latest reviewed and
+    source-published implementation.
+  - >
+    TASK-087 established `aios continue <TASK_ID>`, Unified Human Surface authority
+    boundaries, one-operation-per-invocation behavior, explicit Executor choice,
+    and AIOS_HUMAN_SURFACE version 1. TASK-106 consumes those semantics and does
+    not revise lifecycle ownership.
+  - >
+    Current `HumanSurfaceResult.as_dict()` is the canonical bounded structured
+    projection and current `HumanSurfaceResult.render()` emits compact JSON from
+    that projection. Operator `continue` prints that rendered value directly.
+  - >
+    Existing direct RUN, REMEDIATION, REPAIR, recovery, Unified State, admission,
+    verification, transport, publication, and authoring-ingress behavior are not
+    defective for this request.
+  - >
+    The observed usability problem is presentation-only. Human-readable output
+    must not be used as new canonical state, evidence, selector authority, or
+    lifecycle input.
+  - >
+    Current explicit Human intent prioritizes this bounded Human Surface usability
+    hardening before returning to generic roadmap continuation. The existing
+    `downstream-adoption` roadmap pointer remains planning state and is not mutated
+    or auto-advanced by this TASK.
+  - >
+    Downstream repositories remain governed by their own exact AIOS dependency
+    pins. Publishing TASK-106 upstream does not automatically migrate or alter any
+    downstream worker.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-087.yaml
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - tests/test_operator.py
+    - README.md
+
+  modify:
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - README.md
+
+non_goals:
+  - >
+    Change TASK-086 Unified State reduction, next_action taxonomy, selector
+    resolution, correction frontier, admission, synchronization, verification,
+    transport, recovery, publication, or Runtime lifecycle semantics.
+  - >
+    Add a Planner, Reviewer, correction author, Publisher, router, retry loop,
+    fallback, reroute, polling loop, recursive continuation, or second lifecycle
+    reducer.
+  - >
+    Re-observe Unified State after a delegated operation merely to produce prettier
+    output or infer a newly current lifecycle action.
+  - >
+    Infer or print speculative next steps such as semantic review, remediation, or
+    publication unless that authority/action is already present in the exact
+    HumanSurfaceResult being rendered.
+  - >
+    Recommend, rank, default, remember, or automatically select an Executor,
+    model, effort level, timeout, permission mode, or fallback.
+  - >
+    Change AIOS_HUMAN_SURFACE version 1 field names, meanings, allowlists, selector
+    identities, disposition semantics, authority semantics, or result semantics.
+  - >
+    Change the default presentation of `aios state` or any direct low-level RUN,
+    REMEDIATION, REPAIR, transport, recovery, authoring-ingress, preflight, wakeup,
+    approval, or publication surface.
+  - >
+    Add terminal-dependent behavior, TTY detection, ANSI color requirements,
+    terminal-width logic, interactive prompts, or platform-specific presentation
+    branches.
+  - >
+    Modify downstream repositories, downstream worker scripts, dependency pins,
+    GitHub Actions workflows, `.ai/roadmap-state.yaml`, or frozen Kernel
+    specification/governance documents.
+  - >
+    Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Normal `aios continue <TASK_ID>` output must be deterministic plain text
+      intended for Human scanning and must not dump the compact
+      AIOS_HUMAN_SURFACE JSON object as its default presentation.
+    - >
+      Add one explicit `--json` presentation option to `aios continue`. When
+      supplied, output must remain the established AIOS_HUMAN_SURFACE version-1
+      machine object with the same fields, values, nullability, allowlists, and
+      semantics produced from the same HumanSurfaceResult. Presentation mode must
+      not alter lifecycle behavior or exit status.
+    - >
+      Human-readable rendering must be a pure projection of the single
+      HumanSurfaceResult already returned by the existing continuation boundary.
+      Rendering may perform no Git query, remote query, Unified State observation,
+      admission, verification, Executor invocation, mutation, retry, or other
+      lifecycle call.
+    - >
+      Human-readable output must expose the exact task id and revision, observed
+      next_action, disposition, and authority. It must additionally expose
+      delegated operation, supplied Executor identity, resulting RUN/head,
+      non-null exact selectors, blocker code, and outstanding-finding count when
+      those values are present or relevant. Absent optional values must not be
+      replaced with invented identities.
+    - >
+      Human-readable labels and ordering must be stable and line-oriented so a
+      Human can identify outcome, authority, operation, RUN/head, and blocker
+      without decoding JSON. Keep the presentation concise; do not reproduce raw
+      prompts, logs, artifact bodies, environment dumps, unrestricted Git output,
+      credentials, or arbitrary local paths.
+    - >
+      A successful delegated operation remains exactly one delegated operation.
+      Human rendering must not re-enter continuation, derive a second action,
+      trigger semantic review, author a correction, publish, retry, reroute, or
+      otherwise act on the rendered result.
+    - >
+      `EXECUTOR_REQUIRED`, `EXTERNAL_AUTHORITY_REQUIRED`, `NO_ACTION`, `BLOCKED`,
+      successful `DELEGATED`, and failed delegated-operation results must each
+      remain distinguishable in Human output without changing their established
+      dispositions, authorities, blocker semantics, or process exit codes.
+    - >
+      Delegated pre-RUN rejection versus admitted RUN FAILURE taxonomy remains
+      unchanged. Presentation may report the bounded Human-surface blocker already
+      returned, but must not synthesize a new failure artifact, reinterpret the
+      failure family, hide a nonzero return code, or perform a second attempt.
+    - >
+      Safe synchronization/restart behavior must preserve the requested
+      presentation mode. A restarted `continue` invocation must still re-enter
+      the existing Unified State path exactly once and render in the caller's
+      selected Human or JSON mode; presentation adds no bypass around restart
+      semantics.
+    - >
+      Existing `aios state`, `run`, `remediate`, `repair`, `transport`,
+      `recover-primary`, preflight, wakeup, approval, correction-wakeup,
+      accept-candidate, ingress, and performance surfaces retain their current
+      syntax, output contracts, authority boundaries, and behavior.
+    - >
+      README must document the default Human-readable continuation output,
+      explicit `--json` machine mode, the fact that both are projections of the
+      same authoritative continuation result, and that formatting creates no new
+      lifecycle/review/correction/publication authority.
+    - >
+      No downstream migration is part of TASK-106. A downstream repository gains
+      this behavior only after a separate explicit migration to a reviewed and
+      source-published AIOS revision containing TASK-106.
+    - >
+      Do not mutate `.ai/roadmap-state.yaml`; explicit Human priority authorizes
+      this TASK prospectively, while later generic roadmap continuation must first
+      reconcile the planning bookmark if necessary.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Default `aios continue` output for a successful delegated PRIMARY is concise
+      deterministic plain text showing TASK revision, observed action, disposition,
+      Runtime authority, delegated PRIMARY operation, supplied Executor, resulting
+      RUN, and resulting head SHA, with no raw compact Human-surface JSON dump.
+  - id: AC2
+    condition: >
+      Human-readable regressions cover EXECUTOR_REQUIRED,
+      EXTERNAL_AUTHORITY_REQUIRED, NO_ACTION, BLOCKED, and delegated failure states
+      and prove each reports only bounded fields already present in its
+      HumanSurfaceResult while preserving established authority and exit-code
+      semantics.
+  - id: AC3
+    condition: >
+      `aios continue ... --json` emits the established AIOS_HUMAN_SURFACE v1
+      machine result with semantically identical structured content to the current
+      canonical projection for delegated and non-delegated outcomes.
+  - id: AC4
+    condition: >
+      Human versus JSON presentation of the same continuation state invokes the
+      same existing continuation/lifecycle path and does not change action
+      selection, exact selectors, Executor requirement/identity, resulting
+      RUN/head, verification behavior, failure taxonomy, or number of delegated
+      operations.
+  - id: AC5
+    condition: >
+      Synchronization/restart regression proves presentation selection survives the
+      existing safe restart path without bypassing Unified State or executing from
+      a stale pre-sync decision.
+  - id: AC6
+    condition: >
+      Existing direct operator surfaces remain behaviorally compatible and
+      `aios state` remains the read-only machine-oriented Unified State surface;
+      TASK-106 introduces no downstream code, workflow, roadmap, lifecycle, or
+      authority mutation.
+  - id: AC7
+    condition: >
+      README documents Human-readable default continuation, `--json` machine mode,
+      representative delegated and external-authority examples, and the strict
+      presentation-only/no-new-authority boundary.
+  - id: AC8
+    condition: >
+      Delta remains within the four authorized presentation/operator/test/docs
+      files, focused operator verification passes, and RESULT contains zero
+      unresolved items.
+
+verification:
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
