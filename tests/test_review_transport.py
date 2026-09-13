@@ -89,6 +89,95 @@ def make_repo(root: Path) -> tuple[Path, Path]:
     return repo, remote
 
 
+def test_performance_snapshot_rejects_competing_terminal_refs_before_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    refs = {
+        "refs/heads/aios/artifacts/RUN-058-001": "a" * 40,
+        "refs/heads/aios/failure-artifacts/RUN-058-001": "b" * 40,
+    }
+    monkeypatch.setattr(review_transport, "_exact_remote_refs", lambda *args: refs)
+    reads: list[str] = []
+    monkeypatch.setattr(
+        review_transport,
+        "_read_lifecycle_blob",
+        lambda *args: reads.append(str(args[-1])),
+    )
+    with pytest.raises(ReviewTransportError, match="competing RESULT/FAILURE"):
+        review_transport.resolve_remote_performance_snapshot(
+            repo, task_ids=["TASK-058"]
+        )
+    assert reads == []
+
+
+def test_performance_snapshot_binds_terminal_before_observation_coverage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    ref = "refs/heads/aios/failure-artifacts/RUN-058-001"
+    monkeypatch.setattr(
+        review_transport, "_exact_remote_refs", lambda *args: {ref: "a" * 40}
+    )
+    run = json.dumps(
+        {
+            "run_id": "RUN-058-001",
+            "task": {"id": "TASK-058", "revision": 9},
+            "executor": "codex",
+            "base_sha": "b" * 40,
+            "workspace": "bounded",
+            "head_sha": None,
+            "status": "ACTIVE",
+        }
+    ).encode()
+    malformed_failure = json.dumps(
+        {
+            "kind": "FAILURE",
+            "run_id": "RUN-058-OTHER",
+            "task": {"id": "TASK-058", "revision": 9},
+            "executor": "codex",
+            "base_sha": "b" * 40,
+            "failed_head_sha": "c" * 40,
+            "candidate": {},
+        }
+    ).encode()
+    requested: list[str] = []
+
+    def read_blob(*args):
+        path = str(args[-1])
+        requested.append(path)
+        if path.endswith("run.json"):
+            return run
+        if path.endswith("failure.json"):
+            return malformed_failure
+        raise AssertionError("observation must not be classified before terminal binding")
+
+    monkeypatch.setattr(review_transport, "_read_lifecycle_blob", read_blob)
+    with pytest.raises(ReviewTransportError, match="FAILURE identity"):
+        review_transport.resolve_remote_performance_snapshot(
+            repo, task_ids=["TASK-058"]
+        )
+    assert requested == [
+        ".ai/transport/run.json",
+        ".ai/transport/failure.json",
+    ]
+
+
+def test_performance_snapshot_rejects_overflow_without_truncation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    refs = {
+        f"refs/heads/aios/artifacts/RUN-058-{index:03d}": "a" * 40
+        for index in range(257)
+    }
+    monkeypatch.setattr(review_transport, "_exact_remote_refs", lambda *args: refs)
+    with pytest.raises(ReviewTransportError, match="maximum bound of 256"):
+        review_transport.resolve_remote_performance_snapshot(
+            repo, task_ids=["TASK-058"]
+        )
+
+
 def test_unified_lifecycle_snapshot_is_bounded_and_read_only(tmp_path: Path) -> None:
     repo, remote = make_repo(tmp_path)
     before_head = git(repo, "rev-parse", "HEAD")

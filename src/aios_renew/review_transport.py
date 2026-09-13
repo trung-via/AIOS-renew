@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -194,6 +194,35 @@ class RemoteTaskLifecycle:
     observed_refs: tuple[tuple[str, str], ...]
 
 
+@dataclass(frozen=True)
+class RemoteTerminalArtifact:
+    """One canonically bound terminal artifact from the upstream snapshot."""
+
+    run_id: str
+    task_id: str
+    terminal_kind: str
+    artifact_sha: str
+    run: bytes
+    terminal: bytes
+    observation: bytes | None = None
+    task_revision: int | None = None
+    executor: str | None = None
+    base_sha: str | None = None
+    candidate_sha: str | None = None
+
+
+@dataclass(frozen=True)
+class RemotePerformanceSnapshot:
+    """Bounded terminal snapshot selected only by canonical upstream refs."""
+
+    task_selectors: tuple[str, ...]
+    terminals: tuple[RemoteTerminalArtifact, ...]
+    observed_refs: tuple[tuple[str, str], ...] = ()
+
+
+PERFORMANCE_MAX_TERMINAL_RUNS = 256
+
+
 def _git_cmd(repo: Path, *args: str, strip: bool = True, allow_fail: bool = False) -> tuple[int, str, str]:
     try:
         completed = subprocess.run(
@@ -304,6 +333,465 @@ def resolve_remote_run_namespace(
     except ReviewTransportError as exc:
         exc.observed_refs = tuple(sorted(refs.items()))
         raise
+
+
+def resolve_remote_performance_snapshot(
+    repo: Path, *, task_ids: Sequence[str]
+) -> RemotePerformanceSnapshot:
+    """Acquire one bounded, read-only snapshot of selected terminal namespaces.
+
+    The terminal refs are the sole selection authority.  RUN and terminal identity
+    are completely bound before an optional observation sidecar is read, so absent
+    telemetry can never mask malformed terminal lineage.
+    """
+
+    selectors = _validate_performance_task_ids(task_ids)
+    prefixes = {task_id: task_run_prefix(task_id) for task_id in selectors}
+    patterns = tuple(
+        pattern
+        for task_id in selectors
+        for pattern in (
+            f"refs/heads/aios/artifacts/{prefixes[task_id]}*",
+            f"refs/heads/aios/failure-artifacts/{prefixes[task_id]}*",
+        )
+    )
+    remote = resolve_transport_remote(repo)
+    refs = _exact_remote_refs(repo, remote, *patterns)
+    try:
+        records: list[tuple[str, str, str, str, str]] = []
+        kinds: dict[str, str] = {}
+        for ref, artifact_sha in sorted(refs.items()):
+            if ref.startswith("refs/heads/aios/artifacts/"):
+                terminal_kind = "RESULT"
+                run_id = ref.removeprefix("refs/heads/aios/artifacts/")
+            elif ref.startswith("refs/heads/aios/failure-artifacts/"):
+                terminal_kind = "FAILURE"
+                run_id = ref.removeprefix(
+                    "refs/heads/aios/failure-artifacts/"
+                )
+            else:
+                raise ReviewTransportError("canonical ref namespace mismatch")
+
+            matches = [
+                task_id
+                for task_id, prefix in prefixes.items()
+                if re.fullmatch(rf"{re.escape(prefix)}\d{{3,}}", run_id)
+            ]
+            if len(matches) != 1:
+                raise ReviewTransportError(
+                    f"canonical RUN ref identity is invalid: {ref}"
+                )
+            previous = kinds.get(run_id)
+            if previous is not None and previous != terminal_kind:
+                raise ReviewTransportError(
+                    f"competing RESULT/FAILURE terminal identity for RUN: {run_id}"
+                )
+            kinds[run_id] = terminal_kind
+            records.append(
+                (run_id, matches[0], terminal_kind, ref, artifact_sha)
+            )
+
+        if len(kinds) > PERFORMANCE_MAX_TERMINAL_RUNS:
+            raise ReviewTransportError(
+                "terminal RUN snapshot exceeds maximum bound of "
+                f"{PERFORMANCE_MAX_TERMINAL_RUNS}: {len(kinds)}"
+            )
+
+        terminals: list[RemoteTerminalArtifact] = []
+        for run_id, task_id, terminal_kind, ref, artifact_sha in records:
+            run_bytes = _read_lifecycle_blob(
+                repo, remote, artifact_sha, ".ai/transport/run.json"
+            )
+            if run_bytes is None:
+                raise ReviewTransportError(
+                    f"canonical {terminal_kind} RUN content is missing for {run_id}"
+                )
+            terminal_path = (
+                ".ai/transport/result.json"
+                if terminal_kind == "RESULT"
+                else ".ai/transport/failure.json"
+            )
+            terminal_bytes = _read_lifecycle_blob(
+                repo, remote, artifact_sha, terminal_path
+            )
+            if terminal_bytes is None:
+                raise ReviewTransportError(
+                    f"canonical {terminal_kind} content is missing for {run_id}"
+                )
+
+            revision, executor, base_sha, candidate_sha = (
+                _bind_performance_terminal_identity(
+                    run_bytes,
+                    terminal_bytes,
+                    ref=ref,
+                    run_id=run_id,
+                    task_id=task_id,
+                    terminal_kind=terminal_kind,
+                )
+            )
+            # Coverage is classified only after the RUN and terminal family bind.
+            observation = _read_lifecycle_blob(
+                repo, remote, artifact_sha, ".ai/transport/observation.json"
+            )
+            terminals.append(
+                RemoteTerminalArtifact(
+                    run_id=run_id,
+                    task_id=task_id,
+                    terminal_kind=terminal_kind,
+                    artifact_sha=artifact_sha,
+                    run=run_bytes,
+                    terminal=terminal_bytes,
+                    observation=observation,
+                    task_revision=revision,
+                    executor=executor,
+                    base_sha=base_sha,
+                    candidate_sha=candidate_sha,
+                )
+            )
+        return RemotePerformanceSnapshot(
+            task_selectors=selectors,
+            terminals=tuple(sorted(terminals, key=lambda item: item.run_id)),
+            observed_refs=tuple(sorted(refs.items())),
+        )
+    except ReviewTransportError as exc:
+        exc.observed_refs = tuple(sorted(refs.items()))
+        raise
+
+
+def _validate_performance_task_ids(task_ids: Sequence[str]) -> tuple[str, ...]:
+    if not isinstance(task_ids, (list, tuple)) or not task_ids:
+        raise ReviewTransportError(
+            "task selectors must contain between 1 and 32 exact TASK identities"
+        )
+    if len(task_ids) > 32:
+        raise ReviewTransportError("task selectors exceed maximum bound of 32")
+    if any(not isinstance(item, str) for item in task_ids):
+        raise ReviewTransportError("malformed TASK selector identity")
+    if len(task_ids) != len(set(task_ids)):
+        raise ReviewTransportError("task selectors contain duplicate identities")
+    for task_id in task_ids:
+        if re.fullmatch(r"TASK-[A-Za-z0-9_-]+", task_id) is None:
+            raise ReviewTransportError(
+                f"malformed TASK selector identity: {task_id!r}"
+            )
+        if ":" in task_id or "@" in task_id:
+            raise ReviewTransportError(
+                f"revision-qualified TASK selector is not allowed: {task_id!r}"
+            )
+    return tuple(sorted(task_ids))
+
+
+def _bind_performance_terminal_identity(
+    run_bytes: bytes,
+    terminal_bytes: bytes,
+    *,
+    ref: str,
+    run_id: str,
+    task_id: str,
+    terminal_kind: str,
+) -> tuple[int, str, str, str]:
+    """Bind terminal identity to a fully validated admitted RUN."""
+
+    from .artifacts import validate_evidence, validate_result
+    from .run import ACTIVE, Run, RunTaskReference
+
+    run_document = _performance_json_mapping(run_bytes, "RUN")
+    if run_document.get("kind") == "REMEDIATION":
+        execution = run_document.get("execution")
+        if not isinstance(execution, Mapping):
+            raise ReviewTransportError(
+                f"canonical REMEDIATION execution is invalid for {run_id}"
+            )
+        run_data = execution.get("run")
+        if not isinstance(run_data, Mapping):
+            raise ReviewTransportError(
+                f"canonical REMEDIATION RUN is invalid for {run_id}"
+            )
+        _bind_remediation_wrapper(run_document, execution, run_id=run_id)
+    elif "kind" in run_document:
+        raise ReviewTransportError(f"unknown canonical RUN kind at {ref}")
+    else:
+        run_data = run_document
+    task = run_data.get("task") if isinstance(run_data, Mapping) else None
+    if not isinstance(task, Mapping) or set(task) != {"id", "revision"}:
+        raise ReviewTransportError(f"canonical RUN task is invalid for {run_id}")
+    try:
+        run = Run(
+            run_id=run_data["run_id"],
+            task=RunTaskReference(id=task["id"], revision=task["revision"]),
+            executor=run_data["executor"],
+            base_sha=run_data["base_sha"],
+            workspace=run_data["workspace"],
+            head_sha=run_data.get("head_sha"),
+            status=run_data["status"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ReviewTransportError(
+            f"canonical RUN is invalid for {run_id}: {exc}"
+        ) from exc
+    if run.run_id != run_id or run.task.id != task_id or run.status != ACTIVE:
+        raise ReviewTransportError(
+            f"canonical RUN identity does not match terminal ref for {run_id}"
+        )
+    if re.fullmatch(r"[0-9a-f]{40}", run.base_sha) is None or (
+        run.head_sha is not None
+        and re.fullmatch(r"[0-9a-f]{40}", run.head_sha) is None
+    ):
+        raise ReviewTransportError(
+            f"canonical RUN SHA identity is invalid for {run_id}"
+        )
+
+    terminal = _performance_json_mapping(terminal_bytes, terminal_kind)
+    if terminal_kind == "RESULT":
+        if set(terminal) != {"result", "evidence"}:
+            raise ReviewTransportError(
+                f"canonical RESULT package is invalid for {run_id}"
+            )
+        try:
+            result = validate_result(terminal["result"])
+            raw_evidence = terminal["evidence"]
+            if not isinstance(raw_evidence, list):
+                raise TypeError("evidence must be a list")
+            evidence = tuple(validate_evidence(item) for item in raw_evidence)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ReviewTransportError(
+                f"canonical RESULT package is invalid for {run_id}: {exc}"
+            ) from exc
+        _bind_result_identity(run, result, evidence)
+        candidate_sha = result.head_sha
+    elif terminal_kind == "FAILURE":
+        candidate_sha = _bind_failure_identity(terminal, run)
+    else:
+        raise ReviewTransportError("unsupported terminal family")
+    if re.fullmatch(r"[0-9a-f]{40}", candidate_sha) is None:
+        raise ReviewTransportError(
+            f"canonical {terminal_kind} candidate identity is invalid for {run_id}"
+        )
+    acceptance = run_document.get("acceptance")
+    if acceptance is not None and (
+        not isinstance(acceptance, Mapping)
+        or dict(acceptance)
+        != {"mode": "DIRECT_CANDIDATE", "candidate_head": candidate_sha}
+    ):
+        raise ReviewTransportError(
+            f"canonical terminal candidate binding conflicts for {run_id}"
+        )
+    return run.task.revision, run.executor, run.base_sha, candidate_sha
+
+
+def _bind_remediation_wrapper(
+    document: Mapping[str, Any], execution: Mapping[str, Any], *, run_id: str
+) -> None:
+    from .review import REMEDIATION_ACTIONS, parse_remediation
+
+    required = {"kind", "execution"}
+    allowed = required | {"predecessor", "execution_base", "acceptance"}
+    if not required.issubset(document) or set(document).difference(allowed):
+        raise ReviewTransportError(
+            f"canonical REMEDIATION wrapper is invalid for {run_id}"
+        )
+    finding = execution.get("finding")
+    remediation_data = execution.get("remediation")
+    run_data = execution.get("run")
+    review_id = execution.get("review_id")
+    original_constraints = execution.get("original_constraints", ())
+    if (
+        not isinstance(review_id, str)
+        or not review_id
+        or not isinstance(finding, Mapping)
+        or set(finding) != {
+            "id", "basis", "action", "location", "issue", "expected"
+        }
+        or not all(isinstance(value, str) and value for value in finding.values())
+        or finding.get("action") not in REMEDIATION_ACTIONS
+        or not isinstance(remediation_data, Mapping)
+        or not isinstance(run_data, Mapping)
+        or not isinstance(original_constraints, (list, tuple))
+        or not all(
+            isinstance(value, str) and value for value in original_constraints
+        )
+    ):
+        raise ReviewTransportError(
+            f"canonical REMEDIATION execution is invalid for {run_id}"
+        )
+    try:
+        remediation = parse_remediation(json.dumps(remediation_data))
+    except (TypeError, ValueError) as exc:
+        raise ReviewTransportError(
+            f"canonical REMEDIATION contract is invalid for {run_id}: {exc}"
+        ) from exc
+    if (
+        remediation.finding_id != finding.get("id")
+        or remediation.action != finding.get("action")
+    ):
+        raise ReviewTransportError(
+            f"canonical REMEDIATION finding binding conflicts for {run_id}"
+        )
+    predecessor = document.get("predecessor")
+    if predecessor is not None:
+        if (
+            not isinstance(predecessor, Mapping)
+            or set(predecessor) != {
+                "source_run_id", "review_id", "finding_id", "reviewed_sha"
+            }
+            or not isinstance(predecessor.get("source_run_id"), str)
+            or re.fullmatch(
+                r"RUN-[A-Za-z0-9_-]+-\d{3,}", predecessor["source_run_id"]
+            )
+            is None
+        ):
+            raise ReviewTransportError(
+                f"canonical REMEDIATION predecessor is invalid for {run_id}"
+            )
+        expected = (
+            review_id,
+            finding.get("id"),
+            remediation.reviewed_sha,
+        )
+        actual = (
+            predecessor.get("review_id"),
+            predecessor.get("finding_id"),
+            predecessor.get("reviewed_sha"),
+        )
+        if expected != actual:
+            raise ReviewTransportError(
+                f"canonical REMEDIATION predecessor conflicts for {run_id}"
+            )
+    execution_base = document.get("execution_base")
+    if execution_base is not None:
+        if (
+            predecessor is None
+            or not isinstance(execution_base, Mapping)
+            or set(execution_base) != {"run_id", "candidate_sha"}
+            or not isinstance(run_data, Mapping)
+            or execution_base.get("candidate_sha") != run_data.get("base_sha")
+            or not isinstance(execution_base.get("run_id"), str)
+            or re.fullmatch(
+                r"RUN-[A-Za-z0-9_-]+-\d{3,}", execution_base["run_id"]
+            )
+            is None
+        ):
+            raise ReviewTransportError(
+                f"canonical REMEDIATION execution base conflicts for {run_id}"
+            )
+    elif run_data.get("base_sha") != remediation.reviewed_sha:
+        raise ReviewTransportError(
+            f"canonical REMEDIATION base conflicts for {run_id}"
+        )
+
+
+def _bind_result_identity(run: Any, result: Any, evidence: Sequence[Any]) -> None:
+    if run.head_sha is not None and run.head_sha != result.head_sha:
+        raise ReviewTransportError("canonical RESULT head conflicts with RUN")
+    by_id: dict[str, Any] = {}
+    for item in evidence:
+        if item.evidence_id in by_id:
+            raise ReviewTransportError("canonical RESULT evidence identity is duplicated")
+        by_id[item.evidence_id] = item
+        if item.run_id != run.run_id or item.subject_sha != result.head_sha:
+            raise ReviewTransportError(
+                "canonical RESULT evidence does not bind to RUN and candidate"
+            )
+    for claim in result.claims:
+        if set(claim.evidence).difference(by_id):
+            raise ReviewTransportError(
+                "canonical RESULT claim references missing evidence"
+            )
+
+
+def _bind_failure_identity(terminal: Mapping[str, Any], run: Any) -> str:
+    task = terminal.get("task")
+    if (
+        terminal.get("kind") != "FAILURE"
+        or terminal.get("run_id") != run.run_id
+        or not isinstance(task, Mapping)
+        or dict(task) != {"id": run.task.id, "revision": run.task.revision}
+        or terminal.get("executor") != run.executor
+        or terminal.get("base_sha") != run.base_sha
+    ):
+        raise ReviewTransportError(
+            f"canonical FAILURE identity does not match RUN for {run.run_id}"
+        )
+    candidate = terminal.get("candidate")
+    if not isinstance(candidate, Mapping) or set(candidate) != {
+        "transportable",
+        "repairable",
+        "dirty",
+        "descends_from_base",
+        "changed_files",
+        "outside_task_scope",
+    }:
+        raise ReviewTransportError(
+            f"canonical FAILURE candidate is invalid for {run.run_id}"
+        )
+    flags = tuple(
+        candidate[name]
+        for name in (
+            "transportable", "repairable", "dirty", "descends_from_base"
+        )
+    )
+    if not all(isinstance(value, bool) for value in flags):
+        raise ReviewTransportError(
+            f"canonical FAILURE candidate flags are invalid for {run.run_id}"
+        )
+    paths: dict[str, list[str]] = {}
+    for name in ("changed_files", "outside_task_scope"):
+        value = candidate[name]
+        if (
+            not isinstance(value, list)
+            or not all(isinstance(item, str) and item for item in value)
+            or len(value) != len(set(value))
+        ):
+            raise ReviewTransportError(
+                f"canonical FAILURE candidate paths are invalid for {run.run_id}"
+            )
+        paths[name] = value
+    if not set(paths["outside_task_scope"]).issubset(paths["changed_files"]):
+        raise ReviewTransportError(
+            f"canonical FAILURE candidate scope conflicts for {run.run_id}"
+        )
+    repairable = not candidate["dirty"] and candidate["descends_from_base"]
+    transportable = repairable and not paths["outside_task_scope"]
+    if candidate["repairable"] is not repairable or candidate[
+        "transportable"
+    ] is not transportable:
+        raise ReviewTransportError(
+            f"canonical FAILURE candidate binding conflicts for {run.run_id}"
+        )
+    failed_head = terminal.get("failed_head_sha")
+    if not isinstance(failed_head, str):
+        raise ReviewTransportError(
+            f"canonical FAILURE failed-head identity is invalid for {run.run_id}"
+        )
+    continuation = terminal.get("continuation_of")
+    if continuation is not None and (
+        not isinstance(continuation, str)
+        or re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", continuation) is None
+    ):
+        raise ReviewTransportError(
+            f"canonical FAILURE continuation identity is invalid for {run.run_id}"
+        )
+    return failed_head
+
+
+def _performance_json_mapping(content: bytes, name: str) -> Mapping[str, Any]:
+    def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in items:
+            if key in value:
+                raise ValueError(f"duplicate key: {key}")
+            value[key] = item
+        return value
+
+    try:
+        value = json.loads(
+            content.decode("utf-8", errors="strict"), object_pairs_hook=pairs
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ReviewTransportError(f"invalid canonical {name} JSON: {exc}") from exc
+    if not isinstance(value, Mapping):
+        raise ReviewTransportError(f"canonical {name} must be a mapping")
+    return value
 
 
 def resolve_remote_task_lifecycle(

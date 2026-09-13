@@ -7817,3 +7817,42 @@ verification:
     assert code == 1
     captured = capsys.readouterr()
     assert "AIOS ERROR:" in captured.err
+
+
+def test_performance_cli_emits_v1_without_mutating_repository(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = make_repo(tmp_path)
+    before = (
+        git(repo, "rev-parse", "HEAD"),
+        git(repo, "status", "--porcelain"),
+        git(repo, "for-each-ref", "--format=%(refname) %(objectname)"),
+    )
+    assert operator_module.main(
+        ["performance", "TASK-101", "--repo", str(repo)]
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["format"] == "AIOS_PERFORMANCE_OBSERVATION"
+    assert payload["version"] == 1
+    assert payload["task_selectors"] == ["TASK-101"]
+    assert payload["coverage"]["terminal_runs"] == 0
+    after = (
+        git(repo, "rev-parse", "HEAD"),
+        git(repo, "status", "--porcelain"),
+        git(repo, "for-each-ref", "--format=%(refname) %(objectname)"),
+    )
+    assert after == before
+
+
+def test_performance_cli_rejects_duplicate_and_revision_qualified_selectors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = make_repo(tmp_path)
+    assert operator_module.main(
+        ["performance", "TASK-101", "TASK-101", "--repo", str(repo)]
+    ) == 1
+    assert "duplicate identities" in capsys.readouterr().err
+    assert operator_module.main(
+        ["performance", "TASK-101:4", "--repo", str(repo)]
+    ) == 1
+    assert "AIOS ERROR:" in capsys.readouterr().err

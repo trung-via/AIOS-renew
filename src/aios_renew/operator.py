@@ -49,6 +49,11 @@ from .dispatch_reconciliation import (
     execute_dispatch,
 )
 from .executor import ExecutorBoundaryError
+from .performance_observation import (
+    PerformanceObservation,
+    PerformanceObservationError,
+    observe_performance,
+)
 from .review_transport import (
     RemoteFailureArtifacts,
     RemoteRemediationLineage,
@@ -4353,6 +4358,14 @@ def _write_json(path: Path, data: Mapping[str, Any]) -> None:
     )
 
 
+def cmd_performance(
+    task_ids: list[str], *, repo: str | Path | None = None
+) -> str:
+    """Render the read-only AIOS_PERFORMANCE_OBSERVATION v1 surface."""
+
+    return observe_performance(task_ids, repo=repo).render()
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aios")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -4488,6 +4501,16 @@ def _parser() -> argparse.ArgumentParser:
         "--stdin", action="store_true", help="Read envelope from stdin"
     )
     ingress_parser.add_argument("--repo", help="Target Git repository path")
+    performance_parser = commands.add_parser(
+        "performance",
+        help="Aggregate canonical RUN observations for selected TASKs",
+    )
+    performance_parser.add_argument(
+        "task_id",
+        nargs="+",
+        help="One or more exact bare TASK identities",
+    )
+    performance_parser.add_argument("--repo", help="Target Git repository path")
     return parser
 
 
@@ -4769,6 +4792,11 @@ def main(
             except (OperatorError, AuthoringIngressError) as exc:
                 raise OperatorError(str(exc)) from exc
             print(summary.render())
+        elif args.command == "performance":
+            try:
+                print(cmd_performance(args.task_id, repo=args.repo))
+            except PerformanceObservationError as exc:
+                raise OperatorError(str(exc)) from exc
         else:
             retry_transport(args.run_id, repo=args.repo)
             print(f"AIOS TRANSPORT PASS\nrun: {args.run_id}")
