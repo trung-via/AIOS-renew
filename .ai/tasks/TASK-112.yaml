@@ -1,0 +1,250 @@
+task_id: TASK-112
+revision: 1
+
+goal: >
+  Implement GAP-D / A9 Phase 1 as one bounded Human remediation-intent surface that
+  coalesces the already-existing A3 exact Human approval and A6 approved REMEDIATION
+  wakeup into one attributable Human interaction for one already-authored canonical
+  REMEDIATION. Preserve A3 approval and A6 correction dispatch as distinct deterministic
+  authority/state boundaries, preserve explicit Executor choice for coding remediation,
+  and make identical delivery replay across supported carriers side-effect free so a
+  transport failure or courier retry never requires a second semantic Human approval.
+
+problem: >
+  Current REMEDIATION continuation requires two Human delivery actions for one correction
+  intent: first A3 records exact SHA-bound approval with remote-approve, then A6 separately
+  receives correction_dispatch_id plus source RUN, finding, and Executor to wake the
+  approved correction. TASK-110 live remediation exposed this friction directly: Human
+  approval of F1 and Antigravity intent still required separate local commands before
+  RUN-110-002 could execute. A second transport incident then showed ChatGPT GitHub
+  create_issue can be blocked by OpenAI host safety checks before GitHub, with no GitHub
+  403/OAuth/repository error and no AIOS invocation. Transport availability therefore
+  cannot be treated as semantic approval authority. AIOS needs a low-risk zero-touch lane
+  where one explicit Human correction intent can durably record the exact current A3
+  approval and continue through existing A6 exactly once, while the same immutable intent
+  can be replayed through an alternate bounded carrier without asking the Human to approve
+  the same correction again.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-112 authoring is
+    b129ff0d9e1bc7d5f3a3599917e0e77a58ebd9ba, the semantically reviewed and published
+    TASK-110 correction candidate. TASK-110 implementation/publication is PASS; its live
+    Brain-host GAP-A replay probe remains WAITING because ChatGPT create_issue was blocked
+    before GitHub received the carrier event.
+  - >
+    TASK-074 remains authoritative for A3: approval is Human authorization bound to one
+    exact source RUN/TASK revision/REVIEW/finding/action/reviewed_sha/remediation ref and
+    remediation commit SHA, is idempotent for the same immutable lineage, becomes stale
+    when that remediation SHA changes, and performs no execution.
+  - >
+    TASK-084 remains authoritative for A6: one exact current A3 approval plus stable
+    correction_dispatch_id, source_run_id, finding_id, and explicit codex/antigravity
+    Executor can delegate at most once into the existing canonical REMEDIATION path.
+    A6 correction-dispatch state is operational-only and preserves exact RUN attribution,
+    collision rejection, crash safety, Runtime verification, DELTA review, and publication
+    separation.
+  - >
+    The explicit Human sentence or UI action that approves one exact current remediation
+    and selects one Executor is sufficient Human intent for both existing deterministic
+    steps. Coalescing the interaction must not erase either underlying authority boundary
+    or infer approval when no explicit Human event exists.
+  - >
+    TASK-111 revision 1 is authored but unexecuted. It addresses the separate FAILURE-to-
+    REPAIR wakeup family and must remain waiting during TASK-112. After TASK-112 publication
+    Brain must re-sync TASK-111 before execution because shared Human/transport assumptions
+    may need revision; TASK-112 grants no REPAIR authority.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-ROADMAP.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-074.yaml
+    - .ai/tasks/TASK-082.yaml
+    - .ai/tasks/TASK-084.yaml
+    - .ai/tasks/TASK-107.yaml
+    - .ai/tasks/TASK-110.yaml
+    - .ai/tasks/TASK-111.yaml
+    - .github/workflows/aios-remote-approval.yml
+    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - src/aios_renew/remote_surface.py
+    - src/aios_renew/correction_dispatch.py
+    - src/aios_renew/operator.py
+    - tests/test_remote_surface.py
+    - tests/test_correction_dispatch.py
+    - tests/test_remediation_wakeup.py
+    - tests/test_operator.py
+    - README.md
+  modify:
+    - .ai/brain-remediation-intent-carriers.yaml
+    - .github/workflows/aios-brain-remediation-intent.yml
+    - .github/workflows/aios-approved-remediation-intent.yml
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/operator.py
+    - tests/test_github_issue_remediation_intent.py
+    - tests/test_github_issue_remediation_intent_workflow.py
+    - tests/test_operator.py
+    - README.md
+
+non_goals:
+  - >
+    Remove, weaken, reinterpret, or replace A3 exact SHA-bound Human approval or A6 durable
+    correction-dispatch authority. Existing remote-approve and approved-remediation-wakeup
+    remain valid separate debug/emergency surfaces.
+  - >
+    Automatically approve a remediation because Brain authored it, because Reviewer found
+    CHANGES_REQUIRED, because the source Executor previously ran, or because Unified State
+    reports EXECUTE_REMEDIATION. No explicit Human event means no new A3 approval.
+  - >
+    Infer, default, reroute, substitute, or choose an Executor from history, quotas,
+    availability, prior success, task metadata, Brain preference, or heuristics. Coding
+    remediation still requires an explicit supported Executor in the Human intent.
+  - >
+    Add autonomous multi-finding correction, fix-until-PASS loops, automatic REMEDIATION
+    authoring, automatic semantic review, automatic REPAIR, retry of failed RUN execution,
+    fallback Executor behavior, or A9 Phase 2 autonomy.
+  - >
+    Circumvent, evade, weaken, or work around OpenAI/ChatGPT host safety checks. The host
+    safety-gate incident is transport evidence only; TASK-112 may provide carrier-neutral
+    replay/fallback semantics but cannot guarantee a Brain host can invoke any particular
+    external mutation connector.
+  - >
+    Treat GitHub Issue state, workflow status, carrier receipt, transport acceptance, or
+    ChatGPT connector success/failure as canonical engineering truth or semantic approval.
+  - >
+    Merge REPAIR and REMEDIATION semantics, modify or execute TASK-111, change FAILURE or
+    REPAIR authority, change TASK-110 publication behavior, migrate downstream pins, or
+    alter frozen Kernel/governance semantics.
+  - >
+    Add a generic lifecycle router, scheduler, polling daemon, queue, database, message
+    broker, browser automation, PAT/service-account dependency, or alternate publication
+    authority.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      One coalesced remediation intent must contain only a stable bounded
+      correction_dispatch_id, exact source_run_id, exact finding_id, and one explicit
+      supported Executor, plus trusted Human approver attribution supplied by the carrier
+      context. TASK/revision, REVIEW id, action, reviewed_sha, remediation ref/SHA,
+      verification commands, repository path, model, arbitrary Git ref, workflow name,
+      shell command, and publication data are not Human/carrier inputs.
+    - >
+      The coalesced surface must reuse the existing A3 and A6 authorities rather than
+      duplicate their semantic logic. It must first resolve and persist/replay the exact
+      current A3 approval for the requested source RUN/finding and then continue through
+      the existing A6 approved-remediation dispatch using the same stable correction
+      delivery identity and explicit Executor. A3 approval state and A6 correction state
+      remain separately observable and independently validated.
+    - >
+      If the canonical remediation ref/SHA is missing, malformed, ambiguous, stale, or
+      changes before execution admission, the operation must fail closed. A previously
+      approved old remediation SHA must never authorize changed remediation content, and
+      the same correction_dispatch_id must never be silently rebound to a new SHA,
+      source RUN, finding, or Executor.
+    - >
+      One explicit Human intent may cause at most one canonical REMEDIATION invocation.
+      Exact replay after full success returns the same A3/A6/RUN attribution without a new
+      Executor call. Replay after A3 approval was persisted but before A6 became terminal
+      must reuse that exact approval and continue/reconcile the same A6 dispatch without
+      requiring a second Human semantic approval.
+    - >
+      Carrier failure before repository admission creates no AIOS authority or engineering
+      state. Such a condition must remain classifiable as outer transport unavailable, not
+      approval rejection, Runtime admission failure, RUN failure, semantic review failure,
+      or GitHub permission failure unless corresponding evidence actually exists.
+      Redelivery through another supported bounded carrier may reuse the same immutable
+      Human intent/selectors; changing a bound selector is a new Human intent.
+    - >
+      Add one dedicated versioned GitHub-Issue remediation-intent carrier family with a
+      distinct exact title marker and repository-owned actor/repository/body-size policy.
+      Its GitHub-hosted admission may only sanitize the four bounded intent selectors and
+      dispatch one fixed repository-owned coalesced remediation workflow on main. Issue
+      content is inert data, never shell syntax, canonical approval, or execution truth.
+    - >
+      The fixed coalesced remediation workflow must preserve the established dedicated
+      [self-hosted, windows, x64, aios-renew] execution boundary and persistent
+      AIOS_REPO_ROOT. It may derive approver identity only from trusted GitHub event context
+      and must not inject a new repository write credential into AIOS or the coding
+      Executor. Manual workflow_dispatch and the bounded local operator command may remain
+      fallback delivery surfaces for the same immutable intent.
+    - >
+      Issue-carrier receipts and workflow output must distinguish carrier/dispatch
+      acceptance from A3 approval persistence, canonical REMEDIATION RUN outcome,
+      verification, DELTA review, and publication. A carrier must never fabricate execution
+      or semantic success because GitHub accepted a workflow dispatch.
+    - >
+      Existing direct A3 remote approval, direct A6 wakeup, direct aios remediate,
+      Unified Human Surface semantics, Runtime verification, correction preflight,
+      semantic DELTA review, safe publication, PRIMARY transport, and all four Brain
+      authoring operations remain behaviorally compatible.
+    - >
+      README must document the steady-state one-Human-action flow and the fallback rule:
+      exact Human approval plus Executor selection is semantic authority once; a later
+      courier retry of the same immutable intent is not another approval. It must also
+      document that host safety-gate rejection before GitHub is an outer transport blocker
+      and is never bypassed or reclassified as AIOS failure.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      One authorized coalesced remediation intent for an existing current canonical
+      CODE_FIX/EVIDENCE_ONLY REMEDIATION records or idempotently reuses the exact A3
+      approval and reaches existing A6 exactly once with the same stable
+      correction_dispatch_id and explicit Executor, without requiring a second Human
+      approval action.
+  - id: AC2
+    condition: >
+      Deterministic regressions prove A3 and A6 remain distinct validated state/authority
+      boundaries: missing/stale/conflicting remediation lineage fails before coding
+      execution, approval remains exact-SHA-bound, and no Brain-authored correction can
+      self-approve without trusted Human attribution.
+  - id: AC3
+    condition: >
+      Exact duplicate delivery of the same intent is side-effect free across coalesced
+      Issue, workflow_dispatch, and local operator/fallback delivery: it preserves the
+      original approval, Executor, correction dispatch, and terminal RUN/outcome and never
+      creates another coding invocation. Any conflicting bound selector fails closed.
+  - id: AC4
+    condition: >
+      Crash/failure between successful A3 persistence and A6 terminal recording can be
+      replayed using the same immutable Human intent without new semantic approval; A6
+      existing at-most-once/crash reconciliation remains authoritative and uncertain state
+      never triggers a second REMEDIATION execution.
+  - id: AC5
+    condition: >
+      The dedicated GitHub-Issue carrier validates exact repository, authorized actor,
+      opened-event/title framing, strict versioned request shape, bounded body and selector
+      grammar before dispatching exactly one fixed coalesced self-hosted workflow; malicious
+      body strings remain inert and wrong/malformed carrier events fail before A3/A6 state
+      is touched.
+  - id: AC6
+    condition: >
+      A host-side transport block that occurs before GitHub receives an Issue leaves
+      canonical repository and local AIOS state unchanged. Repository behavior and docs
+      support re-delivery of the same immutable intent through another bounded carrier
+      without semantic re-approval, while TASK-112 introduces no mechanism intended to
+      evade the host safety gate.
+  - id: AC7
+    condition: >
+      Existing A3, A6, direct remediation, PRIMARY, authoring ingress, Runtime verification,
+      DELTA review, safe publication, and REPAIR boundaries remain compatible. TASK-111
+      remains unexecuted and must be re-synced/reviewed for staleness after TASK-112 is
+      published before any REPAIR wakeup execution begins.
+  - id: AC8
+    condition: >
+      Required focused verification and git diff --check pass, no file outside TASK-112
+      scope is modified, and RESULT contains zero unresolved items.
+
+verification:
+  required:
+    - python -m pytest tests/test_github_issue_remediation_intent.py tests/test_github_issue_remediation_intent_workflow.py tests/test_operator.py tests/test_remote_surface.py tests/test_correction_dispatch.py tests/test_remediation_wakeup.py -q
+    - git diff --check
