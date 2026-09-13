@@ -742,20 +742,26 @@ def test_historical_repair_terminal_conflict_uses_one_snapshot(
     repo, _ = make_repo(tmp_path)
     root = git(repo, "rev-parse", "HEAD")
     failed_head = commit_candidate(repo, "conflicting terminal candidate")
-    publish_failure(
-        repo,
-        tmp_path / "facts",
-        run_id="RUN-058-004",
-        candidate_sha=failed_head,
-        root_base_sha=root,
-    )
-    publish_success(
-        repo,
-        tmp_path / "facts",
-        run_id="RUN-058-004",
-        head_sha=failed_head,
-        root_base_sha=root,
-    )
+    with monkeypatch.context() as conflict_fixture:
+        conflict_fixture.setattr(
+            review_transport,
+            "publish_terminal_attention",
+            lambda *_args, **_kwargs: "PUBLISHED",
+        )
+        publish_failure(
+            repo,
+            tmp_path / "facts",
+            run_id="RUN-058-004",
+            candidate_sha=failed_head,
+            root_base_sha=root,
+        )
+        publish_success(
+            repo,
+            tmp_path / "facts",
+            run_id="RUN-058-004",
+            head_sha=failed_head,
+            root_base_sha=root,
+        )
     original_git_cmd = review_transport._git_cmd
     snapshot_calls = 0
 
@@ -947,25 +953,33 @@ def test_task_run_prefix_deterministic_derivation() -> None:
             task_run_prefix(invalid)
 
 
-def test_remote_namespace_reports_exact_terminal_conflict(tmp_path: Path) -> None:
+def test_remote_namespace_reports_exact_terminal_conflict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo, _ = make_repo(tmp_path)
     files = tmp_path / "facts"
     root = git(repo, "rev-parse", "HEAD")
     candidate = commit_candidate(repo, "successful candidate")
-    publish_failure(
-        repo,
-        files,
-        run_id="RUN-058-001",
-        candidate_sha=root,
-        root_base_sha=root,
-    )
-    publish_success(
-        repo,
-        files,
-        run_id="RUN-058-001",
-        head_sha=candidate,
-        root_base_sha=root,
-    )
+    with monkeypatch.context() as conflict_fixture:
+        conflict_fixture.setattr(
+            review_transport,
+            "publish_terminal_attention",
+            lambda *_args, **_kwargs: "PUBLISHED",
+        )
+        publish_failure(
+            repo,
+            files,
+            run_id="RUN-058-001",
+            candidate_sha=root,
+            root_base_sha=root,
+        )
+        publish_success(
+            repo,
+            files,
+            run_id="RUN-058-001",
+            head_sha=candidate,
+            root_base_sha=root,
+        )
 
     namespace = resolve_remote_run_namespace(
         repo, task_id="TASK-058", task_revision=2
