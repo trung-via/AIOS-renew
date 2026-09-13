@@ -527,29 +527,28 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
     existing_decision_sha = _resolve_ref_sha(repo, decision_ref, remote)
     if existing_decision_sha is not None:
         _fetch_if_remote(repo, remote, existing_decision_sha)
-        existing_paths = [
-            p
-            for p in _ls_tree(repo, existing_decision_sha, ".ai/reviews")
-            if p.endswith((".yaml", ".yml"))
-        ]
-        if existing_paths and len(existing_paths) == 1:
-            existing_review_bytes = _read_commit_blob(
-                repo, existing_decision_sha, existing_paths[0]
+        review_path = f".ai/reviews/{review.review_id}.yaml"
+        review_bytes = payload_str.encode("utf-8")
+        try:
+            _validate_metadata_commit(
+                repo,
+                existing_decision_sha,
+                expected_parent_sha=candidate_sha,
+                metadata_path=review_path,
+                metadata_bytes=review_bytes,
+                operation="SUBMIT_REVIEW replay",
             )
-            if existing_review_bytes is not None:
-                try:
-                    existing_rev = parse_review(existing_review_bytes.decode("utf-8"))
-                    if existing_rev == review or existing_review_bytes.strip() == payload_str.strip().encode("utf-8"):
-                        return IngressResult(
-                            operation="SUBMIT_REVIEW",
-                            status="IDEMPOTENT",
-                            canonical_destination=decision_ref,
-                            canonical_sha=existing_decision_sha,
-                            replayed=True,
-                            detail=f"identical REVIEW already canonicalized for {run_id}",
-                        )
-                except ReviewValidationError:
-                    pass
+        except AuthoringIngressError:
+            pass
+        else:
+            return IngressResult(
+                operation="SUBMIT_REVIEW",
+                status="IDEMPOTENT",
+                canonical_destination=decision_ref,
+                canonical_sha=existing_decision_sha,
+                replayed=True,
+                detail=f"identical REVIEW already canonicalized for {run_id}",
+            )
         raise AuthoringIngressError(
             f"conflicting review decision already exists on {decision_ref}"
         )
@@ -695,12 +694,11 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
     except ReviewValidationError as exc:
         raise AuthoringIngressError(f"review validation failed: {exc}") from exc
 
-    # Create metadata-only commit on decision_ref
-    blob_review = _hash_blob(repo, payload_str.encode("utf-8"))
-    review_filename = f"{review.review_id}.yaml"
-    reviews_tree = _mktree(repo, [("100644", "blob", blob_review, review_filename)])
-    ai_tree = _mktree(repo, [("040000", "tree", reviews_tree, "reviews")])
-    root_tree = _mktree(repo, [("040000", "tree", ai_tree, ".ai")])
+    review_bytes = payload_str.encode("utf-8")
+    review_path = f".ai/reviews/{review.review_id}.yaml"
+    root_tree = _tree_with_metadata(
+        repo, candidate_sha, review_path, review_bytes
+    )
 
     commit_sha = _commit_tree(
         repo,
@@ -709,7 +707,17 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
         f"review: {review.review_id} {review.verdict} {run_id}",
     )
 
-    _publish_ingress_ref(repo, remote, decision_ref, commit_sha)
+    _validate_metadata_commit(
+        repo,
+        commit_sha,
+        expected_parent_sha=candidate_sha,
+        metadata_path=review_path,
+        metadata_bytes=review_bytes,
+        operation="SUBMIT_REVIEW",
+    )
+    _publish_ingress_ref(
+        repo, remote, decision_ref, commit_sha, expect_missing=True
+    )
 
     return IngressResult(
         operation="SUBMIT_REVIEW",
@@ -808,29 +816,30 @@ def _execute_author_remediation(envelope: IngressEnvelope, repo: Path) -> Ingres
     existing_remediation_sha = _resolve_ref_sha(repo, remediation_ref, remote)
     if existing_remediation_sha is not None:
         _fetch_if_remote(repo, remote, existing_remediation_sha)
-        rem_paths = [
-            p
-            for p in _ls_tree(repo, existing_remediation_sha, ".ai/remediations")
-            if p.endswith((".yaml", ".yml"))
-        ]
-        if rem_paths and len(rem_paths) == 1:
-            existing_rem_bytes = _read_commit_blob(
-                repo, existing_remediation_sha, rem_paths[0]
+        remediation_path = (
+            f".ai/remediations/REMEDIATION-{source_run_id}-{finding_id}.yaml"
+        )
+        remediation_bytes = payload_str.encode("utf-8")
+        try:
+            _validate_metadata_commit(
+                repo,
+                existing_remediation_sha,
+                expected_parent_sha=decision_sha,
+                metadata_path=remediation_path,
+                metadata_bytes=remediation_bytes,
+                operation="AUTHOR_REMEDIATION replay",
             )
-            if existing_rem_bytes is not None:
-                try:
-                    existing_rem = parse_remediation(existing_rem_bytes.decode("utf-8"))
-                    if existing_rem == remediation or existing_rem_bytes.strip() == payload_str.strip().encode("utf-8"):
-                        return IngressResult(
-                            operation="AUTHOR_REMEDIATION",
-                            status="IDEMPOTENT",
-                            canonical_destination=remediation_ref,
-                            canonical_sha=existing_remediation_sha,
-                            replayed=True,
-                            detail=f"identical REMEDIATION already canonicalized for {source_run_id}-{finding_id}",
-                        )
-                except ReviewValidationError:
-                    pass
+        except AuthoringIngressError:
+            pass
+        else:
+            return IngressResult(
+                operation="AUTHOR_REMEDIATION",
+                status="IDEMPOTENT",
+                canonical_destination=remediation_ref,
+                canonical_sha=existing_remediation_sha,
+                replayed=True,
+                detail=f"identical REMEDIATION already canonicalized for {source_run_id}-{finding_id}",
+            )
         raise AuthoringIngressError(
             f"conflicting canonical remediation already exists on {remediation_ref}"
         )
@@ -896,33 +905,32 @@ def _execute_author_remediation(envelope: IngressEnvelope, repo: Path) -> Ingres
                     f"finding {finding_id} is already resolved, superseded, or otherwise no longer outstanding"
                 )
 
-    # Create remediation commit containing both review and remediation
-    blob_review = _hash_blob(repo, review_bytes)
-    blob_remediation = _hash_blob(repo, payload_str.encode("utf-8"))
-    review_filename = review_paths[0].split("/")[-1]
-    remediation_filename = f"REMEDIATION-{source_run_id}-{finding_id}.yaml"
-
-    reviews_tree = _mktree(repo, [("100644", "blob", blob_review, review_filename)])
-    remediations_tree = _mktree(
-        repo, [("100644", "blob", blob_remediation, remediation_filename)]
+    remediation_bytes = payload_str.encode("utf-8")
+    remediation_path = (
+        f".ai/remediations/REMEDIATION-{source_run_id}-{finding_id}.yaml"
     )
-    ai_tree = _mktree(
-        repo,
-        [
-            ("040000", "tree", remediations_tree, "remediations"),
-            ("040000", "tree", reviews_tree, "reviews"),
-        ],
+    root_tree = _tree_with_metadata(
+        repo, decision_sha, remediation_path, remediation_bytes
     )
-    root_tree = _mktree(repo, [("040000", "tree", ai_tree, ".ai")])
 
     commit_sha = _commit_tree(
         repo,
         root_tree,
-        [review.reviewed_sha],
+        [decision_sha],
         f"remediation: {source_run_id}-{finding_id}",
     )
 
-    _publish_ingress_ref(repo, remote, remediation_ref, commit_sha)
+    _validate_metadata_commit(
+        repo,
+        commit_sha,
+        expected_parent_sha=decision_sha,
+        metadata_path=remediation_path,
+        metadata_bytes=remediation_bytes,
+        operation="AUTHOR_REMEDIATION",
+    )
+    _publish_ingress_ref(
+        repo, remote, remediation_ref, commit_sha, expect_missing=True
+    )
 
     return IngressResult(
         operation="AUTHOR_REMEDIATION",
@@ -1006,23 +1014,29 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
     existing_repair_sha = _resolve_ref_sha(repo, repair_ref, remote)
     if existing_repair_sha is not None:
         _fetch_if_remote(repo, remote, existing_repair_sha)
-        existing_repair_bytes = _read_commit_blob(
-            repo, existing_repair_sha, ".ai/transport/repair.json"
-        )
-        if existing_repair_bytes is not None:
-            try:
-                existing_data = json.loads(existing_repair_bytes.decode("utf-8"))
-                if existing_data == repair_data:
-                    return IngressResult(
-                        operation="AUTHOR_REPAIR",
-                        status="IDEMPOTENT",
-                        canonical_destination=repair_ref,
-                        canonical_sha=existing_repair_sha,
-                        replayed=True,
-                        detail=f"identical REPAIR already canonicalized for {failed_run_id}",
-                    )
-            except (json.JSONDecodeError, UnicodeError):
-                pass
+        repair_json_bytes = json.dumps(
+            repair_data, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        try:
+            _validate_metadata_commit(
+                repo,
+                existing_repair_sha,
+                expected_parent_sha=failed_head_sha,
+                metadata_path=".ai/transport/repair.json",
+                metadata_bytes=repair_json_bytes,
+                operation="AUTHOR_REPAIR replay",
+            )
+        except AuthoringIngressError:
+            pass
+        else:
+            return IngressResult(
+                operation="AUTHOR_REPAIR",
+                status="IDEMPOTENT",
+                canonical_destination=repair_ref,
+                canonical_sha=existing_repair_sha,
+                replayed=True,
+                detail=f"identical REPAIR already canonicalized for {failed_run_id}",
+            )
         raise AuthoringIngressError(
             f"conflicting canonical repair already exists on {repair_ref}"
         )
@@ -1061,12 +1075,9 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
     repair_json_bytes = json.dumps(
         repair_data, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
-    blob_repair = _hash_blob(repo, repair_json_bytes)
-    transport_tree = _mktree(
-        repo, [("100644", "blob", blob_repair, "repair.json")]
+    root_tree = _tree_with_metadata(
+        repo, failed_head_sha, ".ai/transport/repair.json", repair_json_bytes
     )
-    ai_tree = _mktree(repo, [("040000", "tree", transport_tree, "transport")])
-    root_tree = _mktree(repo, [("040000", "tree", ai_tree, ".ai")])
 
     commit_sha = _commit_tree(
         repo,
@@ -1075,7 +1086,17 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
         f"repair authorization for {failed_run_id}",
     )
 
-    _publish_ingress_ref(repo, remote, repair_ref, commit_sha)
+    _validate_metadata_commit(
+        repo,
+        commit_sha,
+        expected_parent_sha=failed_head_sha,
+        metadata_path=".ai/transport/repair.json",
+        metadata_bytes=repair_json_bytes,
+        operation="AUTHOR_REPAIR",
+    )
+    _publish_ingress_ref(
+        repo, remote, repair_ref, commit_sha, expect_missing=True
+    )
 
     return IngressResult(
         operation="AUTHOR_REPAIR",
@@ -1310,6 +1331,95 @@ def _hash_blob(repo: Path, content: bytes) -> str:
         raise AuthoringIngressError(f"failed to hash blob: {exc}") from exc
 
 
+def _tree_with_metadata(
+    repo: Path,
+    predecessor_sha: str,
+    metadata_path: str,
+    metadata_bytes: bytes,
+) -> str:
+    """Return the predecessor tree with exactly one new metadata blob added."""
+
+    if _read_commit_blob(repo, predecessor_sha, metadata_path) is not None:
+        raise AuthoringIngressError(
+            f"metadata destination already exists on predecessor: {metadata_path}"
+        )
+
+    blob_sha = _hash_blob(repo, metadata_bytes)
+    with tempfile.TemporaryDirectory(prefix="aios-ingress-index-") as temp_dir:
+        index_path = Path(temp_dir) / "index"
+        env = {"GIT_INDEX_FILE": str(index_path)}
+        _git_env(repo, env, "read-tree", predecessor_sha)
+        _git_env(
+            repo,
+            env,
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"100644,{blob_sha},{metadata_path}",
+        )
+        return _git_env(repo, env, "write-tree")
+
+
+def _validate_metadata_commit(
+    repo: Path,
+    commit_sha: str,
+    *,
+    expected_parent_sha: str,
+    metadata_path: str,
+    metadata_bytes: bytes,
+    operation: str,
+) -> None:
+    """Fail closed unless a commit is the exact authorized metadata mutation."""
+
+    code, kind, _ = _git(repo, "cat-file", "-t", commit_sha, allow_fail=True)
+    if code != 0 or kind != "commit":
+        raise AuthoringIngressError(
+            f"{operation} structural validation failed: destination is not a commit"
+        )
+
+    _, parent_output, _ = _git(repo, "show", "-s", "--format=%P", commit_sha)
+    parents = parent_output.split()
+    if parents != [expected_parent_sha]:
+        raise AuthoringIngressError(
+            f"{operation} structural validation failed: expected sole parent "
+            f"{expected_parent_sha}, got {parents}"
+        )
+
+    _, changed_output, _ = _git(
+        repo,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-only",
+        "-r",
+        expected_parent_sha,
+        commit_sha,
+        "--",
+    )
+    changed_paths = [line for line in changed_output.splitlines() if line]
+    if changed_paths != [metadata_path]:
+        raise AuthoringIngressError(
+            f"{operation} structural validation failed: expected changed paths "
+            f"{[metadata_path]}, got {changed_paths}"
+        )
+
+    _, entry_output, _ = _git(
+        repo, "ls-tree", commit_sha, "--", metadata_path
+    )
+    entry_prefix = "100644 blob "
+    if not entry_output.startswith(entry_prefix) or not entry_output.endswith(
+        f"\t{metadata_path}"
+    ):
+        raise AuthoringIngressError(
+            f"{operation} structural validation failed: metadata is not an exact 100644 blob"
+        )
+
+    actual_bytes = _read_commit_blob(repo, commit_sha, metadata_path)
+    if actual_bytes != metadata_bytes:
+        raise AuthoringIngressError(
+            f"{operation} structural validation failed: metadata content mismatch"
+        )
+
+
 def _mktree(repo: Path, entries: Sequence[tuple[str, str, str, str]]) -> str:
     # entries: (mode, kind, sha, name)
     lines = "".join(f"{mode} {kind} {sha}\t{name}\n" for mode, kind, sha, name in sorted(entries, key=lambda x: x[3]))
@@ -1398,10 +1508,25 @@ def _publish_ingress_ref(
     ref: str,
     new_sha: str,
     expected_old_sha: str | None = None,
+    *,
+    expect_missing: bool = False,
 ) -> None:
+    if expect_missing and expected_old_sha is not None:
+        raise AuthoringIngressError(
+            "ingress ref publication cannot expect both a missing and existing ref"
+        )
+
     # 1. Update local ref
-    if expected_old_sha is not None:
-        code, _, err = _git(repo, "update-ref", ref, new_sha, expected_old_sha, allow_fail=True)
+    local_expected_sha = "0" * 40 if expect_missing else expected_old_sha
+    if local_expected_sha is not None:
+        code, _, err = _git(
+            repo,
+            "update-ref",
+            ref,
+            new_sha,
+            local_expected_sha,
+            allow_fail=True,
+        )
         if code != 0:
             raise AuthoringIngressError(f"optimistic concurrency failure updating {ref}: {err}")
     else:
@@ -1410,12 +1535,16 @@ def _publish_ingress_ref(
     # 2. Push to remote if configured
     if remote is not None:
         args = ["push", "--porcelain", "--no-tags"]
-        if expected_old_sha is not None:
+        if expect_missing:
+            args.append(f"--force-with-lease={ref}:")
+        elif expected_old_sha is not None:
             args.append(f"--force-with-lease={ref}:{expected_old_sha}")
         args.extend([remote, f"{new_sha}:{ref}"])
         code, _, err = _git(repo, *args, allow_fail=True)
         if code != 0:
-            if expected_old_sha is not None:
+            if expect_missing:
+                _git(repo, "update-ref", "-d", ref, new_sha, allow_fail=True)
+            elif expected_old_sha is not None:
                 _git(repo, "update-ref", ref, expected_old_sha, allow_fail=True)
             raise AuthoringIngressError(f"failed to push ingress ref {ref} to {remote}: {err}")
 

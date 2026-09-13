@@ -30,6 +30,34 @@ def git(repo: Path, *args: str, check: bool = True) -> str:
     return proc.stdout.strip()
 
 
+def assert_exact_metadata_delta(
+    repo: Path,
+    commit_sha: str,
+    parent_sha: str,
+    metadata_path: str,
+    metadata_bytes: bytes,
+) -> None:
+    assert git(repo, "show", "-s", "--format=%P", commit_sha).split() == [parent_sha]
+    assert git(
+        repo,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-only",
+        "-r",
+        parent_sha,
+        commit_sha,
+    ).splitlines() == [metadata_path]
+    entry = git(repo, "ls-tree", commit_sha, "--", metadata_path)
+    assert entry.startswith("100644 blob ")
+    assert entry.endswith(f"\t{metadata_path}")
+    blob = subprocess.run(
+        ("git", "-C", str(repo), "show", f"{commit_sha}:{metadata_path}"),
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert blob == metadata_bytes
+
+
 TASK_105_SOURCE = """\
 task_id: TASK-105
 revision: 1
@@ -113,6 +141,9 @@ def setup_candidate_lineage(
     task_dir = repo / ".ai" / "tasks"
     task_dir.mkdir(parents=True, exist_ok=True)
     (task_dir / f"{task_id}.yaml").write_text(task_source, encoding="utf-8")
+    workflow = repo / ".github" / "workflows" / "aios-auto-publish.yml"
+    workflow.parent.mkdir(parents=True, exist_ok=True)
+    workflow.write_text("name: AIOS auto publish\n", encoding="utf-8")
     (repo / "README.md").write_text("base content\n", encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "--quiet", "-m", f"add {task_id}")
@@ -498,6 +529,22 @@ findings: []
     res = execute_ingress(envelope, repo=repo)
     assert res.status == "CANONICALIZED"
     assert res.canonical_destination == f"refs/heads/aios/review-decision/{run_id}"
+    assert_exact_metadata_delta(
+        repo,
+        res.canonical_sha,
+        candidate_sha,
+        ".ai/reviews/REVIEW-105-001.yaml",
+        pass_review.encode("utf-8"),
+    )
+    assert git(
+        repo,
+        "rev-parse",
+        f"{res.canonical_sha}:.github/workflows/aios-auto-publish.yml",
+    ) == git(
+        repo,
+        "rev-parse",
+        f"{candidate_sha}:.github/workflows/aios-auto-publish.yml",
+    )
 
     # AC3: Prove review metadata cannot become implementation-main content
     main_after = git(repo, "rev-parse", "refs/heads/main")
@@ -557,6 +604,22 @@ findings:
     )
     res = execute_ingress(envelope, repo=repo)
     assert res.status == "CANONICALIZED"
+    assert_exact_metadata_delta(
+        repo,
+        res.canonical_sha,
+        candidate_sha,
+        ".ai/reviews/REVIEW-105-001.yaml",
+        cr_review.encode("utf-8"),
+    )
+    assert git(
+        repo,
+        "rev-parse",
+        f"{res.canonical_sha}:.github/workflows/aios-auto-publish.yml",
+    ) == git(
+        repo,
+        "rev-parse",
+        f"{candidate_sha}:.github/workflows/aios-auto-publish.yml",
+    )
 
     # AC4: Observable through existing Unified State path without creating RUN or invoking Executor
     runs_dir = repo / ".git" / "aios" / "runs"
@@ -566,6 +629,26 @@ findings:
     assert obs.lifecycle_state == "CORRECTION"
     assert obs.next_action == "AUTHOR_REMEDIATION"
     assert obs.finding_id == "F1"
+
+    # A same-payload replay cannot certify or replace a malformed destination.
+    decision_ref = f"refs/heads/aios/review-decision/{run_id}"
+    decision_tree = git(repo, "rev-parse", f"{res.canonical_sha}^{{tree}}")
+    malformed_sha = git(
+        repo,
+        "commit-tree",
+        decision_tree,
+        "-p",
+        lineage["main_sha"],
+        "-m",
+        "malformed review decision",
+    )
+    git(repo, "push", "--quiet", "--force", "origin", f"{malformed_sha}:{decision_ref}")
+    with pytest.raises(AuthoringIngressError, match="conflicting review decision"):
+        execute_ingress(envelope, repo=repo)
+    assert git(repo, "ls-remote", "--refs", "origin", decision_ref).split()[0] == malformed_sha
+    assert git(
+        repo, "show", f"{malformed_sha}:.ai/reviews/REVIEW-105-001.yaml"
+    )
 
 
 def test_submit_review_rejects_run_identity_and_task_revision_mismatches(tmp_path):
@@ -941,7 +1024,7 @@ findings:
     issue: Another defect found.
     expected: Fix another defect.
 """
-    execute_ingress(
+    review_result = execute_ingress(
         IngressEnvelope(
             format="AIOS_INGRESS_ENVELOPE",
             version=1,
@@ -976,6 +1059,22 @@ constraints:
     result = execute_ingress(rem_env, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == f"refs/heads/aios/remediation/{run_id}-F1"
+    assert_exact_metadata_delta(
+        repo,
+        result.canonical_sha,
+        review_result.canonical_sha,
+        f".ai/remediations/REMEDIATION-{run_id}-F1.yaml",
+        remediation_payload.encode("utf-8"),
+    )
+    assert git(
+        repo,
+        "rev-parse",
+        f"{result.canonical_sha}:.ai/reviews/REVIEW-105-001.yaml",
+    ) == git(
+        repo,
+        "rev-parse",
+        f"{review_result.canonical_sha}:.ai/reviews/REVIEW-105-001.yaml",
+    )
 
     # Idempotent replay
     replay = execute_ingress(rem_env, repo=repo)
@@ -1030,6 +1129,28 @@ constraints:
     )
     with pytest.raises(AuthoringIngressError, match="widens TASK.scope.modify"):
         execute_ingress(wide_env, repo=repo)
+
+    # Malformed historical content remains readable, but replay fails without overwrite.
+    remediation_ref = f"refs/heads/aios/remediation/{run_id}-F1"
+    remediation_tree = git(repo, "rev-parse", f"{result.canonical_sha}^{{tree}}")
+    malformed_sha = git(
+        repo,
+        "commit-tree",
+        remediation_tree,
+        "-p",
+        candidate_sha,
+        "-m",
+        "malformed remediation",
+    )
+    git(repo, "push", "--quiet", "--force", "origin", f"{malformed_sha}:{remediation_ref}")
+    with pytest.raises(AuthoringIngressError, match="conflicting canonical remediation"):
+        execute_ingress(rem_env, repo=repo)
+    assert git(repo, "ls-remote", "--refs", "origin", remediation_ref).split()[0] == malformed_sha
+    assert git(
+        repo,
+        "show",
+        f"{malformed_sha}:.ai/remediations/REMEDIATION-{run_id}-F1.yaml",
+    )
 
 
 def test_author_remediation_rejects_already_resolved_finding(tmp_path):
@@ -1185,6 +1306,15 @@ def test_author_repair_success_and_rejections(tmp_path):
     result = execute_ingress(envelope, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == f"refs/heads/aios/repair/{failed_run_id}"
+    assert_exact_metadata_delta(
+        repo,
+        result.canonical_sha,
+        failed_head_sha,
+        ".ai/transport/repair.json",
+        json.dumps(
+            repair_payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8"),
+    )
 
     # Idempotent replay
     replay = execute_ingress(envelope, repo=repo)
@@ -1202,6 +1332,24 @@ def test_author_repair_success_and_rejections(tmp_path):
     )
     with pytest.raises(AuthoringIngressError, match="expected failed head SHA mismatch"):
         execute_ingress(stale_env, repo=repo)
+
+    # A malformed existing repair remains readable and cannot be certified by replay.
+    repair_ref = f"refs/heads/aios/repair/{failed_run_id}"
+    repair_tree = git(repo, "rev-parse", f"{result.canonical_sha}^{{tree}}")
+    malformed_sha = git(
+        repo,
+        "commit-tree",
+        repair_tree,
+        "-p",
+        base_sha,
+        "-m",
+        "malformed repair",
+    )
+    git(repo, "push", "--quiet", "--force", "origin", f"{malformed_sha}:{repair_ref}")
+    with pytest.raises(AuthoringIngressError, match="conflicting canonical repair"):
+        execute_ingress(envelope, repo=repo)
+    assert git(repo, "ls-remote", "--refs", "origin", repair_ref).split()[0] == malformed_sha
+    assert git(repo, "show", f"{malformed_sha}:.ai/transport/repair.json")
 
 
 # ===========================================================================
