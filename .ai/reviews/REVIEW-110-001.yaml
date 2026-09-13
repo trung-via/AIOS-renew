@@ -1,0 +1,19 @@
+review_id: REVIEW-110-001
+reviewed_sha: cfe3390b639676517227f57572aa2f9eedd32d25
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings:
+  - id: F1
+    basis: AC3
+    action: CODE_FIX
+    location: .github/workflows/aios-brain-ingress.yml (dispatch/receipt/failure handling; regression coverage in tests/test_github_issue_ingress_workflow.py)
+    issue: The publication dispatch step uses continue-on-error, but the workflow's receipt, Issue close decision, and terminal failure logic only observe the ingress step. If createWorkflowDispatch is rejected or fails, the job can still finish successfully, close the Issue, and expose only an ingress PASS receipt even though the safe Publisher was never woken. Publication transport acceptance is therefore not reliably observable or distinguishable from ingress acceptance.
+    expected: A failed publication wakeup must fail closed and remain observable. The workflow must distinguish successful semantic ingress from GitHub acceptance of the bounded Publisher dispatch, must not close/report the carrier as fully successful when that dispatch was not accepted, and must still avoid fabricating publication success or verdict.
