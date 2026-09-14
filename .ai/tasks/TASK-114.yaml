@@ -1,0 +1,227 @@
+task_id: TASK-114
+revision: 1
+
+goal: >
+  Reconcile AIOS-renew's current downstream-adoption policy after explicit Human
+  supersession of the TASK-109-era capability-withholding interpretation. Preserve exact
+  downstream pin isolation and explicit repository-owned activation, while establishing
+  that standard AIOS outer control-plane capabilities are portable downstream by design
+  and may be adopted as a coherent reviewed control-plane binding/profile rather than
+  being classified as inapplicable merely because repository-specific configuration is
+  required. Canonicalize the Human-approved post-closure portability priority and hand
+  control back to the downstream repository without changing frozen Kernel semantics or
+  implementing any carrier.
+
+problem: >
+  TASK-107 through TASK-113 created bounded authoring, PRIMARY wakeup,
+  review-to-publication continuation, remediation-intent, REPAIR wakeup, and
+  terminal-attention capabilities around the frozen kernel. TASK-109 correctly preserved
+  exact-pin isolation and prohibited silent cross-repository mutation, but its current
+  roadmap/Project-Contract wording was subsequently interpreted downstream as a coarse
+  NOT_EXPOSED / not-applicable policy for those standard capabilities and for earlier
+  A1/A2/A3/A6 automation. Python Agent TASK-203 revision 2 has now been semantically
+  reviewed PASS and published at
+  a17e5940894e8d02191df0a04a7e88afb36c56d3, replacing that coarse classification
+  with separate package-capability availability and repository-binding activation
+  dimensions and making AIOS downstream-adoption policy reconciliation the canonical
+  next milestone. The Human has explicitly directed AIOS-renew to remove the withholding
+  interpretation while keeping downstream isolation and authority separation. Current
+  upstream documentation still states stale Python Agent roadmap commitments and can be
+  read as if repository-specific capability automatically means downstream exclusion.
+  That current policy must be reconciled prospectively without rewriting historical
+  TASK-109 or implementing downstream automation from upstream.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    bb04e152b8c5a1800d9aaeb9b302e0131c064b7e. Control-plane Closure remains
+    historically COMPLETE with zero NEXT items.
+  - >
+    Frozen Kernel v0.1 remains FROZEN. This task changes no TASK/RUN/RESULT/EVIDENCE/
+    REVIEW/REMEDIATION/REPAIR semantics, Runtime authority, Executor behavior, semantic
+    review, or publication authority.
+  - >
+    Historical TASK-109 revision 2 remains immutable evidence of the earlier migration
+    decision. Its statement that TASK-201 owned downstream classification accurately
+    describes that historical migration and is not rewritten in place.
+  - >
+    Canonical Python Agent main observed after TASK-203 revision-2 publication is
+    a17e5940894e8d02191df0a04a7e88afb36c56d3. Its current adoption state separates
+    package capability availability from repository binding activation, keeps exact AIOS
+    pin f0237a3b98985ce6ebbaf41af1e06fa3eb4e998e, and marks A1/A2/A3/A6 plus
+    TASK-107/TASK-108/TASK-110/TASK-111/TASK-112/TASK-113 repository bindings as
+    REQUIRED_PENDING rather than semantically inapplicable.
+  - >
+    TASK-107 authoring ingress, TASK-108 PRIMARY wakeup, TASK-110 publication
+    continuation, TASK-111 REPAIR wakeup, TASK-112 remediation intent, and TASK-113
+    terminal attention are intentionally separate carrier/authority families. Portability
+    does not merge them and does not create a generic lifecycle router.
+  - >
+    Package installation or an exact Git pin does not itself materialize or activate
+    repository-level GitHub workflows, actor allowlists, runner labels/paths, workflow
+    permissions, or repository identity. Those bindings remain explicit downstream-owned
+    configuration and require reviewed downstream mutation.
+  - >
+    Human intent now explicitly prioritizes downstream control-plane portability/adoption
+    before any optional A4/A5/A7/A9/A10 work or new kernel development.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-ROADMAP.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-107.yaml
+    - .ai/tasks/TASK-108.yaml
+    - .ai/tasks/TASK-109.yaml
+    - .ai/tasks/TASK-110.yaml
+    - .ai/tasks/TASK-111.yaml
+    - .ai/tasks/TASK-112.yaml
+    - .ai/tasks/TASK-113.yaml
+
+  modify:
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-ROADMAP.md
+    - .ai/roadmap-state.yaml
+
+non_goals:
+  - >
+    Modify, revise, delete, or reinterpret historical TASK-109 or any historical
+    TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR artifact.
+  - >
+    Mutate trung-via/python_complete_agent or any other downstream repository, dependency
+    pin, adoption registry, Project Contract, source, test, workflow, runner, or carrier
+    policy from this upstream task.
+  - >
+    Add, copy, install, activate, or modify any GitHub Issue carrier, self-hosted wakeup,
+    approval/status workflow, publication continuation, remediation wakeup, REPAIR wakeup,
+    terminal-attention workflow, runner binding, or control-plane implementation.
+  - >
+    Make mutable AIOS-renew main downstream runtime authority, remove exact-pin migration
+    requirements, or let a package update silently grant GitHub permissions or mutate
+    downstream repository automation.
+  - >
+    Collapse AUTHOR_TASK/SUBMIT_REVIEW, PRIMARY, REMEDIATION, REPAIR, terminal-attention,
+    Reviewer, Runtime, or Publisher authority into a generic operation router/profile
+    authority.
+  - >
+    Promote A4, A5, A7, A9, A10, H-Series, planner/router/model scoring, autonomous retry,
+    autonomous correction, multiple reviewers, broker/queue/database, or new kernel
+    capability.
+  - >
+    Claim a specific downstream binding is active merely because the compatible AIOS
+    implementation exists in a reviewed source revision.
+  - >
+    Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve exact downstream isolation: every downstream repository's declared exact
+      AIOS dependency remains its runtime/package authority until a separate explicit
+      reviewed downstream migration changes it. Mutable upstream main never silently
+      retargets a downstream project.
+    - >
+      Replace current policy wording that can equate repository-specific configuration
+      with downstream inapplicability. Current governance/roadmap must state that standard
+      AIOS control-plane capabilities are portable downstream by design, while repository
+      activation remains explicit, reviewed, downstream-owned binding.
+    - >
+      Distinguish capability portability from silent activation. Exact pin/package
+      availability alone does not create repository workflows or permissions; repo-local
+      identity, authorized actors, runner labels/path, workflow permissions, and other
+      binding values remain explicit downstream configuration.
+    - >
+      Permit coherent downstream adoption of the standard control-plane dependency graph
+      without requiring policy to classify each carrier as semantically optional or
+      inapplicable. A downstream migration/adoption task may bind multiple compatible
+      standard surfaces together when its contract and evidence cover the complete graph.
+    - >
+      Preserve authority separation across the portable graph. Brain authoring ingress,
+      PRIMARY wakeup/A1/A2, A3/A6 remediation, TASK-110 publication continuation,
+      TASK-111 REPAIR, TASK-113 attention, Runtime verification, semantic Reviewer, and
+      Publisher remain distinct authorities even when adopted through one downstream
+      portability/profile contract. No generic lifecycle operation selector or new
+      semantic authority is created.
+    - >
+      Historical TASK-109 remains immutable and may continue to describe what was not
+      automatically activated during TASK-201. Current docs must clearly distinguish that
+      historical fact from present prospective portability policy.
+    - >
+      Remove stale cross-project statements that assert Python Agent
+      CHATGPT_PROJECT_CONTRACT_RECONCILIATION remains its active commitment. Upstream
+      durable governance must require a fresh downstream BRAIN SYNC instead of embedding a
+      volatile downstream roadmap status.
+    - >
+      Preserve the completed Control-plane Closure history and its exact provenance.
+      Do not reopen or relabel historical completion and do not promote optional
+      A4/A5/A7/A9/A10 milestones.
+    - >
+      Reconcile .ai/roadmap-state.yaml only as Human/Brain planning state. Keep the
+      historical control-plane-closure active track COMPLETE with zero NEXT items, and add
+      one explicit post-closure Human priority record for downstream-control-plane
+      portability policy bound to TASK-114 with status AUTHORIZED. AUTHORIZED is intent,
+      not an implementation-completion claim.
+    - >
+      Update completion_handoff so, after TASK-114 receives semantic PASS and reviewed
+      source publication, upstream work hands back to a fresh BRAIN SYNC of the downstream
+      repository and follows that repository's current canonical roadmap/adoption state.
+      Do not copy a downstream NEXT identifier into AIOS-renew as durable authority.
+    - >
+      The delta is governance/planning only and confined to the three authorized files.
+      No Python source, tests, workflows, carrier policy, frozen artifact, or downstream
+      file may change.
+    - >
+      Verification must be deterministic, offline, non-interactive, and must not depend on
+      GitHub/network, downstream repository access, wall-clock, model/provider, runner, or
+      mutable external state.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      docs/CHATGPT_PROJECT_CONTRACT.md preserves exact-pin downstream isolation while
+      defining standard AIOS outer control-plane capability as portable downstream through
+      explicit reviewed repository binding rather than as automatically inapplicable.
+  - id: AC2
+    condition: >
+      Current policy explicitly separates portable capability from activation: package/pin
+      availability does not silently create repository workflows, permissions, actor
+      allowlists, runner bindings, or downstream mutation authority.
+  - id: AC3
+    condition: >
+      Current policy preserves distinct AUTHORING, PRIMARY, REMEDIATION, REPAIR,
+      ATTENTION, Runtime/Reviewer, and Publisher authorities and permits coherent reviewed
+      downstream adoption without introducing a generic lifecycle router or merged
+      authority.
+  - id: AC4
+    condition: >
+      docs/AIOS-ROADMAP.md records the post-closure Human portability direction, preserves
+      Control-plane Closure as historically complete, distinguishes TASK-109's historical
+      non-activation fact from current policy, and does not promote A4/A5/A7/A9/A10.
+  - id: AC5
+    condition: >
+      .ai/roadmap-state.yaml preserves control-plane-closure COMPLETE with zero NEXT items,
+      records downstream-control-plane-portability-policy as an AUTHORIZED post-closure
+      Human priority bound to TASK-114, and requires fresh downstream BRAIN SYNC after
+      reviewed publication without copying the downstream roadmap pointer upstream.
+  - id: AC6
+    condition: >
+      Stale durable claims about Python Agent's prior
+      CHATGPT_PROJECT_CONTRACT_RECONCILIATION priority are removed from current upstream
+      governance/roadmap state and replaced by fresh-downstream-sync requirements.
+  - id: AC7
+    condition: >
+      Historical TASK-109 and frozen kernel semantics remain unchanged, all modifications
+      stay within the three authorized planning/governance files, deterministic
+      verification and git diff --check pass, and RESULT contains zero unresolved items.
+
+verification:
+  required:
+    - >-
+      python -c "from pathlib import Path; import yaml; d=yaml.safe_load(Path('.ai/roadmap-state.yaml').read_text(encoding='utf-8')); assert d['active_track']=='control-plane-closure'; assert d['active_track_status']=='COMPLETE'; assert sum(x.get('status')=='NEXT' for x in d['sequence'])==0; p=d['post_closure_human_priority']; assert p['id']=='downstream-control-plane-portability-policy'; assert p['status']=='AUTHORIZED'; assert p['task_id']=='TASK-114'; c=Path('docs/CHATGPT_PROJECT_CONTRACT.md').read_text(encoding='utf-8'); r=Path('docs/AIOS-ROADMAP.md').read_text(encoding='utf-8'); assert 'portable downstream' in c.lower(); assert 'explicit' in c.lower() and 'binding' in c.lower(); assert 'CHATGPT_PROJECT_CONTRACT_RECONCILIATION remain active downstream commitments' not in c; assert 'downstream-control-plane-portability-policy' in r"
+    - git diff --check
