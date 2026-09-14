@@ -185,8 +185,8 @@ Human/Brain reconciliation; it must not silently retarget the downstream project
 TASK-109's statement that the migration did not automatically activate AIOS-renew
 repository-specific outer automation records the bounded result of that historical
 migration. It does not make those standard control-plane capabilities prospectively
-inapplicable downstream. Standard AIOS outer control-plane capability is portable
-downstream by design when a downstream repository adopts it through an explicit,
+inapplicable downstream. Standard AIOS outer control-plane capability is portable downstream
+by design when a downstream repository adopts it through an explicit,
 reviewed, repository-owned binding.
 
 Capability portability and repository activation are separate. Availability in an
