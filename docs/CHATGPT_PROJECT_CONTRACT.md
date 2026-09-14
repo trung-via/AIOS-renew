@@ -182,12 +182,35 @@ AIOS-renew `main`—is the downstream runtime authority until another explicit,
 reviewed downstream migration changes it. A later upstream movement requires fresh
 Human/Brain reconciliation; it must not silently retarget the downstream project.
 
-The migration does not automatically port or activate AIOS-renew repository-specific
-outer automation in Python Agent. Carrier, wakeup, terminal-attention,
-remediation-intent, and similar repository-specific adoption remains explicit and
-downstream-owned. Python Agent Governance Foundation and
-`CHATGPT_PROJECT_CONTRACT_RECONCILIATION` remain active downstream commitments; this
-upstream reconciliation neither completes nor supersedes them.
+TASK-109's statement that the migration did not automatically activate AIOS-renew
+repository-specific outer automation records the bounded result of that historical
+migration. It does not make those standard control-plane capabilities prospectively
+inapplicable downstream. Standard AIOS outer control-plane capability is portable
+downstream by design when a downstream repository adopts it through an explicit,
+reviewed, repository-owned binding.
+
+Capability portability and repository activation are separate. Availability in an
+installed package or at an exact Git pin does not silently create repository
+workflows, workflow permissions, repository identity, authorized-actor allowlists,
+runner labels or paths, carrier configuration, or downstream mutation authority.
+Those values and permissions remain explicit downstream configuration, and activating
+them requires a reviewed downstream repository change. Exact-pin isolation continues
+to apply before, during, and after such adoption.
+
+A reviewed downstream adoption may bind multiple compatible standard control-plane
+surfaces as one coherent portability/profile contract when that contract and its
+evidence cover the complete dependency graph. The profile is not a generic lifecycle
+router and owns no new semantic authority. AUTHORING through TASK-107 Brain ingress,
+PRIMARY through TASK-108 wakeup and A1/A2 dispatch, REMEDIATION through A3/A6 approval
+and delivery plus TASK-112 intent, TASK-110 publication continuation, REPAIR through
+TASK-111 wakeup, ATTENTION through TASK-113 terminal notification, Runtime
+verification, semantic Reviewer decisions, and Publisher authority remain distinct
+even when their repository bindings are adopted together.
+
+Do not preserve a previously observed downstream roadmap commitment as current
+upstream governance. After reviewed publication of an upstream portability-policy
+change, perform a fresh downstream BRAIN SYNC and follow that repository's then-current
+canonical roadmap and adoption state.
 
 ## 11. Task Design Audit
 

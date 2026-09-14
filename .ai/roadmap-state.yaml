@@ -1,6 +1,7 @@
 version: 1
 active_track: control-plane-closure
 active_track_status: COMPLETE
+next_items: []
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -109,16 +110,39 @@ sequence:
       SYNC proved that the sole active AIOS dependency pin equals the immutable SHA
       above. This records bounded cross-repository provenance; it does not make
       mutable AIOS-renew main downstream authority or automatically activate
-      AIOS-renew repository-specific outer automation in Python Agent.
+      AIOS-renew repository-specific outer automation in Python Agent. That
+      non-activation statement is a historical fact about the TASK-201 migration,
+      not a current prospective classification of standard AIOS control-plane
+      capability as inapplicable downstream.
+post_closure_human_priorities:
+  - id: downstream-control-plane-portability-policy
+    status: AUTHORIZED
+    bound_task:
+      task_id: TASK-114
+      task_revision: 1
+    status_meaning: >-
+      AUTHORIZED records explicit Human planning intent. It does not claim
+      implementation completion, semantic PASS, reviewed publication, downstream
+      binding activation, or engineering-state advancement.
+    policy: >-
+      Standard AIOS outer control-plane capability is portable downstream through an
+      explicit reviewed downstream-owned repository binding. Package or exact-pin
+      availability does not silently create workflows, permissions, repository
+      identity, actor allowlists, runner labels or paths, carrier bindings, or
+      mutation authority. A coherent adoption contract may cover compatible standard
+      surfaces together while TASK-107 AUTHORING, TASK-108 PRIMARY and A1/A2
+      dispatch, A3/A6 and TASK-112 REMEDIATION, TASK-110 publication continuation,
+      TASK-111 REPAIR, TASK-113 ATTENTION, Runtime, Reviewer, and Publisher
+      authorities remain distinct; it creates no generic lifecycle router or new
+      semantic authority.
 completion_handoff: >-
-  Control-plane Closure has no NEXT item. Before following Python Agent's own
-  canonical priority, perform a fresh downstream BRAIN SYNC of
-  trung-via/python_complete_agent current main, its exact AIOS pin, roadmap and
-  adoption state, governance, and relevant immutable TASK, RUN, RESULT, FAILURE,
-  REVIEW, REMEDIATION, and REPAIR lineage. Do not copy a downstream NEXT identifier
-  into this upstream bookmark as durable authority. Python Agent Governance
-  Foundation and CHATGPT_PROJECT_CONTRACT_RECONCILIATION remain downstream-owned;
-  this migration neither completes nor supersedes them.
+  Control-plane Closure remains COMPLETE with no NEXT item. After TASK-114 receives
+  semantic PASS and its reviewed source is published, perform a fresh downstream
+  BRAIN SYNC of trung-via/python_complete_agent current main, exact AIOS pin,
+  roadmap and adoption state, governance, and relevant immutable TASK, RUN, RESULT,
+  FAILURE, REVIEW, REMEDIATION, and REPAIR lineage. Follow that repository's then-
+  current canonical authority; do not preserve a previously observed downstream
+  commitment or copy a downstream NEXT identifier into this upstream bookmark.
 parallel_work:
   - id: approved-remediation-wakeup
     milestone: A6

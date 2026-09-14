@@ -17,6 +17,31 @@ AIOS-renew must remain a small governed engineering execution kernel. It owns ca
 
 Do not build AIOS-native replacements for capabilities already provided appropriately by Codex or Antigravity, including generic worktree management, subagent orchestration, skills, hooks, MCP, sandbox engines, browser agents, agent planners, model routers, or agent-swarm infrastructure.
 
+## Post-Closure Human Priority — Downstream Control-plane Portability Policy
+
+The Human has authorized `downstream-control-plane-portability-policy`, bound to
+TASK-114 revision 1, as the post-closure planning priority. `AUTHORIZED` records Human
+intent; it is not an implementation-completion, semantic-PASS, or publication claim.
+This priority does not reopen the completed Control-plane Closure track and does not
+promote A4, A5, A7, A9, A10, H-Series, or new kernel development.
+
+Standard AIOS outer control-plane capabilities are portable downstream by design.
+Repository-specific configuration is an activation boundary, not a reason to classify
+the capability as semantically inapplicable. A downstream repository may adopt a
+coherent reviewed control-plane binding/profile whose contract and evidence cover the
+complete compatible dependency graph.
+
+Portability never bypasses exact-pin isolation or silently activates a repository.
+Package or exact-pin availability alone creates no workflow, permission, repository
+identity, actor allowlist, runner label or path, carrier binding, or downstream mutation
+authority. Activation remains an explicit, reviewed, downstream-owned repository
+change. AUTHORING through TASK-107 Brain ingress, PRIMARY through TASK-108 wakeup and
+A1/A2 dispatch, REMEDIATION through A3/A6 approval and delivery plus TASK-112 intent,
+TASK-110 publication continuation, REPAIR through TASK-111 wakeup, ATTENTION through
+TASK-113 terminal notification, Runtime verification, semantic Reviewer decisions,
+and Publisher authority remain distinct. A portability profile neither merges them
+nor creates a generic lifecycle router or new semantic authority.
+
 ## Completed Sequential Priority — Control-plane Closure
 
 The current machine-readable sequencing bookmark is [`.ai/roadmap-state.yaml`](../.ai/roadmap-state.yaml). It binds `control-plane-closure` as the active track with this ordered sequence:
@@ -29,9 +54,9 @@ The current machine-readable sequencing bookmark is [`.ai/roadmap-state.yaml`](.
 
 Control-plane Closure is `COMPLETE` and has zero `NEXT` items. Completion does not promote A4, A5, A7, A9, A10, or any other optional or separately gated milestone merely to keep an upstream `NEXT` item. An explicit current Human priority change must be canonicalized before later generic continuation relies on it.
 
-Downstream Adoption required an explicit reviewed Python Agent migration from its prior exact pin to `f0237a3b98985ce6ebbaf41af1e06fa3eb4e998e`; the presence of capabilities on mutable AIOS-renew `main` was never sufficient. The adopted exact pin remains the downstream runtime authority until another explicit downstream migration changes it. AIOS-renew repository-specific outer automation—including its GitHub Issue carriers, self-hosted wakeups, terminal-attention workflow, and remediation-intent workflow—is not automatically active in Python Agent merely because TASK-106 through TASK-113 are available at that pin. TASK-201 owns the downstream adoption classification.
+Downstream Adoption required an explicit reviewed Python Agent migration from its prior exact pin to `f0237a3b98985ce6ebbaf41af1e06fa3eb4e998e`; the presence of capabilities on mutable AIOS-renew `main` was never sufficient. The adopted exact pin remains the downstream runtime authority until another explicit downstream migration changes it. TASK-109's statement that AIOS-renew repository-specific outer automation was not automatically activated, and that TASK-201 owned the classification for that migration, remains an accurate historical fact. It does not make standard AIOS control-plane capability prospectively inapplicable: current policy separates portable package capability from explicit, reviewed, downstream-owned repository binding and activation.
 
-The completed-track handoff does not copy Python Agent's roadmap pointer into this upstream roadmap. Before following that repository's own canonical priority, perform a fresh downstream BRAIN SYNC of its current main, exact AIOS pin, roadmap and adoption state, governance, and relevant immutable lineage. Python Agent Governance Foundation and `CHATGPT_PROJECT_CONTRACT_RECONCILIATION` remain downstream-owned and are neither completed nor superseded by this upstream reconciliation.
+The completed-track handoff does not copy Python Agent's roadmap pointer or a previously observed downstream commitment into this upstream roadmap. After TASK-114 receives semantic PASS and its reviewed source is published, perform a fresh downstream BRAIN SYNC of current Python Agent main, exact AIOS pin, roadmap and adoption state, governance, and relevant immutable lineage, then follow that repository's current canonical authority.
 
 This bookmark is Human/Brain planning state only. Exact canonical Git state and immutable TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR lineage remain the sole engineering-state truth. A `DONE` item requires an exact supporting TASK and published SHA; the bookmark neither proves implementation success nor makes a TASK or RUN complete, and it is never advanced automatically by execution, review, or publication.
 
@@ -228,3 +253,8 @@ DONE: Downstream Adoption (TASK-109 after Python Agent TASK-201 migration to exa
 ```
 
 Control-plane Closure has zero `NEXT` items. Separately gated A4, A5, A7, A9, A10, and other feasible parallel milestones do not become current work from generic continuation intent. Everything else must justify itself against explicit Human intent, the machine-readable bookmark, the Manifesto, Constitution, observed evidence, and the North Star.
+
+The authorized post-closure portability-policy priority does not alter this historical
+completion sequence. After its semantic PASS and reviewed source publication, control
+hands back through a fresh downstream BRAIN SYNC; no downstream `NEXT` identifier is
+made durable upstream.
