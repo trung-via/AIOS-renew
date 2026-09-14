@@ -114,27 +114,25 @@ sequence:
       non-activation statement is a historical fact about the TASK-201 migration,
       not a current prospective classification of standard AIOS control-plane
       capability as inapplicable downstream.
-post_closure_human_priorities:
-  - id: downstream-control-plane-portability-policy
-    status: AUTHORIZED
-    bound_task:
-      task_id: TASK-114
-      task_revision: 1
-    status_meaning: >-
-      AUTHORIZED records explicit Human planning intent. It does not claim
-      implementation completion, semantic PASS, reviewed publication, downstream
-      binding activation, or engineering-state advancement.
-    policy: >-
-      Standard AIOS outer control-plane capability is portable downstream through an
-      explicit reviewed downstream-owned repository binding. Package or exact-pin
-      availability does not silently create workflows, permissions, repository
-      identity, actor allowlists, runner labels or paths, carrier bindings, or
-      mutation authority. A coherent adoption contract may cover compatible standard
-      surfaces together while TASK-107 AUTHORING, TASK-108 PRIMARY and A1/A2
-      dispatch, A3/A6 and TASK-112 REMEDIATION, TASK-110 publication continuation,
-      TASK-111 REPAIR, TASK-113 ATTENTION, Runtime, Reviewer, and Publisher
-      authorities remain distinct; it creates no generic lifecycle router or new
-      semantic authority.
+post_closure_human_priority:
+  id: downstream-control-plane-portability-policy
+  status: AUTHORIZED
+  task_id: TASK-114
+  status_meaning: >-
+    AUTHORIZED records explicit Human planning intent. It does not claim
+    implementation completion, semantic PASS, reviewed publication, downstream
+    binding activation, or engineering-state advancement.
+  policy: >-
+    Standard AIOS outer control-plane capability is portable downstream through an
+    explicit reviewed downstream-owned repository binding. Package or exact-pin
+    availability does not silently create workflows, permissions, repository
+    identity, actor allowlists, runner labels or paths, carrier bindings, or
+    mutation authority. A coherent adoption contract may cover compatible standard
+    surfaces together while TASK-107 AUTHORING, TASK-108 PRIMARY and A1/A2
+    dispatch, A3/A6 and TASK-112 REMEDIATION, TASK-110 publication continuation,
+    TASK-111 REPAIR, TASK-113 ATTENTION, Runtime, Reviewer, and Publisher
+    authorities remain distinct; it creates no generic lifecycle router or new
+    semantic authority.
 completion_handoff: >-
   Control-plane Closure remains COMPLETE with no NEXT item. After TASK-114 receives
   semantic PASS and its reviewed source is published, perform a fresh downstream
