@@ -124,10 +124,11 @@ post_closure_human_priority:
     binding activation, or engineering-state advancement.
   policy: >-
     Standard AIOS outer control-plane capability is portable downstream through an
-    explicit reviewed downstream-owned repository binding. Package or exact-pin
-    availability does not silently create workflows, permissions, repository
-    identity, actor allowlists, runner labels or paths, carrier bindings, or
-    mutation authority. A coherent adoption contract may cover compatible standard
+    explicit reviewed downstream-owned repository binding. Capability portability
+    is separate from repository binding activation: package or exact-pin availability
+    does not silently create workflows, permissions, repository identity, actor
+    allowlists, runner labels or paths, carrier bindings, or mutation authority. A
+    coherent adoption contract may cover compatible standard
     surfaces together while TASK-107 AUTHORING, TASK-108 PRIMARY and A1/A2
     dispatch, A3/A6 and TASK-112 REMEDIATION, TASK-110 publication continuation,
     TASK-111 REPAIR, TASK-113 ATTENTION, Runtime, Reviewer, and Publisher
