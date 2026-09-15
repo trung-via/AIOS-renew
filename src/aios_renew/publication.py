@@ -27,6 +27,7 @@ from .review import (
     validate_remediation,
     validate_review,
 )
+from .review_transport import validate_runtime_failure_binding
 from .run import ACTIVE, Run, RunTaskReference
 from .task import parse_task
 
@@ -805,6 +806,62 @@ def _canonical_repair_authorization(
     )
 
 
+def _validate_zero_delta_continue_failure(
+    repo: Path,
+    *,
+    failure: Mapping[str, Any] | None,
+    run: Run,
+    failed_head_sha: str,
+    task: Any,
+) -> None:
+    """Bind a zero-delta historical continuation to its canonical FAILURE."""
+
+    if failure is None:
+        raise ValueError("CONTINUE_IMPLEMENTATION REPAIR committed delta is empty")
+    if failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE"):
+        raise ValueError(
+            "zero-delta CONTINUE_IMPLEMENTATION requires a pre-verification failure"
+        )
+    code, _, _ = _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        run.base_sha,
+        failed_head_sha,
+        allow_fail=True,
+    )
+    actual_descends_from_base = code == 0
+    actual_changed_files = _changed_files(repo, run.base_sha, failed_head_sha)
+    validate_runtime_failure_binding(
+        failure,
+        run_id=run.run_id,
+        task_id=task.task_id,
+        task_revision=task.revision,
+        executor=run.executor,
+        base_sha=run.base_sha,
+        candidate_sha=failed_head_sha,
+        modification_scope=tuple(task.scope.modify),
+        actual_descends_from_base=actual_descends_from_base,
+        actual_changed_files=actual_changed_files,
+    )
+    candidate = _mapping(
+        failure.get("candidate"), "historical FAILURE.candidate"
+    )
+    if (
+        run.base_sha != failed_head_sha
+        or actual_changed_files
+        or candidate.get("changed_files") != []
+        or candidate.get("outside_task_scope") != []
+        or candidate.get("dirty") is not False
+        or candidate.get("descends_from_base") is not True
+        or candidate.get("repairable") is not True
+        or candidate.get("transportable") is not True
+    ):
+        raise ValueError(
+            "zero-delta CONTINUE_IMPLEMENTATION failure facts are invalid"
+        )
+
+
 def _repair_review_lineage(
     repo: Path,
     *,
@@ -815,6 +872,7 @@ def _repair_review_lineage(
     child_head_sha: str,
     lineage_bytes: bytes,
     task: Any,
+    historical_child_failure: Mapping[str, Any] | None = None,
     seen: frozenset[str] = frozenset(),
 ) -> tuple[str, Review | None]:
     """Validate persisted REPAIR links and recover the applicable prior REVIEW."""
@@ -962,8 +1020,12 @@ def _repair_review_lineage(
                 "CONTINUE_IMPLEMENTATION candidate does not descend from failed head"
             )
         if child_head_sha == failed_head_sha or not mutation:
-            raise ValueError(
-                "CONTINUE_IMPLEMENTATION REPAIR committed delta is empty"
+            _validate_zero_delta_continue_failure(
+                repo,
+                failure=historical_child_failure,
+                run=child_run,
+                failed_head_sha=child_head_sha,
+                task=task,
             )
     elif child_head_sha != failed_head_sha or mutation:
         raise ValueError("NO_CHANGE REPAIR changed repository HEAD")
@@ -1022,6 +1084,7 @@ def _repair_review_lineage(
                 child_head_sha=failed_head_sha,
                 lineage_bytes=predecessor_repair,
                 task=task,
+                historical_child_failure=failure,
                 seen=seen,
             )
             if predecessor_root != root_base_sha:

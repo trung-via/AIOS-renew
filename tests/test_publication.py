@@ -283,10 +283,12 @@ def make_repair_lineage(
     action: str = "CODE_FIX",
     phase: str | None = None,
     repair_scope: tuple[str, ...] = ("product.txt",),
+    failure_overrides: dict[str, object] | None = None,
     candidate_overrides: dict[str, object] | None = None,
     failed_state: str = "mutation",
     final_state: str = "mutation",
     recursive_continue: bool = False,
+    recursive_authorization_conflict: bool = False,
 ) -> dict[str, object]:
     repo = root / "repo"
     remote = root / "upstream.git"
@@ -310,6 +312,8 @@ def make_repair_lineage(
     state = root / "state"
     state.mkdir()
     prior_lineage = None
+    prior_failure = None
+    prior_authorization = None
     if recursive_continue:
         prior_failed_run_id = "RUN-063-002"
         prior_run = {
@@ -374,6 +378,8 @@ def make_repair_lineage(
         )
         git(repo, "add", "product.txt")
         git(repo, "commit", "--quiet", "-m", "failed correction candidate")
+    elif failed_state == "empty_commit":
+        git(repo, "commit", "--quiet", "--allow-empty", "-m", "empty failed state")
     elif failed_state != "unchanged":
         raise ValueError(f"unknown failed_state: {failed_state}")
     failed_head_sha = git(repo, "rev-parse", "HEAD")
@@ -414,13 +420,18 @@ def make_repair_lineage(
     else:
         predecessor_payload = predecessor_run
     if recursive_continue:
+        persisted_prior_authorization = dict(prior_authorization)
+        if recursive_authorization_conflict:
+            persisted_prior_authorization["instructions"] = [
+                "Conflicting continuation authorization."
+            ]
         prior_lineage = {
             "failed_run_id": "RUN-063-002",
             "root_base_sha": base_sha,
             "failed_head_sha": base_sha,
             "failure": prior_failure,
             "task": {"task_id": "TASK-063", "revision": 2},
-            "repair": prior_authorization,
+            "repair": persisted_prior_authorization,
             "run": predecessor_run,
         }
     failed_changed_files = tuple(
@@ -459,6 +470,8 @@ def make_repair_lineage(
         "error": {"type": "RuntimeVerificationError", "message": "failed"},
         "candidate": failure_candidate,
     }
+    if failure_overrides:
+        failure.update(failure_overrides)
     failed_run_path = state / "failed-run.json"
     failure_path = state / "failure.json"
     failed_run_path.write_text(json.dumps(predecessor_payload), encoding="utf-8")
@@ -602,6 +615,8 @@ def make_repair_lineage(
         "authorization": authorization,
         "successful_run": successful_run,
         "repair_lineage": lineage,
+        "prior_failure": prior_failure,
+        "prior_authorization": prior_authorization,
     }
 
 
@@ -866,6 +881,155 @@ def test_recursive_repair_lineage_accepts_historical_continue_implementation(
     assert report.prior_main_sha == lineage["base_sha"]
     assert remote_main(lineage) == lineage["candidate_sha"]
     assert remote_main(lineage) != lineage["decision_sha"]
+
+
+def test_recursive_repair_accepts_truthful_zero_delta_continue_failure(
+    tmp_path: Path,
+) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CONTINUE_IMPLEMENTATION",
+        phase="EXECUTION",
+        failed_state="unchanged",
+        recursive_continue=True,
+    )
+
+    report = publish(lineage)
+
+    prior_failure = lineage["prior_failure"]
+    prior_authorization = lineage["prior_authorization"]
+    assert report.outcome == "PUBLISHED"
+    assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert report.prior_main_sha == lineage["base_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+    assert remote_main(lineage) != lineage["decision_sha"]
+    assert prior_failure["run_id"] == prior_authorization["failed_run_id"]
+    assert prior_failure["task"] == prior_authorization["task"] == {
+        "id": "TASK-063",
+        "revision": 2,
+    }
+    assert (
+        prior_failure["base_sha"]
+        == prior_failure["failed_head_sha"]
+        == prior_authorization["failed_head_sha"]
+        == lineage["base_sha"]
+    )
+    assert prior_failure["candidate"]["changed_files"] == []
+    assert lineage["repair_lineage"]["root_base_sha"] == lineage["base_sha"]
+    transported_result = json.loads(
+        git(
+            lineage["remote"],
+            "show",
+            f"refs/heads/aios/artifacts/{lineage['run_id']}:"
+            ".ai/transport/result.json",
+        )
+    )
+    assert transported_result["result"]["head_sha"] == lineage["candidate_sha"]
+    assert transported_result["result"]["changed_files"] == ["product.txt"]
+    assert (
+        git(
+            lineage["remote"],
+            "show",
+            f"{remote_main(lineage)}:.ai/reviews/REVIEW-063-002.yaml",
+            check=False,
+        )
+        == ""
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        (
+            {"failure_overrides": {"run_id": "RUN-063-999"}},
+            "FAILURE identity",
+        ),
+        (
+            {"phase": "VERIFICATION"},
+            "requires a pre-verification failure",
+        ),
+        (
+            {"candidate_overrides": {"transportable": False}},
+            "FAILURE candidate repair binding",
+        ),
+        (
+            {"candidate_overrides": {"dirty": True}},
+            "FAILURE candidate repair binding",
+        ),
+        (
+            {"candidate_overrides": {"descends_from_base": False}},
+            "FAILURE candidate repair binding",
+        ),
+        (
+            {
+                "candidate_overrides": {"outside_task_scope": ["secondary.txt"]}
+            },
+            "FAILURE candidate scope binding",
+        ),
+        (
+            {"candidate_overrides": {"changed_files": ["product.txt"]}},
+            "FAILURE candidate changed-files binding",
+        ),
+        (
+            {"failed_state": "empty_commit"},
+            "zero-delta CONTINUE_IMPLEMENTATION failure facts are invalid",
+        ),
+        (
+            {"recursive_authorization_conflict": True},
+            "authorization is not canonical",
+        ),
+        (
+            {"failure_overrides": {"base_sha": "0" * 40}},
+            "predecessor identity mismatch",
+        ),
+    ],
+)
+def test_invalid_zero_delta_continue_failure_does_not_mutate_main(
+    tmp_path: Path, kwargs: dict[str, object], match: str
+) -> None:
+    settings: dict[str, object] = {
+        "phase": "EXECUTION",
+        "failed_state": "unchanged",
+    }
+    settings.update(kwargs)
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CODE_FIX",
+        recursive_continue=True,
+        **settings,
+    )
+
+    with pytest.raises(PublicationError, match=match):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_zero_delta_continue_requires_canonical_repair_authorization(
+    tmp_path: Path,
+) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CONTINUE_IMPLEMENTATION",
+        phase="EXECUTION",
+        failed_state="unchanged",
+        recursive_continue=True,
+    )
+    git(
+        lineage["remote"],
+        "update-ref",
+        "-d",
+        "refs/heads/aios/repair/RUN-063-002",
+    )
+
+    with pytest.raises(PublicationError, match="missing or ambiguous"):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["base_sha"]
 
 
 @pytest.mark.parametrize(
