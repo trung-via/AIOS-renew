@@ -1,0 +1,204 @@
+task_id: TASK-116
+revision: 1
+
+goal: >
+  Integrate the semantically reviewed TASK-114 downstream control-plane portability-policy
+  delta onto the current canonical main as a fresh current-main descendant, preserving the
+  published TASK-115 safe-publication repair and all later-main authority. Canonicalize the
+  Human-approved post-closure portability priority without force-publishing the divergent
+  TASK-114 historical source, then hand control back to a fresh downstream BRAIN SYNC after
+  this integration itself receives semantic PASS and reviewed-source publication.
+
+problem: >
+  TASK-114 revision 1 produced reviewed source
+  1efba203f8f1554351e54599bd3063b749e29db8 in RUN-114-005. Its canonical PRIMARY
+  REVIEW-114-005 returned PASS for AC1 through AC7 with no findings, and Runtime evidence
+  proved the intended three-file governance/planning delta. Publication could not safely
+  advance product main because canonical main moved independently. TASK-115 then repaired
+  the safe publisher's handling of truthful zero-delta intermediate CONTINUE_IMPLEMENTATION
+  failure links and was reviewed PASS and published at current main
+  e92c20a9fb4ed28eb59a26adb73ee899945f7cad. The historical TASK-114 source and current main
+  now diverge from merge base 376bb5c79236197cb3366621d8bc6831a9a016bb, so the existing
+  publication boundary correctly forbids force publication. Fresh BRAIN SYNC also proves
+  that the three files owned by TASK-114 are byte-identical on current main to that merge
+  base, while TASK-115 changed separate publication implementation/test state. A separately
+  reviewed current-main integration candidate is therefore required to realize the already
+  reviewed TASK-114 policy without replacing or weakening TASK-115.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-116 authoring is
+    e92c20a9fb4ed28eb59a26adb73ee899945f7cad, the reviewed and published TASK-115 source.
+  - >
+    TASK-115 revision 1 is complete. RUN-115-001 binds current main, its focused publication
+    verification passed with 68 tests plus git diff --check, REVIEW-115-001 is PRIMARY PASS,
+    and RESULT contains zero unresolved items.
+  - >
+    TASK-114 revision 1 remains the authoritative semantic source for the portability-policy
+    change. RUN-114-005 reviewed source is
+    1efba203f8f1554351e54599bd3063b749e29db8; REVIEW-114-005 is PRIMARY PASS with AC1-AC7
+    PASS and no findings. Those immutable artifacts remain valid historical evidence but do
+    not authorize moving current main backward or bypassing publication ancestry.
+  - >
+    The TASK-114 reviewed source and current main are divergent with merge base
+    376bb5c79236197cb3366621d8bc6831a9a016bb. TASK-115 explicitly required any later
+    TASK-114 integration to be a separate Brain/Human-authorized canonical step after fresh
+    state reconciliation.
+  - >
+    Fresh canonical comparison proves that docs/CHATGPT_PROJECT_CONTRACT.md has blob
+    80c480403b97d13430ab8604aca54796b86f94ec, docs/AIOS-ROADMAP.md has blob
+    ce55e67444046ed1443ca83c0c07fe699bee7ffa, and .ai/roadmap-state.yaml has blob
+    837be1fa80640cb1d1e80f7159cfbe42e1444aae both at the TASK-114 merge base and at current
+    main. No post-base published work changed those three integration targets.
+  - >
+    The reviewed TASK-114 target blobs are 2590479af973be848d3f453b4b906769dbb97953
+    for docs/CHATGPT_PROJECT_CONTRACT.md, 68977e420c851c7e75073e734ae107a426438092
+    for docs/AIOS-ROADMAP.md, and 12d5f57e1eba465ef4ae45961c744ebad251b051
+    for .ai/roadmap-state.yaml. The Project Contract policy can be integrated without
+    semantic reinterpretation; Roadmap and roadmap-state require only bounded integration
+    provenance/handoff wording so they do not falsely claim the divergent historical
+    TASK-114 source itself was published.
+  - >
+    Frozen Kernel v0.1 remains FROZEN. This integration changes planning/governance only
+    and creates no Kernel, Runtime, Executor, Reviewer, Publisher, carrier, workflow, or
+    downstream mutation authority.
+  - >
+    Human intent in the current chat explicitly requests fresh project synchronization and
+    continuation of the roadmap after TASK-115 publication. Under the reconciled lineage,
+    that authorizes the separate TASK-114 current-main integration step required by TASK-115.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-ROADMAP.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-109.yaml
+    - .ai/tasks/TASK-114.yaml
+    - .ai/tasks/TASK-115.yaml
+  modify:
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-ROADMAP.md
+    - .ai/roadmap-state.yaml
+
+non_goals:
+  - Modify, revise, delete, reinterpret, or synthesize historical TASK-114 or TASK-115 TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR artifacts or canonical refs.
+  - Force-publish, merge, rebase, cherry-pick, or otherwise move the divergent historical TASK-114 reviewed source directly onto main as publication of RUN-114-005.
+  - Change src/aios_renew/publication.py, tests/test_publication.py, any other Python source/test, workflow, carrier policy, frozen artifact, or publication semantics repaired by TASK-115.
+  - Add new portability semantics beyond the policy already semantically approved by TASK-114, or weaken exact downstream pin isolation, explicit reviewed repository activation, or authority separation.
+  - Mutate trung-via/python_complete_agent or another downstream repository, change its AIOS pin, copy its roadmap pointer upstream, or claim any downstream binding is active.
+  - Promote A4, A5, A7, A9, A10, H-Series, new Kernel work, generic lifecycle routing, autonomous retry, or any separately gated milestone.
+  - Repeat the TASK-115 publication test suite or rerun historical TASK-114 verification merely for ceremony; TASK-116 verification must target the new current-main integration state.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      The TASK-116 implementation candidate must descend from the canonical TASK-116
+      authoring base, which itself descends from published TASK-115 main
+      e92c20a9fb4ed28eb59a26adb73ee899945f7cad. No TASK-115 source/test behavior may be
+      overwritten, reverted, or reimplemented.
+    - >
+      Preserve the complete semantically reviewed TASK-114 policy: standard AIOS outer
+      control-plane capability is portable downstream by design through explicit reviewed
+      downstream-owned binding; exact pin/package availability never silently creates
+      repository workflows, permissions, identity, actor allowlists, runner bindings,
+      carrier configuration, or downstream mutation authority.
+    - >
+      Preserve authority separation across AUTHORING, PRIMARY, REMEDIATION, publication
+      continuation, REPAIR, ATTENTION, Runtime verification, semantic Reviewer, and Publisher.
+      A coherent downstream portability/profile contract may bind compatible standard
+      surfaces but creates no generic lifecycle router or new semantic authority.
+    - >
+      Preserve TASK-109 as immutable historical evidence. Its non-activation statement remains
+      true for the TASK-201 migration but must not be represented as prospective semantic
+      inapplicability of standard control-plane capability.
+    - >
+      docs/CHATGPT_PROJECT_CONTRACT.md must realize the reviewed TASK-114 downstream-boundary
+      policy without retaining the stale claim that Python Agent Governance Foundation or
+      CHATGPT_PROJECT_CONTRACT_RECONCILIATION is a current durable upstream-known commitment.
+    - >
+      docs/AIOS-ROADMAP.md must record downstream-control-plane-portability-policy as the
+      Human-authorized post-closure priority, keep Control-plane Closure historically COMPLETE
+      with zero NEXT items, preserve optional milestone gates, and explicitly record that
+      TASK-114 received semantic PASS at reviewed source
+      1efba203f8f1554351e54599bd3063b749e29db8 but required TASK-116 current-main integration
+      because that historical source diverged after TASK-115 advanced main.
+    - >
+      .ai/roadmap-state.yaml must preserve active_track control-plane-closure as COMPLETE with
+      zero NEXT items and preserve one post_closure_human_priority whose id is
+      downstream-control-plane-portability-policy, status is AUTHORIZED, and semantic source
+      task_id is TASK-114. AUTHORIZED remains Human planning intent, not an engineering
+      completion claim.
+    - >
+      Integration provenance must not falsely state that the exact historical TASK-114 reviewed
+      source was published. The Roadmap and completion_handoff must instead state that TASK-116
+      is the current-main integration authority and that, only after TASK-116 receives semantic
+      PASS and its reviewed source is published, control hands back through a fresh downstream
+      BRAIN SYNC of current Python Agent canonical state.
+    - >
+      The downstream handoff must not preserve a previously observed Python Agent priority or
+      copy a downstream NEXT identifier into AIOS-renew. Fresh downstream current main, exact
+      AIOS pin, roadmap/adoption state, governance, and relevant immutable lineage decide what
+      follows after this integration publishes.
+    - >
+      All mutation is confined to the three authorized governance/planning files. Frozen Kernel,
+      historical artifacts, TASK-115 implementation/test files, and downstream repositories are
+      outside mutation authority.
+    - >
+      Verification must be deterministic, offline, non-interactive, and specific to the new
+      integration state. It may validate exact required governance structure/content and
+      integration provenance, but must not depend on GitHub/network, wall-clock, model/provider,
+      downstream repository access, or mutable external state.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The final candidate descends from TASK-116's current-main authoring base and changes only
+      docs/CHATGPT_PROJECT_CONTRACT.md, docs/AIOS-ROADMAP.md, and .ai/roadmap-state.yaml,
+      preserving all published TASK-115 implementation/test state.
+  - id: AC2
+    condition: >
+      Current Project Contract expresses the semantically reviewed TASK-114 portability versus
+      activation boundary, exact-pin downstream isolation, coherent-profile allowance, and
+      distinct authority families, while removing stale durable claims about a previously
+      observed Python Agent roadmap commitment.
+  - id: AC3
+    condition: >
+      Current Roadmap records downstream-control-plane-portability-policy as the authorized
+      post-closure Human priority; distinguishes TASK-109 historical non-activation from current
+      prospective portability policy; preserves Control-plane Closure COMPLETE and zero NEXT;
+      and does not promote A4/A5/A7/A9/A10 or new Kernel work.
+  - id: AC4
+    condition: >
+      Current roadmap-state preserves control-plane-closure COMPLETE with zero NEXT items and
+      contains exactly one post_closure_human_priority bound semantically to TASK-114 with id
+      downstream-control-plane-portability-policy and status AUTHORIZED.
+  - id: AC5
+    condition: >
+      Integration provenance truthfully records TASK-114 PRIMARY PASS reviewed source
+      1efba203f8f1554351e54599bd3063b749e29db8 as historical semantic evidence, does not claim
+      that divergent source was published, and gates the fresh downstream BRAIN SYNC on
+      TASK-116 semantic PASS plus reviewed-source publication.
+  - id: AC6
+    condition: >
+      TASK-109, TASK-114, TASK-115, frozen Kernel semantics, current publication implementation,
+      and downstream repositories/pins remain unchanged; no force publication, merge/rebase,
+      generic lifecycle authority, silent activation, or optional-milestone promotion is
+      introduced.
+  - id: AC7
+    condition: >
+      New integration-specific deterministic verification and git diff --check pass, no file
+      outside the three authorized targets changes during implementation, and RESULT contains
+      zero unresolved items.
+
+verification:
+  required:
+    - >-
+      python -c "from pathlib import Path; import yaml; d=yaml.safe_load(Path('.ai/roadmap-state.yaml').read_text(encoding='utf-8')); assert d['active_track']=='control-plane-closure'; assert d['active_track_status']=='COMPLETE'; assert d.get('next_items',[])==[]; assert sum(x.get('status')=='NEXT' for x in d['sequence'])==0; p=d['post_closure_human_priority']; assert p['id']=='downstream-control-plane-portability-policy'; assert p['status']=='AUTHORIZED'; assert p['task_id']=='TASK-114'; h=d['completion_handoff']; assert 'TASK-116' in h and 'fresh downstream' in h.lower(); c=Path('docs/CHATGPT_PROJECT_CONTRACT.md').read_text(encoding='utf-8'); r=Path('docs/AIOS-ROADMAP.md').read_text(encoding='utf-8'); assert 'portable downstream' in c.lower(); assert 'explicit' in c.lower() and 'binding' in c.lower(); assert 'CHATGPT_PROJECT_CONTRACT_RECONCILIATION remain active downstream commitments' not in c; assert 'downstream-control-plane-portability-policy' in r; assert '1efba203f8f1554351e54599bd3063b749e29db8' in r; assert 'TASK-116' in r; assert 'force-publish' not in h.lower()"
+    - git diff --check
