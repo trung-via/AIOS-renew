@@ -40,6 +40,9 @@ _REVIEWED_PATHS = (
     "src/aios_renew/terminal_attention.py",
 )
 _MAX_EVENT_BYTES = 1_048_576
+_REPOSITORY_PATTERN = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9])?/[A-Za-z0-9_.-]+$"
+)
 
 
 @dataclass(frozen=True)
@@ -163,7 +166,10 @@ def load_policy(path: str | Path) -> AttentionPolicy:
     issue = _mapping(root.get("github_issue"), "github_issue policy")
     if set(issue) != _ISSUE_POLICY_KEYS or issue.get("enabled") is not True:
         raise TerminalAttentionError("github_issue policy is invalid or disabled")
-    if issue.get("repository") != "trung-via/AIOS-renew":
+    repository = issue.get("repository")
+    if not isinstance(repository, str) or not _REPOSITORY_PATTERN.fullmatch(
+        repository
+    ):
         raise TerminalAttentionError("terminal-attention repository is invalid")
     if issue.get("main_ref") != "refs/heads/main":
         raise TerminalAttentionError("terminal-attention main ref is invalid")
@@ -172,7 +178,7 @@ def load_policy(path: str | Path) -> AttentionPolicy:
     if issue.get("title_marker") != TITLE_MARKER:
         raise TerminalAttentionError("terminal-attention title marker is invalid")
     return AttentionPolicy(
-        repository=str(issue["repository"]),
+        repository=repository,
         main_ref=str(issue["main_ref"]),
         signal_prefix=str(issue["signal_prefix"]),
         title_marker=str(issue["title_marker"]),

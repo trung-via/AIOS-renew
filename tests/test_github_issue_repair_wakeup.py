@@ -73,6 +73,55 @@ def test_valid_issue_forwards_only_four_bounded_selectors(tmp_path: Path) -> Non
     ]
 
 
+def test_downstream_policy_preserves_repair_family_and_actor_binding(
+    tmp_path: Path,
+) -> None:
+    downstream = json.loads(json.dumps(POLICY))
+    downstream["github_issue"]["repository"] = "trung-via/python_complete_agent"
+    downstream["github_issue"]["authorized_actors"] = [
+        "downstream-owner",
+        "release-bot",
+    ]
+    policy = carrier.load_policy(_write(tmp_path, "policy.yaml", downstream))
+    event = _event()
+    event["repository"]["full_name"] = "trung-via/python_complete_agent"
+    event["sender"]["login"] = "release-bot"
+    event["issue"]["user"]["login"] = "release-bot"
+
+    request = carrier.admit_event(_write(tmp_path, "event.json", event), policy)
+
+    assert request.actor == "release-bot"
+    assert request.github_outputs().splitlines() == [
+        "repair_dispatch_id=repair-111",
+        "failed_run_id=RUN-111-001",
+        f"repair_sha={'a' * 40}",
+        "executor=codex",
+    ]
+    event["repository"]["full_name"] = "trung-via/AIOS-renew"
+    with pytest.raises(carrier.GitHubIssueRepairWakeupError, match="repository"):
+        carrier.admit_event(_write(tmp_path, "event.json", event), policy)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda policy: policy["github_issue"].update(repository="missing-owner"),
+        lambda policy: policy["github_issue"].update(authorized_actors=[]),
+        lambda policy: policy["github_issue"].update(
+            authorized_actors=["trung-via", "trung-via"]
+        ),
+        lambda policy: policy["github_issue"].update(authorized_actors=["bad_actor"]),
+    ],
+)
+def test_malformed_repository_and_actor_policy_fails_closed(
+    tmp_path: Path, mutation
+) -> None:
+    policy = json.loads(json.dumps(POLICY))
+    mutation(policy)
+    with pytest.raises(carrier.GitHubIssueRepairWakeupError):
+        carrier.load_policy(_write(tmp_path, "policy.yaml", policy))
+
+
 def test_no_change_shape_omits_executor_authority() -> None:
     request = carrier.parse_request(_body(executor=None))
     assert request.executor is None

@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from aios_renew.terminal_attention import (
     BODY_FORMAT,
@@ -73,6 +74,14 @@ def artifact_selector(repo: Path, *, kind: str = "RESULT"):
     empty_tree = git(repo, "mktree")
     artifact = git(repo, "commit-tree", empty_tree, "-m", "terminal artifact")
     return selector("RUN-113-001", kind, artifact)
+
+
+def write_policy(tmp_path: Path, repository: str) -> Path:
+    document = yaml.safe_load(POLICY_PATH.read_text(encoding="utf-8"))
+    document["github_issue"]["repository"] = repository
+    path = tmp_path / "attention-policy.yaml"
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    return path
 
 
 def test_selector_ref_and_body_are_exact_and_strict() -> None:
@@ -243,6 +252,75 @@ def test_push_and_dispatch_admission_revalidate_remote_binding(
     assert replay_ref == item.signal_ref
     assert push_sha is None
     assert delivery == "WORKFLOW_DISPATCH_REPLAY"
+
+
+def test_downstream_policy_binds_exact_dispatch_event_without_changing_semantics(
+    tmp_path: Path,
+) -> None:
+    repository = "trung-via/python_complete_agent"
+    policy = load_policy(write_policy(tmp_path, repository))
+    item = selector("RUN-207-001", "FAILURE", "a" * 40)
+    push_event = {
+        "ref": item.signal_ref,
+        "before": "0" * 40,
+        "after": "b" * 40,
+        "created": True,
+        "deleted": False,
+        "forced": False,
+        "repository": {"full_name": repository},
+    }
+    pushed, signal_ref, push_sha, delivery = admit_event(
+        event_name="push",
+        event=push_event,
+        repository=repository,
+        event_sha="b" * 40,
+        policy=policy,
+    )
+    assert (pushed, signal_ref, push_sha, delivery) == (
+        item,
+        item.signal_ref,
+        "b" * 40,
+        "REF_EVENT",
+    )
+
+    event = {
+        "ref": "main",
+        "inputs": {
+            "run_id": item.run_id,
+            "terminal_kind": item.terminal_kind,
+            "artifact_sha": item.artifact_sha,
+        },
+        "repository": {"full_name": repository},
+    }
+
+    replay, signal_ref, push_sha, delivery = admit_event(
+        event_name="workflow_dispatch",
+        event=event,
+        repository=repository,
+        event_sha="b" * 40,
+        policy=policy,
+    )
+
+    assert replay == item
+    assert signal_ref == item.signal_ref
+    assert push_sha is None
+    assert delivery == "WORKFLOW_DISPATCH_REPLAY"
+    with pytest.raises(TerminalAttentionError, match="repository"):
+        admit_event(
+            event_name="workflow_dispatch",
+            event=event,
+            repository="trung-via/AIOS-renew",
+            event_sha="b" * 40,
+            policy=policy,
+        )
+
+
+@pytest.mark.parametrize("repository", ["missing-owner", "owner/", "owner/repo/name"])
+def test_terminal_attention_rejects_malformed_policy_repository(
+    tmp_path: Path, repository: str
+) -> None:
+    with pytest.raises(TerminalAttentionError, match="repository"):
+        load_policy(write_policy(tmp_path, repository))
 
 
 def test_event_repository_and_dispatch_fields_are_not_extensible() -> None:

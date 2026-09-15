@@ -82,6 +82,35 @@ def test_valid_issue_forwards_only_four_selectors_and_binds_event_actor(
     ]
 
 
+def test_downstream_policy_preserves_trusted_actor_and_sanitized_selectors(
+    tmp_path: Path,
+) -> None:
+    downstream = json.loads(json.dumps(POLICY))
+    downstream["github_issue"]["repository"] = "trung-via/python_complete_agent"
+    downstream["github_issue"]["authorized_actors"] = [
+        "downstream-owner",
+        "release-bot",
+    ]
+    policy = carrier.load_policy(_write_policy(tmp_path, downstream))
+    event = _event()
+    event["repository"]["full_name"] = "trung-via/python_complete_agent"
+    event["sender"]["login"] = "release-bot"
+    event["issue"]["user"]["login"] = "release-bot"
+
+    request = carrier.admit_event(_write_event(tmp_path, event), policy)
+
+    assert request.approver == "release-bot"
+    assert request.github_outputs().splitlines() == [
+        "correction_dispatch_id=remediation-intent-112",
+        "source_run_id=RUN-110-001",
+        "finding_id=F1",
+        "executor=codex",
+    ]
+    event["sender"]["login"] = "intruder"
+    with pytest.raises(carrier.GitHubIssueRemediationIntentError, match="actor"):
+        carrier.admit_event(_write_event(tmp_path, event), policy)
+
+
 @pytest.mark.parametrize(
     ("mutation", "reason"),
     [
@@ -110,10 +139,12 @@ def test_wrong_or_malformed_event_fails_before_dispatch(
     "mutation",
     [
         lambda policy: policy["github_issue"].update(enabled=False),
-        lambda policy: policy["github_issue"].update(repository="other/repo"),
+        lambda policy: policy["github_issue"].update(repository="missing-owner"),
+        lambda policy: policy["github_issue"].update(authorized_actors=[]),
         lambda policy: policy["github_issue"].update(
-            authorized_actors=["trung-via", "someone-else"]
+            authorized_actors=["trung-via", "trung-via"]
         ),
+        lambda policy: policy["github_issue"].update(authorized_actors=["bad_actor"]),
         lambda policy: policy["github_issue"].update(title_marker="almost"),
         lambda policy: policy["github_issue"].update(max_body_bytes=0),
         lambda policy: policy.update(unreviewed_authority=True),

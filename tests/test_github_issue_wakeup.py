@@ -80,6 +80,33 @@ def test_valid_issue_produces_only_the_three_sanitized_a1_inputs(
     ]
 
 
+def test_downstream_policy_admits_only_its_exact_repository_and_actor(
+    tmp_path: Path,
+) -> None:
+    downstream = json.loads(json.dumps(POLICY))
+    downstream["github_issue"]["repository"] = "trung-via/python_complete_agent"
+    downstream["github_issue"]["authorized_actors"] = [
+        "downstream-owner",
+        "release-bot",
+    ]
+    policy = carrier.load_policy(_write_policy(tmp_path, downstream))
+    event = _event()
+    event["repository"]["full_name"] = "trung-via/python_complete_agent"
+    event["sender"]["login"] = "release-bot"
+    event["issue"]["user"]["login"] = "release-bot"
+
+    request = carrier.admit_event(_write_event(tmp_path, event), policy)
+
+    assert request.github_outputs().splitlines() == [
+        "dispatch_id=brain-wakeup-108",
+        "task_id=TASK-108",
+        "executor=codex",
+    ]
+    event["repository"]["full_name"] = "trung-via/AIOS-renew"
+    with pytest.raises(carrier.GitHubIssueWakeupError, match="repository"):
+        carrier.admit_event(_write_event(tmp_path, event), policy)
+
+
 @pytest.mark.parametrize(
     ("mutation", "reason"),
     [
@@ -120,10 +147,12 @@ def test_invalid_event_fails_before_request_can_be_forwarded(
     "mutation",
     [
         lambda policy: policy["github_issue"].update(enabled=False),
-        lambda policy: policy["github_issue"].update(repository="other/repo"),
+        lambda policy: policy["github_issue"].update(repository="missing-owner"),
+        lambda policy: policy["github_issue"].update(authorized_actors=[]),
         lambda policy: policy["github_issue"].update(
-            authorized_actors=["trung-via", "someone-else"]
+            authorized_actors=["trung-via", "trung-via"]
         ),
+        lambda policy: policy["github_issue"].update(authorized_actors=["bad_actor"]),
         lambda policy: policy["github_issue"].update(title_marker="almost"),
         lambda policy: policy["github_issue"].update(max_body_bytes=0),
         lambda policy: policy.update(unreviewed_authority=True),

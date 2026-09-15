@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -42,6 +43,10 @@ _REQUEST_KEYS = frozenset(
 _MAX_CONFIGURED_BODY_BYTES = 16_384
 _MAX_EVENT_FILE_BYTES = 1_048_576
 _MAX_RECEIPT_CHARS = 3_500
+_LOGIN_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+_REPOSITORY_PATTERN = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9])?/[A-Za-z0-9_.-]+$"
+)
 
 
 @dataclass(frozen=True)
@@ -149,11 +154,22 @@ def load_policy(path: str | Path) -> GitHubIssueWakeupPolicy:
         raise GitHubIssueWakeupError("GitHub-Issue wakeup carrier is disabled")
 
     repository = issue.get("repository")
-    if repository != "trung-via/AIOS-renew":
+    if not isinstance(repository, str) or not _REPOSITORY_PATTERN.fullmatch(
+        repository
+    ):
         raise GitHubIssueWakeupError("carrier repository identity is invalid")
 
     actors = issue.get("authorized_actors")
-    if actors != ["trung-via"]:
+    if (
+        not isinstance(actors, Sequence)
+        or isinstance(actors, (str, bytes))
+        or not actors
+        or any(
+            not isinstance(actor, str) or not _LOGIN_PATTERN.fullmatch(actor)
+            for actor in actors
+        )
+        or len(set(actors)) != len(actors)
+    ):
         raise GitHubIssueWakeupError("carrier actor allowlist is invalid")
 
     title_marker = issue.get("title_marker")
