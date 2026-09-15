@@ -1,0 +1,217 @@
+task_id: TASK-115
+revision: 1
+
+goal: >
+  Repair the deterministic safe-publication validator so canonical REPAIR ancestry can
+  truthfully contain an intermediate CONTINUE_IMPLEMENTATION RUN that itself terminalized
+  before producing repository mutation, while retaining the existing requirement that a
+  successfully completed mutation-authorizing REPAIR candidate must advance beyond its
+  failed head with a non-empty authorized delta. Preserve exact lineage, evidence, review,
+  scope, ancestry, race, and publication-authority protections.
+
+problem: >
+  TASK-089 established CONTINUE_IMPLEMENTATION for unfinished pre-verification work and
+  TASK-090 extended safe publication to that action, including recursive historical REPAIR
+  reconstruction. Live TASK-114 lineage exposed a missing topology. REPAIR-114-002
+  authorized CONTINUE_IMPLEMENTATION from failed head
+  655160d9851a2d297bc8a1f197bec6d706254fd2, but RUN-114-003 then failed during
+  EXECUTION because the selected Antigravity provider returned 503 before any source
+  mutation. Its canonical FAILURE therefore truthfully records base_sha equal to
+  failed_head_sha, changed_files=[], clean/repairable/transportable candidate state, and
+  phase EXECUTION. A later separately authorized REPAIR continued from that exact failed
+  state and the lineage eventually produced reviewed PASS candidate
+  1efba203f8f1554351e54599bd3063b749e29db8 in RUN-114-005. Publication workflow run
+  34910727993 nevertheless failed with `CONTINUE_IMPLEMENTATION REPAIR committed delta is
+  empty` because recursive publication validation applies the successful-child non-empty
+  mutation rule to the intermediate RUN-114-003 failure link. The publisher must validate
+  historical failed-run truth without pretending that a RUN which terminalized before
+  successful completion already satisfied successful CONTINUE_IMPLEMENTATION completion.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    376bb5c79236197cb3366621d8bc6831a9a016bb. TASK-114 revision 1 is authored on this
+    main but its reviewed source candidate has not been published.
+  - >
+    RUN-114-005 canonical reviewed source is
+    1efba203f8f1554351e54599bd3063b749e29db8 and its canonical PASS review decision is
+    61d14cc14720c9f22048094fd41151889463672a. Those immutable artifacts remain valid
+    historical engineering evidence; this TASK does not rewrite or reinterpret them.
+  - >
+    Canonical RUN-114-003 FAILURE records phase EXECUTION, base_sha and failed_head_sha
+    both equal to 655160d9851a2d297bc8a1f197bec6d706254fd2, changed_files=[],
+    dirty=false, descends_from_base=true, repairable=true, transportable=true, and
+    outside_task_scope=[]. The failure occurred before source mutation because the selected
+    Antigravity provider returned 503 no-capacity.
+  - >
+    TASK-089 remains authoritative for CONTINUE_IMPLEMENTATION execution/completion
+    semantics. A successfully completed CONTINUE_IMPLEMENTATION candidate must descend from
+    the exact failed_head_sha, advance beyond it, and contain a non-empty failed-head-relative
+    mutation inside the authored REPAIR scope. This TASK does not weaken that rule.
+  - >
+    TASK-090 remains authoritative for safe-publication CONTINUE_IMPLEMENTATION support,
+    recursive historical REPAIR reconstruction, canonical authorization identity, and all
+    existing publication safety gates.
+  - >
+    TASK-063 revision 3 remains authoritative for exact reviewed-source publication,
+    fast-forward ancestry, exact-main compare-and-swap protection, review-metadata isolation,
+    and fail-closed handling of divergent main.
+  - >
+    Authoring and later publication of TASK-115 will advance canonical main independently
+    of the already-reviewed TASK-114 source. TASK-115 is not authority to bypass the existing
+    divergent-main gate, merge/rebase TASK-114 automatically, or force-publish its historical
+    candidate. Any required post-TASK-115 integration of TASK-114 remains a separate
+    Brain/Human-authorized canonical step after fresh state reconciliation.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-063.yaml
+    - .ai/tasks/TASK-089.yaml
+    - .ai/tasks/TASK-090.yaml
+    - .ai/tasks/TASK-114.yaml
+    - src/aios_renew/publication.py
+    - tests/test_publication.py
+  modify:
+    - src/aios_renew/publication.py
+    - tests/test_publication.py
+
+non_goals:
+  - >
+    Change TASK/RUN/RESULT/EVIDENCE/REVIEW/REMEDIATION/REPAIR schemas or add a new
+    correction action, lifecycle family, ref family, retry path, resume command, or
+    publication authority.
+  - >
+    Change Runtime, Operator, Dispatcher, Executor adapters, model selection, wakeup
+    carriers, GitHub workflows, review ingress, or review transport.
+  - >
+    Weaken successful CONTINUE_IMPLEMENTATION completion: a successfully published child
+    for that action still requires exact failed-head ancestry, HEAD advancement, and a
+    non-empty authorized mutation.
+  - >
+    Broaden NO_CHANGE or CODE_FIX semantics, convert a failed continuation into NO_CHANGE,
+    or infer repair semantics from provider/error prose.
+  - >
+    Rewrite, delete, force-update, reclassify, or synthesize any TASK-114
+    RUN/FAILURE/REPAIR/RESULT/EVIDENCE/REVIEW artifact or canonical ref.
+  - >
+    Publish, merge, rebase, cherry-pick, integrate, or otherwise move TASK-114 reviewed
+    source onto current main as part of TASK-115 implementation.
+  - >
+    Relax canonical repair authorization identity, failed RUN/TASK binding,
+    failed-head/root lineage, modification scope, Result/Evidence binding, semantic REVIEW
+    binding, fast-forward ancestry, exact-main race protection, or review-metadata isolation.
+  - >
+    Rerun Runtime verification, invoke an Executor from publication, call a model, or add
+    retry/fallback/reroute behavior to publication.
+  - >
+    Perform unrelated publication refactoring or cleanup.
+  - >
+    Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Publication must distinguish successful REPAIR completion facts from immutable
+      historical FAILURE facts. Non-empty mutation is a completion requirement for a
+      successful CODE_FIX or CONTINUE_IMPLEMENTATION child; it must not be retroactively
+      required of an intermediate RUN whose canonical FAILURE proves that the RUN
+      terminalized before successful completion.
+    - >
+      A zero-delta intermediate CONTINUE_IMPLEMENTATION link may be accepted only from the
+      exact canonical failed-run lineage already required by safe publication: exact RUN and
+      TASK revision, canonical failed_head_sha, canonical embedded/remote REPAIR authorization,
+      repairable candidate, permitted pre-verification failure phase, clean transportable
+      state, normal ancestry, and no outside-task-scope mutation. The publisher must not
+      manufacture or infer missing facts.
+    - >
+      When an intermediate failure reports changed_files=[], publication must remain bound
+      to Git truth and exact SHA identity. The historical link must not be accepted if its
+      declared zero-delta candidate conflicts with the committed failed-head/base relation,
+      canonical FAILURE, or persisted REPAIR lineage.
+    - >
+      Recursive traversal must preserve the exact failed_run_id, failed_head_sha,
+      root_base_sha, TASK revision, canonical repair selector/authorization, and later
+      continuation chain. An intermediate execution failure must not sever or replace the
+      original root lineage with current main or any nearby candidate.
+    - >
+      For the final successful publication candidate and for every historical REPAIR RUN that
+      actually reached successful completion before becoming a predecessor, existing
+      action-specific mutation rules remain unchanged: CODE_FIX and CONTINUE_IMPLEMENTATION
+      require non-empty authorized mutation; NO_CHANGE requires unchanged HEAD and zero
+      mutation.
+    - >
+      Failure-phase boundaries remain unchanged. CONTINUE_IMPLEMENTATION is limited to the
+      existing EXECUTION/COMPLETION_GATE pre-verification semantics; this TASK must not make
+      phase-VERIFICATION zero-delta continuation publishable under that action.
+    - >
+      Existing canonical Result.changed_files validation from root_base_sha to final source,
+      TASK scope checks, Evidence/RESULT binding, semantic REVIEW validation, correction
+      lineage validation, exact-source publication, fast-forward main classification,
+      compare-and-swap race protection, idempotency, and review-metadata isolation remain
+      fail closed.
+    - >
+      Publication remains deterministic coordination only and must not rerun canonical
+      verification, invoke an Executor, inspect provider availability, parse error prose to
+      choose semantics, call a model, retry, reroute, synthesize a candidate, or repair
+      lineage automatically.
+    - >
+      Existing divergent-main behavior remains unchanged. If current main and a previously
+      reviewed source have diverged after TASK-115 authoring/publication, the publisher must
+      continue to require a separately authorized integration candidate rather than bypassing
+      ancestry or force-publishing the historical source.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A deterministic regression reproduces the observed topology: an authorized
+      CONTINUE_IMPLEMENTATION REPAIR is admitted from an exact failed head; its child RUN
+      terminalizes at EXECUTION before mutation with base_sha equal to failed_head_sha and
+      changed_files=[]; a later canonical REPAIR continues from that exact failure and
+      ultimately produces a valid non-empty in-scope reviewed PASS source. Safe publication
+      accepts the complete lineage and advances main to exactly that reviewed source when
+      current main is its valid fast-forward base.
+  - id: AC2
+    condition: >
+      AC1 preserves exact canonical identity through the chain, including TASK revision,
+      failed_run_id, failed_head_sha, root_base_sha, canonical repair authorizations, final
+      RESULT head, REVIEW.reviewed_sha, and root-relative Result.changed_files; review
+      metadata never enters product main.
+  - id: AC3
+    condition: >
+      Deterministic negative regressions prove the exception is limited to truthful
+      intermediate failures: malformed or conflicting FAILURE identity, disallowed phase,
+      dirty/non-transportable/non-descendant/out-of-scope candidate facts, changed_files/Git
+      disagreement, missing or conflicting canonical REPAIR authorization, or broken
+      ancestry all fail closed with no main mutation.
+  - id: AC4
+    condition: >
+      Existing successful-child guards remain intact: a final or otherwise successfully
+      completed CONTINUE_IMPLEMENTATION with unchanged HEAD, empty commit, empty committed
+      delta, divergent head, or out-of-scope mutation is rejected; CODE_FIX and NO_CHANGE
+      behavior remains unchanged.
+  - id: AC5
+    condition: >
+      Existing recursive REPAIR, review/result binding, malformed-lineage, missing
+      authorization, exact-source, divergent-main, concurrent-main race, idempotent
+      publication, and review-metadata isolation regressions remain green.
+  - id: AC6
+    condition: >
+      Publication performs no Runtime verification rerun, Executor invocation, provider
+      probe, model/reviewer call, retry, fallback, reroute, merge, rebase, or candidate
+      synthesis while validating the repaired historical topology.
+  - id: AC7
+    condition: >
+      The focused publication suite and git diff check pass, no file outside TASK-115 scope
+      changes, and RESULT contains zero unresolved items.
+
+verification:
+  required:
+    - python -m pytest tests/test_publication.py -q
+    - git diff --check
