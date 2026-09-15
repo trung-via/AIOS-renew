@@ -1,0 +1,209 @@
+task_id: TASK-117
+revision: 1
+
+goal: >
+  Repair the observed downstream-portability regression in the standard AIOS outer
+  GitHub carrier admission layer by making repository identity, and where applicable
+  authorized actor allowlists, come from strictly validated repository-owned carrier
+  policy rather than AIOS-renew-specific literals. Apply the hardening consistently to
+  PRIMARY wakeup, Human REMEDIATION intent, REPAIR wakeup, and terminal-attention
+  admission while preserving each carrier family's protocol constants, fail-closed
+  event-to-policy binding, and all existing Runtime/dispatch/Executor authority.
+
+problem: >
+  Fresh downstream conformance on trung-via/python_complete_agent exposed a real package
+  portability defect. Python Agent main ec3374d905ff55609e6ed6d07915b759fdcf287e
+  canonically authored TASK-207 and remains pinned to exact AIOS-renew
+  652b00b103dd50e2a550dd0ec0fe4063e69631b7, which is also current upstream main.
+  A valid live [AIOS BRAIN WAKEUP] Issue in that downstream repository, using the
+  published downstream policy repository trung-via/python_complete_agent and explicit
+  Executor antigravity, was rejected before dispatch with
+  `carrier repository identity is invalid`; no self-hosted job, Executor invocation, or
+  canonical RUN was created. Static inspection of the same current upstream source shows
+  the same AIOS-renew repository literal in the REMEDIATION-intent and REPAIR-wakeup
+  policy loaders, and terminal-attention admission likewise rejects any repository other
+  than trung-via/AIOS-renew. By contrast, the Brain authoring ingress already validates a
+  syntactically bounded repository/actor policy generically and successfully authored
+  downstream TASK-207. The defect therefore blocks Python Agent TASK-207 live
+  conformance AC2, AC3, AC5, and AC6 and conflicts with the reviewed TASK-114/TASK-116
+  policy that standard outer control-plane capability is portable downstream through
+  explicit reviewed repository-owned bindings.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    652b00b103dd50e2a550dd0ec0fe4063e69631b7, the published current-main integration of
+    the downstream portability policy. Frozen Kernel v0.1 remains unchanged.
+  - >
+    Canonical downstream evidence is Python Agent main
+    ec3374d905ff55609e6ed6d07915b759fdcf287e with TASK-207 revision 1 authored through
+    live Brain ingress and exact AIOS-renew pin
+    652b00b103dd50e2a550dd0ec0fe4063e69631b7.
+  - >
+    Python Agent live PRIMARY Issue #7 used a valid strict wakeup request and explicit
+    antigravity Executor but was rejected at GitHub-hosted carrier policy admission with
+    `carrier repository identity is invalid`. This is an admission/transport blocker,
+    not a RUN failure; no RUN or Executor state exists for that attempt.
+  - >
+    The same causal defect is present in current
+    src/aios_renew/github_issue_remediation_intent.py,
+    src/aios_renew/github_issue_repair_wakeup.py, and
+    src/aios_renew/terminal_attention.py. Fixing only PRIMARY would leave the same
+    downstream conformance gate blocked at later carrier families.
+  - >
+    Existing checked-in AIOS-renew carrier policies, exact request/body formats,
+    canonical title markers, dispatch identities, terminal-ref grammar, and
+    workflow/runtime authority remain valid and must remain behaviorally compatible.
+  - >
+    Repository identity and authorized actor allowlists are downstream-owned binding
+    values. Protocol-family constants such as request format/version, supported
+    Executor grammar, exact family title marker, terminal main ref and attention signal
+    namespace remain standard AIOS semantics unless separately changed by another TASK.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-ROADMAP.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-108.yaml
+    - .ai/tasks/TASK-111.yaml
+    - .ai/tasks/TASK-112.yaml
+    - .ai/tasks/TASK-113.yaml
+    - src/aios_renew/github_issue_ingress.py
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - src/aios_renew/terminal_attention.py
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_remediation_intent.py
+    - tests/test_github_issue_repair_wakeup.py
+    - tests/test_terminal_attention.py
+
+  modify:
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - src/aios_renew/terminal_attention.py
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_remediation_intent.py
+    - tests/test_github_issue_repair_wakeup.py
+    - tests/test_terminal_attention.py
+
+non_goals:
+  - >
+    Modify any downstream repository, Python Agent TASK-207, downstream AIOS pin,
+    downstream workflow, policy file, runner, or repository variable. Downstream migration
+    remains a separate explicit reviewed action after this upstream hardening is published.
+  - >
+    Modify AIOS-renew GitHub workflow YAML, checked-in carrier policy files, Runtime,
+    Dispatcher, A1/A2, A3/A6, correction dispatch, repair dispatch, Executor adapters,
+    review, publication, terminal RESULT/FAILURE truth, frozen Kernel, or roadmap state.
+  - >
+    Change PRIMARY, REMEDIATION, REPAIR, or ATTENTION request/body schemas, supported
+    Executor set, durable dispatch identity, at-most-once semantics, correction authority,
+    terminal-ref grammar, or publication behavior.
+  - >
+    Make Issue/event data authoritative for repository policy, auto-discover trust from a
+    repository event, accept arbitrary workflow/ref/path/command/model/runner fields, or
+    weaken exact event-to-policy matching.
+  - >
+    Introduce a generic lifecycle router, retry/fallback/reroute behavior, autonomous
+    Executor choice, autonomous correction, polling, broker, daemon, database, or new
+    semantic authority.
+  - >
+    Generalize canonical carrier-family title markers, terminal main ref, or attention
+    signal namespace merely because repository identity becomes portable.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      PRIMARY wakeup, REMEDIATION intent, and REPAIR wakeup policy loaders must accept a
+      syntactically valid repository full-name supplied by the repository-owned policy
+      instead of requiring literal trung-via/AIOS-renew. Event admission must still
+      require the event repository to equal that exact validated policy repository.
+    - >
+      PRIMARY wakeup, REMEDIATION intent, and REPAIR wakeup authorized_actors must be a
+      validated unique non-empty allowlist of syntactically valid GitHub login values
+      supplied by policy rather than requiring exactly [trung-via]. Existing sender/
+      Issue-author attribution and equality checks must remain fail closed where the
+      carrier currently requires them.
+    - >
+      Each of those three carrier families must retain its exact canonical title marker,
+      versioned policy/request format, body-size bound, request selector grammar, and
+      sanitized outputs. Portability must not allow policy to change the semantic carrier
+      family or inject execution authority.
+    - >
+      Terminal-attention policy admission must accept a syntactically valid repository
+      supplied by its repository-owned policy instead of requiring literal
+      trung-via/AIOS-renew, and every push/workflow_dispatch admission must still bind
+      exactly to that policy repository. Its canonical main ref refs/heads/main,
+      attention signal prefix refs/heads/aios/terminal-attention, strict title marker,
+      terminal selector grammar, and RESULT/FAILURE truth boundaries remain unchanged.
+    - >
+      Malformed repository identities, empty/duplicate/malformed actor allowlists,
+      wrong repository events, unauthorized actors, wrong title/action/event framing,
+      malformed bodies/selectors, and unknown fields must continue to fail before any
+      sanitized dispatch/output or privileged downstream action is produced.
+    - >
+      Current AIOS-renew checked-in policies must continue to load unchanged. Regression
+      tests must additionally prove at least one non-AIOS-renew repository binding,
+      including trung-via/python_complete_agent or an equivalent syntactically valid
+      downstream repository, is accepted when the event exactly matches its policy and
+      rejected when repository/actor framing conflicts.
+    - >
+      The change is package admission hardening only. No new policy authority, workflow
+      permission, dispatch journal, RUN allocation, Executor invocation, correction
+      semantics, terminal truth, Reviewer authority, or Publisher authority may be
+      introduced or duplicated.
+    - >
+      TASK-117 publication by itself does not claim Python Agent TASK-207 conformance or
+      silently retarget its dependency. After reviewed upstream publication, downstream
+      must perform a fresh BRAIN SYNC and an explicit reviewed pin migration before
+      resuming the same canonical conformance lineage.
+
+acceptance:
+  - id: AC1
+    condition: >
+      PRIMARY GitHub-Issue wakeup policy/admission accepts a valid non-AIOS-renew
+      repository-owned repository and actor allowlist, admits only an exactly matching
+      event, and produces the unchanged sanitized dispatch_id/task_id/executor output.
+  - id: AC2
+    condition: >
+      REMEDIATION-intent and REPAIR-wakeup policy/admission each accept valid downstream
+      repository/actor bindings while preserving their existing trusted actor framing,
+      strict selector schemas, sanitized outputs, and correction-family separation.
+  - id: AC3
+    condition: >
+      Terminal-attention policy/admission accepts a valid downstream repository binding
+      and exact matching event while preserving main-ref, attention-ref namespace,
+      terminal selector, canonical RESULT/FAILURE truth, and notification-only semantics.
+  - id: AC4
+    condition: >
+      Invalid or conflicting repository/actor policy values and mismatching events fail
+      closed before dispatch/notification output; the hardening does not broaden arbitrary
+      title, request, workflow, ref, command, model, runner, or credential authority.
+  - id: AC5
+    condition: >
+      Existing AIOS-renew policies and carrier behavior remain compatible, exact request
+      formats and family markers remain unchanged, and Brain authoring ingress semantics
+      are not duplicated or modified.
+  - id: AC6
+    condition: >
+      All implementation mutation stays within the eight authorized source/test files;
+      no workflow, checked-in policy, Runtime, Executor, review/publication, frozen Kernel,
+      roadmap, or downstream repository state changes.
+  - id: AC7
+    condition: >
+      Focused deterministic regression verification passes with zero unresolved items and
+      proves both current upstream compatibility and downstream repository-binding
+      portability for all four affected carrier families.
+
+verification:
+  required:
+    - python -m pytest tests/test_github_issue_wakeup.py tests/test_github_issue_remediation_intent.py tests/test_github_issue_repair_wakeup.py tests/test_terminal_attention.py tests/test_github_issue_wakeup_workflow.py tests/test_github_issue_remediation_intent_workflow.py tests/test_github_issue_repair_wakeup_workflow.py tests/test_terminal_attention_workflow.py -q
