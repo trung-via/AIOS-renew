@@ -1,0 +1,213 @@
+task_id: TASK-123
+revision: 1
+
+goal: >
+  Add one bounded, immutable REPAIR-authorization supersession contract inside the existing
+  REPAIR lifecycle so Brain/Human can replace an obsolete, never-executed repair strategy for
+  the exact same failed RUN without rewriting historical authorization, fabricating a new
+  FAILURE, or repeating implementation work. Preserve one current deterministic repair selector
+  for execution while retaining every predecessor authorization as immutable canonical lineage.
+
+problem: >
+  TASK-122 is now semantically reviewed PASS and published at
+  b5c200c5359669fb646ab985ee2991ec303c368f, adding FINALIZE_CANDIDATE for exact clean failed
+  candidates whose structural ResultPackage was lost. RUN-121-004 is the concrete production
+  case that needs that action: its failed candidate remains clean and transportable at
+  c3d822c147e52bb85f2786d03f113fc78b8f8e67 and no RESULT or later RUN exists. However the
+  failed RUN already has canonical REPAIR-121-004 at
+  24a4729f80d0cc85e435875e32b9d8ecacc1c82f with action CONTINUE_IMPLEMENTATION, authored
+  before FINALIZE_CANDIDATE existed. Current AUTHOR_REPAIR accepts only one canonical repair
+  ref per failed RUN and rejects any conflicting authorization. Executing the obsolete repair
+  would require a fresh committed mutation even though the desired recovery is now explicitly
+  zero-mutation, while deleting or rewriting the old authorization would destroy immutable
+  lineage. The system therefore needs a bounded way to supersede an unexecuted repair
+  authorization without changing the failed RUN or repeating work.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    b5c200c5359669fb646ab985ee2991ec303c368f, the reviewed and published TASK-122 candidate.
+  - >
+    TASK-122 revision 1 is complete: RUN-122-002 produced candidate
+    b5c200c5359669fb646ab985ee2991ec303c368f, semantic REVIEW PASS was canonicalized, and safe
+    publication advanced main to that exact reviewed source.
+  - >
+    TASK-121 revision 2 remains incomplete. Canonical RUN-121-004 FAILURE is pre-verification,
+    binds failed_head_sha c3d822c147e52bb85f2786d03f113fc78b8f8e67, and records a clean,
+    repairable, transportable candidate with no outside-task-scope files.
+  - >
+    Canonical REPAIR-121-004 currently resolves to
+    24a4729f80d0cc85e435875e32b9d8ecacc1c82f and action CONTINUE_IMPLEMENTATION. No canonical
+    RESULT, semantic REVIEW, or continuation RUN exists after RUN-121-004.
+  - >
+    Existing REPAIR actions and TASK-111 dedicated REPAIR wakeup remain authoritative.
+    TASK-122 adds FINALIZE_CANDIDATE but does not itself authorize rewriting or replacing an
+    already-canonical repair authorization.
+  - >
+    Frozen Kernel v0.1 remains FROZEN. Brain/Human owns semantic correction choice; Runtime
+    owns deterministic admission and verification; exactly one Executor owns execution HOW;
+    Reviewer owns semantic judgment.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-057.yaml
+    - .ai/tasks/TASK-089.yaml
+    - .ai/tasks/TASK-111.yaml
+    - .ai/tasks/TASK-121.yaml
+    - .ai/tasks/TASK-122.yaml
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/publication.py
+    - tests/test_authoring_ingress.py
+    - tests/test_operator.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_human_surface.py
+    - tests/test_repair_dispatch.py
+    - tests/test_publication.py
+  modify:
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/repair_dispatch.py
+    - tests/test_authoring_ingress.py
+    - tests/test_operator.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_repair_dispatch.py
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+
+non_goals:
+  - Complete, verify, review, publish, or otherwise resolve TASK-121 inside TASK-123.
+  - Rewrite, delete, force-update, hide, or reinterpret the existing REPAIR-121-004 artifact or
+    any other historical REPAIR, FAILURE, RESULT, REVIEW, REMEDIATION, or RUN artifact.
+  - Automatically choose a new repair action from failure prose, provider errors, duration,
+    token usage, candidate filenames, or model output. Supersession remains explicit
+    Brain/Human semantic authority.
+  - Permit supersession after a continuation RUN has been admitted, after terminal execution,
+    or while correction execution state is ambiguous.
+  - Convert REPAIR to REMEDIATION, PRIMARY, retry, reroute, failover, or a new lifecycle family.
+  - Weaken failed-run identity, TASK revision, failed_head_sha, candidate, scope, duplicate-run,
+    clean-worktree, ancestry, correction-preflight, Executor-selection, verification, review, or
+    publication gates.
+  - Add a generic mutable pointer service, database, queue, scheduler, watcher, retry loop,
+    lifecycle router, or additional reasoning agent.
+  - Change downstream repositories or dependency pins.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve every canonical REPAIR authorization as immutable history. Supersession must add
+      a new canonical authorization record that binds the exact predecessor authorization SHA;
+      it must never move, delete, rewrite, or force-update a historical authorization ref.
+    - >
+      At any observation point there must be exactly one deterministically resolvable current
+      REPAIR authorization for a failed RUN. Legacy failed RUNs with only the existing single
+      repair ref must continue to resolve exactly as before. Multiple competing successors,
+      broken predecessor chains, revision gaps, or ambiguous current selectors fail closed.
+    - >
+      AUTHOR_REPAIR may supersede an existing authorization only when the request explicitly
+      binds the exact currently resolved authorization SHA, the failed_run_id, TASK revision,
+      failed_head_sha, and canonical FAILURE identity; the replacement must remain within the
+      same failed RUN and original TASK authority. A stale predecessor SHA fails closed.
+    - >
+      Supersession is allowed only before any continuation RUN has been admitted for that failed
+      RUN and only when canonical state still exposes AUTHOR_REPAIR or EXECUTE_REPAIR for that
+      exact failure. Existing continuation, terminal correction execution, unresolved competing
+      state, or ambiguous remote observation forbids supersession.
+    - >
+      Changing the repair action or instructions is explicit Brain/Human correction intent, not
+      Runtime inference. Ordinary REPAIR validation still applies to the new authorization,
+      including action-specific scope and constraints; supersession cannot widen TASK authority
+      or introduce unrelated Human intent.
+    - >
+      Dedicated REPAIR wakeup and direct canonical observation must bind the exact current
+      authorization SHA. Delivery using a superseded predecessor SHA must fail before a new RUN
+      or Executor invocation. Duplicate delivery of the same current authorization remains
+      idempotent under existing dispatch rules.
+    - >
+      Unified State, Correction Preflight, and Human-facing continuation must expose only the
+      deterministically current authorization while preserving existing next_action values
+      AUTHOR_REPAIR and EXECUTE_REPAIR. No new lifecycle family, planner action, or autonomous
+      correction choice is introduced.
+    - >
+      A continuation RUN admitted from a superseding authorization must embed or otherwise bind
+      that exact current authorization so later RESULT/FAILURE, review, and publication can
+      validate the same immutable correction lineage. A later authorization revision cannot
+      retroactively change an already-admitted RUN.
+    - >
+      Deterministic offline regressions must cover legacy single-authorization compatibility,
+      valid one-step supersession, stale predecessor rejection, ambiguous/competing successor
+      rejection, refusal after continuation admission, wakeup with superseded SHA rejection,
+      idempotent replay of the current authorization, and preservation of historical artifacts.
+    - >
+      Include a RUN-121-004-equivalent regression proving that an existing legacy
+      CONTINUE_IMPLEMENTATION authorization can be immutably superseded by a
+      FINALIZE_CANDIDATE authorization before execution, after which the current selector is the
+      new authorization and the predecessor remains independently observable.
+    - >
+      Durable Project Contract guidance must state that obsolete unexecuted REPAIR intent is
+      superseded through canonical immutable authorization lineage rather than by rewriting the
+      old ref, fabricating a new FAILURE, or executing known-wrong correction semantics merely
+      to obtain a newer failure.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Canonical REPAIR authoring supports an explicitly bound superseding authorization for the
+      exact same failed RUN while preserving the predecessor authorization immutably and
+      retaining backward-compatible resolution for legacy single-authorization RUNs.
+  - id: AC2
+    condition: >
+      Current authorization resolution is deterministic and unique; stale predecessor,
+      competing successor, broken chain, ambiguous selector, or revision discontinuity fails
+      closed without RUN creation or Executor invocation.
+  - id: AC3
+    condition: >
+      Supersession is rejected once a continuation RUN exists or correction execution state is
+      no longer safely pre-execution, and no path rewrites historical REPAIR artifacts.
+  - id: AC4
+    condition: >
+      Unified State, Correction Preflight, dedicated REPAIR dispatch/wakeup, and operator repair
+      admission all bind the same exact current authorization SHA and reject a superseded SHA
+      before mutation or execution.
+  - id: AC5
+    condition: >
+      A continuation RUN admitted from the superseding authorization preserves exact failed RUN,
+      TASK revision, failed_head_sha, action, scope, and authorization identity through ordinary
+      RESULT/FAILURE, review, and publication lineage without adding a new lifecycle family.
+  - id: AC6
+    condition: >
+      Existing non-superseded CODE_FIX, CONTINUE_IMPLEMENTATION, NO_CHANGE, and
+      FINALIZE_CANDIDATE behavior remains unchanged, including Executor requirements and Runtime
+      verification semantics.
+  - id: AC7
+    condition: >
+      A deterministic RUN-121-004-equivalent test preserves legacy
+      REPAIR-121-004/CONTINUE_IMPLEMENTATION as historical evidence, authorizes an immutable
+      FINALIZE_CANDIDATE successor before any continuation, resolves that successor as current,
+      and proves the old selector can no longer dispatch execution.
+  - id: AC8
+    condition: >
+      Focused regression verification and git diff checking pass with zero unresolved items and
+      all implementation mutation remains inside the explicitly authorized files.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_authoring_ingress.py tests/test_operator.py tests/test_operator_unified_state.py tests/test_operator_correction_preflight.py tests/test_repair_dispatch.py tests/test_publication.py
+    - git diff --check
