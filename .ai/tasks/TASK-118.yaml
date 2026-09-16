@@ -1,0 +1,160 @@
+task_id: TASK-118
+revision: 1
+
+goal: >
+  Repair the live downstream terminal-attention portability gap exposed by Python Agent
+  TASK-207 revision 2. A downstream repository that explicitly adopts the reviewed
+  terminal-attention workflow/policy and consumes AIOS-renew through an exact reviewed
+  pin must be able to emit/reuse the canonical terminal-attention signal after RESULT or
+  FAILURE publication even when that downstream repository does not vendor AIOS-renew
+  package source under src/aios_renew. Preserve TASK-113 notification-only authority,
+  published-main workflow trust, exact terminal truth, replay/idempotency, and existing
+  upstream AIOS-renew behavior.
+
+problem: >
+  Python Agent RUN-207-002 is a canonical RESULT at candidate
+  1ec38ddbbe1f144672e2f00e7c14bd3b68f92fd5 with 59 focused tests plus git diff --check
+  passing and executor_invoked=false on the NO_CHANGE recovery. Its repository main has
+  the reviewed downstream terminal-attention workflow and policy, and the exact active
+  AIOS-renew pin is 26097405343150dc1b55015b94720528afad50ed. Nevertheless no
+  refs/heads/aios/terminal-attention/... signal and no [AIOS TERMINAL ATTENTION] Issue were
+  emitted. Canonical package inspection shows publish_terminal_attention() treats the
+  carrier as UNAVAILABLE unless published main contains all _REVIEWED_PATHS, including
+  src/aios_renew/terminal_attention.py. That path exists in the AIOS-renew source repo but
+  intentionally does not exist in an exact-pin downstream consumer. transport_post_pass()
+  treats the UNAVAILABLE return as a compatible no-op, so the terminal RESULT remains
+  canonical while TASK-113 attention never becomes reachable in the downstream layout.
+  TASK-117 repaired repository/actor admission portability but did not repair this
+  source-layout availability predicate. This is a real package portability defect and
+  blocks Python Agent TASK-207 AC3; TASK-207 explicitly forbids fixing such a control-plane
+  defect inside its conformance-certification scope.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    26097405343150dc1b55015b94720528afad50ed, the reviewed/source-published TASK-117 source.
+  - >
+    Frozen Kernel v0.1, TASK-113 terminal truth/attention separation, TASK-114/TASK-116
+    downstream capability-portability policy, and TASK-117 repository/actor portability
+    remain authoritative and are not being redefined.
+  - >
+    Python Agent canonical main remains cac817737c1ec224f55ada742fb9e95da05b821a while
+    TASK-207 source candidate 1ec38ddbbe1f144672e2f00e7c14bd3b68f92fd5 remains unpublished.
+    RUN-207-002 terminal RESULT artifacts exist canonically; absence of attention delivery
+    does not invalidate that RESULT.
+  - >
+    A downstream binding may install the reviewed package from an exact immutable pin rather
+    than vendor src/aios_renew into the downstream repository. Repository-owned workflows,
+    policies, exact pin/provenance, permissions, labels and paths remain explicit downstream
+    bindings rather than package-owned authority.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-113.yaml
+    - .ai/tasks/TASK-114.yaml
+    - .ai/tasks/TASK-116.yaml
+    - .ai/tasks/TASK-117.yaml
+    - src/aios_renew/terminal_attention.py
+    - src/aios_renew/review_transport.py
+    - tests/test_terminal_attention.py
+    - tests/test_terminal_attention_workflow.py
+    - tests/test_review_transport.py
+  modify:
+    - src/aios_renew/terminal_attention.py
+    - tests/test_terminal_attention.py
+    - tests/test_review_transport.py
+
+non_goals:
+  - >
+    Modify Python Agent or any other downstream repository, downstream pin, downstream
+    workflow/policy, runner, repository variable, TASK-207 lineage, or downstream roadmap.
+    Downstream migration to any newly reviewed AIOS source remains a separate explicit action.
+  - >
+    Change terminal RESULT/FAILURE truth, attention ref grammar, Issue body/title schema,
+    terminal selector semantics, Reviewer/correction/publication authority, or TASK-113's
+    notification-only boundary.
+  - >
+    Add a second terminal store, generic lifecycle router, polling, daemon, queue, broker,
+    automatic retry/reroute, autonomous review, autonomous repair, or mutable-main dependency.
+  - >
+    Make an unreviewed candidate/artifact ref the source of privileged issues:write workflow
+    code or allow downstream event data to choose arbitrary code, path, command, pin or ref.
+  - >
+    Fix deferred downstream D1, D2 or D3, or alter frozen Kernel/governance semantics.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      A reviewed downstream binding that does not vendor AIOS-renew package source must not be
+      classified as terminal-attention UNAVAILABLE solely because src/aios_renew package files
+      are absent from that downstream repository.
+    - >
+      Availability/admission must remain fail closed around the actual privileged repository
+      binding. The attention signal must still point only to repository-reviewed published-main
+      state, and GitHub-hosted Issue creation must execute only the downstream repository's
+      reviewed published-main workflow/policy plus its explicit exact package provenance.
+    - >
+      Preserve compatibility with the AIOS-renew source-repository layout, where the terminal
+      workflow installs reviewed local source from published main. The hardening must support
+      both source-repository and exact-pin downstream-adoption layouts without creating two
+      semantic authorities.
+    - >
+      Preserve exact canonical terminal ref/artifact validation, opposite-terminal conflict
+      rejection, attention-signal idempotency, conflict detection, bounded workflow_dispatch
+      replay, and notification-only semantics from TASK-113.
+    - >
+      Preserve TASK-117 generic repository/actor portability and all existing policy/event
+      fail-closed checks. This task repairs only the observed reviewed-surface availability
+      portability gap.
+    - >
+      A terminal-attention delivery failure remains post-terminal operational failure: it must
+      not rewrite RESULT/FAILURE truth, rerun unchanged verification, invoke a coding Executor,
+      or create a new implementation RUN.
+    - >
+      Regression proof must include a downstream-shaped repository fixture/binding where the
+      reviewed workflow/policy and exact pinned package provenance are present but
+      src/aios_renew/terminal_attention.py is intentionally absent, and must prove the canonical
+      attention signal is emitted/reused rather than reported UNAVAILABLE.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A downstream-shaped exact-pin consumer with reviewed terminal-attention repository
+      bindings and no vendored src/aios_renew package source is recognized as attention-capable
+      and emits/reuses the correct refs/heads/aios/terminal-attention/... signal after exact
+      canonical RESULT or FAILURE publication.
+  - id: AC2
+    condition: >
+      The signal continues to target reviewed published-main repository state and privileged
+      Issue-write admission remains bound to the exact repository-owned workflow/policy and
+      explicit immutable package provenance; unreviewed/non-main authority remains rejected.
+  - id: AC3
+    condition: >
+      AIOS-renew's own source-repository terminal-attention path remains behaviorally compatible,
+      including local reviewed-source installation from published main.
+  - id: AC4
+    condition: >
+      Exact replay remains idempotent; conflicting RUN/kind/SHA or competing RESULT/FAILURE
+      identities still fail closed, and absence of a genuinely unadopted carrier can still be
+      treated according to the existing bounded rollout-compatibility semantics.
+  - id: AC5
+    condition: >
+      No terminal truth, Runtime, Reviewer, correction, Executor, publication, policy, workflow,
+      downstream repository or frozen-governance authority is added or moved by this hardening.
+  - id: AC6
+    condition: >
+      All mutation stays inside the three authorized files, focused deterministic regression
+      verification passes, git diff --check passes, and RESULT contains zero unresolved items.
+
+verification:
+  required:
+    - python -m pytest tests/test_terminal_attention.py tests/test_review_transport.py -q
+    - git diff --check
