@@ -21,6 +21,10 @@ from aios_renew.review_transport import (
 
 
 TASK = {"id": "TASK-058", "revision": 2}
+PINNED_AIOS_RENEW_SHA = "26097405343150dc1b55015b94720528afad50ed"
+PINNED_PROVENANCE_PATH = (
+    ".agents/skills/aios-worker/requirements-aios-renew.txt"
+)
 
 
 def test_runtime_failure_binding_rejects_candidate_facts_that_cannot_be_repairable(
@@ -66,7 +70,9 @@ def git(repo: Path, *args: str) -> str:
     ).stdout.strip()
 
 
-def make_repo(root: Path) -> tuple[Path, Path]:
+def make_repo(
+    root: Path, *, downstream_attention: bool = False
+) -> tuple[Path, Path]:
     repo = root / "repo"
     remote = root / "upstream.git"
     repo.mkdir()
@@ -81,6 +87,24 @@ def make_repo(root: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     (repo / "subject.txt").write_text("root\n", encoding="utf-8")
+    if downstream_attention:
+        workflow = repo / ".github/workflows/aios-terminal-attention.yml"
+        workflow.parent.mkdir(parents=True, exist_ok=True)
+        workflow.write_text(
+            "run: |\n  python -m pip install --no-input "
+            f"-r {PINNED_PROVENANCE_PATH}\n",
+            encoding="utf-8",
+        )
+        policy = repo / ".ai/brain-terminal-attention-carriers.yaml"
+        policy.parent.mkdir(parents=True, exist_ok=True)
+        policy.write_text("reviewed: downstream policy\n", encoding="utf-8")
+        provenance = repo / PINNED_PROVENANCE_PATH
+        provenance.parent.mkdir(parents=True, exist_ok=True)
+        provenance.write_text(
+            "aios-renew @ git+https://github.com/trung-via/AIOS-renew.git@"
+            f"{PINNED_AIOS_RENEW_SHA}\n",
+            encoding="utf-8",
+        )
     git(repo, "add", ".")
     git(repo, "commit", "--quiet", "-m", "root")
     subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
@@ -389,6 +413,46 @@ def test_terminal_transport_notifies_only_after_canonical_artifact_publish(
 
     assert len(calls) == 1
     assert calls[0][:2] == ("RUN-058-090", terminal_kind)
+
+
+@pytest.mark.parametrize("terminal_kind", ["RESULT", "FAILURE"])
+def test_terminal_transport_emits_attention_for_exact_pin_downstream_binding(
+    tmp_path: Path, terminal_kind: str
+) -> None:
+    repo, _ = make_repo(tmp_path, downstream_attention=True)
+    assert not (repo / "src/aios_renew/terminal_attention.py").exists()
+    files = tmp_path / "downstream-attention-files"
+    main_sha = git(repo, "rev-parse", "HEAD")
+    candidate = commit_candidate(repo, f"downstream {terminal_kind.lower()}")
+    run_id = "RUN-058-091"
+
+    if terminal_kind == "RESULT":
+        publish_success(
+            repo,
+            files,
+            run_id=run_id,
+            head_sha=candidate,
+            root_base_sha=main_sha,
+        )
+        namespace = "artifacts"
+    else:
+        publish_failure(
+            repo,
+            files,
+            run_id=run_id,
+            candidate_sha=candidate,
+            root_base_sha=main_sha,
+        )
+        namespace = "failure-artifacts"
+
+    terminal_ref = f"refs/heads/aios/{namespace}/{run_id}"
+    terminal_sha = git(repo, "ls-remote", "--refs", "origin", terminal_ref).split()[0]
+    signal_ref = (
+        f"refs/heads/aios/terminal-attention/{terminal_kind}/{run_id}/{terminal_sha}"
+    )
+    assert git(repo, "ls-remote", "--refs", "origin", signal_ref) == (
+        f"{main_sha}\t{signal_ref}"
+    )
 
 
 def test_resolves_canonical_failed_correction_chain_with_exact_transported_facts(

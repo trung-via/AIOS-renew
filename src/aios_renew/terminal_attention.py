@@ -34,10 +34,19 @@ _ISSUE_POLICY_KEYS = frozenset(
 _BODY_KEYS = frozenset(
     {"format", "version", "run_id", "terminal_kind", "artifact_sha"}
 )
-_REVIEWED_PATHS = (
+_REPOSITORY_BINDING_PATHS = (
     ".github/workflows/aios-terminal-attention.yml",
     ".ai/brain-terminal-attention-carriers.yaml",
-    "src/aios_renew/terminal_attention.py",
+)
+_LOCAL_SOURCE_PATH = "src/aios_renew/terminal_attention.py"
+_PINNED_PROVENANCE_PATTERN = re.compile(
+    r"aios-renew @ git\+https://github\.com/trung-via/AIOS-renew\.git@"
+    r"[0-9a-f]{40}"
+)
+_PINNED_INSTALL_PATTERN = re.compile(
+    r"^[ \t]*python -m pip install --no-input -r "
+    r"(?P<path>(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+)[ \t]*$",
+    re.MULTILINE,
 )
 _MAX_EVENT_BYTES = 1_048_576
 _REPOSITORY_PATTERN = re.compile(
@@ -281,11 +290,45 @@ def _require_main_ancestor(repo: Path, commit: str, main_sha: str) -> None:
 
 
 def _reviewed_surface_available(repo: Path, main_sha: str) -> bool:
-    for path in _REVIEWED_PATHS:
+    for path in _REPOSITORY_BINDING_PATHS:
         code, _, _ = _git(repo, "cat-file", "-e", f"{main_sha}:{path}", allow_fail=True)
         if code:
             return False
-    return True
+    local_source_code, _, _ = _git(
+        repo,
+        "cat-file",
+        "-e",
+        f"{main_sha}:{_LOCAL_SOURCE_PATH}",
+        allow_fail=True,
+    )
+    if not local_source_code:
+        return True
+
+    workflow_code, workflow, _ = _git(
+        repo,
+        "show",
+        f"{main_sha}:{_REPOSITORY_BINDING_PATHS[0]}",
+        allow_fail=True,
+    )
+    if workflow_code:
+        return False
+    provenance_paths = {
+        match.group("path") for match in _PINNED_INSTALL_PATTERN.finditer(workflow)
+    }
+    if len(provenance_paths) != 1:
+        return False
+    provenance_path = provenance_paths.pop()
+    if any(part in {"", ".", ".."} for part in provenance_path.split("/")):
+        return False
+    provenance_code, provenance, _ = _git(
+        repo,
+        "show",
+        f"{main_sha}:{provenance_path}",
+        allow_fail=True,
+    )
+    return not provenance_code and bool(
+        _PINNED_PROVENANCE_PATTERN.fullmatch(provenance)
+    )
 
 
 def _ensure_remote_main_object(

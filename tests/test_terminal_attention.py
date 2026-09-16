@@ -22,6 +22,10 @@ from aios_renew.terminal_attention import (
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / ".ai/brain-terminal-attention-carriers.yaml"
+PINNED_AIOS_RENEW_SHA = "26097405343150dc1b55015b94720528afad50ed"
+PINNED_PROVENANCE_PATH = (
+    ".agents/skills/aios-worker/requirements-aios-renew.txt"
+)
 
 
 def git(repo: Path, *args: str) -> str:
@@ -33,7 +37,13 @@ def git(repo: Path, *args: str) -> str:
     ).stdout.strip()
 
 
-def make_repo(tmp_path: Path, *, reviewed_surface: bool = True) -> tuple[Path, Path, str]:
+def make_repo(
+    tmp_path: Path,
+    *,
+    reviewed_surface: bool = True,
+    exact_pin: str | None = None,
+    workflow_uses_pin: bool = True,
+) -> tuple[Path, Path, str]:
     repo = tmp_path / "repo"
     remote = tmp_path / "upstream.git"
     repo.mkdir()
@@ -42,6 +52,8 @@ def make_repo(tmp_path: Path, *, reviewed_surface: bool = True) -> tuple[Path, P
     git(repo, "config", "user.email", "attention@example.invalid")
     git(repo, "branch", "-M", "main")
     (repo / "subject.txt").write_text("main\n", encoding="utf-8")
+    if reviewed_surface and exact_pin is not None:
+        raise ValueError("test fixture cannot use local source and an exact pin together")
     if reviewed_surface:
         for relative in (
             ".github/workflows/aios-terminal-attention.yml",
@@ -51,6 +63,24 @@ def make_repo(tmp_path: Path, *, reviewed_surface: bool = True) -> tuple[Path, P
             path = repo / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"reviewed: {relative}\n", encoding="utf-8")
+    elif exact_pin is not None:
+        workflow = repo / ".github/workflows/aios-terminal-attention.yml"
+        workflow.parent.mkdir(parents=True, exist_ok=True)
+        workflow.write_text(
+            "run: |\n  python -m pip install --no-input "
+            f"-r {PINNED_PROVENANCE_PATH if workflow_uses_pin else 'requirements.txt'}\n",
+            encoding="utf-8",
+        )
+        policy = repo / ".ai/brain-terminal-attention-carriers.yaml"
+        policy.parent.mkdir(parents=True, exist_ok=True)
+        policy.write_text("reviewed: downstream policy\n", encoding="utf-8")
+        provenance = repo / PINNED_PROVENANCE_PATH
+        provenance.parent.mkdir(parents=True, exist_ok=True)
+        provenance.write_text(
+            "aios-renew @ git+https://github.com/trung-via/AIOS-renew.git@"
+            f"{exact_pin}\n",
+            encoding="utf-8",
+        )
     git(repo, "add", ".")
     git(repo, "commit", "--quiet", "-m", "published main")
     main_sha = git(repo, "rev-parse", "HEAD")
@@ -184,6 +214,78 @@ def test_pre_carrier_main_is_compatible_and_emits_no_privileged_signal(
         artifact_sha=item.artifact_sha,
     ) == "UNAVAILABLE"
     assert git(repo, "ls-remote", "--refs", "origin", f"{SIGNAL_PREFIX}/*") == ""
+
+
+@pytest.mark.parametrize("terminal_kind", ["RESULT", "FAILURE"])
+def test_exact_pin_downstream_without_vendored_source_publishes_and_reuses_signal(
+    tmp_path: Path, terminal_kind: str
+) -> None:
+    repo, _, main_sha = make_repo(
+        tmp_path, reviewed_surface=False, exact_pin=PINNED_AIOS_RENEW_SHA
+    )
+    assert not (repo / "src/aios_renew/terminal_attention.py").exists()
+    item = artifact_selector(repo, kind=terminal_kind)
+    publish_terminal(repo, item)
+
+    assert publish_terminal_attention(
+        repo,
+        remote="origin",
+        run_id=item.run_id,
+        terminal_kind=item.terminal_kind,
+        artifact_sha=item.artifact_sha,
+    ) == "PUBLISHED"
+    assert git(repo, "ls-remote", "--refs", "origin", item.signal_ref) == (
+        f"{main_sha}\t{item.signal_ref}"
+    )
+    assert publish_terminal_attention(
+        repo,
+        remote="origin",
+        run_id=item.run_id,
+        terminal_kind=item.terminal_kind,
+        artifact_sha=item.artifact_sha,
+    ) == "REUSED"
+
+
+@pytest.mark.parametrize(
+    "pin",
+    ["main", "26097405343150dc1b55015b94720528afad50e"],
+)
+def test_downstream_without_exact_immutable_provenance_remains_unavailable(
+    tmp_path: Path, pin: str
+) -> None:
+    repo, _, _ = make_repo(tmp_path, reviewed_surface=False, exact_pin=pin)
+    item = artifact_selector(repo)
+    publish_terminal(repo, item)
+
+    assert publish_terminal_attention(
+        repo,
+        remote="origin",
+        run_id=item.run_id,
+        terminal_kind=item.terminal_kind,
+        artifact_sha=item.artifact_sha,
+    ) == "UNAVAILABLE"
+    assert git(repo, "ls-remote", "--refs", "origin", f"{SIGNAL_PREFIX}/*") == ""
+
+
+def test_downstream_workflow_must_bind_the_exact_pin_provenance(
+    tmp_path: Path,
+) -> None:
+    repo, _, _ = make_repo(
+        tmp_path,
+        reviewed_surface=False,
+        exact_pin=PINNED_AIOS_RENEW_SHA,
+        workflow_uses_pin=False,
+    )
+    item = artifact_selector(repo)
+    publish_terminal(repo, item)
+
+    assert publish_terminal_attention(
+        repo,
+        remote="origin",
+        run_id=item.run_id,
+        terminal_kind=item.terminal_kind,
+        artifact_sha=item.artifact_sha,
+    ) == "UNAVAILABLE"
 
 
 def test_push_and_dispatch_admission_revalidate_remote_binding(
