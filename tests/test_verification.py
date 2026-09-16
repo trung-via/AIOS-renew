@@ -100,7 +100,160 @@ def test_windows_uses_one_noninteractive_powershell_wrapper_with_utf8_preamble(
     assert runner.calls[0][1]["env"]["PYTHONIOENCODING"] == "utf-8"
     assert "PYTHONUTF8" not in runner.calls[0][1]["env"]
     assert runner.calls[0][1]["env"]["EXISTING_VAR"] == "val"
+    isolated = runner.calls[0][1]["env"]["TEMP"]
+    assert runner.calls[0][1]["env"]["TMP"] == isolated
+    assert runner.calls[0][1]["env"]["TMPDIR"] == isolated
+    assert Path(isolated).is_dir()
+    assert Path(isolated).name == "temporary"
     assert evidence[0].source.command == command
+
+
+def test_windows_temp_isolation_overrides_conflicting_ambient_values_for_all_commands(
+    tmp_path: Path,
+) -> None:
+    commands = ("first --unchanged", "second --unchanged")
+    runner = RecordingRunner([completed(), completed()])
+    ambient = {
+        "Temp": "ambient-temp",
+        "TMP": "ambient-tmp",
+        "TMPDIR": "ambient-tmpdir",
+        "UNCHANGED": "preserved",
+    }
+
+    execute_verification(
+        commands,
+        run_id="RUN-120-001",
+        subject_sha="abc123",
+        repository=tmp_path,
+        raw_directory=tmp_path / "runtime" / "RUN-120-001",
+        runner=runner,
+        platform="nt",
+        environment=ambient,
+    )
+
+    assert len(runner.calls) == 2
+    assert [call[0][-1] for call in runner.calls] == [
+        f"[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+        f"& {{ {command} }}; exit $LASTEXITCODE"
+        for command in commands
+    ]
+    environments = [call[1]["env"] for call in runner.calls]
+    isolated = environments[0]["TEMP"]
+    assert all(
+        env["TEMP"] == env["TMP"] == env["TMPDIR"] == isolated
+        for env in environments
+    )
+    assert all("Temp" not in env for env in environments)
+    assert all(env["UNCHANGED"] == "preserved" for env in environments)
+    assert ambient == {
+        "Temp": "ambient-temp",
+        "TMP": "ambient-tmp",
+        "TMPDIR": "ambient-tmpdir",
+        "UNCHANGED": "preserved",
+    }
+
+
+def test_windows_temp_isolation_does_not_mutate_process_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TEMP", "process-temp")
+    monkeypatch.setenv("TMP", "process-tmp")
+    monkeypatch.setenv("TMPDIR", "process-tmpdir")
+    runner = RecordingRunner([completed()])
+
+    execute_verification(
+        ("one-command",),
+        run_id="RUN-120-006",
+        subject_sha="abc123",
+        repository=tmp_path,
+        raw_directory=tmp_path / "runtime" / "RUN-120-006",
+        runner=runner,
+        platform="nt",
+    )
+
+    assert os.environ["TEMP"] == "process-temp"
+    assert os.environ["TMP"] == "process-tmp"
+    assert os.environ["TMPDIR"] == "process-tmpdir"
+    assert runner.calls[0][1]["env"]["TEMP"] != "process-temp"
+
+
+def test_windows_verification_executions_use_distinct_temp_roots(
+    tmp_path: Path,
+) -> None:
+    first_runner = RecordingRunner([completed()])
+    second_runner = RecordingRunner([completed()])
+
+    execute_verification(
+        ("same-command",),
+        run_id="RUN-120-002",
+        subject_sha="abc123",
+        repository=tmp_path,
+        raw_directory=tmp_path / "runtime" / "RUN-120-002",
+        runner=first_runner,
+        platform="nt",
+        environment={},
+    )
+    execute_verification(
+        ("same-command",),
+        run_id="RUN-120-003",
+        subject_sha="abc123",
+        repository=tmp_path,
+        raw_directory=tmp_path / "runtime" / "RUN-120-003",
+        runner=second_runner,
+        platform="nt",
+        environment={},
+    )
+
+    first_temp = first_runner.calls[0][1]["env"]["TEMP"]
+    second_temp = second_runner.calls[0][1]["env"]["TEMP"]
+    assert first_temp != second_temp
+    assert Path(first_temp).is_dir()
+    assert Path(second_temp).is_dir()
+
+
+def test_windows_temp_isolation_failure_stops_before_command_execution(
+    tmp_path: Path,
+) -> None:
+    raw = tmp_path / "runtime" / "RUN-120-004"
+    (raw / "temporary").mkdir(parents=True)
+    runner = RecordingRunner([completed()])
+
+    with pytest.raises(RuntimeVerificationError, match="could not be isolated"):
+        execute_verification(
+            ("must-not-run",),
+            run_id="RUN-120-004",
+            subject_sha="abc123",
+            repository=tmp_path,
+            raw_directory=raw,
+            runner=runner,
+            platform="nt",
+            environment={},
+        )
+
+    assert runner.calls == []
+
+
+def test_windows_nonzero_remains_canonical_failure_without_retry(
+    tmp_path: Path,
+) -> None:
+    command = "tool-neutral-command"
+    runner = RecordingRunner([completed(returncode=9, stderr=b"failed\n")])
+
+    with pytest.raises(RuntimeVerificationError) as caught:
+        execute_verification(
+            (command,),
+            run_id="RUN-120-005",
+            subject_sha="abc123",
+            repository=tmp_path,
+            raw_directory=tmp_path / "runtime" / "RUN-120-005",
+            runner=runner,
+            platform="nt",
+            environment={},
+        )
+
+    assert len(runner.calls) == 1
+    assert caught.value.evidence[0].source.command == command
+    assert caught.value.evidence[0].result.exit_code == 9
 
 
 def test_posix_environment_not_mutated_with_windows_encoding(

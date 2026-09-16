@@ -15,6 +15,7 @@ VerificationRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 _WINDOWS_POWERSHELL_UTF8_PREAMBLE = (
     "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
 )
+_WINDOWS_TEMP_DIRECTORY = "temporary"
 
 
 class RuntimeVerificationError(RuntimeError):
@@ -39,9 +40,23 @@ def execute_verification(
     """Execute each canonical command once, in order, stopping at first failure."""
 
     repository = repository.resolve()
-    raw_directory.mkdir(parents=True, exist_ok=True)
+    if platform == "nt":
+        try:
+            raw_directory.mkdir(parents=True, exist_ok=True)
+            temp_root = _isolated_temp_root(raw_directory)
+        except (OSError, RuntimeError) as exc:
+            raise RuntimeVerificationError(
+                f"verification environment could not be isolated: {exc}"
+            ) from exc
+    else:
+        raw_directory.mkdir(parents=True, exist_ok=True)
+        temp_root = None
     evidence: list[Evidence] = []
-    env = _verification_environment(environment=environment, platform=platform)
+    env = _verification_environment(
+        environment=environment,
+        platform=platform,
+        temp_root=temp_root,
+    )
     for order, command in enumerate(commands, start=1):
         exact_command = _strict_utf8_command(command)
         evidence_id = f"{run_id}-V{order:03d}"
@@ -133,12 +148,37 @@ def _shell_command(command: str, *, platform: str) -> tuple[str, ...]:
 
 
 def _verification_environment(
-    *, environment: Mapping[str, str] | None, platform: str
+    *,
+    environment: Mapping[str, str] | None,
+    platform: str,
+    temp_root: Path | None,
 ) -> dict[str, str]:
     env = dict(os.environ if environment is None else environment)
     if platform == "nt":
-        env["PYTHONIOENCODING"] = "utf-8"
+        if temp_root is None:
+            raise RuntimeVerificationError(
+                "Windows verification requires an isolated temporary root"
+            )
+        isolated = str(temp_root)
+        overrides = {
+            "TEMP": isolated,
+            "TMP": isolated,
+            "TMPDIR": isolated,
+            "PYTHONIOENCODING": "utf-8",
+        }
+        for name in tuple(env):
+            if name.upper() in overrides:
+                del env[name]
+        env.update(overrides)
     return env
+
+
+def _isolated_temp_root(raw_directory: Path) -> Path:
+    """Exclusively allocate one fixed child of per-execution Runtime state."""
+
+    temp_root = raw_directory / _WINDOWS_TEMP_DIRECTORY
+    temp_root.mkdir()
+    return temp_root.resolve(strict=True)
 
 
 def _require_bytes(value: bytes | str, stream: str) -> bytes:
