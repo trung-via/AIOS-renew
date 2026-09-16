@@ -1,0 +1,116 @@
+task_id: TASK-120
+revision: 1
+
+goal: >
+  Harden Runtime-owned canonical verification so native Windows verification executions
+  receive an isolated temporary environment, preventing stale or locked ambient pytest
+  temporary-root aliases such as pytest-current from turning otherwise completed
+  verification into an environmental failure, while preserving exact canonical commands,
+  candidate lineage, evidence semantics, and fail-closed treatment of genuine failures.
+
+problem: >
+  Canonical downstream evidence from Python Agent RUN-205-001 shows all selected pytest
+  tests reached 100 percent but the process exited 1 during tmp_path session cleanup with
+  PermissionError WinError 5 on pytest-current. REPAIR-205-001 correctly classified the
+  recovery as NO_CHANGE and succeeded only after TMPDIR, TEMP, and TMP were bound to one
+  fresh dedicated untracked directory. Current AIOS verification therefore lacks a
+  deterministic Windows isolation prerequisite at the Runtime verification boundary.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    bf463d9af6914bc356b7bedc9c9cd1512441264e, the reviewed and published TASK-119 candidate.
+  - >
+    Python Agent RUN-205-001 and REPAIR-205-001 are causal evidence only; downstream source
+    and historical lineage are not mutation authority for this upstream task.
+  - >
+    Existing Runtime verification remains authoritative for canonical command execution,
+    subject SHA, evidence, and failure semantics.
+
+scope:
+  inspect:
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - src/aios_renew/runtime.py
+    - src/aios_renew/verification.py
+    - tests/test_verification.py
+  modify:
+    - src/aios_renew/verification.py
+    - tests/test_verification.py
+
+non_goals:
+  - Modify Python Agent or rewrite TASK-205/RUN-205/REPAIR-205 historical lineage.
+  - Patch pytest, Windows ACL policy, antivirus, user profiles, or machine-global TEMP/TMP.
+  - Change canonical TASK verification commands or add pytest-specific command flags.
+  - Treat genuine nonzero test results as success or infer success from progress output.
+  - Add automatic retry, rerun, scheduler, journal, RUN allocator, or lifecycle authority.
+  - Change Human Surface executor semantics fixed by TASK-119, Brain ingress, publication,
+    roadmap ownership, remediation, repair, Reviewer, Publisher, or downstream pins.
+  - Address D3 cross-chat continuity or wakeup fan-out observability.
+  - Push, publish, or mutate canonical main from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      On native Windows, canonical verification must provide one isolated temporary root for
+      the verification execution and coherently bind TEMP, TMP, and TMPDIR visible to every
+      canonical verification command to that root instead of conflicting ambient values.
+    - >
+      The isolation must be verification-tool neutral: do not inspect command text for
+      pytest, rewrite commands, inject pytest flags, classify output text, or special-case
+      pytest-current.
+    - >
+      Temporary state must remain outside TASK mutation authority and must not dirty the
+      repository working tree or enter candidate changed-files/publication semantics.
+    - >
+      Isolation identity must remain within existing Runtime authority and be deterministic
+      and collision-safe without adding another scheduler, journal, RUN allocator, retry
+      authority, or lifecycle authority.
+    - >
+      Canonical commands execute exactly once in declared order with unchanged command text
+      and subject SHA. A genuine nonzero process exit remains RuntimeVerificationError with
+      canonical evidence; no success reinterpretation or automatic retry is permitted.
+    - >
+      Failure to establish a trustworthy isolated environment must fail closed before
+      verification and must not authorize source mutation or a coding Executor by itself.
+    - >
+      Preserve existing Windows strict UTF-8 behavior, unrelated caller environment values,
+      process-global environment isolation, and compatible deterministic non-Windows
+      behavior.
+    - >
+      Deterministic offline tests must prove Windows TEMP/TMP/TMPDIR convergence, isolation
+      between verification executions, unchanged command semantics, genuine nonzero failure
+      behavior, and non-Windows compatibility without requiring a live Windows permission
+      race, network, wall clock, or mutable external state.
+
+acceptance:
+  - id: AC1
+    condition: >
+      On native Windows, each canonical verification execution supplies TEMP, TMP, and
+      TMPDIR as the same isolated Runtime-owned temporary root independent of conflicting
+      ambient values.
+  - id: AC2
+    condition: >
+      Isolation is generic and command-neutral: canonical command text, order, invocation
+      count, subject SHA, and evidence source command remain unchanged with no pytest-specific
+      parsing, flags, or retry path.
+  - id: AC3
+    condition: >
+      Failure to establish isolation fails closed before command execution and cannot create
+      source-mutation or coding-Executor authority; genuine nonzero command/test outcomes
+      remain canonical verification failures.
+  - id: AC4
+    condition: >
+      Runtime temp state is excluded from candidate/publication semantics, process-global
+      environment is not mutated, unrelated environment values and Windows UTF-8 behavior
+      are preserved, and existing evidence reuse/NO_CHANGE semantics remain compatible.
+  - id: AC5
+    condition: >
+      Non-Windows behavior remains compatible and deterministic offline regression tests
+      cover the Windows isolation boundary while implementation changes remain confined to
+      the two authorized files.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_verification.py
