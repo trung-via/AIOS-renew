@@ -6204,14 +6204,18 @@ def publish_conflicting_primary_failure(
         encoding="utf-8",
     )
     state = runtime_paths(repo)
-    operator_module.transport_failure(
-        repo,
-        run_id=run_id,
-        head_sha=base_sha,
-        run_path=state.runs / f"{run_id}.json",
-        failure_path=failure_path,
-        publish_candidate=False,
-    )
+    with pytest.raises(
+        operator_module.ReviewTransportError,
+        match="canonical RUN has competing RESULT and FAILURE terminals",
+    ):
+        operator_module.transport_failure(
+            repo,
+            run_id=run_id,
+            head_sha=base_sha,
+            run_path=state.runs / f"{run_id}.json",
+            failure_path=failure_path,
+            publish_candidate=False,
+        )
 
 
 def test_fresh_primary_reserves_remote_terminal_run_identity(tmp_path: Path) -> None:
