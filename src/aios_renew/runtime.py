@@ -325,13 +325,13 @@ class RuntimeCompletion:
             repair_changed = self._committed_changed_files(
                 policy.mutation_base_sha, actual_head
             )
-            if repair_changed.difference(policy.mutation_scope):
-                self._raise(
-                    "REPAIR committed paths outside authorized correction scope"
-                )
             if policy.mutation_action in (
                 "CODE_FIX", "CONTINUE_IMPLEMENTATION"
             ):
+                if repair_changed.difference(policy.mutation_scope):
+                    self._raise(
+                        "REPAIR committed paths outside authorized correction scope"
+                    )
                 if actual_head == policy.mutation_base_sha:
                     self._raise(
                         f"{policy.mutation_action} REPAIR did not advance HEAD"
@@ -344,7 +344,7 @@ class RuntimeCompletion:
                     )
                     self._raise(message)
             elif actual_head != policy.mutation_base_sha:
-                self._raise("NO_CHANGE REPAIR changed HEAD")
+                self._raise(f"{policy.mutation_action} REPAIR changed HEAD")
 
     def _require_remediation_result(
         self,
@@ -606,7 +606,9 @@ def persist_failure(
             ).get("failed_run_id")
         if isinstance(cause, CodexExecutionError):
             record["error"]["exit_code"] = cause.exit_code
-        if _is_native_timeout(cause) or isinstance(failure, KeyboardInterrupt):
+        if isinstance(
+            cause, (CodexExecutionError, AntigravityExecutionError)
+        ) or isinstance(failure, KeyboardInterrupt):
             diagnostic_source: BaseException = cause or failure
             record["error"]["native_diagnostics"] = {
                 "limit_chars": NATIVE_DIAGNOSTIC_LIMIT,

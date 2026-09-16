@@ -453,6 +453,97 @@ def test_continue_implementation_requires_failed_head_advancement_before_verific
     assert not (state.preverification / f"{run.run_id}.json").exists()
 
 
+def test_finalize_candidate_requires_unchanged_failed_head_then_verifies_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    package = replace(package, result=replace(package.result, head_sha="failed"))
+    policy = repair_completion_policy(
+        task,
+        root_base_sha="base",
+        failed_head_sha="failed",
+        action="FINALIZE_CANDIDATE",
+        modification_scope=(),
+        lineage_path=tmp_path / "repairs" / "RUN-052-000.json",
+    )
+    calls = []
+
+    class FinalizeTopologyCompletion(StubRuntimeCompletion):
+        def _committed_changed_files(
+            self, base_sha: str, head_sha: str
+        ) -> set[str]:
+            return {
+                ("base", "failed"): {"OUTPUT.txt"},
+                ("failed", "failed"): set(),
+            }[(base_sha, head_sha)]
+
+    monkeypatch.setattr(
+        runtime_module,
+        "execute_verification",
+        lambda commands, **kwargs: (
+            calls.append((tuple(commands), kwargs["subject_sha"])),
+            evidence_for(kwargs["run_id"], kwargs["subject_sha"], tuple(commands)),
+        )[1],
+    )
+    monkeypatch.setattr(
+        runtime_module, "transport_post_pass", lambda *args, **kwargs: None
+    )
+    completion = FinalizeTopologyCompletion(
+        repo=tmp_path,
+        state=state,
+        task=task,
+        run=run,
+        run_path=run_path,
+        verification_runner=lambda *args, **kwargs: None,
+        observation_tracker=None,
+        error_type=BoundaryError,
+        head_sha="failed",
+        changed_files=set(),
+    ).complete(package, policy)
+
+    stored = json.loads(completion.result_path.read_text(encoding="utf-8"))
+    assert stored["result"]["head_sha"] == "failed"
+    assert stored["result"]["changed_files"] == ["OUTPUT.txt"]
+    assert calls == [(("verify-one", "verify-two"), "failed")]
+
+
+def test_finalize_candidate_mutation_fails_before_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task, run, state, run_path, package = completion_fixture(tmp_path)
+    calls = []
+    monkeypatch.setattr(
+        runtime_module,
+        "execute_verification",
+        lambda *args, **kwargs: calls.append("verification"),
+    )
+    boundary = StubRuntimeCompletion(
+        repo=tmp_path,
+        state=state,
+        task=task,
+        run=run,
+        run_path=run_path,
+        verification_runner=lambda *args, **kwargs: None,
+        observation_tracker=None,
+        error_type=BoundaryError,
+        head_sha="head",
+        changed_files={"OUTPUT.txt"},
+    )
+    with pytest.raises(BoundaryError, match="FINALIZE_CANDIDATE REPAIR changed HEAD"):
+        boundary.complete(
+            package,
+            repair_completion_policy(
+                task,
+                root_base_sha="base",
+                failed_head_sha="failed",
+                action="FINALIZE_CANDIDATE",
+                modification_scope=(),
+                lineage_path=tmp_path / "repairs" / "RUN-052-000.json",
+            ),
+        )
+    assert calls == []
+
+
 def test_continue_implementation_rejects_divergent_final_head(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

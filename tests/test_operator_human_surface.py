@@ -324,6 +324,57 @@ def test_human_surface_continue_implementation_requires_executor_and_delegates_o
     assert outcome.delegated_operation == "REPAIR"
 
 
+def test_human_surface_finalize_candidate_requires_and_preserves_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    repair = {
+        "repair_id": "REPAIR-101-FINALIZE",
+        "failed_run_id": "RUN-101-001",
+        "failed_head_sha": "d" * 40,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "FINALIZE_CANDIDATE",
+        "modification_scope": [],
+        "instructions": ["Return the missing package."],
+        "constraints": [],
+    }
+    observation = _human_observation(
+        "EXECUTE_REPAIR",
+        failed_run_id="RUN-101-001",
+        failed_head_sha="d" * 40,
+        correction_sha="c" * 40,
+        correction={"action": "FINALIZE_CANDIDATE", "executor_required": True},
+        correction_document=repair,
+    )
+    monkeypatch.setattr(
+        operator_module, "observe_unified_state", lambda *_args, **_kwargs: observation
+    )
+    calls = []
+    monkeypatch.setattr(
+        operator_module,
+        "run_repair",
+        lambda *args, **kwargs: (
+            calls.append((args, kwargs)),
+            SimpleNamespace(run_id="RUN-101-002", head_sha="d" * 40),
+        )[1],
+    )
+
+    required, exit_code = operator_module.continue_task("TASK-101", repo=repo)
+    assert exit_code == 0
+    assert required is not None and required.disposition == "EXECUTOR_REQUIRED"
+    assert calls == []
+
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-101", executor="antigravity", repo=repo
+    )
+    assert exit_code == 0
+    assert outcome is not None and outcome.delegated_operation == "REPAIR"
+    assert outcome.executor_required is True
+    assert len(calls) == 1
+    assert calls[0][1]["executor"] == "antigravity"
+    assert calls[0][1]["repair"] == repair
+
+
 @pytest.mark.parametrize("admitted", [False, True])
 def test_continue_cli_bounds_delegated_repair_failure_without_second_artifact(
     tmp_path: Path,

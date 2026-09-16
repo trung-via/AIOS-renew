@@ -883,6 +883,27 @@ def test_recursive_repair_lineage_accepts_historical_continue_implementation(
     assert remote_main(lineage) != lineage["decision_sha"]
 
 
+def test_finalize_candidate_publication_preserves_unchanged_failed_subject(
+    tmp_path: Path,
+) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="FINALIZE_CANDIDATE",
+        phase="EXECUTION",
+        repair_scope=(),
+        failed_state="mutation",
+        final_state="unchanged",
+    )
+
+    report = publish(lineage)
+
+    assert report.outcome == "PUBLISHED"
+    assert report.reviewed_sha == lineage["failed_head_sha"]
+    assert lineage["candidate_sha"] == lineage["failed_head_sha"]
+    assert remote_main(lineage) == lineage["failed_head_sha"]
+
+
 def test_recursive_repair_accepts_truthful_zero_delta_continue_failure(
     tmp_path: Path,
 ) -> None:

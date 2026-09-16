@@ -3185,8 +3185,17 @@ def test_executor_failure_transports_compact_boundary_diagnostic(
         "type": "CodexExecutionError",
         "message": "Codex CLI exited with code 124: request timed out after 300s",
         "exit_code": 124,
+        "native_diagnostics": {
+            "limit_chars": 4096,
+            "stdout": {"availability": "empty"},
+            "stderr": {
+                "availability": "captured",
+                "text": "request timed out after 300s\nraw executor transcript\n",
+                "truncated": False,
+            },
+        },
     }
-    assert "raw executor transcript" not in json.dumps(failure)
+    assert "raw executor transcript" in json.dumps(failure)
     assert "executor_diagnostics" not in failure["error"]
     observation_path = runtime_paths(repo).observations / "RUN-101-001.json"
     observation = json.loads(observation_path.read_text(encoding="utf-8"))
@@ -3200,6 +3209,46 @@ def test_executor_failure_transports_compact_boundary_diagnostic(
         ".ai/transport/observation.json",
     )
     assert remote_observation == observation_path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_ordinary_provider_failure_retains_bounded_native_diagnostics(
+    tmp_path: Path, executor: str
+) -> None:
+    repo = make_repo(tmp_path)
+    stdout = b"progress:" + b"x" * 5000
+    stderr = b"provider UNAVAILABLE 503"
+
+    def provider_failure(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, returncode=1, stdout=stdout, stderr=stderr
+        )
+
+    with pytest.raises(OperatorError, match="503"):
+        run_task(
+            "TASK-101",
+            executor=executor,
+            repo=repo,
+            native_runner=provider_failure,
+        )
+
+    failure = json.loads(
+        (runtime_paths(repo).failures / "RUN-101-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    diagnostics = failure["error"]["native_diagnostics"]
+    assert diagnostics["limit_chars"] == 4096
+    assert diagnostics["stdout"] == {
+        "availability": "captured",
+        "text": stdout.decode()[:4096],
+        "truncated": True,
+    }
+    assert diagnostics["stderr"] == {
+        "availability": "captured",
+        "text": "provider UNAVAILABLE 503",
+        "truncated": False,
+    }
 
 
 @pytest.mark.parametrize("staged_content", [None, "{malformed"])
@@ -4384,6 +4433,143 @@ def test_continue_implementation_repair_binds_exact_failed_run_and_preserves_run
         "RUN-101-000.json",
         "RUN-101-001.json",
     ]
+
+
+@pytest.mark.parametrize("executor", ["codex", "antigravity"])
+def test_finalize_candidate_recovers_structural_package_without_mutation(
+    tmp_path: Path, executor: str
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    root_base_sha = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("complete candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "complete candidate before signal loss")
+    failed_head = git(repo, "rev-parse", "HEAD")
+    failed_run_id = "RUN-101-000"
+    failed_run = {
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": executor,
+        "base_sha": root_base_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    failure = {
+        "kind": "FAILURE",
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": executor,
+        "base_sha": root_base_sha,
+        "failed_head_sha": failed_head,
+        "phase": "EXECUTION",
+        "error": {"type": "AntigravityExecutionError", "message": "503"},
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": ["OUTPUT.txt"],
+            "outside_task_scope": [],
+        },
+    }
+    (state.runs / f"{failed_run_id}.json").write_text(
+        json.dumps(failed_run), encoding="utf-8"
+    )
+    (state.failures / f"{failed_run_id}.json").write_text(
+        json.dumps(failure), encoding="utf-8"
+    )
+    repair = {
+        "repair_id": "REPAIR-101-FINALIZE",
+        "failed_run_id": failed_run_id,
+        "failed_head_sha": failed_head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "FINALIZE_CANDIDATE",
+        "modification_scope": [],
+        "instructions": ["Inspect the unchanged candidate and return its package."],
+        "constraints": ["Commit the output."],
+    }
+    sequence = []
+
+    def native_runner(command, **kwargs):
+        sequence.append("executor")
+        assert git(repo, "rev-parse", "HEAD") == failed_head
+        if executor == "codex":
+            assert command[command.index("--sandbox") + 1] == "read-only"
+            execution = json.loads(
+                kwargs["input"].decode().split("REPAIR_INPUT:\n", 1)[1]
+            )
+        else:
+            assert command[command.index("--mode") + 1] == "plan"
+            assert "--dangerously-skip-permissions" not in command
+            execution = json.loads(
+                next(state.handoffs.glob("*.json")).read_text(encoding="utf-8")
+            )
+        assert execution["failed_run_id"] == failed_run_id
+        assert execution["failed_head_sha"] == failed_head
+        assert execution["repair"]["action"] == "FINALIZE_CANDIDATE"
+        payload = result_payload(
+            execution["run"]["run_id"], failed_head, changed_files=[]
+        )
+        stdout = (
+            antigravity_envelope(payload)
+            if executor == "antigravity"
+            else json.dumps(payload)
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    def verification_runner(command, **kwargs):
+        sequence.append("verification")
+        assert git(repo, "rev-parse", "HEAD") == failed_head
+        return subprocess.CompletedProcess(command, 0, stdout=b"clean\n", stderr=b"")
+
+    summary = run_repair(
+        failed_run_id,
+        executor=executor,
+        repo=repo,
+        repair=repair,
+        native_runner=native_runner,
+        verification_runner=verification_runner,
+    )
+
+    result = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    observation = json.loads(
+        (state.observations / f"{summary.run_id}.json").read_text(encoding="utf-8")
+    )
+    assert sequence == ["executor", "verification"]
+    assert summary.head_sha == failed_head == git(repo, "rev-parse", "HEAD")
+    assert not (state.preverification / f"{failed_run_id}.json").exists()
+    assert result["result"]["changed_files"] == ["OUTPUT.txt"]
+    assert {item["subject_sha"] for item in result["evidence"]} == {failed_head}
+    assert observation["executor_invoked"] is True
+
+
+def test_finalize_candidate_incomplete_package_terminalizes_without_verification(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, repair = repair_contract(
+        repo, action="CONTINUE_IMPLEMENTATION"
+    )
+    repair["action"] = "FINALIZE_CANDIDATE"
+    repair["modification_scope"] = []
+    runner = StaticRepairRunner(repo, unresolved=["candidate is incomplete"])
+    verification_calls = []
+
+    with pytest.raises(OperatorError, match="unresolved"):
+        run_repair(
+            failed_run_id,
+            executor="codex",
+            repo=repo,
+            repair=repair,
+            native_runner=runner,
+            verification_runner=lambda *args, **kwargs: verification_calls.append(args),
+        )
+
+    assert len(runner.calls) == 1
+    assert verification_calls == []
+    assert (runtime_paths(repo).failures / "RUN-101-001.json").is_file()
 
 
 def test_no_change_verification_only_continuations_reuse_exact_candidate(

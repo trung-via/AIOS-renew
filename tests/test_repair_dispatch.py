@@ -183,3 +183,49 @@ def test_no_change_requires_absent_executor_and_uses_same_dispatch_family(
             executor="codex",
             action="NO_CHANGE",
         )
+
+
+def test_finalize_candidate_requires_executor_and_remains_at_most_once(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / ".git" / "aios"
+    calls = []
+
+    def invoke() -> RepairInvocation:
+        calls.append("executor")
+        _write_run(
+            state,
+            "RUN-111-002",
+            action="FINALIZE_CANDIDATE",
+            terminal="results",
+        )
+        bind_repair_run(
+            state_root=state,
+            repair_dispatch_id="repair-finalize-111",
+            run_id="RUN-111-002",
+        )
+        return RepairInvocation(0, "RUN-111-002")
+
+    first = _execute(
+        state,
+        invoke,
+        dispatch_id="repair-finalize-111",
+        action="FINALIZE_CANDIDATE",
+    )
+    replay = _execute(
+        state,
+        lambda: pytest.fail("FINALIZE_CANDIDATE was invoked twice"),
+        dispatch_id="repair-finalize-111",
+        action="FINALIZE_CANDIDATE",
+    )
+
+    assert calls == ["executor"]
+    assert first.status == replay.status == "SUCCEEDED"
+    assert replay.replayed is True
+    with pytest.raises(RepairDispatchError, match="explicit Executor"):
+        _execute(
+            tmp_path / "missing-executor",
+            lambda: pytest.fail("executor-less FINALIZE_CANDIDATE invoked"),
+            executor=None,
+            action="FINALIZE_CANDIDATE",
+        )

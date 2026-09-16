@@ -384,6 +384,28 @@ def test_repair_prompt_marks_direct_already_admitted_executor_role() -> None:
         "TASK implementation" in prompt
     )
 
+    finalize_prompt = CodexAdapter.repair_prompt_for(
+        execution={
+            "run": run,
+            "failed_head_sha": run.base_sha,
+            "repair": {
+                "action": "FINALIZE_CANDIDATE",
+                "instructions": ["Return the missing structural package."],
+                "modification_scope": [],
+            },
+        }
+    )
+    assert "FINALIZE_CANDIDATE authorizes no repository mutation" in finalize_prompt
+    assert "inspect only the supplied exact clean failed candidate" in finalize_prompt
+    assert "Do not edit files, commit, push" in finalize_prompt
+    assert "do not execute canonical verification" in finalize_prompt
+    assert "retry this admitted continuation" in finalize_prompt
+    assert "reroute or fall back to another Executor" in finalize_prompt
+    command = CodexAdapter.command_for(
+        run, authorizes_mutation=False
+    )
+    assert command[command.index("--sandbox") + 1] == "read-only"
+
 
 def test_continue_implementation_repair_uses_real_prompt_path_for_bounded_capture_and_commit(
     tmp_path,

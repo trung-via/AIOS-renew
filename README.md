@@ -651,7 +651,7 @@ probe it, or authorize a retry.
 
 ### REPAIR semantic actions
 
-The existing REPAIR lifecycle has three distinct Human/Brain-authored semantic
+The existing REPAIR lifecycle has four distinct Human/Brain-authored semantic
 actions:
 
 - `CODE_FIX` corrects an established product or code defect. It requires an
@@ -665,6 +665,13 @@ actions:
   `COMPLETION_GATE` predecessor, requires a non-empty authored modification scope
   and an explicit selected coding Executor, and must commit a non-empty delta from
   the exact failed head inside that scope.
+- `FINALIZE_CANDIDATE` recovers a missing structural completion signal for an
+  exact clean, committed, transportable pre-verification failed candidate. It
+  requires one explicit selected coding Executor, but grants no mutation authority:
+  the Executor may inspect only the bounded candidate and TASK/REPAIR context and
+  return one structural ResultPackage. Runtime requires the unchanged failed HEAD,
+  a clean worktree, complete acceptance coverage, and root-base-relative changed-file
+  truth before running the original TASK verification exactly once.
 
 `CONTINUE_IMPLEMENTATION` preserves the failed RUN, TASK revision, failed head,
 original root base, and ordinary REPAIR continuation lineage. Runtime neither
@@ -703,7 +710,9 @@ capability from the canonical contract: mutation-authorizing PRIMARY,
 `CODE_FIX` REMEDIATION, and `CODE_FIX` or `CONTINUE_IMPLEMENTATION` REPAIR
 executions receive non-interactive
 mutation capability; read-only PRIMARY, `EVIDENCE_ONLY` REMEDIATION, and
-`NO_CHANGE` REPAIR executions remain read-only. Permission or capability
+`NO_CHANGE` and `FINALIZE_CANDIDATE` REPAIR executions remain read-only.
+`NO_CHANGE` remains the only reusable-package path and invokes no Executor;
+`FINALIZE_CANDIDATE` always invokes its selected Executor once. Permission or capability
 failure does not trigger retry, reroute, fallback, or another model invocation.
 
 Native capability is only a process prerequisite. TASK modification scope and
@@ -714,7 +723,8 @@ outside that authority. Every `CODE_FIX` completion path and every
 advanced HEAD with a non-empty committed delta inside its authorized correction
 scope; unchanged states and empty commits fail before affected verification or
 post-PASS review transport. `EVIDENCE_ONLY` and `NO_CHANGE` retain their
-zero-mutation contracts.
+zero-mutation contracts, and `FINALIZE_CANDIDATE` adds the same zero-mutation gate
+without gaining reusable-package Executor elision.
 
 Executors return the structural ResultPackage through their native output;
 Runtime persists staging and all canonical operational state after capturing it.
@@ -724,6 +734,13 @@ package and preserves any exact `result.unresolved` strings as structured
 Missing or invalid staging adds no executor diagnostics and never replaces the
 original failure. Failure transport publishes that Runtime-authored artifact
 without parsing Executor output.
+
+Ordinary native provider and CLI failures also retain bounded stdout/stderr
+diagnostics in the FAILURE artifact when the adapter exposes them. Each stream is
+recorded deterministically as unavailable, empty, or captured (with truncation
+truth), using the existing 4096-character limit. Handoff payloads and credentials
+are not captured, and diagnostics do not authorize retry, reroute, or action
+conversion.
 
 ## Runtime terminal attention
 

@@ -302,7 +302,9 @@ def continue_task(
     executor_required = action in ("EXECUTE_PRIMARY", "EXECUTE_REMEDIATION") or (
         action == "EXECUTE_REPAIR"
         and (
-            exact_repair_action in ("CODE_FIX", "CONTINUE_IMPLEMENTATION")
+            exact_repair_action in (
+                "CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"
+            )
             or repair_executor_required is not False
         )
     )
@@ -424,9 +426,11 @@ def continue_task(
             or observation.correction_document is None
         ):
             raise op.OperatorError("Unified State repair selectors are incomplete")
-        if exact_repair_action == "CONTINUE_IMPLEMENTATION" and executor is None:
+        if exact_repair_action in (
+            "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"
+        ) and executor is None:
             raise op.OperatorError(
-                "CONTINUE_IMPLEMENTATION requires an explicit coding Executor"
+                f"{exact_repair_action} requires an explicit coding Executor"
             )
         try:
             summary = op.run_repair(

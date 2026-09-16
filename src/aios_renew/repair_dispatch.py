@@ -16,7 +16,9 @@ REPAIR_DISPATCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 FAILED_RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9_-]+-\d{3,}$")
 REPAIR_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 SUPPORTED_EXECUTORS = frozenset({"codex", "antigravity"})
-REPAIR_ACTIONS = frozenset({"CODE_FIX", "CONTINUE_IMPLEMENTATION", "NO_CHANGE"})
+REPAIR_ACTIONS = frozenset(
+    {"CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE", "NO_CHANGE"}
+)
 IN_PROGRESS_EXIT_CODE = 75
 RECONCILIATION_BLOCKED_EXIT_CODE = 76
 _TERMINAL = frozenset({"SUCCEEDED", "FAILED"})
@@ -287,7 +289,9 @@ def _validate_binding(
         raise RepairDispatchError("invalid canonical TASK identity")
     if action not in REPAIR_ACTIONS:
         raise RepairDispatchError("invalid canonical REPAIR action")
-    if action in {"CODE_FIX", "CONTINUE_IMPLEMENTATION"} and executor is None:
+    if action in {
+        "CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"
+    } and executor is None:
         raise RepairDispatchError("coding REPAIR requires an explicit Executor")
     if action == "NO_CHANGE" and executor is not None:
         raise RepairDispatchError("NO_CHANGE REPAIR forbids a coding Executor")

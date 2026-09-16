@@ -1772,9 +1772,12 @@ def _resolve_repair_admission(
     if task.revision != failure["task"]["revision"]:
         raise OperatorError("TASK revision does not match failed RUN")
     action = repair_data.get("action")
-    if action not in ("CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION"):
+    if action not in (
+        "CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"
+    ):
         raise OperatorError(
-            "REPAIR action must be CODE_FIX, NO_CHANGE, or CONTINUE_IMPLEMENTATION"
+            "REPAIR action must be CODE_FIX, NO_CHANGE, "
+            "CONTINUE_IMPLEMENTATION, or FINALIZE_CANDIDATE"
         )
     scope = repair_data.get("modification_scope")
     instructions = repair_data.get("instructions")
@@ -1793,6 +1796,10 @@ def _resolve_repair_admission(
         raise OperatorError("REPAIR constraints introduce new Human intent")
     if action == "NO_CHANGE" and scope:
         raise OperatorError("NO_CHANGE REPAIR modification scope must be empty")
+    if action == "FINALIZE_CANDIDATE" and scope:
+        raise OperatorError(
+            "FINALIZE_CANDIDATE REPAIR modification scope must be empty"
+        )
     if action == "CONTINUE_IMPLEMENTATION":
         if not scope:
             raise OperatorError(
@@ -1810,6 +1817,20 @@ def _resolve_repair_admission(
         ):
             raise OperatorError(
                 "CONTINUE_IMPLEMENTATION requires a clean transportable candidate"
+            )
+    if action == "FINALIZE_CANDIDATE":
+        if failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE"):
+            raise OperatorError(
+                "FINALIZE_CANDIDATE requires a pre-verification failure"
+            )
+        if (
+            candidate.get("transportable") is not True
+            or candidate.get("dirty") is not False
+            or candidate.get("descends_from_base") is not True
+            or candidate.get("outside_task_scope") != []
+        ):
+            raise OperatorError(
+                "FINALIZE_CANDIDATE requires a clean transportable candidate"
             )
     admission["action"] = action
 
@@ -4551,7 +4572,12 @@ def run_repair_wakeup(
                 "Unified State does not authorize the requested exact REPAIR"
             )
         action = observation.correction_document.get("action")
-        if action not in ("CODE_FIX", "CONTINUE_IMPLEMENTATION", "NO_CHANGE"):
+        if action not in (
+            "CODE_FIX",
+            "CONTINUE_IMPLEMENTATION",
+            "FINALIZE_CANDIDATE",
+            "NO_CHANGE",
+        ):
             raise OperatorError("canonical REPAIR action is invalid")
         correction = observation.correction
         executor_required = (
@@ -4559,7 +4585,9 @@ def run_repair_wakeup(
             if isinstance(correction, Mapping)
             else None
         )
-        if action in ("CODE_FIX", "CONTINUE_IMPLEMENTATION"):
+        if action in (
+            "CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"
+        ):
             if executor is None:
                 raise OperatorError("coding REPAIR requires an explicit Executor")
             if executor_required is not True:

@@ -205,6 +205,37 @@ class UnchangedContinuationRunner:
         return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
 
 
+def test_finalize_candidate_never_elides_executor_for_reusable_sidecar(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    run_id, failure = predecessor(
+        repo,
+        claims=[{
+            "id": "C1",
+            "satisfies": ["AC1"],
+            "claim": "The candidate is complete.",
+            "evidence": [],
+        }],
+    )
+    failure["phase"] = "EXECUTION"
+    (runtime_paths(repo).failures / f"{run_id}.json").write_text(
+        json.dumps(failure), encoding="utf-8"
+    )
+    runner = UnchangedContinuationRunner(repo)
+
+    summary = run_repair(
+        run_id,
+        executor="codex",
+        repo=repo,
+        repair=repair(failure, action="FINALIZE_CANDIDATE"),
+        native_runner=runner,
+    )
+
+    assert runner.calls == 1
+    assert summary.head_sha == failure["failed_head_sha"]
+
+
 class PrimaryRunner:
     def __init__(self, repo: Path) -> None:
         self.repo = repo

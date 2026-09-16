@@ -152,7 +152,13 @@ def _blocked_correction_preflight(
         return value if isinstance(value, str) and len(value) <= limit else None
 
     action = fact("action", 32)
-    if action not in ("CODE_FIX", "EVIDENCE_ONLY", "NO_CHANGE"):
+    if action not in (
+        "CODE_FIX",
+        "CONTINUE_IMPLEMENTATION",
+        "EVIDENCE_ONLY",
+        "FINALIZE_CANDIDATE",
+        "NO_CHANGE",
+    ):
         action = None
     subject_mode = fact("subject_mode", 16)
     if subject_mode not in ("CURRENT", "HISTORICAL"):

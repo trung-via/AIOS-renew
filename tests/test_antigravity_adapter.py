@@ -669,6 +669,60 @@ def test_native_no_change_repair_instruction_preserves_zero_mutation_semantics(
     assert len(calls) == 1
 
 
+def test_native_finalize_candidate_instruction_is_read_only_and_single_shot(
+    tmp_path: Path,
+) -> None:
+    _, run, _, _ = make_execution()
+    handoff_path = tmp_path / "repair-handoff.json"
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["head_sha"] = run.base_sha
+    payload["result"]["changed_files"] = []
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        instruction = command[command.index("--print") + 1]
+        handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+        assert handoff["repair"]["action"] == "FINALIZE_CANDIDATE"
+        assert "FINALIZE_CANDIDATE authorizes no repository mutation" in instruction
+        assert "inspect only the supplied exact clean failed candidate" in instruction
+        assert "Do not edit files, commit, push" in instruction
+        assert "do not execute canonical verification" in instruction
+        assert "retry this admitted continuation" in instruction
+        assert "reroute or fall back to another Executor" in instruction
+        assert command[command.index("--mode") + 1] == "plan"
+        assert "--dangerously-skip-permissions" not in command
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {"status": "SUCCESS", "response": "", "structured_output": payload}
+            ),
+            stderr="",
+        )
+
+    AntigravityAdapter(
+        runner=runner,
+        repo=tmp_path,
+        handoff_path=handoff_path,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=False),
+    ).execute_repair(
+        execution={
+            "run": run,
+            "failed_head_sha": run.base_sha,
+            "repair": {
+                "action": "FINALIZE_CANDIDATE",
+                "instructions": ["Return the missing structural package."],
+                "modification_scope": [],
+            },
+        }
+    )
+
+    assert len(calls) == 1
+
+
 def test_native_antigravity_timeout_is_terminal_to_one_invocation(
     tmp_path: Path,
 ) -> None:

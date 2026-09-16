@@ -756,7 +756,9 @@ def _validate_repair_authorization(
     ):
         raise ValueError("REPAIR authorization identity mismatch")
     action = authorization.get("action")
-    if action not in ("CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION"):
+    if action not in (
+        "CODE_FIX", "NO_CHANGE", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"
+    ):
         raise ValueError("REPAIR authorization action is invalid")
     scope = authorization.get("modification_scope")
     instructions = authorization.get("instructions")
@@ -780,6 +782,10 @@ def _validate_repair_authorization(
         raise ValueError("REPAIR constraints introduce new Human intent")
     if action == "NO_CHANGE" and scope:
         raise ValueError("NO_CHANGE REPAIR modification scope must be empty")
+    if action == "FINALIZE_CANDIDATE" and scope:
+        raise ValueError(
+            "FINALIZE_CANDIDATE REPAIR modification scope must be empty"
+        )
     if action == "CONTINUE_IMPLEMENTATION" and not scope:
         raise ValueError(
             "CONTINUE_IMPLEMENTATION REPAIR modification scope is empty"
@@ -1026,6 +1032,24 @@ def _repair_review_lineage(
                 run=child_run,
                 failed_head_sha=child_head_sha,
                 task=task,
+            )
+    elif embedded_authorization["action"] == "FINALIZE_CANDIDATE":
+        if failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE"):
+            raise ValueError(
+                "FINALIZE_CANDIDATE requires a pre-verification failure"
+            )
+        if (
+            candidate.get("transportable") is not True
+            or candidate.get("dirty") is not False
+            or candidate.get("descends_from_base") is not True
+            or candidate.get("outside_task_scope") != []
+        ):
+            raise ValueError(
+                "FINALIZE_CANDIDATE requires a clean transportable candidate"
+            )
+        if child_head_sha != failed_head_sha or mutation:
+            raise ValueError(
+                "FINALIZE_CANDIDATE REPAIR changed repository HEAD"
             )
     elif child_head_sha != failed_head_sha or mutation:
         raise ValueError("NO_CHANGE REPAIR changed repository HEAD")

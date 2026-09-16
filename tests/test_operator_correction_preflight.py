@@ -202,6 +202,32 @@ def test_correction_preflight_continue_implementation_is_ready_and_bypasses_reus
     assert _runtime_bytes(repo) == before_runtime
 
 
+def test_correction_preflight_finalize_candidate_requires_executor_without_reuse(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    failed_run_id, authorization = repair_contract(
+        repo, action="CONTINUE_IMPLEMENTATION"
+    )
+    authorization["action"] = "FINALIZE_CANDIDATE"
+    authorization["modification_scope"] = []
+    state = runtime_paths(repo)
+    (state.preverification / f"{failed_run_id}.json").write_bytes(b"not-json")
+    before_runtime = _runtime_bytes(repo)
+
+    ready = preflight_repair(
+        failed_run_id, repo=repo, repair=authorization
+    )
+
+    assert ready.status == "READY", ready.as_dict()
+    assert ready.action == "FINALIZE_CANDIDATE"
+    assert ready.executor_required is True
+    assert ready.failed_head_sha == authorization["failed_head_sha"]
+    assert ready.subject_mode == "CURRENT"
+    assert ready.as_dict()["executor_invoked"] is False
+    assert _runtime_bytes(repo) == before_runtime
+
+
 def test_correction_preflight_remote_repair_is_observational_for_ready_and_blocked(
     tmp_path: Path,
 ) -> None:
