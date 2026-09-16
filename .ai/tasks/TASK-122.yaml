@@ -1,0 +1,263 @@
+task_id: TASK-122
+revision: 1
+
+goal: >
+  Close the native terminal-response loss gap for admitted AIOS execution by adding one
+  bounded REPAIR action, FINALIZE_CANDIDATE, that lets exactly one selected Executor inspect
+  an exact clean failed candidate without repository mutation and return the missing
+  structural ResultPackage so Runtime can perform its existing completion gates and canonical
+  verification. Preserve bounded native failure diagnostics for ordinary provider/CLI errors
+  so Brain can distinguish implementation failure from completion-signal loss using canonical
+  evidence rather than chat memory or repeated execution.
+
+problem: >
+  TASK-121 exposed a generic reliability gap after useful implementation already existed.
+  RUN-121-003 and RUN-121-004 both failed during native Antigravity execution with provider
+  503 capacity errors while the exact TASK-121 implementation candidate remained clean,
+  transportable, in-scope, and committed at c3d822c147e52bb85f2786d03f113fc78b8f8e67.
+  RUN-121-004 executed for about 517 seconds and consumed substantial model tokens but Runtime
+  received no structural ResultPackage and therefore never entered canonical verification.
+  Existing REPAIR semantics cannot represent the truthful recovery: NO_CHANGE is a zero-
+  Executor reusable-candidate path that requires an already-captured pre-verification package,
+  while CONTINUE_IMPLEMENTATION requires a new committed mutation and must fail on an unchanged
+  failed head. Re-running CONTINUE_IMPLEMENTATION would therefore either demand fake mutation or
+  repeat expensive work even when the candidate is already complete. Runtime also persists
+  native stdout/stderr diagnostics only for timeout/interrupt paths, so ordinary provider
+  errors such as 503 lose bounded forensic context that may show how far the Executor reached.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    10ba4d24129ce456f228b910fe1b8d72252799cc and its repository tree is equivalent to
+    TASK-121 revision-2 authoring state at 950c8766d883f2f318e18ce683103f8c74bc01fb.
+  - >
+    TASK-121 revision 2 is canonically authored but not complete or published. Its current
+    implementation candidate is c3d822c147e52bb85f2786d03f113fc78b8f8e67.
+  - >
+    Canonical RUN-121-004 FAILURE binds TASK-121 revision 2, executor antigravity,
+    base_sha and failed_head_sha c3d822c147e52bb85f2786d03f113fc78b8f8e67,
+    phase EXECUTION, continuation_of RUN-121-003, candidate changed_files=[], dirty=false,
+    descends_from_base=true, outside_task_scope=[], repairable=true, transportable=true,
+    and AntigravityExecutionError with provider UNAVAILABLE 503.
+  - >
+    RUN-121-004 observation records one admitted REPAIR Executor invocation of roughly
+    517 seconds, no Runtime verification, terminal FAILURE, and non-zero token usage.
+  - >
+    TASK-057, TASK-058 revision 2, TASK-064, TASK-075, TASK-076, TASK-077, TASK-089,
+    TASK-092, TASK-111, and current correction/publication contracts remain authoritative
+    unless this TASK explicitly narrows or extends the REPAIR action vocabulary below.
+  - >
+    Frozen Kernel v0.1 remains FROZEN. Brain owns semantic correction choice, Executor owns
+    implementation/completion claims, Runtime owns deterministic completion and verification,
+    and Reviewer owns semantic judgment.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-057.yaml
+    - .ai/tasks/TASK-064.yaml
+    - .ai/tasks/TASK-076.yaml
+    - .ai/tasks/TASK-089.yaml
+    - .ai/tasks/TASK-092.yaml
+    - .ai/tasks/TASK-111.yaml
+    - .ai/tasks/TASK-121.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/unified_state.py
+    - tests/test_repair_preverification_eligibility.py
+    - tests/test_operator.py
+    - tests/test_runtime.py
+    - tests/test_repair_dispatch.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_human_surface.py
+    - tests/test_operator_unified_state.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_publication.py
+    - README.md
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_repair_preverification_eligibility.py
+    - tests/test_operator.py
+    - tests/test_runtime.py
+    - tests/test_repair_dispatch.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_human_surface.py
+    - tests/test_operator_unified_state.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_publication.py
+    - README.md
+
+non_goals:
+  - Complete, review, publish, or otherwise resolve TASK-121 inside TASK-122 implementation.
+  - Reclassify RUN-121-003 or RUN-121-004 as PASS, verification success, semantic review, or
+    publication success without a canonical ResultPackage and Runtime verification.
+  - Make Runtime infer FINALIZE_CANDIDATE from provider error prose, duration, token usage,
+    filenames, model output, or external state; Brain/Human authors the semantic repair action.
+  - Turn FINALIZE_CANDIDATE into automatic retry, provider failover, reroute, fallback, fresh
+    PRIMARY, CONTINUE_IMPLEMENTATION alias, CODE_FIX alias, or NO_CHANGE alias.
+  - Allow FINALIZE_CANDIDATE to modify repository files, create implementation commits, widen
+    TASK/REPAIR scope, change dependency pins, or resume unfinished implementation work.
+  - Weaken CONTINUE_IMPLEMENTATION's existing requirement for a real failed-head-relative
+    mutation, weaken CODE_FIX semantics, or broaden existing reusable NO_CHANGE eligibility.
+  - Let Executor run canonical TASK verification or construct canonical EVIDENCE; Runtime
+    remains the sole canonical verification/evidence owner.
+  - Add schedulers, queues, watchers, retry loops, generic lifecycle routers, extra agents, or
+    autonomous correction authoring.
+  - Change downstream repositories or assume any downstream repository uses current AIOS-renew.
+  - Capture unbounded native logs, handoff payloads, credentials, cookies, tokens, or secrets.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Extend the existing REPAIR action vocabulary with exactly one action named
+      FINALIZE_CANDIDATE. It remains inside the existing REPAIR lineage, refs, correction
+      preflight, Unified State next_action EXECUTE_REPAIR, Human Surface, dispatcher, Runtime,
+      review, and publication model; do not create a new lifecycle family or next_action enum.
+    - >
+      FINALIZE_CANDIDATE means only: an exact admitted pre-verification failed RUN has a clean,
+      committed, repairable, transportable candidate that Brain/Human judges may already
+      contain the complete authorized TASK implementation, but Runtime lacks the Executor's
+      structural ResultPackage because native completion signaling failed. The action is a
+      semantic authorization, not an inference made from error text.
+    - >
+      Admission must preserve the exact failed RUN, TASK revision, failed_head_sha,
+      root_base_sha, continuation_of lineage, repair selector SHA, duplicate-continuation
+      protection, current-versus-historical subject identity, original TASK scope, and all
+      ordinary repository safety gates. It must not substitute current main, a nearby RUN,
+      another candidate, or a fresh PRIMARY base.
+    - >
+      FINALIZE_CANDIDATE requires exactly one explicit selected coding-capable Executor but
+      grants authorizes_mutation=false. The Executor may inspect the supplied exact candidate
+      and bounded TASK/repair context only far enough to produce one structural ResultPackage;
+      it must not edit files, commit, push, rerun implementation, or invoke another AIOS
+      operation.
+    - >
+      The final repository HEAD for FINALIZE_CANDIDATE must equal the exact failed_head_sha,
+      the worktree must remain clean, and the action must fail closed if the Executor or any
+      local step mutates repository state. Runtime must still derive and validate canonical
+      TASK changed_files from the original root_base_sha to that unchanged candidate and must
+      require complete acceptance coverage before verification.
+    - >
+      A structurally complete FINALIZE_CANDIDATE package proceeds through the existing Runtime
+      completion boundary and original TASK verification list exactly once. Runtime constructs
+      canonical EVIDENCE bound to the unchanged candidate SHA and produces ordinary RESULT or
+      FAILURE artifacts. No verification reuse is claimed merely because the candidate is
+      unchanged unless existing evidence-reuse rules independently authorize it.
+    - >
+      If the selected Executor determines the candidate is incomplete, returns unresolved
+      work, cannot cover all TASK acceptance criteria, returns invalid structural output, or
+      encounters another native/provider failure, terminalize that admitted REPAIR normally.
+      Do not retry, reroute, fall back, silently convert the action, or fabricate completion.
+    - >
+      Existing actions remain distinct: CODE_FIX is Executor-backed mutation for an established
+      defect; CONTINUE_IMPLEMENTATION is Executor-backed mutation for unfinished original TASK
+      work; NO_CHANGE remains the existing zero-Executor reusable-candidate continuation;
+      FINALIZE_CANDIDATE is Executor-backed zero-mutation recovery of a missing structural
+      completion signal. Tests and documentation must make these distinctions explicit.
+    - >
+      Correction Preflight and Unified Human Surface must report FINALIZE_CANDIDATE as
+      executor_required=true and preserve exact correction selectors. Unified State continues
+      to use AUTHOR_REPAIR/EXECUTE_REPAIR and must not gain a new semantic planner role.
+    - >
+      Codex and Antigravity REPAIR native instructions must express semantically equivalent
+      FINALIZE_CANDIDATE behavior: inspect exact candidate, produce structural ResultPackage,
+      no repository mutation, no canonical verification/EVIDENCE, no fresh PRIMARY, no retry,
+      no reroute, and no recursive AIOS launch.
+    - >
+      Native execution FAILURE persistence must retain bounded stdout/stderr diagnostics when
+      available for ordinary Codex/Antigravity execution errors, including non-timeout
+      provider/CLI failures. Diagnostics must record availability and truncation deterministically,
+      remain bounded by the existing diagnostic limit or a no-larger equivalent bound, and must
+      not include newly captured handoff payloads or credentials.
+    - >
+      FINALIZE_CANDIDATE authoring, dispatch, completion, review, and publication must remain
+      compatible with current Brain Ingress and safe-publication continuation. Publication may
+      occur only after ordinary semantic PASS of the candidate produced by this recovery path.
+    - >
+      Deterministic offline regressions must prove the RUN-121-004-equivalent topology without
+      network/model dependency: exact unchanged failed candidate, one Executor invocation,
+      zero mutation, structural package recovery, one Runtime verification pass, canonical
+      evidence binding, and no retry/reroute.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The canonical REPAIR contract accepts exactly one new action FINALIZE_CANDIDATE for an
+      exact clean repairable pre-verification failed candidate and preserves all failed RUN,
+      TASK revision, failed_head_sha, root_base_sha, continuation, correction selector, scope,
+      duplicate-continuation, and repository-safety bindings.
+  - id: AC2
+    condition: >
+      FINALIZE_CANDIDATE requires one explicit Executor, invokes it at most once with mutation
+      disabled, supplies the exact failed candidate, and fails closed on any HEAD/worktree
+      mutation; final HEAD remains exactly failed_head_sha.
+  - id: AC3
+    condition: >
+      A valid Executor structural ResultPackage from FINALIZE_CANDIDATE is checked for complete
+      TASK acceptance coverage and root-base-relative changed-files truth, then reaches the
+      existing Runtime verification boundary exactly once and produces canonical EVIDENCE bound
+      to the unchanged candidate SHA.
+  - id: AC4
+    condition: >
+      An incomplete, unresolved, invalid-output, mutated, or provider-failed
+      FINALIZE_CANDIDATE terminalizes as ordinary FAILURE with no retry, reroute, fallback,
+      fresh PRIMARY, action conversion, or fabricated completion.
+  - id: AC5
+    condition: >
+      Existing CODE_FIX, CONTINUE_IMPLEMENTATION, and NO_CHANGE semantics remain unchanged and
+      deterministic regressions prove FINALIZE_CANDIDATE is neither mutation-authorizing nor
+      reusable-package Executor elision.
+  - id: AC6
+    condition: >
+      Correction Preflight, Unified State, Unified Human Surface, dedicated REPAIR dispatch,
+      Brain Ingress repair authorization, and publication validation all preserve the new action
+      through the existing REPAIR family with executor_required=true and no new next_action or
+      lifecycle family.
+  - id: AC7
+    condition: >
+      Codex and Antigravity native REPAIR adapter regressions prove semantically equivalent
+      FINALIZE_CANDIDATE instructions and one structural-output invocation with no canonical
+      verification, EVIDENCE construction, mutation, retry, reroute, or recursive AIOS launch.
+  - id: AC8
+    condition: >
+      Runtime FAILURE regressions prove bounded stdout/stderr diagnostics are preserved when
+      available for ordinary native provider/CLI errors such as 503, with deterministic
+      unavailable/empty/captured/truncated states and without unbounded payload capture.
+  - id: AC9
+    condition: >
+      A deterministic RUN-121-004-equivalent end-to-end operator regression starts from an exact
+      unchanged clean failed candidate with no reusable pre-verification package, executes one
+      FINALIZE_CANDIDATE Executor handoff, recovers a complete structural ResultPackage without
+      repository mutation, performs canonical verification once, and reaches an ordinary
+      reviewable RESULT.
+  - id: AC10
+    condition: >
+      Focused regression verification and git diff checking pass with zero unresolved items and
+      no production mutation outside the explicitly authorized files.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_repair_preverification_eligibility.py tests/test_operator.py tests/test_runtime.py tests/test_repair_dispatch.py tests/test_operator_correction_preflight.py tests/test_operator_human_surface.py tests/test_operator_unified_state.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py tests/test_publication.py
+    - git diff --check
