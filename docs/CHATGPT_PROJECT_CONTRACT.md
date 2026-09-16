@@ -133,13 +133,13 @@ Execution, completion, or verification failed.
 Runtime PASS occurred.  
 Semantic Reviewer found a defect.
 
-Never convert one category into another.
+Never convert one category into another. Never convert an admission failure into a RUN repair; repair applies exclusively to admitted, failed RUNs with an immutable failed lineage.
 
 ## 8. Verification Policy
 
 Verification is progressive and evidence-preserving.
 
-Do not repeat a verification against unchanged relevant state without a new reason.
+Do not repeat a verification against unchanged relevant state without a new reason. Evidence reuse is mandatory: never rerun unchanged verification for ceremony, and do not duplicate canonical verification or spend execution time on baseline verification before implementation.
 
 Runtime owns canonical verification.
 
@@ -234,7 +234,7 @@ Do not audit the entire repository indiscriminately.
 
 A semantic PASS authorizes publication of the reviewed source candidate only.
 
-Review branches and review-decision commits are metadata, not product implementation.
+After semantic PASS, always use the canonical publication-continuation surface (`TASK-110`) and observe publication outcome before manual fallback. Review branches and review-decision commits are metadata, not product implementation; never substitute manual Git pushes, cherry-picks, or ad-hoc publication steps for canonical publication continuation.
 
 Fast-forward is preferred.  
 Never force a publication unless explicit exceptional authority exists.
@@ -244,15 +244,22 @@ Never force a publication unless explicit exceptional authority exists.
 At the beginning of a fresh ChatGPT work context:
 
 1. Read this contract.
-2. Read current main SHA.
+2. Rehydrate canonical facts deterministically using `AIOS_BRAIN_SYNC_SNAPSHOT` (`aios_renew.brain_sync.observe_brain_sync`). The snapshot establishes repository and main identity, roadmap planning status, selected exact TASK identity when uniquely justified, existing Unified State lifecycle next_action and authority, and explicit blockers from canonical repository facts without using chat or model memory.
 3. Read frozen kernel spec.
-4. Determine highest authored TASK(s).
-5. Determine latest published implementation.
-6. Check relevant success/failure/review/remediation/repair refs.
-7. Reconstruct active state.
-8. When `.ai/roadmap-state.yaml` is present, read it before selecting roadmap work and reconcile its bookmark against explicit current Human intent and the exact engineering lineage.
-9. Select roadmap work only after that reconciliation. For generic "continue roadmap" intent, use the unique `NEXT` item in the active track; parallel or separately gated work must not compete with it. An explicit current Human track or priority change outranks the pointer prospectively and must be canonicalized before later generic continuation relies on it.
-10. Produce a short SYNC CHECKPOINT.
+4. Verify canonical rehydration against durable ordering and authority guards:
+   - **AUTHOR_TASK before PRIMARY**: Confirm that `AUTHOR_TASK` has been canonically committed and published into the canonical repository and refs before dispatching PRIMARY execution. Never dispatch PRIMARY against an unconfirmed or uncanonicalized TASK.
+   - **Addressed vs. Non-Target Carrier Receipts**: Interpret addressed carrier receipts strictly by family (e.g., wakeup, remediation intent, ingress). Non-target carrier `REJECTED` comments and receipts from other workflow runs or carriers are transport fan-out noise, not engineering lifecycle truth; ignore non-target REJECTED comments when evaluating TASK lifecycle.
+   - **Dispatch Acceptance vs. Terminal Engineering State**: Workflow dispatch or carrier acceptance acknowledges delivery only; it is NOT execution start, RUN creation, verification pass, review verdict, or publication outcome. Always inspect canonical terminal refs and artifacts before acting again.
+   - **Automatic PASS Publication Continuation**: After semantic PASS, invoke and observe the canonical publication-continuation surface (`TASK-110`) before considering manual fallback.
+   - **Admission Failure vs. RUN Failure**: Keep admission failures separate from RUN failures; never convert admission failure into RUN repair.
+   - **Evidence Reuse**: Verification is progressive and evidence-preserving; never rerun unchanged verification for ceremony.
+   - **Prohibition of Mutation-Only Capability Probes**: Never probe GitHub or repository write capability by creating, modifying, or deleting product or source files, branches, commits, refs, Issues, or other canonical mutations. Capability discovery must be read-only or derived from explicit permissions.
+5. Check relevant success/failure/review/remediation/repair refs and immutable lineage.
+6. When `.ai/roadmap-state.yaml` is present, read it before selecting roadmap work and reconcile its bookmark against explicit current Human intent and the exact engineering lineage.
+7. Select roadmap work only after that reconciliation. For generic "continue roadmap" intent, use the unique `NEXT` item in the active track; parallel or separately gated work must not compete with it.
+8. Produce a short SYNC CHECKPOINT.
+
+Snapshot selection fails closed for missing, ambiguous, unauthored, or contradictory planning/lineage state and never fabricates completion, TASK/RUN identity, Human priority, Executor choice, transport success, review verdict, or publication outcome. Snapshot generation is strictly observation-only: `run_created=false`, `executor_invoked=false`, `verification_invoked=false`, `state_mutated=false`.
 
 When AIOS-renew Control-plane Closure is complete and hands work back downstream,
 do not reuse a previously observed Python Agent priority. Perform a fresh downstream
@@ -277,3 +284,12 @@ STATE: READY | BLOCKED
 ```
 
 Never infer these values solely from previous chat text.
+
+## 14. Interruption, Resume, and Roadmap Authority
+
+Interruption and resume semantics preserve Human and Brain roadmap authority:
+
+1. **Human/Brain Roadmap Authority**: Human intent owns WHAT and WHY; Brain owns roadmap architecture and semantic judgment. Runtime and deterministic snapshot software remain coordination mechanisms: they never advance, alter, or choose roadmap semantics autonomously. Roadmap advancement remains an explicit Human/Brain planning action grounded in canonical evidence.
+2. **Current Human Override vs. Generic Continuation**: An explicit current Human priority change outranks an older roadmap bookmark prospectively. However, future generic continuation ("continue roadmap") relies solely on a canonicalized bookmark reconciled with exact Git and artifact lineage.
+3. **Interruption and Side-track Return**: Returning from an interruption or bounded side-track must be resolved strictly from current canonical bookmark plus lineage, never from chat or model memory.
+4. **Fail-Closed Selection**: Completed tracks with zero NEXT items, missing roadmap state, ambiguous/multiple NEXT items, unauthored NEXT tasks, and roadmap/lineage contradictions fail closed for automatic continuation selection. The snapshot reports explicit blockers rather than silently choosing through them.
