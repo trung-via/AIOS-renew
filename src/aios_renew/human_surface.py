@@ -357,6 +357,7 @@ def continue_task(
 
     resulting_run_id: str | None = None
     resulting_head_sha: str | None = None
+    delegated_executor = executor
     delegated_operation: str
     if action == "EXECUTE_PRIMARY":
         assert executor is not None
@@ -415,6 +416,8 @@ def continue_task(
         resulting_run_id = summary.run_id
         resulting_head_sha = summary.head_sha
     elif action == "EXECUTE_REPAIR":
+        if not executor_required:
+            delegated_executor = None
         if (
             observation.failed_run_id is None
             or observation.correction_sha is None
@@ -428,7 +431,7 @@ def continue_task(
         try:
             summary = op.run_repair(
                 observation.failed_run_id,
-                executor=executor,
+                executor=delegated_executor,
                 repo=root,
                 repair=observation.correction_document,
                 required_repair_sha=observation.correction_sha,
@@ -438,7 +441,7 @@ def continue_task(
             )
         except (op.OperatorError, DispatchError):
             return _human_surface_delegation_failed(
-                observation, operation="REPAIR", executor=executor,
+                observation, operation="REPAIR", executor=delegated_executor,
                 executor_required=executor_required,
             )
         delegated_operation = "REPAIR"
@@ -483,7 +486,7 @@ def continue_task(
             observation,
             disposition="DELEGATED",
             authority="RUNTIME",
-            executor=executor,
+            executor=delegated_executor,
             executor_required=executor_required,
             delegated_operation=delegated_operation,
             resulting_run_id=resulting_run_id,

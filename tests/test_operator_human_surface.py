@@ -159,8 +159,11 @@ def test_human_surface_delegates_exact_remediation_once(
     assert outcome.resulting_run_id == "RUN-101-002"
 
 
+@pytest.mark.parametrize("supplied_executor", [None, "codex"])
 def test_human_surface_elides_executor_only_for_ready_no_change_repair(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    supplied_executor: str | None,
 ) -> None:
     repo = make_repo(tmp_path)
     repair_sha = "c" * 40
@@ -199,7 +202,9 @@ def test_human_surface_elides_executor_only_for_ready_no_change_repair(
 
     monkeypatch.setattr(operator_module, "run_repair", execute_repair)
 
-    outcome, exit_code = operator_module.continue_task("TASK-101", repo=repo)
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-101", executor=supplied_executor, repo=repo
+    )
 
     assert exit_code == 0
     assert len(calls) == 1
@@ -209,6 +214,12 @@ def test_human_surface_elides_executor_only_for_ready_no_change_repair(
     assert outcome is not None
     assert outcome.executor_required is False
     assert outcome.executor_supplied is False
+    assert outcome.executor is None
+    assert outcome.as_dict()["executor"] == {
+        "required": False,
+        "supplied": False,
+        "identity": None,
+    }
     assert outcome.delegated_operation == "REPAIR"
 
 
