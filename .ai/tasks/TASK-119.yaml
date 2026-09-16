@@ -1,0 +1,127 @@
+task_id: TASK-119
+revision: 1
+
+goal: >
+  Make the Unified Human Surface preserve no-Executor repair semantics even when a
+  Human-facing downstream carrier supplies an executor identity to `continue`. When
+  canonical Unified State marks an EXECUTE_REPAIR action with executor_required=false,
+  that supplied identity must remain non-authoritative context and must not be forwarded
+  into repair execution or reported as the executor used for that delegated repair.
+
+problem: >
+  Canonical AIOS-renew main currently derives executor_required correctly for eligible
+  no-Executor repairs such as reusable NO_CHANGE, but `continue_task` still forwards its
+  optional caller-supplied executor argument into `run_repair`. Downstream Human-facing
+  carriers legitimately bind an executor identity to the selected surface and pass it to
+  `continue`; therefore an executor_required=false repair can accidentally receive a coding
+  Executor despite Unified State saying none is required. This violates authority separation
+  and makes the transport identity stronger than the canonical lifecycle decision. Python
+  Agent TASK-205 through TASK-208 preserved this as deferred defect D1 rather than granting
+  downstream authority to reinterpret AIOS semantics.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    91a177d5b96b2197a4d8223dbb727dda6201cb64.
+  - >
+    `src/aios_renew/human_surface.py` is the authoritative Unified Human Surface boundary;
+    downstream repositories consume it only through an explicitly adopted exact pin and
+    must not recreate its lifecycle decision logic locally.
+  - >
+    Existing Unified State remains authoritative for whether a repair requires a coding
+    Executor. This task does not redefine repair classification or NO_CHANGE eligibility.
+  - >
+    Existing tests already prove the no-executor path when no executor is supplied by the
+    caller; the missing regression is the same canonical state with an executor identity
+    supplied by the Human-facing carrier.
+
+scope:
+  inspect:
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/operator.py
+    - tests/test_operator_human_surface.py
+    - .ai/tasks/TASK-087.yaml
+    - .ai/tasks/TASK-093.yaml
+    - .ai/tasks/TASK-096.yaml
+  modify:
+    - src/aios_renew/human_surface.py
+    - tests/test_operator_human_surface.py
+
+non_goals:
+  - >
+    Change downstream Python Agent worker code, carrier bindings, executor-specific Human
+    surfaces, or any downstream dependency pin.
+  - >
+    Redefine Unified State next-action selection, repair action taxonomy, NO_CHANGE
+    eligibility, correction preflight, repair authoring, or repair execution semantics.
+  - >
+    Change behavior for EXECUTE_PRIMARY, EXECUTE_REMEDIATION, CODE_FIX,
+    CONTINUE_IMPLEMENTATION, transport recovery, review, publication, WAIT, DONE, or BLOCKED
+    except where regression coverage must prove they remain unaffected.
+  - >
+    Add executor routing, fallback, retry, recommendation, model selection, another lifecycle
+    reducer, or another semantic authority.
+  - >
+    Address deferred D2 Windows pytest-current cleanup behavior or D3 cross-chat roadmap
+    interruption/resume persistence in this task.
+  - >
+    Rewrite or invalidate historical TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR
+    lineage.
+  - Push, publish, or mutate canonical main from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      `executor_required=false` is authoritative for the delegated repair. A caller-supplied
+      executor identity must not cause that repair to acquire coding Executor authority.
+    - >
+      For EXECUTE_REPAIR with executor_required=false, the exact delegated repair invocation
+      must receive no executor identity, regardless of whether `continue_task` was called with
+      an executor argument.
+    - >
+      The Human-surface result for that delegated repair must truthfully project that no
+      Executor was required or used; merely supplying an executor-specific carrier must not
+      make the canonical result claim otherwise.
+    - >
+      Repairs that canonically require an Executor must retain existing fail-closed behavior
+      when none is supplied and must retain the explicitly supplied Executor when one is
+      required.
+    - >
+      Preserve one-observation/at-most-one-delegation semantics and all existing authority,
+      selector, failure-projection, and immutable-lineage boundaries.
+    - >
+      Do not move lifecycle decision logic into downstream carriers or broaden the public
+      Human Surface contract beyond what is necessary to remove D1.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A regression with EXECUTE_REPAIR, action NO_CHANGE, and executor_required=false proves
+      that calling `continue_task` with a supplied executor still delegates exactly once with
+      executor=None.
+  - id: AC2
+    condition: >
+      The same regression proves the returned AIOS_HUMAN_SURFACE result reports
+      executor.required=false and does not report a supplied/used executor identity for the
+      delegated no-Executor repair.
+  - id: AC3
+    condition: >
+      Existing and focused regressions prove repairs requiring a coding Executor still request
+      one when absent and preserve the explicitly supplied executor when present.
+  - id: AC4
+    condition: >
+      Primary, remediation, external-authority, no-action, transport/recovery, and delegated
+      failure Human Surface behavior remains compatible with the established version-1
+      contract.
+  - id: AC5
+    condition: >
+      The implementation changes only the two authorized files and does not introduce a new
+      lifecycle authority, routing layer, retry path, or downstream-specific semantic branch.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_operator_human_surface.py
