@@ -8425,7 +8425,7 @@ def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
     monkeypatch.setattr(
         operator_module,
         "preflight_repair",
-        lambda failed_run_id, repo: CorrectionPreflightResult(
+        lambda failed_run_id, repo, **_kwargs: CorrectionPreflightResult(
             family="REPAIR",
             status="READY",
             phase="READY",
@@ -8456,6 +8456,7 @@ def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
             json.dumps(
                 {
                     "failed_run_id": failed_run_id,
+                    "repair_authorization_sha": kwargs["required_repair_sha"],
                     "repair": repair_document,
                     "run": run,
                 }
@@ -8496,6 +8497,44 @@ def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
     assert replay.replayed is True
 
 
+def test_repair_wakeup_rejects_superseded_sha_before_state_or_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    state = root / ".git" / "aios"
+    seen: list[str | None] = []
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: root)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+
+    def stale_preflight(failed_run_id, repo, required_repair_sha=None):
+        seen.append(required_repair_sha)
+        return CorrectionPreflightResult(
+            family="REPAIR",
+            status="BLOCKED",
+            phase="CANONICAL_CONTRACT_ADMISSION",
+            reason_code="CANONICAL_LINEAGE_INVALID",
+            failed_run_id=failed_run_id,
+        )
+
+    monkeypatch.setattr(operator_module, "preflight_repair", stale_preflight)
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *args, **kwargs: pytest.fail("stale selector reached Unified State"),
+    )
+    with pytest.raises(OperatorError, match="preflight does not authorize"):
+        run_repair_wakeup(
+            "repair-stale-111",
+            "RUN-111-001",
+            "a" * 40,
+            executor="codex",
+            repo=root,
+        )
+    assert seen == ["a" * 40]
+    assert not state.exists()
+
+
 def test_repair_wakeup_rejects_executor_authority_inconsistent_with_action(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -8508,7 +8547,7 @@ def test_repair_wakeup_rejects_executor_authority_inconsistent_with_action(
     monkeypatch.setattr(
         operator_module,
         "preflight_repair",
-        lambda failed_run_id, repo: CorrectionPreflightResult(
+        lambda failed_run_id, repo, **_kwargs: CorrectionPreflightResult(
             family="REPAIR",
             status="READY",
             phase="READY",

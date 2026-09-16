@@ -16,7 +16,13 @@ from aios_renew.authoring_ingress import (
     execute_ingress,
 )
 from aios_renew.publication import publish_review_decision
-from aios_renew.review_transport import transport_failure, transport_post_pass
+from aios_renew.review_transport import (
+    ReviewTransportError,
+    resolve_remote_repair_authorization,
+    resolve_remote_task_lifecycle,
+    transport_failure,
+    transport_post_pass,
+)
 from aios_renew.unified_state import observe_unified_state
 
 
@@ -1350,6 +1356,187 @@ def test_author_repair_success_and_rejections(tmp_path):
         execute_ingress(envelope, repo=repo)
     assert git(repo, "ls-remote", "--refs", "origin", repair_ref).split()[0] == malformed_sha
     assert git(repo, "show", f"{malformed_sha}:.ai/transport/repair.json")
+
+
+def test_author_repair_immutable_supersession_resolves_one_current_tip(tmp_path):
+    repo, remote, base_sha = setup_test_repo(tmp_path)
+    (repo / ".ai" / "tasks").mkdir(parents=True, exist_ok=True)
+    (repo / ".ai" / "tasks" / "TASK-105.yaml").write_text(
+        TASK_105_SOURCE, encoding="utf-8"
+    )
+    (repo / "src").mkdir(parents=True, exist_ok=True)
+    (repo / "src" / "sample.py").write_text("# candidate\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "failed candidate")
+    failed_head_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    failed_run_id = "RUN-105-004"
+    state = tmp_path / "supersession-state"
+    state.mkdir()
+    run = {
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "codex",
+        "base_sha": base_sha,
+        "workspace": str(repo),
+        "head_sha": failed_head_sha,
+        "status": "ACTIVE",
+    }
+    failure = {
+        "kind": "FAILURE",
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "codex",
+        "base_sha": base_sha,
+        "failed_head_sha": failed_head_sha,
+        "phase": "EXECUTION",
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": ["src/sample.py"],
+            "outside_task_scope": [],
+        },
+    }
+    run_path = state / "run.json"
+    failure_path = state / "failure.json"
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    failure_path.write_text(json.dumps(failure), encoding="utf-8")
+    transport_failure(
+        repo,
+        run_id=failed_run_id,
+        head_sha=failed_head_sha,
+        run_path=run_path,
+        failure_path=failure_path,
+    )
+    failure_ref = f"refs/heads/aios/failure-artifacts/{failed_run_id}"
+    failure_sha = git(repo, "ls-remote", "--refs", "origin", failure_ref).split()[0]
+
+    predecessor = {
+        "repair_id": "REPAIR-105-004",
+        "failed_run_id": failed_run_id,
+        "failed_head_sha": failed_head_sha,
+        "task": {"id": "TASK-105", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["src/sample.py"],
+        "instructions": ["Continue the interrupted implementation."],
+        "constraints": ["Bounded mutation authority only."],
+    }
+    first = execute_ingress(
+        IngressEnvelope(
+            "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
+            {"failed_run_id": failed_run_id},
+            {"expected_failed_head_sha": failed_head_sha},
+            predecessor,
+        ),
+        repo=repo,
+    )
+    successor = {
+        **predecessor,
+        "action": "FINALIZE_CANDIDATE",
+        "modification_scope": [],
+        "instructions": ["Finalize the exact existing candidate without mutation."],
+    }
+    superseding_envelope = IngressEnvelope(
+        "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
+        {"failed_run_id": failed_run_id},
+        {
+            "expected_failed_head_sha": failed_head_sha,
+            "expected_current_repair_sha": first.canonical_sha,
+            "expected_failure_artifacts_sha": failure_sha,
+        },
+        successor,
+    )
+    second = execute_ingress(superseding_envelope, repo=repo)
+    current = resolve_remote_repair_authorization(repo, failed_run_id)
+
+    assert second.canonical_destination.endswith(f"/{failed_run_id}/2")
+    assert current.commit_sha == second.canonical_sha
+    assert current.revision == 2
+    assert current.predecessor_sha == first.canonical_sha
+    assert json.loads(current.repair) == successor
+    lifecycle = resolve_remote_task_lifecycle(
+        repo, task_id="TASK-105", task_revision=1
+    )
+    assert lifecycle.repair_selectors == (
+        (failed_run_id, second.canonical_sha, current.repair),
+    )
+    assert git(
+        repo, "ls-remote", "--refs", "origin",
+        f"refs/heads/aios/repair/{failed_run_id}",
+    ).split()[0] == first.canonical_sha
+    replay = execute_ingress(
+        IngressEnvelope(
+            "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
+            {"failed_run_id": failed_run_id},
+            {
+                "expected_failed_head_sha": failed_head_sha,
+                "expected_current_repair_sha": second.canonical_sha,
+                "expected_failure_artifacts_sha": failure_sha,
+            },
+            successor,
+        ),
+        repo=repo,
+    )
+    assert replay.status == "IDEMPOTENT"
+    assert replay.canonical_sha == second.canonical_sha
+
+    stale = {**successor, "instructions": ["Different explicit intent."]}
+    with pytest.raises(AuthoringIngressError, match="expected current REPAIR SHA"):
+        execute_ingress(
+            IngressEnvelope(
+                "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
+                {"failed_run_id": failed_run_id},
+                superseding_envelope.expected_state,
+                stale,
+            ),
+            repo=repo,
+        )
+
+    continuation = tmp_path / "continuation-author"
+    git(tmp_path, "clone", "--quiet", str(remote), str(continuation))
+    git(continuation, "switch", "--quiet", "main")
+    git(continuation, "config", "user.name", "AIOS Test")
+    git(continuation, "config", "user.email", "test@example.invalid")
+    (continuation / ".ai" / "transport").mkdir(parents=True, exist_ok=True)
+    (continuation / ".ai" / "transport" / "repair.json").write_text(
+        json.dumps({"failed_run_id": failed_run_id}), encoding="utf-8"
+    )
+    git(continuation, "add", ".ai/transport/repair.json")
+    git(continuation, "commit", "--quiet", "-m", "admitted continuation")
+    git(
+        continuation,
+        "push",
+        "--quiet",
+        "origin",
+        "HEAD:refs/heads/aios/artifacts/RUN-105-005",
+    )
+    with pytest.raises(AuthoringIngressError, match="continuation already exists"):
+        execute_ingress(
+            IngressEnvelope(
+                "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
+                {"failed_run_id": failed_run_id},
+                {
+                    "expected_failed_head_sha": failed_head_sha,
+                    "expected_current_repair_sha": second.canonical_sha,
+                    "expected_failure_artifacts_sha": failure_sha,
+                },
+                stale,
+            ),
+            repo=repo,
+        )
+
+    git(
+        repo,
+        "push",
+        "--quiet",
+        "origin",
+        f"{second.canonical_sha}:refs/heads/aios/repair-supersession/{failed_run_id}/4",
+    )
+    with pytest.raises(ReviewTransportError, match="identity|discontinuous"):
+        resolve_remote_repair_authorization(repo, failed_run_id)
 
 
 # ===========================================================================

@@ -62,6 +62,7 @@ from .review_transport import (
     RemoteTaskLifecycle,
     RemoteLifecycleTerminal,
     read_remote_repair,
+    resolve_remote_repair_authorization,
     read_remote_task,
     resolve_remote_primary_recovery,
     resolve_remote_repair_recovery,
@@ -372,6 +373,7 @@ class _RepairAdmission:
     remote_run_ids: tuple[str, ...]
     historical: bool
     repair: Mapping[str, Any]
+    authorization_sha: str | None
     action: str
     scope: list[str]
     reusable_package: ResultPackage | None
@@ -1712,42 +1714,34 @@ def _resolve_repair_admission(
     _set_admission_boundary(
         admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
     )
-    if required_repair_sha is not None:
-        from .review_transport import resolve_transport_remote
-
+    canonical_authorization = None
+    if required_repair_sha is not None or repair is None:
         _set_admission_boundary(
             admission,
             "CANONICAL_CONTRACT_ADMISSION",
             "CANONICAL_LINEAGE_INVALID",
         )
         try:
-            remote = resolve_transport_remote(repo)
+            canonical_authorization = resolve_remote_repair_authorization(
+                remote_repo or repo, failed_run_id
+            )
         except ReviewTransportError as exc:
             raise OperatorError(
                 "canonical REPAIR selector is unavailable"
             ) from exc
-        ref = f"refs/heads/aios/repair/{failed_run_id}"
-        try:
-            output = _git(repo, "ls-remote", remote, ref)
-        except OperatorError as exc:
-            raise OperatorError(
-                "canonical REPAIR selector is unavailable"
-            ) from exc
-        lines = [line.split() for line in output.splitlines() if line.strip()]
-        observed = (
-            lines[0][0]
-            if len(lines) == 1 and len(lines[0]) == 2 and lines[0][1] == ref
-            else None
+        _record_observed_refs(
+            admission,
+            ((canonical_authorization.ref, canonical_authorization.commit_sha),),
         )
-        if observed is not None:
-            _record_observed_refs(admission, ((ref, observed),))
-        if observed != required_repair_sha:
+        if (
+            required_repair_sha is not None
+            and canonical_authorization.commit_sha != required_repair_sha
+        ):
             raise OperatorError("canonical REPAIR selector changed after observation")
     if repair is None:
         try:
-            repair_data: Any = json.loads(
-                read_remote_repair(remote_repo or repo, failed_run_id)
-            )
+            assert canonical_authorization is not None
+            repair_data: Any = json.loads(canonical_authorization.repair)
         except (ReviewTransportError, json.JSONDecodeError, UnicodeError) as exc:
             raise OperatorError(f"invalid remote REPAIR: {exc}") from exc
     elif isinstance(repair, Mapping):
@@ -1759,6 +1753,10 @@ def _resolve_repair_admission(
             raise OperatorError(f"invalid REPAIR: {exc}") from exc
     if not isinstance(repair_data, Mapping):
         raise OperatorError("REPAIR must be a mapping")
+    if canonical_authorization is not None:
+        canonical_data = json.loads(canonical_authorization.repair)
+        if not isinstance(canonical_data, Mapping) or dict(repair_data) != dict(canonical_data):
+            raise OperatorError("REPAIR does not match current canonical authorization")
     task_ref = repair_data.get("task")
     required = {"repair_id", "failed_run_id", "failed_head_sha", "task", "action", "modification_scope", "instructions", "constraints"}
     if set(repair_data) != required:
@@ -1866,6 +1864,11 @@ def _resolve_repair_admission(
         remote_run_ids=remote_run_ids,
         historical=historical,
         repair=repair_data,
+        authorization_sha=(
+            canonical_authorization.commit_sha
+            if canonical_authorization is not None
+            else required_repair_sha
+        ),
         action=action,
         scope=scope,
         reusable_package=reusable_package,
@@ -1905,6 +1908,7 @@ def _run_repair_impl(
     remote_run_ids = resolved.remote_run_ids
     historical = resolved.historical
     repair_data = resolved.repair
+    repair_authorization_sha = resolved.authorization_sha
     action = resolved.action
     scope = resolved.scope
     reusable_package = resolved.reusable_package
@@ -1972,6 +1976,8 @@ def _run_repair_impl(
             "repair": dict(repair_data),
             "run": run,
         }
+        if repair_authorization_sha is not None:
+            execution["repair_authorization_sha"] = repair_authorization_sha
         _write_json(run_path, asdict(run))
         attempt.bind_run(run_path)
         observation_tracker.admit(run)
@@ -2149,6 +2155,7 @@ def _resolve_historical_repair_admission(
             )
             embedded_run = repair_execution.get("run")
             embedded_failure = repair_execution.get("failure")
+            authorization_sha = repair_execution.get("repair_authorization_sha")
             if (
                 repair_execution.get("failed_run_id") != continuation
                 or repair_execution.get("failed_head_sha") != run.base_sha
@@ -2156,6 +2163,14 @@ def _resolve_historical_repair_admission(
                 or dict(embedded_run) != dict(_decode_remote_mapping(artifact.run, "RUN"))
                 or not isinstance(embedded_failure, Mapping)
                 or dict(embedded_failure) != dict(predecessor[1])
+                or (
+                    authorization_sha is not None
+                    and (
+                        not isinstance(authorization_sha, str)
+                        or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", authorization_sha)
+                        is None
+                    )
+                )
             ):
                 raise OperatorError("historical REPAIR execution lineage conflict")
             authorization = repair_execution.get("repair")
@@ -2425,6 +2440,9 @@ def _derive_remediation_source_root(
                 )
                 source_failure = repair_lineage.get("failure")
                 source_authorization = repair_lineage.get("repair")
+                source_authorization_sha = repair_lineage.get(
+                    "repair_authorization_sha"
+                )
                 source_task = repair_lineage.get("task")
                 if (
                     not isinstance(repair_lineage.get("failed_run_id"), str)
@@ -2445,6 +2463,17 @@ def _derive_remediation_source_root(
                     or not isinstance(source_authorization.get("task"), Mapping)
                     or dict(source_authorization["task"])
                     != {"id": task.task_id, "revision": task.revision}
+                    or (
+                        source_authorization_sha is not None
+                        and (
+                            not isinstance(source_authorization_sha, str)
+                            or re.fullmatch(
+                                r"[0-9a-f]{40}|[0-9a-f]{64}",
+                                source_authorization_sha,
+                            )
+                            is None
+                        )
+                    )
                     or not isinstance(source_task, Mapping)
                     or source_task.get("task_id") != task.task_id
                     or source_task.get("revision") != task.revision
@@ -4558,7 +4587,9 @@ def run_repair_wakeup(
 
         # This is observation only. It discovers no authority: the exact current
         # canonical REPAIR and Unified State must already authorize continuation.
-        preflight = preflight_repair(failed_run_id, repo=root)
+        preflight = preflight_repair(
+            failed_run_id, repo=root, required_repair_sha=repair_sha
+        )
         if preflight.status != "READY" or preflight.task_id is None:
             raise OperatorError("canonical REPAIR preflight does not authorize execution")
         observation = observe_unified_state(preflight.task_id, repo=root)
