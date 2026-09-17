@@ -1,0 +1,185 @@
+task_id: TASK-128
+revision: 1
+goal: 'Integrate the semantically reviewed TASK-121 revision 2 Brain Sync snapshot
+  delta onto the current canonical main as a fresh current-main descendant, preserving
+  all published TASK-122 through TASK-127 control-plane hardening. Realize the already-reviewed
+  TASK-121 outcome without force-publishing its divergent historical source and produce
+  a separately verifiable/reviewable integration candidate eligible for normal safe
+  publication.
+
+  '
+problem: 'TASK-121 revision 2 produced candidate c3d822c147e52bb85f2786d03f113fc78b8f8e67.
+  RUN-121-007 completed FINALIZE_CANDIDATE continuation with Runtime verification
+  PASS (37 tests, AC1-AC7 covered, zero unresolved), and REVIEW-121-007 returned PRIMARY
+  PASS with no findings. Publication then correctly failed closed with INTEGRATION_REQUIRED
+  because current main had independently advanced to bb34c9987af1f5a672ead2cd4c2746c8df868a18
+  through published TASK-122 through TASK-127. Canonical comparison shows the TASK-121
+  source and current main diverge from merge base 950c8766d883f2f318e18ce683103f8c74bc01fb.
+  TASK-121 changes only src/aios_renew/brain_sync.py, tests/test_brain_sync.py, and
+  docs/CHATGPT_PROJECT_CONTRACT.md, while later main also changed the Project Contract
+  and several Runtime/control-plane surfaces including Unified State. A fresh current-main
+  integration candidate is therefore required; direct publication of the historical
+  TASK-121 source would discard later reviewed work.
+
+  '
+assumptions:
+- 'Canonical AIOS-renew main at authoring is bb34c9987af1f5a672ead2cd4c2746c8df868a18,
+  the reviewed and published TASK-127 source.
+
+  '
+- 'TASK-121 revision 2 semantic source remains c3d822c147e52bb85f2786d03f113fc78b8f8e67.
+  RUN-121-007 Runtime verification passed and REVIEW-121-007 is PRIMARY PASS for AC1-AC7
+  with no findings.
+
+  '
+- 'The failed publication of RUN-121-007 is an ancestry/integration boundary, not
+  a semantic failure of TASK-121 and not authority to rerun unchanged historical verification.
+
+  '
+- 'Canonical compare establishes merge base 950c8766d883f2f318e18ce683103f8c74bc01fb;
+  current main is 14 commits ahead of that base, while the reviewed TASK-121 candidate
+  is one divergent implementation commit ahead.
+
+  '
+- 'Later published TASK-122 through TASK-127 are authoritative current-main work and
+  must be preserved. In particular, their REPAIR, publication, Runtime, Executor transport,
+  ingress, and Unified State hardening must not be reverted or semantically weakened.
+
+  '
+- Frozen Kernel v0.1 remains FROZEN; this is a bounded current-main integration task.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - .ai/tasks/TASK-121.yaml
+  - .ai/tasks/TASK-122.yaml
+  - .ai/tasks/TASK-123.yaml
+  - .ai/tasks/TASK-124.yaml
+  - .ai/tasks/TASK-125.yaml
+  - .ai/tasks/TASK-126.yaml
+  - .ai/tasks/TASK-127.yaml
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/human_surface.py
+  - src/aios_renew/operator.py
+  - tests/test_brain_sync.py
+  - tests/test_operator_unified_state.py
+  - tests/test_operator_human_surface.py
+  modify:
+  - src/aios_renew/brain_sync.py
+  - tests/test_brain_sync.py
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+non_goals:
+- Modify, rewrite, delete, or reinterpret historical TASK-121 through TASK-127 TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR
+  artifacts or refs.
+- Force-publish, merge, rebase, cherry-pick, or move the divergent historical TASK-121
+  reviewed source directly onto main as publication of RUN-121-007.
+- Change later-main REPAIR authorization/supersession, FINALIZE_CANDIDATE, publication,
+  Antigravity/Codex adapter, ingress/wakeup, Runtime, Unified State, Human Surface,
+  or operator implementation semantics.
+- Add new Brain Sync semantics beyond TASK-121 revision 2, a Planner/Reviewer agent,
+  memory store, watcher, retry loop, router, scheduler, or downstream mutation authority.
+- Change .ai/roadmap-state.yaml, downstream repositories or dependency pins, frozen
+  Kernel artifacts, workflows, or files outside the three authorized mutation targets.
+- Repeat historical TASK-121 or TASK-122 through TASK-127 verification merely for
+  ceremony.
+- Push or publish from Executor implementation execution.
+constraints:
+  hard:
+  - 'The TASK-128 implementation candidate must descend from canonical TASK-128 authoring
+    state on current main bb34c9987af1f5a672ead2cd4c2746c8df868a18. All published
+    TASK-122 through TASK-127 behavior and state must remain present.
+
+    '
+  - 'Preserve the complete reviewed TASK-121 Brain Sync semantics: one deterministic,
+    versioned, compact, read-only AIOS_BRAIN_SYNC_SNAPSHOT derived from canonical
+    repository facts, roadmap planning state when present, exact TASK identity, and
+    existing Unified State lifecycle reduction without turning Runtime into a Planner
+    or Reviewer.
+
+    '
+  - 'Preserve TASK-121 fail-closed selection for missing, ambiguous, unauthored, or
+    contradictory planning/lineage state and its observable no-mutation/no-Executor/
+    no-verification snapshot behavior.
+
+    '
+  - 'Integrate TASK-121 Project Contract guidance with all later current-main Contract
+    text; no later authority, failure taxonomy, REPAIR/publication rule, downstream
+    boundary, or Brain Sync rule may be dropped. Where both lineages touch the Contract,
+    preserve both non-conflicting semantic deltas rather than replacing the current
+    file with the historical TASK-121 blob.
+
+    '
+  - 'The integrated brain_sync implementation must remain compatible with current-main
+    Unified State and operator/human-surface contracts as they exist after TASK-122
+    through TASK-127; integration may adapt only within the three authorized files
+    and must not modify those later-main owners.
+
+    '
+  - 'Historical RUN-121-007 verification/review remain valid evidence for the original
+    semantic delta, but TASK-128 Runtime verification must establish compatibility
+    of the new current-main descendant. It must be deterministic, offline, non-interactive,
+    and independent of GitHub/network, wall clock, model/provider, or chat state.
+
+    '
+  - 'All implementation mutation is confined to src/aios_renew/brain_sync.py, tests/test_brain_sync.py,
+    and docs/CHATGPT_PROJECT_CONTRACT.md. No current-main control-plane implementation
+    outside those targets may be reverted or rewritten.
+
+    '
+  - Do not push from Executor implementation execution.
+acceptance:
+- id: AC1
+  condition: 'The final candidate descends from TASK-128 current-main authoring state
+    and changes only src/aios_renew/brain_sync.py, tests/test_brain_sync.py, and docs/CHATGPT_PROJECT_CONTRACT.md,
+    preserving all published TASK-122 through TASK-127 state outside those targets.
+
+    '
+- id: AC2
+  condition: 'The integrated AIOS_BRAIN_SYNC_SNAPSHOT provides the reviewed TASK-121
+    deterministic repository/main identity, roadmap planning status, uniquely justified
+    exact TASK selection, existing Unified State next_action/authority, provenance,
+    and explicit blockers without chat/model memory or new semantic authority.
+
+    '
+- id: AC3
+  condition: 'Snapshot selection remains fail closed for missing, ambiguous, unauthored,
+    or contradictory planning/lineage state and generation remains observably read-only
+    with no RUN creation, Executor invocation, verification invocation, dispatch,
+    publication, worktree/ref/roadmap mutation, or fabricated lifecycle truth.
+
+    '
+- id: AC4
+  condition: 'Current Project Contract contains the complete TASK-121 cross-context
+    rehydration and ordering guards while preserving all later current-main authority/failure/publication/
+    REPAIR/downstream guidance; no later-main semantic text is lost by integration.
+
+    '
+- id: AC5
+  condition: 'The integrated Brain Sync surface is compatible with current-main Unified
+    State and operator/human-surface behavior after TASK-122 through TASK-127 without
+    modifying those owners or duplicating their lifecycle inference.
+
+    '
+- id: AC6
+  condition: 'Frozen Kernel, historical lineage, later control-plane hardening, downstream
+    pins, and files outside the three authorized targets remain unchanged; no force
+    publication, merge/rebase/cherry-pick publication shortcut, Planner authority,
+    or new lifecycle router is introduced.
+
+    '
+- id: AC7
+  condition: 'Focused deterministic integration verification passes for Brain Sync
+    plus current-main Unified State compatibility, git diff --check passes, and RESULT
+    contains zero unresolved items.
+
+    '
+verification:
+  required:
+  - python -m pytest -q tests/test_brain_sync.py tests/test_operator_unified_state.py
+    tests/test_operator_human_surface.py
+  - git diff --check
