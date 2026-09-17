@@ -387,6 +387,7 @@ def _run_matches_record(
         run.get("run_id") == run_id
         and task.get("id") == record["task_id"]
         and execution.get("failed_run_id") == record["failed_run_id"]
+        and execution.get("repair_authorization_sha") == record["repair_sha"]
         and authorization.get("failed_run_id") == record["failed_run_id"]
         and authorization.get("action") == record["action"]
         and (expected_executor is None or run.get("executor") == expected_executor)

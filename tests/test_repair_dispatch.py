@@ -20,6 +20,7 @@ def _write_run(
     action: str = "CODE_FIX",
     executor: str = "codex",
     terminal: str | None = None,
+    repair_sha: str = "a" * 40,
 ) -> None:
     (state / "runs").mkdir(parents=True, exist_ok=True)
     (state / "repairs").mkdir(parents=True, exist_ok=True)
@@ -30,6 +31,7 @@ def _write_run(
     }
     execution = {
         "failed_run_id": "RUN-111-001",
+        "repair_authorization_sha": repair_sha,
         "repair": {"failed_run_id": "RUN-111-001", "action": action},
         "run": run,
     }

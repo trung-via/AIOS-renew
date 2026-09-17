@@ -108,6 +108,18 @@ Do not rerun the original TASK from the beginning.
 Use only for a failed admitted RUN.
 Continue from the exact failed lineage.
 
+If an authorized REPAIR strategy becomes obsolete before any continuation RUN is
+admitted, supersede it only by adding a canonical immutable authorization whose
+revision binds the exact current authorization SHA and canonical FAILURE identity.
+Every predecessor ref remains historical evidence; never rewrite or delete it.
+The contiguous authorization chain must resolve to exactly one current tip, and a
+stale, competing, broken, or discontinuous chain fails closed before execution.
+
+Do not fabricate a newer FAILURE or execute correction semantics already known to
+be wrong merely to replace unexecuted intent. Once a continuation RUN is admitted,
+its exact authorization SHA is part of that RUN's immutable correction lineage and
+cannot be changed retroactively.
+
 ### DELTA
 
 Verify the prior finding/repair and detect only material defects introduced by that correction.

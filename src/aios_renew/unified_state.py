@@ -8,6 +8,7 @@ mutating runtime state, or reconciling repository state.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
@@ -395,6 +396,7 @@ def _decode_remote_lifecycle(
             embedded_run = correction.get("run")
             embedded_failure = correction.get("failure")
             authorization = correction.get("repair")
+            authorization_sha = correction.get("repair_authorization_sha")
             correction_task = correction.get("task")
             run_value = json.loads(item.run.decode("utf-8", errors="strict"))
             if (
@@ -409,6 +411,14 @@ def _decode_remote_lifecycle(
                 or not isinstance(authorization, Mapping)
                 or authorization.get("failed_run_id") != parent_run_id
                 or authorization.get("failed_head_sha") != run.base_sha
+                or (
+                    authorization_sha is not None
+                    and (
+                        not isinstance(authorization_sha, str)
+                        or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", authorization_sha)
+                        is None
+                    )
+                )
                 or not isinstance(correction_task, Mapping)
                 or correction_task.get("task_id") != task.task_id
                 or correction_task.get("revision") != task.revision
@@ -776,6 +786,7 @@ def _local_pending_runs(
             parent_run_id = repair_execution.get("failed_run_id")
             failure = repair_execution.get("failure")
             authorization = repair_execution.get("repair")
+            authorization_sha = repair_execution.get("repair_authorization_sha")
             embedded_run = repair_execution.get("run")
             if (
                 not isinstance(parent_run_id, str)
@@ -787,6 +798,14 @@ def _local_pending_runs(
                 or not isinstance(authorization, Mapping)
                 or authorization.get("failed_run_id") != parent_run_id
                 or authorization.get("failed_head_sha") != run.base_sha
+                or (
+                    authorization_sha is not None
+                    and (
+                        not isinstance(authorization_sha, str)
+                        or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", authorization_sha)
+                        is None
+                    )
+                )
                 or not isinstance(embedded_run, Mapping)
                 or op._run_from_data(embedded_run) != run
             ):
@@ -1107,7 +1126,8 @@ def observe_unified_state(
                     raise ValueError("canonical REPAIR authorization must be a mapping")
                 preflight_repair_fn = getattr(op, "preflight_repair", preflight_repair)
                 preflight = preflight_repair_fn(
-                    tip.run_id, repo=root, repair=repair_authorization
+                    tip.run_id, repo=root, repair=repair_authorization,
+                    required_repair_sha=selectors[0][1],
                 )
                 correction = preflight.as_dict()
                 if preflight.status != "READY":

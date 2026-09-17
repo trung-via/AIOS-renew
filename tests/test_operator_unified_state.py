@@ -654,7 +654,14 @@ def test_unified_state_ready_continue_implementation_reduces_to_execute_repair(
         == "CONTINUE_IMPLEMENTATION"
     )
     assert observation["correction_preflight"]["executor_required"] is True
-    assert calls == [(run_id, {"repo": repo, "repair": repair})]
+    assert calls == [(
+        run_id,
+        {
+            "repo": repo,
+            "repair": repair,
+            "required_repair_sha": repair_sha,
+        },
+    )]
 
 
 def test_unified_state_rejects_local_failure_with_malformed_candidate_binding(

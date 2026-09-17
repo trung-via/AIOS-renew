@@ -77,6 +77,7 @@ class CorrectionPreflightResult:
     subject_mode: str | None = None
     action: str | None = None
     executor_required: bool | None = None
+    authorization_sha: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -110,6 +111,7 @@ class CorrectionPreflightResult:
             "subject_mode": self.subject_mode,
             "action": self.action,
             "executor_required": self.executor_required,
+            "authorization_sha": self.authorization_sha,
             "run_created": False,
             "executor_invoked": False,
         }
@@ -274,6 +276,7 @@ def preflight_repair(
     *,
     repo: str | Path | None = None,
     repair: Mapping[str, Any] | str | Path | None = None,
+    required_repair_sha: str | None = None,
 ) -> CorrectionPreflightResult:
     """Observe exact REPAIR readiness without creating execution state."""
 
@@ -293,6 +296,7 @@ def preflight_repair(
                 repo=root,
                 state=state,
                 repair=repair,
+                required_repair_sha=required_repair_sha,
                 admission=admission,
                 remote_repo=remote_repo,
             )
@@ -332,6 +336,7 @@ def preflight_repair(
             subject_mode=subject_mode,
             action=resolved.action,
             executor_required=resolved.reusable_package is None,
+            authorization_sha=resolved.authorization_sha,
         )
     except Exception as exc:
         return _blocked_correction_preflight("REPAIR", admission, exc)

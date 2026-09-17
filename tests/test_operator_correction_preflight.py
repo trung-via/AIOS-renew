@@ -257,6 +257,13 @@ def test_correction_preflight_remote_repair_is_observational_for_ready_and_block
         )
 
     publish_remote_repair(repair)
+    repair_sha = git(
+        repo,
+        "ls-remote",
+        "--refs",
+        "origin",
+        f"refs/heads/aios/repair/{failed_run_id}",
+    ).split()[0]
     before_ready = _control_repository_snapshot(repo)
 
     ready = preflight_repair(failed_run_id, repo=repo)
@@ -280,6 +287,7 @@ def test_correction_preflight_remote_repair_is_observational_for_ready_and_block
         "subject_mode": "CURRENT",
         "action": "CODE_FIX",
         "executor_required": True,
+        "authorization_sha": repair_sha,
         "run_created": False,
         "executor_invoked": False,
     }
@@ -299,7 +307,7 @@ def test_correction_preflight_remote_repair_is_observational_for_ready_and_block
         "family": "REPAIR",
         "status": "BLOCKED",
         "phase": "CANONICAL_CONTRACT_ADMISSION",
-        "reason_code": "TASK_CONTRACT_REJECTED",
+        "reason_code": "CANONICAL_LINEAGE_INVALID",
         "task": {"id": "TASK-101", "revision": 1},
         "source_run_id": None,
         "failed_run_id": failed_run_id,
@@ -311,6 +319,7 @@ def test_correction_preflight_remote_repair_is_observational_for_ready_and_block
         "subject_mode": None,
         "action": None,
         "executor_required": None,
+        "authorization_sha": None,
         "run_created": False,
         "executor_invoked": False,
     }

@@ -258,13 +258,14 @@ def remote_main(lineage: dict[str, object]) -> str:
 
 def _push_repair_authorization(
     repo: Path, *, failed_run_id: str, authorization: dict
-) -> None:
+) -> str:
     subject_sha = git(repo, "rev-parse", "HEAD")
     path = repo / ".ai" / "transport" / "repair.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(authorization), encoding="utf-8")
     git(repo, "add", ".ai/transport/repair.json")
     git(repo, "commit", "--quiet", "-m", "canonical repair authorization")
+    auth_sha = git(repo, "rev-parse", "HEAD")
     git(
         repo,
         "push",
@@ -273,6 +274,46 @@ def _push_repair_authorization(
         f"HEAD:refs/heads/aios/repair/{failed_run_id}",
     )
     git(repo, "reset", "--hard", "--quiet", subject_sha)
+    return auth_sha
+
+
+def _push_repair_supersession(
+    repo: Path,
+    *,
+    failed_run_id: str,
+    revision: int,
+    predecessor_repair_sha: str,
+    failure_artifacts_sha: str,
+    authorization: dict,
+) -> str:
+    branch = git(repo, "branch", "--show-current")
+    git(repo, "checkout", "--quiet", "--detach", predecessor_repair_sha)
+    repair_path = repo / ".ai" / "transport" / "repair.json"
+    supersession_path = repo / ".ai" / "transport" / "repair-supersession.json"
+    repair_path.parent.mkdir(parents=True, exist_ok=True)
+    repair_path.write_text(json.dumps(authorization), encoding="utf-8")
+    supersession_payload = {
+        "format": "AIOS_REPAIR_SUPERSESSION",
+        "version": 1,
+        "failed_run_id": failed_run_id,
+        "authorization_revision": revision,
+        "predecessor_repair_sha": predecessor_repair_sha,
+        "failure_artifacts_sha": failure_artifacts_sha,
+    }
+    supersession_path.write_text(json.dumps(supersession_payload), encoding="utf-8")
+    git(repo, "add", ".ai/transport/repair.json", ".ai/transport/repair-supersession.json")
+    git(repo, "commit", "--quiet", "-m", f"superseding repair authorization r{revision}")
+    supersession_sha = git(repo, "rev-parse", "HEAD")
+    git(
+        repo,
+        "push",
+        "--quiet",
+        "origin",
+        f"HEAD:refs/heads/aios/repair-supersession/{failed_run_id}/{revision}",
+    )
+    if branch:
+        git(repo, "checkout", "--quiet", branch)
+    return supersession_sha
 
 
 def make_repair_lineage(
@@ -289,6 +330,11 @@ def make_repair_lineage(
     final_state: str = "mutation",
     recursive_continue: bool = False,
     recursive_authorization_conflict: bool = False,
+    include_repair_authorization_sha: bool = False,
+    repair_authorization_sha: str | None = None,
+    supersede_authorization: bool = False,
+    supersede_repair: dict | None = None,
+    use_superseded_authorization: bool = False,
 ) -> dict[str, object]:
     repo = root / "repo"
     remote = root / "upstream.git"
@@ -501,9 +547,32 @@ def make_repair_lineage(
         "instructions": ["Repair only the failed candidate."],
         "constraints": [],
     }
-    _push_repair_authorization(
+    first_auth_sha = _push_repair_authorization(
         repo, failed_run_id=failed_run_id, authorization=authorization
     )
+    auth_sha = first_auth_sha
+    if supersede_authorization or supersede_repair is not None:
+        successor_auth = (
+            supersede_repair
+            if supersede_repair is not None
+            else {
+                **authorization,
+                "instructions": ["Superseded instructions for repair."],
+            }
+        )
+        failure_artifacts_sha = git(
+            remote, "rev-parse", f"refs/heads/aios/failure-artifacts/{failed_run_id}"
+        )
+        auth_sha = _push_repair_supersession(
+            repo,
+            failed_run_id=failed_run_id,
+            revision=2,
+            predecessor_repair_sha=first_auth_sha,
+            failure_artifacts_sha=failure_artifacts_sha,
+            authorization=successor_auth,
+        )
+        if not use_superseded_authorization:
+            authorization = successor_auth
 
     if final_state == "mutation":
         (repo / "product.txt").write_text(
@@ -554,6 +623,20 @@ def make_repair_lineage(
         "repair": persisted_authorization,
         "run": successful_run,
     }
+    if include_repair_authorization_sha:
+        lineage["repair_authorization_sha"] = (
+            first_auth_sha
+            if (repair_authorization_sha == "use_predecessor" or use_superseded_authorization)
+            else (repair_authorization_sha if repair_authorization_sha is not None else auth_sha)
+        )
+    elif repair_authorization_sha is not None:
+        lineage["repair_authorization_sha"] = (
+            first_auth_sha
+            if repair_authorization_sha == "use_predecessor"
+            else repair_authorization_sha
+        )
+    if lineage_mutation == "extra_field":
+        lineage["unexpected_field"] = "illegal"
     run_path = state / "run.json"
     result_path = state / "result.json"
     lineage_path = state / "repair.json"
@@ -615,6 +698,8 @@ def make_repair_lineage(
         "authorization": authorization,
         "successful_run": successful_run,
         "repair_lineage": lineage,
+        "authorization_commit_sha": auth_sha,
+        "first_authorization_commit_sha": first_auth_sha,
         "prior_failure": prior_failure,
         "prior_authorization": prior_authorization,
     }
@@ -2000,5 +2085,195 @@ def test_predecessor_canonically_admissible_run_identity_accepted_in_publication
 
     assert report.outcome == "PUBLISHED"
     assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+
+
+# ===========================================================================
+# AC2, AC3, AC4, AC5: Extended REPAIR execution and authorization supersession
+# ===========================================================================
+
+
+def test_run_123_002_equivalent_extended_repair_publication_succeeds_ac2_ac5(
+    tmp_path: Path,
+) -> None:
+    # Exact RUN-123-002 causal topology: a failed RUN has a canonical CODE_FIX authorization SHA,
+    # its continuation execution persists repair_authorization_sha, Runtime RESULT/review state is
+    # valid, and publication accepts that exact current authorization rather than rejecting the
+    # extended field set.
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CODE_FIX",
+        include_repair_authorization_sha=True,
+    )
+
+    report = publish(lineage)
+
+    assert report.outcome == "PUBLISHED"
+    assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert report.prior_main_sha == lineage["base_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+    assert remote_main(lineage) != lineage["decision_sha"]
+
+
+def test_extended_repair_with_superseding_authorization_lineage_succeeds_ac2(
+    tmp_path: Path,
+) -> None:
+    # A failed RUN has a canonical REPAIR root authorization. It is superseded by revision 2.
+    # The continuation is admitted with revision 2 and persists revision 2's repair_authorization_sha.
+    # Publication validates the exact current authorization SHA and advances main.
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CODE_FIX",
+        include_repair_authorization_sha=True,
+        supersede_authorization=True,
+    )
+
+    report = publish(lineage)
+
+    assert report.outcome == "PUBLISHED"
+    assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+
+
+def test_extended_repair_stale_or_mismatched_authorization_sha_fails_closed_ac3_ac5(
+    tmp_path: Path,
+) -> None:
+    # Negative variant 1: Persisted repair_authorization_sha does not match canonical authorization SHA.
+    mismatched_sha = "0123456789abcdef0123456789abcdef01234567"
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CODE_FIX",
+        repair_authorization_sha=mismatched_sha,
+    )
+
+    with pytest.raises(
+        PublicationError,
+        match="persisted repair_authorization_sha does not match current canonical authorization",
+    ):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_extended_repair_superseded_predecessor_selector_fails_closed_ac3_ac5(
+    tmp_path: Path,
+) -> None:
+    # Negative variant 2: Root authorization is revision 1. A superseding authorization revision 2
+    # is canonical. The continuation is executed with revision 2 intent but persists revision 1's
+    # authorization SHA (superseded predecessor selector).
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CODE_FIX",
+        supersede_authorization=True,
+        repair_authorization_sha="use_predecessor",
+    )
+
+    with pytest.raises(
+        PublicationError,
+        match="persisted repair_authorization_sha does not match current canonical authorization",
+    ):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+@pytest.mark.parametrize(
+    "malformed_sha",
+    [
+        "invalid-sha",
+        "1234",
+        "0123456789abcdef0123456789abcdef0123456G",
+    ],
+)
+def test_extended_repair_malformed_authorization_sha_fails_closed_ac3(
+    tmp_path: Path, malformed_sha: str
+) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CODE_FIX",
+        repair_authorization_sha=malformed_sha,
+    )
+
+    with pytest.raises(
+        PublicationError, match="REPAIR authorization SHA is invalid"
+    ):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_extended_repair_extra_fields_fail_closed_ac3(
+    tmp_path: Path,
+) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CODE_FIX",
+        lineage_mutation="extra_field",
+        include_repair_authorization_sha=True,
+    )
+
+    with pytest.raises(
+        PublicationError,
+        match="REPAIR execution fields do not match persisted lineage",
+    ):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_extended_repair_broken_supersession_chain_fails_closed_ac3(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CODE_FIX",
+        include_repair_authorization_sha=True,
+    )
+    failed_run_id = lineage["failed_run_id"]
+    # Push discontinuous supersession revision 3 without revision 2
+    subject_sha = git(repo, "rev-parse", "HEAD")
+    git(
+        repo,
+        "push",
+        "--quiet",
+        "origin",
+        f"{subject_sha}:refs/heads/aios/repair-supersession/{failed_run_id}/3",
+    )
+
+    with pytest.raises(
+        PublicationError, match="canonical REPAIR authorization is invalid"
+    ):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+def test_legacy_repair_without_repair_authorization_sha_remains_compatible_ac4(
+    tmp_path: Path,
+) -> None:
+    # Verify legacy canonical REPAIR execution without repair_authorization_sha
+    # remains 100% compatible with existing publication behavior.
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CODE_FIX",
+        include_repair_authorization_sha=False,
+    )
+    assert "repair_authorization_sha" not in lineage["repair_lineage"]
+
+    report = publish(lineage)
+
+    assert report.outcome == "PUBLISHED"
     assert report.reviewed_sha == lineage["candidate_sha"]
     assert remote_main(lineage) == lineage["candidate_sha"]

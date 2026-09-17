@@ -200,6 +200,24 @@ class RemoteTaskLifecycle:
 
 
 @dataclass(frozen=True)
+class RemoteRepairAuthorization:
+    """The uniquely current immutable authorization for one failed RUN."""
+
+    failed_run_id: str
+    ref: str
+    commit_sha: str
+    revision: int
+    repair: bytes
+    predecessor_sha: str | None = None
+    failure_artifacts_sha: str | None = None
+
+
+REPAIR_SUPERSESSION_FORMAT = "AIOS_REPAIR_SUPERSESSION"
+REPAIR_SUPERSESSION_PATH = ".ai/transport/repair-supersession.json"
+REPAIR_SUPERSESSION_PREFIX = "refs/heads/aios/repair-supersession/"
+
+
+@dataclass(frozen=True)
 class RemoteTerminalArtifact:
     """One canonically bound terminal artifact from the upstream snapshot."""
 
@@ -827,6 +845,7 @@ def resolve_remote_task_lifecycle(
         f"refs/heads/aios/review-decision/{task_prefix}*",
         f"refs/heads/aios/remediation/{task_prefix}*",
         f"refs/heads/aios/repair/{task_prefix}*",
+        f"{REPAIR_SUPERSESSION_PREFIX}{task_prefix}*/*",
     )
     try:
         main_ref = "refs/heads/main"
@@ -954,7 +973,7 @@ def resolve_remote_task_lifecycle(
         run_pattern = re.compile(
             rf"^({re.escape(task_prefix)}\d{{3,}})-(.+)$"
         )
-        repair_selectors: list[tuple[str, str, bytes]] = []
+        repair_candidates: dict[str, list[RemoteRepairAuthorization]] = {}
         for ref, sha in sorted(refs.items()):
             if ref.startswith(remediation_prefix):
                 match = run_pattern.fullmatch(ref[len(remediation_prefix) :])
@@ -976,7 +995,54 @@ def resolve_remote_task_lifecycle(
                     raise ReviewTransportError(
                         f"canonical REPAIR content is missing for {run_id}"
                     )
-                repair_selectors.append((run_id, sha, repair))
+                repair_candidates.setdefault(run_id, []).append(
+                    RemoteRepairAuthorization(run_id, ref, sha, 1, repair)
+                )
+            elif ref.startswith(REPAIR_SUPERSESSION_PREFIX):
+                suffix = ref[len(REPAIR_SUPERSESSION_PREFIX) :]
+                parts = suffix.split("/")
+                if (
+                    len(parts) != 2
+                    or not re.fullmatch(rf"{re.escape(task_prefix)}\d{{3,}}", parts[0])
+                    or not parts[1].isdigit()
+                ):
+                    raise ReviewTransportError(
+                        "canonical REPAIR supersession selector identity is malformed"
+                    )
+                run_id = parts[0]
+                revision = int(parts[1])
+                repair = _read_lifecycle_blob(
+                    repo, remote, sha, ".ai/transport/repair.json"
+                )
+                metadata = _read_lifecycle_blob(
+                    repo, remote, sha, REPAIR_SUPERSESSION_PATH
+                )
+                if repair is None or metadata is None:
+                    raise ReviewTransportError(
+                        f"canonical REPAIR supersession content is missing for {run_id}"
+                    )
+                predecessor, failure_sha = _decode_repair_supersession(
+                    metadata, run_id=run_id, revision=revision
+                )
+                parent_code, parent_sha, _ = _git_cmd(
+                    repo, "rev-parse", f"{sha}^", allow_fail=True
+                )
+                if parent_code or parent_sha != predecessor:
+                    raise ReviewTransportError(
+                        "canonical REPAIR successor commit parent is invalid"
+                    )
+                repair_candidates.setdefault(run_id, []).append(
+                    RemoteRepairAuthorization(
+                        run_id, ref, sha, revision, repair, predecessor, failure_sha
+                    )
+                )
+        repair_selectors: list[tuple[str, str, bytes]] = []
+        for run_id, candidates in sorted(repair_candidates.items()):
+            failure_ref = f"refs/heads/aios/failure-artifacts/{run_id}"
+            selected = _select_current_repair_authorization(
+                candidates, failure_artifacts_sha=refs.get(failure_ref)
+            )
+            repair_selectors.append((run_id, selected.commit_sha, selected.repair))
         return RemoteTaskLifecycle(
             main_sha=main_sha,
             terminals=tuple(terminals),
@@ -2124,21 +2190,151 @@ def _create_admission_failure_commit(
         ) from exc
 
 
-def read_remote_repair(repo: Path, run_id: str) -> bytes:
-    """Read the single ChatGPT-authored repair bound to a failed RUN."""
+def _decode_repair_supersession(
+    content: bytes, *, run_id: str, revision: int
+) -> tuple[str, str]:
+    metadata = _json_mapping(content, "REPAIR supersession")
+    required = {
+        "format",
+        "version",
+        "failed_run_id",
+        "authorization_revision",
+        "predecessor_repair_sha",
+        "failure_artifacts_sha",
+    }
+    if set(metadata) != required:
+        raise ReviewTransportError("REPAIR supersession fields are invalid")
+    predecessor = metadata.get("predecessor_repair_sha")
+    failure_sha = metadata.get("failure_artifacts_sha")
+    if (
+        metadata.get("format") != REPAIR_SUPERSESSION_FORMAT
+        or metadata.get("version") != 1
+        or metadata.get("failed_run_id") != run_id
+        or metadata.get("authorization_revision") != revision
+        or revision < 2
+        or not isinstance(predecessor, str)
+        or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", predecessor) is None
+        or not isinstance(failure_sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", failure_sha) is None
+    ):
+        raise ReviewTransportError("REPAIR supersession identity is invalid")
+    return predecessor, failure_sha
 
-    remote = resolve_transport_remote(repo)
-    ref = f"refs/heads/aios/repair/{run_id}"
-    code, output, _ = _git_cmd(repo, "ls-remote", remote, ref, allow_fail=True)
-    if code or not output.strip():
+
+def _select_current_repair_authorization(
+    candidates: Sequence[RemoteRepairAuthorization],
+    *,
+    failure_artifacts_sha: str | None,
+) -> RemoteRepairAuthorization:
+    """Select one contiguous immutable authorization chain or fail closed."""
+
+    roots = [item for item in candidates if item.revision == 1]
+    if len(roots) != 1:
+        raise ReviewTransportError("canonical REPAIR root is missing or ambiguous")
+    by_revision: dict[int, list[RemoteRepairAuthorization]] = {}
+    for item in candidates:
+        by_revision.setdefault(item.revision, []).append(item)
+    if any(len(items) != 1 for items in by_revision.values()):
+        raise ReviewTransportError("canonical REPAIR successor is ambiguous")
+    revisions = sorted(by_revision)
+    if revisions != list(range(1, revisions[-1] + 1)):
+        raise ReviewTransportError("canonical REPAIR revision chain is discontinuous")
+    current = roots[0]
+    root_identity = _json_mapping(current.repair, "REPAIR authorization")
+    root_task = root_identity.get("task")
+    if (
+        root_identity.get("failed_run_id") != current.failed_run_id
+        or not isinstance(root_identity.get("failed_head_sha"), str)
+        or not isinstance(root_task, Mapping)
+        or not isinstance(root_task.get("id"), str)
+        or isinstance(root_task.get("revision"), bool)
+        or not isinstance(root_task.get("revision"), int)
+    ):
+        raise ReviewTransportError("canonical REPAIR root identity is invalid")
+    for revision in revisions[1:]:
+        successor = by_revision[revision][0]
+        if successor.predecessor_sha != current.commit_sha:
+            raise ReviewTransportError("canonical REPAIR predecessor chain is broken")
+        if (
+            failure_artifacts_sha is None
+            or successor.failure_artifacts_sha != failure_artifacts_sha
+        ):
+            raise ReviewTransportError("canonical REPAIR FAILURE identity is stale")
+        identity = _json_mapping(successor.repair, "REPAIR authorization")
+        for key in ("failed_run_id", "failed_head_sha", "task"):
+            if identity.get(key) != root_identity.get(key):
+                raise ReviewTransportError(
+                    "canonical REPAIR supersession changes failed RUN identity"
+                )
+        current = successor
+    return current
+
+
+def resolve_remote_repair_authorization(
+    repo: Path, run_id: str, *, remote: str | None = None
+) -> RemoteRepairAuthorization:
+    """Resolve the unique current REPAIR while preserving every immutable ref."""
+
+    if re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", run_id) is None:
+        raise ReviewTransportError(f"invalid failed RUN id: {run_id!r}")
+    if remote is None:
+        remote = resolve_transport_remote(repo)
+    legacy_ref = f"refs/heads/aios/repair/{run_id}"
+    successor_pattern = f"{REPAIR_SUPERSESSION_PREFIX}{run_id}/*"
+    failure_ref = f"refs/heads/aios/failure-artifacts/{run_id}"
+    refs = _exact_remote_refs(repo, remote, legacy_ref, successor_pattern, failure_ref)
+    legacy_sha = refs.get(legacy_ref)
+    if legacy_sha is None:
         raise ReviewTransportError(f"remote REPAIR not found for {run_id}")
-    lines = [line.split() for line in output.splitlines() if line.strip()]
-    if len(lines) != 1 or len(lines[0]) != 2 or lines[0][1] != ref:
-        raise ReviewTransportError(f"remote REPAIR is ambiguous for {run_id}")
-    content = _read_remote_blob(repo, remote, lines[0][0], ".ai/transport/repair.json")
-    if content is None:
+    repair = _read_remote_blob(
+        repo, remote, legacy_sha, ".ai/transport/repair.json"
+    )
+    if repair is None:
         raise ReviewTransportError(f"remote REPAIR JSON missing for {run_id}")
-    return content
+    candidates = [
+        RemoteRepairAuthorization(run_id, legacy_ref, legacy_sha, 1, repair)
+    ]
+    prefix = f"{REPAIR_SUPERSESSION_PREFIX}{run_id}/"
+    for ref, sha in sorted(refs.items()):
+        if not ref.startswith(prefix):
+            continue
+        suffix = ref[len(prefix) :]
+        if not suffix.isdigit():
+            raise ReviewTransportError("remote REPAIR supersession is ambiguous")
+        revision = int(suffix)
+        successor_repair = _read_remote_blob(
+            repo, remote, sha, ".ai/transport/repair.json"
+        )
+        metadata = _read_remote_blob(
+            repo, remote, sha, REPAIR_SUPERSESSION_PATH
+        )
+        if successor_repair is None or metadata is None:
+            raise ReviewTransportError("remote REPAIR supersession content is missing")
+        predecessor, failure_sha = _decode_repair_supersession(
+            metadata, run_id=run_id, revision=revision
+        )
+        parent_code, parent_sha, _ = _git_cmd(
+            repo, "rev-parse", f"{sha}^", allow_fail=True
+        )
+        if parent_code or parent_sha != predecessor:
+            raise ReviewTransportError(
+                "remote REPAIR successor commit parent is invalid"
+            )
+        candidates.append(
+            RemoteRepairAuthorization(
+                run_id, ref, sha, revision, successor_repair,
+                predecessor, failure_sha,
+            )
+        )
+    return _select_current_repair_authorization(
+        candidates, failure_artifacts_sha=refs.get(failure_ref)
+    )
+
+
+def read_remote_repair(repo: Path, run_id: str, *, remote: str | None = None) -> bytes:
+    """Read the deterministically current ChatGPT-authored REPAIR."""
+
+    return resolve_remote_repair_authorization(repo, run_id, remote=remote).repair
 
 
 def transport_post_pass(

@@ -27,7 +27,11 @@ from .review import (
     validate_remediation,
     validate_review,
 )
-from .review_transport import validate_runtime_failure_binding
+from .review_transport import (
+    ReviewTransportError,
+    resolve_remote_repair_authorization,
+    validate_runtime_failure_binding,
+)
 from .run import ACTIVE, Run, RunTaskReference
 from .task import parse_task
 
@@ -799,15 +803,18 @@ def _canonical_repair_authorization(
     remote: str,
     failed_run_id: str,
     run_id: str,
-) -> Mapping[str, Any]:
+) -> tuple[str, Mapping[str, Any]]:
     ref = f"refs/heads/aios/repair/{failed_run_id}"
-    sha = _single_remote_sha(repo, remote, ref, run_id=run_id)
-    _fetch_object(repo, remote, sha, run_id=run_id)
-    content = _read_blob(
-        repo, sha, ".ai/transport/repair.json", run_id=run_id
-    )
-    return _mapping(
-        _json_no_duplicates(content, document="canonical REPAIR"),
+    _single_remote_sha(repo, remote, ref, run_id=run_id)
+    try:
+        current = resolve_remote_repair_authorization(
+            repo, failed_run_id, remote=remote
+        )
+    except ReviewTransportError as exc:
+        raise ValueError(f"canonical REPAIR authorization is invalid: {exc}") from exc
+    _fetch_object(repo, remote, current.commit_sha, run_id=run_id)
+    return current.commit_sha, _mapping(
+        _json_no_duplicates(current.repair, document="canonical REPAIR"),
         "canonical REPAIR",
     )
 
@@ -896,7 +903,17 @@ def _repair_review_lineage(
         "repair",
         "run",
     }
-    if set(lineage) != required:
+    keys = set(lineage)
+    if keys == required:
+        repair_authorization_sha = None
+    elif keys == required | {"repair_authorization_sha"}:
+        repair_authorization_sha = lineage.get("repair_authorization_sha")
+        if (
+            not isinstance(repair_authorization_sha, str)
+            or _SHA.fullmatch(repair_authorization_sha) is None
+        ):
+            raise ValueError("REPAIR authorization SHA is invalid")
+    else:
         raise ValueError("REPAIR execution fields do not match persisted lineage")
     failed_run_id = lineage.get("failed_run_id")
     if not isinstance(failed_run_id, str) or _RUN_ID.fullmatch(failed_run_id) is None:
@@ -983,7 +1000,7 @@ def _repair_review_lineage(
         task=task,
         failed_changed_files=failed_changed,
     )
-    canonical_authorization = _canonical_repair_authorization(
+    canonical_sha, canonical_authorization = _canonical_repair_authorization(
         repo,
         remote=remote,
         failed_run_id=failed_run_id,
@@ -991,6 +1008,13 @@ def _repair_review_lineage(
     )
     if dict(canonical_authorization) != dict(embedded_authorization):
         raise ValueError("persisted REPAIR authorization is not canonical")
+    if (
+        repair_authorization_sha is not None
+        and repair_authorization_sha != canonical_sha
+    ):
+        raise ValueError(
+            "persisted repair_authorization_sha does not match current canonical authorization"
+        )
 
     mutation = _changed_files(repo, failed_head_sha, child_head_sha)
     scope = set(embedded_authorization["modification_scope"])
