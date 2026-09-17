@@ -1,0 +1,200 @@
+task_id: TASK-124
+revision: 1
+
+goal: >
+  Integrate the exact reviewed TASK-123 source capability onto current canonical main through
+  one new reviewable candidate and close the deterministic publication-lineage compatibility
+  gap that prevented RUN-123-002 from publishing. Preserve TASK-123 immutable REPAIR
+  authorization supersession semantics while making publication validate the exact persisted
+  repair_authorization_sha introduced by that capability without weakening legacy publication
+  gates or historical lineage.
+
+problem: >
+  TASK-123 revision 1 reached canonical Runtime RESULT at RUN-123-002 with reviewed candidate
+  13c2e707d282b60dd69921cf33ee1f4267982633 and PRIMARY PASS review decision
+  9edece0a043322d9bb0377038a7a5e8bded3e915. Its canonical verification passed with 382 tests
+  plus git diff checking. Safe publication was then dispatched from current main
+  60f4d97fdeb374f7a322df48b2110311028ae293 but publication workflow run 35168068973 failed
+  before any main mutation with `invalid canonical publication lineage: REPAIR execution fields
+  do not match persisted lineage`. The reviewed TASK-123 candidate causes admitted REPAIR RUNs
+  to persist `repair_authorization_sha`, but publication.py still requires the legacy exact
+  REPAIR execution field set and resolves canonical authorization only through the legacy
+  `refs/heads/aios/repair/<failed_run>` selector. The same validator therefore cannot publish
+  the RUN-123-002 repaired candidate and would not understand future superseding authorization
+  refs. TASK-123 cannot safely self-publish through a bypass, and publishing a separate fix
+  first would make the already-reviewed source diverge from main. A single integration TASK is
+  required to preserve the reviewed TASK-123 capability while adding the missing publication
+  compatibility under a new complete review/publication lineage.
+
+assumptions:
+  - >
+    Canonical main at authoring remains
+    60f4d97fdeb374f7a322df48b2110311028ae293 because the RUN-123-002 publication attempt failed
+    before main mutation.
+  - >
+    RUN-123-002 canonical RESULT is at artifacts commit
+    a4298a39893df2f0a3e028a784098e2487eeab52, with candidate
+    13c2e707d282b60dd69921cf33ee1f4267982633, zero unresolved items, and Runtime verification
+    382 passed plus git diff --check PASS.
+  - >
+    REVIEW-123-002 is canonical PRIMARY PASS at decision commit
+    9edece0a043322d9bb0377038a7a5e8bded3e915, but PASS did not itself establish publication
+    success and the reviewed TASK-123 source is not current main.
+  - >
+    Publication workflow run 35168068973 failed specifically because the current publication
+    validator rejects the persisted REPAIR execution shape containing repair_authorization_sha;
+    it did not report candidate divergence and did not mutate main.
+  - >
+    TASK-121 revision 2 remains incomplete and RUN-121-004 still has legacy current
+    REPAIR-121-004 at 24a4729f80d0cc85e435875e32b9d8ecacc1c82f with no superseding
+    authorization yet. TASK-124 must not execute or resolve TASK-121.
+  - >
+    Frozen Kernel v0.1 remains FROZEN. Brain owns semantic contract, exactly one Executor owns
+    implementation HOW, Runtime owns verification, Reviewer owns semantic judgment, and
+    Publisher owns canonical publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-123.yaml
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/publication.py
+    - tests/test_authoring_ingress.py
+    - tests/test_operator.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_repair_dispatch.py
+    - tests/test_publication.py
+  modify:
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/publication.py
+    - tests/test_authoring_ingress.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_unified_state.py
+    - tests/test_repair_dispatch.py
+    - tests/test_publication.py
+
+non_goals:
+  - Rewrite, delete, force-update, or reinterpret RUN-123-002, REVIEW-123-002, its failed
+    publication attempt, or any historical TASK-123 artifact.
+  - Force-publish or directly advance TASK-123 reviewed candidate outside normal Runtime,
+    semantic review, and publication authority.
+  - Execute, supersede, verify, review, or publish TASK-121 or RUN-121-004 inside this TASK.
+  - Redesign TASK-123 supersession semantics, add another repair selector family, introduce a
+    mutable pointer, or infer correction action from failure prose.
+  - Weaken legacy REPAIR, PRIMARY, REMEDIATION, review, publication, TASK scope, failed-head,
+    ancestry, changed-files, or canonical-artifact identity validation.
+  - Require legacy historical REPAIR executions that never persisted repair_authorization_sha
+    to acquire fabricated metadata retroactively.
+  - Add retries, reroutes, fallback publication, force publication, a planner, reviewer agent,
+    queue, scheduler, watcher, or generic lifecycle router.
+  - Change downstream repositories or dependency pins.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      The new candidate must preserve the complete reviewed TASK-123 behavioral capability from
+      exact source 13c2e707d282b60dd69921cf33ee1f4267982633: immutable authorization
+      supersession, unique current-selector resolution, stale predecessor rejection, refusal
+      after continuation admission, current authorization SHA binding through wakeup/operator,
+      and existing CODE_FIX/CONTINUE_IMPLEMENTATION/NO_CHANGE/FINALIZE_CANDIDATE semantics.
+      Do not silently omit or redesign that reviewed capability while integrating it onto
+      current main.
+    - >
+      Publication must accept the extended REPAIR execution document when it contains exactly
+      the existing persisted lineage fields plus repair_authorization_sha. When that field is
+      present it must be a valid immutable SHA selector and publication must bind it to the
+      exact canonical current REPAIR authorization for the embedded failed_run_id, including
+      superseding authorization refs. Stale, superseded, ambiguous, broken, or mismatched
+      authorization identity must fail closed before publication.
+    - >
+      Legacy canonical REPAIR execution documents that predate repair_authorization_sha must
+      remain publishable under their existing validation rules without fabricating the new
+      field. Backward compatibility must not allow an extended document to bypass exact
+      authorization validation.
+    - >
+      Publication must continue validating the embedded failed RUN, failed_head_sha,
+      root_base_sha, TASK revision, failure artifact, repair document, successful child RUN,
+      action-specific mutation semantics, review decision, candidate SHA, and ordinary
+      fast-forward/divergence gates. The new authorization binding is additive, not a
+      replacement for existing checks.
+    - >
+      Publication authorization resolution must use the same deterministic immutable repair
+      authorization lineage semantics as TASK-123 rather than assuming the legacy
+      refs/heads/aios/repair/<failed_run> ref is always current.
+    - >
+      Include deterministic offline regression for the exact RUN-123-002 causal topology:
+      a failed RUN has a canonical CODE_FIX authorization SHA, its continuation execution
+      persists repair_authorization_sha, Runtime RESULT/review state is otherwise valid, and
+      publication accepts that exact current authorization rather than rejecting the extended
+      field set. Include negative cases for stale/mismatched authorization and a superseded
+      predecessor selector.
+    - >
+      Existing PRIMARY and REMEDIATION publication behavior and legacy REPAIR publication
+      behavior must remain unchanged. No new publication bypass, force mode, retry loop,
+      lifecycle family, or semantic authority is introduced.
+    - >
+      TASK-124 is the integration authority for the reviewed-but-unpublished TASK-123 source.
+      Its eventual publication, if semantically reviewed PASS, publishes only the new TASK-124
+      reviewed candidate. It must not publish REVIEW metadata or claim that the failed
+      RUN-123-002 publication itself succeeded.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The TASK-124 candidate preserves the complete reviewed TASK-123 supersession behavior
+      from exact source 13c2e707d282b60dd69921cf33ee1f4267982633 on top of current main,
+      with no loss of its immutable predecessor/current-selector and execution-binding
+      semantics.
+  - id: AC2
+    condition: >
+      Publication accepts a valid extended REPAIR execution containing repair_authorization_sha
+      only when that SHA is the exact deterministic current canonical authorization for the
+      embedded failed RUN, including superseding authorization lineage.
+  - id: AC3
+    condition: >
+      Publication fails closed before main mutation for a stale, superseded, malformed,
+      ambiguous, broken, or mismatched repair_authorization_sha/current authorization lineage.
+  - id: AC4
+    condition: >
+      Legacy REPAIR execution without repair_authorization_sha remains compatible with existing
+      publication behavior, while PRIMARY and REMEDIATION publication semantics remain
+      behaviorally unchanged.
+  - id: AC5
+    condition: >
+      A deterministic RUN-123-002-equivalent regression reproduces the previously failing
+      extended REPAIR execution topology and passes publication lineage validation with the
+      exact current authorization SHA, while negative variants fail closed.
+  - id: AC6
+    condition: >
+      Existing REPAIR action-specific mutation/zero-mutation rules, canonical failure and TASK
+      identity checks, review binding, safe fast-forward/divergence behavior, and review-source
+      publication-only rules remain intact.
+  - id: AC7
+    condition: >
+      Focused canonical verification and git diff checking pass with zero unresolved items, and
+      all candidate mutation remains inside the explicitly authorized integration scope.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_authoring_ingress.py tests/test_operator.py tests/test_operator_unified_state.py tests/test_operator_correction_preflight.py tests/test_repair_dispatch.py tests/test_publication.py
+    - git diff --check
