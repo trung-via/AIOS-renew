@@ -1,0 +1,250 @@
+task_id: TASK-135
+revision: 1
+
+goal: >
+  Close the explicit INTEGRATION_REQUIRED recovery gap for prospective cumulative
+  REMEDIATION by adding one separately authorized, deterministic, conflict-free
+  correction-integration base. The integration base must preserve the immutable
+  semantic predecessor and canonical correction tip, contain the exact current main,
+  introduce no semantic implementation edits of its own, and become the actual
+  REMEDIATION Run.base_sha only after exact fail-closed validation.
+
+problem: >
+  TASK-133 RUN-133-001 produced canonical RESULT candidate
+  e1f0f4106b5e6f7c80fc1d1354ce730f432f8ae4 and REVIEW-133-001 reported
+  FINDING-133-001. The approved remediation is canonically bound at
+  4820915790f424286b616fd8a26fd64891c5f674. Before that remediation executed,
+  canonical main advanced from the shared base b05f00a96720ade9b6c540a987bfcd356af6067b
+  to 617e85a77503951d1b82d574c7839e415d84b05d solely by authoring TASK-134.
+  Cumulative remediation admission correctly fails closed because current main is not
+  an ancestor of the RUN-133-001 candidate. TASK-099/TASK-103 intentionally prohibit
+  automatic merge/rebase and require separately authorized integration, but AIOS has
+  no bounded integration primitive. Merely merging the correction branch into main
+  cannot repair the admission direction because the immutable cumulative tip would
+  still not contain the newer main. AIOS therefore needs a narrow operational
+  integration base that contains both exact parents and can be proven independently
+  before REMEDIATION execution.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    617e85a77503951d1b82d574c7839e415d84b05d.
+  - >
+    TASK-133 RUN-133-001 is a canonical RESULT whose result.head_sha is
+    e1f0f4106b5e6f7c80fc1d1354ce730f432f8ae4; its semantic REVIEW/REMEDIATION
+    lineage remains immutable and must not be rewritten.
+  - >
+    The observed divergence is conflict-free in content because current main advanced
+    only by adding .ai/tasks/TASK-134.yaml, but the implementation must be generic and
+    must not special-case TASK-133, TASK-134, filenames, or this exact SHA pair.
+  - >
+    TASK-099 revision 2 and TASK-103 revision 2 remain authoritative: current main
+    must be contained by the actual prospective execution base; divergence fails
+    closed; Runtime must not auto-merge, auto-rebase, replay, or select integration.
+  - >
+    Frozen Kernel v0.1 remains frozen. Human owns integration authorization, Brain
+    may frame the exact bounded integration intent, Runtime owns deterministic
+    validation/materialization, Executor owns implementation only after normal
+    REMEDIATION admission, and Reviewer/Publisher retain their existing authorities.
+
+scope:
+  inspect:
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/P3-DESIGN-NOTE.md
+    - .ai/tasks/TASK-099.yaml
+    - .ai/tasks/TASK-103.yaml
+    - .ai/tasks/TASK-112.yaml
+    - .ai/tasks/TASK-133.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_unified_state.py
+    - tests/test_publication.py
+  modify:
+    - src/aios_renew/correction_integration.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/publication.py
+    - tests/test_correction_integration.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_unified_state.py
+    - tests/test_publication.py
+
+non_goals:
+  - >
+    Automatically integrate whenever INTEGRATION_REQUIRED is observed, or let Runtime,
+    Unified State, Correction Preflight, A6, a workflow, or an Executor silently choose
+    merge/rebase/cherry-pick behavior.
+  - >
+    Resolve merge conflicts, semantic conflicts, or code conflicts. Any non-clean
+    deterministic merge must fail closed for fresh Brain/Human intent rather than
+    invoking a coding Executor to guess a resolution.
+  - >
+    Move, reset, force-update, rewrite, or publish canonical main as part of the
+    integration operation.
+  - >
+    Rewrite RUN-133-001, REVIEW-133-001, its RESULT/EVIDENCE, remediation approval,
+    correction-dispatch history, or any historical TASK-133 lineage.
+  - >
+    Reuse a correction_dispatch_id whose earlier A6 invocation already failed before
+    RUN creation; existing A6 at-most-once and reconciliation semantics remain unchanged.
+  - >
+    Add a generic merge service, planner, lifecycle router, queue, scheduler, retry,
+    reroute, fallback, model selection, background worker, or autonomous correction loop.
+  - >
+    Add a new semantic RUN family or treat an integration candidate as RESULT,
+    EVIDENCE, REVIEW, REMEDIATION, REPAIR, or publication truth.
+  - >
+    Add remote GitHub Issue/workflow convenience for integration in this task. A
+    reviewed local/operator primitive is sufficient; remote carrier work, if desired,
+    is a separate follow-up after the core invariant is proven.
+  - Do not push or publish from coding Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Integration is explicit. The operator command must require an exact bounded
+      authorization binding containing TASK id/revision, cumulative tip RUN id,
+      cumulative tip candidate SHA, and expected current-main SHA. The operation must
+      reject stale or mismatched selectors before creating any integration candidate.
+    - >
+      Derive a deterministic integration identity from the exact authorization binding.
+      Repeating the same binding is idempotent; reusing an integration identity with any
+      changed binding fails closed.
+    - >
+      The integration operation must not invoke codex, antigravity, MiniMax, another
+      coding model, canonical verification, Reviewer, or Publisher. It is deterministic
+      Git integration under explicit Human authorization, not implementation work.
+    - >
+      Materialize integration outside the normal product worktree using bounded Git
+      plumbing or an isolated temporary workspace. The persistent checkout must remain
+      clean and on its original branch/HEAD throughout success and failure.
+    - >
+      Version 1 supports conflict-free integration only. The exact integration tree must
+      equal Git's clean merge result for the authorized cumulative-tip candidate and
+      current-main commit. Any conflict, ambiguous merge-base condition, missing object,
+      dirty/untrusted state, or inability to prove the exact merge tree fails closed
+      without an integration ref.
+    - >
+      A successful integration candidate must be a merge commit whose first parent is the
+      exact cumulative-tip candidate and whose second parent is the exact authorized
+      current-main SHA, so the resulting candidate is provably descended from both.
+      The operation may create/push only its dedicated content-addressed
+      refs/heads/aios/integration/<integration_id> ref and must never move main.
+    - >
+      Prospective REMEDIATION execution-base grammar must gain a backward-compatible
+      integrated form while preserving the existing legacy/cumulative form. The
+      integrated form must bind at least: version/kind, cumulative tip RUN id, cumulative
+      tip candidate SHA, authorized main SHA, integration candidate SHA, and integration
+      identity. Run.base_sha must equal the actual integration candidate SHA.
+    - >
+      Existing execution-base semantics remain exact: semantic predecessor identity is
+      unchanged; the canonical cumulative tip RUN/RESULT remains separately provable;
+      the integration candidate must never masquerade as that RUN's RESULT candidate.
+    - >
+      Remediation admission may consume an integration candidate only when the exact
+      deterministic integration ref exists and validates against the current canonical
+      lifecycle, current main, exact cumulative tip, exact parents, and clean merge tree.
+      If main or the cumulative tip changes after integration, the old candidate is stale
+      and admission returns INTEGRATION_REQUIRED again.
+    - >
+      Correction Preflight and Unified State must agree with execution. Before a valid
+      integration candidate exists they continue to fail closed with
+      INTEGRATION_REQUIRED; after the exact candidate exists they report/consume the same
+      integrated execution base without creating a RUN or invoking an Executor.
+    - >
+      For integrated REMEDIATION, code delta, Result.changed_files, modification-scope
+      enforcement, and affected verification are measured from the actual integrated
+      Run.base_sha. Unrelated current-main content already present in the integration base
+      must not be misclassified as Executor mutation.
+    - >
+      Publication must independently validate the integrated execution base from remote
+      evidence: exact integration ref, exact cumulative RUN/RESULT candidate, exact
+      authorized main SHA, exact merge parents, clean deterministic merge tree, and final
+      reviewed candidate ancestry. It must reject fabricated, moved, stale, conflicting,
+      or semantically unprovable integration bases.
+    - >
+      Existing non-integrated REMEDIATION RUNs remain byte/behavior compatible under the
+      established execution-base contract. No historical backfill or reinterpretation is
+      allowed.
+    - >
+      Integration state/ref is operational staging authority only. It cannot claim TASK
+      completion, verification, review acceptance, publication safety, or roadmap
+      completion and cannot alter correction-frontier meaning.
+    - >
+      A prior pre-RUN A6 delivery that failed on INTEGRATION_REQUIRED remains immutable
+      at-most-once history. After successful integration, execution requires a fresh
+      correction_dispatch_id bound to the same still-current Human approval; no hidden
+      retry/replay of the rejected delivery is permitted.
+    - >
+      Deterministic offline regressions must cover exact binding, idempotent replay,
+      stale-main rejection, stale-tip rejection, conflict rejection with zero ref,
+      clean two-parent integration, worktree non-mutation, integrated preflight/state
+      readiness, actual remediation base binding, changed-file baseline correctness,
+      publication validation, v1 compatibility, and no Executor invocation by integration.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A new correction-integration helper/operator surface accepts only an exact
+      TASK/revision + cumulative-tip RUN/SHA + current-main SHA authorization and derives
+      one content-addressed integration identity with idempotent exact replay and
+      fail-closed collision/staleness behavior.
+  - id: AC2
+    condition: >
+      For a clean divergence, integration creates exactly one dedicated candidate merge
+      commit/ref whose parents are exactly [cumulative tip candidate, authorized main],
+      whose tree equals the clean deterministic Git merge result, and which leaves the
+      persistent worktree, branch, main ref, RUN namespace, and Executor invocation count
+      unchanged.
+  - id: AC3
+    condition: >
+      Any merge conflict or inability to prove the exact clean merge fails closed before
+      an integration ref/candidate becomes authoritative and does not invoke an Executor
+      or mutate main.
+  - id: AC4
+    condition: >
+      Prospective REMEDIATION can persist and consume a backward-compatible integrated
+      execution-base form that keeps the semantic predecessor and canonical cumulative
+      tip distinct while setting Run.base_sha to the exact integration candidate.
+  - id: AC5
+    condition: >
+      Correction Preflight, Unified State, and actual execution agree: the observed
+      TASK-133-shaped divergence is INTEGRATION_REQUIRED before the exact integration
+      exists and becomes remediation-ready from the same integrated base afterward; any
+      later main/tip movement invalidates that base.
+  - id: AC6
+    condition: >
+      Integrated remediation completion measures Executor mutation and scope from the
+      integration candidate, so unrelated main-only content already merged into the base
+      is not reported as remediation changed_files.
+  - id: AC7
+    condition: >
+      Publication independently proves the integrated base, cumulative RUN/RESULT,
+      authorized main parent, integration ref, merge tree, and final ancestry before any
+      main fast-forward; forged/moved/stale integration state remains rejected.
+  - id: AC8
+    condition: >
+      Existing v1/non-integrated cumulative remediation, A3 approval, A6 dispatch,
+      Reviewer, Publisher, Runtime verification, correction frontier, historical
+      artifacts, and frozen Kernel behavior remain compatible; integration introduces no
+      generic merge authority, retry, reroute, fallback, or new lifecycle family.
+  - id: AC9
+    condition: >
+      Focused deterministic tests pass, git diff checking passes, RESULT contains zero
+      unresolved items, and production mutation stays within the explicitly authorized
+      files.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_correction_integration.py tests/test_operator_correction_preflight.py tests/test_operator_unified_state.py
+    - python -m pytest -q tests/test_operator.py -k "remediation or integration"
+    - python -m pytest -q tests/test_publication.py -k "remediation or cumulative or integration"
+    - git diff --check
