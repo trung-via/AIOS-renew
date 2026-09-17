@@ -1,0 +1,292 @@
+task_id: TASK-130
+revision: 1
+
+goal: >
+  Implement BP-1 PRIMARY Exact Intent Binding v2 so every new remote PRIMARY wakeup
+  authorization binds the exact canonical TASK semantics approved by Human/Brain, not
+  merely a mutable TASK id. Carry one immutable TASK identity from the Brain wakeup
+  request through the fixed A1 self-hosted workflow and A2 durable dispatch record,
+  then verify that identity after TASK-062 synchronization and before canonical RUN
+  creation or Executor invocation. Preserve existing A1/A2 at-most-once ownership,
+  current-main execution, direct `aios run`, Runtime verification, correction, review,
+  publication, and historical v1 dispatch evidence.
+
+problem: >
+  BP-0 audit proved a generic TOCTOU/intent-binding gap in the current PRIMARY remote
+  wakeup path. TASK-108's Issue carrier sanitizes one authorization to
+  dispatch_id/task_id/executor; A1 forwards only those three values; A2 persists and
+  collision-checks only task_id/executor; and bind_dispatch_run validates an admitted RUN
+  against task id/executor but not the authorized TASK revision. TASK-062 then safely
+  synchronizes local main before TASK loading. Consequently, if the same TASK id is
+  revised after remote authorization but before self-host admission, the old wakeup may
+  execute the newer TASK semantics. The resulting RUN truthfully records what actually
+  executed, but the outer authorization does not prove that those semantics were what
+  Human/Brain authorized. This is a control-plane intent-binding defect, not a Runtime,
+  Executor, verification, or publication defect.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-130 authoring is
+    788436636a03a70e658c1e0cd6d7fe6ec4a309da, containing the Human-approved BP-0
+    Brain Portability planning baseline and reserving BP-1 / TASK-130 revision 1 as the
+    unique NEXT milestone.
+  - >
+    docs/AIOS-BRAIN-PORTABILITY.md is the Human-approved BP-0 planning authority for this
+    work. BP-1 requires exact TASK semantic authorization while explicitly allowing
+    unrelated newer admissible main commits when the authorized TASK artifact is unchanged.
+  - >
+    TASK-062 PRIMARY synchronization remains authoritative: remote PRIMARY execution
+    synchronizes the persistent repository before TASK loading/admission and executes
+    against the latest admissible current main rather than pinning the whole repository
+    to the authorization-time commit.
+  - >
+    TASK-068 as integrated by TASK-073 remains authoritative for A2 durable dispatch
+    identity, exact dispatch ownership, duplicate no-reexecution, crash/restart
+    reconciliation, and operational-only dispatch state. TASK-130 strengthens the request
+    identity stored by A2; it does not create another dispatch authority.
+  - >
+    TASK-108 remains authoritative for the Brain Issue carrier security model: GitHub-hosted
+    admission, fixed A1 target, bounded sanitized forwarding, explicit Human-selected
+    codex/antigravity Executor, and no direct Issue-to-self-host execution.
+  - >
+    TASK-081 Admission Failure v2 remains authoritative for pre-RUN rejection: an exact
+    TASK-authorization mismatch creates no synthetic RUN and invokes no Executor.
+  - >
+    Current RUN artifacts already bind the exact TASK id and revision that actually
+    executes. No RUN schema migration is required to close the outer authorization gap.
+  - >
+    Frozen Kernel v0.1 remains FROZEN. Human owns intent and Executor choice; Brain owns
+    TASK meaning; A1/A2 and Operator own deterministic delivery/admission coordination;
+    Runtime owns verification/evidence; Reviewer owns semantic review; Publisher owns
+    publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-062.yaml
+    - .ai/tasks/TASK-068.yaml
+    - .ai/tasks/TASK-073.yaml
+    - .ai/tasks/TASK-081.yaml
+    - .ai/tasks/TASK-108.yaml
+    - .ai/brain-wakeup-carriers.yaml
+    - .github/workflows/aios-brain-wakeup.yml
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/task.py
+    - src/aios_renew/run.py
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_wakeup_workflow.py
+    - tests/test_self_hosted_wakeup.py
+    - tests/test_dispatch_reconciliation.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
+    - README.md
+  modify:
+    - .github/workflows/aios-brain-wakeup.yml
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/correction_preflight.py
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_wakeup_workflow.py
+    - tests/test_self_hosted_wakeup.py
+    - tests/test_dispatch_reconciliation.py
+    - tests/test_operator.py
+    - README.md
+
+non_goals:
+  - Bind PRIMARY execution to the entire authorization-time main SHA or reject an unrelated
+    newer main commit when the exact authorized TASK artifact remains unchanged.
+  - Change TASK, RUN, RESULT, EVIDENCE, FAILURE, REVIEW, REMEDIATION, REPAIR, Unified State,
+    Runtime verification, Executor adapters, correction, review, or publication schemas or
+    semantic authority.
+  - Change direct local `aios run` into a remote-authorization path or require an outer
+    dispatch identity for direct Human operation.
+  - Implement BP-2 Operational Attribution v2, pre-AIOS runner receipts, Human Surface
+    cause preservation, BP-3 Brain Context, Decision Packets, Brain/Reviewer provider
+    protocols, provider failover, or hot-swap automation.
+  - Add a generic lifecycle router, planner, model router/scoring, automatic Executor
+    selection, retry, reroute, fallback, queue, broker, scheduler, daemon, or database.
+  - Rewrite, delete, upgrade in place, or reinterpret historical v1 A2 dispatch records.
+  - Treat dispatch identity or TASK authorization metadata as semantic acceptance evidence,
+    review proof, verification evidence, or publication authority.
+  - Change downstream repositories, exact dependency pins, or assume any downstream
+    repository uses current AIOS-renew main.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Define PRIMARY wakeup authorization v2 with one exact bounded identity containing
+      dispatch_id, task_id, positive task_revision, exact task_blob_sha, exact
+      task_commit_sha, and explicit Executor. task_blob_sha is the immutable Git blob
+      identity of `.ai/tasks/<task_id>.yaml`; task_commit_sha is a canonical commit on
+      which that exact blob is proven to exist. Both SHA fields use the repository's
+      current 40-lowercase-hex Git object identity grammar. Request version 2 must reject
+      missing/unknown fields and invalid identities before fixed A1 dispatch.
+    - >
+      The Brain Issue carrier remains GitHub-hosted and fixed-target. It must sanitize and
+      forward only the six v2 operational selectors
+      dispatch_id/task_id/task_revision/task_blob_sha/task_commit_sha/executor to the
+      existing A1 workflow on ref main. Raw Issue content, arbitrary ref/workflow/path/
+      command/runner/model/credential fields, and GitHub write credentials must not cross
+      into self-hosted AIOS or the coding Executor.
+    - >
+      The A1 self-hosted workflow remains workflow_dispatch-only on the dedicated
+      [self-hosted, windows, x64, aios-renew] runner with persistent AIOS_REPO_ROOT,
+      contents:read, no checkout, no direct Executor call, no workflow-owned Git sync, and
+      one `aios wakeup` invocation. The four TASK authorization selectors plus dispatch_id
+      and Executor must cross the PowerShell boundary only as validated environment data,
+      never direct workflow-expression shell source.
+    - >
+      New A2 dispatch records must be version 2 and durably bind the complete authorization
+      identity before invoking PRIMARY: dispatch_id, task id, task revision, task blob SHA,
+      task commit SHA, and Executor, together with the existing reconciliation state.
+      Reusing a v2 dispatch_id with any different bound identity is a fail-closed collision
+      before PRIMARY; no field may be overwritten, upgraded, or rebound.
+    - >
+      Historical version-1 dispatch records are immutable operational history and remain
+      readable/inspectable/reconcilable under their historical task_id/executor semantics.
+      New first-seen dispatch identities after v2 rollout must not create a version-1
+      record or proceed without all v2 TASK identity fields. Compatibility is read-old/
+      write-new, not silent fallback.
+    - >
+      After TASK-062 synchronization/restart completes and before TASK RUN allocation or
+      Executor invocation, deterministic admission must prove all of the following against
+      the synchronized repository: task_commit_sha names an available commit that is an
+      ancestor of current HEAD; `.ai/tasks/<task_id>.yaml` at task_commit_sha has exactly
+      task_blob_sha; the current HEAD TASK path still has exactly task_blob_sha; and the
+      current canonical TASK parses with exactly task_id/task_revision. The authorization
+      commit is provenance, not the execution base.
+    - >
+      Unrelated current-main advancement is explicitly allowed when the exact TASK blob
+      remains unchanged and task_commit_sha remains on canonical ancestry. The admitted
+      PRIMARY RUN continues to use the latest synchronized admissible current HEAD as its
+      normal execution base; TASK-130 must not checkout/reset/pin execution to
+      task_commit_sha.
+    - >
+      If authorization provenance is unavailable/non-ancestor, the authorization-time
+      blob does not exist at the exact TASK path, the current TASK blob differs, the TASK
+      revision differs, the TASK is missing/malformed, or another exact identity check
+      fails, reject at the deterministic TASK-admission boundary before RUN creation and
+      before Executor invocation. Record the rejection through existing Admission Failure
+      v2 with one stable typed authorized-TASK-identity mismatch reason and bounded known
+      authorization/current identities. Do not create a repairable fake RUN, retry,
+      reauthorize, or automatically generate a new dispatch.
+    - >
+      Dispatch-to-RUN ownership must be strengthened consistently: a version-2 dispatch
+      may bind only a PRIMARY RUN whose task id, task revision, and Executor match the
+      authorized identity. Existing exact RUN ownership, competing-run protection,
+      duplicate delivery, active invocation, terminal replay, and crash/restart semantics
+      remain otherwise unchanged.
+    - >
+      PRIMARY synchronization restart must preserve the same complete v2 authorization
+      selectors into the synchronized child invocation. A restart may not downgrade to v1,
+      re-read mutable chat/Issue semantics, replace the authorized blob/commit with current
+      values, or create another dispatch identity.
+    - >
+      Direct `aios run` remains behaviorally unchanged. `aios wakeup` may accept a bounded
+      legacy replay path only for an already-existing version-1 dispatch record; absence
+      of v2 identity must never authorize a new dispatch. New GitHub Issue and A1 manual
+      workflow authorizations use v2 only.
+    - >
+      Admission diagnostics and dispatch records remain operational control-plane facts,
+      subordinate to canonical TASK/RUN/RESULT/FAILURE/REVIEW state. They must contain no
+      secrets, raw Issue body, unbounded Git output, model transcript, source payload, or
+      chain-of-thought.
+    - >
+      README must document v2 wakeup identity, why unrelated main movement is allowed,
+      why TASK mutation/revision drift requires fresh authorization/dispatch identity,
+      manual A1 fallback inputs, read-old/write-new v1 compatibility, and the distinction
+      between authorization/dispatch acceptance and RUN/verification/review/publication
+      success.
+    - >
+      Deterministic offline regressions must cover strict carrier v2 grammar and malicious
+      field rejection; workflow sanitized forwarding; v2 journal persistence/collision;
+      authorization commit ancestry and blob-at-commit proof; same-blob newer-main success;
+      revision/content/provenance mismatch with zero RUN/Executor; RUN revision binding;
+      synchronization restart identity preservation; historical v1 read/reconcile; and
+      prohibition on creating a new v1 dispatch.
+    - >
+      Preserve all existing A1/A2 security, at-most-once, exact ownership, no-reexecution,
+      direct PRIMARY, TASK-062 synchronization, TASK-081 failure taxonomy, Runtime,
+      correction, review, publication, and frozen Kernel behavior not explicitly narrowed
+      above.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The Brain PRIMARY Issue carrier accepts only version-2 authorization with exact
+      dispatch_id/task_id/task_revision/task_blob_sha/task_commit_sha/executor, rejects
+      malformed/missing/unknown/authority-bearing fields, and forwards only those six
+      sanitized selectors to the fixed A1 main workflow.
+  - id: AC2
+    condition: >
+      A1 remains one workflow_dispatch-only self-hosted wakeup with existing runner,
+      permission, persistent-repository, no-checkout, no-direct-Executor and no-verification
+      boundaries while passing the complete v2 identity to exactly one `aios wakeup`
+      invocation as environment-bound data.
+  - id: AC3
+    condition: >
+      A first-seen remote wakeup creates a version-2 A2 dispatch record before PRIMARY that
+      immutably binds exact TASK revision/blob/commit identity plus task id/Executor; same
+      dispatch identity with any different binding fails before PRIMARY and cannot mutate
+      the prior record.
+  - id: AC4
+    condition: >
+      After synchronization, admission proves task_commit_sha ancestry, exact TASK blob at
+      that commit, identical current TASK blob, and exact parsed task revision before RUN
+      creation; a newer unrelated current main with the same TASK blob is admitted and the
+      RUN base remains that latest admissible current main.
+  - id: AC5
+    condition: >
+      TASK revision drift, same-revision content drift, missing/malformed TASK, non-ancestor
+      or unavailable authorization commit, or blob/provenance mismatch fails as a typed
+      pre-RUN Admission Failure v2 with executor_invoked=false, zero RUNs and zero Executor
+      calls, and does not retry, reroute, repair, or silently refresh authorization.
+  - id: AC6
+    condition: >
+      A version-2 dispatch can bind only a PRIMARY RUN with the exact authorized task id,
+      task revision and Executor; competing or mismatched RUN identity fails closed without
+      rebind while existing A2 exact ownership and duplicate/restart reconciliation remain
+      intact.
+  - id: AC7
+    condition: >
+      PRIMARY synchronization restart preserves the complete original v2 authorization
+      byte-for-byte semantically into the child invocation and still produces at most one
+      dispatch-owned RUN; no restart path downgrades, replaces identity from current state,
+      or invokes PRIMARY twice.
+  - id: AC8
+    condition: >
+      Historical version-1 dispatch records remain readable and observationally
+      reconcilable without rewriting, while a first-seen dispatch with only legacy
+      task_id/executor fields is rejected and creates no new v1 journal or PRIMARY
+      execution after v2 rollout.
+  - id: AC9
+    condition: >
+      Direct `aios run`, TASK-062 synchronization, TASK-081 Admission Failure v2,
+      Runtime/verification/evidence, correction families, Reviewer, Publisher, and
+      historical A1/A2 authority remain behaviorally unchanged; no BP-2 receipt/router/
+      provider work or downstream migration is introduced.
+  - id: AC10
+    condition: >
+      README documents the v2 authorization and manual fallback semantics, required
+      deterministic focused regressions pass with zero unresolved items, and production
+      mutation is confined to the explicitly authorized files.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_github_issue_wakeup.py tests/test_github_issue_wakeup_workflow.py tests/test_self_hosted_wakeup.py tests/test_dispatch_reconciliation.py tests/test_operator.py tests/test_operator_correction_preflight.py
+    - git diff --check
