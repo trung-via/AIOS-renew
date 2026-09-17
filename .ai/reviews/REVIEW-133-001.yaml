@@ -1,0 +1,19 @@
+review_id: REVIEW-133-001
+reviewed_sha: e1f0f4106b5e6f7c80fc1d1354ce730f432f8ae4
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: FAIL
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings:
+  - id: FINDING-133-001
+    basis: AC4
+    action: CODE_FIX
+    location: src/aios_renew/runtime_identity.py and tests/test_runtime_identity.py
+    issue: resolve_repository_identities adds the synthetic identity package:aios-renew to every checkout whose pyproject declares that package name. evaluate_runtime_drift then treats any shared identity as same_repo. Therefore two distinct Git repositories/remotes that both contain an aios-renew package are deterministically conflated and can be drift-blocked even though their normalized repository identities differ. This violates the TASK-133 hard constraint and AC4 requiring different normalized repository identities to be NOT_APPLICABLE.
+    expected: Same-repository applicability must be established only from deterministic Git repository identity evidence such as normalized equivalent remotes, exact checkout identity, or shared git-common-dir. Package/project name alone must not establish repository equivalence. Add a focused regression with two distinct remotes/repositories that both declare name = "aios-renew" and prove the subject is NOT_APPLICABLE; preserve existing same-remote clone/worktree MATCH and stale-tree DRIFT_DETECTED behavior.
