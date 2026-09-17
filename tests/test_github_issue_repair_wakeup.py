@@ -203,3 +203,41 @@ def test_cli_rejection_writes_no_outputs_and_never_claims_success(
     assert "status: REJECTED" in text
     assert "repair_run_outcome: not_observed" in text
     assert "publication: not_observed" in text
+
+
+def test_non_target_brain_ingress_event_rejection_remains_bounded_to_transport(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "outputs.txt"
+    receipt = tmp_path / "receipt.txt"
+    non_target_event = _event()
+    non_target_event["issue"]["title"] = "[AIOS BRAIN INGRESS]"
+    policy_path = _write(tmp_path, "policy.yaml", POLICY)
+    event_path = _write(tmp_path, "event.json", non_target_event)
+
+    policy = carrier.load_policy(policy_path)
+    with pytest.raises(carrier.GitHubIssueRepairWakeupError, match="title"):
+        carrier.admit_event(event_path, policy)
+
+    code = carrier.main(
+        [
+            "--event",
+            str(event_path),
+            "--policy",
+            str(policy_path),
+            "--output",
+            str(output),
+            "--receipt",
+            str(receipt),
+        ]
+    )
+    assert code == 1
+    assert not output.exists()
+    text = receipt.read_text(encoding="utf-8")
+    assert "status: REJECTED" in text
+    assert "dispatch_accepted: false" in text
+    assert "repair_run_outcome: not_observed" in text
+    assert "verification: not_observed" in text
+    assert "semantic_review: not_observed" in text
+    assert "publication: not_observed" in text
+    assert "reason: event Issue title marker is invalid" in text

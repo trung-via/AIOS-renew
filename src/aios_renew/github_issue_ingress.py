@@ -15,6 +15,11 @@ from typing import Any
 import yaml
 
 from .authoring_ingress import AuthoringIngressError, IngressResult, ingest_carrier
+from .repair_dispatch import (
+    FAILED_RUN_ID_PATTERN,
+    REPAIR_DISPATCH_ID_PATTERN,
+    REPAIR_SHA_PATTERN,
+)
 
 
 class GitHubIssueIngressError(ValueError):
@@ -41,6 +46,25 @@ _REPOSITORY_PATTERN = re.compile(
 )
 _RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
 _DECISION_REF_PREFIX = "refs/heads/aios/review-decision/"
+_REPAIR_REF_PREFIX = "refs/heads/aios/repair/"
+_REPAIR_SUPERSESSION_REF_PREFIX = "refs/heads/aios/repair-supersession/"
+
+
+def _extract_repair_failed_run_id(destination: str) -> str | None:
+    if destination.startswith(_REPAIR_SUPERSESSION_REF_PREFIX):
+        remainder = destination[len(_REPAIR_SUPERSESSION_REF_PREFIX) :]
+        parts = remainder.split("/")
+        if len(parts) == 2 and parts[1].isdigit() and int(parts[1]) >= 2:
+            candidate = parts[0]
+        else:
+            return None
+    elif destination.startswith(_REPAIR_REF_PREFIX):
+        candidate = destination[len(_REPAIR_REF_PREFIX) :]
+    else:
+        return None
+    if FAILED_RUN_ID_PATTERN.fullmatch(candidate):
+        return candidate
+    return None
 
 
 @dataclass(frozen=True)
@@ -88,12 +112,53 @@ class IssueDelivery:
                 return None
         return run_id
 
+    @property
+    def repair_failed_run_id(self) -> str | None:
+        """Extract bounded canonical failed RUN identity for REPAIR wakeup if eligible."""
+        if self.ingress_result.operation != "AUTHOR_REPAIR":
+            return None
+        if self.ingress_result.status != "CANONICALIZED" or self.ingress_result.replayed:
+            return None
+        return _extract_repair_failed_run_id(self.ingress_result.canonical_destination)
+
+    @property
+    def repair_sha(self) -> str | None:
+        """Extract bounded canonical repair authorization SHA if eligible."""
+        if self.repair_failed_run_id is None:
+            return None
+        sha = self.ingress_result.canonical_sha
+        if not REPAIR_SHA_PATTERN.fullmatch(sha):
+            return None
+        return sha
+
+    @property
+    def repair_dispatch_id(self) -> str | None:
+        """Generate deterministic REPAIR dispatch identity if eligible."""
+        failed_run_id = self.repair_failed_run_id
+        sha = self.repair_sha
+        if failed_run_id is None or sha is None:
+            return None
+        dispatch_id = f"repair-{failed_run_id}-{sha}"
+        if not REPAIR_DISPATCH_ID_PATTERN.fullmatch(dispatch_id):
+            return None
+        return dispatch_id
+
     def github_outputs(self) -> str:
         """Render bounded step outputs for outer workflow coordination."""
         run_id = self.publication_run_id
-        if run_id is None:
-            return ""
-        return f"publication_run_id={run_id}\nrun_id={run_id}\n"
+        if run_id is not None:
+            return f"publication_run_id={run_id}\nrun_id={run_id}\n"
+        dispatch_id = self.repair_dispatch_id
+        if dispatch_id is not None:
+            failed_run_id = self.repair_failed_run_id
+            repair_sha = self.repair_sha
+            return (
+                f"repair_dispatch_id={dispatch_id}\n"
+                f"failed_run_id={failed_run_id}\n"
+                f"repair_failed_run_id={failed_run_id}\n"
+                f"repair_sha={repair_sha}\n"
+            )
+        return ""
 
     def render_receipt(self) -> str:
         receipt = (

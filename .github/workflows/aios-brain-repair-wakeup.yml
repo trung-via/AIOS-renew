@@ -59,7 +59,7 @@ jobs:
       executor: ${{ needs.admit.outputs.executor }}
 
   receipt:
-    if: always()
+    if: always() && github.event.issue.title == '[AIOS REPAIR WAKEUP]'
     needs: [admit, dispatch]
     runs-on: ubuntu-latest
     timeout-minutes: 5
