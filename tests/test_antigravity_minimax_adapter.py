@@ -31,6 +31,8 @@ from aios_renew.antigravity_minimax_adapter import (
     AntigravityMinimaxAdapter,
     AntigravityMinimaxExecutionError,
     AntigravityMinimaxOutputError,
+    _native_instruction,
+    native_instruction,
     resolve_agym_launcher,
     select_agym_launcher,
 )
@@ -1131,3 +1133,287 @@ def test_native_invocation_runner_contract_and_missing_launcher_fail_closed(
     assert kwargs["check"] is False
     assert kwargs["timeout"] == 50 * 60
 
+
+# ============================================================================
+# TASK-132: Canonical Builtin finish Terminal Contract Regressions
+# ============================================================================
+
+
+def _assert_valid_terminal_contract(instruction: str, operation: str) -> None:
+    """Validate that native instruction strictly satisfies the hardened finish terminal contract."""
+    # Must explicitly name the builtin `finish` tool as the only successful terminal action
+    assert "builtin `finish` tool exactly once" in instruction
+    assert "only successful terminal action" in instruction
+
+    # Must require satisfying the supplied response schema
+    assert "satisfying the supplied response schema" in instruction
+
+    # Must forbid conversational completion prose, markdown, summaries, or second response
+    assert "conversational terminal prose" in instruction
+    assert "markdown" in instruction
+    assert "summaries" in instruction
+    assert "second terminal response" in instruction
+
+    # Must bind result.head_sha to actual final Git HEAD
+    assert "Bind result.head_sha to actual final Git HEAD" in instruction
+
+    # Must forbid pushing
+    assert "do not push" in instruction or "Do not push" in instruction
+
+    # Must not contain generic prose-only completion wording
+    assert "return the structural ResultPackage as the only response" not in instruction
+
+    if operation == "PRIMARY":
+        assert "Complete all authorized implementation work and required commit completion first" in instruction
+        assert "zero-mutation actions must not create a commit merely to satisfy terminal mechanics" in instruction
+        assert "Root evidence and every claim.evidence must be empty" in instruction
+        assert "Runtime constructs canonical EVIDENCE" in instruction
+        assert "Every claim.satisfies entry must be a known TASK acceptance ID" in instruction
+    elif operation == "REMEDIATION":
+        assert "Complete all authorized remediation work and required commit completion first" in instruction
+        assert "For CODE_FIX, commit the permitted remediation delta before invoking `finish`" in instruction
+        assert "for EVIDENCE_ONLY, do not create a code commit" in instruction
+        assert "Zero-mutation actions must not create a commit merely to satisfy terminal mechanics" in instruction
+        assert "Root evidence, result.claims, and result.unresolved must be empty" in instruction
+    elif operation == "REPAIR":
+        assert "Complete all authorized repair work and required commit completion first" in instruction
+        assert "For CODE_FIX and CONTINUE_IMPLEMENTATION, commit the final permitted repository state" in instruction
+        assert "for NO_CHANGE, do not create a code commit" in instruction
+        assert "Zero-mutation actions must not create a commit merely to satisfy terminal mechanics" in instruction
+        assert "Root evidence and every claim.evidence must be empty" in instruction
+        assert "Do not create or restart a fresh PRIMARY lineage" in instruction
+        assert "retry this admitted continuation" in instruction
+        assert "reroute or fall back to another Executor" in instruction
+        assert "widen scope" in instruction
+
+
+def test_task132_primary_instruction_terminal_contract(tmp_path: Path) -> None:
+    handoff_path = tmp_path / "handoff.json"
+    instruction = _native_instruction(operation="PRIMARY", handoff_path=handoff_path)
+    assert instruction == native_instruction(operation="PRIMARY", handoff_path=handoff_path)
+
+    _assert_valid_terminal_contract(instruction, "PRIMARY")
+    assert str(handoff_path) in instruction
+    assert "Runtime owns canonical verification" in instruction
+
+
+def test_task132_remediation_instruction_terminal_contract(tmp_path: Path) -> None:
+    handoff_path = tmp_path / "remediation_handoff.json"
+    instruction = _native_instruction(operation="REMEDIATION", handoff_path=handoff_path)
+
+    _assert_valid_terminal_contract(instruction, "REMEDIATION")
+    assert str(handoff_path) in instruction
+    assert "Runtime owns affected verification" in instruction
+    assert "remediation.modification_scope" in instruction
+
+
+def test_task132_repair_instruction_terminal_contract(tmp_path: Path) -> None:
+    handoff_path = tmp_path / "repair_handoff.json"
+    instruction = _native_instruction(operation="REPAIR", handoff_path=handoff_path)
+
+    _assert_valid_terminal_contract(instruction, "REPAIR")
+    assert str(handoff_path) in instruction
+    assert "CODE_FIX authorizes mutation only to correct an established defect" in instruction
+    assert "NO_CHANGE authorizes no repository mutation" in instruction
+    assert "CONTINUE_IMPLEMENTATION authorizes mutation to resume the unfinished original TASK implementation" in instruction
+    assert "Runtime owns complete original TASK verification" in instruction
+
+
+def test_task132_terminal_contract_fails_if_weakened_to_generic_prose(tmp_path: Path) -> None:
+    handoff_path = tmp_path / "handoff.json"
+    canonical = _native_instruction(operation="PRIMARY", handoff_path=handoff_path)
+
+    # 1. Canonical instruction passes contract validation
+    _assert_valid_terminal_contract(canonical, "PRIMARY")
+
+    # 2. Legacy prompt with generic "return the structural ResultPackage as the only response" fails
+    legacy_weakened = canonical.replace(
+        "Complete all authorized implementation work and required commit completion first; "
+        "zero-mutation actions must not create a commit merely to satisfy terminal "
+        "mechanics. Do not push. Obtain final Git HEAD, then invoke the builtin "
+        "`finish` tool exactly once satisfying the supplied response schema as the "
+        "only successful terminal action. Do not emit conversational terminal prose, "
+        "markdown, summaries, or a second terminal response before or after `finish`. "
+        "Bind result.head_sha to actual final Git HEAD.",
+        "Commit the final implementation state when required; do not push. Obtain "
+        "final Git HEAD, and return the structural ResultPackage as the only response.",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(legacy_weakened, "PRIMARY")
+
+    # 3. Omitting the finish tool naming fails
+    no_finish = canonical.replace("builtin `finish` tool exactly once", "model output")
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_finish, "PRIMARY")
+
+    # 4. Omitting the conversational terminal prose prohibition fails
+    no_prose_ban = canonical.replace(
+        "Do not emit conversational terminal prose, markdown, summaries, or a second terminal response before or after `finish`.",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_prose_ban, "PRIMARY")
+
+    # 5. Omitting commit completion first rule fails
+    no_commit_rule = canonical.replace(
+        "Complete all authorized implementation work and required commit completion first; ",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_commit_rule, "PRIMARY")
+
+    # 6. Omitting actual final Git HEAD binding fails
+    no_head_binding = canonical.replace(
+        "Bind result.head_sha to actual final Git HEAD.",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_head_binding, "PRIMARY")
+
+    # 7. Omitting empty evidence semantics fails
+    no_evidence_rule = canonical.replace(
+        "Root evidence and every claim.evidence must be empty; Runtime constructs canonical EVIDENCE.",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_evidence_rule, "PRIMARY")
+
+
+def test_task132_command_contract_single_invocation_retains_all_options_and_no_fallback(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution(workspace=str(tmp_path.resolve()))
+    repo = tmp_path.resolve()
+    handoff_path = repo / ".git" / "aios" / "handoff.json"
+    calls: list[tuple[Any, dict[str, Any]]] = []
+    payload = successful_structural_payload(head_sha="def456")
+    envelope = make_agym_envelope(
+        result_package=payload,
+        workspace=str(repo),
+        head_before=run.base_sha,
+        head_after="def456",
+    )
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(envelope),
+            stderr="",
+        )
+
+    adapter = AntigravityMinimaxAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=handoff_path,
+        execution_policy=NativeExecutionPolicy(
+            authorizes_mutation=True,
+            response_budget_minutes=60,
+            process_watchdog_seconds=65 * 60,
+        ),
+    )
+    package = adapter.execute(task=task, run=run)
+
+    # Exactly ONE native invocation, no second call, no fallback
+    assert len(calls) == 1
+    cmd, kwargs = calls[0]
+
+    # Launcher matches platform-aware launcher
+    assert cmd[0] == resolve_agym_launcher()
+
+    # --prompt contains the hardened finish instruction
+    prompt_idx = cmd.index("--prompt")
+    instruction = cmd[prompt_idx + 1]
+    _assert_valid_terminal_contract(instruction, "PRIMARY")
+
+    # Required CLI flags and options preserved
+    assert cmd[cmd.index("--output-format") + 1] == "json"
+    assert cmd[cmd.index("--workspace") + 1] == str(repo)
+    assert "--aios-mode" in cmd
+    assert cmd[cmd.index("--operation") + 1] == "PRIMARY"
+    assert cmd[cmd.index("--response-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
+    assert cmd[cmd.index("--model") + 1] == ANTIGRAVITY_MINIMAX_DEFAULT_MODEL
+    assert cmd[cmd.index("--expected-head") + 1] == run.base_sha
+    assert "--allow-commit" in cmd
+    assert cmd[cmd.index("--response-timeout") + 1] == "3600"
+    assert cmd[cmd.index("--timeout") + 1] == str(65 * 60)
+    assert kwargs["cwd"] == str(repo)
+
+    # ResultPackage normalized properly
+    assert package.result.head_sha == "def456"
+    assert package.result.claims[0].satisfies == ("AC1",)
+    assert package.evidence == ()
+
+
+def test_task132_remediation_and_repair_invocations_pass_hardened_instruction(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path.resolve()
+    calls: list[tuple[Any, dict[str, Any]]] = []
+
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        payload = successful_structural_payload(head_sha="def456")
+        envelope = make_agym_envelope(
+            result_package=payload,
+            workspace=str(repo),
+            head_before="abc123",
+            head_after="def456",
+        )
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(envelope),
+            stderr="",
+        )
+
+    # 1. REMEDIATION invocation passes hardened instruction
+    execution = make_remediation_execution(workspace=str(repo))
+    adapter_remediation = AntigravityMinimaxAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=repo / "rem_handoff.json",
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
+    )
+    adapter_remediation.execute_remediation(execution=execution)
+
+    assert len(calls) == 1
+    rem_cmd, _ = calls[0]
+    rem_instruction = rem_cmd[rem_cmd.index("--prompt") + 1]
+    _assert_valid_terminal_contract(rem_instruction, "REMEDIATION")
+    assert rem_cmd[rem_cmd.index("--operation") + 1] == "REMEDIATION"
+    assert rem_cmd[rem_cmd.index("--response-schema") + 1] == str(
+        REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH
+    )
+
+    # 2. REPAIR invocation passes hardened instruction
+    calls.clear()
+    task, run, _, _ = make_execution(workspace=str(repo))
+    adapter_repair = AntigravityMinimaxAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=repo / "rep_handoff.json",
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
+    )
+    repair_execution = {
+        "run": run,
+        "failed_run_id": "RUN-091-000",
+        "failed_head_sha": "abc123",
+        "root_base_sha": "abc123",
+        "repair": {
+            "action": "CONTINUE_IMPLEMENTATION",
+            "instructions": ["Resume work."],
+            "modification_scope": ["src/fix.py"],
+        },
+    }
+    adapter_repair.execute_repair(execution=repair_execution)
+
+    assert len(calls) == 1
+    rep_cmd, _ = calls[0]
+    rep_instruction = rep_cmd[rep_cmd.index("--prompt") + 1]
+    _assert_valid_terminal_contract(rep_instruction, "REPAIR")
+    assert rep_cmd[rep_cmd.index("--operation") + 1] == "REPAIR"
+    assert rep_cmd[rep_cmd.index("--response-schema") + 1] == str(
+        REPAIR_RESULT_PACKAGE_SCHEMA_PATH
+    )
