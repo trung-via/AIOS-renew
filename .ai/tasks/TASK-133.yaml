@@ -1,0 +1,164 @@
+task_id: TASK-133
+revision: 1
+
+goal: >
+  Add a deterministic local Runtime source-identity drift guard for AIOS self-host
+  execution so `aios.exe` cannot silently execute stale `aios_renew` code from a separate
+  checkout when the admitted subject is another checkout of the same AIOS-renew
+  repository, while leaving downstream repositories and task/doc-only commit drift
+  unaffected.
+
+problem: >
+  During post-TASK-131 Antigravity+MiniMax E2E validation, the canonical/development
+  AIOS-renew checkout contained the Windows launcher repair while the installed `aios.exe`
+  imported `aios_renew` from a separate stale runtime checkout. The CLI therefore executed
+  old adapter code and reported `agym` missing even though canonical source already resolved
+  `agym.cmd`. The failure looked like an executor/launcher defect until the loaded package
+  path was explicitly probed. AIOS currently has no deterministic pre-dispatch invariant
+  proving that a self-host run is executing the same runtime source tree that the Human and
+  Brain are inspecting. Comparing whole repository HEADs would be too strict because
+  TASK/docs-only authoring commits legitimately advance the subject repository without
+  changing runtime code. The required invariant is source-tree identity, not commit
+  identity.
+
+assumptions:
+  - >
+    Canonical main at TASK-133 authoring already contains TASK-132 r1 authoring and TASK-131
+    implementation. TASK-133 is independent of TASK-132 implementation and must not change
+    Antigravity+MiniMax terminal behavior.
+  - >
+    `aios.exe` may be installed from a separate local checkout, editable install, wheel, or
+    another supported packaging surface. The guard must inspect the actually imported
+    `aios_renew` package source rather than assume a fixed Windows path.
+  - >
+    For self-host execution where the subject repository and imported runtime checkout are
+    Git worktrees of the same normalized repository identity, the Git tree for
+    `src/aios_renew` is a deterministic runtime-code fingerprint and may legitimately match
+    across different commit SHAs when intervening commits changed only TASK/docs metadata.
+  - >
+    Downstream repositories intentionally execute AIOS runtime code from a different
+    repository identity; that is not drift and must remain supported.
+  - >
+    Runtime identity checking is an admission/pre-dispatch integrity guard only. It does not
+    update repositories, select executors, create lifecycle truth, or replace canonical Git
+    and Runtime verification semantics.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - src/aios_renew/__init__.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/runtime.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/runtime_identity.py
+    - src/aios_renew/operator.py
+    - tests/test_runtime_identity.py
+    - tests/test_operator.py
+
+non_goals:
+  - Auto-pull, fetch, checkout, reset, install, upgrade, copy, or synchronize any repository
+    or Python package.
+  - Require subject HEAD and runtime-checkout HEAD to be equal when their runtime source
+    trees are identical.
+  - Block downstream repositories merely because their repository identity differs from the
+    AIOS runtime source repository.
+  - Add network or GitHub API dependency to RUN admission.
+  - Change TASK/RUN/RESULT/EVIDENCE/FAILURE schemas, Dispatcher selection, Executor
+    contracts, correction lineage, Reviewer, Publisher, or Runtime verification semantics.
+  - Hard-code `C:\\TOOL\\AIOS-Runtime`, `C:\\TOOL\\Projects`, a username, Python install
+    path, or any machine-specific checkout location.
+  - Treat roadmap state, model memory, or Human/Brain planning context as runtime identity
+    truth.
+  - Add retry, fallback, reroute, or background repair of runtime drift.
+  - Modify the external `agym` worker, MiniMax provider, Antigravity SDK, credentials, or
+    TASK-132 terminal contract.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Runtime identity must be derived from the actually imported `aios_renew` package path
+      and local Git metadata. No configured or guessed checkout path may substitute for the
+      loaded package source.
+    - >
+      Repository identity comparison must normalize ordinary local Git remote forms
+      sufficiently to recognize equivalent checkouts of the same repository without making
+      network calls. If two Git worktrees are deterministically recognized as the same
+      repository identity, the self-host drift guard applies.
+    - >
+      For applicable self-host execution, compare the runtime-code tree identity for
+      `src/aios_renew`, not whole repository HEAD. Different commits with identical
+      `src/aios_renew` trees must be accepted so TASK/docs-only authoring does not create a
+      false stale-runtime failure.
+    - >
+      If applicable self-host subject and loaded runtime source have different
+      `src/aios_renew` tree fingerprints, RUN admission must fail closed before native
+      Executor dispatch with a bounded diagnostic containing both checkout roots and both
+      fingerprints. No RUN may reach an Executor under known source drift.
+    - >
+      The guard must never mutate either checkout. It may use read-only local Git commands
+      only; it must not fetch, pull, checkout, reset, clean, stash, install, or rewrite
+      configuration.
+    - >
+      A subject repository whose normalized repository identity differs from the loaded
+      AIOS runtime repository is a downstream/non-self-host case and must remain admissible;
+      the guard reports/notices NOT_APPLICABLE rather than treating that difference as
+      stale-runtime failure.
+    - >
+      If the subject is deterministically the AIOS-renew self-host repository but the loaded
+      runtime source identity required for comparison cannot be established, fail closed
+      with a specific identity-unavailable diagnostic rather than silently assuming parity.
+    - >
+      Identity checking must occur before Dispatcher/native Executor invocation. Tests must
+      prove the selected adapter/runner is not called when an applicable mismatch is found.
+    - >
+      Existing repository admission, branch/upstream checks, one-active-executor invariant,
+      Runtime verification, failure persistence, and publication semantics remain unchanged
+      after the new identity preflight succeeds or is not applicable.
+    - >
+      The implementation must be platform-neutral and path-neutral. Windows is the observed
+      failure environment, not a reason to embed Windows-only identity logic.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A dedicated runtime-identity helper resolves the actually imported AIOS package's Git
+      checkout/root, normalized repository identity, and deterministic `src/aios_renew`
+      tree fingerprint without network access or repository mutation.
+  - id: AC2
+    condition: >
+      Two checkouts recognized as the same repository identity with identical
+      `src/aios_renew` tree fingerprints are admitted even when their HEAD SHAs differ,
+      proving TASK/docs-only commit drift does not create a false failure.
+  - id: AC3
+    condition: >
+      Two checkouts recognized as the same repository identity with different
+      `src/aios_renew` fingerprints fail closed before Executor dispatch with both roots and
+      fingerprints present in a bounded deterministic diagnostic.
+  - id: AC4
+    condition: >
+      A downstream subject repository with a different normalized repository identity is
+      treated as NOT_APPLICABLE and existing execution admission behavior remains unchanged.
+  - id: AC5
+    condition: >
+      An applicable AIOS self-host case whose loaded runtime source cannot establish the
+      required Git/tree identity fails closed rather than silently proceeding.
+  - id: AC6
+    condition: >
+      Operator regression tests prove no native adapter/runner invocation occurs after a
+      runtime-drift failure, while matching and downstream/non-applicable cases preserve
+      exactly-one normal dispatch behavior.
+  - id: AC7
+    condition: >
+      The guard performs only read-only local inspection, adds no auto-sync/retry/fallback,
+      changes no lifecycle artifact schema or canonical authority, and contains no
+      machine-specific checkout paths.
+
+verification:
+  required:
+    - python -m pytest tests/test_runtime_identity.py tests/test_operator.py -q
