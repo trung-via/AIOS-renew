@@ -1,0 +1,163 @@
+task_id: TASK-127
+revision: 1
+goal: 'Ensure a successful AUTHOR_REPAIR canonicalization deterministically causes
+  exactly one eligible REPAIR wakeup/admission/dispatch attempt bound to the canonical
+  repair authorization SHA, so a valid repair authorization cannot be stranded by
+  ordering of independent issue-opened carrier workflows.
+
+  '
+problem: 'Production Issue #140 canonicalized AUTHOR_REPAIR for RUN-121-005 successfully
+  to refs/heads/aios/repair/RUN-121-005 at d4a8602be912f3272b00e36add262cfa5fa196ae,
+  while the REPAIR wakeup carrier listening to the same original issue-opened event
+  rejected the non-target [AIOS BRAIN INGRESS] issue and skipped admission/dispatch.
+  No RUN-121-006 was admitted. Current Brain ingress has explicit post-ingress publication
+  dispatch but no equivalent deterministic post-canonicalization REPAIR handoff, while
+  the dedicated REPAIR wakeup carrier admits only its own carrier surface. A successfully
+  canonicalized REPAIR authorization can therefore remain stranded without Runtime
+  continuation admission.
+
+  '
+assumptions:
+- 'Canonical AIOS-renew main at authoring is adbb06c426905c72ede75b545647829701a249f8,
+  the published TASK-126 candidate.
+
+  '
+- 'RUN-121-005 remains the current canonical failed TASK-121 revision 2 continuation
+  lineage; its failed candidate is c3d822c147e52bb85f2786d03f113fc78b8f8e67.
+
+  '
+- 'Current canonical REPAIR authorization for RUN-121-005 is d4a8602be912f3272b00e36add262cfa5fa196ae
+  and Issue #140 is evidence of a stranded valid authorization rather than an Executor
+  failure.
+
+  '
+- 'TASK-126 remains the separate published correction for Antigravity zero-mutation
+  native structural-output execution and is not reinterpreted by this task.
+
+  '
+- Frozen Kernel v0.1 remains FROZEN; this task is evidence-backed control-plane hardening.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - .ai/tasks/TASK-121.yaml
+  - .ai/tasks/TASK-123.yaml
+  - .ai/tasks/TASK-124.yaml
+  - .ai/tasks/TASK-125.yaml
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/repair_dispatch.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_repair_wakeup.py
+  modify:
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_repair_wakeup.py
+non_goals:
+- Complete, execute, verify, review, publish, or otherwise resolve TASK-121 or RUN-121-005
+  inside TASK-127.
+- Change TASK-121 candidate c3d822c147e52bb85f2786d03f113fc78b8f8e67 or existing REPAIR
+  authorization d4a8602be912f3272b00e36add262cfa5fa196ae.
+- Change FINALIZE_CANDIDATE semantics, mutation authority, Executor selection, TASK
+  verification ownership, or ResultPackage schema.
+- Change Antigravity or Codex adapters, provider/model policy, downstream repositories,
+  dependency pins, frozen Kernel artifacts, publication semantics, or remediation
+  semantics.
+- Add polling, timers, arbitrary sleeps, scheduler/watchers, duplicate retry loops,
+  or another Executor.
+- Push or publish from Executor implementation execution.
+constraints:
+  hard:
+  - 'A REPAIR wakeup handoff caused by AUTHOR_REPAIR must occur only after successful
+    canonicalization and must bind the exact failed_run_id and canonical repair authorization
+    SHA established by that canonicalization.
+
+    '
+  - 'One successful non-replayed AUTHOR_REPAIR canonicalization may request at most
+    one post-canonicalization REPAIR wakeup/admission/dispatch attempt. Failed ingress
+    and idempotent replay must not create duplicate continuation execution.
+
+    '
+  - 'The post-canonicalization handoff must use a repository-owned deterministic transport
+    boundary and must not depend on relative scheduling of independent workflows reacting
+    to the original issue-opened event.
+
+    '
+  - 'A non-target [AIOS BRAIN INGRESS] issue must not be represented as a canonical
+    REPAIR lifecycle failure merely because a dedicated REPAIR carrier does not admit
+    that issue. Carrier receipts remain bounded transport claims only.
+
+    '
+  - 'Existing current-authorization resolution, stale-selector rejection, wakeup/operator
+    binding, continuation execution binding, verification ownership, review, and publication
+    gates established by the current REPAIR lifecycle must remain authoritative.
+
+    '
+  - 'GitHub acceptance of a handoff may establish only transport acceptance. It must
+    not assert repair execution, verification, semantic review, publication, or TASK
+    resolution.
+
+    '
+  - 'Missing or ambiguous failed_run_id, canonical repair SHA, replay state, or authorization
+    binding must fail closed before continuation admission or Executor invocation.
+
+    '
+  - 'Deterministic regression must reproduce the Issue #140 topology: the original
+    non-target issue-opened REPAIR carrier path cannot advance execution, successful
+    AUTHOR_REPAIR canonicalization subsequently exposes the exact bound post-canonicalization
+    handoff, and repeated/replayed delivery cannot dispatch duplicate continuation
+    work.
+
+    '
+  - Do not push from Executor implementation execution.
+acceptance:
+- id: AC1
+  condition: 'Successful non-replayed AUTHOR_REPAIR canonicalization exposes a deterministic
+    post-canonicalization REPAIR wakeup handoff bound to the exact failed_run_id and
+    canonical repair authorization SHA.
+
+    '
+- id: AC2
+  condition: 'The REPAIR handoff is ordered after canonicalization success and cannot
+    be stranded by the original issue-opened workflow ordering demonstrated by Issue
+    #140.
+
+    '
+- id: AC3
+  condition: 'Failed AUTHOR_REPAIR ingress and replay/idempotent delivery do not request
+    duplicate REPAIR continuation execution.
+
+    '
+- id: AC4
+  condition: 'Non-target [AIOS BRAIN INGRESS] events do not become misleading canonical
+    REPAIR lifecycle failures, and carrier-visible status remains bounded to transport
+    acceptance or rejection.
+
+    '
+- id: AC5
+  condition: 'Existing non-REPAIR ingress behavior, publication dispatch behavior,
+    current REPAIR authorization binding, self-hosted Runtime boundary, and mutation
+    authority remain behaviorally compatible.
+
+    '
+- id: AC6
+  condition: 'Focused deterministic regressions reproduce the Issue #140 ordering
+    topology, prove the exact post-canonicalization handoff occurs once, prove duplicate/replayed
+    delivery is suppressed, and pass with zero unresolved items.
+
+    '
+verification:
+  required:
+  - python -m pytest -q tests/test_github_issue_ingress.py tests/test_github_issue_repair_wakeup.py
+  - git diff --check
