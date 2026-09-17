@@ -1,0 +1,166 @@
+task_id: TASK-125
+revision: 1
+
+goal: >
+  Make immutable REPAIR-authorization supersession safely repeatable across multiple
+  generations for the same failed RUN, so a valid current superseding authorization can be
+  superseded again without rewriting historical authorization, colliding with predecessor
+  metadata, fabricating a new FAILURE, or changing the deterministic current-selector and
+  execution-binding semantics established by TASK-123/TASK-124.
+
+problem: >
+  Canonical main 1996e65bdbc694dd5e88fadb5f9e53be2f6f17e2 contains the reviewed TASK-123
+  supersession capability and TASK-124 publication compatibility. Production RUN-121-004
+  proved the first supersession succeeds: legacy authorization
+  24a4729f80d0cc85e435875e32b9d8ecacc1c82f was immutably superseded by revision 2
+  45aba441c160f4bb4e6ca07c805bb6583908b52e, whose metadata binds that exact predecessor and
+  FAILURE identity. A later explicit attempt to supersede revision 2 with a new
+  FINALIZE_CANDIDATE authorization fails before execution with
+  `metadata destination already exists on predecessor: .ai/transport/repair-supersession.json`.
+  The current authoring representation therefore supports legacy-to-revision-2 but cannot
+  extend the same contiguous immutable chain to revision 3 because the predecessor tree
+  already contains the fixed supersession metadata path. This violates the intended
+  repeatable contiguous authorization-chain semantics and blocks the exact RUN-121-004
+  recovery without any Executor invocation.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    1996e65bdbc694dd5e88fadb5f9e53be2f6f17e2, the published TASK-124 integration candidate.
+  - >
+    RUN-121-004 remains a canonical pre-verification FAILURE with clean transportable failed
+    candidate c3d822c147e52bb85f2786d03f113fc78b8f8e67 and no admitted continuation RUN.
+  - >
+    Current REPAIR authorization for RUN-121-004 is revision 2 at
+    45aba441c160f4bb4e6ca07c805bb6583908b52e; its immutable predecessor is legacy revision 1
+    24a4729f80d0cc85e435875e32b9d8ecacc1c82f and its failure_artifacts_sha is
+    59556d0d9b0235d10dc9a111c2d2b0db85247e74.
+  - >
+    The failed revision-3 ingress attempts produced no new canonical REPAIR authorization and
+    invoked no Executor; they are evidence of an authoring/admission defect, not a new RUN
+    failure.
+  - >
+    TASK-123 immutable authorization, unique-current-tip, stale-selector, wakeup and execution
+    binding semantics remain authoritative; TASK-124 publication compatibility remains
+    authoritative. Frozen Kernel v0.1 remains FROZEN.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-121.yaml
+    - .ai/tasks/TASK-123.yaml
+    - .ai/tasks/TASK-124.yaml
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/publication.py
+    - tests/test_authoring_ingress.py
+    - tests/test_operator.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_repair_dispatch.py
+    - tests/test_publication.py
+  modify:
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/review_transport.py
+    - tests/test_authoring_ingress.py
+    - tests/test_publication.py
+
+non_goals:
+  - Complete, execute, verify, review, publish, or otherwise resolve TASK-121 or RUN-121-004 inside TASK-125.
+  - Rewrite, delete, force-update, move, or reinterpret any existing REPAIR authorization, supersession ref, FAILURE, RUN, RESULT, REVIEW, REMEDIATION, or historical metadata.
+  - Change Brain/Human repair strategy automatically or infer a repair action from failure prose, provider errors, timing, model output, or candidate contents.
+  - Redesign the REPAIR lifecycle, add a mutable pointer service, database, queue, scheduler, watcher, retry loop, planner, or new lifecycle family.
+  - Weaken continuation-admission, stale predecessor, unique current tip, TASK scope, failed-head, FAILURE identity, wakeup, execution, verification, review, or publication gates.
+  - Change downstream repositories or dependency pins.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve every existing and future REPAIR authorization and predecessor ref as immutable
+      independently observable history. Extending revision N to revision N+1 must add a new
+      immutable authorization and must never rewrite or force-update revisions 1..N.
+    - >
+      A valid contiguous chain must support at least legacy revision 1 -> supersession revision
+      2 -> supersession revision 3, with each successor binding the exact immediately preceding
+      authorization SHA, the same failed_run_id, canonical FAILURE identity, TASK revision and
+      failed_head_sha. Resolution must return exactly one current tip.
+    - >
+      The supersession representation must not collide with metadata already present in the
+      predecessor tree. Historical per-revision lineage must remain sufficient to validate
+      revision continuity and predecessor binding deterministically without treating an older
+      revision's metadata as the new revision's metadata.
+    - >
+      AUTHOR_REPAIR revision N+1 must require the exact currently resolved revision-N SHA and
+      canonical FAILURE identity. Stale revision-1 or any non-current predecessor selector,
+      revision gaps, competing successors, broken ancestry, malformed metadata, or ambiguous
+      current tip must fail closed before canonical mutation, RUN creation, or Executor invocation.
+    - >
+      Idempotent replay of the exact current authorization remains idempotent. Replaying or
+      delivering a superseded authorization must not become current and must not dispatch a
+      continuation RUN.
+    - >
+      Existing TASK-123/TASK-124 behavior for legacy single authorization, one-step
+      supersession, current authorization resolution, dedicated REPAIR wakeup/operator binding,
+      continuation execution binding, and publication validation must remain behaviorally
+      compatible.
+    - >
+      Deterministic offline regression must reproduce the production topology: revision 1
+      CONTINUE_IMPLEMENTATION is superseded by revision 2, then revision 2 is superseded by a
+      distinct revision 3 authorization before continuation admission. The test must prove all
+      three immutable records remain observable, revision 3 is uniquely current, and no fixed
+      metadata-path collision occurs.
+    - >
+      Negative regressions must cover stale revision-1 selection after revision 2 exists,
+      stale revision-2 selection after revision 3 exists, competing revision-3 successors,
+      revision discontinuity/broken predecessor binding, and publication/execution rejection
+      of a superseded authorization SHA.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      AUTHOR_REPAIR can extend a valid immutable REPAIR authorization chain from revision 2 to
+      revision 3 for the same failed RUN without metadata-path collision or historical rewrite.
+  - id: AC2
+    condition: >
+      A valid revision-1 -> revision-2 -> revision-3 chain preserves all three immutable
+      authorization records, exact predecessor bindings and canonical FAILURE identity while
+      deterministically resolving revision 3 as the sole current authorization.
+  - id: AC3
+    condition: >
+      Stale predecessor, competing successor, revision gap, broken binding, malformed lineage,
+      or ambiguous current tip fails closed before canonical mutation, RUN creation, or Executor invocation.
+  - id: AC4
+    condition: >
+      Current REPAIR wakeup/operator admission and continuation execution bind only the exact
+      revision-3 SHA after the second supersession; revision-1 and revision-2 selectors are
+      historical-only and cannot dispatch new execution.
+  - id: AC5
+    condition: >
+      Publication validates a continuation bound to the exact current multi-generation
+      authorization and rejects a superseded authorization without weakening TASK-124 legacy
+      or one-step publication compatibility.
+  - id: AC6
+    condition: >
+      Existing legacy and one-step supersession behavior remains unchanged, including
+      idempotent current replay and preservation of historical authorization refs.
+  - id: AC7
+    condition: >
+      Focused deterministic regressions include the exact multi-generation production topology
+      and all required negative lineage cases, and canonical verification passes with zero
+      unresolved items.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_authoring_ingress.py tests/test_publication.py
+    - git diff --check
