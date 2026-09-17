@@ -3060,7 +3060,7 @@ def test_read_only_antigravity_execution_has_no_mutation_capability(
     )
 
     command = calls[0]
-    assert command[command.index("--mode") + 1] == "plan"
+    assert "--mode" not in command
     assert "--dangerously-skip-permissions" not in command
 
 
@@ -4501,7 +4501,7 @@ def test_finalize_candidate_recovers_structural_package_without_mutation(
                 kwargs["input"].decode().split("REPAIR_INPUT:\n", 1)[1]
             )
         else:
-            assert command[command.index("--mode") + 1] == "plan"
+            assert "--mode" not in command
             assert "--dangerously-skip-permissions" not in command
             execution = json.loads(
                 next(state.handoffs.glob("*.json")).read_text(encoding="utf-8")
@@ -8579,3 +8579,203 @@ def test_repair_wakeup_rejects_executor_authority_inconsistent_with_action(
             executor="codex",
             repo=root,
         )
+
+
+def _make_self_host_repo(root: Path, *, code_version: str = "v1") -> tuple[Path, Path]:
+    upstream = root / "upstream.git"
+    upstream.mkdir(parents=True, exist_ok=True)
+    subprocess.run(("git", "init", "--bare", "--quiet", str(upstream)), check=True)
+
+    init_repo = root / "init_repo"
+    init_repo.mkdir(parents=True, exist_ok=True)
+    git(init_repo, "init", "--quiet")
+    git(init_repo, "config", "user.name", "AIOS Operator Test")
+    git(init_repo, "config", "user.email", "operator@example.invalid")
+    git(init_repo, "branch", "-M", "main")
+    (init_repo / "README.md").write_text("# AIOS\n", encoding="utf-8")
+    (init_repo / "pyproject.toml").write_text('[project]\nname = "aios-renew"\n', encoding="utf-8")
+    src_dir = init_repo / "src" / "aios_renew"
+    src_dir.mkdir(parents=True, exist_ok=True)
+    (src_dir / "__init__.py").write_text(f'"""version {code_version}"""\n', encoding="utf-8")
+    task_dir = init_repo / ".ai" / "tasks"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "TASK-101.yaml").write_text(TASK_SOURCE, encoding="utf-8")
+    git(init_repo, "add", ".")
+    git(init_repo, "commit", "--quiet", "-m", "initial commit")
+    git(init_repo, "remote", "add", "origin", str(upstream))
+    git(init_repo, "push", "--quiet", "--set-upstream", "origin", "main")
+    subprocess.run(
+        ("git", "-C", str(upstream), "symbolic-ref", "HEAD", "refs/heads/main"),
+        check=True,
+    )
+
+    runtime_repo = root / "runtime_checkout"
+    subprocess.run(("git", "clone", "--quiet", str(upstream), str(runtime_repo)), check=True)
+    git(runtime_repo, "config", "user.name", "AIOS Operator Test")
+    git(runtime_repo, "config", "user.email", "operator@example.invalid")
+
+    subject_repo = root / "subject_checkout"
+    subprocess.run(("git", "clone", "--quiet", str(upstream), str(subject_repo)), check=True)
+    git(subject_repo, "config", "user.name", "AIOS Operator Test")
+    git(subject_repo, "config", "user.email", "operator@example.invalid")
+
+    return subject_repo, runtime_repo
+
+
+def test_runtime_drift_failure_prevents_native_runner_invocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC3/AC6: Runtime drift failure fails closed before dispatch and prevents native adapter/runner invocation."""
+    subject_repo, runtime_repo = _make_self_host_repo(tmp_path)
+
+    # Subject gets code fix / modification in src/aios_renew
+    (subject_repo / "src" / "aios_renew" / "__init__.py").write_text(
+        '"""version v2 launcher repair"""\n', encoding="utf-8"
+    )
+    git(subject_repo, "add", ".")
+    git(subject_repo, "commit", "--quiet", "-m", "feat: repair launcher")
+    git(subject_repo, "push", "--quiet", "origin", "main")
+
+    monkeypatch.setattr(
+        operator_module,
+        "_RUNTIME_PACKAGE",
+        runtime_repo / "src" / "aios_renew",
+    )
+
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        raise AssertionError("native runner must not be invoked under runtime drift")
+
+    with pytest.raises(OperatorError) as exc_info:
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=subject_repo,
+            native_runner=runner,
+        )
+
+    message = str(exc_info.value)
+    assert "runtime source drift detected" in message
+    assert str(subject_repo) in message
+    assert str(runtime_repo) in message
+    assert len(calls) == 0
+
+    state = runtime_paths(subject_repo)
+    failures = list(state.admission_failures.glob("*.json"))
+    assert len(failures) == 1
+    failure_payload = json.loads(failures[0].read_text(encoding="utf-8"))
+    assert failure_payload["phase"] == "REPOSITORY_ADMISSION"
+    assert failure_payload["reason_code"] == "REPOSITORY_ADMISSION_REJECTED"
+
+
+def test_matching_runtime_preserves_single_native_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC2/AC6: Matching tree fingerprints with commit drift preserve exactly-one normal dispatch."""
+    subject_repo, runtime_repo = _make_self_host_repo(tmp_path)
+
+    # Subject checkout has TASK/docs-only commits
+    docs_dir = subject_repo / "docs"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    (docs_dir / "README.md").write_text("# Doc commit\n", encoding="utf-8")
+    git(subject_repo, "add", ".")
+    git(subject_repo, "commit", "--quiet", "-m", "docs: update")
+    git(subject_repo, "push", "--quiet", "origin", "main")
+
+    # HEAD SHAs differ
+    assert git(subject_repo, "rev-parse", "HEAD") != git(runtime_repo, "rev-parse", "HEAD")
+
+    monkeypatch.setattr(
+        operator_module,
+        "_RUNTIME_PACKAGE",
+        runtime_repo / "src" / "aios_renew",
+    )
+
+    delegate = FakeCodexRunner(subject_repo)
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return delegate(command, **kwargs)
+
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=subject_repo,
+        native_runner=runner,
+    )
+
+    assert summary.run_id == "RUN-101-001"
+    assert len(calls) == 1
+
+
+def test_downstream_repository_preserves_single_native_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC4/AC6: Downstream repository is NOT_APPLICABLE and preserves exactly-one normal dispatch."""
+    _, runtime_repo = _make_self_host_repo(tmp_path / "aios_self_host")
+    downstream_repo = make_repo(tmp_path / "downstream")
+
+    monkeypatch.setattr(
+        operator_module,
+        "_RUNTIME_PACKAGE",
+        runtime_repo / "src" / "aios_renew",
+    )
+
+    delegate = FakeCodexRunner(downstream_repo)
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return delegate(command, **kwargs)
+
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=downstream_repo,
+        native_runner=runner,
+    )
+
+    assert summary.run_id == "RUN-101-001"
+    assert len(calls) == 1
+
+
+def test_self_host_unavailable_runtime_identity_fails_closed_without_invocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC5/AC6: Applicable self-host whose loaded runtime cannot establish Git identity fails closed before runner invocation."""
+    subject_repo, _ = _make_self_host_repo(tmp_path)
+
+    non_git_package = tmp_path / "site-packages" / "aios_renew"
+    non_git_package.mkdir(parents=True, exist_ok=True)
+    (non_git_package / "__init__.py").write_text('"""no git"""\n', encoding="utf-8")
+
+    monkeypatch.setattr(
+        operator_module,
+        "_RUNTIME_PACKAGE",
+        non_git_package,
+    )
+
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        raise AssertionError("native runner must not be invoked when identity is unavailable")
+
+    with pytest.raises(OperatorError) as exc_info:
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=subject_repo,
+            native_runner=runner,
+        )
+
+    assert "runtime source identity unavailable" in str(exc_info.value)
+    assert len(calls) == 0
+

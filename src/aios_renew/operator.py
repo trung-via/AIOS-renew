@@ -99,10 +99,16 @@ from .review import (
     validate_remediation,
     validate_review,
 )
+from .runtime_identity import (
+    RuntimeIdentityError,
+    guard_runtime_drift,
+    resolve_runtime_identity,
+)
 from .task import Task, TaskValidationError, parse_task
 from .verification import VerificationRunner
 
 
+_RUNTIME_PACKAGE: Any = None
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 
 
@@ -967,6 +973,13 @@ def _run_task_impl(
         if preflight_sha is not None and current_sha != preflight_sha:
             raise OperatorError("current HEAD does not match preflight state")
         admission["current_head_sha"] = current_sha
+        _set_admission_boundary(
+            admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
+        )
+        try:
+            guard_runtime_drift(root, runtime_package=_RUNTIME_PACKAGE)
+        except RuntimeIdentityError as exc:
+            raise OperatorError(str(exc)) from exc
         _set_admission_boundary(
             admission, "TASK_ADMISSION", "TASK_CONTRACT_REJECTED"
         )
@@ -1936,6 +1949,10 @@ def _run_repair_impl(
             raise OperatorError("REPAIR has already been accepted for failed RUN")
         if _git(repo, "status", "--porcelain"):
             raise OperatorError("repository dirty")
+        try:
+            guard_runtime_drift(repo, runtime_package=_RUNTIME_PACKAGE)
+        except RuntimeIdentityError as exc:
+            raise OperatorError(str(exc)) from exc
         failed_head = failure["failed_head_sha"]
         subject_repo = repo
         workspace = None
@@ -3460,6 +3477,10 @@ def _run_remediation_impl(
         admission["current_head_sha"] = actual_baseline
         if _git(root, "status", "--porcelain"):
             raise OperatorError("repository dirty")
+        try:
+            guard_runtime_drift(root, runtime_package=_RUNTIME_PACKAGE)
+        except RuntimeIdentityError as exc:
+            raise OperatorError(str(exc)) from exc
         historical = (
             remote_mode
             and actual_baseline != resolved.execution_base_sha
