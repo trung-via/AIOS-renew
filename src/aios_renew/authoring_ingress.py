@@ -1198,7 +1198,11 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
             f"staged repair supersession for {failed_run_id}",
         )
         root_tree = _tree_with_metadata(
-            repo, repair_commit, REPAIR_SUPERSESSION_PATH, supersession_bytes
+            repo,
+            repair_commit,
+            REPAIR_SUPERSESSION_PATH,
+            supersession_bytes,
+            replace_existing=True,
         )
         commit_sha = _commit_tree(
             repo,
