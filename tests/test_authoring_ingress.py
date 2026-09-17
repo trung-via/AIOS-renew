@@ -1952,3 +1952,334 @@ verification:
             ),
             repo=repo,
         )
+
+
+def test_author_repair_failed_remediation_production_topology_ac1_to_ac6(tmp_path):
+    repo, remote, base_sha = setup_test_repo(tmp_path)
+    task_dir = repo / ".ai" / "tasks"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "TASK-105.yaml").write_text(TASK_105_SOURCE, encoding="utf-8")
+    (repo / "src").mkdir(parents=True, exist_ok=True)
+    (repo / "src" / "sample.py").write_text("# original sample\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "base commit with task and sample")
+    base_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    source_run_id = "RUN-105-001"
+    review_id = "REVIEW-105-001"
+    finding_id = "F1"
+    remediation_run_id = "RUN-105-002"
+
+    # Failed remediation candidate commit
+    (repo / "src" / "sample.py").write_text("# broken remediation attempt\n", encoding="utf-8")
+    git(repo, "add", "src/sample.py")
+    git(repo, "commit", "--quiet", "-m", "failed remediation head candidate")
+    failed_head_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    state = tmp_path / "remediation_state"
+    state.mkdir(parents=True, exist_ok=True)
+
+    embedded_run = {
+        "run_id": remediation_run_id,
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "antigravity",
+        "base_sha": base_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    execution_record = {
+        "review_id": review_id,
+        "finding": {
+            "id": finding_id,
+            "basis": "AC1",
+            "action": "CODE_FIX",
+            "location": "src/sample.py",
+            "issue": "Remediation needed for sample.",
+            "expected": "Corrected sample.",
+        },
+        "remediation": {
+            "finding_id": finding_id,
+            "action": "CODE_FIX",
+            "reviewed_sha": base_sha,
+            "modification_scope": ["src/sample.py"],
+            "affected_verification": ["git diff --check"],
+            "constraints": ["Bounded mutation authority only."],
+        },
+        "run": embedded_run,
+        "original_constraints": ["Bounded mutation authority only."],
+    }
+    predecessor_record = {
+        "source_run_id": source_run_id,
+        "review_id": review_id,
+        "finding_id": finding_id,
+        "reviewed_sha": base_sha,
+    }
+    remediation_run_payload = {
+        "kind": "REMEDIATION",
+        "predecessor": predecessor_record,
+        "execution": execution_record,
+    }
+    failure_payload = {
+        "kind": "FAILURE",
+        "run_id": remediation_run_id,
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "antigravity",
+        "base_sha": base_sha,
+        "failed_head_sha": failed_head_sha,
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": ["src/sample.py"],
+            "outside_task_scope": [],
+        },
+    }
+
+    run_path = state / "run.json"
+    failure_path = state / "failure.json"
+    run_path.write_text(json.dumps(remediation_run_payload), encoding="utf-8")
+    failure_path.write_text(json.dumps(failure_payload), encoding="utf-8")
+
+    transport_failure(
+        repo,
+        run_id=remediation_run_id,
+        head_sha=failed_head_sha,
+        run_path=run_path,
+        failure_path=failure_path,
+    )
+
+    repair_payload = {
+        "repair_id": "REPAIR-105-002",
+        "failed_run_id": remediation_run_id,
+        "failed_head_sha": failed_head_sha,
+        "task": {"id": "TASK-105", "revision": 1},
+        "action": "CODE_FIX",
+        "modification_scope": ["src/sample.py"],
+        "instructions": ["Fix the broken remediation candidate."],
+        "constraints": ["Bounded mutation authority only."],
+    }
+    envelope = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="AUTHOR_REPAIR",
+        identity={"failed_run_id": remediation_run_id},
+        expected_state={"expected_failed_head_sha": failed_head_sha},
+        payload=repair_payload,
+    )
+
+    # AC1 & AC2: Author repair succeeds for failed REMEDIATION, removing the historical blocker
+    result = execute_ingress(envelope, repo=repo)
+    assert result.status == "CANONICALIZED"
+    assert result.canonical_destination == f"refs/heads/aios/repair/{remediation_run_id}"
+    assert_exact_metadata_delta(
+        repo,
+        result.canonical_sha,
+        failed_head_sha,
+        ".ai/transport/repair.json",
+        json.dumps(
+            repair_payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8"),
+    )
+
+    # Idempotent replay
+    replay = execute_ingress(envelope, repo=repo)
+    assert replay.status == "IDEMPOTENT"
+    assert replay.replayed is True
+
+    # Lineage preservation: failure-artifacts ref preserves exact REMEDIATION wrapper and FAILURE identity
+    artifacts_ref = f"refs/heads/aios/failure-artifacts/{remediation_run_id}"
+    artifacts_sha = git(repo, "ls-remote", "--refs", "origin", artifacts_ref).split()[0]
+    preserved_run_raw = git(repo, "show", f"{artifacts_sha}:.ai/transport/run.json")
+    preserved_run = json.loads(preserved_run_raw)
+    assert preserved_run["kind"] == "REMEDIATION"
+    assert preserved_run["predecessor"]["source_run_id"] == source_run_id
+    assert preserved_run["predecessor"]["finding_id"] == finding_id
+    assert preserved_run["execution"]["run"]["run_id"] == remediation_run_id
+    assert preserved_run["execution"]["run"]["base_sha"] == base_sha
+
+    # AC4: Multi-generation supersession on failed remediation (Revision 2)
+    rev2_payload = {
+        **repair_payload,
+        "repair_id": "REPAIR-105-002-R2",
+        "instructions": ["Updated instructions for revision 2."],
+    }
+    rev2_env = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="AUTHOR_REPAIR",
+        identity={"failed_run_id": remediation_run_id},
+        expected_state={
+            "expected_failed_head_sha": failed_head_sha,
+            "expected_current_repair_sha": result.canonical_sha,
+            "expected_failure_artifacts_sha": artifacts_sha,
+        },
+        payload=rev2_payload,
+    )
+    rev2_res = execute_ingress(rev2_env, repo=repo)
+    assert rev2_res.status == "CANONICALIZED"
+    assert rev2_res.canonical_destination == f"refs/heads/aios/repair-supersession/{remediation_run_id}/2"
+
+    current = resolve_remote_repair_authorization(repo, remediation_run_id)
+    assert current.revision == 2
+    assert current.commit_sha == rev2_res.canonical_sha
+
+
+def test_author_repair_failed_remediation_malformed_negatives(tmp_path):
+    repo, remote, base_sha = setup_test_repo(tmp_path)
+    task_dir = repo / ".ai" / "tasks"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "TASK-105.yaml").write_text(TASK_105_SOURCE, encoding="utf-8")
+    (repo / "src").mkdir(parents=True, exist_ok=True)
+    (repo / "src" / "sample.py").write_text("# original\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "base commit")
+    base_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    (repo / "src" / "sample.py").write_text("# failed\n", encoding="utf-8")
+    git(repo, "add", "src/sample.py")
+    git(repo, "commit", "--quiet", "-m", "failed candidate")
+    failed_head_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    state = tmp_path / "neg_state"
+    state.mkdir(parents=True, exist_ok=True)
+    run_path = state / "run.json"
+    failure_path = state / "failure.json"
+
+    def build_failure(run_id: str, *, failure_base: str = base_sha, fail_task: dict | None = None) -> dict:
+        payload = {
+            "kind": "FAILURE",
+            "run_id": run_id,
+            "task": fail_task or {"id": "TASK-105", "revision": 1},
+            "executor": "antigravity",
+            "base_sha": failure_base,
+            "failed_head_sha": failed_head_sha,
+            "candidate": {
+                "transportable": True,
+                "repairable": True,
+                "dirty": False,
+                "descends_from_base": True,
+                "changed_files": ["src/sample.py"],
+                "outside_task_scope": [],
+            },
+        }
+        return payload
+
+    repair_payload = {
+        "repair_id": "REPAIR-105-001",
+        "failed_run_id": "RUN-105-NEG",
+        "failed_head_sha": failed_head_sha,
+        "task": {"id": "TASK-105", "revision": 1},
+        "action": "CODE_FIX",
+        "modification_scope": ["src/sample.py"],
+        "instructions": ["Fix."],
+        "constraints": ["Bounded."],
+    }
+
+    def try_repair(run_doc: dict, fail_doc: dict, run_id: str = "RUN-105-NEG") -> None:
+        run_path.write_text(json.dumps(run_doc), encoding="utf-8")
+        failure_path.write_text(json.dumps(fail_doc), encoding="utf-8")
+        transport_failure(repo, run_id=run_id, head_sha=failed_head_sha, run_path=run_path, failure_path=failure_path)
+        payload = {**repair_payload, "failed_run_id": run_id}
+        env = IngressEnvelope(
+            format="AIOS_INGRESS_ENVELOPE",
+            version=1,
+            operation="AUTHOR_REPAIR",
+            identity={"failed_run_id": run_id},
+            expected_state={"expected_failed_head_sha": failed_head_sha},
+            payload=payload,
+        )
+        execute_ingress(env, repo=repo)
+
+    # 1. Missing execution in REMEDIATION wrapper
+    with pytest.raises(AuthoringIngressError, match="canonical REMEDIATION execution must be a mapping"):
+        try_repair({"kind": "REMEDIATION"}, build_failure("RUN-105-N01"), "RUN-105-N01")
+
+    # 2. Non-mapping execution in REMEDIATION wrapper
+    with pytest.raises(AuthoringIngressError, match="canonical REMEDIATION execution must be a mapping"):
+        try_repair({"kind": "REMEDIATION", "execution": "not-a-map"}, build_failure("RUN-105-N02"), "RUN-105-N02")
+
+    # 3. Missing run in REMEDIATION.execution
+    with pytest.raises(AuthoringIngressError, match="canonical REMEDIATION execution.run must be a mapping"):
+        try_repair({"kind": "REMEDIATION", "execution": {}}, build_failure("RUN-105-N03"), "RUN-105-N03")
+
+    # 4. Non-mapping run in REMEDIATION.execution
+    with pytest.raises(AuthoringIngressError, match="canonical REMEDIATION execution.run must be a mapping"):
+        try_repair({"kind": "REMEDIATION", "execution": {"run": 123}}, build_failure("RUN-105-N04"), "RUN-105-N04")
+
+    # 5. REMEDIATION.execution.run run_id mismatch
+    mismatch_run = {
+        "run_id": "RUN-DIFFERENT",
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "antigravity",
+        "base_sha": base_sha,
+        "workspace": str(repo),
+        "status": "ACTIVE",
+    }
+    with pytest.raises(AuthoringIngressError, match="RUN run_id mismatch"):
+        try_repair({"kind": "REMEDIATION", "execution": {"run": mismatch_run}}, build_failure("RUN-105-N05"), "RUN-105-N05")
+
+    # 6. Missing base_sha in REMEDIATION.execution.run
+    no_base_run = {
+        "run_id": "RUN-105-N06",
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "antigravity",
+        "workspace": str(repo),
+        "status": "ACTIVE",
+    }
+    with pytest.raises(AuthoringIngressError, match="RUN base_sha is invalid"):
+        try_repair({"kind": "REMEDIATION", "execution": {"run": no_base_run}}, build_failure("RUN-105-N06"), "RUN-105-N06")
+
+    # 7. Invalid base_sha format (non-hex) in REMEDIATION.execution.run
+    bad_base_run = {**no_base_run, "run_id": "RUN-105-N07", "base_sha": "not-a-valid-sha"}
+    with pytest.raises(AuthoringIngressError, match="RUN base_sha is invalid"):
+        try_repair({"kind": "REMEDIATION", "execution": {"run": bad_base_run}}, build_failure("RUN-105-N07"), "RUN-105-N07")
+
+    # 8. base_sha is not a canonical commit in git
+    non_commit_run = {**no_base_run, "run_id": "RUN-105-N08", "base_sha": "0" * 40}
+    with pytest.raises(AuthoringIngressError, match="RUN base_sha is not a canonical commit"):
+        try_repair({"kind": "REMEDIATION", "execution": {"run": non_commit_run}}, build_failure("RUN-105-N08", failure_base="0" * 40), "RUN-105-N08")
+
+    # 9. Contradictory base_sha between FAILURE and RUN
+    valid_base_run = {**no_base_run, "run_id": "RUN-105-N09", "base_sha": base_sha}
+    with pytest.raises(AuthoringIngressError, match="FAILURE base_sha does not match RUN"):
+        try_repair({"kind": "REMEDIATION", "execution": {"run": valid_base_run}}, build_failure("RUN-105-N09", failure_base=failed_head_sha), "RUN-105-N09")
+
+    # 10. Missing task in execution.run
+    no_task_run = {
+        "run_id": "RUN-105-N10",
+        "executor": "antigravity",
+        "base_sha": base_sha,
+        "workspace": str(repo),
+        "status": "ACTIVE",
+    }
+    with pytest.raises(AuthoringIngressError, match="cannot resolve task_id from RUN"):
+        try_repair({"kind": "REMEDIATION", "execution": {"run": no_task_run}}, build_failure("RUN-105-N10"), "RUN-105-N10")
+
+    # 11. Invalid task revision in execution.run
+    bad_rev_run = {
+        "run_id": "RUN-105-N11",
+        "task": {"id": "TASK-105", "revision": "not-an-int"},
+        "executor": "antigravity",
+        "base_sha": base_sha,
+        "workspace": str(repo),
+        "status": "ACTIVE",
+    }
+    with pytest.raises(AuthoringIngressError, match="cannot resolve task revision from RUN"):
+        try_repair({"kind": "REMEDIATION", "execution": {"run": bad_rev_run}}, build_failure("RUN-105-N11"), "RUN-105-N11")
+
+    # 12. Unknown RUN kind
+    with pytest.raises(AuthoringIngressError, match="unknown canonical RUN kind"):
+        try_repair({"kind": "UNSUPPORTED_WRAPPER"}, build_failure("RUN-105-N12"), "RUN-105-N12")
+
+    # Verify no repair refs were created for any failed negative case
+    for n in range(1, 13):
+        nid = f"RUN-105-N{n:02d}"
+        ref = f"refs/heads/aios/repair/{nid}"
+        output = git(repo, "ls-remote", "--refs", "origin", ref)
+        assert not output.strip(), f"repair ref unexpectedly created for {nid}"

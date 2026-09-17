@@ -1017,6 +1017,18 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
             f"failed RUN {failed_run_id} candidate does not descend from base"
         )
 
+    run_view = _resolve_underlying_run_view(run_data, expected_run_id=failed_run_id)
+    base_sha = _extract_base_sha(run_view)
+    if failure_data.get("base_sha") is not None and failure_data.get("base_sha") != base_sha:
+        raise AuthoringIngressError("FAILURE base_sha does not match RUN")
+
+    task_id = _extract_task_id(run_view)
+    task_revision = _extract_task_revision(run_view)
+    if isinstance(failure_data.get("task"), Mapping):
+        fail_task = failure_data["task"]
+        if fail_task.get("id") != task_id or fail_task.get("revision") != task_revision:
+            raise AuthoringIngressError("FAILURE task identity mismatch")
+
     repair_json_bytes = json.dumps(
         repair_data, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
@@ -1094,12 +1106,10 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
     _check_continuation_does_not_exist(repo, remote, failed_run_id)
 
     # Load task
-    task_id = _extract_task_id(run_data)
-    task_revision = _extract_task_revision(run_data)
-    base_sha = run_data.get("base_sha")
-    if not isinstance(base_sha, str) or not base_sha:
-        raise AuthoringIngressError("RUN base_sha is invalid")
     _fetch_if_remote(repo, remote, base_sha)
+    code, kind, _ = _git(repo, "cat-file", "-t", base_sha, allow_fail=True)
+    if code != 0 or kind != "commit":
+        raise AuthoringIngressError(f"RUN base_sha is not a canonical commit: {base_sha}")
 
     task_bytes = _read_commit_blob(repo, base_sha, f".ai/tasks/{task_id}.yaml")
     if task_bytes is None:
@@ -1107,6 +1117,8 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
     if task_bytes is None:
         raise AuthoringIngressError(f"canonical TASK {task_id} missing from base commit")
     task = parse_task(task_bytes.decode("utf-8"))
+    if task.task_id != task_id or task.revision != task_revision:
+        raise AuthoringIngressError("RUN does not reference the supplied TASK")
 
     failed_changed_files = set(candidate.get("changed_files", []))
     try:
@@ -1276,28 +1288,69 @@ def _run_from_data(data: Any, document: str = "RUN") -> Run:
         raise AuthoringIngressError(f"invalid canonical {document}: {exc}") from exc
 
 
-def _extract_task_id(run_data: Mapping[str, Any]) -> str:
-    if run_data.get("kind") == "REMEDIATION":
-        exec_data = run_data.get("execution", {})
-        task_data = exec_data.get("run", {}).get("task", {})
+def _resolve_underlying_run_view(
+    run_data: Mapping[str, Any], *, expected_run_id: str | None = None
+) -> Mapping[str, Any]:
+    if not isinstance(run_data, Mapping):
+        raise AuthoringIngressError("canonical RUN must be a mapping")
+    kind = run_data.get("kind")
+    if kind == "REMEDIATION":
+        exec_data = run_data.get("execution")
+        if not isinstance(exec_data, Mapping):
+            raise AuthoringIngressError("canonical REMEDIATION execution must be a mapping")
+        run_view = exec_data.get("run")
+        if not isinstance(run_view, Mapping):
+            raise AuthoringIngressError("canonical REMEDIATION execution.run must be a mapping")
+        if "predecessor" in run_data and not isinstance(run_data["predecessor"], Mapping):
+            raise AuthoringIngressError("canonical REMEDIATION predecessor must be a mapping")
+        if "execution_base" in run_data and not isinstance(run_data["execution_base"], Mapping):
+            raise AuthoringIngressError("canonical REMEDIATION execution_base must be a mapping")
+    elif "kind" not in run_data:
+        run_view = run_data
     else:
-        task_data = run_data.get("task", {})
+        raise AuthoringIngressError(f"unknown canonical RUN kind: {kind!r}")
+
+    if expected_run_id is not None:
+        actual_run_id = run_view.get("run_id")
+        if actual_run_id != expected_run_id:
+            raise AuthoringIngressError(
+                f"RUN run_id mismatch: identity specified {expected_run_id}, artifacts contain {actual_run_id!r}"
+            )
+    return run_view
+
+
+def _extract_task_id(run_data: Mapping[str, Any]) -> str:
+    run_view = _resolve_underlying_run_view(run_data)
+    task_data = run_view.get("task")
+    if not isinstance(task_data, Mapping):
+        raise AuthoringIngressError("cannot resolve task_id from RUN")
     task_id = task_data.get("id")
-    if not isinstance(task_id, str) or not task_id:
+    if not isinstance(task_id, str) or not task_id or not re.fullmatch(r"^TASK-[A-Za-z0-9_-]+$", task_id):
         raise AuthoringIngressError("cannot resolve task_id from RUN")
     return task_id
 
 
 def _extract_task_revision(run_data: Mapping[str, Any]) -> int:
-    if run_data.get("kind") == "REMEDIATION":
-        exec_data = run_data.get("execution", {})
-        task_data = exec_data.get("run", {}).get("task", {})
-    else:
-        task_data = run_data.get("task", {})
+    run_view = _resolve_underlying_run_view(run_data)
+    task_data = run_view.get("task")
+    if not isinstance(task_data, Mapping):
+        raise AuthoringIngressError("cannot resolve task revision from RUN")
     rev = task_data.get("revision")
-    if isinstance(rev, bool) or not isinstance(rev, int):
+    if isinstance(rev, bool) or not isinstance(rev, int) or rev < 1:
         raise AuthoringIngressError("cannot resolve task revision from RUN")
     return rev
+
+
+def _extract_base_sha(run_data: Mapping[str, Any]) -> str:
+    run_view = _resolve_underlying_run_view(run_data)
+    base_sha = run_view.get("base_sha")
+    if (
+        not isinstance(base_sha, str)
+        or not base_sha
+        or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", base_sha)
+    ):
+        raise AuthoringIngressError("RUN base_sha is invalid")
+    return base_sha
 
 
 def _resolve_prior_review(
