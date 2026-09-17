@@ -1,0 +1,203 @@
+task_id: TASK-129
+revision: 1
+goal: 'Close the generic REPAIR-after-failed-REMEDIATION authoring gap. Make AUTHOR_REPAIR
+  resolve the exact embedded RUN identity of a canonical REMEDIATION failure, including
+  its base SHA and TASK binding, so a failed admitted remediation can enter the existing
+  REPAIR lifecycle without flattening the remediation wrapper, fabricating lineage,
+  or changing the existing PRIMARY/REMEDIATION/REPAIR authority boundaries.
+
+  '
+problem: 'Production evidence from downstream Python Agent exposed a generic AIOS
+  defect. A canonical REMEDIATION RUN stores its operational Run under execution.run.
+  Current AUTHOR_REPAIR is partly wrapper-aware: _extract_task_id and _extract_task_revision
+  already read the embedded remediation Run, while the same operation still reads
+  base_sha directly from the outer run_data mapping. For a failed remediation this
+  returns no base SHA and AUTHOR_REPAIR fails closed with `RUN base_sha is invalid`
+  before a valid repair authorization can be created. The failed candidate itself
+  remains clean, repairable, transportable, and correctly bound; the defect is the
+  inconsistent canonical RUN projection at the authoring boundary. Current operator,
+  review-transport, and publication code already contain canonical REMEDIATION wrapper
+  handling and must remain authoritative rather than being duplicated or bypassed.
+
+  '
+assumptions:
+- 'Canonical AIOS-renew main at authoring is a00df2d1d466b9684125aeeea5f3f14943f5811c,
+  the reviewed TASK-128 integration source now on main. TASK-128 preserves the completed
+  TASK-121 Brain Sync semantics together with published TASK-122 through TASK-127
+  control-plane hardening.
+
+  '
+- 'Current src/aios_renew/authoring_ingress.py still resolves TASK id/revision from
+  REMEDIATION.execution.run but obtains AUTHOR_REPAIR base_sha only from run_data.get("base_sha").
+  This asymmetry is the reproduced causal defect.
+
+  '
+- 'Existing REMEDIATION wrapper semantics in operator.py, review_transport.py and
+  publication.py remain authoritative. This task must compose with those owners and
+  must not create a second parser, lifecycle family, or correction authority outside
+  the bounded ingress normalization needed by AUTHOR_REPAIR.
+
+  '
+- 'TASK-123 through TASK-127 remain authoritative for immutable REPAIR authorization
+  lineage, multi-generation supersession, publication compatibility, FINALIZE_CANDIDATE
+  behavior and deterministic post-canonicalization REPAIR wakeup. TASK-129 must preserve
+  all of them.
+
+  '
+- 'Frozen Kernel v0.1 remains FROZEN. Brain/Human selects correction intent; Runtime
+  owns admission/verification; one Executor owns implementation HOW; Reviewer owns
+  semantic review; Publisher owns publication.
+
+  '
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - .ai/tasks/TASK-112.yaml
+  - .ai/tasks/TASK-123.yaml
+  - .ai/tasks/TASK-124.yaml
+  - .ai/tasks/TASK-125.yaml
+  - .ai/tasks/TASK-127.yaml
+  - .ai/tasks/TASK-128.yaml
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/publication.py
+  - tests/test_authoring_ingress.py
+  - tests/test_operator.py
+  - tests/test_publication.py
+  modify:
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_authoring_ingress.py
+non_goals:
+- Redesign REMEDIATION, REPAIR, correction preflight, Unified State, publication,
+  wakeup, dispatch, or Runtime semantics.
+- Change operator.py, review_transport.py, correction_preflight.py, unified_state.py,
+  publication.py, workflows, adapters, frozen Kernel artifacts, roadmap state, downstream
+  repositories, or dependency pins.
+- Create a new RUN wrapper, flatten a canonical REMEDIATION wrapper into a synthetic
+  primary RUN, rewrite historical artifacts, or fabricate top-level base_sha/task
+  fields.
+- Change REPAIR actions, REPAIR supersession/current-selector semantics, failed-head
+  binding, continuation uniqueness, phase gates, scope authority, or publication rules.
+- Treat a failed REMEDIATION as a fresh PRIMARY or as a new semantic finding merely
+  because its correction RUN failed.
+- Retry, reroute, auto-select a correction action, add polling/watchers/schedulers,
+  or add another lifecycle router.
+- Push or publish from Executor implementation execution.
+constraints:
+  hard:
+  - 'AUTHOR_REPAIR must derive one exact canonical underlying Run view from the persisted
+    RUN artifact. For an ordinary PRIMARY/REPAIR-compatible RUN document, current
+    top-level Run identity remains unchanged. For kind=REMEDIATION, the authoritative
+    operational Run is exactly execution.run. No other wrapper kind or ambiguous shape
+    may be guessed.
+
+    '
+  - 'The same canonical underlying Run view used to resolve task_id and task_revision
+    must also supply base_sha for task loading and ancestry-sensitive AUTHOR_REPAIR
+    checks. A valid failed REMEDIATION must no longer fail merely because the outer
+    wrapper has no base_sha.
+
+    '
+  - 'Fail closed if kind=REMEDIATION lacks a mapping execution, lacks a mapping execution.run,
+    has an invalid/missing embedded base_sha, invalid TASK identity/revision, or otherwise
+    conflicts with the canonical wrapper contract. Do not fall back to unrelated main,
+    reviewed_sha, failed_head_sha, predecessor SHA, or chat memory to manufacture
+    a base.
+
+    '
+  - 'Preserve exact FAILURE identity and candidate truth. AUTHOR_REPAIR continues
+    to bind the canonical failure_artifacts ref, failed_run_id, failed_head_sha, repairable/dirty/
+    descends_from_base candidate flags, TASK scope, continuation uniqueness, current
+    repair authorization and supersession lineage exactly as today.
+
+    '
+  - 'Preserve ordinary failed PRIMARY behavior byte-for-byte semantically. Existing
+    legacy single REPAIR authorization, revision-2/revision-3 supersession, stale-selector
+    rejection, phase restrictions, idempotent replay and TASK-127 post-canonicalization
+    wakeup behavior must remain compatible.
+
+    '
+  - 'Do not duplicate REMEDIATION parsing authority already present elsewhere. The
+    bounded ingress normalization may be a small shared/private helper inside authoring_ingress.py,
+    but it owns only extraction/validation needed for AUTHOR_REPAIR and does not reinterpret
+    finding, review, remediation, evidence, result, publication or execution semantics.
+
+    '
+  - 'Add deterministic offline regression reproducing the downstream causal topology:
+    a canonical CHANGES_REQUIRED correction has an admitted kind=REMEDIATION RUN whose
+    execution.run contains the TASK/base identity; the correction produces a clean
+    repairable FAILURE and changed candidate; AUTHOR_REPAIR with a bounded CODE_FIX
+    authorization must canonicalize successfully from that failed remediation instead
+    of raising `RUN base_sha is invalid`.
+
+    '
+  - 'Regression must also prove malformed remediation wrappers fail closed and that
+    the existing ordinary failed-RUN AUTHOR_REPAIR and multi-generation supersession
+    tests remain passing without changed authority semantics.
+
+    '
+  - 'Implementation mutation is limited to src/aios_renew/authoring_ingress.py and
+    tests/test_authoring_ingress.py. If satisfying the contract requires changing
+    another production authority, fail closed for fresh Brain review rather than widening
+    scope.
+
+    '
+  - Verification must be deterministic, offline, non-interactive and independent of
+    GitHub/network, provider/model, wall clock or chat state.
+  - Do not push from Executor implementation execution.
+acceptance:
+- id: AC1
+  condition: 'AUTHOR_REPAIR resolves task id, task revision and base SHA from one
+    consistent canonical underlying Run view, including REMEDIATION.execution.run
+    for kind=REMEDIATION.
+
+    '
+- id: AC2
+  condition: 'A valid failed REMEDIATION RUN can receive a canonical REPAIR authorization
+    while preserving its exact failed_run_id, failed_head_sha, TASK scope, candidate
+    flags and immutable predecessor/finding lineage; the historical `RUN base_sha
+    is invalid` blocker is removed.
+
+    '
+- id: AC3
+  condition: 'Missing, malformed or contradictory REMEDIATION execution/run/base identity
+    fails closed before canonical mutation, RUN creation or Executor invocation, with
+    no synthetic fallback.
+
+    '
+- id: AC4
+  condition: 'Ordinary failed PRIMARY AUTHOR_REPAIR behavior and TASK-123/TASK-125
+    multi-generation authorization semantics remain behaviorally unchanged, including
+    idempotency, stale selector rejection and exact current-tip resolution.
+
+    '
+- id: AC5
+  condition: 'Existing operator/review-transport/publication REMEDIATION authority
+    remains untouched; TASK-129 introduces no duplicate parser authority, lifecycle
+    family, automatic correction choice, retry/reroute behavior or widened mutation
+    authority.
+
+    '
+- id: AC6
+  condition: 'Focused deterministic regression reproduces a failed-remediation repair
+    topology equivalent to the downstream production incident and proves successful
+    AUTHOR_REPAIR canonicalization, while malformed-wrapper negatives and existing
+    ordinary/supersession regressions pass.
+
+    '
+- id: AC7
+  condition: 'Only the two authorized files change, focused verification and git diff
+    checking pass, and RESULT contains zero unresolved items.
+
+    '
+verification:
+  required:
+  - python -m pytest -q tests/test_authoring_ingress.py
+  - git diff --check
