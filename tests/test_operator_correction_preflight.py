@@ -307,7 +307,7 @@ def test_correction_preflight_remote_repair_is_observational_for_ready_and_block
         "family": "REPAIR",
         "status": "BLOCKED",
         "phase": "CANONICAL_CONTRACT_ADMISSION",
-        "reason_code": "TASK_CONTRACT_REJECTED",
+        "reason_code": "CANONICAL_LINEAGE_INVALID",
         "task": {"id": "TASK-101", "revision": 1},
         "source_run_id": None,
         "failed_run_id": failed_run_id,

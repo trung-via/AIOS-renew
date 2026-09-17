@@ -1189,6 +1189,7 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
             current_authorization.commit_sha,
             ".ai/transport/repair.json",
             repair_json_bytes,
+            replace_existing=True,
         )
         # Build the second metadata delta from a temporary commit so the tree
         # helper can remain the single path-authoring primitive.
@@ -1467,10 +1468,15 @@ def _tree_with_metadata(
     predecessor_sha: str,
     metadata_path: str,
     metadata_bytes: bytes,
+    *,
+    replace_existing: bool = False,
 ) -> str:
-    """Return the predecessor tree with exactly one new metadata blob added."""
+    """Return the predecessor tree with one metadata blob added or replaced."""
 
-    if _read_commit_blob(repo, predecessor_sha, metadata_path) is not None:
+    if (
+        not replace_existing
+        and _read_commit_blob(repo, predecessor_sha, metadata_path) is not None
+    ):
         raise AuthoringIngressError(
             f"metadata destination already exists on predecessor: {metadata_path}"
         )
