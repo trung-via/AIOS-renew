@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -47,6 +48,25 @@ REPAIR_RESULT_PACKAGE_SCHEMA_PATH = (
 ).resolve()
 
 ANTIGRAVITY_MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
+AGYM_WINDOWS_LAUNCHER = "agym.cmd"
+AGYM_DEFAULT_LAUNCHER = "agym"
+
+
+def resolve_agym_launcher(platform: str | None = None) -> str:
+    """Return the platform-aware executable launcher for agym.
+
+    On Windows, Python subprocess requires an executable extension such as .cmd
+    when running without a shell. On non-Windows platforms, the extensionless
+    agym command is preserved.
+    """
+    target = sys.platform if platform is None else platform
+    target_lower = target.lower()
+    if target_lower == "win32" or target_lower.startswith("win"):
+        return AGYM_WINDOWS_LAUNCHER
+    return AGYM_DEFAULT_LAUNCHER
+
+
+select_agym_launcher = resolve_agym_launcher
 
 
 class ExecutionPolicy(Protocol):
@@ -112,6 +132,7 @@ class AntigravityMinimaxAdapter:
         repo: str | Path | None = None,
         handoff_path: str | Path | None = None,
         structural_output: bool | None = None,
+        launcher: str | None = None,
     ) -> None:
         self._transport = transport
         self._runner = runner
@@ -123,6 +144,7 @@ class AntigravityMinimaxAdapter:
         self._structural_output = (
             True if structural_output is None else structural_output
         )
+        self._launcher = launcher
 
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
         """Execute the unchanged TASK/RUN pair through native agym transport."""
@@ -261,8 +283,9 @@ class AntigravityMinimaxAdapter:
             stdout = _decode_utf8(completed.stdout)
             stderr = _decode_utf8(completed.stderr)
         except FileNotFoundError as exc:
+            launcher_name = command[0] if command else resolve_agym_launcher()
             raise AntigravityMinimaxExecutionError(
-                "Antigravity MiniMax CLI not found: agym"
+                f"Antigravity MiniMax CLI not found: {launcher_name}"
             ) from exc
         except subprocess.TimeoutExpired as exc:
             raise AntigravityMinimaxExecutionError(
@@ -296,6 +319,8 @@ class AntigravityMinimaxAdapter:
         instruction: str,
         operation: str = "PRIMARY",
         expected_head: str | None = None,
+        launcher: str | None = None,
+        platform: str | None = None,
     ) -> tuple[str, ...]:
         """Build the native agym command from provider-neutral authorization."""
         schema_path = {
@@ -304,8 +329,18 @@ class AntigravityMinimaxAdapter:
             "REPAIR": REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
         }.get(operation, RESULT_PACKAGE_SCHEMA_PATH)
 
+        selected_launcher = (
+            launcher
+            if launcher is not None
+            else (
+                self._launcher
+                if self._launcher is not None
+                else resolve_agym_launcher(platform)
+            )
+        )
+
         command = [
-            "agym",
+            selected_launcher,
             "--prompt",
             instruction,
             "--output-format",

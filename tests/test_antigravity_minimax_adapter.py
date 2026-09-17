@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,8 @@ from aios_renew.antigravity_minimax_adapter import (
     AntigravityMinimaxAdapter,
     AntigravityMinimaxExecutionError,
     AntigravityMinimaxOutputError,
+    resolve_agym_launcher,
+    select_agym_launcher,
 )
 from aios_renew.artifacts import Claim, Result
 from aios_renew.dispatcher import NativeExecutionPolicy
@@ -222,7 +226,7 @@ def test_command_contract_primary_flags_and_no_credentials(tmp_path: Path) -> No
         expected_head="abc123",
     )
 
-    assert cmd[0] == "agym"
+    assert cmd[0] == resolve_agym_launcher()
     assert cmd[cmd.index("--output-format") + 1] == "json"
     assert cmd[cmd.index("--workspace") + 1] == str(repo)
     assert "--aios-mode" in cmd
@@ -954,4 +958,176 @@ def test_negative_zero_exit_bare_result_package_rejected(tmp_path: Path) -> None
     )
     package = valid_adapter.execute(task=task, run=run)
     assert package.result.head_sha == "def456"
+
+
+# ============================================================================
+# TASK-131: Platform-Aware Launcher Selection and Subprocess Regressions
+# ============================================================================
+
+
+def test_platform_aware_launcher_selection_and_command_args(tmp_path: Path) -> None:
+    repo = tmp_path.resolve()
+    adapter = AntigravityMinimaxAdapter(repo=repo, handoff_path=repo / "h.json")
+
+    # AC1: Platform-aware launcher selection returns agym.cmd for Windows and agym for non-Windows
+    assert resolve_agym_launcher("win32") == "agym.cmd"
+    assert resolve_agym_launcher("windows") == "agym.cmd"
+    assert resolve_agym_launcher("Windows") == "agym.cmd"
+    assert resolve_agym_launcher("linux") == "agym"
+    assert resolve_agym_launcher("darwin") == "agym"
+    assert resolve_agym_launcher() == (
+        "agym.cmd" if sys.platform == "win32" else "agym"
+    )
+
+    # select_agym_launcher alias matches resolve_agym_launcher
+    assert select_agym_launcher("win32") == "agym.cmd"
+    assert select_agym_launcher("linux") == "agym"
+    assert select_agym_launcher() == resolve_agym_launcher()
+
+    # command_for uses that selected launcher as argv[0]
+    cmd_win = adapter.command_for(
+        repo=repo, instruction="Do work", operation="PRIMARY", platform="win32"
+    )
+    cmd_linux = adapter.command_for(
+        repo=repo, instruction="Do work", operation="PRIMARY", platform="linux"
+    )
+    assert cmd_win[0] == "agym.cmd"
+    assert cmd_linux[0] == "agym"
+
+    # Preserves all existing provider-neutral arguments unchanged
+    assert cmd_win[1:] == cmd_linux[1:]
+    assert cmd_win[cmd_win.index("--prompt") + 1] == "Do work"
+    assert cmd_win[cmd_win.index("--output-format") + 1] == "json"
+    assert cmd_win[cmd_win.index("--workspace") + 1] == str(repo)
+    assert "--aios-mode" in cmd_win
+    assert cmd_win[cmd_win.index("--operation") + 1] == "PRIMARY"
+    assert cmd_win[cmd_win.index("--response-schema") + 1] == str(
+        RESULT_PACKAGE_SCHEMA_PATH
+    )
+    assert cmd_win[cmd_win.index("--model") + 1] == ANTIGRAVITY_MINIMAX_DEFAULT_MODEL
+    assert cmd_win[cmd_win.index("--response-timeout") + 1] == "3600"
+    assert cmd_win[cmd_win.index("--timeout") + 1] == str(65 * 60)
+    assert "--allow-commit" in cmd_win
+
+    # Custom launcher override via adapter init and command_for
+    adapter_custom = AntigravityMinimaxAdapter(
+        repo=repo, handoff_path=repo / "h.json", launcher="custom_agym.cmd"
+    )
+    assert adapter_custom.command_for(repo=repo, instruction="Work")[0] == (
+        "custom_agym.cmd"
+    )
+    assert adapter.command_for(
+        repo=repo, instruction="Work", launcher="override.cmd"
+    )[0] == "override.cmd"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only subprocess test")
+def test_windows_deterministic_real_cmd_subprocess_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+
+    task, run, _, _ = make_execution(workspace=str(repo))
+    payload = successful_structural_payload(head_sha="def456")
+    envelope = make_agym_envelope(
+        result_package=payload,
+        workspace=str(repo),
+        head_before=run.base_sha,
+        head_after="def456",
+    )
+
+    envelope_path = bin_dir / "envelope.json"
+    envelope_path.write_text(json.dumps(envelope), encoding="utf-8")
+
+    # Create temporary .cmd launcher that types the pre-baked envelope
+    cmd_launcher = bin_dir / "agym.cmd"
+    cmd_launcher.write_text(
+        f'@echo off\ntype "{envelope_path}"\n',
+        encoding="utf-8",
+    )
+
+    # Prepend bin_dir to PATH so agym.cmd is resolved by Python subprocess
+    monkeypatch.setenv(
+        "PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+    )
+
+    # 1. Direct Python subprocess.run with shell=False starts agym.cmd successfully
+    launcher_name = resolve_agym_launcher()
+    assert launcher_name == "agym.cmd"
+
+    direct_proc = subprocess.run(
+        [launcher_name, "--prompt", "test"],
+        cwd=str(repo),
+        capture_output=True,
+        text=False,
+        check=False,
+        shell=False,
+    )
+    assert direct_proc.returncode == 0
+    direct_envelope = json.loads(direct_proc.stdout.decode("utf-8"))
+    assert direct_envelope["schema_version"] == "agym.result.v1"
+    assert direct_envelope["status"] == "PASS"
+
+    # 2. Production AntigravityMinimaxAdapter with default runner (subprocess.run) and shell=False
+    handoff_path = repo / ".git" / "aios" / "handoff.json"
+    adapter = AntigravityMinimaxAdapter(
+        repo=repo,
+        handoff_path=handoff_path,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
+    )
+    result_package = adapter.execute(task=task, run=run)
+
+    assert isinstance(result_package, ResultPackage)
+    assert result_package.result.head_sha == "def456"
+    assert result_package.result.claims[0].satisfies == ("AC1",)
+    assert result_package.evidence == ()
+
+
+def test_native_invocation_runner_contract_and_missing_launcher_fail_closed(
+    tmp_path: Path,
+) -> None:
+    task, run, _, _ = make_execution(workspace=str(tmp_path.resolve()))
+    repo = tmp_path.resolve()
+    calls: list[tuple[Any, dict[str, Any]]] = []
+
+    def runner(
+        command: tuple[str, ...], **kwargs: Any
+    ) -> subprocess.CompletedProcess[bytes]:
+        calls.append((command, kwargs))
+        raise FileNotFoundError("Launcher not found")
+
+    adapter = AntigravityMinimaxAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=repo / "h.json",
+        execution_policy=NativeExecutionPolicy(
+            authorizes_mutation=True,
+            response_budget_minutes=45,
+            process_watchdog_seconds=50 * 60,
+        ),
+    )
+
+    with pytest.raises(
+        AntigravityMinimaxExecutionError, match="CLI not found: agym"
+    ) as exc_info:
+        adapter.execute(task=task, run=run)
+
+    expected_launcher = resolve_agym_launcher()
+    assert str(exc_info.value) == f"Antigravity MiniMax CLI not found: {expected_launcher}"
+
+    # AC3: Missing-launcher failure remains fail-closed with no second invocation
+    assert len(calls) == 1
+
+    command_tuple, kwargs = calls[0]
+    # AC3: Injected runner receives exact command tuple, preserves cwd/capture/text/check/watchdog
+    assert isinstance(command_tuple, tuple)
+    assert command_tuple[0] == expected_launcher
+    assert kwargs["cwd"] == str(repo)
+    assert kwargs["capture_output"] is True
+    assert kwargs["text"] is False
+    assert kwargs["check"] is False
+    assert kwargs["timeout"] == 50 * 60
 
