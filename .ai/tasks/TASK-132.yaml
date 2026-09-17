@@ -1,0 +1,158 @@
+task_id: TASK-132
+revision: 1
+
+goal: >
+  Harden the canonical Antigravity+MiniMax native Executor terminal contract so every
+  admitted PRIMARY, REMEDIATION, and REPAIR instruction explicitly requires the builtin
+  `finish` structured-output terminal action after all authorized repository work is
+  complete, preserving one invocation, exact commit semantics, fail-closed behavior, and
+  Runtime ownership of canonical verification.
+
+problem: >
+  TASK-131 repaired the Windows launcher boundary and the admitted `antigravity-minimax`
+  adapter can now reach the external `agym` transport reliably. Subsequent isolated E2E
+  evidence showed a second deterministic boundary requirement: MiniMax-M3 can complete
+  mutation and structured output correctly, but an instruction that merely says to
+  "return the structural ResultPackage" is insufficiently explicit for the provider to
+  terminate through Antigravity's builtin `finish` tool. A direct terminal contract that
+  names `finish`, requires it exactly once, and forbids conversational completion text
+  produced a complete mutation -> commit -> structured ResultPackage -> State Guard ->
+  Runtime verification PASS. The current canonical adapter still expresses only the
+  generic ResultPackage requirement, leaving successful native completion dependent on
+  external worker prompt augmentation rather than the canonical AIOS handoff itself.
+
+assumptions:
+  - >
+    Canonical main at TASK-132 authoring contains TASK-131's platform-aware native launcher
+    repair at commit 247465447d846b583ad9c5dc5e46771e92e3a435.
+  - >
+    TASK-091 remains the authoritative prospective adoption contract for the external
+    `agym` transport: AIOS owns the thin adapter boundary while worker implementation,
+    provider SDK plumbing, credentials, and provider authentication remain outside this
+    repository.
+  - >
+    The external worker already supports Antigravity structured output through
+    `response_schema`, builtin `finish`, and one structured terminal payload; this TASK
+    canonicalizes the Executor instruction contract inside AIOS rather than modifying that
+    external implementation.
+  - >
+    Runtime remains the only canonical verification and evidence authority. Executor-local
+    sanity checks are non-authoritative and must not replace Runtime verification.
+  - >
+    PRIMARY and mutation-authorized correction operations already require committing their
+    final permitted repository state before returning; this TASK clarifies terminal
+    mechanics without expanding mutation authority.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-091.yaml
+    - .ai/tasks/TASK-092.yaml
+    - .ai/tasks/TASK-131.yaml
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/codex_adapter.py
+    - tests/test_antigravity_minimax_adapter.py
+  modify:
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - tests/test_antigravity_minimax_adapter.py
+
+non_goals:
+  - Modify the external `agym` worker, Antigravity SDK, MiniMax proxy, provider endpoint,
+    credentials, launchers, or local installation.
+  - Change the admitted executor set, Dispatcher selection semantics, lease ownership,
+    Runtime verification, Reviewer, Publisher, or correction lineage.
+  - Change schemas, add a second structured-output format, synthesize a ResultPackage from
+    prose, or infer success from Git state when structured output is absent.
+  - Add retry, fallback, reroute, a second model call, formatter call, polling loop, or
+    alternate Executor invocation.
+  - Reopen TASK-131's Windows launcher repair or alter existing platform-aware launcher
+    resolution.
+  - Change Codex or native Antigravity instruction contracts in this TASK.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      The canonical `antigravity-minimax` instruction for every AIOS-mode operation must
+      explicitly name the builtin `finish` tool as the only successful terminal action.
+      Generic wording such as "return the ResultPackage" is not sufficient by itself.
+    - >
+      The instruction must require completion of all authorized repository work before
+      `finish` is invoked. Mutation-authorized operations that require a commit must obtain
+      final committed Git HEAD before `finish`; zero-mutation actions must not create a
+      commit merely to satisfy terminal mechanics.
+    - >
+      Successful terminal behavior must require invoking builtin `finish` exactly once with
+      an object satisfying the supplied response schema, bind `result.head_sha` to final Git
+      HEAD, and forbid conversational completion prose, markdown, summaries, or a second
+      terminal response before or after `finish`.
+    - >
+      Failure to produce a valid structured terminal result remains terminal and fail-closed.
+      The adapter must not parse free-form prose into JSON, infer a package from repository
+      state, issue a second model call, retry, fallback, reroute, or invoke another Executor.
+    - >
+      PRIMARY must preserve its existing implementation and commit semantics, including
+      empty root evidence and empty claim evidence with Runtime constructing canonical
+      EVIDENCE.
+    - >
+      REMEDIATION must preserve current action semantics: CODE_FIX commits the permitted
+      remediation delta before terminal output; EVIDENCE_ONLY does not create a code commit;
+      both terminate through the same one-shot structured `finish` contract.
+    - >
+      REPAIR must preserve TASK-092 semantics exactly: CODE_FIX and
+      CONTINUE_IMPLEMENTATION commit final permitted mutation state; NO_CHANGE performs no
+      repository mutation; all eligible successful actions terminate through the same
+      structured `finish` contract without creating a fresh PRIMARY, widening scope, or
+      changing correction authority.
+    - >
+      The terminal requirement must live in the canonical AIOS native instruction passed as
+      the external transport's user prompt, not rely solely on provider-specific system
+      instructions or hidden worker behavior.
+    - >
+      Native command construction must remain one `agym` invocation with the existing
+      `--response-schema`, `--aios-mode`, model, timeout, expected-head, and authorized
+      commit flags. No credentials or provider URLs may be added to command arguments.
+    - >
+      Existing TASK-131 Windows `.cmd` launcher behavior and non-Windows extensionless
+      launcher behavior must remain unchanged.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      PRIMARY native instruction explicitly requires all authorized implementation work and
+      required commit completion first, then exactly one builtin `finish` call satisfying
+      the supplied response schema, with final `result.head_sha` bound to actual final Git
+      HEAD and no conversational terminal prose.
+  - id: AC2
+    condition: >
+      REMEDIATION native instruction preserves CODE_FIX versus EVIDENCE_ONLY mutation/commit
+      authority while requiring the same exactly-once structured `finish` terminal action
+      for successful completion.
+  - id: AC3
+    condition: >
+      REPAIR native instruction preserves CODE_FIX, NO_CHANGE, and
+      CONTINUE_IMPLEMENTATION semantics from TASK-092 while requiring the same structured
+      `finish` terminal action without retry, fresh PRIMARY, reroute, or scope expansion.
+  - id: AC4
+    condition: >
+      Focused tests fail if the terminal contract is weakened back to generic prose-only
+      completion and prove that canonical instructions name `finish`, forbid conversational
+      completion, retain required commit/head binding rules, and preserve empty Executor
+      evidence semantics.
+  - id: AC5
+    condition: >
+      Command-contract regression coverage proves one native `agym` invocation retains the
+      existing response schema, AIOS mode, expected-head, commit authorization, timeout,
+      MiniMax model, and TASK-131 platform-aware launcher behavior with no additional model
+      invocation or fallback path.
+  - id: AC6
+    condition: >
+      Existing fail-closed output normalization and negative fixtures remain green for
+      missing/prose/malformed structured output, State Guard failures, head/workspace
+      mismatch, nonzero transport exit, and schema violations; no ResultPackage is
+      synthesized from repository state or prose.
+
+verification:
+  required:
+    - python -m pytest tests/test_antigravity_minimax_adapter.py -q
