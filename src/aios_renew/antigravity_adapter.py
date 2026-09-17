@@ -299,12 +299,10 @@ class AntigravityAdapter:
             ANTIGRAVITY_DEFAULT_MODEL,
             "--effort",
             ANTIGRAVITY_DEFAULT_EFFORT,
-            "--mode",
-            (
-                "accept-edits"
-                if self._execution_policy.authorizes_mutation
-                else "plan"
-            ),
+        ]
+        if self._execution_policy.authorizes_mutation:
+            command.extend(["--mode", "accept-edits"])
+        command.extend([
             "--disable-slash-commands",
             "--output-format",
             "json",
@@ -312,7 +310,7 @@ class AntigravityAdapter:
             str(schema_path),
             "--print-timeout",
             f"{self._execution_policy.response_budget_minutes}m",
-        ]
+        ])
         if self._execution_policy.authorizes_mutation:
             command.append("--dangerously-skip-permissions")
         return tuple(command)

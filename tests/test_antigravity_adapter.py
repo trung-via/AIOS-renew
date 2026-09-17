@@ -414,8 +414,12 @@ def test_native_adapter_owns_read_only_command_handoff_and_envelope(
     command, kwargs = calls[0]
     assert command[command.index("--model") + 1] == "gemini-3.8-flash"
     assert command[command.index("--effort") + 1] == "high"
-    assert command[command.index("--mode") + 1] == "plan"
+    assert "--mode" not in command
+    assert "plan" not in command
     assert "--dangerously-skip-permissions" not in command
+    assert "--disable-slash-commands" in command
+    assert command[command.index("--output-format") + 1] == "json"
+    assert command[command.index("--json-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
     assert command[command.index("--print-timeout") + 1] == "60m"
     assert kwargs["timeout"] == 65 * 60
     handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
@@ -692,8 +696,12 @@ def test_native_finalize_candidate_instruction_is_read_only_and_single_shot(
         assert "do not execute canonical verification" in instruction
         assert "retry this admitted continuation" in instruction
         assert "reroute or fall back to another Executor" in instruction
-        assert command[command.index("--mode") + 1] == "plan"
+        assert "--mode" not in command
+        assert "plan" not in command
         assert "--dangerously-skip-permissions" not in command
+        assert "--disable-slash-commands" in command
+        assert command[command.index("--output-format") + 1] == "json"
+        assert command[command.index("--json-schema") + 1] == str(REPAIR_RESULT_PACKAGE_SCHEMA_PATH)
         return subprocess.CompletedProcess(
             command,
             returncode=0,
@@ -703,7 +711,7 @@ def test_native_finalize_candidate_instruction_is_read_only_and_single_shot(
             stderr="",
         )
 
-    AntigravityAdapter(
+    package = AntigravityAdapter(
         runner=runner,
         repo=tmp_path,
         handoff_path=handoff_path,
@@ -721,6 +729,12 @@ def test_native_finalize_candidate_instruction_is_read_only_and_single_shot(
     )
 
     assert len(calls) == 1
+    assert isinstance(package, ResultPackage)
+    assert package.result.head_sha == run.base_sha
+    assert package.result.changed_files == ()
+    assert package.result.claims[0].satisfies == ("AC1",)
+    assert package.result.claims[0].evidence == ()
+    assert package.evidence == ()
 
 
 def test_native_antigravity_timeout_is_terminal_to_one_invocation(
@@ -1155,3 +1169,356 @@ def test_antigravity_execute_missing_structured_output_preserves_token_usage(
         adapter.execute(task=task, run=run)
 
     assert recorded_usages == [TokenUsage(input_tokens=1600, cached_input_tokens=500, output_tokens=120)]
+
+
+def test_zero_mutation_finalize_candidate_command_excludes_contradictory_plan_mode(
+    tmp_path: Path,
+) -> None:
+    """AC1 & AC2: Zero-mutation command is coherent non-interactive and omits --mode plan and mutation flags."""
+    _, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    handoff_path = repo / "repair-handoff.json"
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["head_sha"] = run.base_sha
+    payload["result"]["changed_files"] = []
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {"status": "SUCCESS", "response": "", "structured_output": payload}
+            ),
+            stderr="",
+        )
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=handoff_path,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=False),
+    )
+    adapter.execute_repair(
+        execution={
+            "run": run,
+            "failed_head_sha": run.base_sha,
+            "repair": {
+                "action": "FINALIZE_CANDIDATE",
+                "instructions": ["Return missing structural package."],
+                "modification_scope": [],
+            },
+        }
+    )
+
+    assert len(calls) == 1
+    cmd = calls[0]
+    # Verify non-interactive structural invocation
+    assert cmd[0] == "agy"
+    assert cmd[1] == "--print"
+    assert cmd[cmd.index("--model") + 1] == "gemini-3.8-flash"
+    assert cmd[cmd.index("--effort") + 1] == "high"
+    assert cmd[cmd.index("--output-format") + 1] == "json"
+    assert cmd[cmd.index("--json-schema") + 1] == str(REPAIR_RESULT_PACKAGE_SCHEMA_PATH)
+    assert "--disable-slash-commands" in cmd
+
+    # AC1: no contradictory plan-mode/disabled-slash-command combination
+    assert "--mode" not in cmd
+    assert "plan" not in cmd
+    # AC2: zero mutation capability retained
+    assert "--dangerously-skip-permissions" not in cmd
+    assert "accept-edits" not in cmd
+
+
+def test_zero_mutation_response_normalizes_to_structural_result_package(
+    tmp_path: Path,
+) -> None:
+    """AC3: Valid schema-constrained native zero-mutation response normalizes into ResultPackage."""
+    _, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    handoff_path = repo / "repair-handoff.json"
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["head_sha"] = run.base_sha
+    payload["result"]["changed_files"] = []
+    payload["result"]["claims"][0]["satisfies"] = "AC1"
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {"status": "SUCCESS", "response": "", "structured_output": payload}
+            ),
+            stderr="",
+        )
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=handoff_path,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=False),
+    )
+    result_pkg = adapter.execute_repair(
+        execution={
+            "run": run,
+            "failed_head_sha": run.base_sha,
+            "repair": {
+                "action": "FINALIZE_CANDIDATE",
+                "instructions": ["Return missing structural package."],
+                "modification_scope": [],
+            },
+        }
+    )
+
+    assert len(calls) == 1
+    assert isinstance(result_pkg, ResultPackage)
+    assert result_pkg.result.head_sha == run.base_sha
+    assert result_pkg.result.changed_files == ()
+    assert len(result_pkg.result.claims) == 1
+    assert result_pkg.result.claims[0].satisfies == ("AC1",)
+    assert result_pkg.result.claims[0].evidence == ()
+    assert result_pkg.result.unresolved == ()
+    assert result_pkg.evidence == ()
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "returncode", "expected_err_type", "match_pattern"),
+    [
+        # RUN-121-005 exact scenario: empty stdout with plan mode warning on stderr
+        (
+            "",
+            "warning: --mode plan has no effect while slash command expansion is disabled.",
+            0,
+            AntigravityExecutionError,
+            "Antigravity ResultPackage missing: warning: --mode plan has no effect while slash command expansion is disabled.",
+        ),
+        # Nonzero exit code
+        (
+            "",
+            "process failed",
+            1,
+            AntigravityExecutionError,
+            "Antigravity CLI returned nonzero",
+        ),
+        # Malformed terminal JSON
+        (
+            "not json at all",
+            "",
+            0,
+            AntigravityExecutionError,
+            "malformed terminal JSON",
+        ),
+        # Terminal envelope status is ERROR
+        (
+            json.dumps({"status": "ERROR", "error": "rate limit reached"}),
+            "",
+            0,
+            AntigravityExecutionError,
+            "Antigravity CLI terminal status is ERROR: rate limit reached",
+        ),
+        # Terminal envelope missing structured_output
+        (
+            json.dumps({"status": "SUCCESS", "response": "Done without payload"}),
+            "",
+            0,
+            AntigravityExecutionError,
+            "Antigravity ResultPackage missing",
+        ),
+        # structured_output missing required fields (e.g. missing result)
+        (
+            json.dumps({"status": "SUCCESS", "structured_output": {"evidence": []}}),
+            "",
+            0,
+            AntigravityOutputError,
+            "invalid structural output",
+        ),
+    ],
+)
+def test_zero_mutation_fails_closed_without_synthesis_retry_or_fallback(
+    tmp_path: Path,
+    stdout: str,
+    stderr: str,
+    returncode: int,
+    expected_err_type: type[Exception],
+    match_pattern: str,
+) -> None:
+    """AC4: Missing, malformed, or invalid native structural output fails closed without retry, fallback, or synthesis."""
+    _, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    handoff_path = repo / "repair-handoff.json"
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            returncode=returncode,
+            stdout=stdout.encode("utf-8"),
+            stderr=stderr.encode("utf-8"),
+        )
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=handoff_path,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=False),
+    )
+
+    with pytest.raises(expected_err_type, match=match_pattern):
+        adapter.execute_repair(
+            execution={
+                "run": run,
+                "failed_head_sha": run.base_sha,
+                "repair": {
+                    "action": "FINALIZE_CANDIDATE",
+                    "instructions": ["Return missing structural package."],
+                    "modification_scope": [],
+                },
+            }
+        )
+
+    # Fail closed: exactly one invocation, no retry, no reroute, no fallback
+    assert len(calls) == 1
+
+
+def test_mutation_authorized_command_behavior_unchanged_across_all_operations(
+    tmp_path: Path,
+) -> None:
+    """AC5: Mutation-authorized command construction preserves --mode accept-edits and --dangerously-skip-permissions."""
+    task, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    remediation_exec = RemediationExecution(
+        review_id="REV-1",
+        finding=parse_review(
+            "review_id: REV-1\nreviewed_sha: '123456'\nmode: PRIMARY\nverdict: CHANGES_REQUIRED\nacceptance: {AC1: FAIL}\nfindings:\n  - id: F1\n    basis: AC1\n    action: CODE_FIX\n    location: f.py\n    issue: i\n    expected: e\n"
+        ).findings[0],
+        remediation=parse_remediation(
+            "finding_id: F1\naction: CODE_FIX\nreviewed_sha: '123456'\nmodification_scope: [src/aios_renew/antigravity_adapter.py]\naffected_verification: [pytest]\n"
+        ),
+        run=run,
+    )
+    repair_exec_code_fix = {
+        "run": run,
+        "root_base_sha": "abc123",
+        "repair": {
+            "action": "CODE_FIX",
+            "instructions": ["Fix defect."],
+            "modification_scope": ["src/aios_renew/antigravity_adapter.py"],
+        },
+    }
+    repair_exec_continue = {
+        "run": run,
+        "failed_run_id": "RUN-126-001",
+        "failed_head_sha": "abc123",
+        "root_base_sha": "abc123",
+        "repair": {
+            "action": "CONTINUE_IMPLEMENTATION",
+            "instructions": ["Continue unfinished implementation."],
+            "modification_scope": ["src/aios_renew/antigravity_adapter.py"],
+        },
+    }
+
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {"status": "SUCCESS", "response": "", "structured_output": payload}
+            ),
+            stderr="",
+        )
+
+    # Mutation-authorized policy
+    adapter_mut = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=repo / ".git" / "aios" / "handoff.json",
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
+    )
+
+    # 1. PRIMARY with mutation authorized
+    adapter_mut.execute(task=task, run=run)
+    cmd_primary = calls[-1]
+    assert cmd_primary[cmd_primary.index("--mode") + 1] == "accept-edits"
+    assert "--dangerously-skip-permissions" in cmd_primary
+    assert "--disable-slash-commands" in cmd_primary
+    assert cmd_primary[cmd_primary.index("--json-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
+
+    # 2. REMEDIATION CODE_FIX with mutation authorized
+    adapter_mut.execute_remediation(execution=remediation_exec)
+    cmd_remediation = calls[-1]
+    assert cmd_remediation[cmd_remediation.index("--mode") + 1] == "accept-edits"
+    assert "--dangerously-skip-permissions" in cmd_remediation
+    assert "--disable-slash-commands" in cmd_remediation
+    assert cmd_remediation[cmd_remediation.index("--json-schema") + 1] == str(REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH)
+
+    # 3. REPAIR CODE_FIX with mutation authorized
+    adapter_mut.execute_repair(execution=repair_exec_code_fix)
+    cmd_repair_cf = calls[-1]
+    assert cmd_repair_cf[cmd_repair_cf.index("--mode") + 1] == "accept-edits"
+    assert "--dangerously-skip-permissions" in cmd_repair_cf
+    assert "--disable-slash-commands" in cmd_repair_cf
+    assert cmd_repair_cf[cmd_repair_cf.index("--json-schema") + 1] == str(REPAIR_RESULT_PACKAGE_SCHEMA_PATH)
+
+    # 4. REPAIR CONTINUE_IMPLEMENTATION with mutation authorized
+    adapter_mut.execute_repair(execution=repair_exec_continue)
+    cmd_repair_cont = calls[-1]
+    assert cmd_repair_cont[cmd_repair_cont.index("--mode") + 1] == "accept-edits"
+    assert "--dangerously-skip-permissions" in cmd_repair_cont
+    assert "--disable-slash-commands" in cmd_repair_cont
+    assert cmd_repair_cont[cmd_repair_cont.index("--json-schema") + 1] == str(REPAIR_RESULT_PACKAGE_SCHEMA_PATH)
+
+    # Zero-mutation policy across operations
+    adapter_ro = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=repo / ".git" / "aios" / "handoff.json",
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=False),
+    )
+
+    # Zero-mutation PRIMARY
+    adapter_ro.execute(task=task, run=run)
+    cmd_ro_primary = calls[-1]
+    assert "--mode" not in cmd_ro_primary
+    assert "plan" not in cmd_ro_primary
+    assert "--dangerously-skip-permissions" not in cmd_ro_primary
+    assert "--disable-slash-commands" in cmd_ro_primary
+
+    # Zero-mutation REMEDIATION
+    adapter_ro.execute_remediation(execution=remediation_exec)
+    cmd_ro_remediation = calls[-1]
+    assert "--mode" not in cmd_ro_remediation
+    assert "plan" not in cmd_ro_remediation
+    assert "--dangerously-skip-permissions" not in cmd_ro_remediation
+    assert "--disable-slash-commands" in cmd_ro_remediation
+
+    # Zero-mutation REPAIR (FINALIZE_CANDIDATE)
+    adapter_ro.execute_repair(
+        execution={
+            "run": run,
+            "failed_head_sha": run.base_sha,
+            "repair": {
+                "action": "FINALIZE_CANDIDATE",
+                "instructions": ["Return package."],
+                "modification_scope": [],
+            },
+        }
+    )
+    cmd_ro_repair = calls[-1]
+    assert "--mode" not in cmd_ro_repair
+    assert "plan" not in cmd_ro_repair
+    assert "--dangerously-skip-permissions" not in cmd_ro_repair
+    assert "--disable-slash-commands" in cmd_ro_repair
