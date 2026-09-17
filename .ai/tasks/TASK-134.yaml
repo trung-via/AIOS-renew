@@ -1,0 +1,155 @@
+task_id: TASK-134
+revision: 1
+
+goal: >
+  Close the Unified State false-MALFORMED reconciliation defect for an exact REPAIR terminal
+  that exists both in local Runtime state and canonical remote lifecycle. Make local/canonical
+  reconciliation derive the same immutable semantic correction identity before exact equality
+  checks so an identical persisted REPAIR is accepted while genuine terminal, lineage, candidate,
+  correction, or semantic-identity conflicts continue to fail closed.
+
+problem: >
+  Downstream Python Agent production evidence exposed a generic AIOS defect after a failed
+  REMEDIATION -> REPAIR -> failed REPAIR chain. Canonical remote decoding correctly enriches a
+  REPAIR terminal's review_id/finding_id by walking correction_origin through its immutable
+  failed-RUN parent chain. _local_pending_runs independently parses the identical local persisted
+  REPAIR execution and validates the same parent, run, terminal and correction, but leaves
+  review_id/finding_id at the top-level PRIMARY decode defaults (None). The subsequent exact
+  local-versus-canonical comparison requires canonical.review_id == review_id and
+  canonical.finding_id == finding_id, so the identical local/canonical REPAIR terminal is falsely
+  rejected as `local and canonical terminal state conflict`; observe_unified_state then reports
+  MALFORMED_CANONICAL_STATE. Removing/ignoring the local Runtime copy makes the same canonical
+  lineage resolve normally, proving the defect is asymmetric local semantic enrichment rather
+  than malformed lifecycle truth.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-134 authoring is
+    b05f00a96720ade9b6c540a987bfcd356af6067b, the reviewed TASK-132 source on main.
+  - >
+    src/aios_renew/unified_state.py is the existing authority for mutation-free lifecycle
+    reduction, local/remote terminal reconciliation, correction-origin resolution and Next Action.
+    TASK-134 must repair that authority rather than create a parallel reconciler.
+  - >
+    TASK-129 remains authoritative for failed-REMEDIATION AUTHOR_REPAIR wrapper normalization;
+    TASK-123 through TASK-127 remain authoritative for immutable REPAIR authorization,
+    supersession, wakeup and publication compatibility. This task changes none of those
+    authoring/transport semantics.
+  - >
+    The reproduced downstream topology is structurally valid: PRIMARY RESULT with semantic
+    CHANGES_REQUIRED finding -> admitted REMEDIATION FAILURE -> admitted REPAIR FAILURE, with the
+    REPAIR run/failure/correction persisted locally and the exact same terminal published to the
+    canonical remote lifecycle. A fresh current REPAIR authorization targets that failed REPAIR.
+  - >
+    Frozen Kernel v0.1 remains FROZEN. Runtime owns deterministic state reduction/admission;
+    Brain selects correction intent; one Executor owns implementation; Reviewer and Publisher
+    retain their existing authorities.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-086.yaml
+    - .ai/tasks/TASK-092.yaml
+    - .ai/tasks/TASK-123.yaml
+    - .ai/tasks/TASK-125.yaml
+    - .ai/tasks/TASK-127.yaml
+    - .ai/tasks/TASK-129.yaml
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/correction_preflight.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_correction_preflight.py
+  modify:
+    - src/aios_renew/unified_state.py
+    - tests/test_operator_unified_state.py
+
+non_goals:
+  - Delete, ignore, reset, rewrite, or garbage-collect legitimate local Runtime state to make the conflict disappear.
+  - Prefer local over remote truth, remote over local truth, or weaken exact conflict detection.
+  - Change RUN, RESULT, FAILURE, REVIEW, REMEDIATION, REPAIR, correction-preflight, authoring, transport, publication, dispatch, wakeup, or Executor schemas/authority.
+  - Change current REPAIR action semantics, supersession/current-selector behavior, failed-head binding, continuation uniqueness, cumulative correction frontier, or publication rules.
+  - Modify operator.py, review_transport.py, correction_preflight.py, workflows, adapters, downstream repositories, dependency pins, roadmap state, or frozen Kernel artifacts.
+  - Create a special case for Python Agent, TASK-215, RUN-215-003, Codex quota failures, or one repository path. The fix must be generic to exact local/canonical REPAIR reconciliation.
+  - Retry, reroute, auto-select a correction, fabricate semantic identity from a finding-id scan, or create a second lifecycle router.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Local REPAIR reconciliation must derive semantic review/finding identity from the same
+      immutable correction ancestry already authoritative for canonical remote REPAIR decoding.
+      It may share/refactor bounded internal logic, but must not guess identity by TASK-wide
+      finding search, numeric RUN ordering, chat state, or current authorization prose.
+    - >
+      Before comparing an exact local terminal with the canonical terminal for the same RUN,
+      both representations must expose equivalent semantic correction identity. An exact local
+      persisted REPAIR whose run document, failed terminal, candidate, parent failed RUN,
+      correction document and semantic origin all match canonical remote state must not be
+      rejected solely because the raw local top-level Run wrapper carries no review_id/finding_id.
+    - >
+      Genuine divergence remains fail closed. Mismatch in RUN identity/status/task revision,
+      candidate SHA, terminal kind/content, correction document, failed parent, execution base,
+      semantic review/finding identity, duplicate/ambiguous parent, or cyclic/missing correction
+      ancestry must still produce bounded malformed/conflict behavior rather than being normalized away.
+    - >
+      Multi-generation REPAIR ancestry must remain deterministic: each REPAIR inherits semantic
+      identity only by walking its exact immutable failed-RUN parent chain until the unique
+      REMEDIATION origin. No new semantic metadata is persisted into historical RUN/FAILURE files.
+    - >
+      Local-only pending correction behavior and remote-only lifecycle behavior must remain
+      semantically unchanged. TASK-134 fixes equality/reconciliation when the same terminal exists
+      on both surfaces; it must not create a new source of engineering truth.
+    - >
+      Add a deterministic offline regression reproducing the downstream causal topology: one
+      reviewed PRIMARY finding, one failed REMEDIATION, one failed REPAIR whose exact run,
+      failure and repair-execution documents exist both locally and in mocked canonical remote
+      lifecycle, followed by a fresh exact REPAIR authorization. observe_unified_state must return
+      the same executable REPAIR state as the equivalent remote-only topology and must not return
+      MALFORMED_CANONICAL_STATE.
+    - >
+      Regression must prove at least one true local/canonical semantic or correction mismatch
+      still fails closed, and existing malformed/ambiguous/cyclic correction-lineage coverage remains green.
+    - >
+      Implementation mutation is limited to src/aios_renew/unified_state.py and
+      tests/test_operator_unified_state.py. If satisfying the contract requires another
+      production owner, fail closed for fresh Brain review rather than widening scope.
+    - Verification must be deterministic, offline, non-interactive and independent of GitHub/network, provider/model, wall clock, downstream repositories or chat state.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Exact local and canonical copies of the same REPAIR terminal reconcile successfully after
+      both are bound to the same immutable semantic review/finding origin; Unified State no longer
+      emits false MALFORMED_CANONICAL_STATE for that topology.
+  - id: AC2
+    condition: >
+      The downstream-equivalent failed REMEDIATION -> failed REPAIR -> fresh REPAIR authorization
+      topology yields the same executable REPAIR Next Action with or without the exact matching local terminal copy.
+  - id: AC3
+    condition: >
+      Semantic identity is inherited only through the unique immutable correction parent chain,
+      including multi-generation REPAIR, with no TASK-wide finding search, numeric ordering,
+      historical mutation, or fabricated metadata.
+  - id: AC4
+    condition: >
+      Real local/canonical divergences in terminal, candidate, parent, correction or semantic
+      identity continue to fail closed; malformed, ambiguous and cyclic correction lineage remains rejected.
+  - id: AC5
+    condition: >
+      Existing remote-only, local-only, REMEDIATION, PRIMARY, correction frontier, authoring,
+      preflight, wakeup and publication semantics remain unchanged; no schema or authority moves.
+  - id: AC6
+    condition: >
+      Only the two authorized files change, focused deterministic Unified State verification and
+      git diff checking pass, and RESULT contains zero unresolved items.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_operator_unified_state.py
+    - git diff --check
