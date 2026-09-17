@@ -1,0 +1,127 @@
+task_id: TASK-126
+revision: 1
+
+goal: >
+  Make native Antigravity zero-mutation execution capable of returning the required
+  structural ResultPackage for bounded read-only completion work, including
+  FINALIZE_CANDIDATE, without granting mutation authority or changing mutation-authorized
+  PRIMARY, REMEDIATION, or REPAIR behavior.
+
+problem: >
+  Canonical RUN-121-005 is an admitted Antigravity FINALIZE_CANDIDATE continuation whose
+  candidate remained clean, committed, transportable, and unchanged, but execution failed
+  before Runtime verification because no structural ResultPackage was returned. The canonical
+  FAILURE records `Antigravity ResultPackage missing: warning: --mode plan has no effect while
+  slash command expansion is disabled.` Current Antigravity command construction maps every
+  execution policy with authorizes_mutation=false to `--mode plan` while also unconditionally
+  passing `--disable-slash-commands`. FINALIZE_CANDIDATE intentionally requires an Executor
+  invocation while preserving zero mutation authority, so this native invocation combination
+  blocks the completion transport that the lifecycle requires. The defect must be corrected at
+  the Antigravity adapter/native capability boundary before RUN-121-005 is repaired again.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    8a5d09de5ac00605e83d4efcefa3059dcb4c6051.
+  - >
+    RUN-121-005 is the current canonical pre-verification FAILURE for TASK-121 revision 2 and
+    is a continuation of RUN-121-004; its failed candidate is
+    c3d822c147e52bb85f2786d03f113fc78b8f8e67.
+  - >
+    RUN-121-005 failure evidence establishes that Antigravity was invoked and that Runtime did
+    not receive the required ResultPackage; verification therefore did not run.
+  - >
+    FINALIZE_CANDIDATE remains a zero-mutation REPAIR action that invokes exactly one selected
+    Executor to inspect the exact failed candidate and return structural completion truth.
+  - >
+    TASK-125 addresses repeatable immutable REPAIR authorization supersession and does not
+    resolve this Antigravity native completion-transport defect.
+  - Frozen Kernel v0.1 remains FROZEN; this task is evidence-backed adapter hardening.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/tasks/TASK-121.yaml
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/repair_dispatch.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_dispatcher.py
+    - tests/test_repair_dispatch.py
+  modify:
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_antigravity_adapter.py
+
+non_goals:
+  - Repair, execute, verify, review, publish, or otherwise resolve RUN-121-005 or TASK-121 inside TASK-126.
+  - Change the semantic definition, admission rules, or mutation authority of FINALIZE_CANDIDATE.
+  - Grant write capability, edit permission, commit permission, or dangerously-skip-permissions to zero-mutation execution.
+  - Change the default Antigravity model or effort, TASK semantics, Runtime verification ownership, or ResultPackage schema.
+  - Change Codex behavior, downstream repositories, or downstream dependency pins.
+  - Add retry, reroute, fallback, another Executor invocation, slash-command workflow, scheduler, watcher, or provider-specific lifecycle state.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Native Antigravity zero-mutation execution must have a coherent non-interactive invocation
+      mode that can produce schema-constrained structural output without acquiring repository
+      mutation authority.
+    - >
+      FINALIZE_CANDIDATE must remain zero-mutation: no repository edit, commit, push, or mutation
+      capability may be introduced as a workaround for native completion transport.
+    - >
+      Mutation-authorized Antigravity PRIMARY, CODE_FIX REMEDIATION, CODE_FIX REPAIR, and
+      CONTINUE_IMPLEMENTATION REPAIR command capability must remain behaviorally unchanged.
+    - >
+      Read-only execution must continue to disable AIOS/operator redispatch and must return
+      through the existing native structural ResultPackage boundary; no alternate lifecycle or
+      side-channel completion artifact may be introduced.
+    - >
+      The adapter must fail closed when Antigravity still cannot provide valid structural
+      output. Do not synthesize, infer, or fabricate ResultPackage completion from warning text,
+      process duration, Git state, or previous execution output.
+    - >
+      Regression coverage must reproduce the relevant native command-policy topology for a
+      zero-mutation FINALIZE_CANDIDATE-style execution and prove that the contradictory
+      `--mode plan` plus disabled-slash-command combination that caused RUN-121-005 is not
+      emitted.
+    - >
+      Regression coverage must prove zero-mutation invocation does not include mutation-only
+      capability and that existing mutation-authorized command construction remains unchanged.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Antigravity native command construction provides a coherent zero-mutation non-interactive
+      structural-output invocation for FINALIZE_CANDIDATE-style execution and no longer emits
+      the RUN-121-005 contradictory plan-mode/disabled-slash-command combination.
+  - id: AC2
+    condition: >
+      Zero-mutation Antigravity execution retains no mutation-only capability and cannot edit,
+      commit, push, or otherwise gain repository mutation authority through the adapter policy.
+  - id: AC3
+    condition: >
+      A deterministic adapter regression demonstrates that a valid schema-constrained native
+      zero-mutation response is normalized into the existing structural ResultPackage boundary.
+  - id: AC4
+    condition: >
+      Missing, malformed, or invalid native structural output continues to fail closed without
+      synthesized completion, retry, reroute, or fallback.
+  - id: AC5
+    condition: >
+      Existing mutation-authorized Antigravity PRIMARY, REMEDIATION, and REPAIR command behavior
+      remains unchanged, including mutation capability only when policy authorizes mutation.
+  - id: AC6
+    condition: >
+      Focused deterministic Antigravity adapter regressions pass with zero unresolved items.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_antigravity_adapter.py
