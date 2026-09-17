@@ -1,0 +1,8 @@
+finding_id: FINDING-133-001
+action: CODE_FIX
+reviewed_sha: e1f0f4106b5e6f7c80fc1d1354ce730f432f8ae4
+modification_scope:
+  - src/aios_renew/runtime_identity.py
+  - tests/test_runtime_identity.py
+affected_verification:
+  - python -m pytest tests/test_runtime_identity.py tests/test_operator.py -q
