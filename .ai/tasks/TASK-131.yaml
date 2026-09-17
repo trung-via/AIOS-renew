@@ -1,0 +1,129 @@
+task_id: TASK-131
+revision: 1
+
+goal: >
+  Repair the native Antigravity+MiniMax launcher boundary on Windows so the already-admitted
+  `antigravity-minimax` Executor can be invoked by Python `subprocess` through the external
+  `agym` installation exactly as intended, without changing MiniMax worker/proxy behavior,
+  executor authority, retry semantics, or non-Windows execution.
+
+problem: >
+  Real Windows conformance testing on 2026-09-17 proved the external Antigravity+MiniMax
+  worker itself is healthy: the hardened `agym_worker.py` hash matched the established
+  baseline, native PowerShell invocation returned one `agym.result.v1` PASS envelope from
+  MiniMax-M3 with State Guard PASS, and no worker process remained after completion.
+  However, invoking the same launcher from Python with
+  `subprocess.run(["agym", ...], shell=False)` failed before worker startup with
+  `FileNotFoundError: [WinError 2]`. The installed Windows launchers are `agym.ps1` and
+  `agym.cmd`; PowerShell resolves `agym` through its command resolver, while the direct
+  native Python subprocess path used by `AntigravityMinimaxAdapter` does not resolve that
+  extensionless command in this environment. The adapter currently hard-codes `"agym"` as
+  argv[0], so the canonical AIOS boundary can fail on Windows even though the external
+  transport is installed and operational.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-131 authoring is
+    b56174a9023d361ca816cb3e147fc3a3b566cbf7 and already contains the completed TASK-091
+    `antigravity-minimax` executor adoption.
+  - >
+    TASK-091 remains authoritative for the third Executor's existing agym.result.v1
+    envelope, State Guard, watchdog, workspace/HEAD binding, structural ResultPackage,
+    exactly-one invocation, no-fallback, and provider-credential boundaries.
+  - >
+    The external hardened worker is outside AIOS-renew and has independently passed a real
+    MiniMax-M3 native smoke. This TASK fixes only launcher resolution at the AIOS adapter
+    boundary and must not reinterpret worker health or provider behavior.
+  - >
+    Python subprocess invocation remains `shell=False`; introducing a shell is unnecessary
+    and would widen command parsing semantics.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-091.yaml
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - tests/test_antigravity_minimax_adapter.py
+  modify:
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - tests/test_antigravity_minimax_adapter.py
+
+non_goals:
+  - Modify `C:\\TOOL\\Antigravity-MiniMax`, `agym_worker.py`, `agym.ps1`, `agym.cmd`, the
+    local OpenAI-compatible proxy, MiniMax credentials, or Antigravity SDK configuration.
+  - Change MiniMax model selection, tool capabilities, response schema, State Guard,
+    watchdog durations, timeout policy, workspace/HEAD binding, ResultPackage semantics,
+    Runtime verification, review, publication, or correction semantics.
+  - Add `shell=True`, PowerShell/CMD wrapping, automatic retry, fallback, reroute, executor
+    substitution, model routing, or a second execution path.
+  - Change Codex or native Antigravity executor commands.
+  - Advance, rewrite, or reinterpret Brain Portability roadmap state or TASK-130.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Keep exactly one native subprocess invocation and `shell=False`. Resolve the external
+      agym launcher into a command form that Windows Python subprocess can start directly;
+      do not solve the defect by inserting `cmd.exe`, PowerShell, `shell=True`, or another
+      command interpreter.
+    - >
+      On Windows, the command must target an executable launcher form supported by the
+      installed agym contract (the `.cmd` launcher is the established native subprocess
+      surface). On non-Windows platforms, preserve the existing `agym` command semantics.
+    - >
+      Launcher resolution must remain provider-neutral and credential-free. No MiniMax API
+      key, provider URL, subscription secret, or local worker path may be added to AIOS
+      command arguments or repository configuration.
+    - >
+      Preserve every existing agym argument after argv[0], including prompt, output format,
+      workspace, AIOS mode, operation, response schema, model, response timeout, process
+      timeout, expected HEAD, and allow-commit authorization.
+    - >
+      Missing launcher must still fail closed as `AntigravityMinimaxExecutionError` with
+      bounded diagnostics and without retry, fallback, reroute, or alternate Executor.
+    - >
+      Add deterministic regression coverage for both Windows and non-Windows launcher name
+      selection without depending on the developer machine having agym installed.
+    - >
+      Add a real Windows subprocess regression using a temporary `.cmd` launcher (not the
+      user's MiniMax credential or external installation) proving the selected Windows
+      launcher form can be started by Python with `shell=False`. Skip this OS-specific test
+      on non-Windows hosts while keeping platform-neutral selection tests active everywhere.
+    - >
+      Existing TASK-091 command-contract, PRIMARY, REMEDIATION, REPAIR, timeout, malformed
+      output, State Guard, workspace/HEAD, and structural validation regressions must remain
+      green.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Platform-aware launcher selection returns `agym.cmd` for Windows and `agym` for
+      non-Windows execution, and `command_for()` uses that selected launcher as argv[0]
+      while preserving all existing provider-neutral arguments unchanged.
+  - id: AC2
+    condition: >
+      A deterministic Windows-only real subprocess regression creates a temporary `.cmd`
+      launcher and proves Python starts it successfully with `shell=False`, demonstrating
+      the exact process-launch mechanism required by the production adapter without using
+      external MiniMax credentials or network access.
+  - id: AC3
+    condition: >
+      Native adapter invocation still passes the exact command tuple to the injected runner,
+      preserves cwd/capture/text/check/watchdog semantics, and missing-launcher failure
+      remains fail-closed with no second invocation.
+  - id: AC4
+    condition: >
+      Existing TASK-091 adapter behavior for PRIMARY, REMEDIATION, REPAIR, agym.result.v1
+      parsing, State Guard, structural output, workspace/HEAD binding, timeout, and no
+      fallback remains unchanged and all focused regressions pass.
+  - id: AC5
+    condition: >
+      Production mutation is confined to the adapter and its focused test file; no worker,
+      proxy, credential, roadmap, Runtime, Dispatcher, Operator, Reviewer, or Publisher
+      behavior is changed.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_antigravity_minimax_adapter.py
+    - git diff --check
