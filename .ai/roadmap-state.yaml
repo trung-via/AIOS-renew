@@ -1,7 +1,19 @@
 version: 1
-active_track: control-plane-closure
-active_track_status: COMPLETE
-next_items: []
+active_track: brain-portability
+active_track_status: ACTIVE
+planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+planning_baseline:
+  id: bp-0-architecture-baseline
+  status: HUMAN_APPROVED
+  approved_on: "2026-09-17"
+  approved_against_main_sha: "c96eb8b52acd865b9453409e6598e08a8bd4e48e"
+  authority: HUMAN_BRAIN_PLANNING
+  note: >-
+    BP-0 is the Human-approved architecture and roadmap planning baseline. It does
+    not claim implementation completion for BP-1 through BP-9, does not create RUN
+    or verification truth, and does not alter frozen Kernel v0.1 semantics.
+next_items:
+  - bp-1-primary-exact-intent-binding-v2
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -49,38 +61,18 @@ sequence:
       task_id: TASK-103
       task_revision: 2
       published_sha: "3b7d1aa3035e7cf2794867b788bc8197e2c9f29f"
-    note: >-
-      TASK-103 revision 1 remains immutable non-repairable historical failure evidence.
-      Revision 2 completed the generic hardening and is semantically reviewed PASS and
-      published at the exact current-main SHA above.
   - id: brain-authoring-ingress
     status: DONE
     completed_by:
       task_id: TASK-104
       task_revision: 1
       published_sha: "cdd230fedbb332f4e13a81a9607fea23976de36d"
-    note: >-
-      TASK-104 revision 1 introduced the generic Brain-to-repository authoring ingress
-      and was published at the SHA above. Subsequent production incident evidence proved
-      that its SUBMIT_REVIEW, AUTHOR_REMEDIATION, and AUTHOR_REPAIR Git snapshot
-      construction did not preserve predecessor trees. TASK-104 lineage and malformed
-      historical control-plane refs remain immutable evidence; current safe ingress
-      semantics require the TASK-105 structural recovery recorded below.
   - id: brain-authoring-ingress-structural-recovery
     status: DONE
     completed_by:
       task_id: TASK-105
       task_revision: 1
       published_sha: "3c39371632a07efceecb5ff5aa83892aeaca3579"
-    note: >-
-      TASK-105 repaired the TASK-104 control-plane regression for REVIEW, REMEDIATION,
-      and REPAIR by restoring exact predecessor-tree inheritance and operation-specific
-      structural postconditions before ref publication. REVIEW-105-001 PASS was
-      bootstrapped through a bounded incident-recovery path, its decision commit preserved
-      the full candidate snapshot with only REVIEW metadata added, GitHub auto-publication
-      completed successfully, and a post-publication SUBMIT_REVIEW replay returned the
-      exact existing decision as IDEMPOTENT. Historical malformed refs are preserved and
-      are not rewritten.
   - id: performance-closure
     status: DONE
     completed_by:
@@ -89,14 +81,6 @@ sequence:
       published_sha: "a3b723b49cd65677f548c5694a52a6fc006a9e2a"
     phase: P5-performance-observation-surface
     planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
-    note: >-
-      Performance Closure P1-P5 is complete. TASK-101 revision 4 established the
-      bounded read-only AIOS_PERFORMANCE_OBSERVATION v1 surface from the post-TASK-105
-      canonical base. RUN-101-007 completed canonical Runtime verification, PRIMARY
-      REVIEW-101-007 returned PASS for AC1-AC9, and the reviewed candidate was
-      auto-published at the exact SHA above. TASK-101 revisions 1-3 and their RUN,
-      REVIEW, REMEDIATION, REPAIR, RESULT, FAILURE, and candidate lineage remain
-      immutable historical evidence and do not supersede revision-4 completion.
   - id: downstream-adoption
     status: DONE
     completed_by:
@@ -104,47 +88,78 @@ sequence:
       downstream_repository: trung-via/python_complete_agent
       migration_task_id: TASK-201
       downstream_aios_pin: "f0237a3b98985ce6ebbaf41af1e06fa3eb4e998e"
-    note: >-
-      Downstream Adoption closed only after canonical Python Agent TASK-201 received
-      semantic PASS, its reviewed source was published, and a fresh downstream BRAIN
-      SYNC proved that the sole active AIOS dependency pin equals the immutable SHA
-      above. This records bounded cross-repository provenance; it does not make
-      mutable AIOS-renew main downstream authority or automatically activate
-      AIOS-renew repository-specific outer automation in Python Agent. That
-      non-activation statement is a historical fact about the TASK-201 migration,
-      not a current prospective classification of standard AIOS control-plane
-      capability as inapplicable downstream.
+  - id: bp-1-primary-exact-intent-binding-v2
+    status: NEXT
+    task_id: TASK-130
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Bind new PRIMARY authorization to exact TASK semantic identity while allowing
+      unrelated newer admissible main state when the authorized TASK artifact is unchanged.
+  - id: bp-2-operational-attribution-v2
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Close pre-AIOS/self-host attribution gaps and preserve typed lower-layer causes
+      without fabricating engineering lifecycle truth.
+  - id: bp-3-brain-context-foundation
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Add transient Work Context composition, thin Flow Resolver, and repository-owned
+      Flow Cards by reusing Brain Sync, Unified State, roadmap and canonical lineage.
+  - id: bp-4-decision-packet-compiler
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Compile bounded deterministic decision packets that separate facts and observations
+      from semantic judgment.
+  - id: bp-5-brain-provider-protocol
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Establish provider-neutral Brain request/decision contracts that do not require
+      provider-specific GitHub connector access.
+  - id: bp-6-reviewer-provider-protocol
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Establish a separate provider-neutral Reviewer protocol without merging Brain and
+      Reviewer authorities.
+  - id: bp-7-hot-swap-conformance
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Prove cross-context/provider continuation from canonical state without previous
+      model memory.
+  - id: bp-8-real-second-provider-proof
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Prove the contracts with one controlled real non-default Brain or Reviewer provider
+      while retaining the existing GitHub/self-host execution path.
+  - id: bp-9-downstream-adoption
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Adopt the reviewed capability downstream only through an explicit exact-pin,
+      repository-owned migration after BP-8 evidence exists.
+previous_track:
+  id: control-plane-closure
+  status: COMPLETE
+  handoff_main_sha: "c96eb8b52acd865b9453409e6598e08a8bd4e48e"
+  note: >-
+    The completed control-plane-closure engineering lineage remains immutable historical
+    truth. Opening Brain Portability is an explicit current Human priority change and
+    does not reopen or reinterpret that completed track.
 post_closure_human_priority:
   id: downstream-control-plane-portability-policy
-  status: AUTHORIZED
+  status: SUPERSEDED_FOR_CURRENT_PLANNING
   task_id: TASK-114
-  status_meaning: >-
-    AUTHORIZED records explicit Human planning intent. It does not claim
-    implementation completion, semantic PASS, reviewed publication, downstream
-    binding activation, or engineering-state advancement.
-  policy: >-
-    Standard AIOS outer control-plane capability is portable downstream through an
-    explicit reviewed downstream-owned repository binding. Capability portability
-    is separate from repository binding activation: package or exact-pin availability
-    does not silently create workflows, permissions, repository identity, actor
-    allowlists, runner labels or paths, carrier bindings, or mutation authority. A
-    coherent adoption contract may cover compatible standard
-    surfaces together while TASK-107 AUTHORING, TASK-108 PRIMARY and A1/A2
-    dispatch, A3/A6 and TASK-112 REMEDIATION, TASK-110 publication continuation,
-    TASK-111 REPAIR, TASK-113 ATTENTION, Runtime, Reviewer, and Publisher
-    authorities remain distinct; it creates no generic lifecycle router or new
-    semantic authority.
-completion_handoff: >-
-  Control-plane Closure remains COMPLETE with no NEXT item. TASK-114 received
-  semantic PASS at reviewed source 1efba203f8f1554351e54599bd3063b749e29db8,
-  but that historical source diverged after TASK-115 advanced current main and was
-  not itself published. TASK-116 is the separate current-main integration authority.
-  Only after TASK-116 receives semantic PASS and its reviewed source is published,
-  perform a fresh downstream BRAIN SYNC of trung-via/python_complete_agent current
-  main, exact AIOS pin, roadmap and adoption state, governance, and relevant immutable
-  TASK, RUN, RESULT, FAILURE, REVIEW, REMEDIATION, and REPAIR lineage. Follow that
-  repository's then-current canonical authority; do not preserve a previously observed
-  downstream commitment or copy a downstream NEXT identifier into this upstream bookmark.
+  superseded_by: brain-portability
+  note: >-
+    Historical TASK-114 policy/lineage remains evidence. The current Human-approved
+    Brain Portability track prospectively supersedes it as the active planning priority.
 parallel_work:
   - id: approved-remediation-wakeup
     milestone: A6
@@ -154,20 +169,23 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Absent an explicit new Human priority, "continue roadmap" means continue the
-    unique NEXT item in the active track; parallel work does not compete with it.
+    Absent a newer explicit Human priority, continue only the unique NEXT item in the
+    active Brain Portability track. PLANNED and parallel work do not compete with NEXT.
   human_override: >-
-    An explicit Human track or priority change outranks the pointer and must be
-    canonicalized in this bookmark before later generic continuation relies on it.
+    A newer explicit Human track or priority change outranks this pointer prospectively
+    and must be canonicalized before later generic continuation relies on it.
+  task_gate: >-
+    A NEXT milestone with a task_id is not executable until that exact TASK revision is
+    canonically authored and Brain Sync reconciles it against current engineering lineage.
 authority:
   purpose: Human/Brain planning state only
   engineering_truth: >-
     Exact canonical Git state and immutable TASK, RUN, RESULT, FAILURE, REVIEW,
-    REMEDIATION, and REPAIR lineage are the sole engineering-state truth.
+    REMEDIATION, and REPAIR lineage remain the sole engineering-state truth.
   completion: >-
-    DONE requires an exact supporting task and published SHA; this roadmap state
-    never makes a TASK or RUN complete and cannot override conflicting lineage.
+    Implementation milestone DONE requires exact supporting reviewed/published evidence;
+    this roadmap state never makes a TASK or RUN complete and cannot override conflicting lineage.
   advancement: >-
-    Updates are Human/Brain roadmap-authority changes grounded in canonical evidence;
-    execution, review, publication, and workflow events do not advance this state
-    automatically.
+    Updates are explicit Human/Brain roadmap-authority changes grounded in canonical evidence;
+    execution, review, publication, workflows, Brain providers, and Runtime do not advance
+    roadmap semantics automatically.
