@@ -1,0 +1,10 @@
+finding_id: FINDING-135-001
+action: CODE_FIX
+reviewed_sha: 4c6dc98e79e0b5133b82640152afcb3039948175
+modification_scope:
+  - src/aios_renew/correction_integration.py
+  - tests/test_correction_integration.py
+affected_verification:
+  - python -m pytest -q tests/test_correction_integration.py
+  - python -m pytest -q tests/test_operator_correction_preflight.py tests/test_operator_unified_state.py
+  - git diff --check
