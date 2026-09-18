@@ -293,26 +293,88 @@ def integrate_correction(
             f"found {loaded_task.task_id} r{loaded_task.revision}"
         )
 
-    # 1. Stale-main validation:
-    code, actual_main, _ = _git_cmd(
-        root, "rev-parse", "--verify", "refs/heads/main", allow_fail=True
-    )
-    if code != 0 or not actual_main:
-        code, actual_main, _ = _git_cmd(
-            root, "rev-parse", "--verify", "refs/remotes/origin/main", allow_fail=True
+    # 1. Resolve canonical remote task lifecycle as mandatory evidence
+    from .review_transport import resolve_remote_task_lifecycle as _default_resolve_lifecycle
+    from .unified_state import _decode_remote_lifecycle, _operational_parent
+
+    import aios_renew.operator as op_module
+    import aios_renew.review_transport as rt_module
+
+    resolve_lifecycle_fn = getattr(op_module, "resolve_remote_task_lifecycle", None)
+    if (
+        resolve_lifecycle_fn is None
+        or resolve_lifecycle_fn is getattr(rt_module, "resolve_remote_task_lifecycle", None)
+    ):
+        resolve_lifecycle_fn = getattr(rt_module, "resolve_remote_task_lifecycle", _default_resolve_lifecycle)
+    if resolve_lifecycle_fn is None:
+        resolve_lifecycle_fn = _default_resolve_lifecycle
+
+    try:
+        lifecycle = resolve_lifecycle_fn(
+            root, task_id=task_id, task_revision=task_revision
         )
-    if code != 0 or not actual_main:
-        code, branch, _ = _git_cmd(
-            root, "symbolic-ref", "--quiet", "--short", "HEAD", allow_fail=True
-        )
-        if code == 0 and branch == "main":
-            _, actual_main, _ = _git_cmd(root, "rev-parse", "HEAD")
-    if not actual_main or actual_main != main_sha:
+    except CorrectionIntegrationError:
+        raise
+    except Exception as exc:
         raise CorrectionIntegrationError(
-            f"current main SHA ({actual_main or 'missing'}) does not match authorized main SHA ({main_sha})"
+            f"failed to resolve canonical remote task lifecycle: {exc}"
+        ) from exc
+
+    # 2. Canonical remote main validation: require main_sha to equal authorized main SHA
+    lifecycle_main = getattr(lifecycle, "main_sha", None)
+    if not lifecycle_main or not isinstance(lifecycle_main, str):
+        raise CorrectionIntegrationError("canonical remote task lifecycle has no main SHA")
+    if lifecycle_main != main_sha:
+        raise CorrectionIntegrationError(
+            f"canonical remote main SHA ({lifecycle_main}) does not match authorized main SHA ({main_sha})"
         )
 
-    # 2. Stale-tip validation:
+    # 3. Decode canonical remote lifecycle: propagate decoding failures as CorrectionIntegrationError
+    try:
+        decoded, _ = _decode_remote_lifecycle(root, loaded_task, lifecycle)
+    except CorrectionIntegrationError:
+        raise
+    except Exception as exc:
+        raise CorrectionIntegrationError(
+            f"failed to decode canonical remote task lifecycle: {exc}"
+        ) from exc
+
+    # 4. Require exactly one valid RESULT operational tip whose RUN id and candidate SHA equal authorized cumulative tip
+    children: dict[str, list[Any]] = {}
+    for item in decoded:
+        p = _operational_parent(item)
+        if p is not None:
+            children.setdefault(p, []).append(item)
+    if any(len(value) != 1 for value in children.values()):
+        raise CorrectionIntegrationError(
+            "cumulative correction lineage has competing continuations"
+        )
+    tips = [item for item in decoded if item.run_id not in children]
+    if not tips:
+        raise CorrectionIntegrationError(
+            "canonical remote task lifecycle has no operational tips"
+        )
+    if len(tips) != 1:
+        raise CorrectionIntegrationError(
+            f"canonical remote task lifecycle has competing operational tips: {[t.run_id for t in tips]}"
+        )
+
+    canonical_tip = tips[0]
+    tip_kind = getattr(canonical_tip, "terminal_kind", getattr(canonical_tip, "kind", None))
+    if tip_kind != "RESULT":
+        raise CorrectionIntegrationError(
+            f"canonical operational tip {canonical_tip.run_id} is not a valid RESULT terminal (found {tip_kind})"
+        )
+    if (
+        canonical_tip.run_id != cumulative_tip_run_id
+        or canonical_tip.candidate_sha != cumulative_tip_candidate_sha
+    ):
+        raise CorrectionIntegrationError(
+            f"cumulative tip selector is stale: expected {canonical_tip.run_id} ({canonical_tip.candidate_sha}), "
+            f"authorized {cumulative_tip_run_id} ({cumulative_tip_candidate_sha})"
+        )
+
+    # 5. Validate commits exist locally
     code, kind, _ = _git_cmd(
         root, "cat-file", "-t", cumulative_tip_candidate_sha, allow_fail=True
     )
@@ -320,34 +382,13 @@ def integrate_correction(
         raise CorrectionIntegrationError(
             f"cumulative tip candidate commit {cumulative_tip_candidate_sha} is missing or not a commit"
         )
-
-    try:
-        from .review_transport import resolve_remote_task_lifecycle
-        from .unified_state import _decode_remote_lifecycle, _operational_parent
-
-        lifecycle = resolve_remote_task_lifecycle(
-            root, task_id=task_id, task_revision=task_revision
+    code, kind, _ = _git_cmd(
+        root, "cat-file", "-t", main_sha, allow_fail=True
+    )
+    if code != 0 or kind != "commit":
+        raise CorrectionIntegrationError(
+            f"authorized main commit {main_sha} is missing or not a commit"
         )
-        decoded, _ = _decode_remote_lifecycle(root, loaded_task, lifecycle)
-        children: dict[str, list[Any]] = {}
-        for item in decoded:
-            p = _operational_parent(item)
-            if p is not None:
-                children.setdefault(p, []).append(item)
-        tips = [item for item in decoded if item.run_id not in children]
-        if tips:
-            canonical_tip = tips[0]
-            if (
-                canonical_tip.run_id != cumulative_tip_run_id
-                or canonical_tip.candidate_sha != cumulative_tip_candidate_sha
-            ):
-                raise CorrectionIntegrationError(
-                    f"cumulative tip selector is stale: expected {canonical_tip.run_id} ({canonical_tip.candidate_sha}), "
-                    f"authorized {cumulative_tip_run_id} ({cumulative_tip_candidate_sha})"
-                )
-    except Exception as exc:
-        if isinstance(exc, CorrectionIntegrationError):
-            raise
 
     integration_id = derive_integration_identity(
         task_id, task_revision, cumulative_tip_run_id, cumulative_tip_candidate_sha, main_sha
