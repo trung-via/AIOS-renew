@@ -611,3 +611,95 @@ def test_operator_integrate_correction_wrapper_and_cli(tmp_path: Path, capsys: p
     assert exit_code_alias == 0
     captured_alias = capsys.readouterr()
     assert "AIOS CORRECTION INTEGRATION SUCCEEDED" in captured_alias.out
+
+
+def test_integration_remote_push_failure_fails_closed_and_rolls_back_local_ref(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    base_head = git(repo, "rev-parse", "HEAD")
+
+    git(repo, "checkout", "-b", "correction-tip")
+    (repo / "CORRECTION.txt").write_text("correction\n", encoding="utf-8")
+    git(repo, "add", "CORRECTION.txt")
+    git(repo, "commit", "-m", "correction commit")
+    tip_sha = git(repo, "rev-parse", "HEAD")
+
+    git(repo, "checkout", "main")
+    (repo / "MAIN_UPDATE.txt").write_text("main update\n", encoding="utf-8")
+    git(repo, "add", "MAIN_UPDATE.txt")
+    git(repo, "commit", "-m", "advance main")
+    main_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    _publish_terminal_result(repo, "RUN-101-001", tip_sha, base_sha=base_head)
+
+    integration_id = derive_integration_identity(
+        "TASK-101", 1, "RUN-101-001", tip_sha, main_sha
+    )
+    expected_ref = integration_ref_name(integration_id)
+
+    # Force remote push failure by setting an unreachable push URL on origin
+    git(repo, "remote", "set-url", "--push", "origin", str(tmp_path / "broken_push.git"))
+
+    with pytest.raises(CorrectionIntegrationError, match="failed to push integration ref"):
+        integrate_correction(
+            "TASK-101",
+            task_revision=1,
+            cumulative_tip_run_id="RUN-101-001",
+            cumulative_tip_candidate_sha=tip_sha,
+            authorized_main_sha=main_sha,
+            repo=repo,
+        )
+
+    # Local ref must be rolled back and not exist
+    proc_loc = subprocess.run(
+        ("git", "-C", str(repo), "rev-parse", "--verify", expected_ref),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc_loc.returncode != 0
+
+    # Remote ref must not exist on origin
+    proc_rem = subprocess.run(
+        ("git", "-C", str(repo), "ls-remote", "--refs", str(tmp_path / "upstream.git"), expected_ref),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc_rem.stdout.strip() == ""
+
+    # resolve_valid_integration fails closed
+    assert resolve_valid_integration(
+        repo,
+        task_id="TASK-101",
+        task_revision=1,
+        cumulative_tip_run_id="RUN-101-001",
+        cumulative_tip_candidate_sha=tip_sha,
+        authorized_main_sha=main_sha,
+    ) is None
+
+    # CLI also fails closed with non-zero exit code
+    exit_code = operator_main([
+        "integrate-correction",
+        "TASK-101",
+        "--task-revision", "1",
+        "--cumulative-tip-run", "RUN-101-001",
+        "--cumulative-tip-candidate", tip_sha,
+        "--authorized-main", main_sha,
+        "--repo", str(repo),
+    ])
+    assert exit_code != 0
+
+    # Local-only staging test: if a local ref exists but canonical remote integration ref is missing,
+    # resolve_valid_integration must refuse it
+    git(repo, "remote", "set-url", "--push", "origin", str(tmp_path / "upstream.git"))
+    dummy_commit = tip_sha
+    git(repo, "update-ref", expected_ref, dummy_commit)
+    assert resolve_valid_integration(
+        repo,
+        task_id="TASK-101",
+        task_revision=1,
+        cumulative_tip_run_id="RUN-101-001",
+        cumulative_tip_candidate_sha=tip_sha,
+        authorized_main_sha=main_sha,
+    ) is None

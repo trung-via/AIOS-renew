@@ -141,6 +141,31 @@ def _commit_tree(
     return proc.stdout.strip()
 
 
+def _detect_remote(repo: Path) -> str | None:
+    code, branch, _ = _git_cmd(
+        repo, "symbolic-ref", "--quiet", "--short", "HEAD", allow_fail=True
+    )
+    if code == 0 and branch:
+        code, remote, _ = _git_cmd(
+            repo, "config", "--get", f"branch.{branch}.remote", allow_fail=True
+        )
+        if code == 0 and remote and remote != ".":
+            return remote
+    code, remote, _ = _git_cmd(
+        repo, "config", "--get", "remote.origin.url", allow_fail=True
+    )
+    if code == 0 and remote:
+        return "origin"
+    code, remotes_out, _ = _git_cmd(repo, "remote", allow_fail=True)
+    if code == 0:
+        names = remotes_out.split()
+        if "origin" in names:
+            return "origin"
+        if names:
+            return names[0]
+    return None
+
+
 def resolve_valid_integration(
     repo: Path,
     *,
@@ -149,6 +174,7 @@ def resolve_valid_integration(
     cumulative_tip_run_id: str,
     cumulative_tip_candidate_sha: str,
     authorized_main_sha: str,
+    require_remote: bool = False,
 ) -> CorrectionIntegrationResult | None:
     """Validate and return the exact integration candidate if present and clean, else None."""
     integration_id = derive_integration_identity(
@@ -160,40 +186,46 @@ def resolve_valid_integration(
     )
     ref = integration_ref_name(integration_id)
 
-    # 1. Look up ref locally
-    code, out, _ = _git_cmd(
-        repo, "rev-parse", "--verify", "-q", f"{ref}^{{commit}}", allow_fail=True
-    )
-    if code != 0 or not out:
-        # Check remote-tracking branch refs/remotes/origin/...
-        code, out, _ = _git_cmd(
-            repo,
-            "rev-parse",
-            "--verify",
-            "-q",
-            f"refs/remotes/origin/aios/integration/{integration_id}^{{commit}}",
-            allow_fail=True,
-        )
-    if code != 0 or not out:
-        # Check ls-remote if a remote is configured
-        code_remote, remote, _ = _git_cmd(
-            repo, "config", "--get", "remote.origin.url", allow_fail=True
-        )
-        if code_remote == 0 and remote:
-            code_ls, ls_out, _ = _git_cmd(
-                repo, "ls-remote", "--refs", "origin", ref, allow_fail=True
-            )
-            if code_ls == 0 and ls_out.strip():
-                remote_sha = ls_out.strip().split()[0]
-                _git_cmd(repo, "fetch", "--no-tags", "origin", remote_sha, allow_fail=True)
-                out = remote_sha
-                code = 0
-    if code != 0 or not out:
+    remote_name = _detect_remote(repo)
+    if require_remote and not remote_name:
         return None
 
-    candidate_sha = out.strip()
-    if not _SHA_PATTERN.fullmatch(candidate_sha):
-        return None
+    if remote_name:
+        code_ls, ls_out, _ = _git_cmd(
+            repo, "ls-remote", "--refs", remote_name, ref, allow_fail=True
+        )
+        lines = [line.split() for line in ls_out.splitlines() if line.strip()]
+        if code_ls != 0 or len(lines) != 1 or lines[0][1] != ref:
+            return None
+        remote_sha = lines[0][0]
+        if not _SHA_PATTERN.fullmatch(remote_sha):
+            return None
+
+        code_loc, loc_sha, _ = _git_cmd(
+            repo, "rev-parse", "--verify", "-q", f"{ref}^{{commit}}", allow_fail=True
+        )
+        if code_loc == 0 and loc_sha != remote_sha:
+            return None
+
+        code_cat, _, _ = _git_cmd(
+            repo, "cat-file", "-e", f"{remote_sha}^{{commit}}", allow_fail=True
+        )
+        if code_cat != 0:
+            code_fetch, _, _ = _git_cmd(
+                repo, "fetch", "--no-tags", remote_name, remote_sha, allow_fail=True
+            )
+            if code_fetch != 0:
+                return None
+        candidate_sha = remote_sha
+    else:
+        code, out, _ = _git_cmd(
+            repo, "rev-parse", "--verify", "-q", f"{ref}^{{commit}}", allow_fail=True
+        )
+        if code != 0 or not out:
+            return None
+        candidate_sha = out.strip()
+        if not _SHA_PATTERN.fullmatch(candidate_sha):
+            return None
 
     # 2. Check commit type
     code, kind, _ = _git_cmd(repo, "cat-file", "-t", candidate_sha, allow_fail=True)
@@ -456,23 +488,35 @@ def integrate_correction(
         message=commit_msg,
     )
 
-    # 6. Update local ref
-    _git_cmd(root, "update-ref", ref, candidate_commit_sha)
-
-    # 7. If remote origin exists, push ref to remote
-    code, remote, _ = _git_cmd(
-        root, "config", "--get", "remote.origin.url", allow_fail=True
-    )
-    if code == 0 and remote:
-        _git_cmd(
+    # 6. Push to remote and verify, or update local ref
+    remote_name = _detect_remote(root)
+    if remote_name:
+        code_push, push_out, push_err = _git_cmd(
             root,
             "push",
             "--quiet",
             "--no-tags",
-            "origin",
+            remote_name,
             f"{candidate_commit_sha}:{ref}",
             allow_fail=True,
         )
+        if code_push != 0:
+            _git_cmd(root, "update-ref", "-d", ref, allow_fail=True)
+            raise CorrectionIntegrationError(
+                f"failed to push integration ref {ref} to remote {remote_name}: {push_err or push_out}"
+            )
+        code_ls, ls_out, _ = _git_cmd(
+            root, "ls-remote", "--refs", remote_name, ref, allow_fail=True
+        )
+        lines = [line.split() for line in ls_out.splitlines() if line.strip()]
+        if code_ls != 0 or len(lines) != 1 or lines[0][0] != candidate_commit_sha:
+            _git_cmd(root, "update-ref", "-d", ref, allow_fail=True)
+            raise CorrectionIntegrationError(
+                f"canonical remote integration ref verification failed: expected {candidate_commit_sha} for {ref} on {remote_name}"
+            )
+        _git_cmd(root, "update-ref", ref, candidate_commit_sha)
+    else:
+        _git_cmd(root, "update-ref", ref, candidate_commit_sha)
 
     return CorrectionIntegrationResult(
         task_id=task_id,

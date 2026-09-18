@@ -774,6 +774,7 @@ def _resolve_cumulative_execution_base(
             cumulative_tip_run_id=tip.run_id,
             cumulative_tip_candidate_sha=tip.candidate_sha,
             authorized_main_sha=lifecycle.main_sha,
+            require_remote=True,
         )
         if integration is None:
             raise ValueError("current main and cumulative execution base require integration")
@@ -1271,6 +1272,7 @@ def observe_unified_state(
                         cumulative_tip_run_id=tip.run_id,
                         cumulative_tip_candidate_sha=tip.candidate_sha,
                         authorized_main_sha=lifecycle.main_sha,
+                        require_remote=True,
                     )
                     if integration is None:
                         return _unified_blocked(

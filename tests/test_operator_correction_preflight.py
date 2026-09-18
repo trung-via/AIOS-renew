@@ -746,3 +746,101 @@ findings:
     preflight_invalidated = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
     assert preflight_invalidated.status == "BLOCKED"
     assert preflight_invalidated.reason_code == "INTEGRATION_REQUIRED"
+
+
+def test_correction_preflight_remediation_remains_integration_required_on_remote_push_failure_or_missing_remote_ref(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        reviewed_sha=head,
+    )
+
+    primary_id = "RUN-101-000"
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    review = f"""review_id: REVIEW-RUN-101-000
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The output is absent.
+    expected: Commit only the output.
+""".encode()
+
+    (repo / "MAIN.txt").write_text("main advance\n", encoding="utf-8")
+    git(repo, "add", "MAIN.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main ahead of tip")
+    new_main = git(repo, "rev-parse", "HEAD")
+
+    lifecycle_integration = RemoteTaskLifecycle(
+        new_main,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, head, review),),
+        (), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle_integration,
+    )
+
+    # 1. Initially INTEGRATION_REQUIRED
+    preflight = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight.status == "BLOCKED"
+    assert preflight.reason_code == "INTEGRATION_REQUIRED"
+
+    # 2. Break remote push
+    git(repo, "remote", "set-url", "--push", "origin", str(tmp_path / "broken_push.git"))
+    from aios_renew.correction_integration import (
+        CorrectionIntegrationError,
+        derive_integration_identity,
+        integrate_correction,
+        integration_ref_name,
+    )
+    with pytest.raises(CorrectionIntegrationError, match="failed to push integration ref"):
+        integrate_correction(
+            "TASK-101",
+            task_revision=1,
+            cumulative_tip_run_id=primary_id,
+            cumulative_tip_candidate_sha=head,
+            authorized_main_sha=new_main,
+            repo=repo,
+        )
+
+    # Preflight remains BLOCKED / INTEGRATION_REQUIRED after push failure
+    preflight_after_failed_push = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight_after_failed_push.status == "BLOCKED"
+    assert preflight_after_failed_push.reason_code == "INTEGRATION_REQUIRED"
+
+    # 3. Even if local-only staging ref is created, Preflight remains INTEGRATION_REQUIRED
+    # because the canonical remote integration ref is missing on origin
+    int_id = derive_integration_identity("TASK-101", 1, primary_id, head, new_main)
+    local_ref = integration_ref_name(int_id)
+    git(repo, "update-ref", local_ref, head)
+
+    preflight_local_only = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight_local_only.status == "BLOCKED"
+    assert preflight_local_only.reason_code == "INTEGRATION_REQUIRED"

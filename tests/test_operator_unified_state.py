@@ -30,6 +30,7 @@ from tests.operator_test_support import (
     canonical_result_payload,
     git,
     make_repo,
+    publish_test_remediation_lineage,
     publish_upstream,
 )
 
@@ -1698,3 +1699,125 @@ findings: []
     obs_invalidated = observe_unified_state("TASK-101", repo=repo).as_dict()
     assert obs_invalidated["next_action"] == "NONE"
     assert obs_invalidated["blocker"] == {"code": "INTEGRATION_REQUIRED"}
+
+
+def test_unified_state_and_remediation_remain_integration_required_on_remote_push_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import shutil
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+
+    primary_id = "RUN-101-000"
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id=primary_id,
+        finding_id="R1",
+        reviewed_sha=head,
+    )
+    state = runtime_paths(repo)
+    if state.runs.is_dir():
+        shutil.rmtree(state.runs)
+    if state.results.is_dir():
+        shutil.rmtree(state.results)
+
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    review = f"""review_id: REVIEW-RUN-101-000
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The output is absent.
+    expected: Commit only the output.
+""".encode()
+
+    (repo / "MAIN.txt").write_text("main advance\n", encoding="utf-8")
+    git(repo, "add", "MAIN.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main ahead of tip")
+    new_main = git(repo, "rev-parse", "HEAD")
+
+    lifecycle_integration = RemoteTaskLifecycle(
+        new_main,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, head, review),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle_integration)
+
+    # 1. Unified state initially reports INTEGRATION_REQUIRED
+    obs_initial = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_initial["next_action"] == "NONE"
+    assert obs_initial["blocker"] == {"code": "INTEGRATION_REQUIRED"}
+
+    # 2. Break remote push to simulate push failure
+    git(repo, "remote", "set-url", "--push", "origin", str(tmp_path / "broken_push.git"))
+    from aios_renew.correction_integration import (
+        CorrectionIntegrationError,
+        derive_integration_identity,
+        integrate_correction,
+        integration_ref_name,
+    )
+
+    with pytest.raises(CorrectionIntegrationError, match="failed to push integration ref"):
+        integrate_correction(
+            "TASK-101",
+            task_revision=1,
+            cumulative_tip_run_id=primary_id,
+            cumulative_tip_candidate_sha=head,
+            authorized_main_sha=new_main,
+            repo=repo,
+        )
+
+    # Unified state remains INTEGRATION_REQUIRED after push failure
+    obs_after_push_failure = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_after_push_failure["next_action"] == "NONE"
+    assert obs_after_push_failure["blocker"] == {"code": "INTEGRATION_REQUIRED"}
+
+    # 3. Simulate local-only staging (local ref exists, but missing from remote)
+    int_id = derive_integration_identity("TASK-101", 1, primary_id, head, new_main)
+    local_ref = integration_ref_name(int_id)
+    git(repo, "update-ref", local_ref, head)
+
+    obs_local_only = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_local_only["next_action"] == "NONE"
+    assert obs_local_only["blocker"] == {"code": "INTEGRATION_REQUIRED"}
+
+    # 4. Attempting to run remediation fails closed: no RUN is created, no executor invoked
+    from aios_renew.operator import run_remediation, OperatorError
+    executor_invoked = []
+    def fake_native_runner(*_args, **_kwargs):
+        executor_invoked.append(True)
+        raise AssertionError("Executor must not be invoked when integration is required")
+
+    with pytest.raises(OperatorError, match="cumulative execution base rejected.*require integration"):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+            native_runner=fake_native_runner,
+        )
+
+    assert len(executor_invoked) == 0
+
+    remediation_runs = list(state.runs.glob("RUN-101-*.json")) if state.runs.is_dir() else []
+    assert len(remediation_runs) == 0
