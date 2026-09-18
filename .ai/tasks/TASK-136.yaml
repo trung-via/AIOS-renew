@@ -1,11 +1,11 @@
 task_id: TASK-136
-revision: 1
+revision: 2
 
 goal: >
   Make Brain Authoring Ingress canonicalize the correct DELTA REVIEW for a successful
   REPAIR of a REMEDIATION candidate by reconstructing and validating the immutable
   REPAIR lineage from canonical artifacts, using the same semantic rules already
-  enforced by Publisher.
+  enforced by Publisher and binding the REVIEW to the exact repaired remediation finding.
 
 problem: >
   TASK-135 RUN-135-004 is a successful FINALIZE_CANDIDATE REPAIR of failed REMEDIATION
@@ -14,15 +14,18 @@ problem: >
   repair.json, reconstructs the failed predecessor lineage, determines that the repaired
   candidate belongs to FINDING-135-002, and requires a DELTA REVIEW whose
   prior_finding_id matches that semantic finding. Brain Authoring Ingress SUBMIT_REVIEW,
-  however, currently reads only run.json and result.json. It therefore treats RUN-135-004
-  as an ordinary successful RUN, cannot resolve the prior remediation review/finding,
-  and cannot canonicalize the DELTA REVIEW that Publisher requires. This leaves a valid
-  semantic PASS candidate unable to cross the review-authoring boundary.
+  however, currently reads only run.json and result.json and cannot reconstruct that
+  lineage. TASK-136 r1's first PRIMARY attempt, RUN-136-001, failed before producing a
+  ResultPackage and left only an uncommitted local WIP. Audit of that WIP found two
+  additional requirements that must be explicit in the canonical contract: the DELTA
+  review must bind to the exact remediation finding rather than merely any finding in the
+  prior review, and production-topology regression tests must actually be added and
+  executed.
 
 assumptions:
   - >
-    Canonical main at authoring is
-    fbbc336e876481a173962a0c7ea2e3da3d6bb183.
+    Canonical main at revision-2 authoring is
+    68f3737a87ac07212609521e8d41ed10fcb2bc8f.
   - >
     RUN-135-004 canonical review candidate is
     d4c822d64e43713995134d89c5b663f7d2a3390f and its artifacts contain
@@ -31,6 +34,11 @@ assumptions:
     Publisher's existing REPAIR-lineage semantics are authoritative and already require
     DELTA REVIEW for REPAIR of REMEDIATION and PRIMARY REVIEW only for REPAIR before any
     semantic finding.
+  - >
+    The dirty local WIP left by failed RUN-136-001 is not canonical lifecycle state and
+    must not be treated as an admitted candidate, predecessor, or source of authority.
+    It may be consulted only as implementation reference after the Executor starts from a
+    clean canonical base.
   - >
     No semantic changes are required to TASK-135, RUN-135-004, REVIEW-135-001,
     REVIEW-135-002, either remediation, or REPAIR authorization.
@@ -54,6 +62,7 @@ non_goals:
   - Convert RUN-135-004 into a REMEDIATION-shaped run.json or rewrite historical artifacts.
   - Add a generic lifecycle router, planner, fallback, retry, or automatic review generation.
   - Fix the separate self-hosted REPAIR GITHUB_ACTOR provenance bug in this task.
+  - Treat RUN-136-001 dirty WIP as a valid candidate or bypass normal PRIMARY lifecycle.
   - Push or publish from the coding Executor.
 
 constraints:
@@ -66,22 +75,30 @@ constraints:
       When repair.json is present, Authoring Ingress must reconstruct the canonical
       REPAIR lineage from immutable remote evidence, including the exact failed RUN,
       canonical FAILURE artifacts, current REPAIR authorization, repaired candidate,
-      TASK identity/revision, and semantic predecessor.
+      TASK identity/revision, semantic predecessor, prior REVIEW, and—when that
+      predecessor is a REMEDIATION—the exact remediation finding_id.
     - >
       Reuse the same semantic validation rules as Publisher rather than introducing a
       weaker parallel interpretation. If shared helpers are reused, Authoring Ingress
       must map their failures to AuthoringIngressError without weakening fail-closed
       behavior.
     - >
-      For REPAIR of a REMEDIATION candidate, SUBMIT_REVIEW must require mode DELTA and a
-      prior_finding_id that exactly matches the repaired remediation finding. It must
-      validate the submitted REVIEW against that reconstructed prior REVIEW.
+      For REPAIR of a REMEDIATION candidate, SUBMIT_REVIEW must require mode DELTA and
+      prior_finding_id must equal the exact finding_id of the canonical REMEDIATION being
+      repaired. It is not sufficient that prior_finding_id merely names any finding that
+      exists in the prior REVIEW. The submitted REVIEW must then validate against that
+      reconstructed prior REVIEW.
+    - >
+      The exact repaired remediation finding must be derived from canonical predecessor
+      REMEDIATION lineage, not inferred from review ordering, set membership, candidate
+      changed files, local state, or caller-supplied review metadata.
     - >
       For REPAIR before any semantic finding, existing PRIMARY REVIEW semantics remain
       valid and DELTA review must not be invented.
     - >
       Missing, malformed, stale, ambiguous, mismatched, or semantically discontinuous
-      repair lineage must fail closed before creating refs/heads/aios/review-decision/<RUN>.
+      repair lineage must fail closed before creating
+      refs/heads/aios/review-decision/<RUN>.
     - >
       The successful REPAIR ResultPackage must be validated with REPAIR package semantics
       from the correct repair root, not accidentally reinterpreted as an ordinary PRIMARY
@@ -93,11 +110,20 @@ constraints:
       REVIEW idempotency/conflict behavior and all existing PRIMARY and direct
       REMEDIATION review-authoring behavior remain compatible.
     - >
-      Regression tests must model production topology for at least: successful
-      REPAIR-of-REMEDIATION DELTA PASS; wrong/missing prior_finding_id; PRIMARY review
-      incorrectly used for repaired remediation; malformed/missing repair lineage;
-      repaired PRIMARY still accepting PRIMARY review; and no review-decision ref on
-      rejection.
+      New production-topology regressions must be added to tests/test_authoring_ingress.py
+      for at least: successful REPAIR-of-REMEDIATION DELTA PASS; a prior REVIEW with two
+      findings where the wrong existing finding_id is rejected; missing prior_finding_id;
+      PRIMARY review incorrectly used for repaired remediation; malformed or missing
+      repair lineage; repaired PRIMARY still accepting PRIMARY review; and no
+      review-decision ref on every rejected case.
+    - >
+      Focused verification must execute at least one newly added REPAIR-review regression;
+      a command that deselects all tests is not evidence. Test names for the new group
+      must contain repair_review so the required focused selector is deterministic.
+    - >
+      RUN-136-001 local WIP may be read as a hint only after the workspace has been reset
+      to canonical main. The Executor must produce a fresh committed candidate and
+      structural ResultPackage through normal TASK-136 r2 PRIMARY execution.
 
 acceptance:
   - id: AC1
@@ -107,8 +133,9 @@ acceptance:
   - id: AC2
     condition: >
       A successful REPAIR of REMEDIATION accepts a DELTA REVIEW only when
-      prior_finding_id exactly matches the repaired semantic finding and validates that
-      review against the reconstructed prior REVIEW.
+      prior_finding_id equals the exact finding_id of the canonical REMEDIATION being
+      repaired and validates that review against the reconstructed prior REVIEW. A
+      different finding that merely exists in the same prior REVIEW is rejected.
   - id: AC3
     condition: >
       Wrong, absent, stale, malformed, ambiguous, or discontinuous REPAIR lineage and
@@ -124,11 +151,13 @@ acceptance:
       semantics and remains consistent with Publisher's independent lineage validation.
   - id: AC6
     condition: >
-      Focused tests pass, git diff checking passes, RESULT has no unresolved items, and
-      implementation mutation remains within authoring_ingress.py and its focused tests.
+      New focused repair_review regressions are present and actually execute, the full
+      authoring-ingress suite passes, git diff checking passes, RESULT has no unresolved
+      items, and implementation mutation remains within authoring_ingress.py and its
+      focused tests.
 
 verification:
   required:
-    - python -m pytest -q tests/test_authoring_ingress.py -k "review and repair"
+    - python -m pytest -q tests/test_authoring_ingress.py -k "repair_review"
     - python -m pytest -q tests/test_authoring_ingress.py
     - git diff --check
