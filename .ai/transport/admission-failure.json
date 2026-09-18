@@ -1,0 +1,1 @@
+{"dispatch_id":"task137-primary-001","error":{"message":"repository dirty","type":"OperatorError"},"executor_invoked":false,"format":"AIOS_ADMISSION_FAILURE","kind":"ADMISSION_FAILURE","operation":"PRIMARY","phase":"PRIMARY_SYNCHRONIZATION","reason_code":"PRIMARY_SYNCHRONIZATION_REJECTED","requested_executor":"antigravity","requested_task_id":"TASK-137","version":2}
