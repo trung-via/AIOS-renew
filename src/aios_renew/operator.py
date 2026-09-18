@@ -35,6 +35,11 @@ from .codex_adapter import (
     CodexOutputError,
 )
 from .correction_frontier import CorrectionFrontierError
+from .correction_integration import (
+    CorrectionIntegrationError,
+    CorrectionIntegrationResult,
+    integrate_correction as _integrate_correction_impl,
+)
 from .dispatcher import (
     DispatcherError,
     primary_dispatcher,
@@ -391,6 +396,7 @@ class _RemediationAdmission:
     execution_base_run_id: str
     execution_base_sha: str
     cumulative: bool = False
+    integrated_base: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -605,6 +611,15 @@ _CANONICAL_PREDECESSOR_FIELDS = frozenset(
     {"source_run_id", "review_id", "finding_id", "reviewed_sha"}
 )
 _CANONICAL_EXECUTION_BASE_FIELDS = frozenset({"run_id", "candidate_sha"})
+_CANONICAL_INTEGRATED_EXECUTION_BASE_FIELDS = frozenset({
+    "version",
+    "kind",
+    "cumulative_tip_run_id",
+    "cumulative_tip_candidate_sha",
+    "authorized_main_sha",
+    "integration_candidate_sha",
+    "integration_id",
+})
 
 
 @dataclass(frozen=True)
@@ -623,21 +638,86 @@ class RemediationExecutionBase:
 
     run_id: str
     candidate_sha: str
+    version: int = 1
+    kind: str = "CUMULATIVE"
+    cumulative_tip_run_id: str | None = None
+    cumulative_tip_candidate_sha: str | None = None
+    authorized_main_sha: str | None = None
+    integration_candidate_sha: str | None = None
+    integration_id: str | None = None
+    is_integrated: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        if self.is_integrated:
+            return {
+                "version": self.version,
+                "kind": self.kind,
+                "cumulative_tip_run_id": self.cumulative_tip_run_id,
+                "cumulative_tip_candidate_sha": self.cumulative_tip_candidate_sha,
+                "authorized_main_sha": self.authorized_main_sha,
+                "integration_candidate_sha": self.integration_candidate_sha,
+                "integration_id": self.integration_id,
+            }
+        return {
+            "run_id": self.run_id,
+            "candidate_sha": self.candidate_sha,
+        }
 
 
 def _parse_remediation_execution_base(data: Any) -> RemediationExecutionBase:
     root = data if isinstance(data, Mapping) else None
     if root is None:
         raise TypeError("REMEDIATION execution_base must be a mapping")
-    if set(root) != _CANONICAL_EXECUTION_BASE_FIELDS:
-        raise ValueError("REMEDIATION execution_base fields do not match the contract")
-    run_id = root.get("run_id")
-    candidate_sha = root.get("candidate_sha")
-    if not isinstance(run_id, str) or not _RUN_ID_PATTERN.fullmatch(run_id):
-        raise ValueError("REMEDIATION execution_base RUN identity is invalid")
-    if not isinstance(candidate_sha, str) or not _SHA_PATTERN.fullmatch(candidate_sha):
-        raise ValueError("REMEDIATION execution_base candidate SHA is invalid")
-    return RemediationExecutionBase(run_id=run_id, candidate_sha=candidate_sha)
+    root_keys = set(root)
+    if root_keys == _CANONICAL_EXECUTION_BASE_FIELDS:
+        run_id = root.get("run_id")
+        candidate_sha = root.get("candidate_sha")
+        if not isinstance(run_id, str) or not _RUN_ID_PATTERN.fullmatch(run_id):
+            raise ValueError("REMEDIATION execution_base RUN identity is invalid")
+        if not isinstance(candidate_sha, str) or not _SHA_PATTERN.fullmatch(candidate_sha):
+            raise ValueError("REMEDIATION execution_base candidate SHA is invalid")
+        return RemediationExecutionBase(run_id=run_id, candidate_sha=candidate_sha)
+    if _CANONICAL_INTEGRATED_EXECUTION_BASE_FIELDS.issubset(root_keys) and root_keys.issubset(
+        _CANONICAL_INTEGRATED_EXECUTION_BASE_FIELDS | {"run_id", "candidate_sha", "authorized_main_sha", "current_main_sha", "expected_main_sha"}
+    ):
+        version = root.get("version")
+        if version != 1 or isinstance(version, bool):
+            raise ValueError("REMEDIATION execution_base version is invalid")
+        kind = root.get("kind")
+        if kind not in ("INTEGRATED", "INTEGRATION"):
+            raise ValueError("REMEDIATION execution_base kind is invalid")
+        tip_run_id = root.get("cumulative_tip_run_id")
+        if not isinstance(tip_run_id, str) or not _RUN_ID_PATTERN.fullmatch(tip_run_id):
+            raise ValueError("REMEDIATION execution_base cumulative_tip_run_id is invalid")
+        tip_candidate_sha = root.get("cumulative_tip_candidate_sha")
+        if not isinstance(tip_candidate_sha, str) or not _SHA_PATTERN.fullmatch(tip_candidate_sha):
+            raise ValueError("REMEDIATION execution_base cumulative_tip_candidate_sha is invalid")
+        main_sha = root.get("authorized_main_sha") or root.get("current_main_sha") or root.get("expected_main_sha")
+        if not isinstance(main_sha, str) or not _SHA_PATTERN.fullmatch(main_sha):
+            raise ValueError("REMEDIATION execution_base authorized_main_sha is invalid")
+        int_candidate_sha = root.get("integration_candidate_sha")
+        if not isinstance(int_candidate_sha, str) or not _SHA_PATTERN.fullmatch(int_candidate_sha):
+            raise ValueError("REMEDIATION execution_base integration_candidate_sha is invalid")
+        int_id = root.get("integration_id")
+        if not isinstance(int_id, str) or not int_id:
+            raise ValueError("REMEDIATION execution_base integration_id is invalid")
+        if "run_id" in root and root["run_id"] != tip_run_id:
+            raise ValueError("REMEDIATION execution_base run_id does not match cumulative_tip_run_id")
+        if "candidate_sha" in root and root["candidate_sha"] != int_candidate_sha:
+            raise ValueError("REMEDIATION execution_base candidate_sha does not match integration_candidate_sha")
+        return RemediationExecutionBase(
+            run_id=tip_run_id,
+            candidate_sha=int_candidate_sha,
+            version=version,
+            kind=kind,
+            cumulative_tip_run_id=tip_run_id,
+            cumulative_tip_candidate_sha=tip_candidate_sha,
+            authorized_main_sha=main_sha,
+            integration_candidate_sha=int_candidate_sha,
+            integration_id=int_id,
+            is_integrated=True,
+        )
+    raise ValueError("REMEDIATION execution_base fields do not match the contract")
 
 
 def _parse_remediation_predecessor(data: Any) -> RemediationPredecessor:
@@ -3343,6 +3423,7 @@ def _resolve_remediation_admission(
     execution_base_run_id = resolved_source_run_id
     execution_base_sha = canonical_remediation.reviewed_sha
     cumulative = False
+    integrated_base = None
     if remote_mode:
         lifecycle = resolve_remote_task_lifecycle(
             repo, task_id=task.task_id, task_revision=task.revision
@@ -3358,18 +3439,19 @@ def _resolve_remediation_admission(
             try:
                 from .unified_state import _resolve_cumulative_execution_base
 
-                execution_base_run_id, execution_base_sha = (
-                    _resolve_cumulative_execution_base(
-                        repo,
-                        task,
-                        lifecycle,
-                        source_run_id=resolved_source_run_id,
-                        review_id=canonical_review.review_id,
-                        finding_id=canonical_remediation.finding_id,
-                        reviewed_sha=canonical_remediation.reviewed_sha,
-                        semantic_review=canonical_review,
-                    )
+                resolved_base = _resolve_cumulative_execution_base(
+                    repo,
+                    task,
+                    lifecycle,
+                    source_run_id=resolved_source_run_id,
+                    review_id=canonical_review.review_id,
+                    finding_id=canonical_remediation.finding_id,
+                    reviewed_sha=canonical_remediation.reviewed_sha,
+                    semantic_review=canonical_review,
                 )
+                execution_base_run_id = resolved_base[0]
+                execution_base_sha = resolved_base[1]
+                integrated_base = getattr(resolved_base, "integrated_base", None)
                 cumulative = True
             except (
                 CorrectionFrontierError, OperatorError, ReviewTransportError,
@@ -3398,6 +3480,7 @@ def _resolve_remediation_admission(
         execution_base_run_id=execution_base_run_id,
         execution_base_sha=execution_base_sha,
         cumulative=cumulative,
+        integrated_base=integrated_base,
     )
 
 
@@ -3524,10 +3607,14 @@ def _run_remediation_impl(
             "finding_id": canonical_remediation.finding_id,
             "reviewed_sha": canonical_remediation.reviewed_sha,
         }
-        execution_base_record = {
-            "run_id": resolved.execution_base_run_id,
-            "candidate_sha": resolved.execution_base_sha,
-        }
+        execution_base_record = (
+            dict(resolved.integrated_base)
+            if resolved.integrated_base is not None
+            else {
+                "run_id": resolved.execution_base_run_id,
+                "candidate_sha": resolved.execution_base_sha,
+            }
+        )
         run_path = state.runs / f"{run_id}.json"
         run_document = {
             "kind": "REMEDIATION",
@@ -3744,6 +3831,7 @@ def _accept_candidate_impl(
         if not isinstance(execution_base_run_id, str):
             raise OperatorError("missing canonical source RUN identity")
         cumulative = False
+        integrated_base = None
         lifecycle = resolve_remote_task_lifecycle(
             repo, task_id=task.task_id, task_revision=task.revision
         )
@@ -3754,16 +3842,17 @@ def _accept_candidate_impl(
             try:
                 from .unified_state import _resolve_cumulative_execution_base
 
-                execution_base_run_id, execution_base_sha = (
-                    _resolve_cumulative_execution_base(
-                        repo, task, lifecycle,
-                        source_run_id=execution_base_run_id,
-                        review_id=review.review_id,
-                        finding_id=finding_id,
-                        reviewed_sha=remediation.reviewed_sha,
-                        semantic_review=review,
-                    )
+                resolved_base = _resolve_cumulative_execution_base(
+                    repo, task, lifecycle,
+                    source_run_id=execution_base_run_id,
+                    review_id=review.review_id,
+                    finding_id=finding_id,
+                    reviewed_sha=remediation.reviewed_sha,
+                    semantic_review=review,
                 )
+                execution_base_run_id = resolved_base[0]
+                execution_base_sha = resolved_base[1]
+                integrated_base = getattr(resolved_base, "integrated_base", None)
                 cumulative = True
             except (
                 CorrectionFrontierError, OperatorError, ReviewTransportError,
@@ -3851,10 +3940,14 @@ def _accept_candidate_impl(
             "execution": asdict(execution),
         }
         if cumulative:
-            run_document["execution_base"] = {
-                "run_id": execution_base_run_id,
-                "candidate_sha": execution_base_sha,
-            }
+            run_document["execution_base"] = (
+                dict(integrated_base)
+                if integrated_base is not None
+                else {
+                    "run_id": execution_base_run_id,
+                    "candidate_sha": execution_base_sha,
+                }
+            )
         _write_json(run_path, run_document)
         attempt.bind_run(run_path)
         observation_tracker.admit(run)
@@ -4661,6 +4754,34 @@ def run_repair_wakeup(
         raise OperatorError(str(exc)) from exc
 
 
+def integrate_correction(
+    task_id: str,
+    *,
+    task_revision: int,
+    cumulative_tip_run_id: str,
+    cumulative_tip_candidate_sha: str,
+    authorized_main_sha: str | None = None,
+    current_main_sha: str | None = None,
+    expected_main_sha: str | None = None,
+    repo: str | Path | None = None,
+) -> CorrectionIntegrationResult:
+    """Authorize and materialize one deterministic correction integration candidate."""
+    root = resolve_repository(repo)
+    try:
+        return _integrate_correction_impl(
+            task_id,
+            task_revision=task_revision,
+            cumulative_tip_run_id=cumulative_tip_run_id,
+            cumulative_tip_candidate_sha=cumulative_tip_candidate_sha,
+            authorized_main_sha=authorized_main_sha,
+            current_main_sha=current_main_sha,
+            expected_main_sha=expected_main_sha,
+            repo=root,
+        )
+    except CorrectionIntegrationError as exc:
+        raise OperatorError(str(exc)) from exc
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aios")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -4834,6 +4955,29 @@ def _parser() -> argparse.ArgumentParser:
         help="One or more exact bare TASK identities",
     )
     performance_parser.add_argument("--repo", help="Target Git repository path")
+
+    integration_parser = commands.add_parser(
+        "integrate-correction",
+        aliases=["integrate", "correction-integration"],
+        help="Materialize one authorized deterministic correction integration candidate",
+    )
+    integration_parser.add_argument("task_id")
+    integration_parser.add_argument("--task-revision", type=int, required=True)
+    integration_parser.add_argument("--cumulative-tip-run", required=True)
+    integration_parser.add_argument("--cumulative-tip-candidate", required=True)
+    integration_parser.add_argument(
+        "--authorized-main",
+        "--current-main",
+        dest="authorized_main",
+        required=True,
+        help="Authorized current main commit SHA",
+    )
+    integration_parser.add_argument("--repo")
+    integration_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit JSON machine output",
+    )
     return parser
 
 
@@ -5154,6 +5298,16 @@ def main(
                 print(cmd_performance(args.task_id, repo=args.repo))
             except PerformanceObservationError as exc:
                 raise OperatorError(str(exc)) from exc
+        elif args.command in ("integrate-correction", "integrate", "correction-integration"):
+            result = integrate_correction(
+                args.task_id,
+                task_revision=args.task_revision,
+                cumulative_tip_run_id=args.cumulative_tip_run,
+                cumulative_tip_candidate_sha=args.cumulative_tip_candidate,
+                authorized_main_sha=args.authorized_main,
+                repo=args.repo,
+            )
+            print(result.render() if args.json else result.render_human())
         else:
             retry_transport(args.run_id, repo=args.repo)
             print(f"AIOS TRANSPORT PASS\nrun: {args.run_id}")

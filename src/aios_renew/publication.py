@@ -19,6 +19,10 @@ from .artifacts import (
     validate_result_package,
 )
 from .correction_frontier import CorrectionFrontier, CorrectionFrontierError
+from .correction_integration import (
+    derive_integration_identity,
+    integration_ref_name,
+)
 from .review import (
     Remediation,
     Review,
@@ -225,6 +229,15 @@ _CANONICAL_PREDECESSOR_FIELDS = frozenset(
     {"source_run_id", "review_id", "finding_id", "reviewed_sha"}
 )
 _CANONICAL_EXECUTION_BASE_FIELDS = frozenset({"run_id", "candidate_sha"})
+_CANONICAL_INTEGRATED_EXECUTION_BASE_FIELDS = frozenset({
+    "version",
+    "kind",
+    "cumulative_tip_run_id",
+    "cumulative_tip_candidate_sha",
+    "authorized_main_sha",
+    "integration_candidate_sha",
+    "integration_id",
+})
 
 
 @dataclass(frozen=True)
@@ -241,21 +254,71 @@ class RemediationPredecessor:
 class RemediationExecutionBase:
     run_id: str
     candidate_sha: str
+    version: int = 1
+    kind: str = "CUMULATIVE"
+    cumulative_tip_run_id: str | None = None
+    cumulative_tip_candidate_sha: str | None = None
+    authorized_main_sha: str | None = None
+    integration_candidate_sha: str | None = None
+    integration_id: str | None = None
+    is_integrated: bool = False
 
 
 def _parse_remediation_execution_base(
     data: Any, document: str = "REMEDIATION execution_base"
 ) -> RemediationExecutionBase:
     root = _mapping(data, document)
-    if set(root) != _CANONICAL_EXECUTION_BASE_FIELDS:
-        raise ValueError(f"{document} fields do not match the contract")
-    run_id = root.get("run_id")
-    candidate_sha = root.get("candidate_sha")
-    if not isinstance(run_id, str) or _RUN_ID.fullmatch(run_id) is None:
-        raise ValueError(f"{document} RUN identity is invalid")
-    if not isinstance(candidate_sha, str) or _SHA.fullmatch(candidate_sha) is None:
-        raise ValueError(f"{document} candidate SHA is invalid")
-    return RemediationExecutionBase(run_id=run_id, candidate_sha=candidate_sha)
+    root_keys = set(root)
+    if root_keys == _CANONICAL_EXECUTION_BASE_FIELDS:
+        run_id = root.get("run_id")
+        candidate_sha = root.get("candidate_sha")
+        if not isinstance(run_id, str) or _RUN_ID.fullmatch(run_id) is None:
+            raise ValueError(f"{document} RUN identity is invalid")
+        if not isinstance(candidate_sha, str) or _SHA.fullmatch(candidate_sha) is None:
+            raise ValueError(f"{document} candidate SHA is invalid")
+        return RemediationExecutionBase(run_id=run_id, candidate_sha=candidate_sha)
+    if _CANONICAL_INTEGRATED_EXECUTION_BASE_FIELDS.issubset(root_keys) and root_keys.issubset(
+        _CANONICAL_INTEGRATED_EXECUTION_BASE_FIELDS
+        | {"run_id", "candidate_sha", "authorized_main_sha", "current_main_sha", "expected_main_sha"}
+    ):
+        version = root.get("version")
+        if version != 1 or isinstance(version, bool):
+            raise ValueError(f"{document} version is invalid")
+        kind = root.get("kind")
+        if kind not in ("INTEGRATED", "INTEGRATION"):
+            raise ValueError(f"{document} kind is invalid")
+        tip_run_id = root.get("cumulative_tip_run_id")
+        if not isinstance(tip_run_id, str) or _RUN_ID.fullmatch(tip_run_id) is None:
+            raise ValueError(f"{document} cumulative_tip_run_id is invalid")
+        tip_candidate_sha = root.get("cumulative_tip_candidate_sha")
+        if not isinstance(tip_candidate_sha, str) or _SHA.fullmatch(tip_candidate_sha) is None:
+            raise ValueError(f"{document} cumulative_tip_candidate_sha is invalid")
+        main_sha = root.get("authorized_main_sha") or root.get("current_main_sha") or root.get("expected_main_sha")
+        if not isinstance(main_sha, str) or _SHA.fullmatch(main_sha) is None:
+            raise ValueError(f"{document} authorized_main_sha is invalid")
+        int_candidate_sha = root.get("integration_candidate_sha")
+        if not isinstance(int_candidate_sha, str) or _SHA.fullmatch(int_candidate_sha) is None:
+            raise ValueError(f"{document} integration_candidate_sha is invalid")
+        int_id = root.get("integration_id")
+        if not isinstance(int_id, str) or not int_id:
+            raise ValueError(f"{document} integration_id is invalid")
+        if "run_id" in root and root["run_id"] != tip_run_id:
+            raise ValueError(f"{document} run_id does not match cumulative_tip_run_id")
+        if "candidate_sha" in root and root["candidate_sha"] != int_candidate_sha:
+            raise ValueError(f"{document} candidate_sha does not match integration_candidate_sha")
+        return RemediationExecutionBase(
+            run_id=tip_run_id,
+            candidate_sha=int_candidate_sha,
+            version=version,
+            kind=kind,
+            cumulative_tip_run_id=tip_run_id,
+            cumulative_tip_candidate_sha=tip_candidate_sha,
+            authorized_main_sha=main_sha,
+            integration_candidate_sha=int_candidate_sha,
+            integration_id=int_id,
+            is_integrated=True,
+        )
+    raise ValueError(f"{document} fields do not match the contract")
 
 
 def _parse_remediation_predecessor(
@@ -331,8 +394,64 @@ def _validate_execution_base(
     )
     if code:
         raise ValueError("execution_base does not descend from semantic reviewed SHA")
+
+    if base.is_integrated:
+        expected_integration_id = derive_integration_identity(
+            run.task.id,
+            run.task.revision,
+            base.cumulative_tip_run_id,
+            base.cumulative_tip_candidate_sha,
+            base.authorized_main_sha,
+        )
+        if base.integration_id != expected_integration_id:
+            raise ValueError("integrated execution_base integration_id does not match canonical binding")
+
+        expected_ref = integration_ref_name(base.integration_id)
+        remote_int_sha = _single_remote_sha(
+            repo, remote, expected_ref, run_id=publication_run_id
+        )
+        if remote_int_sha != base.integration_candidate_sha:
+            raise ValueError("remote integration ref does not match integration candidate SHA")
+        _fetch_object(repo, remote, base.integration_candidate_sha, run_id=publication_run_id)
+
+        code, kind, _ = _git(repo, "cat-file", "-t", base.integration_candidate_sha, allow_fail=True)
+        if code or kind != "commit":
+            raise ValueError("integration candidate is not a commit")
+        code, parents_out, _ = _git(repo, "rev-parse", f"{base.integration_candidate_sha}^@", allow_fail=True)
+        if code:
+            raise ValueError("cannot inspect integration candidate parents")
+        parents = parents_out.split()
+        if (
+            len(parents) != 2
+            or parents[0] != base.cumulative_tip_candidate_sha
+            or parents[1] != base.authorized_main_sha
+        ):
+            raise ValueError("integration candidate parents do not match [cumulative_tip, authorized_main]")
+
+        code, mb_out, _ = _git(
+            repo, "merge-base", "--all", base.cumulative_tip_candidate_sha, base.authorized_main_sha, allow_fail=True
+        )
+        if code or len([line for line in mb_out.splitlines() if line.strip()]) != 1:
+            raise ValueError("ambiguous or missing merge base between cumulative tip and authorized main")
+
+        code, tree_out, _ = _git(
+            repo, "merge-tree", "--write-tree", base.cumulative_tip_candidate_sha, base.authorized_main_sha, allow_fail=True
+        )
+        if code:
+            raise ValueError("merge tree calculation failed or detected conflict")
+        expected_tree = tree_out.strip().splitlines()[0]
+        code, actual_tree, _ = _git(repo, "rev-parse", f"{base.integration_candidate_sha}^{{tree}}", allow_fail=True)
+        if code or actual_tree != expected_tree:
+            raise ValueError("integration candidate tree does not match clean merge tree")
+
+        cumulative_run_id = base.cumulative_tip_run_id
+        expected_cumulative_sha = base.cumulative_tip_candidate_sha
+    else:
+        cumulative_run_id = base.run_id
+        expected_cumulative_sha = base.candidate_sha
+
     artifacts_sha = _single_remote_sha(
-        repo, remote, f"refs/heads/aios/artifacts/{base.run_id}",
+        repo, remote, f"refs/heads/aios/artifacts/{cumulative_run_id}",
         run_id=publication_run_id,
     )
     _fetch_object(repo, remote, artifacts_sha, run_id=publication_run_id)
@@ -344,12 +463,12 @@ def _validate_execution_base(
         "execution-base RUN",
     )
     if base_run_data.get("kind") == "REMEDIATION":
-        base_run, _ = _parse_remediation_run(base_run_data, run_id=base.run_id)
+        base_run, _ = _parse_remediation_run(base_run_data, run_id=cumulative_run_id)
     elif "kind" not in base_run_data:
         base_run = _run_from_data(base_run_data, "execution-base RUN")
     else:
         raise ValueError("execution-base RUN kind is invalid")
-    if base_run.run_id != base.run_id or base_run.task != run.task:
+    if base_run.run_id != cumulative_run_id or base_run.task != run.task:
         raise ValueError("execution-base RUN identity mismatch")
     base_result_data = _mapping(
         _json_no_duplicates(
@@ -358,7 +477,7 @@ def _validate_execution_base(
         ),
         "execution-base ResultPackage",
     )
-    if validate_result(base_result_data.get("result")).head_sha != base.candidate_sha:
+    if validate_result(base_result_data.get("result")).head_sha != expected_cumulative_sha:
         raise ValueError("execution-base candidate does not match canonical RESULT")
     return base
 
@@ -535,7 +654,12 @@ def _derive_publication_frontier(
                 "predecessor ResultPackage",
             ).get("result")
         )
-        if pred_result.head_sha != current_base.candidate_sha:
+        expected_head = (
+            current_base.cumulative_tip_candidate_sha
+            if current_base.is_integrated
+            else current_base.candidate_sha
+        )
+        if pred_result.head_sha != expected_head:
             raise ValueError("cumulative execution-base candidate mismatch")
 
         source_pred = (
@@ -1403,6 +1527,10 @@ def _load_success_lineage(
                 repo, remote, "refs/heads/main", run_id=run_id
             )
             _fetch_object(repo, remote, main_sha, run_id=run_id)
+            if cumulative_base.is_integrated and cumulative_base.authorized_main_sha != main_sha:
+                raise ValueError(
+                    f"authorized main SHA {cumulative_base.authorized_main_sha} is stale (current main is {main_sha})"
+                )
             main_is_safe_base, _, _ = _git(
                 repo, "merge-base", "--is-ancestor", main_sha,
                 cumulative_base.candidate_sha, allow_fail=True,

@@ -1658,3 +1658,43 @@ findings: []
     obs_integration = observe_unified_state("TASK-101", repo=repo).as_dict()
     assert obs_integration["next_action"] == "NONE"
     assert obs_integration["blocker"] == {"code": "INTEGRATION_REQUIRED"}
+
+    # 3. After explicit integration, Unified State transitions to AUTHOR_REMEDIATION
+    from aios_renew.correction_integration import integrate_correction
+    int_result = integrate_correction(
+        "TASK-101",
+        task_revision=1,
+        cumulative_tip_run_id=primary_id,
+        cumulative_tip_candidate_sha=head,
+        authorized_main_sha=new_main,
+        repo=repo,
+    )
+    obs_integrated = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_integrated["next_action"] == "AUTHOR_REMEDIATION"
+    assert obs_integrated["execution_base"] is not None
+    assert obs_integrated["execution_base"]["kind"] == "INTEGRATED"
+    assert obs_integrated["execution_base"]["integration_candidate_sha"] == int_result.integration_candidate_sha
+    assert obs_integrated["execution_base"]["cumulative_tip_run_id"] == primary_id
+    assert obs_integrated["execution_base"]["authorized_main_sha"] == new_main
+
+    # 4. If main advances again, the integrated base is invalidated -> returns INTEGRATION_REQUIRED again
+    (repo / "MAIN2.txt").write_text("main advance 2\n", encoding="utf-8")
+    git(repo, "add", "MAIN2.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main again")
+    newer_main = git(repo, "rev-parse", "HEAD")
+
+    lifecycle_newer = RemoteTaskLifecycle(
+        newer_main,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, head, review),),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle_newer)
+    obs_invalidated = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_invalidated["next_action"] == "NONE"
+    assert obs_invalidated["blocker"] == {"code": "INTEGRATION_REQUIRED"}

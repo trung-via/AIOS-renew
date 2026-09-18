@@ -701,3 +701,48 @@ findings:
     assert preflight_int.status == "BLOCKED"
     assert preflight_int.phase == "REPOSITORY_ADMISSION"
     assert preflight_int.reason_code == "INTEGRATION_REQUIRED"
+
+    # After explicit integration, preflight becomes READY with integrated_base populated
+    from aios_renew.correction_integration import integrate_correction
+    int_result = integrate_correction(
+        "TASK-101",
+        task_revision=1,
+        cumulative_tip_run_id=primary_id,
+        cumulative_tip_candidate_sha=head,
+        authorized_main_sha=new_main,
+        repo=repo,
+    )
+    preflight_ready = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight_ready.status == "READY"
+    assert preflight_ready.execution_base_sha == int_result.integration_candidate_sha
+    assert preflight_ready.integrated_base is not None
+    assert preflight_ready.integrated_base["integration_candidate_sha"] == int_result.integration_candidate_sha
+    assert preflight_ready.integrated_base["cumulative_tip_run_id"] == primary_id
+    assert preflight_ready.integrated_base["authorized_main_sha"] == new_main
+
+    # If main moves again, the integrated base is invalidated -> returns INTEGRATION_REQUIRED again
+    (repo / "MAIN2.txt").write_text("another advance\n", encoding="utf-8")
+    git(repo, "add", "MAIN2.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main again")
+    newer_main = git(repo, "rev-parse", "HEAD")
+
+    lifecycle_newer = RemoteTaskLifecycle(
+        newer_main,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, head, review),),
+        (), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle_newer,
+    )
+
+    preflight_invalidated = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight_invalidated.status == "BLOCKED"
+    assert preflight_invalidated.reason_code == "INTEGRATION_REQUIRED"
