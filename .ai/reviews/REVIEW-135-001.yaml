@@ -1,0 +1,27 @@
+review_id: REVIEW-135-001
+reviewed_sha: 4c6dc98e79e0b5133b82640152afcb3039948175
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: FAIL
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings:
+  - id: FINDING-135-001
+    basis: AC1
+    action: CODE_FIX
+    location: src/aios_renew/correction_integration.py and tests/test_correction_integration.py
+    issue: integrate_correction does not fail closed while proving the exact canonical authorization binding. It prefers the local refs/heads/main value over canonical remote main, then wraps canonical lifecycle resolution in a broad except Exception that silently ignores every non-CorrectionIntegrationError failure. It also accepts zero or multiple derived lifecycle tips by only checking tips[0] when tips is non-empty. Therefore an unavailable, malformed, ambiguous, or newer canonical remote lifecycle can be skipped and a stale integration candidate/ref can still be materialized from local assumptions, violating the exact current-main/cumulative-tip binding and fail-closed staleness requirements.
+    expected: Resolve the canonical remote task lifecycle as mandatory evidence before materialization. Require its main_sha to equal the authorized main SHA and require exactly one valid RESULT operational tip whose RUN id and candidate SHA equal the authorized cumulative tip. Propagate remote query, decoding, ambiguity, missing-tip, and mismatch failures as CorrectionIntegrationError before commit-tree/update-ref. Do not fall back to local branch identity as canonical authority. Add focused regressions for remote-main-ahead, remote lifecycle unavailable/malformed, missing tip, and competing tips; each must create no integration ref/candidate.
+  - id: FINDING-135-002
+    basis: AC5
+    action: CODE_FIX
+    location: src/aios_renew/correction_integration.py, src/aios_renew/unified_state.py, tests/test_correction_integration.py, tests/test_operator_correction_preflight.py, and tests/test_operator_unified_state.py
+    issue: Integration publication/readiness is not fail closed. integrate_correction creates the local aios/integration ref before pushing, performs git push with allow_fail=True, ignores the push return code, and still returns success. resolve_valid_integration then prefers that local ref, and Unified State/Correction Preflight consume it as a valid integrated base. A network/auth/non-fast-forward push failure can therefore leave canonical remote without the exact integration ref while local state transitions to remediation-ready and can admit Executor execution. Publication later checks the remote ref, but that is too late and violates AC5's requirement that readiness/execution consume only the exact valid integration candidate.
+    expected: A successful integration operation must prove the exact canonical remote integration ref exists at the intended candidate SHA before returning success or before Preflight/Unified State may consume it in remote mode. Check push outcome; on push failure fail closed and ensure local-only staging cannot become authoritative (rollback the local ref or make admission require the exact remote ref). Add a regression that forces remote push failure/missing remote integration ref and proves integrate-correction is non-success, Preflight/Unified State remain INTEGRATION_REQUIRED, no REMEDIATION RUN is created, and no Executor is invoked.
