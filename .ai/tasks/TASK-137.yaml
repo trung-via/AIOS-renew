@@ -1,0 +1,174 @@
+task_id: TASK-137
+revision: 1
+
+goal: >
+  Make native Antigravity execution deterministic in AIOS headless print mode by
+  preventing unfinished background/delegated work from surviving the terminal boundary
+  and by requiring one explicit schema-bound builtin finish action only after all
+  authorized repository work and commit completion are finished.
+
+problem: >
+  Native Antigravity execution currently invokes agy in --print mode with JSON schema
+  output but its provider-specific instruction does not prohibit background tasks,
+  delegated subagents, asynchronous manage_task usage, or terminal completion while
+  child/tool work remains active. It also still asks the model to generically return a
+  structural ResultPackage instead of requiring the builtin finish tool exactly once.
+  TASK-136 exposed this repeatedly: RUN-136-001, RUN-136-002, and REPAIR continuation
+  RUN-136-003 all terminated with "Antigravity ResultPackage missing" while agy reported
+  root agent idle and one or more background tasks still running. RUN-136-003 produced
+  substantial in-scope implementation and passing local tests before the terminal
+  handoff was lost. The installed native CLI is agy 1.2.6 at
+  C:\Users\TRUNG\AppData\Local\agy\bin\agy.exe, so this task must harden AIOS's
+  provider-specific native execution contract rather than rely on upgrading the CLI.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    4161f6fef9056cee61c8e1aab4da1c786da1a590.
+  - >
+    AIOS Runtime remains the canonical verification owner. Native Executor execution
+    should therefore avoid full suites, builds, watchers, servers, or other long-running
+    commands whose results Runtime will independently verify.
+  - >
+    Native Antigravity is invoked once through agy --print with --output-format json,
+    --json-schema, --print-timeout, and a process watchdog.
+  - >
+    Existing fail-closed treatment of nonzero process exit, terminal status ERROR,
+    malformed JSON, and missing structured_output remains authoritative.
+  - >
+    The Antigravity-MiniMax adapter has a stronger explicit builtin finish terminal
+    contract, but TASK-137 applies only to the native Antigravity adapter.
+  - >
+    TASK-136 RUN-136-003 dirty WIP is preserved externally and is not canonical state;
+    TASK-137 must not consume or modify it.
+
+scope:
+  inspect:
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_antigravity_minimax_adapter.py
+    - src/aios_renew/schemas/result_package.json
+    - src/aios_renew/schemas/remediation_result_package.json
+    - src/aios_renew/schemas/repair_result_package.json
+  modify:
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_antigravity_adapter.py
+
+non_goals:
+  - Change AIOS Runtime lifecycle, Dispatcher, Unified State, Publisher, Brain Ingress, or REPAIR semantics.
+  - Change TASK-136 implementation or consume RUN-136-003 dirty WIP.
+  - Modify Antigravity-MiniMax behavior.
+  - Add retries, fallback executors, rerouting, second native invocations, or recursive continuation.
+  - Treat terminal status ERROR as success merely because structured_output exists.
+  - Relax fail-closed handling of missing or malformed ResultPackage.
+  - Run canonical verification inside the Executor.
+  - Upgrade, patch, replace, or vendor the agy binary.
+  - Push or publish from the coding Executor.
+
+constraints:
+  hard:
+    - >
+      Preserve exactly one native agy invocation per admitted PRIMARY, REMEDIATION, or
+      REPAIR execution. No retry, fallback, reroute, second call, or alternate executor
+      may be introduced.
+    - >
+      Add one provider-specific headless print-mode execution contract shared by native
+      PRIMARY, REMEDIATION, and REPAIR instructions. The contract must explicitly forbid
+      starting, detaching, or leaving background tasks; asynchronous manage_task work;
+      delegated implementation subagents; invoke_subagent-style delegation; long-lived
+      servers/watchers; and terminal completion while any tool/subagent/background work
+      remains active.
+    - >
+      Every command used by native Antigravity during AIOS execution must be bounded and
+      complete synchronously before the agent proceeds. Because Runtime owns canonical
+      verification, the Executor must not run full test suites, builds, watchers, or
+      other long-running verification commands merely for ceremony. Only short bounded
+      implementation-local sanity checks are permitted when useful.
+    - >
+      If the platform nevertheless reports that a tool became a background task, the
+      agent must not start additional dependent work and must not invoke finish while
+      that task is active. It must deterministically wait/join for real completion if
+      the platform provides a foreground join path; if no deterministic join is
+      available, it must fail closed rather than fabricate completion.
+    - >
+      Successful terminal behavior for every native operation must be: complete all
+      authorized repository work first; complete any required commit; obtain the actual
+      final Git HEAD; then invoke the builtin finish tool exactly once with an object
+      satisfying the supplied response schema. The finish call is the only successful
+      terminal action.
+    - >
+      Conversational completion prose, markdown, summaries, synthetic terminal
+      notifications, and any second terminal response before or after finish are
+      prohibited.
+    - >
+      result.head_sha must bind to the actual final Git HEAD. Existing structural
+      evidence semantics remain unchanged: Runtime constructs canonical verification
+      evidence.
+    - >
+      PRIMARY mutation semantics remain unchanged. REMEDIATION CODE_FIX still requires
+      its permitted commit; EVIDENCE_ONLY remains zero-mutation. REPAIR CODE_FIX and
+      CONTINUE_IMPLEMENTATION still require the permitted final commit; NO_CHANGE and
+      FINALIZE_CANDIDATE remain read-only and must not create a commit merely to satisfy
+      terminal mechanics.
+    - >
+      FINALIZE_CANDIDATE must remain single-shot, read-only, and bound to the unchanged
+      failed_head_sha while still using the same no-background and finish-exactly-once
+      terminal contract.
+    - >
+      Keep current process timeout, print timeout, JSON schema selection, model/effort,
+      permission mode, no-slash-command behavior, output normalization, token usage
+      accounting, and fail-closed status/error parsing unchanged unless a focused
+      regression proves a change is required by this task.
+    - >
+      Do not accept status ERROR with structured_output as success in TASK-137.
+    - >
+      Add regression coverage that validates the terminal contract for PRIMARY,
+      REMEDIATION, REPAIR CODE_FIX, REPAIR CONTINUE_IMPLEMENTATION, and read-only
+      FINALIZE_CANDIDATE.
+    - >
+      Add weakened-contract regressions proving the contract check fails if any of the
+      following are removed or weakened: no-background rule, no delegated subagent rule,
+      synchronous-command rule, no-terminal-while-active rule, required commit-before-
+      terminal rule, actual-final-HEAD binding, builtin finish exactly once, or the ban
+      on prose/second terminal responses.
+    - >
+      Existing tests must continue proving exactly one native invocation and no fallback
+      on timeout, unsupported model, missing launcher, malformed output, or non-success
+      terminal status.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Native PRIMARY, REMEDIATION, and REPAIR instructions all include one shared
+      deterministic headless print-mode contract that prohibits unfinished
+      background/delegated work at the terminal boundary.
+  - id: AC2
+    condition: >
+      Successful native execution requires repository work and required commit completion,
+      actual final HEAD capture, then builtin finish exactly once satisfying the supplied
+      schema as the only successful terminal action.
+  - id: AC3
+    condition: >
+      REPAIR CONTINUE_IMPLEMENTATION and CODE_FIX retain mutation/commit authority while
+      NO_CHANGE and FINALIZE_CANDIDATE remain read-only, and all REPAIR actions obey the
+      same no-background terminal invariant.
+  - id: AC4
+    condition: >
+      The adapter remains single-invocation and fail-closed: no retry/fallback/reroute is
+      introduced and terminal ERROR/missing/malformed structured output is still rejected.
+  - id: AC5
+    condition: >
+      Focused regressions cover all native operation types and reject weakened terminal
+      contracts that omit background, synchronous, finish, commit, or final-HEAD rules.
+  - id: AC6
+    condition: >
+      Focused native Antigravity adapter tests pass, the full adapter test module passes,
+      git diff --check passes, RESULT has no unresolved items, and the implementation
+      changes only antigravity_adapter.py and its focused tests.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_antigravity_adapter.py -k "terminal_contract or background or finish"
+    - python -m pytest -q tests/test_antigravity_adapter.py
+    - git diff --check
