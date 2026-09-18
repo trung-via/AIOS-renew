@@ -22,9 +22,12 @@ from aios_renew import (
 from aios_renew.review import RemediationExecution
 from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.antigravity_adapter import (
+    HEADLESS_PRINT_MODE_CONTRACT,
     REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
     REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
+    _native_instruction,
     extract_token_usage,
+    native_instruction,
 )
 from aios_renew.run_observation import TokenUsage
 
@@ -1522,3 +1525,381 @@ def test_mutation_authorized_command_behavior_unchanged_across_all_operations(
     assert "plan" not in cmd_ro_repair
     assert "--dangerously-skip-permissions" not in cmd_ro_repair
     assert "--disable-slash-commands" in cmd_ro_repair
+
+
+# ============================================================================
+# TASK-137: Deterministic Native Headless Print-Mode Finish Terminal Contract
+# ============================================================================
+
+
+def _assert_valid_terminal_contract(
+    instruction: str,
+    operation: str,
+    repair_action: str | None = None,
+) -> None:
+    """Validate that native instruction strictly satisfies the hardened finish terminal contract."""
+    # 1. No-background rule: explicitly forbid starting, detaching, or leaving background tasks,
+    # asynchronous manage_task work, or long-lived servers or watchers.
+    assert "background tasks" in instruction
+    assert "manage_task" in instruction
+    assert "servers or watchers" in instruction
+
+    # 2. No delegated subagent rule: explicitly forbid delegated implementation subagents or invoke_subagent.
+    assert "delegated implementation subagents" in instruction
+    assert "invoke_subagent" in instruction
+
+    # 3. Synchronous-command rule: every command must be bounded and complete synchronously before proceeding.
+    assert "complete synchronously" in instruction
+    assert "bounded" in instruction
+    assert "merely for ceremony" in instruction
+
+    # 4. No-terminal-while-active rule: forbid completion while any tool/subagent/background work remains active;
+    # deterministically wait/join or fail closed.
+    assert "while any tool, subagent, or background work remains active" in instruction
+    assert "fail closed rather than fabricate completion" in instruction
+
+    # 5. Required commit-before-terminal rule: complete authorized repository work and required commit first;
+    # zero-mutation actions must not create a commit merely to satisfy terminal mechanics.
+    assert "required commit completion first" in instruction
+    assert "zero-mutation actions must not create a commit merely to satisfy terminal mechanics" in instruction
+
+    # 6. Actual-final-HEAD binding: result.head_sha must bind to actual final Git HEAD.
+    assert "Bind result.head_sha to actual final Git HEAD" in instruction
+    assert "Obtain actual final Git HEAD" in instruction
+
+    # 7. Builtin finish exactly once: invoke builtin finish tool exactly once as only successful terminal action.
+    assert "builtin finish tool exactly once" in instruction
+    assert "only successful terminal action" in instruction
+    assert "satisfying the supplied response schema" in instruction
+
+    # 8. Ban on prose / second terminal responses: conversational completion prose, markdown, summaries,
+    # synthetic terminal notifications, and any second terminal response before or after finish are prohibited.
+    assert "Conversational completion prose" in instruction
+    assert "markdown" in instruction
+    assert "summaries" in instruction
+    assert "synthetic terminal notifications" in instruction
+    assert "second terminal response" in instruction
+    assert "return the structural ResultPackage as the only response" not in instruction
+    assert "Return one structural ResultPackage as the only response" not in instruction
+    assert "Return one structural ResultPackage for the complete original TASK contract as the only response" not in instruction
+
+    # Universal ban on push
+    assert "do not push" in instruction or "Do not push" in instruction
+
+    # Operation-specific contracts
+    if operation == "PRIMARY":
+        assert "Complete all authorized implementation work and required commit completion first" in instruction
+        assert "Root evidence and every claim.evidence must be empty" in instruction
+        assert "Runtime constructs canonical EVIDENCE" in instruction
+        assert "Every claim.satisfies entry must be a known TASK acceptance ID" in instruction
+    elif operation == "REMEDIATION":
+        assert "Complete all authorized remediation work and required commit completion first" in instruction
+        assert "For CODE_FIX, commit the permitted remediation delta before invoking finish" in instruction
+        assert "for EVIDENCE_ONLY, do not create a code commit" in instruction
+        assert "Root evidence, result.claims, and result.unresolved must be empty" in instruction
+    elif operation == "REPAIR":
+        assert "Complete all authorized repair work and required commit completion first" in instruction
+        assert "For CODE_FIX and CONTINUE_IMPLEMENTATION, commit the final permitted repository state" in instruction
+        assert "for NO_CHANGE and FINALIZE_CANDIDATE, do not create a code commit" in instruction
+        assert "Do not create or restart a fresh PRIMARY lineage" in instruction
+        assert "retry this admitted continuation" in instruction
+        assert "reroute or fall back to another Executor" in instruction
+        assert "widen scope" in instruction
+        if repair_action == "CODE_FIX":
+            assert "CODE_FIX authorizes mutation only to correct an established defect" in instruction
+        elif repair_action == "CONTINUE_IMPLEMENTATION":
+            assert "CONTINUE_IMPLEMENTATION authorizes mutation to resume the unfinished original TASK implementation" in instruction
+        elif repair_action == "FINALIZE_CANDIDATE":
+            assert "FINALIZE_CANDIDATE authorizes no repository mutation" in instruction
+            assert "bind result.head_sha to the unchanged failed_head_sha" in instruction
+            assert "finish-exactly-once terminal contract" in instruction
+        elif repair_action == "NO_CHANGE":
+            assert "NO_CHANGE authorizes no repository mutation" in instruction
+
+
+def test_task137_headless_print_mode_contract_shared_across_all_operations(
+    tmp_path: Path,
+) -> None:
+    """AC1: Shared deterministic headless print-mode contract is present across all native operations."""
+    handoff_path = tmp_path / "handoff.json"
+    primary_inst = _native_instruction(operation="PRIMARY", handoff_path=handoff_path)
+    remediation_inst = _native_instruction(operation="REMEDIATION", handoff_path=handoff_path)
+    repair_inst = _native_instruction(operation="REPAIR", handoff_path=handoff_path)
+
+    # HEADLESS_PRINT_MODE_CONTRACT must be present verbatim in all three operations
+    assert HEADLESS_PRINT_MODE_CONTRACT in primary_inst
+    assert HEADLESS_PRINT_MODE_CONTRACT in remediation_inst
+    assert HEADLESS_PRINT_MODE_CONTRACT in repair_inst
+
+    # All three expose identical native_instruction alias
+    assert native_instruction(operation="PRIMARY", handoff_path=handoff_path) == primary_inst
+    assert native_instruction(operation="REMEDIATION", handoff_path=handoff_path) == remediation_inst
+    assert native_instruction(operation="REPAIR", handoff_path=handoff_path) == repair_inst
+
+
+def test_task137_primary_instruction_terminal_contract(tmp_path: Path) -> None:
+    """AC1 & AC2: PRIMARY instruction satisfies the hardened finish terminal contract."""
+    handoff_path = tmp_path / "handoff.json"
+    instruction = _native_instruction(operation="PRIMARY", handoff_path=handoff_path)
+
+    _assert_valid_terminal_contract(instruction, "PRIMARY")
+    assert str(handoff_path) in instruction
+    assert "Runtime owns canonical verification" in instruction
+
+
+def test_task137_remediation_instruction_terminal_contract(tmp_path: Path) -> None:
+    """AC1 & AC2: REMEDIATION instruction satisfies the hardened finish terminal contract."""
+    handoff_path = tmp_path / "remediation_handoff.json"
+    instruction = _native_instruction(operation="REMEDIATION", handoff_path=handoff_path)
+
+    _assert_valid_terminal_contract(instruction, "REMEDIATION")
+    assert str(handoff_path) in instruction
+    assert "Runtime owns affected verification" in instruction
+    assert "remediation.modification_scope" in instruction
+
+
+@pytest.mark.parametrize(
+    "repair_action",
+    ["CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE", "NO_CHANGE"],
+)
+def test_task137_repair_instruction_terminal_contract_all_actions(
+    tmp_path: Path, repair_action: str
+) -> None:
+    """AC1, AC2, AC3: REPAIR instruction satisfies terminal contract for all 4 repair actions."""
+    handoff_path = tmp_path / "repair_handoff.json"
+    instruction = _native_instruction(operation="REPAIR", handoff_path=handoff_path)
+
+    _assert_valid_terminal_contract(instruction, "REPAIR", repair_action=repair_action)
+    assert str(handoff_path) in instruction
+    assert "Runtime owns complete original TASK verification" in instruction
+
+
+def test_task137_terminal_contract_fails_if_weakened(tmp_path: Path) -> None:
+    """AC5: Regressions reject weakened terminal contracts that omit background, synchronous, finish, commit, or final-HEAD rules."""
+    handoff_path = tmp_path / "handoff.json"
+    canonical = _native_instruction(operation="PRIMARY", handoff_path=handoff_path)
+
+    # 0. Canonical instruction passes contract validation
+    _assert_valid_terminal_contract(canonical, "PRIMARY")
+
+    # 1. Omitting no-background rule fails
+    no_background = canonical.replace(
+        "Do not start, detach, or leave background tasks, asynchronous manage_task work, or long-lived servers or watchers.",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_background, "PRIMARY")
+
+    # 2. Omitting no delegated subagent rule fails
+    no_subagent = canonical.replace(
+        "Do not invoke delegated implementation subagents or invoke_subagent-style delegation.",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_subagent, "PRIMARY")
+
+    # 3. Omitting synchronous-command rule fails
+    no_sync = canonical.replace(
+        "Every command used during execution must be bounded and complete synchronously before the agent proceeds.",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_sync, "PRIMARY")
+
+    # 4. Omitting no-terminal-while-active rule fails
+    no_active = canonical.replace(
+        "Do not complete execution or invoke finish while any tool, subagent, or background work remains active.",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_active, "PRIMARY")
+
+    # 5. Omitting required commit-before-terminal rule fails
+    no_commit = canonical.replace(
+        "Complete all authorized implementation work and required commit completion first; ",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_commit, "PRIMARY")
+
+    # 6. Omitting actual-final-HEAD binding fails
+    no_head = canonical.replace(
+        "Bind result.head_sha to actual final Git HEAD.",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_head, "PRIMARY")
+
+    # 7. Omitting builtin finish exactly once fails
+    no_finish = canonical.replace(
+        "builtin finish tool exactly once",
+        "output model response",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_finish, "PRIMARY")
+
+    # 8. Omitting ban on prose / second terminal responses fails
+    no_prose_ban = canonical.replace(
+        "Conversational completion prose, markdown, summaries, synthetic terminal notifications, and any second terminal response before or after finish are prohibited.",
+        "",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_prose_ban, "PRIMARY")
+
+    # 9. Legacy generic prose replacement fails
+    legacy_weakened = canonical.replace(
+        "Obtain actual final Git HEAD, then invoke the builtin finish tool exactly once satisfying the supplied response schema as the only successful terminal action.",
+        "Obtain final Git HEAD, and return the structural ResultPackage as the only response.",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(legacy_weakened, "PRIMARY")
+
+
+def test_task137_adapter_rejects_status_error_even_with_structured_output(
+    tmp_path: Path,
+) -> None:
+    """AC4: Adapter remains single-invocation and rejects terminal status ERROR even when structured_output is present."""
+    task, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    envelope = {
+        "status": "ERROR",
+        "error": "background task still running at boundary",
+        "structured_output": payload,
+    }
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(envelope).encode("utf-8"),
+            stderr=b"",
+        )
+
+    adapter = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=repo / ".git" / "aios" / "handoff.json",
+    )
+    with pytest.raises(
+        AntigravityExecutionError,
+        match="Antigravity CLI terminal status is ERROR: background task still running at boundary",
+    ):
+        adapter.execute(task=task, run=run)
+
+    # Must remain strictly single-invocation: no retry, no fallback, no reroute
+    assert len(calls) == 1
+
+
+def test_task137_repair_actions_retain_mutation_authority_and_no_background_invariant(
+    tmp_path: Path,
+) -> None:
+    """AC3: REPAIR CONTINUE_IMPLEMENTATION and CODE_FIX retain mutation authority while NO_CHANGE and FINALIZE_CANDIDATE remain read-only, and all obey the no-background terminal invariant."""
+    _, run, _, _ = make_execution()
+    repo = tmp_path.resolve()
+    handoff_path = repo / "repair-handoff.json"
+    calls = []
+    payload = successful_output(run.run_id)
+    payload["result"]["head_sha"] = run.base_sha
+    payload["result"]["changed_files"] = []
+    payload["result"]["claims"][0]["evidence"] = []
+    payload["evidence"] = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        instruction = command[command.index("--print") + 1]
+        _assert_valid_terminal_contract(instruction, "REPAIR")
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                {"status": "SUCCESS", "response": "", "structured_output": payload}
+            ),
+            stderr="",
+        )
+
+    # 1. CODE_FIX with mutation authorized policy
+    adapter_mut = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=handoff_path,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
+    )
+    adapter_mut.execute_repair(
+        execution={
+            "run": run,
+            "root_base_sha": run.base_sha,
+            "repair": {
+                "action": "CODE_FIX",
+                "instructions": ["Fix defect."],
+                "modification_scope": ["src/fix.py"],
+            },
+        }
+    )
+    cmd_cf = calls[-1]
+    assert cmd_cf[cmd_cf.index("--mode") + 1] == "accept-edits"
+    assert "--dangerously-skip-permissions" in cmd_cf
+
+    # 2. CONTINUE_IMPLEMENTATION with mutation authorized policy
+    adapter_mut.execute_repair(
+        execution={
+            "run": run,
+            "failed_run_id": "RUN-137-000",
+            "failed_head_sha": run.base_sha,
+            "root_base_sha": run.base_sha,
+            "repair": {
+                "action": "CONTINUE_IMPLEMENTATION",
+                "instructions": ["Resume work."],
+                "modification_scope": ["src/fix.py"],
+            },
+        }
+    )
+    cmd_cont = calls[-1]
+    assert cmd_cont[cmd_cont.index("--mode") + 1] == "accept-edits"
+    assert "--dangerously-skip-permissions" in cmd_cont
+
+    # 3. NO_CHANGE with read-only policy
+    adapter_ro = AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=handoff_path,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=False),
+    )
+    adapter_ro.execute_repair(
+        execution={
+            "run": run,
+            "root_base_sha": run.base_sha,
+            "repair": {
+                "action": "NO_CHANGE",
+                "instructions": ["Keep unchanged."],
+                "modification_scope": [],
+            },
+        }
+    )
+    cmd_nc = calls[-1]
+    assert "--mode" not in cmd_nc
+    assert "--dangerously-skip-permissions" not in cmd_nc
+
+    # 4. FINALIZE_CANDIDATE with read-only policy
+    adapter_ro.execute_repair(
+        execution={
+            "run": run,
+            "failed_head_sha": run.base_sha,
+            "repair": {
+                "action": "FINALIZE_CANDIDATE",
+                "instructions": ["Finalize package."],
+                "modification_scope": [],
+            },
+        }
+    )
+    cmd_fc = calls[-1]
+    assert "--mode" not in cmd_fc
+    assert "--dangerously-skip-permissions" not in cmd_fc
+
+    # Total 4 calls, all obey terminal invariant and contract
+    assert len(calls) == 4

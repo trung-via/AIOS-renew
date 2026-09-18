@@ -360,46 +360,81 @@ def _native_execution_context(*, run: Run, operation: str) -> dict[str, Any]:
     }
 
 
+HEADLESS_PRINT_MODE_CONTRACT = (
+    "Execute strictly within this single-session headless print mode without background or delegated work. "
+    "Do not start, detach, or leave background tasks, asynchronous manage_task work, or long-lived servers or watchers. "
+    "Do not invoke delegated implementation subagents or invoke_subagent-style delegation. "
+    "Every command used during execution must be bounded and complete synchronously before the agent proceeds. "
+    "Because Runtime owns canonical verification, the Executor must not run full test suites, builds, watchers, or other "
+    "long-running verification commands merely for ceremony; only short bounded implementation-local sanity checks on the "
+    "changed surface are permitted when useful. "
+    "Do not complete execution or invoke finish while any tool, subagent, or background work remains active. "
+    "If the platform nevertheless reports that a tool became a background task, the agent must not start additional dependent "
+    "work and must not invoke finish while that task is active; it must deterministically wait or join for real completion if "
+    "the platform provides a foreground join path, and if no deterministic join is available, it must fail closed rather than "
+    "fabricate completion. "
+    "Successful terminal behavior requires completing all authorized repository work and required commit completion first; "
+    "zero-mutation actions must not create a commit merely to satisfy terminal mechanics. Do not push. "
+    "Obtain actual final Git HEAD, then invoke the builtin finish tool exactly once satisfying the supplied response schema as "
+    "the only successful terminal action. Conversational completion prose, markdown, summaries, synthetic terminal notifications, "
+    "and any second terminal response before or after finish are prohibited. Bind result.head_sha to actual final Git HEAD. "
+)
+_HEADLESS_PRINT_MODE_CONTRACT = HEADLESS_PRINT_MODE_CONTRACT
+
+
 def _native_instruction(*, operation: str, handoff_path: Path) -> str:
     if operation == "PRIMARY":
         return (
             _NATIVE_EXECUTOR_INSTRUCTION
+            + _HEADLESS_PRINT_MODE_CONTRACT
             + f"Read the AIOS handoff JSON at {handoff_path}. "
             "Execute its TASK implementation context and RUN exactly within the supplied "
             "repository. Runtime owns canonical verification; do not execute canonical "
             "verification commands and do not generate verification evidence. Minimum "
             "implementation-local sanity checks on the changed surface are permitted when "
-            "useful, but they are not canonical verification or EVIDENCE. Commit the final "
-            "implementation state when required; do not push. Obtain final Git HEAD, and "
-            "return the structural ResultPackage as the only response. Runtime captures and "
-            "persists this response; do not write Runtime-owned operational state. The "
-            "ResultPackage must be an object with result and evidence. result must contain "
-            "head_sha, claims, changed_files, and unresolved. Each claim must contain id, "
-            "satisfies, claim, and evidence. Each evidence entry must contain evidence_id, "
-            "run_id, subject_sha, type, source.command, result.exit_code, result.summary, "
-            "and raw.path when present. Root evidence and every claim.evidence must be empty; "
-            "Runtime constructs canonical EVIDENCE. Every claim.satisfies entry must be a "
-            "known TASK acceptance ID."
+            "useful, but they are not canonical verification or EVIDENCE. Complete all "
+            "authorized implementation work and required commit completion first; "
+            "zero-mutation actions must not create a commit merely to satisfy terminal "
+            "mechanics. Do not push. Obtain actual final Git HEAD, then invoke the builtin "
+            "finish tool exactly once satisfying the supplied response schema as the "
+            "only successful terminal action. Do not emit conversational terminal prose, "
+            "markdown, summaries, synthetic terminal notifications, or a second terminal "
+            "response before or after finish. Bind result.head_sha to actual final Git HEAD. "
+            "Runtime captures and persists this response; do not write Runtime-owned "
+            "operational state. The ResultPackage must be an object with result and evidence. "
+            "result must contain head_sha, claims, changed_files, and unresolved. Each claim "
+            "must contain id, satisfies, claim, and evidence. Each evidence entry must contain "
+            "evidence_id, run_id, subject_sha, type, source.command, result.exit_code, "
+            "result.summary, and raw.path when present. Root evidence and every claim.evidence "
+            "must be empty; Runtime constructs canonical EVIDENCE. Every claim.satisfies "
+            "entry must be a known TASK acceptance ID."
         )
     if operation == "REMEDIATION":
         return (
             _NATIVE_EXECUTOR_INSTRUCTION
+            + _HEADLESS_PRINT_MODE_CONTRACT
             + f"Read the AIOS remediation handoff JSON at {handoff_path}. Execute exactly "
             "its one remediation_execution contract. Do not run or restart the original "
             "TASK, scan for a different repository, perform semantic review or repeat "
             "unaffected verification. Change only paths in remediation.modification_scope. "
-            "For CODE_FIX, commit the permitted remediation delta before returning; for "
-            "EVIDENCE_ONLY, do not create a code commit. Do not push. Runtime owns affected "
-            "verification; do not execute verification commands and do not generate "
+            "For CODE_FIX, commit the permitted remediation delta before invoking finish; "
+            "for EVIDENCE_ONLY, do not create a code commit. Zero-mutation actions must not "
+            "create a commit merely to satisfy terminal mechanics. Do not push. Runtime owns "
+            "affected verification; do not execute verification commands and do not generate "
             "verification evidence. Minimum implementation-local sanity checks on the "
             "changed surface are permitted when useful, but they are not canonical "
-            "verification or EVIDENCE. Return one structural ResultPackage as the only "
-            "response with empty root evidence, result.claims, and result.unresolved. Bind "
-            "result.head_sha to final Git HEAD. Runtime captures and persists the response; "
-            "do not write Runtime-owned operational state."
+            "verification or EVIDENCE. Complete all authorized remediation work and required "
+            "commit completion first. Obtain actual final Git HEAD, then invoke the builtin "
+            "finish tool exactly once satisfying the supplied response schema as the only "
+            "successful terminal action. Do not emit conversational terminal prose, "
+            "markdown, summaries, synthetic terminal notifications, or a second terminal "
+            "response before or after finish. Bind result.head_sha to actual final Git HEAD. "
+            "Root evidence, result.claims, and result.unresolved must be empty. Runtime "
+            "captures and persists the response; do not write Runtime-owned operational state."
         )
     return (
         _NATIVE_EXECUTOR_INSTRUCTION
+        + _HEADLESS_PRINT_MODE_CONTRACT
         + f"Read the AIOS REPAIR handoff JSON at {handoff_path}. Execute exactly its single "
         "continuation bound to the supplied exact failed RUN and failed-lineage context. "
         "The four REPAIR actions are distinct. CODE_FIX authorizes mutation only to "
@@ -417,7 +452,8 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
         "FINALIZE_CANDIDATE authorizes no repository mutation. For that action, inspect "
         "only the supplied exact clean failed candidate and bounded TASK/REPAIR context "
         "far enough to return the missing structural ResultPackage for the complete "
-        "original TASK. Do not edit files, commit, push, or resume or repeat implementation; "
+        "original TASK using the same no-background and finish-exactly-once terminal contract. "
+        "Do not edit files, commit, push, or resume or repeat implementation; "
         "bind result.head_sha to the unchanged failed_head_sha. If the candidate is "
         "incomplete, report truthful unresolved work instead of changing it or fabricating "
         "completion. Follow repair.instructions and limit every mutation to "
@@ -433,12 +469,24 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
         "checks on the changed surface remain permitted when useful, but they are not "
         "canonical verification or EVIDENCE. Runtime derives and persists "
         "canonical result.changed_files from the original TASK root base to final HEAD; "
-        "do not reconstruct or enumerate that historical file set. Return one structural "
-        "ResultPackage for the complete original TASK contract as the only response, with "
-        "empty root evidence and every claim.evidence empty. Structural "
-        "result.changed_files may contain only the narrow repair delta or be empty. Runtime "
-        "captures and persists the response; do not write Runtime-owned operational state."
+        "do not reconstruct or enumerate that historical file set. Complete all authorized "
+        "repair work and required commit completion first. For CODE_FIX and "
+        "CONTINUE_IMPLEMENTATION, commit the final permitted repository state; for "
+        "NO_CHANGE and FINALIZE_CANDIDATE, do not create a code commit. Zero-mutation actions "
+        "must not create a commit merely to satisfy terminal mechanics. Obtain actual final Git "
+        "HEAD (for FINALIZE_CANDIDATE, bind result.head_sha to the unchanged failed_head_sha), "
+        "then invoke the builtin finish tool exactly once satisfying the supplied response schema "
+        "with the structural ResultPackage for the complete original TASK contract as the "
+        "only successful terminal action. Do not emit conversational terminal prose, "
+        "markdown, summaries, synthetic terminal notifications, or a second terminal response "
+        "before or after finish. Bind result.head_sha to actual final Git HEAD. Root evidence "
+        "and every claim.evidence must be empty. Structural result.changed_files may contain "
+        "only the narrow repair delta or be empty. Runtime captures and persists the response; "
+        "do not write Runtime-owned operational state."
     )
+
+
+native_instruction = _native_instruction
 
 
 def _structured_output(stdout: str, *, stderr: str) -> Mapping[str, Any]:
