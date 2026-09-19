@@ -1,0 +1,138 @@
+task_id: TASK-143
+revision: 1
+
+goal: >
+  Fix canonical lifecycle decoding for integrated REMEDIATION runs so the operational parent
+  remains the cumulative RESULT RUN while the remediation RUN base is the synthetic integration
+  candidate, and a failed integrated remediation reduces to normal REPAIR flow instead of
+  MALFORMED_CANONICAL_STATE.
+
+problem: >
+  TASK-142 published correction integration on main. TASK-140 then successfully materialized
+  integration id 14e37a5af0334930e9993a91ace872be0d30c6b0555cae33fc35cbbe36ba603e
+  at candidate 8ca93553393145549d9f6e8aef1477cc10ded845 with exact parents
+  [c52a1db8d59270628f69c2cc54c3985553e4abca,
+   7b023727b061d3a0bb6c62be27e4387a0b0a6b17].
+  Unified State correctly admitted FINDING-140-005 remediation from that integrated base.
+
+  RUN-140-008 was then created as an integrated REMEDIATION. It failed before making any
+  changes because Antigravity-MiniMax returned no structured output. The canonical FAILURE is
+  repairable/transportable, changed_files is empty, failed_head/base are both the integration
+  candidate 8ca93553393145549d9f6e8aef1477cc10ded845.
+
+  After transport, however, "aios state TASK-140" returns MALFORMED_CANONICAL_STATE.
+  The defect is deterministic in _decode_remote_lifecycle(): for every REMEDIATION with an
+  execution_base it resolves execution_base_run_id and then requires a canonical RESULT whose
+  run_id equals that execution_base_run_id AND whose candidate_sha equals remediation
+  run.base_sha. That invariant is correct for legacy cumulative bases but impossible for an
+  integrated base. For integrated bases, execution_base.run_id is the cumulative tip RUN
+  (RUN-140-007), while execution_base.candidate_sha / remediation run.base_sha is the synthetic
+  integration merge candidate 8ca935..., not the cumulative RESULT candidate c52a1db....
+  Therefore the decoder rejects the exact valid integrated lineage it previously admitted.
+
+assumptions:
+  - Canonical main at authoring is 7b023727b061d3a0bb6c62be27e4387a0b0a6b17.
+  - TASK-142 correction integration contracts are authoritative.
+  - Integrated execution_base parsing intentionally maps run_id to cumulative_tip_run_id and
+    candidate_sha to integration_candidate_sha.
+  - RUN-140-008 failure artifacts are valid evidence and must not be rewritten or deleted.
+
+scope:
+  inspect:
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/correction_integration.py
+    - src/aios_renew/correction_preflight.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_correction_preflight.py
+    - refs/heads/aios/failure-artifacts/RUN-140-008
+    - refs/heads/aios/integration/14e37a5af0334930e9993a91ace872be0d30c6b0555cae33fc35cbbe36ba603e
+  modify:
+    - src/aios_renew/unified_state.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_correction_preflight.py
+
+non_goals:
+  - Modify TASK-140 guard/adapter/tests or resolve FINDING-140-005 directly.
+  - Change integration identity, integration commit construction, or integration publication.
+  - Delete/ignore RUN-140-008 or rewrite canonical lifecycle history.
+  - Treat the integration merge commit as a synthetic RESULT RUN.
+  - Loosen fail-closed validation for non-integrated remediation.
+  - Add planner/router/retry/fallback behavior.
+
+constraints:
+  hard:
+    - >
+      Preserve the distinction among three identities for integrated remediation:
+      semantic predecessor RESULT, cumulative operational tip RESULT, and integration candidate
+      commit. They must never be collapsed into one RUN/candidate pair.
+    - >
+      For a non-integrated execution base, keep the existing invariant: execution_base.run_id
+      must resolve to exactly one canonical RESULT whose candidate SHA equals the remediation
+      RUN base.
+    - >
+      For an integrated execution base, the cumulative_tip_run_id must resolve to exactly one
+      canonical RESULT whose candidate SHA equals cumulative_tip_candidate_sha, while the
+      remediation RUN base must equal integration_candidate_sha.
+    - >
+      The integration candidate must remain independently validated by the TASK-142 integration
+      contract/ref. Do not infer validity merely because the commit object exists locally.
+    - >
+      The operational parent used by _operational_parent/_ordered_lineage remains the cumulative
+      tip RUN id, not a fabricated integration RUN.
+    - >
+      Semantic predecessor resolution remains bound to predecessor.source_run_id/review/finding/
+      reviewed_sha and must not be changed to the integration candidate.
+    - >
+      A FAILURE terminal for a valid integrated REMEDIATION must decode as family REMEDIATION,
+      preserve its integrated execution base, and reduce to the normal repairable failure path
+      (AUTHOR_REPAIR or EXECUTE_REPAIR when authorized), not MALFORMED_CANONICAL_STATE.
+    - >
+      Invalid integrated bases remain fail closed: missing/moved remote integration ref, wrong
+      integration candidate, wrong cumulative tip RUN/SHA, wrong authorized main, wrong parents,
+      or forged execution_base must still be rejected.
+    - >
+      Add a regression matching RUN-140-008: repaired PRIMARY semantic root, outstanding finding,
+      explicit valid integration, integrated remediation RUN based on the integration candidate,
+      terminal FAILURE with no changes. Unified State must surface that exact failed RUN as
+      repairable rather than malformed.
+    - >
+      Add a regression for a successful integrated REMEDIATION RESULT and for a subsequent REPAIR
+      child so DELTA review/frontier traversal continues to use the cumulative operational parent
+      and semantic predecessor correctly.
+    - >
+      TASK-141 repaired-PRIMARY semantic-root behavior and TASK-142 INTEGRATION_REQUIRED/READY
+      behavior must remain unchanged.
+    - Do not special-case TASK-140, RUN-140-008, or concrete SHAs in production code.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Integrated REMEDIATION lifecycle decoding validates cumulative RESULT identity separately
+      from integration candidate identity and no longer requires cumulative RESULT candidate SHA
+      to equal remediation RUN base.
+  - id: AC2
+    condition: >
+      Valid integrated FAILURE topology equivalent to RUN-140-008 reduces to repairable failure
+      state instead of MALFORMED_CANONICAL_STATE.
+  - id: AC3
+    condition: >
+      Valid integrated RESULT and subsequent REPAIR lineage preserve operational parent,
+      semantic predecessor, correction frontier, and DELTA review semantics.
+  - id: AC4
+    condition: >
+      Non-integrated remediation behavior is unchanged.
+  - id: AC5
+    condition: >
+      Forged/stale/missing integration evidence and mismatched cumulative tip/main/candidate
+      remain fail closed.
+  - id: AC6
+    condition: >
+      Focused Unified State and Correction Preflight verification passes and git diff --check
+      passes with changes limited to authorized scope.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_operator_unified_state.py
+    - python -m pytest -q tests/test_operator_correction_preflight.py
+    - git diff --check
