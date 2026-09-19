@@ -1,41 +1,31 @@
 task_id: TASK-143
-revision: 1
+revision: 2
 
 goal: >
-  Fix canonical lifecycle decoding for integrated REMEDIATION runs so the operational parent
-  remains the cumulative RESULT RUN while the remediation RUN base is the synthetic integration
-  candidate, and a failed integrated remediation reduces to normal REPAIR flow instead of
-  MALFORMED_CANONICAL_STATE.
+  Complete the TASK-143 integrated-REMEDIATION lifecycle decoder fix on a fresh canonical
+  execution, using the semantically correct design recovered from RUN-143-001 WIP, while
+  preventing native Antigravity from launching Runtime-owned verification/background work.
 
 problem: >
-  TASK-142 published correction integration on main. TASK-140 then successfully materialized
-  integration id 14e37a5af0334930e9993a91ace872be0d30c6b0555cae33fc35cbbe36ba603e
-  at candidate 8ca93553393145549d9f6e8aef1477cc10ded845 with exact parents
-  [c52a1db8d59270628f69c2cc54c3985553e4abca,
-   7b023727b061d3a0bb6c62be27e4387a0b0a6b17].
-  Unified State correctly admitted FINDING-140-005 remediation from that integrated base.
-
-  RUN-140-008 was then created as an integrated REMEDIATION. It failed before making any
-  changes because Antigravity-MiniMax returned no structured output. The canonical FAILURE is
-  repairable/transportable, changed_files is empty, failed_head/base are both the integration
-  candidate 8ca93553393145549d9f6e8aef1477cc10ded845.
-
-  After transport, however, "aios state TASK-140" returns MALFORMED_CANONICAL_STATE.
-  The defect is deterministic in _decode_remote_lifecycle(): for every REMEDIATION with an
-  execution_base it resolves execution_base_run_id and then requires a canonical RESULT whose
-  run_id equals that execution_base_run_id AND whose candidate_sha equals remediation
-  run.base_sha. That invariant is correct for legacy cumulative bases but impossible for an
-  integrated base. For integrated bases, execution_base.run_id is the cumulative tip RUN
-  (RUN-140-007), while execution_base.candidate_sha / remediation run.base_sha is the synthetic
-  integration merge candidate 8ca935..., not the cumulative RESULT candidate c52a1db....
-  Therefore the decoder rejects the exact valid integrated lineage it previously admitted.
+  TASK-143 r1 RUN-143-001 failed non-repairably because native Antigravity ended with
+  "root agent idle; waiting up to 5s for 1 background task(s)" and no ResultPackage.
+  The dirty WIP was preserved separately and is not canonical. Audit of that WIP established
+  the correct implementation shape: retain the parsed remediation execution_base object;
+  for integrated bases validate cumulative RESULT identity against
+  cumulative_tip_run_id/cumulative_tip_candidate_sha, validate remediation run.base_sha
+  against integration_candidate_sha, and independently resolve the exact remote integration
+  ref/identity; preserve the old equality invariant for non-integrated bases. The WIP also
+  added regressions for integrated failure, integrated result + subsequent repair, and invalid
+  integration evidence, but it ended with a git diff --check trailing-blank-line defect and
+  was never committed. r2 must implement the design cleanly from canonical main, not promote
+  or assume the dirty WIP.
 
 assumptions:
-  - Canonical main at authoring is 7b023727b061d3a0bb6c62be27e4387a0b0a6b17.
-  - TASK-142 correction integration contracts are authoritative.
-  - Integrated execution_base parsing intentionally maps run_id to cumulative_tip_run_id and
-    candidate_sha to integration_candidate_sha.
-  - RUN-140-008 failure artifacts are valid evidence and must not be rewritten or deleted.
+  - Canonical main at authoring is bcb7cc8a80a10d2718a37be457563863ed22f00c.
+  - RUN-143-001 is a non-repairable historical failure and its dirty WIP has been backed up outside the repository.
+  - The WIP audit is design evidence only; no WIP file or patch is canonical input to TASK-143 r2.
+  - TASK-142 integration contracts on current main are authoritative and must remain compatible.
+  - Runtime, not Executor, owns all verification commands for this task.
 
 scope:
   inspect:
@@ -63,54 +53,67 @@ non_goals:
 constraints:
   hard:
     - >
-      Preserve the distinction among three identities for integrated remediation:
-      semantic predecessor RESULT, cumulative operational tip RESULT, and integration candidate
-      commit. They must never be collapsed into one RUN/candidate pair.
+      Preserve three distinct identities for integrated remediation: semantic predecessor
+      RESULT, cumulative operational tip RESULT, and synthetic integration candidate commit.
     - >
-      For a non-integrated execution base, keep the existing invariant: execution_base.run_id
-      must resolve to exactly one canonical RESULT whose candidate SHA equals the remediation
-      RUN base.
+      Parse and retain the complete remediation execution_base contract during lifecycle
+      decoding. Do not reduce an integrated base to only one run_id/candidate pair.
     - >
-      For an integrated execution base, the cumulative_tip_run_id must resolve to exactly one
-      canonical RESULT whose candidate SHA equals cumulative_tip_candidate_sha, while the
-      remediation RUN base must equal integration_candidate_sha.
+      For a non-integrated execution base, preserve the existing invariant: the exact
+      execution_base.run_id resolves to one canonical RESULT whose candidate SHA equals the
+      remediation RUN base.
     - >
-      The integration candidate must remain independently validated by the TASK-142 integration
-      contract/ref. Do not infer validity merely because the commit object exists locally.
+      For an integrated execution base, cumulative_tip_run_id must resolve to exactly one
+      canonical RESULT at cumulative_tip_candidate_sha, while remediation RUN base must equal
+      integration_candidate_sha. Independently validate the exact remote integration
+      ref/candidate/id through the TASK-142 integration validator with remote evidence required.
     - >
-      The operational parent used by _operational_parent/_ordered_lineage remains the cumulative
-      tip RUN id, not a fabricated integration RUN.
+      Operational parent remains cumulative_tip_run_id. Semantic predecessor remains the
+      reviewed predecessor identity and must never be replaced by the integration candidate.
     - >
-      Semantic predecessor resolution remains bound to predecessor.source_run_id/review/finding/
-      reviewed_sha and must not be changed to the integration candidate.
+      A valid integrated REMEDIATION FAILURE equivalent to RUN-140-008 must reduce to normal
+      repairable failure state, not MALFORMED_CANONICAL_STATE.
     - >
-      A FAILURE terminal for a valid integrated REMEDIATION must decode as family REMEDIATION,
-      preserve its integrated execution base, and reduce to the normal repairable failure path
-      (AUTHOR_REPAIR or EXECUTE_REPAIR when authorized), not MALFORMED_CANONICAL_STATE.
+      A valid integrated REMEDIATION RESULT and a subsequent REPAIR child must preserve
+      correction frontier and DELTA review traversal.
     - >
-      Invalid integrated bases remain fail closed: missing/moved remote integration ref, wrong
-      integration candidate, wrong cumulative tip RUN/SHA, wrong authorized main, wrong parents,
-      or forged execution_base must still be rejected.
+      Missing/moved remote integration ref, wrong integration candidate/id, wrong cumulative
+      tip RUN/SHA, wrong authorized main, wrong parents, and forged execution_base remain
+      fail closed.
     - >
-      Add a regression matching RUN-140-008: repaired PRIMARY semantic root, outstanding finding,
-      explicit valid integration, integrated remediation RUN based on the integration candidate,
-      terminal FAILURE with no changes. Unified State must surface that exact failed RUN as
-      repairable rather than malformed.
+      Local/canonical terminal comparison must remain exact for the complete run document and
+      must not create an integrated-base bypass.
     - >
-      Add a regression for a successful integrated REMEDIATION RESULT and for a subsequent REPAIR
-      child so DELTA review/frontier traversal continues to use the cumulative operational parent
-      and semantic predecessor correctly.
+      Keep regression additions focused and maintainable. Reuse existing test helpers where
+      practical instead of duplicating very large setup blocks.
     - >
-      TASK-141 repaired-PRIMARY semantic-root behavior and TASK-142 INTEGRATION_REQUIRED/READY
-      behavior must remain unchanged.
-    - Do not special-case TASK-140, RUN-140-008, or concrete SHAs in production code.
+      EXECUTOR IMPLEMENTATION-ONLY CONTRACT: native Antigravity MUST NOT run pytest, py.test,
+      unittest, tox, nox, coverage, lint, build, git diff --check, sleep/wait/watchers/servers,
+      or any TASK verification command. Runtime owns all verification after ResultPackage.
+    - >
+      If a tool/hook denies a command with AIOS_RUNTIME_OWNS_VERIFICATION or
+      AIOS_BACKGROUND_RISK_DENIED, treat the denial as expected policy; do not retry, wrap,
+      substitute, or launch an equivalent command.
+    - >
+      After implementation, only bounded terminalization commands are permitted: git status,
+      ordinary git diff inspection, git add for authorized files, one normal git commit,
+      git rev-parse HEAD, then builtin finish exactly once. No background/delegated tasks.
+    - >
+      Commit all authorized implementation changes before finish; finish must report the actual
+      final HEAD and a structural ResultPackage covering AC1-AC6. No conversational prose after
+      builtin finish.
+    - >
+      Do not create scratch/helper files, temp repos, patch scripts, or modify files outside scope.
+    - >
+      git diff --check must pass when Runtime invokes it; do not leave trailing whitespace or
+      extra blank lines at EOF.
 
 acceptance:
   - id: AC1
     condition: >
       Integrated REMEDIATION lifecycle decoding validates cumulative RESULT identity separately
-      from integration candidate identity and no longer requires cumulative RESULT candidate SHA
-      to equal remediation RUN base.
+      from integration candidate identity and no longer requires cumulative RESULT candidate
+      SHA to equal remediation RUN base.
   - id: AC2
     condition: >
       Valid integrated FAILURE topology equivalent to RUN-140-008 reduces to repairable failure
@@ -121,15 +124,15 @@ acceptance:
       semantic predecessor, correction frontier, and DELTA review semantics.
   - id: AC4
     condition: >
-      Non-integrated remediation behavior is unchanged.
+      Non-integrated remediation behavior remains unchanged.
   - id: AC5
     condition: >
       Forged/stale/missing integration evidence and mismatched cumulative tip/main/candidate
       remain fail closed.
   - id: AC6
     condition: >
-      Focused Unified State and Correction Preflight verification passes and git diff --check
-      passes with changes limited to authorized scope.
+      Runtime-owned focused Unified State and Correction Preflight verification plus
+      git diff --check pass, with production changes limited to authorized scope.
 
 verification:
   required:
