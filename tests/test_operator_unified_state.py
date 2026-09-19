@@ -2327,7 +2327,7 @@ findings:
     assert obs_integrated["execution_base"]["authorized_main_sha"] == new_main
 
 
-def _setup_divergent_integrated_topology(tmp_path: Path):
+def _setup_divergent_integrated_topology(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from aios_renew.correction_integration import integrate_correction
 
     repo = make_repo(tmp_path)
@@ -2500,15 +2500,6 @@ constraints: []
     new_main = git(repo, "rev-parse", "HEAD")
     git(repo, "push", "--quiet", "origin", "main")
 
-    int_result = integrate_correction(
-        "TASK-101",
-        task_revision=1,
-        cumulative_tip_run_id=repair_2_id,
-        cumulative_tip_candidate_sha=candidate_sha,
-        authorized_main_sha=new_main,
-        repo=repo,
-    )
-
     base_terminals = (
         RemoteLifecycleTerminal(
             primary_id, "FAILURE", head, primary_run, primary_failure,
@@ -2525,6 +2516,25 @@ constraints: []
     )
     base_reviews = (
         RemoteLifecycleReview(repair_2_id, candidate_sha, repair_2_review_yaml),
+    )
+
+    lifecycle_divergent = RemoteTaskLifecycle(
+        new_main,
+        base_terminals,
+        base_reviews,
+        ((repair_2_id, "F1", selector_sha),),
+        (),
+        (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle_divergent)
+
+    int_result = integrate_correction(
+        "TASK-101",
+        task_revision=1,
+        cumulative_tip_run_id=repair_2_id,
+        cumulative_tip_candidate_sha=candidate_sha,
+        authorized_main_sha=new_main,
+        repo=repo,
     )
 
     return {
@@ -2609,7 +2619,7 @@ def _make_integrated_remediation_run(
 def test_unified_state_integrated_remediation_failure_equivalent_to_run_140_008_reduces_to_repairable_state_ac1_ac2(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    topo = _setup_divergent_integrated_topology(tmp_path)
+    topo = _setup_divergent_integrated_topology(tmp_path, monkeypatch)
     repo = topo["repo"]
     int_result = topo["int_result"]
     remediation_id = topo["remediation_id"]
@@ -2723,7 +2733,7 @@ def test_unified_state_integrated_remediation_failure_equivalent_to_run_140_008_
 def test_unified_state_integrated_remediation_result_and_subsequent_repair_lineage_ac3(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    topo = _setup_divergent_integrated_topology(tmp_path)
+    topo = _setup_divergent_integrated_topology(tmp_path, monkeypatch)
     repo = topo["repo"]
     int_result = topo["int_result"]
     remediation_id = topo["remediation_id"]
@@ -2907,7 +2917,7 @@ prior_finding_id: F1
 def test_unified_state_integrated_remediation_fail_closed_on_forged_stale_mismatches_ac5(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    topo = _setup_divergent_integrated_topology(tmp_path)
+    topo = _setup_divergent_integrated_topology(tmp_path, monkeypatch)
     repo = topo["repo"]
     int_result = topo["int_result"]
     remediation_id = topo["remediation_id"]
