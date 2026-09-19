@@ -1908,6 +1908,39 @@ def test_publication_execution_base_parser_is_exact() -> None:
         })
 
 
+def test_publication_integrated_execution_base_parser() -> None:
+    valid_integrated = {
+        "version": 1,
+        "kind": "INTEGRATED",
+        "cumulative_tip_run_id": "RUN-101-001",
+        "cumulative_tip_candidate_sha": "a" * 40,
+        "authorized_main_sha": "b" * 40,
+        "integration_candidate_sha": "c" * 40,
+        "integration_id": "d" * 64,
+    }
+    parsed = publication_module._parse_remediation_execution_base(valid_integrated)
+    assert parsed.is_integrated is True
+    assert parsed.run_id == "RUN-101-001"
+    assert parsed.candidate_sha == "c" * 40
+    assert parsed.cumulative_tip_run_id == "RUN-101-001"
+    assert parsed.cumulative_tip_candidate_sha == "a" * 40
+    assert parsed.authorized_main_sha == "b" * 40
+    assert parsed.integration_candidate_sha == "c" * 40
+    assert parsed.integration_id == "d" * 64
+
+    # Bad version
+    with pytest.raises(ValueError, match="version is invalid"):
+        publication_module._parse_remediation_execution_base({**valid_integrated, "version": 2})
+
+    # Bad kind
+    with pytest.raises(ValueError, match="kind is invalid"):
+        publication_module._parse_remediation_execution_base({**valid_integrated, "kind": "OTHER"})
+
+    # Bad SHA
+    with pytest.raises(ValueError, match="authorized_main_sha is invalid"):
+        publication_module._parse_remediation_execution_base({**valid_integrated, "authorized_main_sha": "invalid"})
+
+
 def test_publication_predecessor_parser_rejects_alias_and_conflicting_fields() -> None:
     valid_payload = {
         "source_run_id": "RUN-063-001",
@@ -2423,3 +2456,254 @@ def test_multi_generation_repair_broken_predecessor_chain_fails_closed_ac5(
         publish(lineage)
 
     assert remote_main(lineage) == lineage["base_sha"]
+
+
+def make_integrated_predecessor_lineage(root: Path) -> dict[str, object]:
+    from aios_renew.correction_integration import integrate_correction
+
+    pred_run_id = "RUN-063-001"
+    rem_run_id = "RUN-063-002"
+
+    repo = root / "repo"
+    remote = root / "upstream.git"
+    repo.mkdir(parents=True, exist_ok=True)
+    git(repo, "init", "--quiet")
+    git(repo, "config", "user.name", "AIOS Publication Test")
+    git(repo, "config", "user.email", "publication@example.invalid")
+    git(repo, "branch", "-M", "main")
+    task_dir = repo / ".ai" / "tasks"
+    task_dir.mkdir(parents=True)
+    (task_dir / "TASK-063.yaml").write_text(TASK_SOURCE, encoding="utf-8")
+    (repo / "product.txt").write_text("base\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "base")
+    base_sha = git(repo, "rev-parse", "HEAD")
+    subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
+
+    state = root / "state"
+    state.mkdir(exist_ok=True)
+
+    pred_run = {
+        "run_id": pred_run_id,
+        "task": {"id": "TASK-063", "revision": 2},
+        "executor": "codex",
+        "base_sha": base_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    pred_run_path = state / "pred-run.json"
+    pred_result_path = state / "pred-result.json"
+    pred_run_path.write_text(json.dumps(pred_run), encoding="utf-8")
+    pred_result_path.write_text(
+        json.dumps(result_payload(pred_run_id, base_sha, remediation=False)),
+        encoding="utf-8",
+    )
+    transport_post_pass(
+        repo,
+        run_id=pred_run_id,
+        head_sha=base_sha,
+        run_path=pred_run_path,
+        result_path=pred_result_path,
+    )
+
+    review_dir = repo / ".ai" / "reviews"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    pred_review_source = f"""review_id: REVIEW-063-001
+reviewed_sha: {base_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: product.txt
+    issue: Primary candidate needs narrow correction.
+    expected: Commit the corrected product.
+"""
+    (review_dir / "REVIEW-063-001.yaml").write_text(pred_review_source, encoding="utf-8")
+    remediation_dir = repo / ".ai" / "remediations"
+    remediation_dir.mkdir(parents=True, exist_ok=True)
+    (remediation_dir / "R1.yaml").write_text(
+        f"""finding_id: R1
+action: CODE_FIX
+reviewed_sha: {base_sha}
+modification_scope: [product.txt]
+affected_verification: [git diff --check]
+constraints: []
+""",
+        encoding="utf-8",
+    )
+    git(repo, "add", ".ai")
+    git(repo, "commit", "--quiet", "-m", "predecessor review and remediation")
+    git(repo, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/remediation/{pred_run_id}-R1")
+
+    # Advance main independently
+    git(repo, "reset", "--hard", "--quiet", base_sha)
+    (repo / "UNRELATED.txt").write_text("unrelated main change\n", encoding="utf-8")
+    git(repo, "add", "UNRELATED.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main independently")
+    new_main_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    # Integrate correction explicitly
+    int_result = integrate_correction(
+        "TASK-063",
+        task_revision=2,
+        cumulative_tip_run_id=pred_run_id,
+        cumulative_tip_candidate_sha=base_sha,
+        authorized_main_sha=new_main_sha,
+        repo=repo,
+    )
+    git(repo, "push", "--quiet", "origin", f"{int_result.integration_candidate_sha}:{int_result.integration_ref}")
+
+    # Author remediation candidate on top of integrated candidate
+    git(repo, "reset", "--hard", "--quiet", int_result.integration_candidate_sha)
+    (repo / "product.txt").write_text("remediated product on integrated base\n", encoding="utf-8")
+    git(repo, "add", "product.txt")
+    git(repo, "commit", "--quiet", "-m", "remediation candidate on integrated base")
+    candidate_sha = git(repo, "rev-parse", "HEAD")
+
+    rem_operational_run = {
+        "run_id": rem_run_id,
+        "task": {"id": "TASK-063", "revision": 2},
+        "executor": "codex",
+        "base_sha": int_result.integration_candidate_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    predecessor_record = {
+        "source_run_id": pred_run_id,
+        "review_id": "REVIEW-063-001",
+        "finding_id": "R1",
+        "reviewed_sha": base_sha,
+    }
+    execution_base_record = {
+        "version": 1,
+        "kind": "INTEGRATED",
+        "cumulative_tip_run_id": pred_run_id,
+        "cumulative_tip_candidate_sha": base_sha,
+        "authorized_main_sha": new_main_sha,
+        "integration_candidate_sha": int_result.integration_candidate_sha,
+        "integration_id": int_result.integration_id,
+    }
+    rem_run_payload = {
+        "kind": "REMEDIATION",
+        "predecessor": predecessor_record,
+        "execution_base": execution_base_record,
+        "execution": {
+            "review_id": "REVIEW-063-001",
+            "finding": {
+                "id": "R1",
+                "basis": "AC1",
+                "action": "CODE_FIX",
+                "location": "product.txt",
+                "issue": "Primary candidate needs narrow correction.",
+                "expected": "Commit the corrected product.",
+            },
+            "remediation": {
+                "finding_id": "R1",
+                "action": "CODE_FIX",
+                "reviewed_sha": base_sha,
+                "modification_scope": ["product.txt"],
+                "affected_verification": ["git diff --check"],
+                "constraints": [],
+            },
+            "run": rem_operational_run,
+            "original_constraints": [],
+        },
+    }
+    rem_run_path = state / "rem-run.json"
+    rem_result_path = state / "rem-result.json"
+    rem_run_path.write_text(json.dumps(rem_run_payload), encoding="utf-8")
+    rem_result_path.write_text(
+        json.dumps(result_payload(rem_run_id, candidate_sha, remediation=True)),
+        encoding="utf-8",
+    )
+    transport_post_pass(
+        repo,
+        run_id=rem_run_id,
+        head_sha=candidate_sha,
+        run_path=rem_run_path,
+        result_path=rem_result_path,
+    )
+
+    review_dir = repo / ".ai" / "reviews"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "REVIEW-063-002.yaml").write_text(
+        f"""review_id: REVIEW-063-002
+reviewed_sha: {candidate_sha}
+mode: DELTA
+verdict: PASS
+prior_finding_id: R1
+acceptance:
+  AC1: PASS
+findings: []
+""",
+        encoding="utf-8",
+    )
+    git(repo, "add", ".ai")
+    git(repo, "commit", "--quiet", "-m", "remediation review decision")
+    decision_sha = git(repo, "rev-parse", "HEAD")
+    git(
+        repo,
+        "push",
+        "--quiet",
+        "origin",
+        f"HEAD:refs/heads/aios/review-decision/{rem_run_id}",
+    )
+
+    return {
+        "repo": repo,
+        "remote": remote,
+        "run_id": rem_run_id,
+        "pred_run_id": pred_run_id,
+        "base_sha": base_sha,
+        "new_main_sha": new_main_sha,
+        "integration_candidate_sha": int_result.integration_candidate_sha,
+        "integration_ref": int_result.integration_ref,
+        "candidate_sha": candidate_sha,
+        "decision_sha": decision_sha,
+    }
+
+
+def test_integrated_remediation_publication_advances_main_ac7(
+    tmp_path: Path,
+) -> None:
+    lineage = make_integrated_predecessor_lineage(tmp_path)
+    report = publish(lineage)
+
+    assert report.outcome == "PUBLISHED"
+    assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+
+
+def test_integrated_remediation_publication_rejects_missing_ref_and_stale_main_ac7(
+    tmp_path: Path,
+) -> None:
+    lineage = make_integrated_predecessor_lineage(tmp_path)
+    remote = lineage["remote"]
+
+    # Delete integration ref on remote -> fails closed
+    git(remote, "update-ref", "-d", lineage["integration_ref"])
+    with pytest.raises(PublicationError, match="canonical ref .* is missing or ambiguous"):
+        publish(lineage)
+
+    # Re-create ref
+    git(remote, "update-ref", lineage["integration_ref"], lineage["integration_candidate_sha"])
+
+    # Now advance main on remote ahead of authorized_main_sha -> fails closed
+    (lineage["repo"] / "LATER.txt").write_text("later advance\n", encoding="utf-8")
+    git(lineage["repo"], "add", "LATER.txt")
+    git(lineage["repo"], "commit", "-m", "advance main after integration")
+    later_main = git(lineage["repo"], "rev-parse", "HEAD")
+    git(lineage["repo"], "push", "origin", f"{later_main}:refs/heads/main")
+
+    with pytest.raises(PublicationError, match="stale"):
+        publish(lineage)
