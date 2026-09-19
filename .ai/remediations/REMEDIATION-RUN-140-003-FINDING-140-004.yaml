@@ -1,0 +1,10 @@
+finding_id: FINDING-140-004
+action: CODE_FIX
+reviewed_sha: 1a86953a8a45252ccd2901af613878523280fcb3
+modification_scope:
+  - .agents/aios_antigravity_pretool_guard.py
+  - tests/test_antigravity_adapter.py
+affected_verification:
+  - python -m pytest -q tests/test_antigravity_adapter.py -k "pretool or guard or background or hook"
+  - python -m pytest -q tests/test_antigravity_adapter.py
+  - git diff --check
