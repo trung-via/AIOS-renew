@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
@@ -67,6 +68,33 @@ _NATIVE_EXECUTOR_INSTRUCTION = (
 
 ANTIGRAVITY_DEFAULT_MODEL = "gemini-3.8-flash"
 ANTIGRAVITY_DEFAULT_EFFORT = "high"
+
+AIOS_ANTIGRAVITY_ACTIVE_ENV = "AIOS_ANTIGRAVITY_ACTIVE"
+AIOS_ANTIGRAVITY_ACTIVE_VALUE = "1"
+AIOS_PRETOOL_GUARD_FILENAME = "aios_antigravity_pretool_guard.py"
+
+
+def aios_subprocess_env() -> dict[str, str]:
+    """Return subprocess env with AIOS antigravity mode enabled.
+
+    The activation marker is propagated only to the subprocess spawned
+    by the adapter. The marker is *not* a global state mutation; it is
+    injected per-invocation so manual / non-AIOS Antigravity sessions
+    remain unaffected.
+    """
+    return {**os.environ, AIOS_ANTIGRAVITY_ACTIVE_ENV: AIOS_ANTIGRAVITY_ACTIVE_VALUE}
+
+
+def aios_pretool_guard_path(repo: str | Path) -> Path:
+    """Resolve the canonical on-disk path of the PreToolUse guard script.
+
+    The script ships inside the repository workspace at
+    ``<repo>/.agents/aios_antigravity_pretool_guard.py`` so it is loaded
+    by Antigravity for every workspace tool execution. The path is
+    canonical (absolute, resolved) for callers that need to invoke the
+    guard outside the hook pipeline (e.g. tests).
+    """
+    return Path(repo).resolve() / ".agents" / AIOS_PRETOOL_GUARD_FILENAME
 
 
 class AntigravityExecutionError(RuntimeError):
@@ -225,6 +253,7 @@ class AntigravityAdapter:
                 capture_output=True,
                 text=False,
                 check=False,
+                env=aios_subprocess_env(),
                 timeout=self._execution_policy.process_watchdog_seconds,
             )
             stdout = _decode_utf8(completed.stdout)
