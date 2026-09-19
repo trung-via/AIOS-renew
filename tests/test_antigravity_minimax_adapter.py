@@ -1417,3 +1417,157 @@ def test_task132_remediation_and_repair_invocations_pass_hardened_instruction(
     assert rep_cmd[rep_cmd.index("--response-schema") + 1] == str(
         REPAIR_RESULT_PACKAGE_SCHEMA_PATH
     )
+
+
+# ============================================================================
+# TASK-139: Deterministic Canonical Identity and Remote Carrier Invariance
+# ============================================================================
+
+
+def test_importing_adapter_performs_no_mutation_of_canonical_or_remote_allowlists() -> None:
+    code = """
+import sys
+from aios_renew import (
+    run,
+    dispatch_reconciliation,
+    correction_dispatch,
+    repair_dispatch,
+    github_issue_wakeup,
+    github_issue_remediation_intent,
+    github_issue_repair_wakeup,
+)
+
+# Baseline allowlists before importing adapter
+run_executors_before = frozenset(run.SUPPORTED_EXECUTORS)
+dispatch_executors_before = frozenset(dispatch_reconciliation.SUPPORTED_EXECUTORS)
+correction_executors_before = frozenset(correction_dispatch.SUPPORTED_EXECUTORS)
+repair_executors_before = frozenset(repair_dispatch.SUPPORTED_EXECUTORS)
+issue_primary_before = frozenset(github_issue_wakeup.SUPPORTED_EXECUTORS)
+issue_remediation_before = frozenset(github_issue_remediation_intent.SUPPORTED_EXECUTORS)
+issue_repair_before = frozenset(github_issue_repair_wakeup.SUPPORTED_EXECUTORS)
+
+assert run_executors_before == frozenset({"codex", "antigravity", "antigravity-minimax"})
+assert dispatch_executors_before == frozenset({"codex", "antigravity"})
+assert correction_executors_before == frozenset({"codex", "antigravity"})
+assert repair_executors_before == frozenset({"codex", "antigravity"})
+assert issue_primary_before == frozenset({"codex", "antigravity"})
+assert issue_remediation_before == frozenset({"codex", "antigravity"})
+assert issue_repair_before == frozenset({"codex", "antigravity"})
+
+# Import adapter
+import aios_renew.antigravity_minimax_adapter as adapter
+
+# Check allowlists after importing adapter
+assert run.SUPPORTED_EXECUTORS == run_executors_before
+assert dispatch_reconciliation.SUPPORTED_EXECUTORS == dispatch_executors_before
+assert correction_dispatch.SUPPORTED_EXECUTORS == correction_executors_before
+assert repair_dispatch.SUPPORTED_EXECUTORS == repair_executors_before
+assert github_issue_wakeup.SUPPORTED_EXECUTORS == issue_primary_before
+assert github_issue_remediation_intent.SUPPORTED_EXECUTORS == issue_remediation_before
+assert github_issue_repair_wakeup.SUPPORTED_EXECUTORS == issue_repair_before
+
+# Also verify that remote carrier allowlists do NOT contain antigravity-minimax
+assert "antigravity-minimax" not in dispatch_reconciliation.SUPPORTED_EXECUTORS
+assert "antigravity-minimax" not in correction_dispatch.SUPPORTED_EXECUTORS
+assert "antigravity-minimax" not in repair_dispatch.SUPPORTED_EXECUTORS
+assert "antigravity-minimax" not in github_issue_wakeup.SUPPORTED_EXECUTORS
+assert "antigravity-minimax" not in github_issue_remediation_intent.SUPPORTED_EXECUTORS
+assert "antigravity-minimax" not in github_issue_repair_wakeup.SUPPORTED_EXECUTORS
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.returncode == 0
+
+
+def test_remote_carrier_allowlists_remain_codex_and_antigravity_only() -> None:
+    from aios_renew import (
+        correction_dispatch,
+        dispatch_reconciliation,
+        repair_dispatch,
+        run,
+    )
+    from aios_renew import (
+        github_issue_remediation_intent,
+        github_issue_repair_wakeup,
+        github_issue_wakeup,
+    )
+
+    assert run.SUPPORTED_EXECUTORS == frozenset(
+        {"codex", "antigravity", "antigravity-minimax"}
+    )
+    assert dispatch_reconciliation.SUPPORTED_EXECUTORS == frozenset(
+        {"codex", "antigravity"}
+    )
+    assert correction_dispatch.SUPPORTED_EXECUTORS == frozenset(
+        {"codex", "antigravity"}
+    )
+    assert repair_dispatch.SUPPORTED_EXECUTORS == frozenset(
+        {"codex", "antigravity"}
+    )
+    assert github_issue_wakeup.SUPPORTED_EXECUTORS == frozenset(
+        {"codex", "antigravity"}
+    )
+    assert github_issue_remediation_intent.SUPPORTED_EXECUTORS == frozenset(
+        {"codex", "antigravity"}
+    )
+    assert github_issue_repair_wakeup.SUPPORTED_EXECUTORS == frozenset(
+        {"codex", "antigravity"}
+    )
+
+
+def test_github_issue_remote_carriers_reject_antigravity_minimax() -> None:
+    import yaml
+    from aios_renew.github_issue_wakeup import (
+        GitHubIssueWakeupError,
+        parse_request as parse_primary_request,
+    )
+    from aios_renew.github_issue_remediation_intent import (
+        GitHubIssueRemediationIntentError,
+        parse_request as parse_remediation_request,
+    )
+    from aios_renew.github_issue_repair_wakeup import (
+        GitHubIssueRepairWakeupError,
+        parse_request as parse_repair_request,
+    )
+
+    primary_body = yaml.safe_dump(
+        {
+            "format": "AIOS_PRIMARY_WAKEUP_REQUEST",
+            "version": 1,
+            "dispatch_id": "brain-wakeup-139",
+            "task_id": "TASK-139",
+            "executor": "antigravity-minimax",
+        }
+    )
+    with pytest.raises(GitHubIssueWakeupError, match="executor"):
+        parse_primary_request(primary_body)
+
+    remediation_body = yaml.safe_dump(
+        {
+            "format": "AIOS_REMEDIATION_INTENT_REQUEST",
+            "version": 1,
+            "correction_dispatch_id": "rem-139",
+            "source_run_id": "RUN-139-001",
+            "finding_id": "F1",
+            "executor": "antigravity-minimax",
+        }
+    )
+    with pytest.raises(GitHubIssueRemediationIntentError, match="executor"):
+        parse_remediation_request(remediation_body)
+
+    repair_body = yaml.safe_dump(
+        {
+            "format": "AIOS_REPAIR_WAKEUP_REQUEST",
+            "version": 1,
+            "repair_dispatch_id": "rep-139",
+            "failed_run_id": "RUN-139-001",
+            "repair_sha": "a" * 40,
+            "executor": "antigravity-minimax",
+        }
+    )
+    with pytest.raises(GitHubIssueRepairWakeupError, match="executor"):
+        parse_repair_request(repair_body)

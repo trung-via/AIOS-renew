@@ -2283,3 +2283,157 @@ def test_author_repair_failed_remediation_malformed_negatives(tmp_path):
         ref = f"refs/heads/aios/repair/{nid}"
         output = git(repo, "ls-remote", "--refs", "origin", ref)
         assert not output.strip(), f"repair ref unexpectedly created for {nid}"
+
+
+# ===========================================================================
+# TASK-139 / Issue #208: Production-topology SUBMIT_REVIEW for antigravity-minimax
+# ===========================================================================
+
+
+def test_issue_208_submit_review_canonical_antigravity_minimax_run_succeeds(tmp_path):
+    task_id = "TASK-138"
+    run_id = "RUN-138-001"
+    task_source = TASK_105_SOURCE.replace("TASK-105", task_id)
+
+    lineage = setup_candidate_lineage(
+        tmp_path,
+        run_id=run_id,
+        task_id=task_id,
+        task_source=task_source,
+        run_override={"executor": "antigravity-minimax"},
+    )
+    repo = lineage["repo"]
+    candidate_sha = lineage["candidate_sha"]
+
+    cr_review = f"""\
+review_id: REVIEW-138-001
+reviewed_sha: {candidate_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: src/sample.py
+    issue: TASK-138 candidate defect found during live review.
+    expected: Fix defect.
+"""
+    envelope = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="SUBMIT_REVIEW",
+        identity={"run_id": run_id},
+        expected_state={"expected_candidate_sha": candidate_sha},
+        payload=cr_review,
+    )
+    res = execute_ingress(envelope, repo=repo)
+    assert res.status == "CANONICALIZED"
+    assert res.canonical_destination == f"refs/heads/aios/review-decision/{run_id}"
+    assert_exact_metadata_delta(
+        repo,
+        res.canonical_sha,
+        candidate_sha,
+        ".ai/reviews/REVIEW-138-001.yaml",
+        cr_review.encode("utf-8"),
+    )
+
+    obs = observe_unified_state(task_id, repo=repo)
+    assert obs.lifecycle_state == "CORRECTION"
+    assert obs.next_action == "AUTHOR_REMEDIATION"
+    assert obs.finding_id == "F1"
+
+
+def test_submit_review_unsupported_executor_fails_closed(tmp_path):
+    lineage = setup_candidate_lineage(
+        tmp_path,
+        run_id="RUN-105-001",
+        run_override={"executor": "unsupported-executor"},
+    )
+    repo = lineage["repo"]
+    candidate_sha = lineage["candidate_sha"]
+
+    pass_review = f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+"""
+    envelope = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="SUBMIT_REVIEW",
+        identity={"run_id": "RUN-105-001"},
+        expected_state={"expected_candidate_sha": candidate_sha},
+        payload=pass_review,
+    )
+    with pytest.raises(AuthoringIngressError, match="executor"):
+        execute_ingress(envelope, repo=repo)
+
+
+def test_submit_review_antigravity_minimax_in_clean_process_without_adapter_import(tmp_path):
+    import sys
+
+    task_id = "TASK-138"
+    run_id = "RUN-138-001"
+    task_source = TASK_105_SOURCE.replace("TASK-105", task_id)
+
+    lineage = setup_candidate_lineage(
+        tmp_path,
+        run_id=run_id,
+        task_id=task_id,
+        task_source=task_source,
+        run_override={"executor": "antigravity-minimax"},
+    )
+    repo = lineage["repo"]
+    candidate_sha = lineage["candidate_sha"]
+
+    code = f"""
+import sys
+from pathlib import Path
+
+# Verify adapter has not been imported
+assert "aios_renew.antigravity_minimax_adapter" not in sys.modules
+
+from aios_renew.authoring_ingress import IngressEnvelope, execute_ingress
+
+repo = Path({str(repo)!r})
+candidate_sha = {candidate_sha!r}
+run_id = {run_id!r}
+
+review_yaml = f\"\"\"\\
+review_id: REVIEW-138-001
+reviewed_sha: {{candidate_sha}}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+\"\"\"
+
+envelope = IngressEnvelope(
+    format="AIOS_INGRESS_ENVELOPE",
+    version=1,
+    operation="SUBMIT_REVIEW",
+    identity={{"run_id": run_id}},
+    expected_state={{"expected_candidate_sha": candidate_sha}},
+    payload=review_yaml,
+)
+
+res = execute_ingress(envelope, repo=repo)
+assert res.status == "CANONICALIZED"
+
+# Prove the adapter module was never imported
+assert "aios_renew.antigravity_minimax_adapter" not in sys.modules
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.returncode == 0

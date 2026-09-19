@@ -10,7 +10,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from . import correction_dispatch, dispatch_reconciliation, run
 from .artifacts import (
     ArtifactValidationError,
     ResultPackage,
@@ -21,19 +20,6 @@ from .artifacts import (
 from .review import RemediationExecution
 from .run import Run
 from .task import Task
-
-# Prospective extension: register the new admitted executor identity across
-# product admission boundaries while leaving frozen Kernel v0.1 files byte-unchanged.
-if "antigravity-minimax" not in run.SUPPORTED_EXECUTORS:
-    run.SUPPORTED_EXECUTORS = run.SUPPORTED_EXECUTORS | {"antigravity-minimax"}
-if "antigravity-minimax" not in dispatch_reconciliation.SUPPORTED_EXECUTORS:
-    dispatch_reconciliation.SUPPORTED_EXECUTORS = (
-        dispatch_reconciliation.SUPPORTED_EXECUTORS | {"antigravity-minimax"}
-    )
-if "antigravity-minimax" not in correction_dispatch.SUPPORTED_EXECUTORS:
-    correction_dispatch.SUPPORTED_EXECUTORS = (
-        correction_dispatch.SUPPORTED_EXECUTORS | {"antigravity-minimax"}
-    )
 
 NativeTransport = Callable[..., Any]
 ProcessRunner = Callable[..., subprocess.CompletedProcess[bytes]]

@@ -9,7 +9,7 @@ from .task import Task
 
 
 ACTIVE = "ACTIVE"
-SUPPORTED_EXECUTORS = frozenset({"codex", "antigravity"})
+SUPPORTED_EXECUTORS = frozenset({"codex", "antigravity", "antigravity-minimax"})
 
 
 class RunValidationError(ValueError):
@@ -51,7 +51,7 @@ class Run:
             raise RunValidationError("task must be a RunTaskReference")
         if self.executor not in SUPPORTED_EXECUTORS:
             raise RunValidationError(
-                "executor must be 'codex' or 'antigravity'"
+                "executor must be 'codex', 'antigravity', or 'antigravity-minimax'"
             )
         _non_empty(self.base_sha, "base_sha")
         _non_empty(self.workspace, "workspace")
