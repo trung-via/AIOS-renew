@@ -1,0 +1,1 @@
+{"kind":"PRE_VERIFICATION_CANDIDATE","package":{"evidence":[],"result":{"changed_files":["tests/test_operator.py","tests/test_authoring_ingress.py","tests/test_publication.py"],"claims":[],"head_sha":"15a848ae8cdce55f87a06263afb6d17862ec80e9","unresolved":[]}},"run_id":"RUN-144-003","subject_sha":"15a848ae8cdce55f87a06263afb6d17862ec80e9","task":{"id":"TASK-144","revision":1}}
