@@ -979,9 +979,20 @@ def _local_pending_runs(
                 if parent.run_id == parent_run_id
                 and parent.candidate_sha == run.base_sha
                 and parent.terminal_kind == "FAILURE"
+                and correction is not None
+                and isinstance(correction.get("failure"), Mapping)
+                and dict(correction["failure"]) == dict(parent.terminal)
+                and parent.terminal.get("base_sha") == parent.run.base_sha
             ]
             if len(parents) != 1:
                 parent_run_id = None
+            elif parents[0].family in ("REMEDIATION", "REPAIR"):
+                # Match canonical lifecycle decoding: correction identity belongs
+                # to the exact failed correction chain, never to repair prose or
+                # a task-wide finding search.  A PRIMARY origin intentionally
+                # leaves both values unset.
+                review_id = parents[0].review_id
+                finding_id = parents[0].finding_id
         result_path = state.results / path.name
         failure_path = state.failures / path.name
         has_result = result_path.is_file()

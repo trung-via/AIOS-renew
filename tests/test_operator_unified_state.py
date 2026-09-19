@@ -279,6 +279,279 @@ findings:
     return lifecycle, child_id
 
 
+def _canonical_repair_of_remediation_lifecycle(
+    repo: Path, *, continuation: bool = False,
+) -> tuple[RemoteTaskLifecycle, dict[str, object]]:
+    """Build the canonical/local shape that exposed TASK-145."""
+
+    head = git(repo, "rev-parse", "HEAD")
+    primary_id = "RUN-101-700"
+    remediation_id = "RUN-101-900"
+    repair_ids = ["RUN-101-100"]
+    if continuation:
+        # Deliberately sorts before both predecessors: lineage, not RUN numbering,
+        # must transport the semantic identity.
+        repair_ids.append("RUN-101-050")
+
+    def plain_run(run_id: str) -> dict[str, object]:
+        return {
+            "run_id": run_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": head,
+            "workspace": "bounded-away",
+            "head_sha": None,
+            "status": "ACTIVE",
+        }
+
+    def failure(run_id: str, *, continuation_of: str | None = None) -> dict[str, object]:
+        value: dict[str, object] = {
+            "kind": "FAILURE",
+            "run_id": run_id,
+            "task": {"id": "TASK-101", "revision": 1},
+            "executor": "codex",
+            "base_sha": head,
+            "failed_head_sha": head,
+            "phase": "COMPLETION_GATE",
+            "candidate": {
+                "repairable": True,
+                "transportable": True,
+                "dirty": False,
+                "descends_from_base": True,
+                "changed_files": [],
+                "outside_task_scope": [],
+            },
+        }
+        if continuation_of is not None:
+            value["continuation_of"] = continuation_of
+        return value
+
+    primary_run = plain_run(primary_id)
+    primary_result = canonical_result_payload(primary_id, head)
+    primary_review = f"""review_id: REVIEW-101-ORIGIN
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: FINDING-101-ORIGIN
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: output is incomplete
+    expected: output is complete
+""".encode()
+
+    finding = {
+        "id": "FINDING-101-ORIGIN",
+        "basis": "AC1",
+        "action": "CODE_FIX",
+        "location": "OUTPUT.txt",
+        "issue": "output is incomplete",
+        "expected": "output is complete",
+    }
+    remediation_run_value = plain_run(remediation_id)
+    remediation_run = {
+        "kind": "REMEDIATION",
+        "execution": {
+            "review_id": "REVIEW-101-ORIGIN",
+            "finding": finding,
+            "remediation": {
+                "finding_id": "FINDING-101-ORIGIN",
+                "action": "CODE_FIX",
+                "reviewed_sha": head,
+                "modification_scope": ["OUTPUT.txt"],
+                "affected_verification": ["git diff --check"],
+                "constraints": [],
+            },
+            "run": remediation_run_value,
+            "original_constraints": [],
+        },
+    }
+    remediation_failure = failure(remediation_id)
+    terminals = [
+        RemoteLifecycleTerminal(
+            primary_id, "RESULT", head,
+            json.dumps(primary_run).encode(), json.dumps(primary_result).encode(),
+        ),
+        RemoteLifecycleTerminal(
+            remediation_id, "FAILURE", head,
+            json.dumps(remediation_run).encode(),
+            json.dumps(remediation_failure).encode(),
+        ),
+    ]
+
+    parent_id = remediation_id
+    parent_failure = remediation_failure
+    final_run: dict[str, object] | None = None
+    final_failure: dict[str, object] | None = None
+    final_execution: dict[str, object] | None = None
+    for index, repair_id in enumerate(repair_ids, start=1):
+        repair_run = plain_run(repair_id)
+        repair_failure = failure(repair_id, continuation_of=parent_id)
+        repair_authorization = {
+            "repair_id": f"REPAIR-101-{index:03d}",
+            "failed_run_id": parent_id,
+            "failed_head_sha": head,
+            "task": {"id": "TASK-101", "revision": 1},
+            "action": "CONTINUE_IMPLEMENTATION",
+            "modification_scope": ["OUTPUT.txt"],
+            "instructions": ["Continue implementation."],
+            "constraints": ["Commit the output."],
+            # These are deliberately untrusted prose.  Semantic identity must
+            # still come from the exact failed correction parent chain.
+            "review_id": "REVIEW-FORGED",
+            "finding_id": "FINDING-FORGED",
+        }
+        repair_execution = {
+            "failed_run_id": parent_id,
+            "root_base_sha": head,
+            "failed_head_sha": head,
+            "failure": parent_failure,
+            "task": {"task_id": "TASK-101", "revision": 1},
+            "repair": repair_authorization,
+            "run": repair_run,
+        }
+        terminals.append(RemoteLifecycleTerminal(
+            repair_id, "FAILURE", head,
+            json.dumps(repair_run).encode(), json.dumps(repair_failure).encode(),
+            json.dumps(repair_execution).encode(),
+        ))
+        parent_id = repair_id
+        parent_failure = repair_failure
+        final_run = repair_run
+        final_failure = repair_failure
+        final_execution = repair_execution
+
+    assert final_run is not None
+    assert final_failure is not None
+    assert final_execution is not None
+    selector_sha = "d" * 40
+    next_repair = {
+        "repair_id": "REPAIR-101-NEXT",
+        "failed_run_id": parent_id,
+        "failed_head_sha": head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue implementation."],
+        "constraints": ["Commit the output."],
+    }
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        tuple(terminals),
+        (RemoteLifecycleReview(primary_id, head, primary_review),),
+        (),
+        ((parent_id, selector_sha, json.dumps(next_repair).encode()),),
+        (),
+    )
+    return lifecycle, {
+        "head": head,
+        "final_run_id": parent_id,
+        "final_run": final_run,
+        "final_failure": final_failure,
+        "final_execution": final_execution,
+        "selector_sha": selector_sha,
+    }
+
+
+def _persist_local_repair_terminal(repo: Path, shape: dict[str, object]) -> None:
+    state = runtime_paths(repo)
+    run_id = shape["final_run_id"]
+    (state.runs / f"{run_id}.json").write_text(
+        json.dumps(shape["final_run"]), encoding="utf-8"
+    )
+    (state.repairs / f"{run_id}.json").write_text(
+        json.dumps(shape["final_execution"]), encoding="utf-8"
+    )
+    (state.failures / f"{run_id}.json").write_text(
+        json.dumps(shape["final_failure"]), encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize("continuation", [False, True])
+def test_unified_state_reconciles_local_repair_of_remediation_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, continuation: bool,
+) -> None:
+    repo = make_repo(tmp_path)
+    lifecycle, shape = _canonical_repair_of_remediation_lifecycle(
+        repo, continuation=continuation
+    )
+    _persist_local_repair_terminal(repo, shape)
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    def ready_preflight(failed_run_id, **_kwargs):
+        return CorrectionPreflightResult(
+            family="REPAIR", status="READY", phase="READY", reason_code="READY",
+            task_id="TASK-101", task_revision=1,
+            failed_run_id=failed_run_id, failed_head_sha=shape["head"],
+            subject_mode="HISTORICAL", action="CONTINUE_IMPLEMENTATION",
+            executor_required=True, authorization_sha=shape["selector_sha"],
+        )
+
+    monkeypatch.setattr(operator_module, "preflight_repair", ready_preflight)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["next_action"] == "EXECUTE_REPAIR"
+    assert observation["failed_run_id"] == shape["final_run_id"]
+    assert observation["failed_head_sha"] == shape["head"]
+    assert observation["correction_sha"] == shape["selector_sha"]
+
+
+def test_unified_state_local_repair_of_primary_keeps_semantic_identity_unset(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    lifecycle, _run_id = _local_correction_lifecycle(repo, family="REPAIR")
+    task = operator_module.load_task(repo, "TASK-101")
+    remote, reviews = unified_state_module._decode_remote_lifecycle(
+        repo, task, lifecycle
+    )
+
+    terminal, active = unified_state_module._local_pending_runs(
+        repo, runtime_paths(repo), task, remote, reviews
+    )
+
+    assert terminal == []
+    assert len(active) == 1
+    assert active[0].family == "REPAIR"
+    assert active[0].review_id is None
+    assert active[0].finding_id is None
+
+
+@pytest.mark.parametrize(
+    "mismatch",
+    ["parent_identity", "parent_sha", "correction_content", "semantic_prose"],
+)
+def test_unified_state_local_repair_reconciliation_mismatches_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mismatch: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    lifecycle, shape = _canonical_repair_of_remediation_lifecycle(repo)
+    execution = json.loads(json.dumps(shape["final_execution"]))
+    if mismatch == "parent_identity":
+        execution["failed_run_id"] = "RUN-101-NOT-THE-PARENT"
+        execution["failure"]["run_id"] = "RUN-101-NOT-THE-PARENT"
+        execution["repair"]["failed_run_id"] = "RUN-101-NOT-THE-PARENT"
+    elif mismatch == "parent_sha":
+        execution["failed_head_sha"] = "0" * 40
+    elif mismatch == "correction_content":
+        execution["repair"]["instructions"] = ["Different correction."]
+    else:
+        execution["repair"]["review_id"] = "REVIEW-DIFFERENT"
+        execution["repair"]["finding_id"] = "FINDING-DIFFERENT"
+    shape["final_execution"] = execution
+    _persist_local_repair_terminal(repo, shape)
+    _stub_unified_remote(monkeypatch, repo, lifecycle)
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["lifecycle_state"] == "BLOCKED"
+    assert observation["next_action"] == "NONE"
+    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+
+
 @pytest.mark.parametrize("family", ["REMEDIATION", "REPAIR"])
 def test_unified_state_exact_local_correction_continues_remote_tip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, family: str,
