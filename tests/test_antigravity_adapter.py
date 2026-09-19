@@ -1,4 +1,4 @@
-﻿import inspect
+import inspect
 import json
 import os
 import subprocess
@@ -1560,9 +1560,17 @@ def _assert_valid_terminal_contract(
     assert "bounded" in instruction
     # 3b. TASK-140 r3: The Executor is strictly implementation-only and must
     # not run any implementation-local sanity test or local verification
-    # command; all verification is Runtime-owned.
-    assert "implementation-local sanity test" in instruction
+    # command; all verification is Runtime-owned. The contract requires
+    # BOTH the headless-contract prohibition ("must not run any ...") and
+    # the operation-specific prohibition ("do not run any ...") to be
+    # present verbatim so weakening one variant cannot satisfy the check.
+    assert "must not run any implementation-local sanity test" in instruction
+    assert "do not run any implementation-local sanity test" in instruction
     assert "local verification command" in instruction
+    # 3b-reject: Permissive sanity-test wording is also rejected even if a
+    # weakening keeps one of the explicit prohibition phrases elsewhere.
+    assert "may run short bounded implementation-local sanity" not in instruction
+    assert "may run implementation-local sanity" not in instruction
     # 3c. TASK-140 r3: hook denials are expected policy; do not retry,
     # translate, or replace the denied command with an equivalent.
     assert "AIOS_RUNTIME_OWNS_VERIFICATION" in instruction
@@ -1771,11 +1779,24 @@ def test_task137_terminal_contract_fails_if_weakened(tmp_path: Path) -> None:
     with pytest.raises(AssertionError):
         _assert_valid_terminal_contract(legacy_weakened, "PRIMARY")
 
-    # 10. TASK-140 r3: relaxing the no-sanity-test rule fails.
-    relaxed_sanity = canonical.replace(
+    # 10. TASK-140 r3: relaxing the no-sanity-test rule fails. The canonical
+    # instruction contains TWO independent prohibition variants:
+    #   * headless-contract prohibition: "must not run any implementation-local sanity test"
+    #   * operation-specific prohibition: "do not run any implementation-local sanity test"
+    # A weakening regression must remove/replace EVERY applicable prohibition so
+    # the relaxed instruction actually fails validation, not just the first one.
+    relaxed_sanity = canonical
+    for _phrase in (
         "must not run any implementation-local sanity test",
-        "may run short bounded implementation-local sanity tests",
-    )
+        "do not run any implementation-local sanity test",
+    ):
+        relaxed_sanity = relaxed_sanity.replace(
+            _phrase,
+            "may run short bounded implementation-local sanity tests",
+        )
+    # Sanity-check that the weakening mutation actually replaced both variants.
+    assert "must not run any implementation-local sanity test" not in relaxed_sanity
+    assert "do not run any implementation-local sanity test" not in relaxed_sanity
     with pytest.raises(AssertionError):
         _assert_valid_terminal_contract(relaxed_sanity, "PRIMARY")
 
@@ -2216,6 +2237,12 @@ def test_task138_active_guard_windows_path_git_still_allowed(command_line):
     [
         "git diff --check",
         "git diff --check --quiet",
+        # `git diff --check` is Runtime-owned verification regardless of
+        # benign argument ordering; the `--check` flag must be detected
+        # even when it appears after a positional ref like `HEAD`.
+        "git diff HEAD --check",
+        "git diff --cached --check",
+        "git diff --name-only --check",
     ],
 )
 def test_task140_active_guard_denies_diff_check_as_runtime_verification(
@@ -2233,6 +2260,49 @@ def test_task140_active_guard_denies_diff_check_as_runtime_verification(
         "decision": "deny",
         "reason": "AIOS_RUNTIME_OWNS_VERIFICATION",
     }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Path-prefixed Windows destructive git (git.exe and bare git
+        # under a quoted or absolute Windows executable path) must
+        # also deny so the guard is a true category fail-closed policy.
+        "C:\\repo\\tools\\git reset --hard HEAD",
+        "C:\\repo\\tools\\git commit --amend --no-edit",
+        "C:\\repo\\tools\\git restore .",
+        "C:\\repo\\tools\\git checkout main",
+        "C:\\repo\\tools\\git fetch origin",
+        "C:\\repo\\tools\\git push origin main",
+        "C:\\repo\\tools\\git clone https://example.com/r.git",
+        "C:\\repo\\tools\\git branch -D probe",
+        "C:\\repo\\tools\\git.exe reset --hard HEAD",
+        "C:\\repo\\tools\\git.exe commit --amend --no-edit",
+        "C:\\repo\\tools\\git.exe restore .",
+        "C:\\repo\\tools\\git.exe fetch origin",
+        "C:\\repo\\tools\\git.exe push origin main",
+        "C:\\repo\\tools\\git.exe clone https://example.com/r.git",
+        "C:\\repo\\tools\\git.exe branch -D probe",
+        # Same forms must also deny diff --check as Runtime verification.
+        "C:\\repo\\tools\\git diff --check",
+        "C:\\repo\\tools\\git diff HEAD --check",
+        "C:\\repo\\tools\\git.exe diff HEAD --check",
+    ],
+)
+def test_task140_active_guard_denies_path_prefixed_destructive_git(
+    command_line,
+):
+    """AC3 regression: quoted or absolute-Windows-path-prefixed git
+    invocations must obey the same category fail-closed policy as bare
+    git. Destructive / history-changing / network / unknown /
+    amend / diff --check forms must all be denied whether or not the
+    executable is invoked through a path or .exe suffix."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out["decision"] == "deny"
+    assert out["reason"] in (
+        "AIOS_GIT_OPERATION_NOT_ADMITTED",
+        "AIOS_RUNTIME_OWNS_VERIFICATION",
+    )
 
 
 @pytest.mark.parametrize(
@@ -2271,13 +2341,29 @@ def test_task140_active_guard_denies_diff_check_as_runtime_verification(
         "git submodule update --init",
         "git worktree add ../wt",
         "git reflog",
+        # Network clone must be denied.
+        "git clone https://github.com/foo/bar.git",
+        "git clone git@github.com:foo/bar.git",
+        # Branch create / delete / rename forms are destructive and must be denied.
+        "git branch -D probe",
+        "git branch -d probe",
+        "git branch -m old new",
+        "git branch -c copy",
+        "git branch --delete probe",
+        "git branch --move old new",
+        # commit --amend is history-changing and must be denied.
+        "git commit --amend --no-edit",
+        "git commit --amend -m x",
+        # Unknown git subcommands fall through to the deny-list policy.
+        "git unknown-subcommand",
+        "git foo bar",
     ],
 )
 def test_task140_active_guard_denies_not_admitted_git_operations(
     command_line,
 ):
-    """AC3 regression: destructive / history-changing / network git ops
-    are not admitted in active AIOS execution (TASK-140 r2)."""
+    """AC3 regression: destructive / history-changing / network / unknown git
+    ops are not admitted in active AIOS execution (TASK-140 r3)."""
     out = _run_guard_with(command_line, env_active=True)
     assert out == {
         "decision": "deny",
@@ -2300,7 +2386,6 @@ def test_task140_active_guard_denies_not_admitted_git_operations(
         "git add .agents/aios_antigravity_pretool_guard.py",
         "git add .",
         'git commit -m "task: TASK-140 r2 remediation"',
-        "git commit --amend --no-edit",
         "git rev-parse HEAD",
         "git rev-parse --short HEAD",
         "git log -1 --oneline",
@@ -2311,6 +2396,12 @@ def test_task140_active_guard_denies_not_admitted_git_operations(
         "git branch -a",
         "git ls-files",
         "git ls-files --others --exclude-standard",
+        # Path-prefixed and .exe Windows forms of bounded git remain allowed.
+        "C:\\repo\\tools\\git status",
+        "C:\\repo\\tools\\git add .",
+        "C:\\repo\\tools\\git.exe status",
+        "C:\\repo\\tools\\git.exe add .",
+        'C:\\repo\\tools\\git.exe commit -m "task: TASK-140 r2 remediation"',
     ],
 )
 def test_task140_active_guard_allows_narrowed_bounded_git_terminalization(
