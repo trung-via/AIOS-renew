@@ -105,6 +105,7 @@ def repair_completion_policy(
     task: Task,
     *,
     root_base_sha: str,
+    result_base_sha: str | None = None,
     failed_head_sha: str,
     action: str,
     modification_scope: Sequence[str],
@@ -113,7 +114,9 @@ def repair_completion_policy(
     return CompletionPolicy(
         kind="REPAIR",
         verification_commands=task.verification.required,
-        result_base_sha=root_base_sha,
+        result_base_sha=(
+            root_base_sha if result_base_sha is None else result_base_sha
+        ),
         result_scope=task.scope.modify,
         require_task_completion=True,
         mutation_base_sha=failed_head_sha,

@@ -1,12 +1,47 @@
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import aios_renew.publication as publication_module
 from aios_renew.publication import PublicationError, publish_review_decision
 from aios_renew.review_transport import transport_failure, transport_post_pass
+
+
+def test_repair_package_uses_integrated_result_base_for_attribution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    integrated_base = "1" * 40
+    repaired_head = "2" * 40
+    observed: list[tuple[str, str]] = []
+    package = object()
+    monkeypatch.setattr(
+        publication_module,
+        "validate_result_package",
+        lambda **_kwargs: package,
+    )
+    monkeypatch.setattr(
+        publication_module,
+        "_changed_files",
+        lambda _repo, base, head: observed.append((base, head))
+        or {"product.txt"},
+    )
+
+    actual = publication_module._validate_repair_package(
+        tmp_path,
+        source_sha=repaired_head,
+        result_base_sha=integrated_base,
+        task=SimpleNamespace(scope=SimpleNamespace(modify=("product.txt",))),
+        run=object(),
+        result=SimpleNamespace(changed_files=("product.txt",)),
+        evidence=(),
+    )
+
+    assert actual is package
+    assert observed == [(integrated_base, repaired_head)]
 
 
 TASK_SOURCE = """\

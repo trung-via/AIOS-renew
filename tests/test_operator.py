@@ -95,6 +95,31 @@ def result_payload(
     }
 
 
+def test_repair_completion_policy_keeps_semantic_and_result_bases_distinct(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    task = load_task(repo, "TASK-101")
+    semantic_root = "1" * 40
+    integrated_result_base = "2" * 40
+    failed_head = "3" * 40
+
+    policy = runtime_module.repair_completion_policy(
+        task,
+        root_base_sha=semantic_root,
+        result_base_sha=integrated_result_base,
+        failed_head_sha=failed_head,
+        action="CODE_FIX",
+        modification_scope=("OUTPUT.txt",),
+        lineage_path=tmp_path / "repair.json",
+    )
+
+    assert policy.result_base_sha == integrated_result_base
+    assert policy.mutation_base_sha == failed_head
+    assert policy.result_scope == task.scope.modify
+    assert policy.mutation_scope == ("OUTPUT.txt",)
+
+
 def canonical_result_payload(
     run_id: str,
     head_sha: str,

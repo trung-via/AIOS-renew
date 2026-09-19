@@ -3,8 +3,11 @@
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+import aios_renew.authoring_ingress as authoring_ingress_module
 
 from aios_renew.authoring_ingress import (
     AuthoringIngressError,
@@ -24,6 +27,28 @@ from aios_renew.review_transport import (
     transport_post_pass,
 )
 from aios_renew.unified_state import observe_unified_state
+
+
+def test_repair_review_semantics_require_exact_remediation_finding() -> None:
+    prior = SimpleNamespace()
+    exact = SimpleNamespace(mode="DELTA", prior_finding_id="R-EXACT")
+    authoring_ingress_module._validate_repair_review_semantics(
+        exact,
+        prior_review=prior,
+        repaired_finding_id="R-EXACT",
+    )
+
+    for invalid in (
+        SimpleNamespace(mode="PRIMARY", prior_finding_id=None),
+        SimpleNamespace(mode="DELTA", prior_finding_id=None),
+        SimpleNamespace(mode="DELTA", prior_finding_id="R-SIBLING"),
+    ):
+        with pytest.raises(AuthoringIngressError, match="exact repaired DELTA"):
+            authoring_ingress_module._validate_repair_review_semantics(
+                invalid,
+                prior_review=prior,
+                repaired_finding_id="R-EXACT",
+            )
 
 
 def git(repo: Path, *args: str, check: bool = True) -> str:

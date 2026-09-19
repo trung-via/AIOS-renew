@@ -406,6 +406,23 @@ def _validate_execution_base(
         if base.integration_id != expected_integration_id:
             raise ValueError("integrated execution_base integration_id does not match canonical binding")
 
+        current_main_sha = _single_remote_sha(
+            repo, remote, "refs/heads/main", run_id=publication_run_id
+        )
+        _fetch_object(repo, remote, current_main_sha, run_id=publication_run_id)
+        code, _, _ = _git(
+            repo,
+            "merge-base",
+            "--is-ancestor",
+            base.authorized_main_sha,
+            current_main_sha,
+            allow_fail=True,
+        )
+        if code:
+            raise ValueError(
+                "integrated execution_base authorized main is not canonical history"
+            )
+
         expected_ref = integration_ref_name(base.integration_id)
         remote_int_sha = _single_remote_sha(
             repo, remote, expected_ref, run_id=publication_run_id
@@ -1011,7 +1028,7 @@ def _repair_review_lineage(
     task: Any,
     historical_child_failure: Mapping[str, Any] | None = None,
     seen: frozenset[str] = frozenset(),
-) -> tuple[str, Review | None]:
+) -> tuple[str, str, Review | None, str | None]:
     """Validate persisted REPAIR links and recover the applicable prior REVIEW."""
 
     lineage = _mapping(
@@ -1028,17 +1045,23 @@ def _repair_review_lineage(
         "run",
     }
     keys = set(lineage)
-    if keys == required:
-        repair_authorization_sha = None
-    elif keys == required | {"repair_authorization_sha"}:
+    optional = {"repair_authorization_sha", "result_base_sha"}
+    if not required.issubset(keys) or not keys.issubset(required | optional):
+        raise ValueError("REPAIR execution fields do not match persisted lineage")
+    repair_authorization_sha = lineage.get("repair_authorization_sha")
+    if repair_authorization_sha is not None:
         repair_authorization_sha = lineage.get("repair_authorization_sha")
         if (
             not isinstance(repair_authorization_sha, str)
             or _SHA.fullmatch(repair_authorization_sha) is None
         ):
             raise ValueError("REPAIR authorization SHA is invalid")
-    else:
-        raise ValueError("REPAIR execution fields do not match persisted lineage")
+    persisted_result_base = lineage.get("result_base_sha")
+    if persisted_result_base is not None and (
+        not isinstance(persisted_result_base, str)
+        or _SHA.fullmatch(persisted_result_base) is None
+    ):
+        raise ValueError("REPAIR result-base SHA is invalid")
     failed_run_id = lineage.get("failed_run_id")
     if not isinstance(failed_run_id, str) or _RUN_ID.fullmatch(failed_run_id) is None:
         raise ValueError("REPAIR failed RUN identity is invalid")
@@ -1227,11 +1250,24 @@ def _repair_review_lineage(
             or predecessor_run.task.revision != task.revision
             or predecessor_run.status != ACTIVE
             or failure.get("base_sha") != predecessor_run.base_sha
-            or predecessor_run.base_sha != remediation.reviewed_sha
         ):
             raise ValueError("failed REMEDIATION predecessor identity mismatch")
+        if "execution_base" in predecessor_run_data:
+            predecessor_base = _parse_remediation_execution_base(
+                predecessor_run_data["execution_base"]
+            )
+            result_base_sha = (
+                predecessor_base.integration_candidate_sha
+                if predecessor_base.is_integrated
+                else root_base_sha
+            )
+        else:
+            if predecessor_run.base_sha != remediation.reviewed_sha:
+                raise ValueError("failed REMEDIATION predecessor identity mismatch")
+            result_base_sha = root_base_sha
         validate_remediation(review=prior_review, remediation=remediation, task=task)
         semantic_review = prior_review
+        semantic_finding_id = remediation.finding_id
     elif "kind" not in predecessor_run_data:
         predecessor_run = _run_from_data(predecessor_run_data, "predecessor RUN")
         if (
@@ -1246,8 +1282,15 @@ def _repair_review_lineage(
             if root_base_sha != predecessor_run.base_sha:
                 raise ValueError("REPAIR root_base_sha does not match PRIMARY root")
             semantic_review = None
+            semantic_finding_id = None
+            result_base_sha = root_base_sha
         else:
-            predecessor_root, semantic_review = _repair_review_lineage(
+            (
+                predecessor_root,
+                result_base_sha,
+                semantic_review,
+                semantic_finding_id,
+            ) = _repair_review_lineage(
                 repo,
                 remote=remote,
                 publication_run_id=publication_run_id,
@@ -1274,14 +1317,19 @@ def _repair_review_lineage(
     )
     if code:
         raise ValueError("repaired candidate does not descend from TASK root")
-    return root_base_sha, semantic_review
+    if (
+        persisted_result_base is not None
+        and persisted_result_base != result_base_sha
+    ):
+        raise ValueError("conflicting REPAIR result-base lineage")
+    return root_base_sha, result_base_sha, semantic_review, semantic_finding_id
 
 
 def _validate_repair_package(
     repo: Path,
     *,
     source_sha: str,
-    root_base_sha: str,
+    result_base_sha: str,
     task: Any,
     run: Run,
     result: Any,
@@ -1290,7 +1338,7 @@ def _validate_repair_package(
     package = validate_result_package(
         task=task, run=run, result=result, evidence=evidence
     )
-    changed_files = _changed_files(repo, root_base_sha, source_sha)
+    changed_files = _changed_files(repo, result_base_sha, source_sha)
     if set(result.changed_files) != changed_files:
         raise ValueError("REPAIR RESULT.changed_files mismatch")
     outside_scope = changed_files.difference(task.scope.modify)
@@ -1431,7 +1479,12 @@ def _load_success_lineage(
                 raise ValueError(
                     "successful artifacts contain conflicting REMEDIATION/REPAIR lineage"
                 )
-            root_base_sha, repair_prior_review = _repair_review_lineage(
+            (
+                _root_base_sha,
+                repair_result_base_sha,
+                repair_prior_review,
+                repaired_finding_id,
+            ) = _repair_review_lineage(
                 repo,
                 remote=remote,
                 publication_run_id=run_id,
@@ -1444,7 +1497,7 @@ def _load_success_lineage(
             package = _validate_repair_package(
                 repo,
                 source_sha=source_sha,
-                root_base_sha=root_base_sha,
+                result_base_sha=repair_result_base_sha,
                 task=task,
                 run=run,
                 result=result,
@@ -1485,9 +1538,7 @@ def _load_success_lineage(
                     raise ValueError(
                         "REPAIR of REMEDIATION candidate requires a DELTA REVIEW"
                     )
-                if review.prior_finding_id not in {
-                    finding.id for finding in repair_prior_review.findings
-                }:
+                if review.prior_finding_id != repaired_finding_id:
                     raise ValueError(
                         "DELTA REVIEW prior finding does not match repaired REMEDIATION"
                     )
