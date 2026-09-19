@@ -3043,13 +3043,19 @@ def test_antigravity_instruction_returns_structural_package_to_runtime(
     ):
         assert field in instruction
     assert "known TASK acceptance ID" in instruction
-    assert "only response" in instruction
+    assert "builtin finish tool exactly once" in instruction
+    assert "only successful terminal action" in instruction
+    assert "Do not emit conversational terminal prose" in instruction
+    assert "before or after finish" in instruction
     assert "Runtime captures" in instruction
     assert "Runtime-owned operational state" in instruction
     assert "Runtime owns canonical verification" in instruction
     assert "do not execute canonical verification commands" in instruction
-    assert "Commit the final implementation state when required" in instruction
-    assert "do not push" in instruction
+    assert (
+        "Complete all authorized implementation work and required commit completion first"
+        in instruction
+    )
+    assert "Do not push" in instruction
     handoff = json.loads(
         next((repo / ".git" / "aios" / "handoffs").glob("*.json")).read_text(
             encoding="utf-8"
@@ -3085,7 +3091,7 @@ def test_read_only_antigravity_execution_has_no_mutation_capability(
     )
 
     command = calls[0]
-    assert command[command.index("--mode") + 1] == "plan"
+    assert "--mode" not in command
     assert "--dangerously-skip-permissions" not in command
 
 
@@ -4526,7 +4532,7 @@ def test_finalize_candidate_recovers_structural_package_without_mutation(
                 kwargs["input"].decode().split("REPAIR_INPUT:\n", 1)[1]
             )
         else:
-            assert command[command.index("--mode") + 1] == "plan"
+            assert "--mode" not in command
             assert "--dangerously-skip-permissions" not in command
             execution = json.loads(
                 next(state.handoffs.glob("*.json")).read_text(encoding="utf-8")
