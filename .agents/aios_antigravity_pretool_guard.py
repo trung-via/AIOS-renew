@@ -26,15 +26,20 @@ GIT CATEGORY FAIL-CLOSED POLICY:
   (`C:\\path\\git`), quoted (e.g. `"path\\git.exe"`, including quoted
   Windows paths that contain spaces such as
   `"C:\\Program Files\\Git\\cmd\\git.exe"`), or with an `.exe` suffix.
-  After git classification, only the bounded terminalization
-  subcommands are admitted: `status`, ordinary `diff` (excluding
-  `--check`), `add`, normal `commit` (excluding `--amend`),
-  `rev-parse`, `log`, `show`, inspection-only `branch` (only bare
-  `git branch`, `--show-current`, `-a`/`--all`, `--list`; no
-  create/delete/rename/move/copy/upstream mutation forms), and
-  `ls-files`. `git diff --check` is Runtime-owned verification in every
-  benign argument ordering (including `git diff HEAD --check`) and is
-  denied with AIOS_RUNTIME_OWNS_VERIFICATION. `git commit --amend` is
+  The PowerShell call-operator form (`& <git-exec> ...`, e.g.
+  `& "C:\\Program Files\\Git\\cmd\\git.exe" status` or
+  `& C:\\repo\\tools\\git.exe status`) is normalized before git policy
+  evaluation so the underlying invocation is classified as the same
+  git invocation category as direct git execution. After git
+  classification, only the bounded terminalization subcommands are
+  admitted: `status`, ordinary `diff` (excluding `--check`), `add`,
+  normal `commit` (excluding `--amend`), `rev-parse`, `log`, `show`,
+  inspection-only `branch` (only bare `git branch`, `--show-current`,
+  `-a`/`--all`, `--list`; no create/delete/rename/move/copy/upstream
+  mutation forms), and `ls-files`. `git diff --check` is Runtime-owned
+  verification in every benign argument ordering (including
+  `git diff HEAD --check`) and is denied with
+  AIOS_RUNTIME_OWNS_VERIFICATION. `git commit --amend` is
   history-changing and is denied with AIOS_GIT_OPERATION_NOT_ADMITTED.
   `git branch <positional-name>` is bare branch creation and is denied
   with AIOS_GIT_OPERATION_NOT_ADMITTED. Any unknown git subcommand
@@ -53,6 +58,20 @@ SHELL-OPERATOR / CHAINED-COMMAND BYPASS PREVENTION:
   AIOS_GIT_OPERATION_NOT_ADMITTED. The first bounded git subcommand
   cannot be used to admit a chained destructive / network git
   invocation or a chained background-risk command.
+
+POWERHELL CALL-OPERATOR NORMALIZATION:
+  The PowerShell call operator (`& <command>`) executes the named
+  command or executable. A leading `& ` followed by a quoted or
+  unquoted git/git.exe executable path is the PowerShell call
+  operator, NOT a chained shell operator. The guard strips this
+  prefix before git classification so that
+  `& "C:\\Program Files\\Git\\cmd\\git.exe" status` is classified as
+  the same git invocation category as `"C:\\Program Files\\Git\\cmd\\git.exe" status`.
+  Non-git invocations through the call operator (e.g.
+  `& Start-Sleep -Seconds 20`) are NOT normalized; the original
+  command is preserved so the background, verification, and other
+  policies can evaluate it normally. The guard does NOT globally
+  block `&` and does NOT widen generic shell execution.
 
 The guard parses stdin defensively and never raises to the shell:
 malformed active-AIOS input fails closed by denying the call. The guard
@@ -183,13 +202,13 @@ _VERIFICATION_TOKENS = (
 # such as `"C:\Program Files\Git\cmd\git.exe"`), so the regex allows
 # backslashes within unquoted tokens and any character inside quotes.
 _GIT_EXECUTABLE_RE = re.compile(
-    r"^(?:[A-Za-z_][A-Za-z0-9_]*=[^\s\\\'\"]*\s+)*"
+    r"^(?:[A-Za-z_][A-Za-z0-9_]*=[^\s\\\x27\"]*\s+)*"
     r"(?:"
     r"\"[^\"]*\""            # double-quoted token (may contain spaces, slashes)
     r"|"
-    r"\'[^\']*\'"            # single-quoted token
+    r"\x27[^\x27]*\x27"      # single-quoted token
     r"|"
-    r"[^\s\"\']+"            # unquoted token (no whitespace, no quotes)
+    r"[^\s\"\x27]+"          # unquoted token (no whitespace, no quotes)
     r")"
 )
 
@@ -202,7 +221,7 @@ def _basename_of_executable(token):
         return ""
     if len(token) >= 2 and (
         (token[0] == "\"" and token[-1] == "\"")
-        or (token[0] == "\'" and token[-1] == "\'")
+        or (token[0] == "\x27" and token[-1] == "\x27")
     ):
         token = token[1:-1]
     token = token.rstrip("\\/")
@@ -230,6 +249,62 @@ def _normalize_git_invocation(cmd):
     if base not in ("git", "git.exe"):
         return None
     return "git" + cmd[match.end():]
+
+
+def _strip_powershell_call_operator(cmd):
+    """If `cmd` begins with a PowerShell call operator (`& `) followed
+    by a quoted or unquoted git/git.exe executable path, return the
+    underlying command without the leading `& ` so it can be classified
+    under the same git-category policy as direct git execution.
+    Otherwise return None so the original command remains unchanged and
+    other policies (background, verification, etc.) can evaluate it
+    normally.
+
+    The PowerShell call operator (`& <command>`) executes the named
+    command or executable. For example:
+        & "C:\\Program Files\\Git\\cmd\\git.exe" status
+        & "C:\\Program Files\\Git\\cmd\\git.exe" diff HEAD --check
+        & git status
+        & git.exe status
+        & C:\\repo\\tools\\git.exe status
+        & C:\\repo\\tools\\git status
+
+    This is distinct from:
+        - Chained shell operators: `git status & echo done`
+        - Logical AND operator: `git status && git push origin main`
+        - Trailing background marker: `echo hello &`
+
+    Only the form `& ` (ampersand followed by whitespace) followed by a
+    quoted or unquoted git executable path is normalized. Any other
+    use of `&` (chained operator, background marker, or call operator
+    pointing at a non-git executable) leaves `cmd` unchanged so the
+    appropriate non-git policy still applies. The guard does NOT
+    globally block `&` and does NOT widen generic shell execution.
+    """
+    if not isinstance(cmd, str):
+        return None
+    stripped = cmd.lstrip()
+    if not stripped or stripped[0] != "&":
+        return None
+    # The character after the `&` must be whitespace. This rejects
+    # `&&` (logical AND), `&` followed immediately by a token (no
+    # separator), and `&` at end of string.
+    if len(stripped) < 2 or not stripped[1].isspace():
+        return None
+    rest = stripped[1:].lstrip()
+    if not rest:
+        return None
+    # Only normalize when the call operator points at a git executable.
+    # For non-git invocations, return None so background / verification /
+    # other policies can still evaluate the original command.
+    match = _GIT_EXECUTABLE_RE.match(rest)
+    if match is None:
+        return None
+    token = match.group(0)
+    base = _basename_of_executable(token).lower()
+    if base not in ("git", "git.exe"):
+        return None
+    return rest
 
 
 _BOUNDED_GIT_SUBCOMMANDS = frozenset({
@@ -409,7 +484,7 @@ def _split_shell_segments(cmd):
             in_double = not in_double
             i += 1
             continue
-        if not in_double and c == "\'":
+        if not in_double and c == "\x27":
             in_single = not in_single
             i += 1
             continue
@@ -491,6 +566,17 @@ def evaluate(payload):
             DENY_REASON_MALFORMED,
             message="AIOS PreToolUse guard received a tool call with no command",
         )
+
+    # Normalize the PowerShell call-operator form. A leading `& ` followed
+    # by a quoted or unquoted git/git.exe executable path is the
+    # PowerShell call operator, NOT a chained shell operator. Strip it
+    # so the underlying git invocation is classified under the same
+    # git-category policy as direct git execution. Non-git invocations
+    # through the call operator (e.g. `& Start-Sleep -Seconds 20`) are
+    # left unchanged so the background, verification, and other policies
+    # can still evaluate them. This guard does NOT globally block `&` and
+    # does NOT widen generic shell execution.
+    cmd = _strip_powershell_call_operator(cmd) or cmd
 
     # 1. Git category fail-closed. When the command starts with a git
     # invocation, deny chained forms first (background-risk segments

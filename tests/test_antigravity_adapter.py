@@ -2888,3 +2888,222 @@ def test_task140_r3_active_guard_unquoted_shell_operator_inside_string_does_not_
         "git commit -m \"fix: && bug\"", env_active=True
     )
     assert out == {"decision": "allow"}
+
+# ---------------------------------------------------------------------------
+# TASK-140 r3 REPAIR: FINDING-140-005 - PowerShell call-operator normalization
+# A leading '&' followed by a quoted or unquoted git/git.exe executable path
+# is the PowerShell call operator. It must be normalized before git policy
+# evaluation so the underlying invocation is classified as git. Safe bounded
+# forms allow; destructive / network / amend / diff --check / branch creation
+# / branch mutation forms deny with the same stable reasons as direct git.
+# The guard must NOT globally block '&' and must NOT widen generic shell
+# execution - non-git invocations through the call operator are evaluated by
+# the applicable non-git policy (background, verification, allow).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Quoted Windows git.exe paths with spaces - call-operator form.
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 status",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 diff HEAD",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 add .",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 commit -m \x22msg\x22",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 rev-parse HEAD",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 log -1 --oneline",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 show HEAD --stat",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch --show-current",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 ls-files",
+        # Single-quoted Windows git.exe paths with spaces - call-operator form.
+        "\x26 \x27C:\\Program Files\\Git\\cmd\\git.exe\x27 status",
+        "\x26 \x27C:\\Program Files\\Git\\cmd\\git.exe\x27 rev-parse HEAD",
+        # Bare 'git' - call-operator form.
+        "\x26 git status",
+        "\x26 git diff HEAD",
+        "\x26 git rev-parse HEAD",
+        "\x26 git log -1 --oneline",
+        # Absolute unquoted git.exe path (no spaces in path).
+        "\x26 C:\\repo\\tools\\git.exe status",
+        "\x26 C:\\repo\\tools\\git.exe diff HEAD",
+        "\x26 C:\\repo\\tools\\git.exe add .",
+        "\x26 C:\\repo\\tools\\git.exe rev-parse HEAD",
+        # Absolute unquoted git (without .exe).
+        "\x26 C:\\repo\\tools\\git status",
+        "\x26 C:\\repo\\tools\\git rev-parse HEAD",
+        # Leading whitespace before the call operator.
+        "   \x26 git status",
+        "  \x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 status",
+    ],
+)
+def test_task140_r3_active_guard_allows_powershell_call_operator_safe_git(command_line):
+    """FINDING-140-005: Safe bounded git invocations through the PowerShell
+    call-operator form must be normalized and admitted under the same bounded
+    git allow-list as direct git execution."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {"decision": "allow"}
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Quoted Windows git.exe - destructive call-operator forms.
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 reset --hard HEAD",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 commit --amend --no-edit",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 restore .",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 push origin main",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 clone https://example.com/r.git",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 fetch origin",
+        # Unquoted absolute git.exe path destructive forms.
+        "\x26 C:\\repo\\tools\\git.exe reset --hard HEAD",
+        "\x26 C:\\repo\\tools\\git.exe push origin main",
+        "\x26 C:\\repo\\tools\\git.exe clone https://example.com/r.git",
+        "\x26 C:\\repo\\tools\\git.exe fetch origin",
+        # Bare 'git' destructive through call operator.
+        "\x26 git reset --hard HEAD",
+        "\x26 git commit --amend --no-edit",
+        "\x26 git restore .",
+        "\x26 git push origin main",
+        "\x26 git clone https://example.com/r.git",
+        "\x26 git fetch origin",
+    ],
+)
+def test_task140_r3_active_guard_denies_powershell_call_operator_destructive_git(command_line):
+    """FINDING-140-005: Destructive / history-changing / network git
+    operations through the PowerShell call-operator form must deny with
+    AIOS_GIT_OPERATION_NOT_ADMITTED (same stable reason as direct git)."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_GIT_OPERATION_NOT_ADMITTED",
+    }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Quoted Windows git.exe - diff --check through call-operator.
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 diff --check",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 diff HEAD --check",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 diff --cached --check",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 diff --name-only --check",
+        # Bare 'git diff --check' through call-operator.
+        "\x26 git diff --check",
+        "\x26 git diff HEAD --check",
+        "\x26 git diff --cached --check",
+        # Unquoted absolute git.exe path - diff --check through call-operator.
+        "\x26 C:\\repo\\tools\\git.exe diff --check",
+        "\x26 C:\\repo\\tools\\git.exe diff HEAD --check",
+    ],
+)
+def test_task140_r3_active_guard_denies_powershell_call_operator_diff_check(command_line):
+    """FINDING-140-005: 'git diff --check' through the PowerShell
+    call-operator form must deny with AIOS_RUNTIME_OWNS_VERIFICATION in any
+    benign argument ordering (Runtime owns verification regardless of how
+    git is invoked)."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_RUNTIME_OWNS_VERIFICATION",
+    }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Quoted Windows git.exe - bare branch-name creation through call-operator.
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch probe",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch new-branch",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch feature/x",
+        # Quoted Windows git.exe - branch mutation through call-operator.
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch -D probe",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch --delete probe",
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch --move old new",
+        # Bare 'git branch' creation through call-operator.
+        "\x26 git branch probe",
+        "\x26 git branch new-branch",
+        "\x26 git branch -D probe",
+        "\x26 git branch --move old new",
+        # Unquoted absolute git.exe path branch creation through call-operator.
+        "\x26 C:\\repo\\tools\\git.exe branch probe",
+        "\x26 C:\\repo\\tools\\git.exe branch -D probe",
+    ],
+)
+def test_task140_r3_active_guard_denies_powershell_call_operator_branch_mutation(command_line):
+    """FINDING-140-005: Bare branch-name creation and branch mutation
+    through the PowerShell call-operator form must deny with
+    AIOS_GIT_OPERATION_NOT_ADMITTED (branch handling is inspection-only
+    regardless of how git is invoked)."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_GIT_OPERATION_NOT_ADMITTED",
+    }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # '& Start-Sleep' is not a git invocation; background policy applies.
+        "\x26 Start-Sleep -Seconds 20",
+        # '& python -m pytest' is a verification; verification policy applies.
+        "\x26 python -m pytest tests/test_x.py",
+        # '& echo hello' is a benign shell command; allow.
+        "\x26 echo hello",
+    ],
+)
+def test_task140_r3_active_guard_does_not_globally_block_call_operator(command_line):
+    """FINDING-140-005: The guard must NOT globally block '&' or widen
+    generic shell execution. Non-git invocations through the call operator
+    must still be evaluated by the applicable non-git policy (background
+    risk, verification, allow) rather than rejected because of '&'."""
+    out = _run_guard_with(command_line, env_active=True)
+    if "Start-Sleep" in command_line:
+        assert out == {
+            "decision": "deny",
+            "reason": "AIOS_BACKGROUND_RISK_DENIED",
+        }
+    elif "pytest" in command_line:
+        assert out == {
+            "decision": "deny",
+            "reason": "AIOS_RUNTIME_OWNS_VERIFICATION",
+        }
+    else:
+        assert out == {"decision": "allow"}
+
+
+def test_task140_r3_active_guard_call_operator_chained_with_background_denies_background():
+    """FINDING-140-005: After the call operator is normalized, a chained
+    background-risk segment in the underlying command still denies as
+    background (takes precedence over git-not-admitted)."""
+    out = _run_guard_with(
+        "\x26 git status & Start-Sleep -Seconds 20", env_active=True
+    )
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_BACKGROUND_RISK_DENIED",
+    }
+
+
+def test_task140_r3_active_guard_call_operator_chained_with_unbounded_git_denies_git():
+    """FINDING-140-005: After the call operator is normalized, chained
+    unbounded git in the underlying command still denies with
+    AIOS_GIT_OPERATION_NOT_ADMITTED."""
+    out = _run_guard_with(
+        "\x26 git status && git push origin main", env_active=True
+    )
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_GIT_OPERATION_NOT_ADMITTED",
+    }
+
+
+def test_task140_r3_active_guard_call_operator_normalization_preserves_inactive_inert_mode():
+    """FINDING-140-005: The call-operator normalization must not bypass
+    inactive/inert mode. Inactive mode returns allow regardless of the
+    '&' prefix so manual / non-AIOS sessions remain inert."""
+    out = _run_guard_with(
+        "\x26 \x22C:\\Program Files\\Git\\cmd\\git.exe\x22 push origin main",
+        env_active=False,
+    )
+    assert out == {"decision": "allow"}
