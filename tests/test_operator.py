@@ -3018,7 +3018,9 @@ def test_antigravity_instruction_returns_structural_package_to_runtime(
     ):
         assert field in instruction
     assert "known TASK acceptance ID" in instruction
-    assert "only response" in instruction
+    assert "finish tool exactly once" in instruction
+    assert "only successful terminal action" in instruction
+    assert "Conversational completion prose" in instruction
     assert "Runtime captures" in instruction
     assert "Runtime-owned operational state" in instruction
     assert "Runtime owns canonical verification" in instruction
@@ -3060,7 +3062,7 @@ def test_read_only_antigravity_execution_has_no_mutation_capability(
     )
 
     command = calls[0]
-    assert command[command.index("--mode") + 1] == "plan"
+    assert "--mode" not in command
     assert "--dangerously-skip-permissions" not in command
 
 
@@ -4501,7 +4503,7 @@ def test_finalize_candidate_recovers_structural_package_without_mutation(
                 kwargs["input"].decode().split("REPAIR_INPUT:\n", 1)[1]
             )
         else:
-            assert command[command.index("--mode") + 1] == "plan"
+            assert "--mode" not in command
             assert "--dangerously-skip-permissions" not in command
             execution = json.loads(
                 next(state.handoffs.glob("*.json")).read_text(encoding="utf-8")

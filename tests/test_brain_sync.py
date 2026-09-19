@@ -303,17 +303,41 @@ def test_brain_sync_observation_is_strictly_read_only(tmp_path: Path) -> None:
 
 
 def test_brain_sync_live_repository_smoke() -> None:
+    repo = Path(__file__).resolve().parents[1]
+    roadmap = yaml.safe_load(
+        (repo / ".ai" / "roadmap-state.yaml").read_text(encoding="utf-8")
+    )
+    next_item_ids = roadmap["next_items"]
+    next_items = [
+        item for item in roadmap["sequence"] if item.get("id") in next_item_ids
+    ]
+    assert len(next_items) == 1
+    expected_next = next_items[0]
+    before_status = git(repo, "status", "--porcelain=v1")
+    before_head = git(repo, "rev-parse", "HEAD")
+    before_refs = git(repo, "for-each-ref", "--format=%(refname) %(objectname)")
+
     snapshot = observe_brain_sync()
+
     assert snapshot.format == "AIOS_BRAIN_SYNC_SNAPSHOT"
     assert snapshot.version == 1
     assert snapshot.repository["name"] == "trung-via/AIOS-renew"
-    assert snapshot.roadmap["active_track"] == "control-plane-closure"
-    assert snapshot.roadmap["active_track_status"] == "COMPLETE"
-    assert snapshot.selection_status == "COMPLETED_TRACK"
-    assert snapshot.lifecycle_state == "COMPLETE"
-    assert snapshot.next_action == "NONE"
-    assert snapshot.authority == "NONE"
+    assert snapshot.roadmap["active_track"] == roadmap["active_track"]
+    assert snapshot.roadmap["active_track_status"] == roadmap["active_track_status"]
+    assert snapshot.roadmap["next_items"] == next_item_ids
+    assert snapshot.selection_status == "SELECTED"
+    assert snapshot.selected_task == {
+        "id": expected_next["task_id"],
+        "revision": expected_next["task_revision"],
+    }
+    assert snapshot.unified_state is not None
+    assert snapshot.lifecycle_state == snapshot.unified_state["lifecycle_state"]
+    assert snapshot.next_action == snapshot.unified_state["next_action"]
+    assert snapshot.authority == snapshot.unified_state["authority"]
     assert snapshot.run_created is False
     assert snapshot.executor_invoked is False
     assert snapshot.verification_invoked is False
     assert snapshot.state_mutated is False
+    assert git(repo, "status", "--porcelain=v1") == before_status
+    assert git(repo, "rev-parse", "HEAD") == before_head
+    assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
