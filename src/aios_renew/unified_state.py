@@ -73,6 +73,24 @@ _UNIFIED_AUTHORITIES = {
 _OUTSTANDING_FINDING_LIMIT = 32
 
 
+class CumulativeExecutionBase(tuple):
+    run_id: str
+    candidate_sha: str
+    integrated_base: Mapping[str, Any] | None
+
+    def __new__(
+        cls,
+        run_id: str,
+        candidate_sha: str,
+        integrated_base: Mapping[str, Any] | None = None,
+    ):
+        obj = super().__new__(cls, (run_id, candidate_sha))
+        obj.run_id = run_id
+        obj.candidate_sha = candidate_sha
+        obj.integrated_base = integrated_base
+        return obj
+
+
 @dataclass(frozen=True)
 class UnifiedStateObservation:
     """Versioned, bounded and mutation-free lifecycle reduction."""
@@ -92,6 +110,7 @@ class UnifiedStateObservation:
     correction_sha: str | None = None
     execution_base_run_id: str | None = None
     execution_base_sha: str | None = None
+    integrated_base: Mapping[str, Any] | None = None
     correction: Mapping[str, Any] | None = None
     # Exact repair content is retained only for the immediate admission handoff.
     # It is deliberately excluded from the Human/state renderings.
@@ -121,13 +140,17 @@ class UnifiedStateObservation:
             "failed_head_sha": self.failed_head_sha,
             "correction_sha": self.correction_sha,
             "execution_base": (
-                {
-                    "run_id": self.execution_base_run_id,
-                    "candidate_sha": self.execution_base_sha,
-                }
-                if self.execution_base_run_id is not None
-                and self.execution_base_sha is not None
-                else None
+                dict(self.integrated_base)
+                if self.integrated_base is not None
+                else (
+                    {
+                        "run_id": self.execution_base_run_id,
+                        "candidate_sha": self.execution_base_sha,
+                    }
+                    if self.execution_base_run_id is not None
+                    and self.execution_base_sha is not None
+                    else None
+                )
             ),
             "correction_preflight": (
                 dict(self.correction) if self.correction is not None else None
@@ -643,12 +666,33 @@ def _derive_tip_frontier(
     reviews: Mapping[str, Review],
 ) -> CorrectionFrontier:
     ordered = _ordered_lineage(tip, lifecycle)
-    primary = ordered[0]
-    primary_review = reviews.get(primary.run_id)
-    if primary_review is None:
+    primary_roots = [
+        (idx, item, review)
+        for idx, item in enumerate(ordered)
+        if (review := reviews.get(item.run_id)) is not None and review.mode == "PRIMARY"
+    ]
+    if not primary_roots:
         raise ValueError("PRIMARY correction frontier review is missing")
-    frontier = CorrectionFrontier.from_primary(primary.run_id, primary_review)
-    for item in ordered[1:]:
+    if len(primary_roots) > 1:
+        raise ValueError("cumulative correction lineage has competing semantic roots")
+    root_idx, semantic_root, primary_review = primary_roots[0]
+    if semantic_root.terminal_kind != "RESULT":
+        raise ValueError("PRIMARY correction frontier review must belong to a successful RESULT")
+    if root_idx == 0:
+        if semantic_root.family != "PRIMARY":
+            raise ValueError("PRIMARY correction frontier root is invalid")
+    else:
+        if semantic_root.family != "REPAIR":
+            raise ValueError("PRIMARY correction frontier review must belong to a PRIMARY or REPAIR run")
+        if any(
+            ancestor.terminal_kind != "FAILURE" or ancestor.family not in ("PRIMARY", "REPAIR")
+            for ancestor in ordered[:root_idx]
+        ):
+            raise ValueError("operational ancestor of repaired PRIMARY is not a failure")
+        if any(ancestor.run_id in reviews for ancestor in ordered[:root_idx]):
+            raise ValueError("failed operational ancestor must not have a semantic review")
+    frontier = CorrectionFrontier.from_primary(semantic_root.run_id, primary_review)
+    for item in ordered[root_idx + 1:]:
         review = reviews.get(item.run_id)
         if review is None:
             continue
@@ -742,8 +786,32 @@ def _resolve_cumulative_execution_base(
     if not _operator()._git_is_ancestor(repo, reviewed_sha, tip.candidate_sha):
         raise ValueError("cumulative execution base does not descend from reviewed SHA")
     if not _operator()._git_is_ancestor(repo, lifecycle.main_sha, tip.candidate_sha):
-        raise ValueError("current main and cumulative execution base require integration")
-    return tip.run_id, tip.candidate_sha
+        from .correction_integration import resolve_valid_integration
+
+        integration = resolve_valid_integration(
+            repo,
+            task_id=task.task_id,
+            task_revision=task.revision,
+            cumulative_tip_run_id=tip.run_id,
+            cumulative_tip_candidate_sha=tip.candidate_sha,
+            authorized_main_sha=lifecycle.main_sha,
+            require_remote=True,
+        )
+        if integration is None:
+            raise ValueError("current main and cumulative execution base require integration")
+        integrated_base = {
+            "version": 1,
+            "kind": "INTEGRATED",
+            "cumulative_tip_run_id": tip.run_id,
+            "cumulative_tip_candidate_sha": tip.candidate_sha,
+            "authorized_main_sha": lifecycle.main_sha,
+            "integration_candidate_sha": integration.integration_candidate_sha,
+            "integration_id": integration.integration_id,
+        }
+        return CumulativeExecutionBase(
+            tip.run_id, integration.integration_candidate_sha, integrated_base
+        )
+    return CumulativeExecutionBase(tip.run_id, tip.candidate_sha, None)
 
 
 def _local_pending_runs(
@@ -1179,18 +1247,10 @@ def observe_unified_state(
                     candidate_sha=tip.candidate_sha, reviewed_sha=review.reviewed_sha,
                 )
             try:
-                frontier = (
-                    CorrectionFrontier.from_primary(tip.run_id, review)
-                    if review.mode == "PRIMARY"
-                    else _derive_tip_frontier(tip, remote, reviews)
-                )
+                frontier = _derive_tip_frontier(tip, remote, reviews)
                 outstanding = _frontier_identities(frontier)
             except OverflowError:
-                over_bound_frontier = (
-                    CorrectionFrontier.from_primary(tip.run_id, review)
-                    if review.mode == "PRIMARY"
-                    else _derive_tip_frontier(tip, remote, reviews)
-                )
+                over_bound_frontier = _derive_tip_frontier(tip, remote, reviews)
                 return _unified_blocked(
                     task, "OUTSTANDING_FINDINGS_BOUND_EXCEEDED",
                     admission_failures=admission_context,
@@ -1216,13 +1276,38 @@ def observe_unified_state(
                 if not op._git_is_ancestor(
                     observer, lifecycle.main_sha, tip.candidate_sha
                 ):
-                    return _unified_blocked(
-                        task, "INTEGRATION_REQUIRED",
-                        admission_failures=admission_context,
-                        run_id=tip.run_id, candidate_sha=tip.candidate_sha,
-                        execution_base_run_id=tip.run_id,
-                        execution_base_sha=tip.candidate_sha,
+                    from .correction_integration import resolve_valid_integration
+
+                    integration = resolve_valid_integration(
+                        observer,
+                        task_id=task.task_id,
+                        task_revision=task.revision,
+                        cumulative_tip_run_id=tip.run_id,
+                        cumulative_tip_candidate_sha=tip.candidate_sha,
+                        authorized_main_sha=lifecycle.main_sha,
+                        require_remote=True,
                     )
+                    if integration is None:
+                        return _unified_blocked(
+                            task, "INTEGRATION_REQUIRED",
+                            admission_failures=admission_context,
+                            run_id=tip.run_id, candidate_sha=tip.candidate_sha,
+                            execution_base_run_id=tip.run_id,
+                            execution_base_sha=tip.candidate_sha,
+                        )
+                    effective_execution_base_sha = integration.integration_candidate_sha
+                    integrated_base = {
+                        "version": 1,
+                        "kind": "INTEGRATED",
+                        "cumulative_tip_run_id": tip.run_id,
+                        "cumulative_tip_candidate_sha": tip.candidate_sha,
+                        "authorized_main_sha": lifecycle.main_sha,
+                        "integration_candidate_sha": integration.integration_candidate_sha,
+                        "integration_id": integration.integration_id,
+                    }
+                else:
+                    effective_execution_base_sha = tip.candidate_sha
+                    integrated_base = None
                 selector_matches = [
                     (identity, selector)
                     for identity in outstanding
@@ -1236,7 +1321,8 @@ def observe_unified_state(
                             task.task_id, task.revision, "CORRECTION", "AUTHOR_REMEDIATION",
                             run_id=tip.run_id, candidate_sha=tip.candidate_sha,
                             execution_base_run_id=tip.run_id,
-                            execution_base_sha=tip.candidate_sha,
+                            execution_base_sha=effective_execution_base_sha,
+                            integrated_base=integrated_base,
                             outstanding_findings=outstanding,
                             admission_failures=admission_context,
                         )
@@ -1250,7 +1336,8 @@ def observe_unified_state(
                         candidate_sha=tip.candidate_sha,
                         reviewed_sha=identity["reviewed_sha"],
                         execution_base_run_id=tip.run_id,
-                        execution_base_sha=tip.candidate_sha,
+                        execution_base_sha=effective_execution_base_sha,
+                        integrated_base=integrated_base,
                         outstanding_findings=outstanding,
                         admission_failures=admission_context,
                     )
@@ -1287,6 +1374,7 @@ def observe_unified_state(
                     candidate_sha=tip.candidate_sha, reviewed_sha=identity["reviewed_sha"],
                     execution_base_run_id=preflight.execution_base_run_id,
                     execution_base_sha=preflight.execution_base_sha,
+                    integrated_base=integrated_base,
                     correction_sha=selector[2], correction=correction,
                     outstanding_findings=outstanding,
                     admission_failures=admission_context,

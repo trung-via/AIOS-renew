@@ -701,3 +701,915 @@ findings:
     assert preflight_int.status == "BLOCKED"
     assert preflight_int.phase == "REPOSITORY_ADMISSION"
     assert preflight_int.reason_code == "INTEGRATION_REQUIRED"
+
+    # After explicit integration, preflight becomes READY with integrated_base populated
+    from aios_renew.correction_integration import integrate_correction
+    int_result = integrate_correction(
+        "TASK-101",
+        task_revision=1,
+        cumulative_tip_run_id=primary_id,
+        cumulative_tip_candidate_sha=head,
+        authorized_main_sha=new_main,
+        repo=repo,
+    )
+    preflight_ready = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight_ready.status == "READY"
+    assert preflight_ready.execution_base_sha == int_result.integration_candidate_sha
+    assert preflight_ready.integrated_base is not None
+    assert preflight_ready.integrated_base["integration_candidate_sha"] == int_result.integration_candidate_sha
+    assert preflight_ready.integrated_base["cumulative_tip_run_id"] == primary_id
+    assert preflight_ready.integrated_base["authorized_main_sha"] == new_main
+
+    # If main moves again, the integrated base is invalidated -> returns INTEGRATION_REQUIRED again
+    (repo / "MAIN2.txt").write_text("another advance\n", encoding="utf-8")
+    git(repo, "add", "MAIN2.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main again")
+    newer_main = git(repo, "rev-parse", "HEAD")
+
+    lifecycle_newer = RemoteTaskLifecycle(
+        newer_main,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, head, review),),
+        (), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle_newer,
+    )
+
+    preflight_invalidated = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight_invalidated.status == "BLOCKED"
+    assert preflight_invalidated.reason_code == "INTEGRATION_REQUIRED"
+
+
+def test_correction_preflight_remediation_remains_integration_required_on_remote_push_failure_or_missing_remote_ref(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id="RUN-101-000",
+        finding_id="R1",
+        reviewed_sha=head,
+    )
+
+    primary_id = "RUN-101-000"
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    review = f"""review_id: REVIEW-RUN-101-000
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The output is absent.
+    expected: Commit only the output.
+""".encode()
+
+    (repo / "MAIN.txt").write_text("main advance\n", encoding="utf-8")
+    git(repo, "add", "MAIN.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main ahead of tip")
+    new_main = git(repo, "rev-parse", "HEAD")
+
+    lifecycle_integration = RemoteTaskLifecycle(
+        new_main,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run,
+                json.dumps(canonical_result_payload(primary_id, head)).encode(),
+            ),
+        ),
+        (RemoteLifecycleReview(primary_id, head, review),),
+        (), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle_integration,
+    )
+
+    # 1. Initially INTEGRATION_REQUIRED
+    preflight = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight.status == "BLOCKED"
+    assert preflight.reason_code == "INTEGRATION_REQUIRED"
+
+    # 2. Break remote push
+    git(repo, "remote", "set-url", "--push", "origin", str(tmp_path / "broken_push.git"))
+    from aios_renew.correction_integration import (
+        CorrectionIntegrationError,
+        derive_integration_identity,
+        integrate_correction,
+        integration_ref_name,
+    )
+    with pytest.raises(CorrectionIntegrationError, match="failed to push integration ref"):
+        integrate_correction(
+            "TASK-101",
+            task_revision=1,
+            cumulative_tip_run_id=primary_id,
+            cumulative_tip_candidate_sha=head,
+            authorized_main_sha=new_main,
+            repo=repo,
+        )
+
+    # Preflight remains BLOCKED / INTEGRATION_REQUIRED after push failure
+    preflight_after_failed_push = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight_after_failed_push.status == "BLOCKED"
+    assert preflight_after_failed_push.reason_code == "INTEGRATION_REQUIRED"
+
+    # 3. Even if local-only staging ref is created, Preflight remains INTEGRATION_REQUIRED
+    # because the canonical remote integration ref is missing on origin
+    int_id = derive_integration_identity("TASK-101", 1, primary_id, head, new_main)
+    local_ref = integration_ref_name(int_id)
+    git(repo, "update-ref", local_ref, head)
+
+    preflight_local_only = preflight_remediation("TASK-101", finding_id="R1", repo=repo)
+    assert preflight_local_only.status == "BLOCKED"
+    assert preflight_local_only.reason_code == "INTEGRATION_REQUIRED"
+
+
+
+def test_correction_preflight_remediation_repaired_primary_result_is_ready_ac1_ac2_ac3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+
+    (repo / "OUTPUT.txt").write_text("repaired candidate content\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "repaired candidate")
+    candidate_sha = git(repo, "rev-parse", "HEAD")
+
+    primary_id = "RUN-101-001"
+    repair_1_id = "RUN-101-002"
+    repair_2_id = "RUN-101-003"
+
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    primary_failure = json.dumps({
+        "kind": "FAILURE",
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "phase": "COMPLETION_GATE",
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }).encode()
+
+    repair_1_run = json.dumps({
+        "run_id": repair_1_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    repair_1_failure = json.dumps({
+        "kind": "FAILURE",
+        "run_id": repair_1_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "continuation_of": primary_id,
+        "phase": "COMPLETION_GATE",
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }).encode()
+    repair_1_auth = {
+        "repair_id": "REPAIR-101-001",
+        "failed_run_id": primary_id,
+        "failed_head_sha": head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue implementation."],
+        "constraints": ["Commit the output."],
+    }
+    repair_1_execution = {
+        "failed_run_id": primary_id,
+        "root_base_sha": head,
+        "failed_head_sha": head,
+        "failure": json.loads(primary_failure),
+        "task": {"task_id": "TASK-101", "revision": 1},
+        "repair": repair_1_auth,
+        "run": json.loads(repair_1_run),
+    }
+
+    repair_2_run = json.dumps({
+        "run_id": repair_2_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    repair_2_result = canonical_result_payload(
+        repair_2_id, candidate_sha, changed_files=["OUTPUT.txt"]
+    )
+    repair_2_auth = {
+        "repair_id": "REPAIR-101-002",
+        "failed_run_id": repair_1_id,
+        "failed_head_sha": head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue implementation."],
+        "constraints": ["Commit the output."],
+    }
+    repair_2_execution = {
+        "failed_run_id": repair_1_id,
+        "root_base_sha": head,
+        "failed_head_sha": head,
+        "failure": json.loads(repair_1_failure),
+        "task": {"task_id": "TASK-101", "revision": 1},
+        "repair": repair_2_auth,
+        "run": json.loads(repair_2_run),
+    }
+
+    repair_2_review_yaml = f"""review_id: REVIEW-{repair_2_id}
+reviewed_sha: {candidate_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The first issue is present.
+    expected: Fix first issue.
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The second issue is present.
+    expected: Fix second issue.
+""".encode()
+
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id=repair_2_id,
+        finding_id="F1",
+        task_id="TASK-101",
+        task_revision=1,
+        reviewed_sha=candidate_sha,
+    )
+
+    author = tmp_path / f"author-{repair_2_id}-F1"
+    rev_dir = author / ".ai" / "reviews"
+    rem_dir = author / ".ai" / "remediations"
+    (rev_dir / f"REVIEW-{repair_2_id}.yaml").write_text(
+        repair_2_review_yaml.decode(), encoding="utf-8"
+    )
+    (rem_dir / f"REMEDIATION-{repair_2_id}-F1.yaml").write_text(
+        f"""finding_id: F1
+action: CODE_FIX
+reviewed_sha: {candidate_sha}
+modification_scope: [OUTPUT.txt]
+affected_verification: [git diff --check]
+constraints:
+  hard: [Commit the output.]
+""",
+        encoding="utf-8",
+    )
+    git(author, "add", ".ai")
+    git(author, "commit", "--quiet", "-m", "F1 remediation with updated review")
+    git(author, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/remediation/{repair_2_id}-F1")
+    selector_sha = git(author, "rev-parse", "HEAD")
+
+    lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "FAILURE", head, primary_run, primary_failure,
+            ),
+            RemoteLifecycleTerminal(
+                repair_1_id, "FAILURE", head, repair_1_run, repair_1_failure,
+                json.dumps(repair_1_execution).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                repair_2_id, "RESULT", candidate_sha, repair_2_run,
+                json.dumps(repair_2_result).encode(),
+                json.dumps(repair_2_execution).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(repair_2_id, candidate_sha, repair_2_review_yaml),
+        ),
+        ((repair_2_id, "F1", selector_sha),), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle,
+    )
+
+    from aios_renew.unified_state import _resolve_cumulative_execution_base
+    from aios_renew.operator import load_task
+    from aios_renew.review import parse_review
+
+    task = load_task(repo, "TASK-101")
+    parsed_review = parse_review(repair_2_review_yaml.decode())
+
+    base_run_id, base_sha = _resolve_cumulative_execution_base(
+        repo,
+        task,
+        lifecycle,
+        source_run_id=repair_2_id,
+        review_id=f"REVIEW-{repair_2_id}",
+        finding_id="F1",
+        reviewed_sha=candidate_sha,
+        semantic_review=parsed_review,
+    )
+    assert base_run_id == repair_2_id
+    assert base_sha == candidate_sha
+
+    preflight = preflight_remediation(
+        "TASK-101",
+        finding_id="F1",
+        repo=repo,
+        source_run_id=repair_2_id,
+        approved_remediation_sha=selector_sha,
+    )
+    assert preflight.status == "READY"
+    assert preflight.phase == "READY"
+    assert preflight.reason_code == "READY"
+    assert preflight.source_run_id == repair_2_id
+    assert preflight.review_id == f"REVIEW-{repair_2_id}"
+    assert preflight.finding_id == "F1"
+    assert preflight.reviewed_sha == candidate_sha
+    assert preflight.execution_base_run_id == repair_2_id
+    assert preflight.execution_base_sha == candidate_sha
+    assert preflight.action == "CODE_FIX"
+
+
+def test_correction_preflight_remediation_repaired_primary_fails_closed_ac5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+
+    (repo / "OUTPUT.txt").write_text("repaired candidate content\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "repaired candidate")
+    candidate_sha = git(repo, "rev-parse", "HEAD")
+
+    primary_id = "RUN-101-001"
+    repair_1_id = "RUN-101-002"
+    repair_2_id = "RUN-101-003"
+
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    primary_failure = json.dumps({
+        "kind": "FAILURE",
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "phase": "COMPLETION_GATE",
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }).encode()
+
+    repair_1_run = json.dumps({
+        "run_id": repair_1_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    repair_1_failure = json.dumps({
+        "kind": "FAILURE",
+        "run_id": repair_1_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "continuation_of": primary_id,
+        "phase": "COMPLETION_GATE",
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }).encode()
+    repair_1_auth = {
+        "repair_id": "REPAIR-101-001",
+        "failed_run_id": primary_id,
+        "failed_head_sha": head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue implementation."],
+        "constraints": ["Commit the output."],
+    }
+    repair_1_execution = {
+        "failed_run_id": primary_id,
+        "root_base_sha": head,
+        "failed_head_sha": head,
+        "failure": json.loads(primary_failure),
+        "task": {"task_id": "TASK-101", "revision": 1},
+        "repair": repair_1_auth,
+        "run": json.loads(repair_1_run),
+    }
+
+    repair_2_run = json.dumps({
+        "run_id": repair_2_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    repair_2_result = canonical_result_payload(
+        repair_2_id, candidate_sha, changed_files=["OUTPUT.txt"]
+    )
+    repair_2_auth = {
+        "repair_id": "REPAIR-101-002",
+        "failed_run_id": repair_1_id,
+        "failed_head_sha": head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue implementation."],
+        "constraints": ["Commit the output."],
+    }
+    repair_2_execution = {
+        "failed_run_id": repair_1_id,
+        "root_base_sha": head,
+        "failed_head_sha": head,
+        "failure": json.loads(repair_1_failure),
+        "task": {"task_id": "TASK-101", "revision": 1},
+        "repair": repair_2_auth,
+        "run": json.loads(repair_2_run),
+    }
+
+    repair_2_review_yaml = f"""review_id: REVIEW-{repair_2_id}
+reviewed_sha: {candidate_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The first issue is present.
+    expected: Fix first issue.
+""".encode()
+
+    primary_competing_review_yaml = f"""review_id: REVIEW-{primary_id}
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The first issue is present.
+    expected: Fix first issue.
+""".encode()
+
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id=repair_2_id,
+        finding_id="F1",
+        task_id="TASK-101",
+        task_revision=1,
+        reviewed_sha=candidate_sha,
+    )
+    author = tmp_path / f"author-{repair_2_id}-F1"
+    selector_sha = git(author, "rev-parse", "HEAD")
+
+    from aios_renew.unified_state import _resolve_cumulative_execution_base
+    from aios_renew.operator import load_task
+    from aios_renew.review import parse_review
+
+    task = load_task(repo, "TASK-101")
+    parsed_review = parse_review(repair_2_review_yaml.decode())
+
+    # Case 1: Competing semantic PRIMARY roots fails closed
+    competing_roots_lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "FAILURE", head, primary_run, primary_failure,
+            ),
+            RemoteLifecycleTerminal(
+                repair_1_id, "FAILURE", head, repair_1_run, repair_1_failure,
+                json.dumps(repair_1_execution).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                repair_2_id, "RESULT", candidate_sha, repair_2_run,
+                json.dumps(repair_2_result).encode(),
+                json.dumps(repair_2_execution).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(primary_id, head, primary_competing_review_yaml),
+            RemoteLifecycleReview(repair_2_id, candidate_sha, repair_2_review_yaml),
+        ),
+        ((repair_2_id, "F1", selector_sha),), (), (),
+    )
+    with pytest.raises(ValueError, match="competing semantic roots"):
+        _resolve_cumulative_execution_base(
+            repo,
+            task,
+            competing_roots_lifecycle,
+            source_run_id=repair_2_id,
+            review_id=f"REVIEW-{repair_2_id}",
+            finding_id="F1",
+            reviewed_sha=candidate_sha,
+            semantic_review=parsed_review,
+        )
+
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: competing_roots_lifecycle,
+    )
+    preflight_competing = preflight_remediation(
+        "TASK-101", finding_id="F1", repo=repo, source_run_id=repair_2_id,
+    )
+    assert preflight_competing.status == "BLOCKED"
+    assert preflight_competing.phase == "REPOSITORY_ADMISSION"
+    assert preflight_competing.reason_code == "CUMULATIVE_BASE_REJECTED"
+
+    # Case 2: Ancestor of repaired PRIMARY is not a failure fails closed
+    ancestor_result = canonical_result_payload(primary_id, head)
+    non_failure_ancestor_lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "RESULT", head, primary_run, json.dumps(ancestor_result).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                repair_1_id, "FAILURE", head, repair_1_run, repair_1_failure,
+                json.dumps(repair_1_execution).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                repair_2_id, "RESULT", candidate_sha, repair_2_run,
+                json.dumps(repair_2_result).encode(),
+                json.dumps(repair_2_execution).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(repair_2_id, candidate_sha, repair_2_review_yaml),
+        ),
+        ((repair_2_id, "F1", selector_sha),), (), (),
+    )
+    with pytest.raises(ValueError):
+        _resolve_cumulative_execution_base(
+            repo,
+            task,
+            non_failure_ancestor_lifecycle,
+            source_run_id=repair_2_id,
+            review_id=f"REVIEW-{repair_2_id}",
+            finding_id="F1",
+            reviewed_sha=candidate_sha,
+            semantic_review=parsed_review,
+        )
+
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: non_failure_ancestor_lifecycle,
+    )
+    preflight_non_failure = preflight_remediation(
+        "TASK-101", finding_id="F1", repo=repo, source_run_id=repair_2_id,
+    )
+    assert preflight_non_failure.status == "BLOCKED"
+    assert preflight_non_failure.phase == "REPOSITORY_ADMISSION"
+    assert preflight_non_failure.reason_code == "CUMULATIVE_BASE_REJECTED"
+
+    # Case 3: Stale finding fails closed
+    stale_finding_lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "FAILURE", head, primary_run, primary_failure,
+            ),
+            RemoteLifecycleTerminal(
+                repair_1_id, "FAILURE", head, repair_1_run, repair_1_failure,
+                json.dumps(repair_1_execution).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                repair_2_id, "RESULT", candidate_sha, repair_2_run,
+                json.dumps(repair_2_result).encode(),
+                json.dumps(repair_2_execution).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(repair_2_id, candidate_sha, repair_2_review_yaml),
+        ),
+        ((repair_2_id, "F1", selector_sha),), (), (),
+    )
+    with pytest.raises(ValueError, match="selected semantic finding is not outstanding at execution base"):
+        _resolve_cumulative_execution_base(
+            repo,
+            task,
+            stale_finding_lifecycle,
+            source_run_id=repair_2_id,
+            review_id=f"REVIEW-{repair_2_id}",
+            finding_id="STALE_FINDING",
+            reviewed_sha=candidate_sha,
+            semantic_review=parsed_review,
+        )
+
+
+def test_correction_preflight_remediation_task_140_shaped_repaired_primary_with_divergent_main_requires_integration_then_ready_ac6_ac7(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+
+    (repo / "OUTPUT.txt").write_text("repaired candidate content\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "repaired candidate")
+    candidate_sha = git(repo, "rev-parse", "HEAD")
+
+    primary_id = "RUN-101-001"
+    repair_1_id = "RUN-101-002"
+    repair_2_id = "RUN-101-003"
+
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    primary_failure = json.dumps({
+        "kind": "FAILURE",
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "phase": "COMPLETION_GATE",
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }).encode()
+
+    repair_1_run = json.dumps({
+        "run_id": repair_1_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    repair_1_failure = json.dumps({
+        "kind": "FAILURE",
+        "run_id": repair_1_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "continuation_of": primary_id,
+        "phase": "COMPLETION_GATE",
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }).encode()
+    repair_1_auth = {
+        "repair_id": "REPAIR-101-001",
+        "failed_run_id": primary_id,
+        "failed_head_sha": head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue implementation."],
+        "constraints": ["Commit the output."],
+    }
+    repair_1_execution = {
+        "failed_run_id": primary_id,
+        "root_base_sha": head,
+        "failed_head_sha": head,
+        "failure": json.loads(primary_failure),
+        "task": {"task_id": "TASK-101", "revision": 1},
+        "repair": repair_1_auth,
+        "run": json.loads(repair_1_run),
+    }
+
+    repair_2_run = json.dumps({
+        "run_id": repair_2_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    repair_2_result = canonical_result_payload(
+        repair_2_id, candidate_sha, changed_files=["OUTPUT.txt"]
+    )
+    repair_2_auth = {
+        "repair_id": "REPAIR-101-002",
+        "failed_run_id": repair_1_id,
+        "failed_head_sha": head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue implementation."],
+        "constraints": ["Commit the output."],
+    }
+    repair_2_execution = {
+        "failed_run_id": repair_1_id,
+        "root_base_sha": head,
+        "failed_head_sha": head,
+        "failure": json.loads(repair_1_failure),
+        "task": {"task_id": "TASK-101", "revision": 1},
+        "repair": repair_2_auth,
+        "run": json.loads(repair_2_run),
+    }
+
+    repair_2_review_yaml = f"""review_id: REVIEW-{repair_2_id}
+reviewed_sha: {candidate_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The first issue is present.
+    expected: Fix first issue.
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The second issue is present.
+    expected: Fix second issue.
+""".encode()
+
+    publish_test_remediation_lineage(
+        repo,
+        tmp_path,
+        source_run_id=repair_2_id,
+        finding_id="F1",
+        task_id="TASK-101",
+        task_revision=1,
+        reviewed_sha=candidate_sha,
+    )
+
+    author = tmp_path / f"author-{repair_2_id}-F1"
+    rev_dir = author / ".ai" / "reviews"
+    rem_dir = author / ".ai" / "remediations"
+    (rev_dir / f"REVIEW-{repair_2_id}.yaml").write_text(
+        repair_2_review_yaml.decode(), encoding="utf-8"
+    )
+    (rem_dir / f"REMEDIATION-{repair_2_id}-F1.yaml").write_text(
+        f"""finding_id: F1
+action: CODE_FIX
+reviewed_sha: {candidate_sha}
+modification_scope: [OUTPUT.txt]
+affected_verification: [git diff --check]
+constraints: []
+""",
+        encoding="utf-8",
+    )
+    git(author, "add", ".ai")
+    git(author, "commit", "--quiet", "-m", "author review and remediation")
+    git(author, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/remediation/{repair_2_id}-F1")
+    selector_sha = git(author, "rev-parse", "HEAD")
+
+    (repo / "MAIN_ADVANCE.txt").write_text("main advance content\n", encoding="utf-8")
+    git(repo, "add", "MAIN_ADVANCE.txt")
+    git(repo, "commit", "--quiet", "-m", "advance main ahead of repair result")
+    new_main = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    lifecycle_divergent = RemoteTaskLifecycle(
+        new_main,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "FAILURE", head, primary_run, primary_failure,
+            ),
+            RemoteLifecycleTerminal(
+                repair_1_id, "FAILURE", head, repair_1_run, repair_1_failure,
+                json.dumps(repair_1_execution).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                repair_2_id, "RESULT", candidate_sha, repair_2_run,
+                json.dumps(repair_2_result).encode(),
+                json.dumps(repair_2_execution).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(repair_2_id, candidate_sha, repair_2_review_yaml),
+        ),
+        ((repair_2_id, "F1", selector_sha),), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle_divergent,
+    )
+
+    # 1. State initially reports INTEGRATION_REQUIRED
+    preflight_init = preflight_remediation("TASK-101", finding_id="F1", repo=repo)
+    assert preflight_init.status == "BLOCKED"
+    assert preflight_init.reason_code == "INTEGRATION_REQUIRED"
+
+    # 2. Integrate correction explicitly
+    from aios_renew.correction_integration import integrate_correction
+    int_result = integrate_correction(
+        "TASK-101",
+        task_revision=1,
+        cumulative_tip_run_id=repair_2_id,
+        cumulative_tip_candidate_sha=candidate_sha,
+        authorized_main_sha=new_main,
+        repo=repo,
+    )
+
+    # 3. Preflight becomes READY with integrated execution base
+    preflight_ready = preflight_remediation("TASK-101", finding_id="F1", repo=repo)
+    assert preflight_ready.status == "READY"
+    assert preflight_ready.execution_base_sha == int_result.integration_candidate_sha
+    assert preflight_ready.integrated_base is not None
+    assert preflight_ready.integrated_base["kind"] == "INTEGRATED"
+    assert preflight_ready.integrated_base["integration_candidate_sha"] == int_result.integration_candidate_sha
+    assert preflight_ready.integrated_base["cumulative_tip_run_id"] == repair_2_id
+    assert preflight_ready.integrated_base["authorized_main_sha"] == new_main

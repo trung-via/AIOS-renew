@@ -73,6 +73,7 @@ class CorrectionPreflightResult:
     reviewed_sha: str | None = None
     execution_base_run_id: str | None = None
     execution_base_sha: str | None = None
+    integrated_base: Mapping[str, Any] | None = None
     failed_head_sha: str | None = None
     subject_mode: str | None = None
     action: str | None = None
@@ -99,13 +100,17 @@ class CorrectionPreflightResult:
             "finding_id": self.finding_id,
             "reviewed_sha": self.reviewed_sha,
             "execution_base": (
-                {
-                    "run_id": self.execution_base_run_id,
-                    "candidate_sha": self.execution_base_sha,
-                }
-                if self.execution_base_run_id is not None
-                and self.execution_base_sha is not None
-                else None
+                dict(self.integrated_base)
+                if self.integrated_base is not None
+                else (
+                    {
+                        "run_id": self.execution_base_run_id,
+                        "candidate_sha": self.execution_base_sha,
+                    }
+                    if self.execution_base_run_id is not None
+                    and self.execution_base_sha is not None
+                    else None
+                )
             ),
             "failed_head_sha": self.failed_head_sha,
             "subject_mode": self.subject_mode,
@@ -264,6 +269,7 @@ def preflight_remediation(
             reviewed_sha=resolved.remediation.reviewed_sha,
             execution_base_run_id=resolved.execution_base_run_id,
             execution_base_sha=resolved.execution_base_sha,
+            integrated_base=getattr(resolved, "integrated_base", None),
             subject_mode=subject_mode,
             action=resolved.remediation.action,
         )

@@ -7405,8 +7405,8 @@ findings:
     basis: AC1
     action: CODE_FIX
     location: OUTPUT.txt
-    issue: issue
-    expected: fixed
+    issue: The output is absent.
+    expected: Commit only the output.
 """.encode()
     lifecycle_invalid = RemoteTaskLifecycle(
         head,
@@ -7467,6 +7467,33 @@ findings:
             native_runner=runner,
         )
     assert len(runner.calls) == 0
+
+    # After explicit integration, run_remediation succeeds using integrated base
+    from aios_renew.correction_integration import integrate_correction
+    int_result = integrate_correction(
+        "TASK-101",
+        task_revision=1,
+        cumulative_tip_run_id=primary_id,
+        cumulative_tip_candidate_sha=head,
+        authorized_main_sha=new_main,
+        repo=repo,
+    )
+    isolated_runner = IsolatedRemediationRunner(int_result.integration_candidate_sha)
+    summary = run_remediation(
+        "TASK-101",
+        finding_id="R1",
+        executor="codex",
+        repo=repo,
+        native_runner=isolated_runner,
+    )
+    assert len(isolated_runner.calls) == 1
+    state = runtime_paths(repo)
+    run_doc = json.loads((state.runs / f"{summary.run_id}.json").read_text(encoding="utf-8"))
+    assert run_doc["execution_base"]["kind"] == "INTEGRATED"
+    assert run_doc["execution_base"]["integration_candidate_sha"] == int_result.integration_candidate_sha
+    assert run_doc["execution"]["run"]["base_sha"] == int_result.integration_candidate_sha
+    res_doc = json.loads((state.results / f"{summary.run_id}.json").read_text(encoding="utf-8"))
+    assert res_doc["result"]["changed_files"] == ["OUTPUT.txt"]
 
 
 def test_remediation_direct_candidate_revision_1_sibling_preserves_cumulative_tip_ac2_ac3(

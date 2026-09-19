@@ -1,0 +1,121 @@
+task_id: TASK-141
+revision: 1
+
+goal: >
+  Fix cumulative correction admission when the first semantic PRIMARY review belongs to a
+  successful REPAIR result rather than to the operational PRIMARY root, so a repaired failed
+  PRIMARY can enter REMEDIATION without CUMULATIVE_BASE_REJECTED.
+
+problem: >
+  TASK-140 r3 reproduced a deterministic lifecycle gap. Operational lineage is
+  RUN-140-005 PRIMARY FAILURE -> RUN-140-006 REPAIR FAILURE -> RUN-140-007 REPAIR RESULT.
+  REVIEW-140-007 is the first semantic review and is mode PRIMARY, reviewed candidate
+  c52a1db8d59270628f69c2cc54c3985553e4abca, with outstanding FINDING-140-005 and
+  FINDING-140-006. Unified State correctly seeds the frontier from RUN-140-007 by using
+  CorrectionFrontier.from_primary(tip.run_id, review), and AUTHOR_REMEDIATION for
+  FINDING-140-005 canonicalized at dd8415590fac8a5ae925ed3feebd9ff9047c71ab.
+  However correction preflight is BLOCKED at REPOSITORY_ADMISSION with
+  CUMULATIVE_BASE_REJECTED. The mismatch is in cumulative base resolution:
+  _resolve_cumulative_execution_base() calls _derive_tip_frontier(), while
+  _derive_tip_frontier() always requires a review on the operational PRIMARY root.
+  Here that root is RUN-140-005, which failed and therefore has no semantic review.
+  The semantic PRIMARY root is RUN-140-007. The two boundaries therefore derive the same
+  lifecycle using incompatible frontier-root rules.
+
+assumptions:
+  - Canonical main at authoring is 3002625fe0ca77e580925835445c6a9be3818fb5.
+  - TASK-140 r3 candidate c52a1db8d59270628f69c2cc54c3985553e4abca descends from that main.
+  - REVIEW-140-007 is canonical PRIMARY CHANGES_REQUIRED at
+    654a7fe0711ef011c174886ba5233fda3df98e1f.
+  - FINDING-140-005 remediation authorization is canonical at
+    dd8415590fac8a5ae925ed3feebd9ff9047c71ab.
+  - The blocker is lifecycle/frontier derivation, not repository dirtiness or main ancestry.
+
+scope:
+  inspect:
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/correction_frontier.py
+    - src/aios_renew/correction_preflight.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_correction_frontier.py
+  modify:
+    - src/aios_renew/unified_state.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_correction_preflight.py
+
+non_goals:
+  - Modify TASK-140 guard, adapter, hooks, or antigravity tests.
+  - Execute or resolve FINDING-140-005 or FINDING-140-006 inside TASK-141.
+  - Weaken current-main ancestry, reviewed-SHA ancestry, competing-continuation, selector,
+    or canonical review validation.
+  - Change remediation/repair mutation authority, executor selection, review schema,
+    publication, or transport semantics.
+  - Add special-case logic keyed to TASK-140 or any concrete RUN id in production code.
+
+constraints:
+  hard:
+    - >
+      Operational lineage root and semantic correction-frontier root are distinct concepts.
+      The operational chain must still be validated from its true PRIMARY root, even when that
+      run failed and was repaired.
+    - >
+      Frontier derivation must seed from exactly one canonical mode PRIMARY semantic review
+      on the ordered operational lineage. That semantic root may be the operational PRIMARY
+      RESULT or a later successful REPAIR RESULT after one or more failed ancestors.
+    - >
+      Unreviewed failed operational ancestors before the semantic PRIMARY review must not be
+      required to have semantic reviews.
+    - >
+      After the semantic PRIMARY root, existing DELTA remediation/review advancement semantics
+      and predecessor binding must remain authoritative.
+    - >
+      Zero semantic PRIMARY roots, multiple/competing semantic PRIMARY roots, ambiguous
+      operational lineage, competing continuations, stale selected findings, reviewed-SHA
+      ancestry failure, and current-main ancestry failure must continue to fail closed.
+    - >
+      _resolve_cumulative_execution_base and Unified State must use compatible frontier
+      semantics for the same remote lifecycle.
+    - >
+      Regression must reproduce the TASK-140 topology generically: failed PRIMARY, failed
+      REPAIR, successful REPAIR RESULT, first PRIMARY semantic review on the successful REPAIR,
+      two outstanding findings, one exact AUTHOR_REMEDIATION selector; correction preflight for
+      the selected finding must become READY and bind the successful REPAIR result as cumulative
+      execution base.
+    - Do not push from Executor implementation execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Frontier derivation distinguishes operational root from semantic PRIMARY review root and
+      accepts a successful REPAIR RESULT as the semantic root after failed unreviewed ancestors.
+  - id: AC2
+    condition: >
+      The TASK-140-shaped regression no longer raises
+      "PRIMARY correction frontier review is missing" and
+      _resolve_cumulative_execution_base resolves the successful REPAIR RESULT as the exact
+      cumulative execution base.
+  - id: AC3
+    condition: >
+      Correction preflight for the selected outstanding finding is READY rather than
+      CUMULATIVE_BASE_REJECTED, with exact source/review/finding/reviewed SHA and cumulative
+      execution-base bindings preserved.
+  - id: AC4
+    condition: >
+      Existing normal topology where the operational PRIMARY RESULT itself has the PRIMARY
+      review remains behaviorally unchanged, including later DELTA frontier advancement.
+  - id: AC5
+    condition: >
+      Ambiguous/multiple semantic PRIMARY roots, competing continuations, stale findings,
+      reviewed-SHA ancestry failure, and integration-required main ancestry remain fail-closed.
+  - id: AC6
+    condition: >
+      Focused unified-state and correction-preflight regressions pass with no production
+      special-casing for TASK-140 identities.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_operator_unified_state.py tests/test_operator_correction_preflight.py
+    - python -m pytest -q tests/test_correction_frontier.py
+    - git diff --check
