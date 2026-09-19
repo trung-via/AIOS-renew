@@ -1,0 +1,170 @@
+task_id: TASK-139
+revision: 1
+
+goal: >
+  Make antigravity-minimax a deterministic canonical RUN executor identity for direct
+  AIOS execution and all canonical RUN consumers, without relying on import-order side
+  effects from the Antigravity-MiniMax adapter. Preserve the existing narrower remote
+  carrier executor allowlists unless separately authorized.
+
+problem: >
+  TASK-138 was executed successfully through direct
+  "aios run TASK-138 --executor antigravity-minimax" as RUN-138-001 and Runtime produced
+  a canonical RESULT at candidate ec7da7662819dd11b2f8824daf85b340a439c2e7. Independent
+  live review then found a TASK-138 implementation defect and Brain submitted
+  REVIEW-138-001 as CHANGES_REQUIRED. Brain Authoring Ingress rejected that review before
+  semantic review validation with:
+  "invalid canonical RUN: executor must be 'codex' or 'antigravity'".
+
+  The root cause is deterministic and process-local. src/aios_renew/run.py defines
+  canonical Run.SUPPORTED_EXECUTORS as only codex/antigravity. The
+  antigravity_minimax_adapter module mutates run.SUPPORTED_EXECUTORS at import time, and
+  also mutates dispatch_reconciliation/correction_dispatch allowlists. operator.py imports
+  AntigravityMinimaxAdapter before direct RUN creation, so the local operator process
+  accepts antigravity-minimax. Hosted Brain Authoring Ingress imports Run directly and
+  does not import the adapter, so the same persisted canonical RUN is rejected. Executor
+  identity therefore depends on Python import order and process topology, which breaks
+  canonical portability across Runtime, Brain Ingress, Reviewer, and Publisher.
+
+  This is separate from TASK-138's hook-path defect. TASK-139 must restore deterministic
+  canonical lifecycle readability for RUN-138-001 before REVIEW-138-001 can be
+  canonicalized. It must not publish or rewrite TASK-138 or its RESULT.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    7ee5599ebd25dc51766851f2caeb38526e692e62.
+  - >
+    RUN-138-001 is a successful canonical RESULT whose persisted executor is
+    antigravity-minimax and whose candidate is
+    ec7da7662819dd11b2f8824daf85b340a439c2e7.
+  - >
+    Direct local Antigravity-MiniMax execution is already implemented by
+    AntigravityMinimaxAdapter and Dispatcher and was live-proven on this self-host.
+  - >
+    The observed SUBMIT_REVIEW failure on Issue #208 proves that import-time adapter
+    mutation is not a portable executor-registration mechanism.
+  - >
+    Frozen Kernel v0.1 originally admitted codex/antigravity only. This task is an
+    evidence-backed, explicit post-freeze extension of canonical RUN executor identity,
+    not an implicit reinterpretation of historical RUNs.
+  - >
+    Remote PRIMARY/REMEDIATION/REPAIR GitHub carriers currently have separate executor
+    allowlists and workflow choices. Expanding those Human-facing remote authorization
+    surfaces is not required to unblock RUN-138-001 review and is not authorized here.
+
+scope:
+  inspect:
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - src/aios_renew/run.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/correction_dispatch.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - tests/test_run.py
+    - tests/test_authoring_ingress.py
+    - tests/test_antigravity_minimax_adapter.py
+  modify:
+    - src/aios_renew/run.py
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - tests/test_run.py
+    - tests/test_authoring_ingress.py
+    - tests/test_antigravity_minimax_adapter.py
+
+non_goals:
+  - Fix TASK-138 hook-path defect or modify TASK-138 candidate files.
+  - Submit, rewrite, bypass, or fabricate REVIEW-138-001 inside this task.
+  - Publish TASK-138 or move main to the TASK-138 candidate.
+  - Expand GitHub Issue PRIMARY wakeup, remediation-intent, repair-wakeup, or self-hosted workflow executor choices to antigravity-minimax.
+  - Change remote dispatch/correction/repair carrier authorization semantics.
+  - Change Antigravity-MiniMax provider/model behavior, ResultPackage schema, verification ownership, review semantics, or publication semantics.
+  - Add executor fallback, automatic executor selection, retry, reroute, planner, or model router.
+  - Rewrite historical RUN artifacts or reinterpret codex/antigravity historical state.
+
+constraints:
+  hard:
+    - >
+      Canonical Run validation must accept exactly codex, antigravity, and
+      antigravity-minimax independent of whether antigravity_minimax_adapter has ever
+      been imported in the current process.
+    - >
+      Remove the adapter's process-global mutation of run.SUPPORTED_EXECUTORS. Importing
+      antigravity_minimax_adapter must not be required to make a persisted canonical RUN
+      readable.
+    - >
+      The adapter must not mutate dispatch_reconciliation.SUPPORTED_EXECUTORS,
+      correction_dispatch.SUPPORTED_EXECUTORS, or any other remote-carrier allowlist as
+      an import side effect. Those remote authorization surfaces remain explicitly
+      unchanged by TASK-139.
+    - >
+      Preserve Dispatcher support for antigravity-minimax and direct
+      "aios run ... --executor antigravity-minimax" behavior.
+    - >
+      Authoring Ingress SUBMIT_REVIEW must be able to parse and validate a canonical
+      successful RUN whose executor is antigravity-minimax using the same review rules
+      as an equivalent codex/antigravity RUN. Executor identity must not bypass candidate,
+      TASK, ResultPackage, review-mode, ancestry, or semantic review validation.
+    - >
+      Canonical lifecycle consumers that construct Run from persisted artifacts must
+      receive the same deterministic three-executor RUN grammar without importing a
+      provider adapter for side effects.
+    - >
+      Existing remote PRIMARY/REMEDIATION/REPAIR carrier allowlists must remain
+      codex/antigravity in this task. Tests must prove importing AntigravityMinimaxAdapter
+      no longer widens those allowlists accidentally.
+    - >
+      Historical codex and antigravity RUN validation, leases, ExecutorBoundary behavior,
+      Runtime verification, review authoring, remediation/repair lineage, and publication
+      behavior must remain compatible.
+    - >
+      Add a production-topology regression for the exact Issue #208 failure class:
+      a canonical RUN artifact with executor antigravity-minimax and a valid RESULT can
+      cross SUBMIT_REVIEW parsing/semantic validation without the adapter module being
+      imported for registration. A malformed/unknown executor must still fail closed.
+    - >
+      Do not use runtime monkey-patching, module reload ordering, environment variables,
+      global mutable registration, or import side effects as executor identity authority.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Run(... executor="antigravity-minimax") is valid in a fresh process/module context
+      before AntigravityMinimaxAdapter import, while unknown executor values remain rejected.
+  - id: AC2
+    condition: >
+      Importing antigravity_minimax_adapter performs no mutation of canonical RUN or
+      remote carrier executor allowlists; executor identity is deterministic and
+      import-order independent.
+  - id: AC3
+    condition: >
+      A production-topology SUBMIT_REVIEW regression using a successful canonical
+      antigravity-minimax RUN reaches normal review semantic validation/canonicalization
+      instead of failing with "executor must be 'codex' or 'antigravity'".
+  - id: AC4
+    condition: >
+      Existing codex/antigravity RUN, lease, direct execution, review, and publication
+      behavior remains compatible, and Dispatcher still maps antigravity-minimax to
+      AntigravityMinimaxAdapter for direct execution.
+  - id: AC5
+    condition: >
+      GitHub Issue PRIMARY, REMEDIATION intent, and REPAIR wakeup carrier executor
+      allowlists remain unchanged at codex/antigravity and are not widened by importing
+      the MiniMax adapter.
+  - id: AC6
+    condition: >
+      Focused RUN/authoring-ingress/MiniMax regressions pass, git diff --check passes,
+      RESULT has no unresolved items, and implementation mutation stays within TASK-139 scope.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_run.py tests/test_antigravity_minimax_adapter.py
+    - python -m pytest -q tests/test_authoring_ingress.py -k "review and antigravity_minimax"
+    - python -m pytest -q tests/test_authoring_ingress.py
+    - git diff --check
