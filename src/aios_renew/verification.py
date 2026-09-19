@@ -22,8 +22,9 @@ _WINDOWS_POWERSHELL_UTF8_PREAMBLE = (
     "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
 )
 _WINDOWS_TEMP_PREFIX = "aios-verification-"
-_TEMP_CLEANUP_ATTEMPTS = 3
-_TEMP_CLEANUP_RETRY_DELAY_SECONDS = 0.05
+_TEMP_CLEANUP_MAX_ELAPSED_SECONDS = 5.0
+_TEMP_CLEANUP_INITIAL_RETRY_DELAY_SECONDS = 0.05
+_TEMP_CLEANUP_MAX_RETRY_DELAY_SECONDS = 0.5
 
 
 class RuntimeVerificationError(RuntimeError):
@@ -270,21 +271,31 @@ def _has_git_ancestor(path: Path) -> bool:
 
 
 def _remove_temp_root(temp_root: Path) -> None:
-    for attempt in range(1, _TEMP_CLEANUP_ATTEMPTS + 1):
+    deadline = time.monotonic() + _TEMP_CLEANUP_MAX_ELAPSED_SECONDS
+    attempt = 0
+
+    def make_writable_and_retry(remove, path: str, exc_info) -> None:
+        _make_writable_and_retry(remove, path, exc_info, deadline=deadline)
+
+    while True:
         try:
-            shutil.rmtree(temp_root, onerror=_make_writable_and_retry)
+            shutil.rmtree(temp_root, onerror=make_writable_and_retry)
             break
         except OSError as exc:
             if not temp_root.exists():
                 break
-            if not _is_permission_error(exc) or attempt == _TEMP_CLEANUP_ATTEMPTS:
+            if not _is_permission_error(exc):
                 raise
-            time.sleep(_TEMP_CLEANUP_RETRY_DELAY_SECONDS * attempt)
+            delay = _temp_cleanup_retry_delay(attempt, deadline=deadline)
+            if delay is None:
+                raise
+            time.sleep(delay)
+            attempt += 1
     if temp_root.exists():
         raise OSError(f"temporary root still exists: {temp_root}")
 
 
-def _make_writable_and_retry(remove, path: str, exc_info) -> None:
+def _make_writable_and_retry(remove, path: str, exc_info, *, deadline: float) -> None:
     error = exc_info[1]
     if not _is_permission_error(error):
         raise error
@@ -293,7 +304,30 @@ def _make_writable_and_retry(remove, path: str, exc_info) -> None:
     if stat.S_ISDIR(current_mode):
         writable_mode |= stat.S_IEXEC
     os.chmod(path, writable_mode)
-    remove(path)
+    attempt = 0
+    while True:
+        try:
+            remove(path)
+            return
+        except OSError as exc:
+            if not _is_permission_error(exc):
+                raise
+            delay = _temp_cleanup_retry_delay(attempt, deadline=deadline)
+            if delay is None:
+                raise
+            time.sleep(delay)
+            attempt += 1
+
+
+def _temp_cleanup_retry_delay(attempt: int, *, deadline: float) -> float | None:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return None
+    backoff = min(
+        _TEMP_CLEANUP_INITIAL_RETRY_DELAY_SECONDS * (2 ** min(attempt, 30)),
+        _TEMP_CLEANUP_MAX_RETRY_DELAY_SECONDS,
+    )
+    return min(backoff, remaining)
 
 
 def _is_permission_error(error: BaseException) -> bool:

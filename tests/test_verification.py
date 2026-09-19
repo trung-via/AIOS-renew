@@ -329,6 +329,83 @@ def test_temp_cleanup_recovers_read_only_git_object_tree(tmp_path: Path) -> None
     assert not temp_root.exists()
 
 
+def test_temp_cleanup_retries_transient_permission_failure_until_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    temp_root = tmp_path / "isolated-verification-root"
+    temp_root.mkdir()
+    real_rmtree = verification_module.shutil.rmtree
+    attempts = 0
+    sleeps: list[float] = []
+
+    def transient_rmtree(path, *args, **kwargs):
+        error = PermissionError("Git object is temporarily locked")
+
+        def transient_remove(locked_path):
+            nonlocal attempts
+            attempts += 1
+            if attempts <= 3:
+                raise PermissionError("Git object is temporarily locked")
+            real_rmtree(locked_path)
+
+        kwargs["onerror"](
+            transient_remove,
+            os.fspath(path),
+            (PermissionError, error, None),
+        )
+
+    monkeypatch.setattr(verification_module.shutil, "rmtree", transient_rmtree)
+    monkeypatch.setattr(verification_module.time, "sleep", sleeps.append)
+
+    verification_module._remove_temp_root(temp_root)
+
+    assert attempts == 4
+    assert sleeps == [0.05, 0.1, 0.2]
+    assert not temp_root.exists()
+
+
+def test_temp_cleanup_persistent_permission_failure_exhausts_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    temp_root = tmp_path / "isolated-verification-root"
+    temp_root.mkdir()
+    attempts = 0
+    now = 0.0
+
+    def persistent_rmtree(path, *args, **kwargs):
+        error = PermissionError("Git object remains locked")
+
+        def persistent_remove(locked_path):
+            nonlocal attempts
+            attempts += 1
+            raise PermissionError("Git object remains locked")
+
+        kwargs["onerror"](
+            persistent_remove,
+            os.fspath(path),
+            (PermissionError, error, None),
+        )
+
+    def advance(delay: float) -> None:
+        nonlocal now
+        now += delay
+
+    monkeypatch.setattr(verification_module.shutil, "rmtree", persistent_rmtree)
+    monkeypatch.setattr(verification_module.time, "monotonic", lambda: now)
+    monkeypatch.setattr(verification_module.time, "sleep", advance)
+    monkeypatch.setattr(
+        verification_module, "_TEMP_CLEANUP_MAX_ELAPSED_SECONDS", 0.2
+    )
+
+    with pytest.raises(PermissionError, match="remains locked"):
+        verification_module._remove_temp_root(temp_root)
+
+    assert attempts == 4
+    assert now == pytest.approx(0.2)
+    assert temp_root.exists()
+    temp_root.rmdir()
+
+
 def test_windows_nonzero_remains_canonical_failure_without_retry(
     tmp_path: Path,
 ) -> None:
