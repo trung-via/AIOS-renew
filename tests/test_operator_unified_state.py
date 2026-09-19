@@ -1658,3 +1658,281 @@ findings: []
     obs_integration = observe_unified_state("TASK-101", repo=repo).as_dict()
     assert obs_integration["next_action"] == "NONE"
     assert obs_integration["blocker"] == {"code": "INTEGRATION_REQUIRED"}
+
+
+def test_unified_state_repaired_primary_result_reduces_to_execute_remediation_and_author_remediation_ac1_ac2_ac3_ac6(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    head = git(repo, "rev-parse", "HEAD")
+
+    (repo / "OUTPUT.txt").write_text("repaired candidate content\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "repaired candidate")
+    candidate_sha = git(repo, "rev-parse", "HEAD")
+
+    primary_id = "RUN-101-001"
+    repair_1_id = "RUN-101-002"
+    repair_2_id = "RUN-101-003"
+
+    primary_run = json.dumps({
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    primary_failure = json.dumps({
+        "kind": "FAILURE",
+        "run_id": primary_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "phase": "COMPLETION_GATE",
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }).encode()
+
+    repair_1_run = json.dumps({
+        "run_id": repair_1_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    repair_1_failure = json.dumps({
+        "kind": "FAILURE",
+        "run_id": repair_1_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "failed_head_sha": head,
+        "continuation_of": primary_id,
+        "phase": "COMPLETION_GATE",
+        "candidate": {
+            "repairable": True,
+            "transportable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }).encode()
+    repair_1_auth = {
+        "repair_id": "REPAIR-101-001",
+        "failed_run_id": primary_id,
+        "failed_head_sha": head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue implementation."],
+        "constraints": ["Commit the output."],
+    }
+    repair_1_execution = {
+        "failed_run_id": primary_id,
+        "root_base_sha": head,
+        "failed_head_sha": head,
+        "failure": json.loads(primary_failure),
+        "task": {"task_id": "TASK-101", "revision": 1},
+        "repair": repair_1_auth,
+        "run": json.loads(repair_1_run),
+    }
+
+    repair_2_run = json.dumps({
+        "run_id": repair_2_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": head,
+        "workspace": "bounded-away",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }).encode()
+    repair_2_result = canonical_result_payload(
+        repair_2_id, candidate_sha, changed_files=["OUTPUT.txt"]
+    )
+    repair_2_auth = {
+        "repair_id": "REPAIR-101-002",
+        "failed_run_id": repair_1_id,
+        "failed_head_sha": head,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Continue implementation."],
+        "constraints": ["Commit the output."],
+    }
+    repair_2_execution = {
+        "failed_run_id": repair_1_id,
+        "root_base_sha": head,
+        "failed_head_sha": head,
+        "failure": json.loads(repair_1_failure),
+        "task": {"task_id": "TASK-101", "revision": 1},
+        "repair": repair_2_auth,
+        "run": json.loads(repair_2_run),
+    }
+
+    repair_2_review_yaml = f"""review_id: REVIEW-{repair_2_id}
+reviewed_sha: {candidate_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The first issue is present.
+    expected: Fix first issue.
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: The second issue is present.
+    expected: Fix second issue.
+""".encode()
+
+    selector_sha = "f" * 40
+
+    lifecycle_with_selector = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "FAILURE", head, primary_run, primary_failure,
+            ),
+            RemoteLifecycleTerminal(
+                repair_1_id, "FAILURE", head, repair_1_run, repair_1_failure,
+                json.dumps(repair_1_execution).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                repair_2_id, "RESULT", candidate_sha, repair_2_run,
+                json.dumps(repair_2_result).encode(),
+                json.dumps(repair_2_execution).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(repair_2_id, candidate_sha, repair_2_review_yaml),
+        ),
+        ((repair_2_id, "F1", selector_sha),), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle_with_selector)
+
+    monkeypatch.setattr(
+        operator_module,
+        "preflight_remediation",
+        lambda *_args, **_kwargs: CorrectionPreflightResult(
+            "REMEDIATION", "READY", "READY", "READY",
+            task_id="TASK-101", task_revision=1, source_run_id=repair_2_id,
+            review_id=f"REVIEW-{repair_2_id}", finding_id="F1", reviewed_sha=candidate_sha,
+            execution_base_run_id=repair_2_id, execution_base_sha=candidate_sha,
+            subject_mode="CURRENT", action="CODE_FIX",
+        ),
+    )
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["lifecycle_state"] == "CORRECTION"
+    assert observation["next_action"] == "EXECUTE_REMEDIATION"
+    assert observation["source_run_id"] == repair_2_id
+    assert observation["review_id"] == f"REVIEW-{repair_2_id}"
+    assert observation["finding_id"] == "F1"
+    assert observation["reviewed_sha"] == candidate_sha
+    assert observation["execution_base"] == {
+        "run_id": repair_2_id,
+        "candidate_sha": candidate_sha,
+    }
+    assert observation["correction_preflight"]["status"] == "READY"
+    assert observation["correction_preflight"]["execution_base"] == {
+        "run_id": repair_2_id,
+        "candidate_sha": candidate_sha,
+    }
+    assert len(observation["outstanding_findings"]) == 2
+
+    # Without selector: reduces to AUTHOR_REMEDIATION
+    lifecycle_no_selector = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "FAILURE", head, primary_run, primary_failure,
+            ),
+            RemoteLifecycleTerminal(
+                repair_1_id, "FAILURE", head, repair_1_run, repair_1_failure,
+                json.dumps(repair_1_execution).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                repair_2_id, "RESULT", candidate_sha, repair_2_run,
+                json.dumps(repair_2_result).encode(),
+                json.dumps(repair_2_execution).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(repair_2_id, candidate_sha, repair_2_review_yaml),
+        ),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, lifecycle_no_selector)
+
+    obs_no_selector = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_no_selector["lifecycle_state"] == "CORRECTION"
+    assert obs_no_selector["next_action"] == "AUTHOR_REMEDIATION"
+    assert obs_no_selector["execution_base"] == {
+        "run_id": repair_2_id,
+        "candidate_sha": candidate_sha,
+    }
+    assert len(obs_no_selector["outstanding_findings"]) == 2
+    assert all(
+        item["source_run_id"] == repair_2_id
+        for item in obs_no_selector["outstanding_findings"]
+    )
+
+    # Competing PRIMARY reviews fail closed with MALFORMED_CANONICAL_STATE
+    primary_competing_review = f"""review_id: REVIEW-{primary_id}
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: OUTPUT.txt
+    issue: first
+    expected: fixed
+""".encode()
+    competing_lifecycle = RemoteTaskLifecycle(
+        head,
+        (
+            RemoteLifecycleTerminal(
+                primary_id, "FAILURE", head, primary_run, primary_failure,
+            ),
+            RemoteLifecycleTerminal(
+                repair_1_id, "FAILURE", head, repair_1_run, repair_1_failure,
+                json.dumps(repair_1_execution).encode(),
+            ),
+            RemoteLifecycleTerminal(
+                repair_2_id, "RESULT", candidate_sha, repair_2_run,
+                json.dumps(repair_2_result).encode(),
+                json.dumps(repair_2_execution).encode(),
+            ),
+        ),
+        (
+            RemoteLifecycleReview(primary_id, head, primary_competing_review),
+            RemoteLifecycleReview(repair_2_id, candidate_sha, repair_2_review_yaml),
+        ),
+        (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, competing_lifecycle)
+
+    obs_competing = observe_unified_state("TASK-101", repo=repo).as_dict()
+    assert obs_competing["next_action"] == "NONE"
+    assert obs_competing["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+

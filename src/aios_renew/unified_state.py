@@ -643,12 +643,33 @@ def _derive_tip_frontier(
     reviews: Mapping[str, Review],
 ) -> CorrectionFrontier:
     ordered = _ordered_lineage(tip, lifecycle)
-    primary = ordered[0]
-    primary_review = reviews.get(primary.run_id)
-    if primary_review is None:
+    primary_roots = [
+        (idx, item, review)
+        for idx, item in enumerate(ordered)
+        if (review := reviews.get(item.run_id)) is not None and review.mode == "PRIMARY"
+    ]
+    if not primary_roots:
         raise ValueError("PRIMARY correction frontier review is missing")
-    frontier = CorrectionFrontier.from_primary(primary.run_id, primary_review)
-    for item in ordered[1:]:
+    if len(primary_roots) > 1:
+        raise ValueError("cumulative correction lineage has competing semantic roots")
+    root_idx, semantic_root, primary_review = primary_roots[0]
+    if semantic_root.terminal_kind != "RESULT":
+        raise ValueError("PRIMARY correction frontier review must belong to a successful RESULT")
+    if root_idx == 0:
+        if semantic_root.family != "PRIMARY":
+            raise ValueError("PRIMARY correction frontier root is invalid")
+    else:
+        if semantic_root.family != "REPAIR":
+            raise ValueError("PRIMARY correction frontier review must belong to a PRIMARY or REPAIR run")
+        if any(
+            ancestor.terminal_kind != "FAILURE" or ancestor.family not in ("PRIMARY", "REPAIR")
+            for ancestor in ordered[:root_idx]
+        ):
+            raise ValueError("operational ancestor of repaired PRIMARY is not a failure")
+        if any(ancestor.run_id in reviews for ancestor in ordered[:root_idx]):
+            raise ValueError("failed operational ancestor must not have a semantic review")
+    frontier = CorrectionFrontier.from_primary(semantic_root.run_id, primary_review)
+    for item in ordered[root_idx + 1:]:
         review = reviews.get(item.run_id)
         if review is None:
             continue
@@ -1179,18 +1200,10 @@ def observe_unified_state(
                     candidate_sha=tip.candidate_sha, reviewed_sha=review.reviewed_sha,
                 )
             try:
-                frontier = (
-                    CorrectionFrontier.from_primary(tip.run_id, review)
-                    if review.mode == "PRIMARY"
-                    else _derive_tip_frontier(tip, remote, reviews)
-                )
+                frontier = _derive_tip_frontier(tip, remote, reviews)
                 outstanding = _frontier_identities(frontier)
             except OverflowError:
-                over_bound_frontier = (
-                    CorrectionFrontier.from_primary(tip.run_id, review)
-                    if review.mode == "PRIMARY"
-                    else _derive_tip_frontier(tip, remote, reviews)
-                )
+                over_bound_frontier = _derive_tip_frontier(tip, remote, reviews)
                 return _unified_blocked(
                     task, "OUTSTANDING_FINDINGS_BOUND_EXCEEDED",
                     admission_failures=admission_context,
