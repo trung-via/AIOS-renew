@@ -2653,9 +2653,18 @@ def test_unified_state_integrated_remediation_failure_equivalent_to_run_140_008_
         },
     }).encode()
 
+    # Advance canonical main past the authorized main used during integration
+    # to replicate the real RUN-140-008 chronology where canonical main advanced
+    # before observing the integrated REMEDIATION FAILURE.
+    (repo / "CANONICAL_MAIN_ADVANCE.txt").write_text("canonical main advance content\n", encoding="utf-8")
+    git(repo, "add", "CANONICAL_MAIN_ADVANCE.txt")
+    git(repo, "commit", "--quiet", "-m", "advance canonical main past integrated remediation")
+    advanced_main = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
     # AC1 & AC2 (a): Without repair selector, reduces to AUTHOR_REPAIR instead of MALFORMED_CANONICAL_STATE
     lifecycle_author_repair = RemoteTaskLifecycle(
-        new_main,
+        advanced_main,
         topo["base_terminals"] + (
             RemoteLifecycleTerminal(
                 remediation_id, "FAILURE", int_result.integration_candidate_sha,
@@ -2689,7 +2698,7 @@ def test_unified_state_integrated_remediation_failure_equivalent_to_run_140_008_
     }
     repair_sha = "a" * 40
     lifecycle_execute_repair = RemoteTaskLifecycle(
-        new_main,
+        advanced_main,
         topo["base_terminals"] + (
             RemoteLifecycleTerminal(
                 remediation_id, "FAILURE", int_result.integration_candidate_sha,
@@ -2728,6 +2737,17 @@ def test_unified_state_integrated_remediation_failure_equivalent_to_run_140_008_
     assert obs_exec["failed_run_id"] == remediation_id
     assert obs_exec["failed_head_sha"] == int_result.integration_candidate_sha
     assert obs_exec["correction_sha"] == repair_sha
+
+
+def test_unified_state_integrated_remediation_chronology_advancement_reduces_to_repair_ac2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Explicit chronology regression: valid integration is created against an older authorized main,
+    # then remote canonical main is advanced before observing the integrated REMEDIATION FAILURE.
+    # The valid historical RUN must reduce to AUTHOR_REPAIR / EXECUTE_REPAIR.
+    test_unified_state_integrated_remediation_failure_equivalent_to_run_140_008_reduces_to_repairable_state_ac1_ac2(
+        tmp_path, monkeypatch
+    )
 
 
 def test_unified_state_integrated_remediation_result_and_subsequent_repair_lineage_ac3(
@@ -2988,8 +3008,9 @@ def test_unified_state_integrated_remediation_fail_closed_on_forged_stale_mismat
     forged_main_sha["execution_base"]["authorized_main_sha"] = "0" * 40
     check_malformed(json.dumps(forged_main_sha).encode())
 
-    # 4. Canonical remote lifecycle main moved ahead of authorized main
+    # 4. Canonical remote lifecycle main does not descend from authorized main / forged main
     check_malformed(run_with_override(), main_sha="a" * 40)
+    check_malformed(run_with_override(), main_sha=topo["head"])
 
     # 5. Remote integration ref is missing or deleted from upstream
     upstream = tmp_path / "upstream.git"

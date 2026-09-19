@@ -372,6 +372,7 @@ def _validate_lifecycle_failure(
 def _decode_remote_lifecycle(
     repo: Path, task: Task, lifecycle: RemoteTaskLifecycle
 ) -> tuple[list[_LifecycleRun], dict[str, Review]]:
+    op = _operator()
     reviews: dict[str, Review] = {}
     for item in lifecycle.reviews:
         if item.run_id in reviews:
@@ -539,8 +540,17 @@ def _decode_remote_lifecycle(
                 raise ValueError("REMEDIATION execution base cumulative tip is missing or ambiguous")
             if item.run.base_sha != item.execution_base.integration_candidate_sha:
                 raise ValueError("REMEDIATION execution base candidate does not match RUN base")
-            if item.execution_base.authorized_main_sha != lifecycle.main_sha:
-                raise ValueError("REMEDIATION execution base authorized main does not match canonical main")
+            try:
+                if not op._git_is_ancestor(
+                    repo, item.execution_base.authorized_main_sha, lifecycle.main_sha
+                ):
+                    raise ValueError(
+                        "REMEDIATION execution base authorized main is not an ancestor of canonical main"
+                    )
+            except op.OperatorError as exc:
+                raise ValueError(
+                    "REMEDIATION execution base authorized main ancestry is invalid"
+                ) from exc
             from .correction_integration import resolve_valid_integration
 
             integration = resolve_valid_integration(
