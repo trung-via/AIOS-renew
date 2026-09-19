@@ -11,7 +11,7 @@ matches a known Runtime-owned verification, background-risk, or
 unbounded-git class before execution, including:
 
   * pytest invocations (any pytest run)
-  * Explicit pytest modules such as RUN-136-004's
+  * Explicit pytest modules such as RUN-136-004s
     "pytest tests/test_authoring_ingress.py"
   * Long-running build / verification suites
   * Watchers, dev servers, and persistent processes
@@ -23,24 +23,36 @@ GIT CATEGORY FAIL-CLOSED POLICY:
   When active, the guard classifies a command as a git invocation when
   the executable is `git` or `git.exe` and may be invoked as bare
   `git`, path-prefixed (e.g. `./bin/git`), absolute-Windows
-  (`C:\\path\\git`), quoted (e.g. `"path\\git.exe"`), or with
-  an `.exe` suffix. After git classification, only the bounded
-  terminalization subcommands are admitted: `status`,
-  ordinary `diff` (excluding `--check`), `add`, normal `commit`
-  (excluding `--amend`), `rev-parse`, `log`, `show`,
-  inspection-only `branch` (no create/delete/rename/move/copy),
-  and `ls-files`. `git diff --check` is Runtime-owned verification
-  in every benign argument ordering (including `git diff HEAD --check`)
-  and is denied with AIOS_RUNTIME_OWNS_VERIFICATION. `git commit
-  --amend` is history-changing and is denied with
-  AIOS_GIT_OPERATION_NOT_ADMITTED. `git branch -D/-d/-m/-c` and
-  any unknown git subcommand (clone, fetch, reset, restore, etc.)
-  are also denied with AIOS_GIT_OPERATION_NOT_ADMITTED. Any other
-  invocation - including clone, fetch, reset, restore, checkout,
-  switch, push, pull, merge, rebase, stash, remote, config, tag,
-  cherry-pick, revert, clean, rm, mv, submodule, worktree, reflog,
-  filter-branch, gc, update-ref, or any unknown subcommand - is also
-  denied with AIOS_GIT_OPERATION_NOT_ADMITTED.
+  (`C:\\path\\git`), quoted (e.g. `"path\\git.exe"`, including quoted
+  Windows paths that contain spaces such as
+  `"C:\\Program Files\\Git\\cmd\\git.exe"`), or with an `.exe` suffix.
+  After git classification, only the bounded terminalization
+  subcommands are admitted: `status`, ordinary `diff` (excluding
+  `--check`), `add`, normal `commit` (excluding `--amend`),
+  `rev-parse`, `log`, `show`, inspection-only `branch` (only bare
+  `git branch`, `--show-current`, `-a`/`--all`, `--list`; no
+  create/delete/rename/move/copy/upstream mutation forms), and
+  `ls-files`. `git diff --check` is Runtime-owned verification in every
+  benign argument ordering (including `git diff HEAD --check`) and is
+  denied with AIOS_RUNTIME_OWNS_VERIFICATION. `git commit --amend` is
+  history-changing and is denied with AIOS_GIT_OPERATION_NOT_ADMITTED.
+  `git branch <positional-name>` is bare branch creation and is denied
+  with AIOS_GIT_OPERATION_NOT_ADMITTED. Any unknown git subcommand
+  (clone, fetch, reset, restore, etc.) is also denied with
+  AIOS_GIT_OPERATION_NOT_ADMITTED.
+
+SHELL-OPERATOR / CHAINED-COMMAND BYPASS PREVENTION:
+  When the command starts with a git invocation, the guard refuses to
+  admit any chained form. A command such as
+  `git status & Start-Sleep -Seconds 20`,
+  `git status && git push origin main`,
+  `git add file.py && git push origin main`,
+  or any other shell-operator / piped / redirected / statement-
+  separated form is denied. Background-risk segments in the chain deny
+  with AIOS_BACKGROUND_RISK_DENIED; other chained forms deny with
+  AIOS_GIT_OPERATION_NOT_ADMITTED. The first bounded git subcommand
+  cannot be used to admit a chained destructive / network git
+  invocation or a chained background-risk command.
 
 The guard parses stdin defensively and never raises to the shell:
 malformed active-AIOS input fails closed by denying the call. The guard
@@ -54,7 +66,7 @@ import json
 import os
 import re
 import sys
-from typing import Any, Sequence
+from typing import Any, List, Sequence, Tuple
 
 
 ACTIVATION_ENV = "AIOS_ANTIGRAVITY_ACTIVE"
@@ -163,31 +175,59 @@ _VERIFICATION_TOKENS = (
 # copy form are matched separately below.
 # ---------------------------------------------------------------------------
 
-# Optional env var assignments (`FOO=bar`) followed by an optional quoted
-# or absolute-Windows-path prefix, then `git` or `git.exe`. After
-# matching, the original prefix is replaced with the canonical literal
-# `git` so downstream tokenization and matching work on a stable form.
-_GIT_INVOCATION_PREFIX_RE = re.compile(
-    r"^(?:[A-Za-z_][A-Za-z0-9_]*=[^\s\\'\"]*\s+)*"
+# Matches the executable token of a command (after optional env
+# assignments). The token may be bare (`git`, `git.exe`), single-quoted
+# (`'C:\path\git.exe'`), double-quoted (`"C:\path with spaces\git.exe"`),
+# or path-prefixed (`./bin/git`, `C:\bin\git`). The tokenization must
+# capture the entire path (including quoted paths that contain spaces
+# such as `"C:\Program Files\Git\cmd\git.exe"`), so the regex allows
+# backslashes within unquoted tokens and any character inside quotes.
+_GIT_EXECUTABLE_RE = re.compile(
+    r"^(?:[A-Za-z_][A-Za-z0-9_]*=[^\s\\\'\"]*\s+)*"
     r"(?:"
-    r"\"([^\"]+)\"|"        # 1: double-quoted path
-    r"\'([^\']+)\'|"          # 2: single-quoted path
-    r"([A-Za-z]:[^\"\'\s]*[\\/])|"  # 3: absolute Windows path
-    r"([^\"\'\s]*[\\/])"   # 4: posix path
-    r")?"
-    r"(?:git|git\.exe)\b",
-    re.IGNORECASE,
+    r"\"[^\"]*\""            # double-quoted token (may contain spaces, slashes)
+    r"|"
+    r"\'[^\']*\'"            # single-quoted token
+    r"|"
+    r"[^\s\"\']+"            # unquoted token (no whitespace, no quotes)
+    r")"
 )
+
+
+def _basename_of_executable(token):
+    """Strip surrounding quotes and path separators from an executable
+    token, returning the basename (case-insensitive comparison done by
+    the caller)."""
+    if not token:
+        return ""
+    if len(token) >= 2 and (
+        (token[0] == "\"" and token[-1] == "\"")
+        or (token[0] == "\'" and token[-1] == "\'")
+    ):
+        token = token[1:-1]
+    token = token.rstrip("\\/")
+    if "\\" in token:
+        token = token.rsplit("\\", 1)[-1]
+    if "/" in token:
+        token = token.rsplit("/", 1)[-1]
+    return token
 
 
 def _normalize_git_invocation(cmd):
     """Detect a git invocation and return a canonical form beginning with
     `git` so downstream logic operates on a stable string. Returns
-    `None` when `cmd` is not a git invocation."""
+    `None` when `cmd` is not a git invocation. Handles bare
+    `git`/`git.exe`, single- and double-quoted Windows paths (including
+    paths with spaces such as `"C:\\Program Files\\Git\\cmd\\git.exe"`),
+    and unquoted path-prefixed forms."""
     if not isinstance(cmd, str):
         return None
-    match = _GIT_INVOCATION_PREFIX_RE.match(cmd)
+    match = _GIT_EXECUTABLE_RE.match(cmd)
     if match is None:
+        return None
+    token = match.group(0)
+    base = _basename_of_executable(token).lower()
+    if base not in ("git", "git.exe"):
         return None
     return "git" + cmd[match.end():]
 
@@ -204,15 +244,14 @@ _BOUNDED_GIT_SUBCOMMANDS = frozenset({
     "ls-files",
 })
 
-# branch flags that turn an inspection-only `git branch` into a
-# destructive / history-changing / metadata mutation. These must be
-# denied with AIOS_GIT_OPERATION_NOT_ADMITTED.
-_BRANCH_FORBIDDEN_FLAGS = frozenset({
-    "-d", "-D", "-m", "-c", "-M",
-    "--delete", "--create", "--move", "--copy",
-    "--set-upstream", "--set-upstream-to",
-    "--unset-upstream",
-    "--track", "--no-track",
+# `git branch` is inspection-only and accepts only these flags.
+# Any positional name or mutation flag (--delete / -d / -D / --move /
+# -m / --copy / -c / -M / --set-upstream / --unset-upstream / --track /
+# --no-track) is denied as branch creation / mutation.
+_BRANCH_ALLOWED_FLAGS = frozenset({
+    "--show-current",
+    "-a", "--all",
+    "--list",
 })
 
 
@@ -228,7 +267,7 @@ def _classify_git(args):
     - `deny_git`: the subcommand is not in the bounded list, or the
       subcommand is bounded but the args contain a history-changing /
       destructive / metadata mutation flag (`commit --amend`,
-      `branch -d/-D/-m/-c`).
+      branch bare-name creation, branch mutation flags).
     """
     if not args:
         return ("deny_git", DENY_REASON_GIT_NOT_ADMITTED)
@@ -263,9 +302,17 @@ def _classify_git(args):
         return ("allow", None)
 
     if subcommand == "branch":
+        # Inspection-only: bare `git branch` is allowed (lists local
+        # branches). Any additional argument MUST be an explicit
+        # inspection flag in `_BRANCH_ALLOWED_FLAGS`. Anything else
+        # (positional name = creation, mutation flag = destructive
+        # branch mutation, or unknown flag) is denied.
+        if len(args) == 1:
+            return ("allow", None)
         for arg in args[1:]:
-            if arg in _BRANCH_FORBIDDEN_FLAGS:
-                return ("deny_git", DENY_REASON_GIT_NOT_ADMITTED)
+            if arg in _BRANCH_ALLOWED_FLAGS:
+                continue
+            return ("deny_git", DENY_REASON_GIT_NOT_ADMITTED)
         return ("allow", None)
 
     if subcommand == "ls-files":
@@ -294,13 +341,10 @@ def _split_git_args(canonical_cmd):
     return tokens[start + 1:]
 
 
-def _evaluate_git(cmd):
-    """Return a verdict for a command classified as a git invocation, or
-    `None` if `cmd` is not a git invocation."""
-    canonical = _normalize_git_invocation(cmd)
-    if canonical is None:
-        return None
-    args = _split_git_args(canonical)
+def _evaluate_bounded_git(canonical_cmd):
+    """Evaluate a normalized git invocation against the bounded
+    subcommand allow-list. Returns a verdict dict."""
+    args = _split_git_args(canonical_cmd)
     if args is None:
         return _deny(
             DENY_REASON_GIT_NOT_ADMITTED,
@@ -318,6 +362,91 @@ def _evaluate_git(cmd):
         reason,
         message="AIOS native execution does not admit destructive, history-changing, or network git operations",
     )
+
+
+def _evaluate_git(cmd):
+    """Return a verdict for a command classified as a git invocation, or
+    `None` if `cmd` is not a git invocation."""
+    canonical = _normalize_git_invocation(cmd)
+    if canonical is None:
+        return None
+    return _evaluate_bounded_git(canonical)
+
+
+# ---------------------------------------------------------------------------
+# Shell-operator / chained-command detection. The guard refuses to admit
+# any git invocation whose command body contains shell operators
+# (outside quoted strings). Background-risk segments take precedence;
+# other chained forms deny with AIOS_GIT_OPERATION_NOT_ADMITTED.
+# ---------------------------------------------------------------------------
+
+_SHELL_OPERATORS = ("&", "|", ";", ">", "<")
+
+
+def _split_shell_segments(cmd):
+    """Split a command body into segments delimited by shell operators,
+    respecting single- and double-quoted strings. Returns a tuple of
+    `(segments, has_operator)` where `has_operator` is True iff at least
+    one operator was encountered outside quotes."""
+    segments: List[str] = []
+    has_operator = False
+    last_end = 0
+    in_double = False
+    in_single = False
+    i = 0
+    while i < len(cmd):
+        c = cmd[i]
+        # Skip escaped characters (e.g. \&) inside unquoted text.
+        if (
+            c == "\\"
+            and i + 1 < len(cmd)
+            and not in_double
+            and not in_single
+        ):
+            i += 2
+            continue
+        if not in_single and c == "\"":
+            in_double = not in_double
+            i += 1
+            continue
+        if not in_double and c == "\'":
+            in_single = not in_single
+            i += 1
+            continue
+        if not in_double and not in_single and c in _SHELL_OPERATORS:
+            has_operator = True
+            seg = cmd[last_end:i].strip()
+            if seg:
+                segments.append(seg)
+            # Consume the multi-character operators (`&&`, `||`) first.
+            if c == "&" and i + 1 < len(cmd) and cmd[i + 1] == "&":
+                i += 2
+            elif c == "|" and i + 1 < len(cmd) and cmd[i + 1] == "|":
+                i += 2
+            else:
+                i += 1
+            last_end = i
+            continue
+        i += 1
+    seg = cmd[last_end:].strip()
+    if seg:
+        segments.append(seg)
+    return segments, has_operator
+
+
+def _segment_is_background_risk(segment):
+    """Return True if a single command segment is background-risk."""
+    if not segment:
+        return False
+    stripped = segment.rstrip()
+    # Trailing single `&` (not `&&`) is a background marker.
+    if stripped.endswith(" &"):
+        return True
+    lowered = segment.lower()
+    for tok in _BACKGROUND_TOKENS:
+        if tok.lower() in lowered:
+            return True
+    return False
 
 
 def _is_background_risk(cmd):
@@ -363,17 +492,27 @@ def evaluate(payload):
             message="AIOS PreToolUse guard received a tool call with no command",
         )
 
-    # 1. Git category fail-closed: detect `git` / `git.exe` (including
-    # quoted or absolute-Windows-path executable paths) and apply the
-    # narrow bounded allow-list. `git diff --check` is denied with
-    # AIOS_RUNTIME_OWNS_VERIFICATION regardless of benign argument
-    # ordering (e.g. `git diff HEAD --check`). `git commit --amend`
-    # and any branch create / delete / rename / move / copy form are
-    # denied with AIOS_GIT_OPERATION_NOT_ADMITTED. Unknown git
-    # subcommands are also denied with AIOS_GIT_OPERATION_NOT_ADMITTED.
-    git_verdict = _evaluate_git(cmd)
-    if git_verdict is not None:
-        return git_verdict
+    # 1. Git category fail-closed. When the command starts with a git
+    # invocation, deny chained forms first (background-risk segments
+    # take precedence over generic git-not-admitted), then apply the
+    # bounded git allow-list.
+    git_canonical = _normalize_git_invocation(cmd)
+    if git_canonical is not None:
+        segments, has_operator = _split_shell_segments(cmd)
+        if has_operator:
+            if any(_segment_is_background_risk(seg) for seg in segments):
+                return _deny(
+                    DENY_REASON_BACKGROUND,
+                    message="AIOS native execution rejects chained commands with background risk; bounded synchronous single commands only",
+                )
+            return _deny(
+                DENY_REASON_GIT_NOT_ADMITTED,
+                message="AIOS native execution rejects chained git commands; only bounded single git invocations are admitted",
+            )
+        # Single git invocation - apply bounded classification.
+        git_verdict = _evaluate_bounded_git(git_canonical)
+        if git_verdict is not None:
+            return git_verdict
 
     # 2. Re-invocation of the provider CLI or an AIOS operator launcher is
     # expected policy to be denied; report it as Runtime-owned so the

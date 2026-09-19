@@ -2692,3 +2692,199 @@ def test_task140_old_run_138_001_path_fails_from_workspace_root():
     # Without a guard script at the old path the spawn fails: the old
     # path is not the canonical command in hooks.json.
     assert completed.returncode != 0
+
+# ---------------------------------------------------------------------------
+# TASK-140 r3 REPAIR: AC3 semantic gap regressions
+# - Quoted Windows git.exe paths with spaces must be classified as git
+# - Bare branch-name creation must deny (truly inspection-only branch handling)
+# - Branch mutation options must deny
+# - Shell-operator / chained-command bypass must always deny
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Quoted Windows git.exe paths with spaces (typical Program Files).
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 status",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 diff HEAD",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 add .",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 commit -m \x22msg\x22",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 rev-parse HEAD",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 log -1 --oneline",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 show HEAD --stat",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch --show-current",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 ls-files",
+        # Quoted git (without .exe) under a path with spaces.
+        "\x22C:\\Program Files\\Git\\cmd\\git\x22 status",
+        "\x22C:\\Program Files\\Git\\cmd\\git\x22 rev-parse HEAD",
+        # Single-quoted paths with spaces.
+        "\x27C:\\Program Files\\Git\\cmd\\git.exe\x27 status",
+        "\x27C:\\Program Files\\Git\\cmd\\git.exe\x27 rev-parse HEAD",
+        "\x27C:\\Program Files\\Git\\cmd\\git.exe\x27 branch -a",
+    ],
+)
+def test_task140_r3_active_guard_allows_quoted_windows_git_with_spaces(
+    command_line,
+):
+    """AC3 REPAIR: Quoted Windows git.exe paths with spaces must be classified
+    as git invocations and remain admitted under the bounded git allow-list."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {"decision": "allow"}
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Quoted Windows git.exe paths with spaces - unbounded forms still deny.
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 reset --hard HEAD",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 commit --amend --no-edit",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 restore .",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 push origin main",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 clone https://example.com/r.git",
+        # diff --check through quoted path.
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 diff --check",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 diff HEAD --check",
+        # Bare branch creation through quoted path.
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch probe",
+        # Branch mutation through quoted path.
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch -D probe",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch --delete probe",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch --move old new",
+    ],
+)
+def test_task140_r3_active_guard_denies_quoted_windows_git_unbounded(
+    command_line,
+):
+    """AC3 REPAIR: Quoted Windows git.exe paths with spaces must remain under
+    the same category fail-closed policy. Destructive / network / unknown /
+    amend / diff --check / branch creation / branch mutation must all deny."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out["decision"] == "deny"
+    assert out["reason"] in (
+        "AIOS_GIT_OPERATION_NOT_ADMITTED",
+        "AIOS_RUNTIME_OWNS_VERIFICATION",
+    )
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Bare branch-name creation (positional = creation)
+        "git branch probe",
+        "git branch new-branch",
+        "git branch feature/x",
+        "git branch v1.0",
+        # Bare branch creation through path-prefixed git (no .exe)
+        "C:\\repo\\tools\\git branch probe",
+        # Bare branch creation through path-prefixed git (.exe)
+        "C:\\repo\\tools\\git.exe branch probe",
+    ],
+)
+def test_task140_r3_active_guard_denies_bare_branch_creation(command_line):
+    """AC3 REPAIR: `git branch <name>` is bare branch creation (destructive
+    history mutation) and must deny with AIOS_GIT_OPERATION_NOT_ADMITTED.
+    Inspection-only flags like --show-current / -a / --all / --list are the
+    only branch flags permitted, so any positional name is denied."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_GIT_OPERATION_NOT_ADMITTED",
+    }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Inspection-only forms (covered by regression matrix)
+        "git branch",
+        "git branch --show-current",
+        "git branch -a",
+        "git branch --all",
+        "git branch --list",
+        # Combined inspection flags
+        "git branch -a --list",
+        "git branch --list --all",
+        "git branch --all --show-current",
+        # Same through quoted git paths with spaces
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch --show-current",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch -a",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch --all",
+        "\x22C:\\Program Files\\Git\\cmd\\git.exe\x22 branch --list",
+    ],
+)
+def test_task140_r3_active_guard_allows_inspection_only_branch(command_line):
+    """AC3 REPAIR: `git branch` is inspection-only and accepts only the
+    explicit inspection forms --show-current, -a/--all, --list (and bare
+    `git branch` to list local branches). No positional names permitted."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {"decision": "allow"}
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Background-risk chained with git (must deny as background)
+        "git status & Start-Sleep -Seconds 20",
+        "git diff & tail -f build.log",
+        # Chained unbounded git (must deny as git not admitted)
+        "git status && git push origin main",
+        "git add file.py && git push origin main",
+        "git status || git reset --hard HEAD",
+        "git status && git clone https://example.com/r.git",
+        "git status && git commit --amend",
+        # Pipes and redirections with git
+        "git log | head",
+        "git show < ref.txt",
+        # Statement separator
+        "git status; ls",
+        "git status; git push origin main",
+    ],
+)
+def test_task140_r3_active_guard_denies_chained_git_bypass(command_line):
+    """AC3 REPAIR: Shell-operator/chained-command bypass of git classification
+    must always deny. The first bounded git subcommand cannot be used to
+    admit a chained destructive/network git invocation or a chained
+    background-risk command. Background-risk segments take precedence over
+    generic git-not-admitted reasons."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out["decision"] == "deny"
+    assert out["reason"] in (
+        "AIOS_GIT_OPERATION_NOT_ADMITTED",
+        "AIOS_BACKGROUND_RISK_DENIED",
+    )
+
+
+def test_task140_r3_active_guard_chained_git_with_background_denies_background():
+    """AC3 REPAIR: Chained git command with a background-risk segment must
+    deny with AIOS_BACKGROUND_RISK_DENIED (background takes precedence over
+    git-not-admitted)."""
+    out = _run_guard_with(
+        "git status & Start-Sleep -Seconds 20", env_active=True
+    )
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_BACKGROUND_RISK_DENIED",
+    }
+
+
+def test_task140_r3_active_guard_chained_git_with_unbounded_git_denies_git():
+    """AC3 REPAIR: Chained git command with unbounded git segment must deny
+    with AIOS_GIT_OPERATION_NOT_ADMITTED."""
+    out = _run_guard_with(
+        "git status && git push origin main", env_active=True
+    )
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_GIT_OPERATION_NOT_ADMITTED",
+    }
+
+
+def test_task140_r3_active_guard_unquoted_shell_operator_inside_string_does_not_chain():
+    """AC3 REPAIR: Shell operators inside a quoted string must NOT be treated
+    as chain operators. A single `git commit -m "fix: && bug"` invocation is
+    a normal bounded commit and must be allowed."""
+    out = _run_guard_with(
+        "git commit -m \"fix: && bug\"", env_active=True
+    )
+    assert out == {"decision": "allow"}
