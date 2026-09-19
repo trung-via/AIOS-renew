@@ -1613,3 +1613,10 @@ constraints: []
     assert preflight_ready.integrated_base["integration_candidate_sha"] == int_result.integration_candidate_sha
     assert preflight_ready.integrated_base["cumulative_tip_run_id"] == repair_2_id
     assert preflight_ready.integrated_base["authorized_main_sha"] == new_main
+
+    # 4. If remote integration ref is missing, preflight falls back to INTEGRATION_REQUIRED
+    upstream = tmp_path / "upstream.git"
+    git(upstream, "update-ref", "-d", f"refs/heads/aios/integration/{int_result.integration_id}")
+    preflight_missing_ref = preflight_remediation("TASK-101", finding_id="F1", repo=repo)
+    assert preflight_missing_ref.status == "BLOCKED"
+    assert preflight_missing_ref.reason_code == "INTEGRATION_REQUIRED"
