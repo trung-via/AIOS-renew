@@ -1,0 +1,17 @@
+{
+    "aios-antigravity-pretool-run-command": {
+        "PreToolUse": [
+            {
+                "hooks": [
+                    {
+                        "command": "python ./.agents/aios_antigravity_pretool_guard.py",
+                        "timeout": 10,
+                        "type": "command"
+                    }
+                ],
+                "matcher": "run_command"
+            }
+        ],
+        "enabled": true
+    }
+}
