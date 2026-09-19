@@ -1,4 +1,4 @@
-import inspect
+﻿import inspect
 import json
 import os
 import subprocess
@@ -2065,7 +2065,6 @@ def test_task138_active_guard_denies_reinvocation(command_line):
     [
         "git status",
         "git diff",
-        "git diff --check",
         "git diff --name-only HEAD",
         "git diff --stat HEAD~1",
         "git add .agents/aios_antigravity_pretool_guard.py .agents/hooks.json",
@@ -2074,7 +2073,7 @@ def test_task138_active_guard_denies_reinvocation(command_line):
         "git log -1 --oneline",
         "git show HEAD --stat",
         "git branch --show-current",
-        "git remote -v",
+        "git ls-files",
     ],
 )
 def test_task138_active_guard_allows_bounded_git_terminalization(command_line):
@@ -2171,6 +2170,133 @@ def test_task138_active_guard_windows_path_with_spaces_still_denies_runtime(comm
 def test_task138_active_guard_windows_path_git_still_allowed(command_line):
     out = _run_guard_with(command_line, env_active=True)
     assert out == {"decision": "allow"}
+
+
+
+
+# ---------------------------------------------------------------------------
+# TASK-140 r2: FINDING-140-001 / AC3 regression coverage
+# The bounded git allow-list is narrowed to status, ordinary bounded diff
+# inspection excluding ``git diff --check``, add, commit, rev-parse, log,
+# show, branch inspection, and ls-files. ``git diff --check`` is
+# Runtime-owned verification and is denied with AIOS_RUNTIME_OWNS_VERIFICATION.
+# Destructive / history-changing / network git operations are denied with
+# AIOS_GIT_OPERATION_NOT_ADMITTED.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "git diff --check",
+        "git diff --check --quiet",
+    ],
+)
+def test_task140_active_guard_denies_diff_check_as_runtime_verification(
+    command_line,
+):
+    """AC3 regression: ``git diff --check`` is Runtime-owned verification.
+
+    The bounded git allow-list permits ``git diff`` for ordinary bounded
+    inspection, but ``git diff --check`` is whitespace / conflict-error
+    verification owned by Runtime and must be rejected with
+    ``AIOS_RUNTIME_OWNS_VERIFICATION`` in active AIOS execution.
+    """
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_RUNTIME_OWNS_VERIFICATION",
+    }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Destructive / history-changing git operations.
+        "git reset --hard HEAD~1",
+        "git reset --soft HEAD",
+        "git restore .",
+        "git restore --staged file.py",
+        "git merge feature-branch",
+        "git rebase main",
+        "git stash",
+        "git stash pop",
+        # Network git operations.
+        "git fetch origin",
+        "git fetch --all",
+        # Configuration / metadata not part of bounded terminalization.
+        "git remote -v",
+        "git remote add origin url",
+        "git config user.name x",
+        "git config --list",
+        "git tag v1.0",
+        "git tag --list",
+        # Additional history-changing / destructive operations.
+        "git checkout main",
+        "git checkout -b feature",
+        "git switch main",
+        "git push origin main",
+        "git pull origin main",
+        "git cherry-pick abc123",
+        "git revert HEAD",
+        "git clean -fd",
+        "git rm file.py",
+        "git mv old new",
+        "git submodule update --init",
+        "git worktree add ../wt",
+        "git reflog",
+    ],
+)
+def test_task140_active_guard_denies_not_admitted_git_operations(
+    command_line,
+):
+    """AC3 regression: destructive / history-changing / network git ops
+    are not admitted in active AIOS execution (TASK-140 r2)."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_GIT_OPERATION_NOT_ADMITTED",
+    }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "git status",
+        "git status --short",
+        "git diff",
+        "git diff HEAD",
+        "git diff --name-only HEAD",
+        "git diff --stat HEAD~1",
+        "git diff --shortstat",
+        "git diff --cached",
+        "git diff --name-only --cached",
+        "git add .agents/aios_antigravity_pretool_guard.py",
+        "git add .",
+        'git commit -m "task: TASK-140 r2 remediation"',
+        "git commit --amend --no-edit",
+        "git rev-parse HEAD",
+        "git rev-parse --short HEAD",
+        "git log -1 --oneline",
+        "git log --oneline -n 5",
+        "git show HEAD --stat",
+        "git show --stat HEAD",
+        "git branch --show-current",
+        "git branch -a",
+        "git ls-files",
+        "git ls-files --others --exclude-standard",
+    ],
+)
+def test_task140_active_guard_allows_narrowed_bounded_git_terminalization(
+    command_line,
+):
+    """AC3 regression: narrowed bounded git allow-list retains status,
+    ordinary bounded diff inspection (excluding ``diff --check``), add,
+    commit, rev-parse, log, show, branch inspection, and ls-files."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {"decision": "allow"}
+
+
 
 
 # ----- Adapter-level regression tests ---------------------------------------

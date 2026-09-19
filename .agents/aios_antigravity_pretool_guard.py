@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """AIOS Antigravity PreToolUse guard for run_command.
 
 This guard is loaded as a repository workspace PreToolUse hook from
@@ -20,8 +20,15 @@ before execution, including:
   * Any command that ends with a Windows shell background marker
 
 Otherwise the guard allows the call. Bounded git terminalization
-commands (status, diff, add, commit, rev-parse, log, show) remain
-allowed.
+commands (status, ordinary bounded diff inspection excluding diff
+--check, add, commit, rev-parse, log, show, branch inspection, and
+ls-files) remain allowed. Destructive, history-changing, or network
+git operations (reset, restore, merge, rebase, stash, fetch, remote,
+config, tag, push, pull, cherry-pick, revert, clean, rm, mv, checkout,
+switch, worktree, submodule, reflog, filter-branch, gc, update-ref)
+are not admitted in active AIOS execution. ``git diff --check`` is
+Runtime-owned verification and is denied with
+AIOS_RUNTIME_OWNS_VERIFICATION.
 
 The guard parses stdin defensively and never raises to the shell:
 malformed active-AIOS input fails closed by denying the call. The guard
@@ -43,17 +50,18 @@ ACTIVE_VALUE = "1"
 DENY_REASON_RUNTIME = "AIOS_RUNTIME_OWNS_VERIFICATION"
 DENY_REASON_BACKGROUND = "AIOS_BACKGROUND_RISK_DENIED"
 DENY_REASON_MALFORMED = "AIOS_GUARD_MALFORMED_INPUT"
+DENY_REASON_GIT_NOT_ADMITTED = "AIOS_GIT_OPERATION_NOT_ADMITTED"
 
 
-def _allow() -> dict[str, Any]:
+def _allow():
     return {"decision": "allow"}
 
 
-def _deny(reason: str, *, message: str) -> dict[str, Any]:
+def _deny(reason, *, message):
     return {"decision": "deny", "reason": reason}
 
 
-def _read_stdin() -> str:
+def _read_stdin():
     try:
         data = sys.stdin.read()
     except (OSError, UnicodeError):
@@ -63,7 +71,7 @@ def _read_stdin() -> str:
     return data
 
 
-def _parse_payload(raw: str) -> dict[str, Any] | None:
+def _parse_payload(raw):
     if not raw or not raw.strip():
         return None
     try:
@@ -75,7 +83,7 @@ def _parse_payload(raw: str) -> dict[str, Any] | None:
     return obj
 
 
-def _extract_command(payload: dict[str, Any]) -> str:
+def _extract_command(payload):
     # Antigravity PreToolUse protojson payload uses camelCase keys.
     tool_call = payload.get("toolCall")
     if isinstance(tool_call, dict):
@@ -115,6 +123,8 @@ _REINVOCATION_TOKENS = (
 )
 
 # Verification / build commands. Runtime owns canonical verification.
+# ``git diff --check`` is Runtime-owned canonical verification and must
+# be denied in active AIOS execution.
 _VERIFICATION_TOKENS = (
     "pytest", "py.test",
     "unittest",
@@ -129,19 +139,39 @@ _VERIFICATION_TOKENS = (
     "coverage", "nox ",
     "ruff check", "ruff format",
     "black ", "isort ", "mypy ", "flake8 ", "pylint ",
+    "git diff --check",
 )
 
 # Allow-list of bounded repository / git terminalization commands.
+# Narrowed to the implementation/terminalization surface explicitly
+# authorized for the active AIOS coding Executor. ``git diff --check``
+# is excluded here because it is Runtime-owned verification.
+# Destructive, history-changing, or network git operations are excluded
+# here and matched separately by ``_GIT_NOT_ADMITTED_RE`` below.
 _GIT_ALLOW_RE = re.compile(
     r"^\s*git\s+(?:"
-    r"status|diff(?:\s+--check|\s+--name-only|\s+--stat|\s+--shortstat|\s+--cached|\s+HEAD|\s+\S+)?|"
-    r"add|commit|rev-parse|log|show|branch|remote|config|ls-files|stash|tag|fetch|merge|rebase|reset|restore"
+    r"status|diff(?:\s+--name-only|\s+--stat|\s+--shortstat|\s+--cached|\s+HEAD|\s+\S+)?|"
+    r"add|commit|rev-parse|log|show|branch|ls-files"
+    r")(?:\s+[^|&<>`\\\n\r]*)?\s*$",
+    re.IGNORECASE,
+)
+
+# Destructive / history-changing / network git operations are not admitted
+# in active AIOS execution. This deny-list is the narrow complement of the
+# bounded allow-list above; canonical need (e.g. an existing required test)
+# must expand the allow-list, not carve into this deny-list.
+_GIT_NOT_ADMITTED_RE = re.compile(
+    r"^\s*git\s+(?:"
+    r"reset|restore|merge|rebase|stash|fetch|remote|config|tag|"
+    r"push|pull|cherry-pick|revert|clean|rm|mv|"
+    r"checkout|switch|worktree|submodule|reflog|"
+    r"filter-branch|gc|update-ref"
     r")(?:\s+[^|&<>`\\\n\r]*)?\s*$",
     re.IGNORECASE,
 )
 
 
-def _is_background_risk(cmd: str) -> bool:
+def _is_background_risk(cmd):
     if any(tok in cmd for tok in (" &\n", " &\r", " &\t")):
         return True
     if cmd.rstrip().endswith(" &"):
@@ -153,7 +183,7 @@ def _is_background_risk(cmd: str) -> bool:
     return False
 
 
-def _is_reinvocation(cmd: str) -> bool:
+def _is_reinvocation(cmd):
     lowered = cmd.lower()
     for tok in _REINVOCATION_TOKENS:
         if tok.lower() in lowered:
@@ -161,7 +191,7 @@ def _is_reinvocation(cmd: str) -> bool:
     return False
 
 
-def _is_verification(cmd: str) -> bool:
+def _is_verification(cmd):
     lowered = cmd.lower()
     for tok in _VERIFICATION_TOKENS:
         if tok.lower() in lowered:
@@ -169,11 +199,16 @@ def _is_verification(cmd: str) -> bool:
     return False
 
 
-def _is_allowed_bounded(cmd: str) -> bool:
+def _is_allowed_bounded(cmd):
     return _GIT_ALLOW_RE.match(cmd) is not None
 
 
-def evaluate(payload: dict[str, Any] | None) -> dict[str, Any]:
+def _is_not_admitted_git(cmd):
+    return _GIT_NOT_ADMITTED_RE.match(cmd) is not None
+
+
+
+def evaluate(payload):
     if payload is None:
         return _deny(
             DENY_REASON_MALFORMED,
@@ -188,8 +223,25 @@ def evaluate(payload: dict[str, Any] | None) -> dict[str, Any]:
             message="AIOS PreToolUse guard received a tool call with no command",
         )
 
+    # Runtime-owned canonical verification must be denied even when its
+    # surface form would otherwise match the bounded git allow-list.
+    # ``git diff --check`` is the canonical example: ``git diff`` is part
+    # of bounded terminalization, but ``git diff --check`` is Runtime-owned
+    # verification and must be rejected regardless.
+    if _is_runtime_owned_diff_check(cmd):
+        return _deny(
+            DENY_REASON_RUNTIME,
+            message="AIOS native execution rejects Runtime-owned verification commands; Runtime owns canonical verification",
+        )
+
     if _is_allowed_bounded(cmd):
         return _allow()
+
+    if _is_not_admitted_git(cmd):
+        return _deny(
+            DENY_REASON_GIT_NOT_ADMITTED,
+            message="AIOS native execution does not admit destructive, history-changing, or network git operations",
+        )
 
     if _is_reinvocation(cmd):
         return _deny(
@@ -212,7 +264,21 @@ def evaluate(payload: dict[str, Any] | None) -> dict[str, Any]:
     return _allow()
 
 
-def main() -> int:
+def _is_runtime_owned_diff_check(cmd):
+    """``git diff --check`` is Runtime-owned canonical verification.
+
+    The bounded git allow-list permits ``git diff`` (and ``git diff
+    --name-only``, ``--stat``, ``--cached``, etc.) for ordinary bounded
+    inspection, but ``git diff --check`` is whitespace / conflict-error
+    verification that Runtime owns. It must be denied with
+    ``AIOS_RUNTIME_OWNS_VERIFICATION`` regardless of any later allow
+    classification.
+    """
+    stripped = cmd.lstrip().lower()
+    return stripped == "git diff --check" or stripped.startswith("git diff --check ")
+
+
+def main():
     if os.environ.get(ACTIVATION_ENV) != ACTIVE_VALUE:
         sys.stdout.write(json.dumps(_allow()))
         return 0
