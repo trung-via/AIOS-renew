@@ -1,6 +1,8 @@
-import inspect
+﻿import inspect
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,6 +24,11 @@ from aios_renew import (
 from aios_renew.review import RemediationExecution
 from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.antigravity_adapter import (
+    AIOS_ANTIGRAVITY_ACTIVE_ENV,
+    AIOS_ANTIGRAVITY_ACTIVE_VALUE,
+    AIOS_PRETOOL_GUARD_FILENAME,
+    aios_pretool_guard_path,
+    aios_subprocess_env,
     HEADLESS_PRINT_MODE_CONTRACT,
     REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
     REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
@@ -1551,7 +1558,17 @@ def _assert_valid_terminal_contract(
     # 3. Synchronous-command rule: every command must be bounded and complete synchronously before proceeding.
     assert "complete synchronously" in instruction
     assert "bounded" in instruction
-    assert "merely for ceremony" in instruction
+    # 3b. TASK-140 r3: The Executor is strictly implementation-only and must
+    # not run any implementation-local sanity test or local verification
+    # command; all verification is Runtime-owned.
+    assert "implementation-local sanity test" in instruction
+    assert "local verification command" in instruction
+    # 3c. TASK-140 r3: hook denials are expected policy; do not retry,
+    # translate, or replace the denied command with an equivalent.
+    assert "AIOS_RUNTIME_OWNS_VERIFICATION" in instruction
+    assert "AIOS_BACKGROUND_RISK_DENIED" in instruction
+    assert "AIOS_GIT_OPERATION_NOT_ADMITTED" in instruction
+    assert "do not retry, translate, or replace" in instruction
 
     # 4. No-terminal-while-active rule: forbid completion while any tool/subagent/background work remains active;
     # deterministically wait/join or fail closed.
@@ -1754,6 +1771,22 @@ def test_task137_terminal_contract_fails_if_weakened(tmp_path: Path) -> None:
     with pytest.raises(AssertionError):
         _assert_valid_terminal_contract(legacy_weakened, "PRIMARY")
 
+    # 10. TASK-140 r3: relaxing the no-sanity-test rule fails.
+    relaxed_sanity = canonical.replace(
+        "must not run any implementation-local sanity test",
+        "may run short bounded implementation-local sanity tests",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(relaxed_sanity, "PRIMARY")
+
+    # 11. TASK-140 r3: omitting the hook-denial no-retry policy fails.
+    no_retry_omitted = canonical.replace(
+        "do not retry, translate, or replace the denied command with an equivalent",
+        "may retry the denied command",
+    )
+    with pytest.raises(AssertionError):
+        _assert_valid_terminal_contract(no_retry_omitted, "PRIMARY")
+
 
 def test_task137_adapter_rejects_status_error_even_with_structured_output(
     tmp_path: Path,
@@ -1903,3 +1936,668 @@ def test_task137_repair_actions_retain_mutation_authority_and_no_background_inva
 
     # Total 4 calls, all obey terminal invariant and contract
     assert len(calls) == 4
+
+
+# ---------------------------------------------------------------------------
+# TASK-138: AIOS-scoped Antigravity PreToolUse guard for run_command
+# ---------------------------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+GUARD_PATH = REPO_ROOT / ".agents" / AIOS_PRETOOL_GUARD_FILENAME
+
+
+def _write_hook_payload(command_line):
+    import json as _json
+    return _json.dumps({
+        "toolCall": {"name": "run_command", "args": {"CommandLine": command_line}},
+        "stepIdx": 0,
+    })
+
+
+def _run_guard_with(command_line, *, env_active):
+    env = os.environ.copy()
+    if env_active:
+        env[AIOS_ANTIGRAVITY_ACTIVE_ENV] = AIOS_ANTIGRAVITY_ACTIVE_VALUE
+    else:
+        env.pop(AIOS_ANTIGRAVITY_ACTIVE_ENV, None)
+    payload = _write_hook_payload(command_line)
+    completed = subprocess.run(
+        [sys.executable, str(GUARD_PATH)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=15,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    import json as _json
+    return _json.loads(completed.stdout)
+
+
+# ----- Guard-level regression tests ----------------------------------------
+
+def test_task138_pretool_guard_script_ships_in_repo():
+    """Guard script must be a canonical repo file under .agents/."""
+    assert GUARD_PATH.is_file(), f"missing guard script at {GUARD_PATH}"
+
+
+def test_task138_pretool_guard_path_helper_resolves_correctly():
+    p = aios_pretool_guard_path(REPO_ROOT)
+    assert p == GUARD_PATH
+
+
+def test_task138_aios_subprocess_env_sets_active_marker_and_preserves_caller(monkeypatch):
+    monkeypatch.setenv("PATH", r"C:\Windows\system32")
+    monkeypatch.setenv("MY_VAR", "hello")
+    env = aios_subprocess_env()
+    assert env[AIOS_ANTIGRAVITY_ACTIVE_ENV] == AIOS_ANTIGRAVITY_ACTIVE_VALUE
+    assert env["MY_VAR"] == "hello"
+    assert env["PATH"] == r"C:\Windows\system32"
+
+
+def test_task138_inactive_guard_is_inert_and_returns_allow():
+    out = _run_guard_with("pytest tests/test_authoring_ingress.py", env_active=False)
+    assert out == {"decision": "allow"}
+
+
+def test_task138_inactive_guard_is_inert_for_reinvocation_and_background():
+    out = _run_guard_with("agy --print hello", env_active=False)
+    assert out == {"decision": "allow"}
+    out = _run_guard_with("npm run dev", env_active=False)
+    assert out == {"decision": "allow"}
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "pytest tests/test_authoring_ingress.py",
+        "python -m pytest tests/test_authoring_ingress.py -q",
+        "pytest -q",
+        "tox -e py311",
+        "npm test",
+        "yarn test",
+        "make test",
+        "cargo test --quiet",
+        "go test ./...",
+        "ruff check .",
+        "black tests/",
+        "isort src/",
+        "mypy src/",
+        "coverage run -m pytest",
+    ],
+)
+def test_task138_active_guard_denies_runtime_known_verification(command_line):
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_RUNTIME_OWNS_VERIFICATION",
+    }
+
+
+def test_task138_active_guard_denies_run_136_004_pytest_class():
+    out = _run_guard_with(
+        "pytest tests/test_authoring_ingress.py", env_active=True
+    )
+    assert out["reason"] == "AIOS_RUNTIME_OWNS_VERIFICATION"
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "Start-Sleep -Seconds 20",
+        "sleep 30",
+        "timeout /t 30",
+        "nohup python -m http.server 8000 &",
+        "tail -f build.log",
+        "npm run dev",
+        "npm start",
+        "uvicorn app:app --reload",
+        "flask run --port 5000",
+        "python -m http.server 8000",
+        "gunicorn app:app",
+        "echo hello &",
+        "echo world &\n",
+    ],
+)
+def test_task138_active_guard_denies_background_risk(command_line):
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_BACKGROUND_RISK_DENIED",
+    }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "agy --print do thing",
+        "agy -p something",
+        "aios run TASK-138",
+        "aios-run repair",
+        "aios-renew run TASK-138",
+    ],
+)
+def test_task138_active_guard_denies_reinvocation(command_line):
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_RUNTIME_OWNS_VERIFICATION",
+    }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "git status",
+        "git diff",
+        "git diff --name-only HEAD",
+        "git diff --stat HEAD~1",
+        "git add .agents/aios_antigravity_pretool_guard.py .agents/hooks.json",
+        'git commit -m "task: TASK-138 r1"',
+        "git rev-parse HEAD",
+        "git log -1 --oneline",
+        "git show HEAD --stat",
+        "git branch --show-current",
+        "git ls-files",
+    ],
+)
+def test_task138_active_guard_allows_bounded_git_terminalization(command_line):
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {"decision": "allow"}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "",
+        "not json",
+        "[]",
+        "null",
+        "42",
+        '"just a string"',
+        "{}",
+    ],
+)
+def test_task138_active_guard_malformed_input_fails_closed(payload):
+    import subprocess as _sp
+    import sys as _sys
+    import json as _json
+    env = os.environ.copy()
+    env[AIOS_ANTIGRAVITY_ACTIVE_ENV] = AIOS_ANTIGRAVITY_ACTIVE_VALUE
+    completed = _sp.run(
+        [_sys.executable, str(GUARD_PATH)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=15,
+        check=False,
+    )
+    assert completed.returncode == 0
+    out = _json.loads(completed.stdout)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_GUARD_MALFORMED_INPUT",
+    }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "",
+        "not json",
+        "[]",
+        "null",
+        "{}",
+    ],
+)
+def test_task138_inactive_guard_ignores_malformed_input(payload):
+    import subprocess as _sp
+    import sys as _sys
+    import json as _json
+    env = os.environ.copy()
+    env.pop(AIOS_ANTIGRAVITY_ACTIVE_ENV, None)
+    completed = _sp.run(
+        [_sys.executable, str(GUARD_PATH)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=15,
+        check=False,
+    )
+    assert completed.returncode == 0
+    out = _json.loads(completed.stdout)
+    assert out == {"decision": "allow"}
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "C:\\TOOL\\repo\\scripts\\pytest.exe tests\\test_x.py",
+        "C:\\Python311\\python.exe -m pytest tests\\test_x.py",
+    ],
+)
+def test_task138_active_guard_windows_path_with_spaces_still_denies_runtime(command_line):
+    out = _run_guard_with(command_line, env_active=True)
+    assert out["decision"] == "deny"
+    assert out["reason"] == "AIOS_RUNTIME_OWNS_VERIFICATION"
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "C:\\repo\\tools\\git status",
+        "C:\\repo\\tools\\git add .",
+        'C:\\repo\\tools\\git commit -m "task: TASK-138 r1"',
+    ],
+)
+def test_task138_active_guard_windows_path_git_still_allowed(command_line):
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {"decision": "allow"}
+
+
+
+
+# ---------------------------------------------------------------------------
+# TASK-140 r2: FINDING-140-001 / AC3 regression coverage
+# The bounded git allow-list is narrowed to status, ordinary bounded diff
+# inspection excluding ``git diff --check``, add, commit, rev-parse, log,
+# show, branch inspection, and ls-files. ``git diff --check`` is
+# Runtime-owned verification and is denied with AIOS_RUNTIME_OWNS_VERIFICATION.
+# Destructive / history-changing / network git operations are denied with
+# AIOS_GIT_OPERATION_NOT_ADMITTED.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "git diff --check",
+        "git diff --check --quiet",
+    ],
+)
+def test_task140_active_guard_denies_diff_check_as_runtime_verification(
+    command_line,
+):
+    """AC3 regression: ``git diff --check`` is Runtime-owned verification.
+
+    The bounded git allow-list permits ``git diff`` for ordinary bounded
+    inspection, but ``git diff --check`` is whitespace / conflict-error
+    verification owned by Runtime and must be rejected with
+    ``AIOS_RUNTIME_OWNS_VERIFICATION`` in active AIOS execution.
+    """
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_RUNTIME_OWNS_VERIFICATION",
+    }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        # Destructive / history-changing git operations.
+        "git reset --hard HEAD~1",
+        "git reset --soft HEAD",
+        "git restore .",
+        "git restore --staged file.py",
+        "git merge feature-branch",
+        "git rebase main",
+        "git stash",
+        "git stash pop",
+        # Network git operations.
+        "git fetch origin",
+        "git fetch --all",
+        # Configuration / metadata not part of bounded terminalization.
+        "git remote -v",
+        "git remote add origin url",
+        "git config user.name x",
+        "git config --list",
+        "git tag v1.0",
+        "git tag --list",
+        # Additional history-changing / destructive operations.
+        "git checkout main",
+        "git checkout -b feature",
+        "git switch main",
+        "git push origin main",
+        "git pull origin main",
+        "git cherry-pick abc123",
+        "git revert HEAD",
+        "git clean -fd",
+        "git rm file.py",
+        "git mv old new",
+        "git submodule update --init",
+        "git worktree add ../wt",
+        "git reflog",
+    ],
+)
+def test_task140_active_guard_denies_not_admitted_git_operations(
+    command_line,
+):
+    """AC3 regression: destructive / history-changing / network git ops
+    are not admitted in active AIOS execution (TASK-140 r2)."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_GIT_OPERATION_NOT_ADMITTED",
+    }
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "git status",
+        "git status --short",
+        "git diff",
+        "git diff HEAD",
+        "git diff --name-only HEAD",
+        "git diff --stat HEAD~1",
+        "git diff --shortstat",
+        "git diff --cached",
+        "git diff --name-only --cached",
+        "git add .agents/aios_antigravity_pretool_guard.py",
+        "git add .",
+        'git commit -m "task: TASK-140 r2 remediation"',
+        "git commit --amend --no-edit",
+        "git rev-parse HEAD",
+        "git rev-parse --short HEAD",
+        "git log -1 --oneline",
+        "git log --oneline -n 5",
+        "git show HEAD --stat",
+        "git show --stat HEAD",
+        "git branch --show-current",
+        "git branch -a",
+        "git ls-files",
+        "git ls-files --others --exclude-standard",
+    ],
+)
+def test_task140_active_guard_allows_narrowed_bounded_git_terminalization(
+    command_line,
+):
+    """AC3 regression: narrowed bounded git allow-list retains status,
+    ordinary bounded diff inspection (excluding ``diff --check``), add,
+    commit, rev-parse, log, show, branch inspection, and ls-files."""
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {"decision": "allow"}
+
+
+
+
+# ---------------------------------------------------------------------------
+# TASK-140 r3: Ordered hook-cutover contract regression. The active guard
+# must not be intentionally rewritten in place during one native execution,
+# and the provider instruction must forbid Runtime-owned verification,
+# implementation-local sanity tests, and retrying a denied hook command.
+# ---------------------------------------------------------------------------
+
+
+def test_task140_r3_provider_instruction_has_no_sanity_check_permission():
+    """AC5: Provider instruction must NOT permit implementation-local sanity tests."""
+    handoff_path = REPO_ROOT / "handoff.json"
+    for op in ("PRIMARY", "REMEDIATION", "REPAIR"):
+        instruction = _native_instruction(operation=op, handoff_path=handoff_path)
+        # Must NOT permit sanity test wording
+        assert "implementation-local sanity checks" not in instruction or (
+            "do not run any implementation-local sanity test" in instruction
+        ), f"{op} instruction permits implementation-local sanity checks"
+        # Must not contain ceremony-wording relaxation
+        assert "duplicate it for ceremony" not in instruction
+        assert "merely for ceremony" not in instruction
+        # Must contain explicit prohibition
+        assert "do not run any implementation-local sanity test" in instruction
+        assert "local verification command" in instruction
+
+
+def test_task140_r3_provider_instruction_has_hook_denial_no_retry_policy():
+    """AC5: Hook denial is expected policy; do not retry/translate/replace."""
+    handoff_path = REPO_ROOT / "handoff.json"
+    for op in ("PRIMARY", "REMEDIATION", "REPAIR"):
+        instruction = _native_instruction(operation=op, handoff_path=handoff_path)
+        assert "AIOS_RUNTIME_OWNS_VERIFICATION" in instruction
+        assert "AIOS_BACKGROUND_RISK_DENIED" in instruction
+        assert "AIOS_GIT_OPERATION_NOT_ADMITTED" in instruction
+        assert "do not retry, translate, or replace the denied command" in instruction
+
+
+def test_task140_r3_provider_instruction_is_strictly_implementation_only():
+    """AC5: Provider instruction must explicitly state that no Runtime-owned verification/local sanity test is permitted in this Executor."""
+    handoff_path = REPO_ROOT / "handoff.json"
+    for op in ("PRIMARY", "REMEDIATION", "REPAIR"):
+        instruction = _native_instruction(operation=op, handoff_path=handoff_path)
+        assert "strictly implementation-only" in instruction
+        assert "do not run any Runtime-owned verification" in instruction or (
+            "do not execute canonical verification commands" in instruction
+        )
+
+
+def test_task140_r3_active_guard_must_not_be_rewritten_in_place():
+    """AC5: Ordered hook-cutover contract — an active guard must never be intentionally
+    rewritten in place during one native execution. The canonical guard content
+    must remain stable; the provider instruction explicitly forbids Runtime
+    verification so the guard itself is not modified to accommodate verification."""
+    # Canonical guard must exist at the on-disk path and contain the no-retry policy
+    # predicate (the contract is the canonical text shipped in the repo).
+    guard_content = GUARD_PATH.read_text(encoding="utf-8")
+    assert "AIOS_RUNTIME_OWNS_VERIFICATION" in guard_content
+    assert "AIOS_BACKGROUND_RISK_DENIED" in guard_content
+    assert "AIOS_GIT_OPERATION_NOT_ADMITTED" in guard_content
+    assert "AIOS_GUARD_MALFORMED_INPUT" in guard_content
+
+
+# ---- Adapter-level regression tests ---------------------------------------
+
+class _RecordingRunner:
+    def __init__(self, output):
+        self.calls = []
+        self._output = output
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        envelope = {
+            "status": "SUCCESS",
+            "response": "",
+            "structured_output": self._output,
+        }
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(envelope),
+        )
+
+
+def _adapter_with_runner(repo, runner):
+    return AntigravityAdapter(
+        runner=runner,
+        repo=repo,
+        handoff_path=REPO_ROOT / ".git" / "aios" / "handoffs" / "_test_138.json",
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
+    )
+
+
+def test_task138_adapter_propagates_aios_active_env_without_losing_caller(monkeypatch):
+    """Adapter subprocess env must set the activation marker and preserve caller env."""
+    monkeypatch.setenv("MY_INHERITED_VAR", "preserved")
+    task, run, _, _ = make_execution()
+    runner = _RecordingRunner(successful_output(run.run_id))
+    adapter = _adapter_with_runner(REPO_ROOT, runner)
+    adapter.execute(task=task, run=run)
+    assert len(runner.calls) == 1
+    command, kwargs = runner.calls[0]
+    assert "env" in kwargs
+    env = kwargs["env"]
+    assert env[AIOS_ANTIGRAVITY_ACTIVE_ENV] == AIOS_ANTIGRAVITY_ACTIVE_VALUE
+    assert env["MY_INHERITED_VAR"] == "preserved"
+    assert "PATH" in env
+
+
+def test_task138_adapter_does_not_mutate_caller_process_env(monkeypatch):
+    """The adapter must not globally export the activation marker."""
+    monkeypatch.delenv(AIOS_ANTIGRAVITY_ACTIVE_ENV, raising=False)
+    assert AIOS_ANTIGRAVITY_ACTIVE_ENV not in os.environ
+    task, run, _, _ = make_execution()
+    runner = _RecordingRunner(successful_output(run.run_id))
+    adapter = _adapter_with_runner(REPO_ROOT, runner)
+    adapter.execute(task=task, run=run)
+    assert AIOS_ANTIGRAVITY_ACTIVE_ENV not in os.environ
+
+
+def test_task138_adapter_preserves_one_native_invocation_under_active_env():
+    """Even when active env is set, the adapter still emits exactly one runner call."""
+    task, run, _, _ = make_execution()
+    runner = _RecordingRunner(successful_output(run.run_id))
+    adapter = _adapter_with_runner(REPO_ROOT, runner)
+    adapter.execute(task=task, run=run)
+    assert len(runner.calls) == 1
+    command, _ = runner.calls[0]
+    assert command[0] == "agy"
+    assert command[1] == "--print"
+
+
+def test_task138_adapter_remediation_also_propagates_active_env():
+    runner = _RecordingRunner(successful_output("RUN-138-001"))
+    adapter = _adapter_with_runner(REPO_ROOT, runner)
+    adapter.execute_remediation(execution=make_remediation_execution())
+    assert len(runner.calls) == 1
+    _, kwargs = runner.calls[0]
+    assert kwargs["env"][AIOS_ANTIGRAVITY_ACTIVE_ENV] == AIOS_ANTIGRAVITY_ACTIVE_VALUE
+
+
+def test_task138_hooks_json_ships_in_repo_and_targets_guard():
+    hooks_path = REPO_ROOT / ".agents" / "hooks.json"
+    assert hooks_path.is_file()
+    payload = json.loads(hooks_path.read_text(encoding="utf-8"))
+    entry = payload["aios-antigravity-pretool-run-command"]
+    assert entry.get("enabled") is True
+    pretool = entry["PreToolUse"][0]
+    assert pretool["matcher"] == "run_command"
+    cmd = pretool["hooks"][0]["command"]
+    assert AIOS_PRETOOL_GUARD_FILENAME in cmd
+
+
+def test_task140_hooks_json_uses_corrected_repo_workspace_path():
+    """AC4: hooks.json command must use the corrected repository workspace path."""
+    hooks_path = REPO_ROOT / ".agents" / "hooks.json"
+    assert hooks_path.is_file()
+    payload = json.loads(hooks_path.read_text(encoding="utf-8"))
+    entry = payload["aios-antigravity-pretool-run-command"]
+    assert entry.get("enabled") is True
+    pretool = entry["PreToolUse"][0]
+    assert pretool["matcher"] == "run_command"
+    cmd = pretool["hooks"][0]["command"]
+    assert cmd == "python ./.agents/aios_antigravity_pretool_guard.py"
+    assert "./.agents/" in cmd
+    assert "aios_antigravity_pretool_guard.py" in cmd
+
+
+def _read_canonical_hooks_command():
+    hooks_path = REPO_ROOT / ".agents" / "hooks.json"
+    payload = json.loads(hooks_path.read_text(encoding="utf-8"))
+    pretool = payload["aios-antigravity-pretool-run-command"]["PreToolUse"][0]
+    return pretool["hooks"][0]["command"]
+
+
+def test_task140_production_path_start_sleep_denied_with_background_reason():
+    """AC2 & AC4: Exact hooks.json command executed from workspace root
+    must deny a true background-risk payload (Start-Sleep -Seconds 20) with
+    AIOS_BACKGROUND_RISK_DENIED before the payload is executed."""
+    import subprocess as _sp
+    import json as _json
+    cmd_str = _read_canonical_hooks_command()
+    cmd_tokens = cmd_str.split()
+    env = os.environ.copy()
+    env[AIOS_ANTIGRAVITY_ACTIVE_ENV] = AIOS_ANTIGRAVITY_ACTIVE_VALUE
+    payload = _json.dumps({
+        "toolCall": {
+            "name": "run_command",
+            "args": {"CommandLine": "Start-Sleep -Seconds 20"},
+        },
+        "stepIdx": 0,
+    })
+    completed = _sp.run(
+        cmd_tokens,
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+        env=env,
+        timeout=15,
+        check=False,
+    )
+    assert completed.returncode == 0
+    assert completed.stderr == ""
+    out = _json.loads(completed.stdout)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_BACKGROUND_RISK_DENIED",
+    }
+
+
+def test_task140_production_path_run_136_004_pytest_denied_with_runtime_reason():
+    """AC2: Exact hooks.json command executed from workspace root
+    must deny the RUN-136-004 verification class payload with
+    AIOS_RUNTIME_OWNS_VERIFICATION."""
+    import subprocess as _sp
+    import json as _json
+    cmd_str = _read_canonical_hooks_command()
+    cmd_tokens = cmd_str.split()
+    env = os.environ.copy()
+    env[AIOS_ANTIGRAVITY_ACTIVE_ENV] = AIOS_ANTIGRAVITY_ACTIVE_VALUE
+    payload = _json.dumps({
+        "toolCall": {
+            "name": "run_command",
+            "args": {"CommandLine": "pytest tests/test_authoring_ingress.py"},
+        },
+        "stepIdx": 0,
+    })
+    completed = _sp.run(
+        cmd_tokens,
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+        env=env,
+        timeout=15,
+        check=False,
+    )
+    assert completed.returncode == 0
+    out = _json.loads(completed.stdout)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_RUNTIME_OWNS_VERIFICATION",
+    }
+
+
+def test_task140_old_run_138_001_path_fails_from_workspace_root():
+    """AC4: RUN-138-001's old `python ./aios_antigravity_pretool_guard.py`
+    command is not the canonical hooks.json command and must fail when
+    executed as a bare command from workspace root - no script exists at
+    that path. The canonical command remains `python ./.agents/...`."""
+    import subprocess as _sp
+    import json as _json
+    old_cmd = "python ./aios_antigravity_pretool_guard.py"
+    canonical_cmd = _read_canonical_hooks_command()
+    assert old_cmd != canonical_cmd
+    env = os.environ.copy()
+    env[AIOS_ANTIGRAVITY_ACTIVE_ENV] = AIOS_ANTIGRAVITY_ACTIVE_VALUE
+    payload = _json.dumps({
+        "toolCall": {
+            "name": "run_command",
+            "args": {"CommandLine": "pytest tests/test_x.py"},
+        },
+        "stepIdx": 0,
+    })
+    completed = _sp.run(
+        old_cmd.split(),
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+        env=env,
+        timeout=15,
+        check=False,
+    )
+    # Without a guard script at the old path the spawn fails: the old
+    # path is not the canonical command in hooks.json.
+    assert completed.returncode != 0
