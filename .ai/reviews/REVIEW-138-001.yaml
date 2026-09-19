@@ -1,0 +1,41 @@
+review_id: REVIEW-138-001
+reviewed_sha: ec7da7662819dd11b2f8824daf85b340a439c2e7
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: FAIL
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+findings:
+  - id: FINDING-138-001
+    basis: AC6
+    action: CODE_FIX
+    location: .agents/hooks.json and tests/test_antigravity_adapter.py
+    issue: >
+      The canonical workspace hook does not execute the canonical guard from the actual
+      repository workspace root. .agents/hooks.json configures
+      "python ./aios_antigravity_pretool_guard.py", but the tracked guard is
+      .agents/aios_antigravity_pretool_guard.py. Live self-host proof on agy 1.2.6 with
+      AIOS_ANTIGRAVITY_ACTIVE=1 attempted the required long run_command and reproduced
+      the background terminal failure: print timeout after 2m0s and
+      "terminating 1 background task(s) on exit". The start marker was created, proving
+      the command was not denied before execution. A direct workspace-root invocation
+      of the configured hook path fails with Python "can't open file ...\aios_antigravity_pretool_guard.py",
+      while invoking python ./.agents/aios_antigravity_pretool_guard.py with the same
+      active-AIOS PreToolUse payload returns
+      {"decision":"deny","reason":"AIOS_BACKGROUND_RISK_DENIED"}.
+      The RESULT claims that ./aios_antigravity_pretool_guard.py resolves relative to the
+      hooks.json directory and that AC6 has a live proof, but the independent live proof
+      falsifies both claims.
+    expected: >
+      Make the workspace hook command resolve the tracked guard from the actual agy
+      workspace execution context, without global configuration or runtime-created hook
+      residue. Add a regression that loads the exact command string from .agents/hooks.json
+      and executes it from the repository workspace root with AIOS_ANTIGRAVITY_ACTIVE=1,
+      proving a Start-Sleep/background-risk payload is denied before command execution.
+      Then repeat the mandatory native agy 1.2.6 --print live proof: no start marker,
+      no background-task terminal warning, and stable AIOS_BACKGROUND_RISK_DENIED denial.
