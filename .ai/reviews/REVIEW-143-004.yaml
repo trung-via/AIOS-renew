@@ -1,0 +1,42 @@
+review_id: REVIEW-143-004
+reviewed_sha: 5d14762788fadd51e34b9d97b260631da1f7798d
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: FAIL
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings:
+  - id: FINDING-143-001
+    basis: AC2
+    action: CODE_FIX
+    location: src/aios_renew/unified_state.py and tests/test_operator_unified_state.py
+    issue: >-
+      The integrated REMEDIATION decoder still rejects the real RUN-140-008 chronology after
+      canonical main advances. The new branch requires
+      item.execution_base.authorized_main_sha == lifecycle.main_sha. But authorized_main_sha is
+      the immutable main SHA that was authorized when the integration candidate was created,
+      while lifecycle.main_sha is the current remote main at observation time. RUN-140-008 is
+      bound to integration authorized_main_sha
+      7b023727b061d3a0bb6c62be27e4387a0b0a6b17, whereas current main has already advanced through
+      TASK-143 authoring to ada501871399247540fd9d7c54279742880214e8. Therefore the exact
+      historical integrated RUN that TASK-143 is intended to recover will still reduce to
+      MALFORMED_CANONICAL_STATE as soon as this decoder observes it. The new regression is not
+      actually equivalent to RUN-140-008 because _setup_divergent_integrated_topology uses the
+      same new_main both as the integration authorized_main_sha and as RemoteTaskLifecycle.main_sha,
+      so it never exercises canonical-main advancement after the integrated RUN was created.
+    expected: >-
+      Treat authorized_main_sha as immutable historical integration identity, not as a required
+      equality with the current lifecycle main. Continue to validate the exact remote integration
+      ref/id/candidate and its exact parents [cumulative_tip_candidate_sha, authorized_main_sha]
+      through resolve_valid_integration(require_remote=True). Add an explicit chronology regression
+      where a valid integration is created against an older authorized main, then remote main is
+      advanced by one or more canonical commits before observing the integrated REMEDIATION
+      FAILURE. That valid historical RUN must reduce to AUTHOR_REPAIR/EXECUTE_REPAIR. Preserve
+      fail-closed behavior for forged authorized_main_sha by requiring the exact derived remote
+      integration ref/parents, and if an additional current-main relationship is required, use a
+      bounded historical relationship such as authorized_main_sha being an ancestor of current
+      canonical main rather than strict equality.
