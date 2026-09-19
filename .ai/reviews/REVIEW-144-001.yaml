@@ -1,0 +1,37 @@
+review_id: REVIEW-144-001
+reviewed_sha: 9f3490718f78c8a587f55c9a4ceab6ce731f3435
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+findings:
+  - id: FINDING-144-001
+    basis: AC6
+    action: CODE_FIX
+    location: tests/test_operator.py, tests/test_authoring_ingress.py, tests/test_publication.py
+    issue: >-
+      TASK-144 hard constraints require production-shaped regression coverage for the
+      RUN-140-008 -> RUN-140-009 integrated-REMEDIATION repair topology, continuation
+      preservation of the integrated result base, and Authoring Ingress/Publisher
+      success plus negative paths for wrong prior_finding_id, missing or moved
+      integration refs, forged authorized-main/integration-candidate identities, and
+      the legacy run.base_sha==reviewed_sha assumption. The candidate instead adds
+      only narrow unit-level checks for repair_completion_policy base separation,
+      exact repaired finding semantics, and _validate_repair_package result-base
+      attribution. The required end-to-end and negative-path regressions are absent,
+      so compatibility/fail-closed coverage required by the TASK is not established.
+    expected: >-
+      Add deterministic production-shaped regressions within the three authorized test
+      files that exercise the actual Runtime REPAIR completion path for an integrated
+      REMEDIATION, a continuation REPAIR retaining the same result_base_sha, exact
+      DELTA SUBMIT_REVIEW reconstruction, and Publisher lineage/package validation.
+      Add the mandated negative cases for wrong finding identity and forged/missing/
+      moved canonical integration evidence. Preserve current production behavior unless
+      one of those required regressions exposes a concrete defect; if it does, correct
+      only within TASK-144's already-authorized production scope.
