@@ -1,4 +1,5 @@
 import os
+import stat
 import subprocess
 from pathlib import Path
 
@@ -283,7 +284,7 @@ def test_windows_temp_cleanup_failure_fails_closed_and_preserves_raw_evidence(
     real_rmtree = verification_module.shutil.rmtree
     isolated: Path | None = None
 
-    def fail_cleanup(path):
+    def fail_cleanup(path, *args, **kwargs):
         nonlocal isolated
         isolated = Path(path)
         raise OSError("isolated cleanup denied")
@@ -312,6 +313,20 @@ def test_windows_temp_cleanup_failure_fails_closed_and_preserves_raw_evidence(
     assert (raw / "RUN-120-008-V001.raw").read_bytes().endswith(
         b"captured\n\nSTDERR\n"
     )
+
+
+def test_temp_cleanup_recovers_read_only_git_object_tree(tmp_path: Path) -> None:
+    temp_root = tmp_path / "isolated-verification-root"
+    object_directory = temp_root / "smoke-repo" / ".git" / "objects" / "0a"
+    object_directory.mkdir(parents=True)
+    object_file = object_directory / "76e58f038b4db6cd072967d84f862c896a01f2"
+    object_file.write_bytes(b"git-object")
+    object_file.chmod(stat.S_IREAD)
+    object_directory.chmod(stat.S_IREAD)
+
+    verification_module._remove_temp_root(temp_root)
+
+    assert not temp_root.exists()
 
 
 def test_windows_nonzero_remains_canonical_failure_without_retry(

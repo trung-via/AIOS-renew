@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -19,6 +22,8 @@ _WINDOWS_POWERSHELL_UTF8_PREAMBLE = (
     "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
 )
 _WINDOWS_TEMP_PREFIX = "aios-verification-"
+_TEMP_CLEANUP_ATTEMPTS = 3
+_TEMP_CLEANUP_RETRY_DELAY_SECONDS = 0.05
 
 
 class RuntimeVerificationError(RuntimeError):
@@ -265,9 +270,36 @@ def _has_git_ancestor(path: Path) -> bool:
 
 
 def _remove_temp_root(temp_root: Path) -> None:
-    shutil.rmtree(temp_root)
+    for attempt in range(1, _TEMP_CLEANUP_ATTEMPTS + 1):
+        try:
+            shutil.rmtree(temp_root, onerror=_make_writable_and_retry)
+            break
+        except OSError as exc:
+            if not temp_root.exists():
+                break
+            if not _is_permission_error(exc) or attempt == _TEMP_CLEANUP_ATTEMPTS:
+                raise
+            time.sleep(_TEMP_CLEANUP_RETRY_DELAY_SECONDS * attempt)
     if temp_root.exists():
         raise OSError(f"temporary root still exists: {temp_root}")
+
+
+def _make_writable_and_retry(remove, path: str, exc_info) -> None:
+    error = exc_info[1]
+    if not _is_permission_error(error):
+        raise error
+    current_mode = os.stat(path, follow_symlinks=False).st_mode
+    writable_mode = current_mode | stat.S_IREAD | stat.S_IWRITE
+    if stat.S_ISDIR(current_mode):
+        writable_mode |= stat.S_IEXEC
+    os.chmod(path, writable_mode)
+    remove(path)
+
+
+def _is_permission_error(error: BaseException) -> bool:
+    return isinstance(error, PermissionError) or (
+        isinstance(error, OSError) and error.errno in {errno.EACCES, errno.EPERM}
+    )
 
 
 def _require_bytes(value: bytes | str, stream: str) -> bytes:

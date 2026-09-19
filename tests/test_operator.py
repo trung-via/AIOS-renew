@@ -3025,8 +3025,12 @@ def test_antigravity_instruction_returns_structural_package_to_runtime(
     assert "Runtime-owned operational state" in instruction
     assert "Runtime owns canonical verification" in instruction
     assert "do not execute canonical verification commands" in instruction
-    assert "Commit the final implementation state when required" in instruction
-    assert "do not push" in instruction
+    assert (
+        "Complete all authorized implementation work and required commit completion first"
+        in instruction
+    )
+    assert "zero-mutation actions must not create a commit" in instruction
+    assert "Do not push" in instruction
     handoff = json.loads(
         next((repo / ".git" / "aios" / "handoffs").glob("*.json")).read_text(
             encoding="utf-8"
