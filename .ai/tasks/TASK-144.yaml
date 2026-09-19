@@ -1,0 +1,186 @@
+task_id: TASK-144
+revision: 1
+
+goal: >
+  Make REPAIR of an integrated REMEDIATION work end-to-end across Runtime completion,
+  semantic review authoring, and Publisher without treating unrelated commits carried by the
+  integration merge as TASK-local changed files, while preserving fail-closed canonical lineage.
+
+problem: >
+  TASK-143 fixed Unified State decoding for historical integrated REMEDIATION failures.
+  TASK-140 RUN-140-008 therefore became repairable and REPAIR-140-008 was executed as
+  RUN-140-009 from failed integrated base
+  8ca93553393145549d9f6e8aef1477cc10ded845. The Executor produced a clean transportable
+  candidate 9f893fc2eb56be0052fadae97e8b99099430085f whose only changed files relative to the
+  failed head are .agents/aios_antigravity_pretool_guard.py and
+  tests/test_antigravity_adapter.py, exactly the authorized FINDING-140-005 repair scope.
+
+  Runtime nevertheless failed RUN-140-009 at COMPLETION_GATE with
+  "committed changed paths outside TASK.scope.modify" listing TASK-141/TASK-142 and Runtime
+  files. The failure is deterministic: historical REPAIR admission preserves the original
+  TASK root_base_sha 3002625fe0ca77e580925835445c6a9be3818fb5, and repair_completion_policy
+  uses that root as result_base_sha. For a failed integrated REMEDIATION, however, the repair
+  subject starts from the synthetic integration candidate 8ca935..., which intentionally
+  carries canonical-main changes unrelated to TASK-140. Diffing original TASK root -> repaired
+  candidate therefore attributes integration-carried files to the repaired TASK and rejects a
+  valid correction.
+
+  Audit also shows the same legacy assumption exists downstream. Publisher's
+  _repair_review_lineage still requires a failed REMEDIATION predecessor run.base_sha to equal
+  remediation.reviewed_sha, which is false by design for integrated execution_base; and
+  _validate_repair_package compares REPAIR RESULT.changed_files against root_base_sha. Brain
+  Authoring Ingress SUBMIT_REVIEW still lacks the canonical REPAIR-of-REMEDIATION DELTA review
+  reconstruction needed for this repaired correction path. Fixing only Runtime would therefore
+  strand the same valid candidate at the next lifecycle boundary.
+
+assumptions:
+  - Canonical main at authoring is 409f6270f70f3e7c02f37de59d8a6638f7f0518a.
+  - TASK-143 integrated REMEDIATION decoder semantics are authoritative and remain unchanged.
+  - RUN-140-009 failure artifact e46ccdd01fa375d9d4f159ac3daf100a62bfebfb is valid evidence.
+  - RUN-140-009 failed_head 9f893fc2eb56be0052fadae97e8b99099430085f is clean, repairable,
+    transportable, and its candidate.changed_files are exactly the two authorized TASK-140 files.
+  - The persisted REPAIR root_base_sha remains semantic historical lineage and must not be
+    rewritten merely to make integrated repair completion pass.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/correction_integration.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+    - tests/test_publication.py
+    - tests/test_authoring_ingress.py
+    - refs/heads/aios/failure-artifacts/RUN-140-008
+    - refs/heads/aios/failure-artifacts/RUN-140-009
+    - refs/heads/aios/integration/14e37a5af0334930e9993a91ace872be0d30c6b0555cae33fc35cbbe36ba603e
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_operator.py
+    - tests/test_publication.py
+    - tests/test_authoring_ingress.py
+
+non_goals:
+  - Modify TASK-140 guard, adapter, tests, FINDING-140-005 implementation, or RUN-140-009 candidate.
+  - Rewrite RUN-140-008/RUN-140-009 artifacts, repair authorization, integration ref, or historical root_base_sha.
+  - Change TASK-143 Unified State integrated-remediation semantics.
+  - Relax TASK scope, REPAIR modification scope, review identity, integration identity, or canonical remote evidence checks.
+  - Publish or otherwise resolve TASK-140 inside TASK-144.
+  - Add retries, fallback executors, planner/router behavior, or special cases for concrete TASK/RUN ids.
+
+constraints:
+  hard:
+    - >
+      Preserve two distinct bases for integrated-REMEDIATION repair semantics:
+      (1) immutable semantic root_base_sha used to prove historical TASK/REPAIR lineage, and
+      (2) a deterministic repair-result base used to compute RESULT.changed_files and TASK-scope
+      attribution. Do not collapse these identities.
+    - >
+      For legacy PRIMARY repairs and non-integrated repair lineages, preserve existing
+      root_base_sha/result-base behavior unless a regression proves a necessary equivalent change.
+    - >
+      For a REPAIR chain whose terminal semantic correction origin is a REMEDIATION with a
+      canonical INTEGRATED execution_base, derive the repair-result base from that validated
+      integrated REMEDIATION execution base (the integration candidate / remediation RUN base),
+      not from the original TASK root.
+    - >
+      The integrated repair-result base is authoritative only after validating the complete
+      integrated execution_base contract against canonical remote evidence: exact TASK/revision,
+      cumulative tip RUN/SHA, authorized historical main SHA, integration id/ref/candidate,
+      exact parents [cumulative_tip_candidate_sha, authorized_main_sha], and clean merge tree.
+      Missing, forged, stale, moved, or mismatched evidence must fail closed.
+    - >
+      Runtime REPAIR completion must canonicalize RESULT.changed_files against the derived
+      repair-result base while separately validating the actual repair mutation from failed_head_sha
+      against REPAIR modification_scope. Unrelated files already present in the integration
+      candidate must not be attributed to the REPAIR.
+    - >
+      Persisted repair execution root_base_sha remains the original semantic TASK root for
+      lineage compatibility. Do not silently overwrite it with integration_candidate_sha.
+    - >
+      A continuation REPAIR of the same integrated remediation must retain the same deterministic
+      repair-result base across the continuation chain, while mutation_base_sha advances to each
+      immediate failed head.
+    - >
+      Publisher REPAIR lineage must accept an integrated REMEDIATION predecessor without the
+      legacy equality run.base_sha == remediation.reviewed_sha. It must instead validate semantic
+      predecessor identity and the canonical integrated execution_base, and validate REPAIR
+      ResultPackage changed_files against the same derived repair-result base used by Runtime.
+    - >
+      Brain Authoring Ingress SUBMIT_REVIEW must recognize canonical successful REPAIR artifacts.
+      For REPAIR of REMEDIATION, reconstruct the exact canonical failed RUN, repair authorization,
+      semantic REMEDIATION predecessor/review/finding, and integrated execution_base when present.
+      Require DELTA mode and prior_finding_id equal to the exact repaired remediation finding.
+      Wrong/missing mode, finding, repair lineage, or integrated evidence must fail closed before
+      creating review-decision ref. REPAIR before any semantic finding retains PRIMARY semantics.
+    - >
+      Do not weaken complete TASK ResultPackage claim/evidence validation. The fix concerns
+      Git-delta attribution and correction lineage, not acceptance coverage.
+    - >
+      Add a production-shaped regression equivalent to RUN-140-008 -> RUN-140-009:
+      original TASK root predates TASK-141/TASK-142; integrated REMEDIATION base contains
+      unrelated canonical-main files; failed remediation has zero delta; REPAIR changes only
+      two authorized TASK files. Runtime completion must not report those integration-carried
+      files as outside TASK scope.
+    - >
+      Add continuation regression proving a subsequent FINALIZE_CANDIDATE/NO_CHANGE or repair
+      continuation preserves the same integrated result base and does not reintroduce root-base
+      scope pollution.
+    - >
+      Add Authoring Ingress and Publisher regressions proving the successful repaired integrated
+      REMEDIATION accepts the exact DELTA review and reaches publication lineage validation;
+      wrong prior_finding_id, missing/moved integration ref, forged authorized main/candidate,
+      and legacy run.base==reviewed_sha assumptions are rejected appropriately.
+    - >
+      Existing non-integrated REPAIR, PRIMARY repair, ordinary REMEDIATION, TASK-141 semantic-root,
+      TASK-142 integration, and TASK-143 historical-main-advance behavior must remain compatible.
+    - >
+      Executor implementation must not mutate TASK-140 branches/artifacts or run TASK-140.
+      TASK-144 verification is Runtime-owned.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Runtime distinguishes semantic root_base_sha from integrated repair-result base and a
+      RUN-140-009-shaped repair candidate containing only authorized repair delta passes scope
+      attribution instead of failing on integration-carried TASK-141/TASK-142 files.
+  - id: AC2
+    condition: >
+      Immediate repair mutation remains validated exactly from failed_head_sha against the REPAIR
+      modification scope, and continuation repairs retain one deterministic integrated result base.
+  - id: AC3
+    condition: >
+      Integrated repair-result base is accepted only with exact canonical integration evidence;
+      forged, missing, moved, or mismatched integration identities fail closed.
+  - id: AC4
+    condition: >
+      SUBMIT_REVIEW reconstructs REPAIR-of-REMEDIATION semantic lineage and accepts only the exact
+      DELTA review/prior_finding_id for the repaired finding, while repaired PRIMARY semantics
+      remain compatible.
+  - id: AC5
+    condition: >
+      Publisher validates REPAIR of integrated REMEDIATION without the legacy
+      run.base_sha==remediation.reviewed_sha assumption and checks RESULT.changed_files against
+      the same canonical integrated repair-result base.
+  - id: AC6
+    condition: >
+      Existing non-integrated correction/repair/publication behavior remains compatible and all
+      new negative-path regressions fail closed.
+  - id: AC7
+    condition: >
+      Focused Runtime/operator, Authoring Ingress, and Publisher suites plus git diff --check pass,
+      with implementation changes limited to authorized scope and zero unresolved items.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_operator.py -k "repair and (remediation or integrated or historical)"
+    - python -m pytest -q tests/test_authoring_ingress.py -k "repair_review or repair"
+    - python -m pytest -q tests/test_publication.py -k "repair or integrated"
+    - python -m pytest -q tests/test_operator.py tests/test_authoring_ingress.py tests/test_publication.py
+    - git diff --check
