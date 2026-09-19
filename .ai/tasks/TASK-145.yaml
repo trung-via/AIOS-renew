@@ -1,0 +1,133 @@
+task_id: TASK-145
+revision: 1
+
+goal: >
+  Make Unified State reconcile a locally persisted REPAIR terminal with its already-canonical
+  remote terminal using the same semantic correction identity that canonical decoding derives,
+  so a REPAIR-of-REMEDIATION continuation does not become MALFORMED_CANONICAL_STATE merely
+  because local pending reconstruction leaves review_id/finding_id unset.
+
+problem: >
+  TASK-144 is currently blocked after canonical RUN-144-004 FAILURE and canonical
+  REPAIR-144-004 authorization. GitHub canonical decoding succeeds:
+  RUN-144-003 decodes as REMEDIATION FAILURE with semantic review/finding
+  REVIEW-144-001 / FINDING-144-001, and RUN-144-004 decodes as REPAIR FAILURE whose
+  parent is RUN-144-003. _decode_remote_lifecycle then propagates the correction origin
+  onto the canonical REPAIR, so canonical RUN-144-004 has the inherited review_id/finding_id.
+  The exact local RUN-144-004 artifacts are the same transported run/failure/repair documents,
+  but _local_pending_runs decodes its plain RUN as PRIMARY, converts it to REPAIR from the
+  persisted repair execution, validates the exact remote failed parent, and never propagates
+  the parent's semantic review_id/finding_id. The local-vs-canonical equality gate therefore
+  compares canonical REVIEW-144-001/FINDING-144-001 against local None/None and raises
+  "local and canonical terminal state conflict" at unified_state.py line 1062.
+  observe_unified_state catches that ValueError and emits MALFORMED_CANONICAL_STATE, preventing
+  execution of the already-canonical REPAIR-144-004 selector even though the terminal content,
+  parent, candidate and correction artifacts are otherwise identical.
+
+assumptions:
+  - Canonical main is b227993543bfc9d0ab242a6cebede1f584222ec9.
+  - RUN-144-004 canonical failure candidate is 994cd5f48e80f19800f8f11308f51d78a562514e.
+  - RUN-144-004 failure artifact is c519db6e039abde0288834c06663c657cef6f306.
+  - REPAIR-144-004 canonical authorization is 1aa70eeb5e563f306985c565101c8debfb2f2493.
+  - Fresh read-only diagnostics proved _decode_remote_lifecycle succeeds and _local_pending_runs
+    alone raises "local and canonical terminal state conflict".
+  - TASK-144 must remain paused until this lifecycle blocker is published.
+  - TASK-143 canonical integrated-REMEDIATION semantics remain authoritative.
+
+scope:
+  inspect:
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operator.py
+    - tests/test_operator_unified_state.py
+    - refs/heads/aios/failure-artifacts/RUN-144-003
+    - refs/heads/aios/failure-artifacts/RUN-144-004
+    - refs/heads/aios/repair/RUN-144-003
+    - refs/heads/aios/repair/RUN-144-004
+  modify:
+    - src/aios_renew/unified_state.py
+    - tests/test_operator_unified_state.py
+
+non_goals:
+  - Modify TASK-144 implementation, candidate branches, tests, review, remediation, or repair artifacts.
+  - Modify TASK-140 or resume TASK-140.
+  - Change canonical remote REPAIR decoding or TASK-143 integrated-REMEDIATION semantics.
+  - Weaken local-versus-canonical terminal equality by ignoring review identity, finding identity,
+    parent identity, candidate identity, terminal content, correction content, or execution-base evidence.
+  - Add special cases for TASK-144, RUN-144-003, RUN-144-004, or any concrete production identifier.
+  - Rewrite, delete, force-move, or synthesize existing canonical refs.
+
+constraints:
+  hard:
+    - >
+      Treat the canonical _decode_remote_lifecycle semantic identity as authoritative. A local
+      persisted REPAIR must derive the same review_id/finding_id only through its exact validated
+      failed parent chain; do not copy identifiers from unvalidated repair prose or search the TASK
+      globally by finding id.
+    - >
+      For a local REPAIR whose exact canonical failed parent is a REMEDIATION, inherit that parent's
+      normalized semantic review_id/finding_id. For a continuation whose exact canonical failed
+      parent is itself a REPAIR, preserve the same already-normalized semantic identity through the
+      chain.
+    - >
+      REPAIR of a PRIMARY failure must preserve existing semantics: review_id/finding_id remain unset
+      until a later semantic review establishes them.
+    - >
+      Parent resolution remains fail closed: the local REPAIR parent must be exactly one canonical
+      FAILURE with matching run_id and candidate_sha == local run.base_sha. Missing, competing, wrong-kind,
+      or SHA-mismatched parents must not be normalized into acceptance.
+    - >
+      Keep the strict local-versus-canonical terminal comparison. The fix must normalize the local
+      semantic identity before comparison, not delete or bypass the review_id/finding_id checks.
+    - >
+      Preserve exact comparison of run_document, terminal document, correction/repair execution,
+      family, parent_run_id, execution_base, candidate SHA, and terminal kind.
+    - >
+      Do not mutate canonical refs or local execution state during observation. Unified State remains
+      read-only and deterministic.
+    - >
+      Add a production-shaped regression equivalent to the current blocker: canonical REMEDIATION
+      FAILURE -> canonical REPAIR FAILURE with transported repair.json -> local mirrored REPAIR terminal
+      -> canonical repair selector for that REPAIR failure. observe_unified_state must reduce to
+      EXECUTE_REPAIR for the exact failed REPAIR instead of MALFORMED_CANONICAL_STATE.
+    - >
+      Add continuation coverage proving REPAIR -> REPAIR propagation retains the exact semantic
+      review_id/finding_id from the REMEDIATION origin without depending on numeric RUN ordering.
+    - >
+      Add negative regressions proving genuine local/canonical mismatches still fail closed, including
+      wrong parent SHA or parent identity and mismatched correction content/semantic identity.
+    - >
+      Existing PRIMARY, repaired-PRIMARY, ordinary REMEDIATION, integrated REMEDIATION, terminal-conflict,
+      transport-retry, and TASK-143 historical-main behavior must remain compatible.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The RUN-144-003 -> RUN-144-004-shaped local/canonical topology reduces deterministically without
+      "local and canonical terminal state conflict" when all structural artifacts are exact.
+  - id: AC2
+    condition: >
+      Local REPAIR normalization derives the same semantic review_id/finding_id as canonical decoding
+      through the exact failed correction parent chain, including REPAIR continuation chains.
+  - id: AC3
+    condition: >
+      REPAIR of PRIMARY behavior remains unchanged and does not invent semantic correction identity.
+  - id: AC4
+    condition: >
+      Genuine parent, candidate, terminal, correction, execution-base, or semantic-identity mismatches
+      remain fail closed and produce a blocked/malformed observation rather than guessed continuation.
+  - id: AC5
+    condition: >
+      A canonical repair selector for the exact failed repaired REMEDIATION becomes observable as
+      EXECUTE_REPAIR with the correct failed_run_id/head and correction SHA after reconciliation.
+  - id: AC6
+    condition: >
+      Focused Unified State regressions, the complete tests/test_operator_unified_state.py suite,
+      the full pytest suite, and git diff --check pass with zero unresolved items.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_operator_unified_state.py -k "repair and (remediation or local or canonical or continuation)"
+    - python -m pytest -q tests/test_operator_unified_state.py
+    - python -m pytest -q
+    - git diff --check
