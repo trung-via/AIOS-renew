@@ -1,0 +1,82 @@
+review_id: REVIEW-140-002
+reviewed_sha: 9f0e5e7bda61d498aaf40f4bb0d8d14025d82d5a
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: FAIL
+  AC6: PASS
+  AC7: PASS
+  AC8: FAIL
+findings:
+  - id: FINDING-140-001
+    basis: AC3
+    action: CODE_FIX
+    location: .agents/aios_antigravity_pretool_guard.py and tests/test_antigravity_adapter.py
+    issue: >
+      The active guard's bounded-git allow path is broader than TASK-140 r2 permits.
+      _GIT_ALLOW_RE explicitly allows remote, config, stash, tag, fetch, merge, rebase,
+      reset, and restore even though r2 says not to broaden the allow path to
+      destructive/history-changing/network operations such as reset, restore, merge,
+      rebase, stash, or fetch unless an existing required test proves one is essential.
+      The candidate also explicitly allows "git diff --check" and its regression asserts
+      that this command is allowed, while r2's EXECUTOR IMPLEMENTATION-ONLY CONTRACT
+      names git diff --check as Runtime-owned verification that the coding Executor must
+      not run. The RESULT claim for AC3 itself enumerates these over-broad operations as
+      evidence of compliance, which directly contradicts the canonical task constraint.
+    expected: >
+      Narrow the active guard's git allow path to the implementation/terminalization
+      operations authorized by TASK-140 r2: status, ordinary bounded diff inspection
+      excluding diff --check, add, commit, rev-parse/final-HEAD, log, show, branch
+      inspection, and ls-files. Do not admit reset, restore, merge, rebase, stash, fetch,
+      or other destructive/history-changing/network operations absent a canonical need.
+      Treat git diff --check as Runtime-owned verification and update regression coverage
+      so active AIOS execution denies it rather than allowing it.
+
+  - id: FINDING-140-002
+    basis: AC5
+    action: CODE_FIX
+    location: src/aios_renew/antigravity_adapter.py and tests/test_antigravity_adapter.py
+    issue: >
+      TASK-140 r2 requires the provider instruction to state explicitly that a stable
+      PreToolUse denial for Runtime-owned verification/background-risk work is expected
+      policy, must not be retried, and must not prevent implementation, commit, final-HEAD
+      lookup, and finish. The candidate does not add that instruction. The inherited
+      HEADLESS_PRINT_MODE_CONTRACT still says short implementation-local sanity checks are
+      permitted and the PRIMARY instruction repeats that such checks may be run. That is
+      weaker than r2's implementation-only Executor contract, which forbids pytest,
+      py.test, unittest, tox, nox, coverage, lint, build, git diff --check, and any
+      test/verification command and requires the coding Executor to stop after authorized
+      edits, git add/commit, final git rev-parse HEAD, and builtin finish.
+    expected: >
+      Update the native provider instruction so TASK-140 r2's implementation-only
+      contract is explicit at the provider boundary: do not execute any Runtime-owned
+      test/verification/lint/build/diff-check command; if the workspace hook returns a
+      stable AIOS_RUNTIME_OWNS_VERIFICATION or AIOS_BACKGROUND_RISK_DENIED denial, accept
+      it as expected policy and do not retry or replace it with an equivalent command.
+      Continue authorized implementation, commit as required, obtain actual final HEAD,
+      and invoke builtin finish exactly once. Add focused regression coverage for this
+      exact no-retry/continue-to-terminalization instruction.
+
+  - id: FINDING-140-003
+    basis: AC8
+    action: EVIDENCE_ONLY
+    location: independent live agy 1.2.6 acceptance proof
+    issue: >
+      AC8 explicitly forbids PASS review without an independent live self-host agy 1.2.6
+      --print proof using --dangerously-skip-permissions against the candidate workspace.
+      RUN-140-002 has Runtime verification for the Python regressions and git diff --check,
+      but its canonical RESULT contains no independent live agy evidence. The candidate's
+      C8 claim states only that the implementation is in place to support a future
+      Runtime-owned live proof; that is not the required proof itself.
+    expected: >
+      After the code findings are corrected, run the mandatory independent live agy 1.2.6
+      --print acceptance against the candidate workspace with
+      --dangerously-skip-permissions and AIOS_ANTIGRAVITY_ACTIVE=1. A deliberately long
+      run_command must be denied before its start marker is created with stable
+      AIOS_BACKGROUND_RISK_DENIED; the marker must remain absent; and output must contain
+      no "root agent idle; waiting ... background task", no "terminating ... background
+      task", and no hook execution failure. Preserve that proof as review evidence.
