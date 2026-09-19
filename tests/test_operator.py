@@ -281,9 +281,12 @@ class HistoricalRepairRunner:
         self.workspace = subject
         self.initial_head = git(subject, "rev-parse", "HEAD")
         self.initial_pin = (subject / "AIOS_PIN").read_text(encoding="utf-8")
-        (subject / "OUTPUT.txt").write_text("historically repaired\n", encoding="utf-8")
+        repair_id = execution["repair"]["repair_id"]
+        (subject / "OUTPUT.txt").write_text(
+            f"historically repaired by {repair_id}\n", encoding="utf-8"
+        )
         git(subject, "add", "OUTPUT.txt")
-        git(subject, "commit", "--quiet", "-m", "historical repair")
+        git(subject, "commit", "--quiet", "-m", repair_id)
         head_sha = git(subject, "rev-parse", "HEAD")
         return subprocess.CompletedProcess(
             command,
@@ -7547,7 +7550,7 @@ findings:
         "instructions": ["Correct the integrated remediation candidate."],
         "constraints": ["Commit the output."],
     }
-    first_repair_runner = RepairRunner(repo)
+    first_repair_runner = HistoricalRepairRunner()
     with pytest.raises(OperatorError, match="exit code 9"):
         run_repair(
             "RUN-101-001",
@@ -7574,12 +7577,13 @@ findings:
         "failed_run_id": "RUN-101-002",
         "failed_head_sha": continuation_failure["failed_head_sha"],
     }
+    continuation_repair_runner = HistoricalRepairRunner()
     completed = run_repair(
         "RUN-101-002",
         executor="codex",
         repo=repo,
         repair=continuation,
-        native_runner=RepairRunner(repo),
+        native_runner=continuation_repair_runner,
     )
 
     continued_repair = json.loads(
