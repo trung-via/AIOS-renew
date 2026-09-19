@@ -2810,8 +2810,8 @@ prior_finding_id: F1
     assert obs_reviewed["next_action"] == "AUTHOR_REMEDIATION"
     assert obs_reviewed["source_run_id"] == topo["repair_2_id"]
     assert obs_reviewed["finding_id"] == "F2"
-    assert obs_reviewed["execution_base_run_id"] == remediation_id
-    assert obs_reviewed["execution_base_sha"] == rem_candidate_sha
+    assert obs_reviewed["execution_base"]["run_id"] == remediation_id
+    assert obs_reviewed["execution_base"]["candidate_sha"] == rem_candidate_sha
     assert len(obs_reviewed["outstanding_findings"]) == 1
     assert obs_reviewed["outstanding_findings"][0]["finding_id"] == "F2"
 
@@ -2908,8 +2908,8 @@ prior_finding_id: F1
     assert obs_repaired_rem["next_action"] == "AUTHOR_REMEDIATION"
     assert obs_repaired_rem["source_run_id"] == topo["repair_2_id"]
     assert obs_repaired_rem["finding_id"] == "F2"
-    assert obs_repaired_rem["execution_base_run_id"] == repair_rem_id
-    assert obs_repaired_rem["execution_base_sha"] == repair_candidate_sha
+    assert obs_repaired_rem["execution_base"]["run_id"] == repair_rem_id
+    assert obs_repaired_rem["execution_base"]["candidate_sha"] == repair_candidate_sha
     assert len(obs_repaired_rem["outstanding_findings"]) == 1
     assert obs_repaired_rem["outstanding_findings"][0]["finding_id"] == "F2"
 
