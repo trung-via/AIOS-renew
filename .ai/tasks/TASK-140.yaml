@@ -1,69 +1,58 @@
 task_id: TASK-140
-revision: 1
+revision: 2
 
 goal: >
-  Bootstrap the native Antigravity provider-side no-background enforcement onto current
-  canonical main, using the proven TASK-138 design plus the confirmed workspace-root hook
-  path correction, so native agy --print execution can be made safe without depending on
-  the currently unavailable correction-integration lifecycle.
+  Complete the native Antigravity provider-side no-background enforcement on current
+  canonical main, using the proven TASK-140 r1 implementation shape but with a bounded
+  implementation-only Executor contract that prevents executor-owned verification and
+  scratch artifacts from consuming the MiniMax response budget.
 
 problem: >
-  RUN-138-001 implemented TASK-138 at candidate
-  ec7da7662819dd11b2f8824daf85b340a439c2e7, but independent live acceptance found
-  FINDING-138-001: .agents/hooks.json configured
-  "python ./aios_antigravity_pretool_guard.py" even though the tracked guard is
-  .agents/aios_antigravity_pretool_guard.py. From repository workspace root the configured
-  command fails to open the file; the correct ./.agents path returns the expected
-  AIOS_BACKGROUND_RISK_DENIED decision. REVIEW-138-001 is now canonically
-  CHANGES_REQUIRED and its remediation is canonical.
+  RUN-140-001 invoked antigravity-minimax from TASK-140 r1 and performed substantial
+  implementation work, but terminated with agym nonzero 4294967295 before producing a
+  candidate commit or structural ResultPackage. Unified State is canonically BLOCKED with
+  NON_REPAIRABLE_FAILURE, failed_run_id RUN-140-001, so its dirty WIP cannot be continued
+  through canonical REPAIR/RECOVER semantics.
 
-  Attempting the approved remediation after TASK-139 publication was rejected before RUN
-  creation with "cumulative execution base rejected: current main and cumulative execution
-  base require integration". That is a real lineage divergence: current main is now
-  b369e9461d4bf55427339f430f8113221a3f9ac0, while RUN-138-001 belongs to the older
-  TASK-138 candidate lineage. The current canonical main does not contain
-  src/aios_renew/correction_integration.py; the explicit integration mechanism exists only
-  in unresolved TASK-135 candidate history and therefore cannot be used as a canonical
-  bootstrap path here.
+  Forensic inspection of RUN-140-001 WIP confirms the core design was largely correct:
+  .agents/hooks.json used
+  "python ./.agents/aios_antigravity_pretool_guard.py"; the native adapter propagated
+  AIOS_ANTIGRAVITY_ACTIVE=1 only in the spawned native agy subprocess; and tests were
+  added for active/inactive guard behavior and exact hooks.json execution from workspace
+  root. However the Executor also ran pytest and created .tmp pytest repositories plus a
+  modify_tests.py helper outside TASK scope. It then failed to terminalize after roughly
+  516 seconds. The exact operating-system exit path for 4294967295 is not asserted here;
+  the actionable fact is that r1 spent execution time on Runtime-owned verification and
+  scratch generation instead of committing and finishing.
 
-  This creates a dependency cycle: TASK-138 is needed to make native Antigravity reliable
-  enough to finish TASK-136, while the normal TASK-138 remediation now requires integration
-  machinery that depends on unfinished TASK-135 lineage. TASK-140 breaks that cycle by
-  implementing the same provider-side enforcement as a fresh PRIMARY task on current main,
-  including the confirmed hook-path correction. It does not rewrite or falsely resolve
-  TASK-138 history.
+  r1 also missed one exact acceptance detail: its production-path hooks.json command
+  regression used the verification payload "pytest tests/test_authoring_ingress.py" and
+  expected AIOS_RUNTIME_OWNS_VERIFICATION. TASK-140 requires that exact-command regression
+  to additionally prove a true background-risk payload such as
+  "Start-Sleep -Seconds 20" is denied with AIOS_BACKGROUND_RISK_DENIED.
 
 assumptions:
   - >
     Canonical main at authoring is
-    b369e9461d4bf55427339f430f8113221a3f9ac0, the published TASK-139 candidate.
+    0873bb0c9e3db11958202f7581992c1632bfd4b2, TASK-140 r1 task definition only.
   - >
-    TASK-139 made antigravity-minimax a deterministic canonical RUN executor identity,
-    so TASK-140 can be executed and reviewed through direct self-host
-    executor=antigravity-minimax without relying on native agy for implementation.
+    RUN-140-001 is terminal FAILURE and Unified State reports
+    blocker.code=NON_REPAIRABLE_FAILURE and next_action=NONE.
   - >
-    ROOT_CAUSE_CONFIRMED from RUN-136-004 remains valid: native run_command can cross
-    Antigravity's foreground wait boundary, become a live background task, and prevent
-    finish/ResultPackage terminalization.
+    RUN-140-001 dirty WIP is forensic evidence only. It must not be committed manually,
+    restored into the new run, or treated as a canonical candidate.
   - >
-    MITIGATION_MECHANISM_CONFIRMED remains valid: agy 1.2.6 workspace PreToolUse can deny
-    run_command before execution under --print and --dangerously-skip-permissions.
+    Independent proof already established that agy 1.2.6 workspace PreToolUse can deny
+    run_command under --print and --dangerously-skip-permissions.
   - >
-    FINDING-138-001 is independently reproduced: from workspace root,
-    "python ./aios_antigravity_pretool_guard.py" fails while
-    "python ./.agents/aios_antigravity_pretool_guard.py" returns the stable deny result.
-  - >
-    TASK-138 REVIEW/REMEDIATION history remains canonical evidence but is not mutated,
-    bypassed, or reclassified by this task.
+    Runtime, not the coding Executor, owns all verification listed by the task.
 
 scope:
   inspect:
-    - .ai/tasks/TASK-138.yaml
+    - .ai/tasks/TASK-140.yaml
     - src/aios_renew/antigravity_adapter.py
     - tests/test_antigravity_adapter.py
     - .agents/
-    - refs/heads/aios/review-decision/RUN-138-001
-    - refs/heads/aios/remediation/RUN-138-001-FINDING-138-001
   modify:
     - src/aios_renew/antigravity_adapter.py
     - tests/test_antigravity_adapter.py
@@ -71,110 +60,114 @@ scope:
     - .agents/aios_antigravity_pretool_guard.py
 
 non_goals:
-  - Mark TASK-138, RUN-138-001, REVIEW-138-001, or its remediation as PASS/resolved.
-  - Publish, merge, rewrite, or mutate the old TASK-138 candidate/ref lineage.
-  - Implement or backport TASK-135 correction-integration machinery.
-  - Modify TASK-136 implementation or consume preserved TASK-136 dirty WIP.
-  - Replace, patch, vendor, or upgrade agy.
-  - Modify Antigravity-MiniMax behavior.
-  - Expand GitHub remote carrier executor allowlists.
-  - Add fallback, retry, reroute, recursive continuation, a second native invocation, or
-    generic planner/router behavior.
-  - Modify Dispatcher, Unified State, Publisher, Brain Ingress, correction frontier, or
-    remediation lifecycle semantics.
+  - Repair, recover, reuse, merge, or publish RUN-140-001 dirty WIP.
+  - Modify Antigravity-MiniMax/agym implementation.
+  - Modify Dispatcher, Unified State, Brain Ingress, Publisher, correction lifecycle, or
+    remote carrier allowlists.
+  - Modify TASK-136, TASK-138, TASK-139, or TASK-135 artifacts/lineage.
+  - Add retry, fallback, reroute, recursive continuation, second provider invocation,
+    generic planner/router behavior, or global/user hook configuration.
+  - Run canonical verification inside the coding Executor.
 
 constraints:
   hard:
     - >
-      Implement repository workspace PreToolUse enforcement for run_command using
-      .agents/hooks.json and a stdlib-only
-      .agents/aios_antigravity_pretool_guard.py. The hook command must resolve and execute
-      that tracked guard from the actual repository workspace root; it must not rely on
-      hook-file-relative cwd assumptions.
+      EXECUTOR IMPLEMENTATION-ONLY CONTRACT: do not run pytest, py.test, unittest, tox,
+      nox, coverage, lint, build, git diff --check, or any test/verification command.
+      Do not run the task verification commands. Runtime will run verification after the
+      Executor commits and returns ResultPackage.
     - >
-      The guard must be repository-portable. Do not use C:\TOOL paths, user-home paths,
-      the manual AGY-HOOK-SMOKE directory, or any machine-specific absolute path.
+      Do not create scratch/helper artifacts such as .tmp/, modify_tests.py, generated
+      patch scripts, temporary repositories, ad-hoc test harnesses, or files outside
+      scope.modify. Edit only the four authorized paths and commit them.
     - >
-      The guard must be inert for ordinary/manual Antigravity use and enforce AIOS policy
-      only when the native adapter activates a dedicated subprocess-scoped environment
-      marker. Preserve all caller environment variables.
+      Use repository workspace PreToolUse enforcement with canonical
+      .agents/hooks.json command exactly resolving the tracked guard from workspace root,
+      e.g. "python ./.agents/aios_antigravity_pretool_guard.py". No machine-specific
+      absolute paths.
     - >
-      In active AIOS mode, deny before execution Runtime-owned verification and known
-      background-risk command classes, including full test commands, builds, watchers,
-      servers, persistent processes, sleep/wait commands, and equivalent obvious
-      long-running forms. Use stable machine-readable denial reasons.
+      Native Antigravity adapter must set AIOS_ANTIGRAVITY_ACTIVE=1 only in the environment
+      passed to its single agy subprocess, preserve all caller environment variables, and
+      not mutate global os.environ.
     - >
-      Do not disable run_command globally. Bounded repository operations needed for
-      implementation and terminalization, including git status, git diff, git add,
-      git commit, and git rev-parse/final-HEAD inspection, must remain usable.
+      Manual/non-AIOS Antigravity sessions must remain inert/allowed by the guard.
     - >
-      Preserve TASK-137 native terminal semantics: one agy invocation, no fallback or
-      second provider call, no terminal completion while work is active, actual final HEAD
-      binding, builtin finish exactly once, and fail-closed handling of terminal ERROR,
-      malformed output, and missing structured_output.
+      Active AIOS guard must fail closed on malformed run_command input and deny before
+      execution: Runtime-owned verification commands, builds/lints, sleep/wait commands,
+      watchers, servers, persistent/background commands, provider re-invocation, and AIOS
+      operator re-invocation. Stable reasons must include
+      AIOS_RUNTIME_OWNS_VERIFICATION and AIOS_BACKGROUND_RISK_DENIED.
     - >
-      A denied Runtime-owned verification command must not create retry loops. Provider
-      instructions may tell the Executor to accept the stable denial, skip prohibited
-      Runtime-owned verification, continue authorized repository work, commit if required,
-      obtain final HEAD, and finish exactly once.
+      Do not disable run_command globally. Permit only the bounded git operations needed
+      for implementation/terminalization such as status, diff, add, commit, rev-parse,
+      log, show, branch inspection, and ls-files. Do not broaden this allow path to
+      destructive/history-changing/network operations such as reset, restore, merge,
+      rebase, stash, or fetch unless an existing required test proves one is essential.
     - >
-      Hook stdin parsing must be defensive. Active-AIOS malformed run_command input must
-      fail closed. Hook stdout must contain only valid hook protocol JSON.
+      Preserve TASK-137 terminal semantics: exactly one native agy invocation, no fallback
+      or second provider call, actual final HEAD binding, builtin finish exactly once, and
+      fail-closed terminal handling.
     - >
-      Add a production-path regression that loads the exact command string from canonical
+      Provider instruction must explicitly tell native Antigravity that a stable hook denial
+      for a Runtime-owned verification/background-risk command is expected policy, must not
+      be retried, and must not prevent implementation, commit, final-HEAD lookup, and finish.
+    - >
+      Add a production-path regression that reads the exact command string from canonical
       .agents/hooks.json and executes that exact command from repository workspace root
-      with AIOS_ANTIGRAVITY_ACTIVE=1 and a background-risk PreToolUse payload. The test
-      must prove process success and decision=deny with reason
-      AIOS_BACKGROUND_RISK_DENIED. It must fail against RUN-138-001's old
-      "python ./aios_antigravity_pretool_guard.py" command.
+      with AIOS_ANTIGRAVITY_ACTIVE=1 using
+      "Start-Sleep -Seconds 20". It must return process exit 0 and exactly
+      decision=deny, reason=AIOS_BACKGROUND_RISK_DENIED.
     - >
-      Unit/regression tests must cover active versus inactive AIOS mode, dangerous versus
-      allowed commands, malformed input, Windows-style paths/commands, environment
-      propagation, the RUN-136-004 pytest failure class, and exact hooks.json command
-      execution from workspace root.
+      Retain a separate regression for the RUN-136-004 verification class
+      "pytest tests/test_authoring_ingress.py" returning
+      AIOS_RUNTIME_OWNS_VERIFICATION.
     - >
-      PASS review is forbidden without an independent live self-host proof using installed
-      agy 1.2.6 in --print mode with --dangerously-skip-permissions: a deliberately long
-      run_command must be denied before its start marker is created, no
-      "root agent idle; waiting ... background task", "terminating ... background task",
-      or hook execution failure may appear, and the marker must remain absent.
+      Retain regression proving RUN-138-001's old
+      "python ./aios_antigravity_pretool_guard.py" path fails from workspace root.
+    - >
+      The coding Executor must stop after authorized edits, git add/commit, final
+      git rev-parse HEAD, and builtin finish. It must not execute the verification section
+      itself.
 
 acceptance:
   - id: AC1
     condition: >
-      Native AIOS Antigravity execution activates a repository workspace PreToolUse
-      run_command guard through subprocess-scoped environment only; manual/non-AIOS
-      sessions remain unaffected and no global hook configuration is changed.
+      Native AIOS Antigravity execution activates the workspace guard only through the
+      subprocess-scoped environment; manual/non-AIOS use remains unaffected.
   - id: AC2
     condition: >
-      The active guard denies Runtime-owned verification and background-risk commands
-      before execution, including the exact RUN-136-004 class
-      "pytest tests/test_authoring_ingress.py", with stable machine-readable reasons.
+      Active guard denies RUN-136-004 pytest verification with
+      AIOS_RUNTIME_OWNS_VERIFICATION and a Start-Sleep background-risk command with
+      AIOS_BACKGROUND_RISK_DENIED before execution.
   - id: AC3
     condition: >
-      The active guard permits required bounded git/repository terminalization commands
-      and does not globally disable run_command.
+      Required bounded git implementation/terminalization commands remain usable while
+      dangerous/destructive/background classes are not admitted.
   - id: AC4
     condition: >
-      The exact command configured in canonical .agents/hooks.json executes successfully
-      from repository workspace root and invokes the tracked
-      .agents/aios_antigravity_pretool_guard.py; the RUN-138-001 path bug is covered by a
-      regression.
+      The exact hooks.json command executes the tracked guard successfully from repository
+      workspace root, and both the corrected path and old RUN-138-001 path regression are
+      covered.
   - id: AC5
     condition: >
-      Native adapter behavior remains one agy invocation and preserves TASK-137
-      finish-exactly-once, final-HEAD, environment propagation, and fail-closed semantics
-      with no retry, fallback, reroute, or second provider call.
+      Native adapter remains one agy invocation with TASK-137 finish/final-HEAD/fail-closed
+      semantics and no retry/fallback/reroute.
   - id: AC6
     condition: >
-      Focused and full antigravity-adapter regressions pass, git diff --check passes,
-      RESULT has no unresolved items, and changes stay within TASK-140 scope.
+      Candidate changes are limited to the four authorized paths; no .tmp, modify_tests.py,
+      helper scripts, generated test repositories, or other scratch artifacts exist in the
+      candidate.
   - id: AC7
     condition: >
-      Independent live agy 1.2.6 --print proof demonstrates PreToolUse denial before a
-      deliberately long run_command starts: start marker absent, stable
-      AIOS_BACKGROUND_RISK_DENIED denial, and no background-task/hook-failure terminal
-      warning.
+      Runtime-owned focused/full antigravity-adapter verification and git diff --check pass,
+      RESULT has no unresolved items, and the coding Executor did not run those verification
+      commands itself.
+  - id: AC8
+    condition: >
+      Before PASS review, independent live self-host agy 1.2.6 --print proof with
+      --dangerously-skip-permissions denies a deliberately long run_command before its
+      marker is created, emits stable AIOS_BACKGROUND_RISK_DENIED, emits no background-task
+      or hook-failure terminal warning, and leaves the marker absent.
 
 verification:
   required:
