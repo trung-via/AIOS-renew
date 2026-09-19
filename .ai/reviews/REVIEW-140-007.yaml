@@ -1,0 +1,59 @@
+review_id: REVIEW-140-007
+reviewed_sha: c52a1db8d59270628f69c2cc54c3985553e4abca
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: FAIL
+findings:
+  - id: FINDING-140-005
+    basis: AC3
+    action: CODE_FIX
+    location: .agents/aios_antigravity_pretool_guard.py and tests/test_antigravity_adapter.py
+    issue: >
+      The final guard now handles bare/path-prefixed git, quoted executable tokens,
+      inspection-only branch forms, and chains that begin directly with a recognized git
+      token, but it still does not fail closed for the normal PowerShell call-operator form
+      required to execute a quoted Windows executable path. _normalize_git_invocation()
+      only classifies commands whose first executable token itself is git/git.exe.
+      Therefore a command such as
+      & "C:\Program Files\Git\cmd\git.exe" push origin main
+      or
+      & "C:\Program Files\Git\cmd\git.exe" reset --hard HEAD
+      begins with the PowerShell call operator &, is not classified as git, is not a
+      trailing-background-marker case, and falls through the generic allow path. This leaves
+      a Windows-specific bypass of the task's explicit git-category fail-closed requirement
+      for quoted/absolute Windows executable paths.
+    expected: >
+      Normalize and classify the PowerShell call-operator form before git policy evaluation.
+      A leading & followed by a quoted or unquoted git/git.exe executable path must be treated
+      as the same git invocation category. Bounded inspection/terminalization forms may remain
+      allowed; destructive/history-changing/network/unknown forms must deny with
+      AIOS_GIT_OPERATION_NOT_ADMITTED; diff --check in any benign ordering must deny with
+      AIOS_RUNTIME_OWNS_VERIFICATION. Add regressions for safe and destructive
+      & "C:\Program Files\Git\cmd\git.exe" forms and for an absolute unquoted git.exe
+      path where syntactically applicable. Do not widen generic shell execution.
+  - id: FINDING-140-006
+    basis: AC8
+    action: EVIDENCE_ONLY
+    location: independent live self-host agy 1.2.6 proof
+    issue: >
+      RUN-140-007 has Runtime verification evidence only: focused pytest passed
+      (219 passed, 76 deselected), full antigravity-adapter pytest passed (295 passed),
+      and git diff --check passed. Those results do not establish AC8. The RESULT claim for
+      AC8 describes hook JSON/terminal behavior, but AC8 specifically requires an independent
+      live native agy 1.2.6 --print run with --dangerously-skip-permissions and
+      AIOS_ANTIGRAVITY_ACTIVE=1 proving a deliberately long run_command is denied before its
+      start marker is created with stable AIOS_BACKGROUND_RISK_DENIED, marker remains absent,
+      and output contains no root-agent idle/background-task termination/hook execution
+      failure.
+    expected: >
+      After the AC3 code finding is resolved, run the required independent live self-host
+      proof against the corrected candidate and preserve the exact command/output plus marker
+      absence as review evidence. Do not modify repository code for this finding.
