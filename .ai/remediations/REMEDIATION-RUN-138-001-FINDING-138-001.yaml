@@ -1,0 +1,10 @@
+finding_id: FINDING-138-001
+action: CODE_FIX
+reviewed_sha: ec7da7662819dd11b2f8824daf85b340a439c2e7
+modification_scope:
+  - .agents/hooks.json
+  - tests/test_antigravity_adapter.py
+affected_verification:
+  - python -m pytest -q tests/test_antigravity_adapter.py -k "pretool or guard or background"
+  - python -m pytest -q tests/test_antigravity_adapter.py
+  - git diff --check
