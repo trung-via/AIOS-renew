@@ -7401,7 +7401,7 @@ findings: []
     assert operator_module._git_is_ancestor(repo, primary_sha, summary.head_sha)
 
 
-def test_remediation_revision_1_fails_closed_on_invalid_cumulative_state_ac5(
+def test_integrated_remediation_repair_completion_preserves_result_base_ac5_ac6(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = make_repo(tmp_path)
@@ -7510,21 +7510,93 @@ findings:
         repo=repo,
     )
     isolated_runner = IsolatedRemediationRunner(int_result.integration_candidate_sha)
-    summary = run_remediation(
-        "TASK-101",
-        finding_id="R1",
-        executor="codex",
-        repo=repo,
-        native_runner=isolated_runner,
-    )
+
+    def fail_verification(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command, returncode=9, stdout=b"", stderr=b"repair required\n"
+        )
+
+    with pytest.raises(OperatorError, match="exit code 9"):
+        run_remediation(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+            native_runner=isolated_runner,
+            verification_runner=fail_verification,
+        )
     assert len(isolated_runner.calls) == 1
     state = runtime_paths(repo)
-    run_doc = json.loads((state.runs / f"{summary.run_id}.json").read_text(encoding="utf-8"))
+    run_doc = json.loads(
+        (state.runs / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
     assert run_doc["execution_base"]["kind"] == "INTEGRATED"
     assert run_doc["execution_base"]["integration_candidate_sha"] == int_result.integration_candidate_sha
     assert run_doc["execution"]["run"]["base_sha"] == int_result.integration_candidate_sha
-    res_doc = json.loads((state.results / f"{summary.run_id}.json").read_text(encoding="utf-8"))
-    assert res_doc["result"]["changed_files"] == ["OUTPUT.txt"]
+
+    failed_remediation = json.loads(
+        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    repair = {
+        "repair_id": "REPAIR-101-001",
+        "failed_run_id": "RUN-101-001",
+        "failed_head_sha": failed_remediation["failed_head_sha"],
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CODE_FIX",
+        "modification_scope": ["OUTPUT.txt"],
+        "instructions": ["Correct the integrated remediation candidate."],
+        "constraints": ["Commit the output."],
+    }
+    first_repair_runner = RepairRunner(repo)
+    with pytest.raises(OperatorError, match="exit code 9"):
+        run_repair(
+            "RUN-101-001",
+            executor="codex",
+            repo=repo,
+            repair=repair,
+            native_runner=first_repair_runner,
+            verification_runner=fail_verification,
+        )
+
+    first_repair = json.loads(
+        (state.repairs / "RUN-101-002.json").read_text(encoding="utf-8")
+    )
+    assert first_repair["root_base_sha"] == head
+    assert first_repair["result_base_sha"] == int_result.integration_candidate_sha
+    assert first_repair["run"]["base_sha"] == failed_remediation["failed_head_sha"]
+
+    continuation_failure = json.loads(
+        (state.failures / "RUN-101-002.json").read_text(encoding="utf-8")
+    )
+    continuation = {
+        **repair,
+        "repair_id": "REPAIR-101-002",
+        "failed_run_id": "RUN-101-002",
+        "failed_head_sha": continuation_failure["failed_head_sha"],
+    }
+    completed = run_repair(
+        "RUN-101-002",
+        executor="codex",
+        repo=repo,
+        repair=continuation,
+        native_runner=RepairRunner(repo),
+    )
+
+    continued_repair = json.loads(
+        (state.repairs / f"{completed.run_id}.json").read_text(encoding="utf-8")
+    )
+    result = json.loads(completed.result_path.read_text(encoding="utf-8"))
+    assert completed.run_id == "RUN-101-003"
+    assert continued_repair["root_base_sha"] == head
+    assert continued_repair["result_base_sha"] == int_result.integration_candidate_sha
+    assert result["result"]["changed_files"] == ["OUTPUT.txt"]
+    assert git(
+        repo,
+        "diff",
+        "--name-only",
+        int_result.integration_candidate_sha,
+        completed.head_sha,
+    ).splitlines() == ["OUTPUT.txt"]
 
 
 def test_remediation_direct_candidate_revision_1_sibling_preserves_cumulative_tip_ac2_ac3(
