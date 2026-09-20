@@ -1,0 +1,9 @@
+finding_id: FINDING-130-001
+action: CODE_FIX
+reviewed_sha: e8285b8433f9eb9204dd9961f5db2693988d8d24
+modification_scope:
+  - tests/test_operator.py
+affected_verification:
+  - python -m pytest -q tests/test_operator.py -k "v2_task_authorization"
+  - git diff --check
+constraints: []
