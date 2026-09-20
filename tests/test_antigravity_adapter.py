@@ -2498,21 +2498,23 @@ class _RecordingRunner:
         )
 
 
-def _adapter_with_runner(repo, runner):
+def _adapter_with_runner(repo, runner, tmp_path):
     return AntigravityAdapter(
         runner=runner,
         repo=repo,
-        handoff_path=REPO_ROOT / ".git" / "aios" / "handoffs" / "_test_138.json",
+        handoff_path=tmp_path / "handoffs" / "_test_138.json",
         execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
     )
 
 
-def test_task138_adapter_propagates_aios_active_env_without_losing_caller(monkeypatch):
+def test_task138_adapter_propagates_aios_active_env_without_losing_caller(
+    monkeypatch, tmp_path
+):
     """Adapter subprocess env must set the activation marker and preserve caller env."""
     monkeypatch.setenv("MY_INHERITED_VAR", "preserved")
     task, run, _, _ = make_execution()
     runner = _RecordingRunner(successful_output(run.run_id))
-    adapter = _adapter_with_runner(REPO_ROOT, runner)
+    adapter = _adapter_with_runner(REPO_ROOT, runner, tmp_path)
     adapter.execute(task=task, run=run)
     assert len(runner.calls) == 1
     command, kwargs = runner.calls[0]
@@ -2523,22 +2525,22 @@ def test_task138_adapter_propagates_aios_active_env_without_losing_caller(monkey
     assert "PATH" in env
 
 
-def test_task138_adapter_does_not_mutate_caller_process_env(monkeypatch):
+def test_task138_adapter_does_not_mutate_caller_process_env(monkeypatch, tmp_path):
     """The adapter must not globally export the activation marker."""
     monkeypatch.delenv(AIOS_ANTIGRAVITY_ACTIVE_ENV, raising=False)
     assert AIOS_ANTIGRAVITY_ACTIVE_ENV not in os.environ
     task, run, _, _ = make_execution()
     runner = _RecordingRunner(successful_output(run.run_id))
-    adapter = _adapter_with_runner(REPO_ROOT, runner)
+    adapter = _adapter_with_runner(REPO_ROOT, runner, tmp_path)
     adapter.execute(task=task, run=run)
     assert AIOS_ANTIGRAVITY_ACTIVE_ENV not in os.environ
 
 
-def test_task138_adapter_preserves_one_native_invocation_under_active_env():
+def test_task138_adapter_preserves_one_native_invocation_under_active_env(tmp_path):
     """Even when active env is set, the adapter still emits exactly one runner call."""
     task, run, _, _ = make_execution()
     runner = _RecordingRunner(successful_output(run.run_id))
-    adapter = _adapter_with_runner(REPO_ROOT, runner)
+    adapter = _adapter_with_runner(REPO_ROOT, runner, tmp_path)
     adapter.execute(task=task, run=run)
     assert len(runner.calls) == 1
     command, _ = runner.calls[0]
@@ -2546,9 +2548,9 @@ def test_task138_adapter_preserves_one_native_invocation_under_active_env():
     assert command[1] == "--print"
 
 
-def test_task138_adapter_remediation_also_propagates_active_env():
+def test_task138_adapter_remediation_also_propagates_active_env(tmp_path):
     runner = _RecordingRunner(successful_output("RUN-138-001"))
-    adapter = _adapter_with_runner(REPO_ROOT, runner)
+    adapter = _adapter_with_runner(REPO_ROOT, runner, tmp_path)
     adapter.execute_remediation(execution=make_remediation_execution())
     assert len(runner.calls) == 1
     _, kwargs = runner.calls[0]
