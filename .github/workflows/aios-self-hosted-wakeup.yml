@@ -43,7 +43,6 @@ jobs:
     runs-on: [self-hosted, windows, x64, aios-renew]
     env:
       AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}
-      AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-primary-operational-receipt-v2.json
       AIOS_DISPATCH_ID: ${{ inputs.dispatch_id }}
       AIOS_TASK_ID: ${{ inputs.task_id }}
       AIOS_TASK_REVISION: ${{ inputs.task_revision }}
@@ -52,6 +51,8 @@ jobs:
       AIOS_EXECUTOR: ${{ inputs.executor }}
     steps:
       - name: Preflight persistent environment
+        env:
+          AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-primary-operational-receipt-v2.json
         shell: powershell
         run: |
           function Write-OperationalFailure([string]$Reason) {
@@ -90,6 +91,7 @@ jobs:
 
       - name: Execute idempotent AIOS primary wakeup
         env:
+          AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-primary-operational-receipt-v2.json
           AIOS_DISPATCH_ID: ${{ inputs.dispatch_id }}
           AIOS_TASK_ID: ${{ inputs.task_id }}
           AIOS_TASK_REVISION: ${{ inputs.task_revision }}
@@ -145,6 +147,8 @@ jobs:
 
       - name: Expose bounded Operational Receipt v2
         if: always()
+        env:
+          AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-primary-operational-receipt-v2.json
         shell: powershell
         run: |
           if (Test-Path -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -PathType Leaf) {
@@ -158,6 +162,8 @@ jobs:
       - name: Persist bounded Operational Receipt v2
         if: always()
         uses: actions/upload-artifact@v4
+        env:
+          AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-primary-operational-receipt-v2.json
         with:
           name: aios-operational-receipt-v2
           path: ${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}

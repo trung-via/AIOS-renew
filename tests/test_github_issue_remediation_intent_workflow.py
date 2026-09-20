@@ -161,6 +161,7 @@ def test_remediation_workflows_persist_exact_run_receipt_artifact() -> None:
     ):
         workflow, text = _workflow(path)
         job = workflow["jobs"][job_name]
+        receipt_path = f"${{{{ runner.temp }}}}/{receipt_file}"
         upload = next(
             step
             for step in job["steps"]
@@ -170,6 +171,7 @@ def test_remediation_workflows_persist_exact_run_receipt_artifact() -> None:
             "name": "Persist bounded Operational Receipt v2",
             "if": "always()",
             "uses": "actions/upload-artifact@v4",
+            "env": {"AIOS_OPERATIONAL_RECEIPT_PATH": receipt_path},
             "with": {
                 "name": "aios-operational-receipt-v2",
                 "path": "${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}",
@@ -177,9 +179,9 @@ def test_remediation_workflows_persist_exact_run_receipt_artifact() -> None:
                 "retention-days": "30",
             },
         }
-        assert job["env"]["AIOS_OPERATIONAL_RECEIPT_PATH"] == (
-            f"${{{{ runner.temp }}}}/{receipt_file}"
-        )
+        assert "AIOS_OPERATIONAL_RECEIPT_PATH" not in job["env"]
+        for step in job["steps"]:
+            assert step["env"]["AIOS_OPERATIONAL_RECEIPT_PATH"] == receipt_path
         assert (
             "delivery=@{kind='correction_dispatch_id';id=$env:AIOS_CORRECTION_DISPATCH_ID}"
             in text

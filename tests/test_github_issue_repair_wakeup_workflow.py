@@ -137,6 +137,7 @@ def test_receipt_accepts_only_successful_admission_and_dispatch() -> None:
 def test_repair_workflow_persists_exact_run_receipt_artifact() -> None:
     workflow, text = _workflow(TARGET)
     job = workflow["jobs"]["execute-repair"]
+    receipt_path = "${{ runner.temp }}/aios-repair-operational-receipt-v2.json"
     upload = next(
         step
         for step in job["steps"]
@@ -147,6 +148,7 @@ def test_repair_workflow_persists_exact_run_receipt_artifact() -> None:
         "name": "Persist bounded Operational Receipt v2",
         "if": "always()",
         "uses": "actions/upload-artifact@v4",
+        "env": {"AIOS_OPERATIONAL_RECEIPT_PATH": receipt_path},
         "with": {
             "name": "aios-operational-receipt-v2",
             "path": "${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}",
@@ -154,9 +156,9 @@ def test_repair_workflow_persists_exact_run_receipt_artifact() -> None:
             "retention-days": "30",
         },
     }
-    assert job["env"]["AIOS_OPERATIONAL_RECEIPT_PATH"] == (
-        "${{ runner.temp }}/aios-repair-operational-receipt-v2.json"
-    )
+    assert "AIOS_OPERATIONAL_RECEIPT_PATH" not in job["env"]
+    for step in job["steps"]:
+        assert step["env"]["AIOS_OPERATIONAL_RECEIPT_PATH"] == receipt_path
     assert "delivery=@{kind='repair_dispatch_id';id=$env:AIOS_REPAIR_DISPATCH_ID}" in text
 
 
