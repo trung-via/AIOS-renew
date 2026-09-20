@@ -1,0 +1,248 @@
+task_id: TASK-150
+revision: 1
+
+goal: >
+  Implement BP-V1 Verification Contract Hardening as one prospective,
+  repository-owned deterministic minimum-sufficient verification contract so newly
+  authored TASK revisions and their REMEDIATION contracts cannot silently require
+  known redundant proof on the same unchanged subject, REPAIR can deterministically
+  normalize overlap created only by combining already-authorized verification sources,
+  and justified full-suite use is explicit without moving semantic judgment or
+  canonical verification truth out of Runtime.
+
+problem: >
+  Canonical policy already says verification is progressive, minimum-sufficient, and
+  full-suite execution is justified rather than ritual. Current implementation does not
+  enforce that policy. TASK parsing rejects only exact duplicate command strings;
+  REMEDIATION affected_verification has no equivalent duplicate/subsumption contract;
+  and repair_completion_policy combines TASK verification with origin remediation
+  verification using dict.fromkeys, which removes exact strings only. Historical evidence
+  demonstrates material redundant cost on unchanged candidate state: RUN-145-002 ran a
+  focused Unified State subset, then the containing file suite, then a 1207-test full
+  suite taking 1343.67 seconds; RUN-144-006 ran focused suites and a 378-test combined
+  suite before a 1222-test full suite, with the combined suite taking 1192.47 seconds
+  and the full suite 1578.39 seconds. BP-V1 must close this contract gap prospectively
+  without reinterpreting historical lineage, introducing heuristic test selection, or
+  absorbing BP-V2/BP-V3/BP-V4 performance work.
+
+assumptions:
+  - Canonical main at TASK authoring is 476d1ef2eb6d9822f1f764a22fd08c1ed872ea4b.
+  - BP-V1 Verification Contract Hardening is the unique canonical NEXT roadmap milestone.
+  - >
+    TASK-150 is the bootstrap change and is authored under the currently published legacy
+    TASK verification schema; it does not require the prospective v1 marker that it introduces.
+  - >
+    After TASK-150 is reviewed and published, current-main Authoring Ingress is the
+    prospective enforcement point for new TASK identities and new TASK revisions.
+  - >
+    Historical canonical TASK, REVIEW, REMEDIATION, REPAIR, RUN, RESULT, FAILURE and
+    EVIDENCE artifacts remain immutable and must remain readable and usable.
+  - >
+    src/aios_renew/verification.py already has the correct narrow responsibility:
+    execute the final authorized command list once in order, bind Runtime evidence, and
+    fail closed on execution/evidence errors.
+  - >
+    Known verification coverage may be inferred only from a deliberately small,
+    repository-owned deterministic grammar; unsupported or ambiguous commands remain opaque.
+  - >
+    BP-V2 owns intrinsic full-suite harness acceleration, BP-V3 owns verification workspace
+    isolation, and BP-V4 owns parallel verification/performance guards.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-PERFORMANCE-CLOSURE.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-144.yaml
+    - .ai/tasks/TASK-145.yaml
+    - src/aios_renew/task.py
+    - src/aios_renew/review.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - tests/test_task.py
+    - tests/test_review.py
+    - tests/test_runtime.py
+    - tests/test_authoring_ingress.py
+    - tests/test_verification.py
+  modify:
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - src/aios_renew/verification_contract.py
+    - src/aios_renew/task.py
+    - src/aios_renew/review.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_verification_contract.py
+    - tests/test_task.py
+    - tests/test_review.py
+    - tests/test_runtime.py
+    - tests/test_authoring_ingress.py
+
+non_goals:
+  - >
+    Change src/aios_renew/verification.py execution, evidence capture, temporary-workspace,
+    failure, or ordering semantics.
+  - >
+    Rewrite, migrate, backfill, relabel, invalidate, or reinterpret historical TASK,
+    REMEDIATION, REPAIR, RUN, RESULT, FAILURE, REVIEW, or EVIDENCE artifacts.
+  - Add heuristic, model-selected, changed-files-selected, or automatically discovered tests.
+  - >
+    Decide semantically whether a full-suite justification is persuasive; that judgment
+    remains with Brain/Reviewer authority.
+  - Reuse verification evidence across different subject SHAs or different RUNs.
+  - >
+    Accelerate pytest or Git fixtures, change the canonical test population, add caches
+    for test execution, add skips/xfails/deselection, or weaken production-shaped Git tests.
+  - Add pytest parallelism, worker-count policy, performance thresholds, or regression guards.
+  - >
+    Change verification workspace isolation or decouple candidate verification from control
+    checkout movement.
+  - >
+    Add a Planner, verifier agent, router, retry/fallback authority, database, daemon, or
+    second lifecycle/verification truth store.
+  - >
+    Change Publisher, Reviewer verdict semantics, Unified State lifecycle authority, or
+    frozen Kernel role separation.
+  - Push from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Introduce one narrow deterministic verification-contract module responsible only for
+      parsing conservative known command coverage, validating prospective verification
+      contracts, and normalizing overlap created by combining authorized verification
+      sources. It must not execute tests, inspect implementation semantics, choose tests
+      heuristically, or create lifecycle state.
+    - >
+      Preserve historical compatibility. parse_task and parse_remediation must continue to
+      accept canonical legacy contracts that lack the v1 policy marker. Historical reviews,
+      remediation/repair lineage reconstruction, replay, publication evidence, and Runtime
+      loading must not become invalid merely because TASK-150 is published.
+    - >
+      Define prospective TASK verification v1 with policy value
+      minimum-sufficient-v1. A v1 TASK verification mapping carries required commands and
+      may carry full_suite_reason. Existing legacy verification.required remains readable.
+    - >
+      Define prospective REMEDIATION verification v1 compatibly with the existing narrow
+      remediation contract: for a TASK using minimum-sufficient-v1, a newly authored
+      remediation must carry the same verification policy with its affected command list;
+      legacy TASKs may continue to use legacy remediation verification syntax.
+    - >
+      Authoring Ingress must enforce prospective activation without an activation SHA or
+      historical rewrite: once this code is published on main, a genuinely new TASK or new
+      TASK revision must use minimum-sufficient-v1, while an identical historical
+      same-revision AUTHOR_TASK replay remains idempotent and must not be rejected merely
+      for lacking the new marker.
+    - >
+      A v1 TASK or v1 REMEDIATION contract must reject exact duplicate commands,
+      deterministic coverage-equivalent commands, and commands provably subsumed by another
+      command in the same declared verification list. Brain-authored artifacts are rejected
+      rather than silently rewritten.
+    - >
+      Known pytest coverage inference must be conservative and repository-owned. Support
+      only a bounded grammar whose coverage relation is mechanically provable, including
+      separate launcher families for python -m pytest and pytest, output-only quiet flags,
+      explicit positional test paths, and an optional -k narrowing expression. Unsupported,
+      malformed, shell-composed, or otherwise ambiguous commands remain opaque and acquire
+      no inferred subsumption relation beyond exact string duplication.
+    - >
+      Do not infer equivalence across different pytest launcher families. For one recognized
+      launcher family, a command with no path and no narrowing filter is the recognized full
+      suite; an unfiltered broader path set may subsume a narrower path set; an unfiltered
+      command may subsume the same path scope with a -k filter; and identical filters may be
+      compared only where the remaining recognized scope relation is mechanically exact.
+      If the relation cannot be proven, preserve both commands.
+    - >
+      Any v1 TASK or v1 REMEDIATION containing a recognized full-suite command must carry one
+      explicit non-empty bounded full_suite_reason of at most 512 characters. A
+      full_suite_reason without a recognized full-suite command is invalid. Runtime/parser
+      validation checks only structure, bounds, and deterministic command classification;
+      it must not decide whether the reason is semantically persuasive.
+    - >
+      REPAIR is the one place where deterministic normalization rather than authoring
+      rejection is required: when a v1 TASK verification list is combined with the exact
+      origin v1 REMEDIATION affected-verification list, compute one effective plan that
+      removes exact/equivalent duplicates and commands strictly subsumed by another
+      recognized command. Preserve original relative order among surviving commands; for
+      coverage-equivalent commands keep the earliest occurrence. Do not mutate either
+      source artifact.
+    - >
+      Legacy REPAIR behavior remains compatible for legacy TASKs. Do not retroactively apply
+      new inferred subsumption to historical contracts merely because they are being
+      rehydrated or repaired after TASK-150 publication.
+    - >
+      Runtime remains the sole canonical verification/evidence authority. After prospective
+      validation or REPAIR normalization, RuntimeCompletion passes the effective command list
+      to execute_verification exactly once; Executor claims and local ad hoc test runs do not
+      become canonical verification truth.
+    - >
+      Documentation must state the prospective v1 authoring rule, conservative opacity rule,
+      explicit full-suite reason rule, and historical compatibility boundary without
+      presenting the deterministic policy as semantic review authority.
+    - >
+      Do not modify files outside scope.modify and do not push from Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      All existing canonical legacy TASK/remediation contracts and representative historical
+      corpus tests remain parseable and usable without rewriting history, and same-revision
+      historical AUTHOR_TASK replay remains idempotent after prospective enforcement exists.
+  - id: AC2
+    condition: >
+      After TASK-150 publication, Authoring Ingress rejects a genuinely new TASK or new TASK
+      revision that omits verification policy minimum-sufficient-v1, while accepting a valid
+      v1 contract and preserving exact TASK identity/revision/blob semantics.
+  - id: AC3
+    condition: >
+      v1 TASK verification rejects exact duplicates, mechanically coverage-equivalent pytest
+      commands, and mechanically provable subset/superset redundancy, and requires a bounded
+      full_suite_reason exactly when a recognized full-suite command is present.
+  - id: AC4
+    condition: >
+      A REMEDIATION for a v1 TASK must use the v1 verification contract and receives the same
+      duplicate/subsumption/full-suite structural validation; a remediation for a legacy TASK
+      remains backward compatible.
+  - id: AC5
+    condition: >
+      The deterministic coverage grammar is conservative: supported pytest relations are
+      proven only within one launcher family and supported syntax, while unsupported or
+      ambiguous commands remain opaque and are never dropped based on heuristic similarity.
+  - id: AC6
+    condition: >
+      REPAIR of a v1 remediation produces one deterministic minimum-sufficient effective
+      verification plan across TASK plus origin affected verification, retaining the earliest
+      equivalent command and the broader command for strict recognized subsumption, with
+      stable order among survivors and no mutation of source contracts.
+  - id: AC7
+    condition: >
+      Runtime still executes only the final effective canonical command list and constructs
+      EVIDENCE exactly as before; semantic judgment, test selection, evidence reuse across
+      different subject SHAs, Reviewer authority, and Publisher authority do not move.
+  - id: AC8
+    condition: >
+      The implementation does not perform BP-V2 full-suite harness acceleration, BP-V3
+      workspace isolation, or BP-V4 parallel/performance-guard work and does not reduce the
+      canonical test population through skips, xfails, deselection, broad mocks, or weakened
+      gates.
+  - id: AC9
+    condition: >
+      Documentation and focused regression tests cover prospective TASK activation,
+      historical replay compatibility, v1 remediation compatibility, conservative opaque
+      commands, full-suite reason bounds, and REPAIR normalization, with all implementation
+      changes limited to the authorized files.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_verification_contract.py tests/test_task.py tests/test_review.py
+    - python -m pytest -q tests/test_runtime.py
+    - python -m pytest -q tests/test_authoring_ingress.py -k "author_task or author_remediation"
+    - git diff --check
