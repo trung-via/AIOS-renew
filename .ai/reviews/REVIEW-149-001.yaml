@@ -1,0 +1,67 @@
+review_id: REVIEW-149-001
+reviewed_sha: f86440bffe7319da3b89a2046e215485058ca9dd
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: FAIL
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings:
+- id: F1
+  basis: AC1
+  action: CODE_FIX
+  location: .github/workflows/aios-self-hosted-wakeup.yml; .github/workflows/aios-approved-remediation-intent.yml;
+    .github/workflows/aios-approved-remediation-wakeup.yml; .github/workflows/aios-self-hosted-repair-wakeup.yml
+  issue: The workflow-run Operational Receipt v2 file is created only under runner.temp
+    and then exposed by Write-Output and GITHUB_STEP_SUMMARY. No run-scoped structured
+    surface is persisted or addressable after the job, so a machine consumer cannot
+    retrieve the bounded receipt for an exact workflow run without parsing log/summary
+    text. This does not satisfy the TASK-149 hard constraint and AC1 requirement for
+    a bounded run-scoped machine-readable receipt while arbitrary/free-form log parsing
+    is forbidden.
+  expected: Persist the bounded receipt on a run-scoped, machine-addressable GitHub
+    Actions surface such as an exact named artifact or equivalent structured run output
+    that can be retrieved by workflow run and correlated by the existing delivery
+    identity, without repository lifecycle mutation, polling, a new semantic selector,
+    or a second truth store. Keep log/summary rendering optional and non-authoritative,
+    and add deterministic tests for the retrieval/persistence contract rather than
+    only checking emitted text.
+- id: F2
+  basis: AC1
+  action: CODE_FIX
+  location: src/aios_renew/operational_receipt.py::project_delivery_receipt
+  issue: RUN_ATTRIBUTED and TERMINAL_POINTER receipts set executor_invoked from record.get('executor')
+    is not None. PRIMARY/correction/REPAIR dispatch journals record the selected Executor
+    before execution, and RUN binding occurs at canonical admission before dispatcher
+    invocation. Executor selection or RUN attribution therefore does not prove that
+    the Executor was actually invoked, so the receipt can overstate an unobserved
+    boundary fact.
+  expected: Do not infer executor_invoked from the configured Executor selector. Emit
+    executor_invoked=true only when an existing authoritative observation directly
+    proves invocation for that exact delivery/RUN; otherwise leave it false or omit
+    the claim according to the bounded receipt contract. Do not add a new lifecycle
+    authority or widen dispatch-journal semantics. Add a regression with an exact
+    journal-bound RUN before dispatcher invocation proving the receipt does not claim
+    Executor invocation.
+- id: F3
+  basis: AC5
+  action: CODE_FIX
+  location: src/aios_renew/operator.py PRIMARY/REMEDIATION/REPAIR CLI projection paths
+    and the corresponding self-host workflows
+  issue: The post-AIOS project_delivery_receipt call is reached only after the delegated
+    command returns normally. When an admitted RUN terminalizes as canonical FAILURE
+    and the AIOS command exits nonzero, the workflow receipt file can remain at the
+    pre-call AIOS_INVOKED state written immediately before invocation. The always-run
+    expose step then surfaces that stale receipt even though exact canonical FAILURE
+    truth already exists, violating the terminal-pointer reduction rule.
+  expected: Ensure the exact delivery is re-projected after the AIOS invocation attempt
+    on both success and failure paths, using existing exact dispatch binding and canonical
+    terminal state only. If RESULT or FAILURE exists for the attributed RUN, the final
+    workflow-run receipt must be TERMINAL_POINTER; if no terminal exists, remain at
+    the strongest actually proven nonterminal/typed failure boundary. Preserve the
+    original command exit outcome and do not suppress or reinterpret Runtime failure.
