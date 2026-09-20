@@ -5722,28 +5722,30 @@ def main(
                 # the parent will perform the single dispatch finalization.
                 return invoke_primary().exit_code
 
-            outcome = execute_dispatch(
-                state_root=runtime_paths(repo_root).root,
-                dispatch_id=args.dispatch_id,
-                task_id=args.task_id,
-                executor=args.executor,
-                invoke_primary=invoke_primary,
-                task_revision=args.task_revision,
-                task_blob_sha=args.task_blob_sha,
-                task_commit_sha=args.task_commit_sha,
-            )
-            _project_operational_delivery(
-                repo_root,
-                family="PRIMARY",
-                delivery_id=args.dispatch_id,
-                selectors={
-                    "task_id": args.task_id,
-                    "task_revision": args.task_revision,
-                    "task_blob_sha": args.task_blob_sha,
-                    "task_commit_sha": args.task_commit_sha,
-                    "executor": args.executor,
-                },
-            )
+            try:
+                outcome = execute_dispatch(
+                    state_root=runtime_paths(repo_root).root,
+                    dispatch_id=args.dispatch_id,
+                    task_id=args.task_id,
+                    executor=args.executor,
+                    invoke_primary=invoke_primary,
+                    task_revision=args.task_revision,
+                    task_blob_sha=args.task_blob_sha,
+                    task_commit_sha=args.task_commit_sha,
+                )
+            finally:
+                _project_operational_delivery(
+                    repo_root,
+                    family="PRIMARY",
+                    delivery_id=args.dispatch_id,
+                    selectors={
+                        "task_id": args.task_id,
+                        "task_revision": args.task_revision,
+                        "task_blob_sha": args.task_blob_sha,
+                        "task_commit_sha": args.task_commit_sha,
+                        "executor": args.executor,
+                    },
+                )
             print(outcome.render())
             return outcome.exit_code
         elif args.command == "remote-status":
@@ -5785,28 +5787,30 @@ def main(
                 raise OperatorError(message) from exc
             print(summary.render())
         elif args.command == "approved-remediation-intent":
-            approval, outcome = run_approved_remediation_intent(
-                args.correction_dispatch_id,
-                args.source_run_id,
-                args.finding_id,
-                executor=args.executor,
-                approver=args.approver,
-                repo=args.repo,
-                native_runner=native_runner,
-                verification_runner=verification_runner,
-                monotonic_clock=monotonic_clock,
-            )
             intent_root = resolve_repository(args.repo)
-            _project_operational_delivery(
-                intent_root,
-                family="REMEDIATION",
-                delivery_id=args.correction_dispatch_id,
-                selectors={
-                    "source_run_id": args.source_run_id,
-                    "finding_id": args.finding_id,
-                    "executor": args.executor,
-                },
-            )
+            try:
+                approval, outcome = run_approved_remediation_intent(
+                    args.correction_dispatch_id,
+                    args.source_run_id,
+                    args.finding_id,
+                    executor=args.executor,
+                    approver=args.approver,
+                    repo=intent_root,
+                    native_runner=native_runner,
+                    verification_runner=verification_runner,
+                    monotonic_clock=monotonic_clock,
+                )
+            finally:
+                _project_operational_delivery(
+                    intent_root,
+                    family="REMEDIATION",
+                    delivery_id=args.correction_dispatch_id,
+                    selectors={
+                        "source_run_id": args.source_run_id,
+                        "finding_id": args.finding_id,
+                        "executor": args.executor,
+                    },
+                )
             print(approval.render())
             print(outcome.render())
             return outcome.exit_code
@@ -5819,63 +5823,65 @@ def main(
             )
             from .remote_surface import RemoteSurfaceError, require_current_approval
 
+            repo_root = resolve_repository(args.repo)
             try:
-                repo_root = resolve_repository(args.repo)
-                state_root = runtime_state_root(repo_root)
-                reject_existing_selector_collision(
-                    state_root=state_root,
-                    correction_dispatch_id=args.correction_dispatch_id,
-                    source_run_id=args.source_run_id,
-                    finding_id=args.finding_id,
-                    executor=args.executor,
-                )
-                approval = require_current_approval(
-                    repo=repo_root,
-                    state_root=state_root,
-                    source_run_id=args.source_run_id,
-                    finding_id=args.finding_id,
-                )
+                try:
+                    state_root = runtime_state_root(repo_root)
+                    reject_existing_selector_collision(
+                        state_root=state_root,
+                        correction_dispatch_id=args.correction_dispatch_id,
+                        source_run_id=args.source_run_id,
+                        finding_id=args.finding_id,
+                        executor=args.executor,
+                    )
+                    approval = require_current_approval(
+                        repo=repo_root,
+                        state_root=state_root,
+                        source_run_id=args.source_run_id,
+                        finding_id=args.finding_id,
+                    )
 
-                def invoke_remediation() -> CorrectionInvocation:
-                    try:
-                        summary = run_remediation(
-                            approval.task_id,
-                            finding_id=args.finding_id,
-                            source_run_id=args.source_run_id,
-                            approved_remediation_sha=approval.remediation_sha,
-                            correction_dispatch_id=args.correction_dispatch_id,
-                            executor=args.executor,
-                            repo=repo_root,
-                            native_runner=native_runner,
-                            verification_runner=verification_runner,
-                            monotonic_clock=monotonic_clock,
-                        )
-                        return CorrectionInvocation(0, summary.run_id)
-                    except OperatorError as exc:
-                        print(f"AIOS ERROR: {exc}", file=sys.stderr)
-                        return CorrectionInvocation(1)
+                    def invoke_remediation() -> CorrectionInvocation:
+                        try:
+                            summary = run_remediation(
+                                approval.task_id,
+                                finding_id=args.finding_id,
+                                source_run_id=args.source_run_id,
+                                approved_remediation_sha=approval.remediation_sha,
+                                correction_dispatch_id=args.correction_dispatch_id,
+                                executor=args.executor,
+                                repo=repo_root,
+                                native_runner=native_runner,
+                                verification_runner=verification_runner,
+                                monotonic_clock=monotonic_clock,
+                            )
+                            return CorrectionInvocation(0, summary.run_id)
+                        except OperatorError as exc:
+                            print(f"AIOS ERROR: {exc}", file=sys.stderr)
+                            return CorrectionInvocation(1)
 
-                outcome = execute_correction_dispatch(
-                    state_root=state_root,
-                    correction_dispatch_id=args.correction_dispatch_id,
-                    source_run_id=args.source_run_id,
-                    finding_id=args.finding_id,
-                    executor=args.executor,
-                    approval=approval,
-                    invoke_remediation=invoke_remediation,
+                    outcome = execute_correction_dispatch(
+                        state_root=state_root,
+                        correction_dispatch_id=args.correction_dispatch_id,
+                        source_run_id=args.source_run_id,
+                        finding_id=args.finding_id,
+                        executor=args.executor,
+                        approval=approval,
+                        invoke_remediation=invoke_remediation,
+                    )
+                except (RemoteSurfaceError, CorrectionDispatchError) as exc:
+                    raise OperatorError(str(exc)) from exc
+            finally:
+                _project_operational_delivery(
+                    repo_root,
+                    family="REMEDIATION",
+                    delivery_id=args.correction_dispatch_id,
+                    selectors={
+                        "source_run_id": args.source_run_id,
+                        "finding_id": args.finding_id,
+                        "executor": args.executor,
+                    },
                 )
-            except (RemoteSurfaceError, CorrectionDispatchError) as exc:
-                raise OperatorError(str(exc)) from exc
-            _project_operational_delivery(
-                repo_root,
-                family="REMEDIATION",
-                delivery_id=args.correction_dispatch_id,
-                selectors={
-                    "source_run_id": args.source_run_id,
-                    "finding_id": args.finding_id,
-                    "executor": args.executor,
-                },
-            )
             print(outcome.render())
             return outcome.exit_code
         elif args.command == "remediate":
@@ -5924,27 +5930,29 @@ def main(
             )
             print(summary.render())
         elif args.command == "repair-wakeup":
-            outcome = run_repair_wakeup(
-                args.repair_dispatch_id,
-                args.failed_run_id,
-                args.repair_sha,
-                executor=args.executor,
-                repo=args.repo,
-                native_runner=native_runner,
-                verification_runner=verification_runner,
-                monotonic_clock=monotonic_clock,
-            )
             repair_root = resolve_repository(args.repo)
-            _project_operational_delivery(
-                repair_root,
-                family="REPAIR",
-                delivery_id=args.repair_dispatch_id,
-                selectors={
-                    "failed_run_id": args.failed_run_id,
-                    "repair_sha": args.repair_sha,
-                    "executor": args.executor,
-                },
-            )
+            try:
+                outcome = run_repair_wakeup(
+                    args.repair_dispatch_id,
+                    args.failed_run_id,
+                    args.repair_sha,
+                    executor=args.executor,
+                    repo=repair_root,
+                    native_runner=native_runner,
+                    verification_runner=verification_runner,
+                    monotonic_clock=monotonic_clock,
+                )
+            finally:
+                _project_operational_delivery(
+                    repair_root,
+                    family="REPAIR",
+                    delivery_id=args.repair_dispatch_id,
+                    selectors={
+                        "failed_run_id": args.failed_run_id,
+                        "repair_sha": args.repair_sha,
+                        "executor": args.executor,
+                    },
+                )
             print(outcome.render())
             return outcome.exit_code
         elif args.command == "preflight-repair":

@@ -7,9 +7,12 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
+
+from aios_renew import operator
 
 WORKFLOW_PATH = Path(".github/workflows/aios-self-hosted-wakeup.yml")
 README_PATH = Path("README.md")
@@ -336,6 +339,63 @@ def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> N
     assert (
         result.returncode == 1
     ), f"expected exit code 1 to be preserved, got {result.returncode}"
+
+
+def test_primary_cli_reprojects_exact_delivery_when_dispatch_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    projected: list[tuple[Path, dict[str, object]]] = []
+
+    monkeypatch.setattr(operator, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(
+        operator, "runtime_paths", lambda repo: SimpleNamespace(root=tmp_path)
+    )
+
+    def fail_dispatch(**kwargs: object) -> object:
+        raise operator.DispatchError("terminal PRIMARY failure")
+
+    monkeypatch.setattr(operator, "execute_dispatch", fail_dispatch)
+    monkeypatch.setattr(
+        operator,
+        "_project_operational_delivery",
+        lambda root, **kwargs: projected.append((root, kwargs)),
+    )
+
+    exit_code = operator.main(
+        [
+            "wakeup",
+            "dispatch-149-failure",
+            "TASK-149",
+            "--task-revision",
+            "1",
+            "--task-blob-sha",
+            "a" * 40,
+            "--task-commit-sha",
+            "b" * 40,
+            "--executor",
+            "codex",
+            "--repo",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 1
+    assert projected == [
+        (
+            tmp_path,
+            {
+                "family": "PRIMARY",
+                "delivery_id": "dispatch-149-failure",
+                "selectors": {
+                    "task_id": "TASK-149",
+                    "task_revision": 1,
+                    "task_blob_sha": "a" * 40,
+                    "task_commit_sha": "b" * 40,
+                    "executor": "codex",
+                },
+            },
+        )
+    ]
 
 
 def test_workflow_execution_success_invokes_aios_wakeup_once_ac3(tmp_path: Path) -> None:

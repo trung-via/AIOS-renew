@@ -138,8 +138,9 @@ jobs:
           }
           Write-OperationalState 'AIOS_INVOKED' ''
           aios wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --task-revision $env:AIOS_TASK_REVISION --task-blob-sha $env:AIOS_TASK_BLOB_SHA --task-commit-sha $env:AIOS_TASK_COMMIT_SHA --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
+          $aiosExitCode = $LASTEXITCODE
+          if ($aiosExitCode -ne 0) {
+            exit $aiosExitCode
           }
 
       - name: Expose bounded Operational Receipt v2

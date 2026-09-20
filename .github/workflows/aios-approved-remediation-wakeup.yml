@@ -112,8 +112,9 @@ jobs:
           }
           Write-OperationalState 'AIOS_INVOKED' ''
           aios approved-remediation-wakeup $env:AIOS_CORRECTION_DISPATCH_ID $env:AIOS_SOURCE_RUN_ID $env:AIOS_FINDING_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
+          $aiosExitCode = $LASTEXITCODE
+          if ($aiosExitCode -ne 0) {
+            exit $aiosExitCode
           }
 
       - name: Expose bounded Operational Receipt v2

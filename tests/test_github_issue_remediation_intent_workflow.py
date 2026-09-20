@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
+
+from aios_renew import operator
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,6 +75,57 @@ def test_fixed_intent_workflow_preserves_self_hosted_boundary_and_a3_a6_command(
     assert text.count("aios approved-remediation-intent ") == 1
     assert "aios remote-approve " not in text
     assert "aios approved-remediation-wakeup " not in text
+    assert "$aiosExitCode = $LASTEXITCODE" in text
+    assert "exit $aiosExitCode" in text
+
+
+def test_intent_cli_reprojects_exact_delivery_when_execution_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    projected: list[tuple[Path, dict[str, object]]] = []
+
+    monkeypatch.setattr(operator, "resolve_repository", lambda repo: tmp_path)
+
+    def fail_intent(*args: object, **kwargs: object) -> object:
+        raise operator.OperatorError("terminal REMEDIATION failure")
+
+    monkeypatch.setattr(operator, "run_approved_remediation_intent", fail_intent)
+    monkeypatch.setattr(
+        operator,
+        "_project_operational_delivery",
+        lambda root, **kwargs: projected.append((root, kwargs)),
+    )
+
+    exit_code = operator.main(
+        [
+            "approved-remediation-intent",
+            "correction-149-failure",
+            "RUN-149-003",
+            "F3",
+            "--executor",
+            "codex",
+            "--approver",
+            "trung-via",
+            "--repo",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 1
+    assert projected == [
+        (
+            tmp_path,
+            {
+                "family": "REMEDIATION",
+                "delivery_id": "correction-149-failure",
+                "selectors": {
+                    "source_run_id": "RUN-149-003",
+                    "finding_id": "F3",
+                    "executor": "codex",
+                },
+            },
+        )
+    ]
 
 
 def test_receipt_never_fabricates_downstream_semantic_success() -> None:
@@ -130,6 +184,8 @@ def test_remediation_workflows_persist_exact_run_receipt_artifact() -> None:
             "delivery=@{kind='correction_dispatch_id';id=$env:AIOS_CORRECTION_DISPATCH_ID}"
             in text
         )
+        assert "$aiosExitCode = $LASTEXITCODE" in text
+        assert "exit $aiosExitCode" in text
 
 
 def test_policy_is_distinct_and_exact() -> None:

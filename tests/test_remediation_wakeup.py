@@ -1,5 +1,9 @@
 from pathlib import Path
 
+import pytest
+
+from aios_renew import correction_dispatch, operator, remote_surface
+
 
 def test_approved_remediation_workflow_is_bounded_manual_self_hosted_surface() -> None:
     root = Path(__file__).parents[1]
@@ -16,3 +20,68 @@ def test_approved_remediation_workflow_is_bounded_manual_self_hosted_surface() -
     assert "${{ inputs.source_run_id }}" in source
     assert "${{ inputs.finding_id }}" in source
     assert "${{ inputs.executor }}" in source
+    assert "$aiosExitCode = $LASTEXITCODE" in source
+    assert "exit $aiosExitCode" in source
+
+
+def test_remediation_wakeup_cli_reprojects_exact_delivery_when_dispatch_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    projected: list[tuple[Path, dict[str, object]]] = []
+    approval = type("Approval", (), {"task_id": "TASK-149"})()
+
+    monkeypatch.setattr(operator, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(
+        operator, "runtime_state_root", lambda repo: tmp_path / "runtime"
+    )
+    monkeypatch.setattr(
+        correction_dispatch,
+        "reject_existing_selector_collision",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        remote_surface, "require_current_approval", lambda **kwargs: approval
+    )
+
+    def fail_dispatch(**kwargs: object) -> object:
+        raise correction_dispatch.CorrectionDispatchError(
+            "terminal REMEDIATION failure"
+        )
+
+    monkeypatch.setattr(
+        correction_dispatch, "execute_correction_dispatch", fail_dispatch
+    )
+    monkeypatch.setattr(
+        operator,
+        "_project_operational_delivery",
+        lambda root, **kwargs: projected.append((root, kwargs)),
+    )
+
+    exit_code = operator.main(
+        [
+            "approved-remediation-wakeup",
+            "correction-149-failure",
+            "RUN-149-003",
+            "F3",
+            "--executor",
+            "codex",
+            "--repo",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 1
+    assert projected == [
+        (
+            tmp_path,
+            {
+                "family": "REMEDIATION",
+                "delivery_id": "correction-149-failure",
+                "selectors": {
+                    "source_run_id": "RUN-149-003",
+                    "finding_id": "F3",
+                    "executor": "codex",
+                },
+            },
+        )
+    ]

@@ -3,7 +3,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 import yaml
+
+from aios_renew import operator
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,6 +65,55 @@ def test_fixed_target_has_manual_and_reusable_carriers_and_one_command_surface()
     assert text.count("aios repair-wakeup ") == 1
     for forbidden in ("aios continue", "aios repair ", "codex ", "antigravity "):
         assert forbidden not in text.lower()
+    assert "$aiosExitCode = $LASTEXITCODE" in text
+    assert "exit $aiosExitCode" in text
+
+
+def test_repair_cli_reprojects_exact_delivery_when_execution_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    projected: list[tuple[Path, dict[str, object]]] = []
+
+    monkeypatch.setattr(operator, "resolve_repository", lambda repo: tmp_path)
+
+    def fail_repair(*args: object, **kwargs: object) -> object:
+        raise operator.OperatorError("terminal REPAIR failure")
+
+    monkeypatch.setattr(operator, "run_repair_wakeup", fail_repair)
+    monkeypatch.setattr(
+        operator,
+        "_project_operational_delivery",
+        lambda root, **kwargs: projected.append((root, kwargs)),
+    )
+
+    exit_code = operator.main(
+        [
+            "repair-wakeup",
+            "repair-149-failure",
+            "RUN-149-003",
+            "a" * 40,
+            "--executor",
+            "codex",
+            "--repo",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 1
+    assert projected == [
+        (
+            tmp_path,
+            {
+                "family": "REPAIR",
+                "delivery_id": "repair-149-failure",
+                "selectors": {
+                    "failed_run_id": "RUN-149-003",
+                    "repair_sha": "a" * 40,
+                    "executor": "codex",
+                },
+            },
+        )
+    ]
 
 
 def test_receipt_accepts_only_successful_admission_and_dispatch() -> None:
