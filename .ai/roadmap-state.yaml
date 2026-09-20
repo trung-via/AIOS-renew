@@ -26,7 +26,7 @@ verification_foundation_audit:
     Historical Performance Closure engineering artifacts remain immutable and are not
     reinterpreted by this planning decision.
 next_items:
-  - bp-v1-verification-contract-hardening
+  - bp-v2-full-suite-harness-acceleration
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -142,7 +142,14 @@ sequence:
       regression, then resume the already-authored BP-V1 TASK-150 without changing
       its semantics or fabricating lifecycle state for pre-AIOS transport failures.
   - id: bp-v1-verification-contract-hardening
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-150
+      task_revision: 1
+      run_id: RUN-150-001
+      review_id: REVIEW-150-001
+      reviewed_sha: "e0323905b93e0eac69decf449fda2a1ba427c544"
+      published_sha: "e0323905b93e0eac69decf449fda2a1ba427c544"
     task_id: TASK-150
     task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -154,7 +161,7 @@ sequence:
       de-duplication, and bounded full-suite justification without moving semantic
       judgment or verification truth out of Runtime.
   - id: bp-v2-full-suite-harness-acceleration
-    status: PLANNED
+    status: NEXT
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
