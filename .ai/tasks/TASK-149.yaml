@@ -1,0 +1,271 @@
+task_id: TASK-149
+revision: 1
+goal: Implement BP-2 Operational Attribution v2 so the existing PRIMARY, REMEDIATION,
+  and REPAIR remote/self-host handoffs expose one bounded machine-readable operational
+  explanation of the highest boundary actually proven, preserve exact typed lower-layer
+  causes through the Unified Human Surface, and reduce to an exact canonical terminal
+  pointer once RESULT or FAILURE truth exists. Close pre-AIOS/self-host dark zones
+  without creating a second lifecycle state system, changing existing dispatch ownership,
+  or moving engineering truth away from Runtime and canonical lineage.
+problem: 'Current outer execution surfaces have an attribution gap between GitHub
+  carrier acceptance and AIOS canonical lifecycle state. The self-hosted PRIMARY,
+  REMEDIATION, and REPAIR workflows can fail before invoking AIOS because the persistent
+  repository is missing or invalid, the bounded AIOS command is unavailable, or bounded
+  selectors fail workflow preflight; these failures are visible only as workflow/log
+  outcomes and create no canonical RUN or FAILURE, which is correct but leaves no
+  typed operational receipt. Existing carrier receipts also use dispatch/acceptance
+  language across different observable boundaries: PRIMARY createWorkflowDispatch
+  proves only that GitHub accepted a dispatch request, while reusable REMEDIATION/REPAIR
+  workflow completion observes a later boundary. After AIOS is invoked, the repository
+  already has authoritative typed Admission Failure v2 / correction-preflight causes
+  and durable dispatch-to-RUN binding, but human_surface.py currently collapses delegated
+  failures to DELEGATED_OPERATION_FAILED. TASK-149 must join these existing facts
+  into bounded observability without duplicating lifecycle truth or inventing semantic
+  authority.'
+assumptions:
+- Canonical AIOS-renew main at TASK-149 authoring is 5fe91f48998798fc49c4738e1d6dd57faee68ed8.
+  The Human/Brain roadmap marks bp-2-operational-attribution-v2 as the unique NEXT
+  milestone and reserves TASK-149 revision 1.
+- docs/AIOS-BRAIN-PORTABILITY.md is the Human-approved planning authority. Its Operational
+  Receipt v2 contract requires attributable carrier/runner/AIOS/admission/RUN/terminal
+  boundaries, typed pre-AIOS reasons, terminal pointers instead of copied lifecycle
+  truth, and preservation of typed lower-layer causes through Human-facing projection.
+- TASK-130 / BP-1 is reviewed and published. PRIMARY remote authorization remains
+  the exact six-selector v2 contract dispatch_id/task_id/task_revision/task_blob_sha/task_commit_sha/executor;
+  TASK-149 must not add, remove, weaken, or reinterpret those authorization selectors.
+- Admission Failure v2 and Correction Preflight already own the stable AIOS-side admission
+  phase/reason taxonomy, including PRIMARY synchronization, TASK admission, canonical
+  lineage, repository admission, historical/reusable state, remote transport, integration,
+  and RUN namespace reasons. BP-2 reuses those exact typed causes rather than defining
+  a competing post-AIOS taxonomy.
+- Existing PRIMARY, correction, and REPAIR dispatch journals are operational-only
+  durable ownership/reconciliation state and already provide exact dispatch-to-RUN
+  binding. TASK-149 may project their facts but does not replace or reinterpret their
+  ownership, collision, replay, at-most-once, or crash-reconciliation semantics.
+- TASK-112's coalesced remediation-intent path is the steady-state remote REMEDIATION
+  carrier, while the existing approved-remediation-wakeup surface remains a valid
+  fallback/debug delivery path. Both must remain authority-compatible.
+- TASK-113 terminal attention remains the established subordinate reverse attention
+  mechanism after an exact canonical RESULT or FAILURE terminal exists. TASK-149 does
+  not create another terminal notifier, poller, completion outbox, or terminal store.
+- Frozen Kernel v0.1 remains FROZEN. Human owns intent and Executor choice, Brain
+  owns TASK semantics, Runtime/canonical lineage own engineering lifecycle truth and
+  verification evidence, Reviewer owns semantic verdict, Publisher owns publication,
+  and carriers/receipts remain subordinate transport/observability.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - docs/AIOS-BRAIN-PORTABILITY.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-081.yaml
+  - .ai/tasks/TASK-084.yaml
+  - .ai/tasks/TASK-087.yaml
+  - .ai/tasks/TASK-108.yaml
+  - .ai/tasks/TASK-111.yaml
+  - .ai/tasks/TASK-112.yaml
+  - .ai/tasks/TASK-113.yaml
+  - .ai/tasks/TASK-130.yaml
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-brain-remediation-intent.yml
+  - .github/workflows/aios-approved-remediation-intent.yml
+  - .github/workflows/aios-approved-remediation-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - src/aios_renew/dispatch_reconciliation.py
+  - src/aios_renew/correction_dispatch.py
+  - src/aios_renew/repair_dispatch.py
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/human_surface.py
+  - src/aios_renew/terminal_attention.py
+  - tests/test_github_issue_wakeup_workflow.py
+  - tests/test_self_hosted_wakeup.py
+  - tests/test_github_issue_remediation_intent_workflow.py
+  - tests/test_remediation_wakeup.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_operator_human_surface.py
+  - tests/test_operator_correction_preflight.py
+  - tests/test_dispatch_reconciliation.py
+  - tests/test_correction_dispatch.py
+  - tests/test_repair_dispatch.py
+  - tests/test_terminal_attention.py
+  - README.md
+  modify:
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-brain-remediation-intent.yml
+  - .github/workflows/aios-approved-remediation-intent.yml
+  - .github/workflows/aios-approved-remediation-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - src/aios_renew/operational_receipt.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/human_surface.py
+  - tests/test_operational_receipt.py
+  - tests/test_github_issue_wakeup_workflow.py
+  - tests/test_self_hosted_wakeup.py
+  - tests/test_github_issue_remediation_intent_workflow.py
+  - tests/test_remediation_wakeup.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_operator_human_surface.py
+  - README.md
+non_goals:
+- Create a second Unified State, lifecycle reducer, canonical RESULT/FAILURE store,
+  operational database, durable orchestration database, queue, broker, scheduler,
+  generic completion outbox, or repository ref family that independently claims engineering
+  lifecycle truth.
+- Poll GitHub Actions, add a long-running watcher/daemon, introduce a generic reverse
+  handoff before canonical terminal state, or replace TASK-113 terminal attention.
+- Change TASK, RUN, RESULT, EVIDENCE, FAILURE, REVIEW, REMEDIATION, REPAIR, Unified
+  State, dispatch journal, terminal-attention, publication, or frozen Kernel schemas
+  or semantic authority.
+- Change PRIMARY v2 authorization identity, add another PRIMARY carrier selector,
+  pin PRIMARY to an authorization-time main, or weaken TASK-130 exact intent binding.
+- Merge PRIMARY, REMEDIATION, and REPAIR into one generic execution endpoint/router
+  or one generic dispatch identity. Existing family-specific carriers, selectors,
+  approval, and dispatch ownership remain separate.
+- Infer semantic next action, approve a remediation, author a correction, choose/default/reroute
+  an Executor, retry a failed execution, fail over providers, or publish a candidate
+  from an operational receipt.
+- Reclassify an existing AIOS admission/correction cause into a new BP-2-specific
+  reason when an authoritative phase/reason_code already exists.
+- Parse arbitrary free-form workflow logs, stderr text, exception message substrings,
+  timestamps, or newest diagnostic files to guess a typed cause or RUN attribution.
+- Copy canonical RESULT/FAILURE payloads, semantic review verdicts, verification evidence,
+  or publication state into an operational receipt after a canonical terminal exists.
+- Modify downstream repositories or dependency pins, or assume a downstream repository
+  uses current AIOS-renew main.
+- Push or publish from Executor implementation execution.
+constraints:
+  hard:
+  - 'Provide one versioned, bounded, machine-readable Operational Receipt v2 projection
+    for the addressed remote/self-host execution families. The projection is subordinate
+    observability only: it must carry an exact family-specific delivery identity,
+    the highest boundary actually proven, bounded typed cause data when applicable,
+    and only exact selectors/pointers already established by an authoritative lower
+    layer.'
+  - The receipt boundary vocabulary must distinguish at least CARRIER_ADMITTED, DISPATCH_REQUEST_ACCEPTED,
+    RUNNER_STARTED, AIOS_INVOKED, ADMISSION_ACCEPTED, ADMISSION_REJECTED, RUN_ATTRIBUTED,
+    OPERATIONAL_FAILED, and TERMINAL_POINTER where applicable. A receipt may omit
+    inapplicable intermediate boundaries but must never claim a boundary not directly
+    observed or proven by exact authoritative state.
+  - PRIMARY createWorkflowDispatch acceptance means only DISPATCH_REQUEST_ACCEPTED.
+    It must not imply RUNNER_STARTED, AIOS_INVOKED, Runtime admission, RUN creation,
+    verification, review, or publication. Do not convert the established asynchronous
+    PRIMARY A1 carrier into a new lifecycle authority merely to obtain a synchronous
+    answer.
+  - The existing self-hosted workflow run is the outer operational evidence boundary.
+    Expose its receipt in a bounded run-scoped machine-readable form correlated by
+    the existing family delivery identity, without repository lifecycle mutation,
+    an extra semantic selector, new GitHub write authority, polling, or a second persistent
+    operational truth store.
+  - Before AIOS invocation, classify only deterministic workflow-owned failures using
+    a small stable operational reason taxonomy. At minimum distinguish persistent
+    AIOS_REPO_ROOT not configured, configured repository unavailable, configured repository
+    invalid, bounded AIOS command unavailable, and invalid bounded selector/executor/approver
+    input where that validation belongs to the workflow. These failures create no
+    RUN, no canonical FAILURE, no Admission Failure, and no Executor invocation.
+  - After AIOS_INVOKED, preserve authoritative AIOS-side typed causes rather than
+    inventing another taxonomy. If exact Admission Failure v2 or Correction Preflight
+    phase/reason_code is available for the same invocation, project that exact typed
+    cause. Correlation must be exact to the current family delivery/invocation; selecting
+    a newest/most-recent diagnostic or parsing human error text is forbidden.
+  - ADMISSION_ACCEPTED and RUN_ATTRIBUTED are distinct. RUN_ATTRIBUTED may be emitted
+    only when the existing durable PRIMARY/correction/REPAIR dispatch binding proves
+    exact RUN ownership for the same immutable delivery identity. Mere matching task,
+    finding, failed-run, Executor, timestamps, or later RUN discovery is insufficient.
+  - Once an exact canonical RESULT or FAILURE terminal exists for the attributed RUN,
+    the operational projection must stop duplicating lifecycle claims and expose only
+    a bounded TERMINAL_POINTER containing exact terminal kind and canonical identity/artifact
+    pointer sufficient to rehydrate truth from the existing authoritative source.
+    TASK-113 remains the terminal-attention mechanism.
+  - Human Surface delegated failure projection must preserve an exact authoritative
+    lower-layer phase/reason_code or terminal pointer when available. The existing
+    generic DELEGATED_OPERATION_FAILED code may remain only as a bounded fallback
+    when no authoritative typed cause/pointer can be obtained for that exact delegated
+    invocation; it must never overwrite a known typed cause.
+  - 'Preserve Human Surface authority semantics: a projected operational blocker is
+    an explanation of the delegated attempt, not a new Unified State next_action,
+    semantic correction, retry authorization, review verdict, or publication decision.
+    Existing selectors and executor-required semantics remain unchanged.'
+  - 'Preserve family separation and historical behavior: PRIMARY keeps TASK-130 v2
+    authorization and A2 dispatch identity; steady-state REMEDIATION keeps TASK-112
+    A3/A6 coalesced intent and the A6 fallback remains usable; REPAIR keeps its dedicated
+    repair_dispatch identity and NO_CHANGE/coding Executor rules. Exact replay, collision,
+    at-most-once, crash/restart, and durable RUN binding remain authoritative in their
+    existing dispatch components.'
+  - Existing GitHub Issue carrier comments may remain human-readable, but wording/status
+    must distinguish carrier admission, dispatch-request acceptance, reusable self-host
+    workflow completion, and downstream lifecycle success. In particular, an admitted
+    carrier whose downstream reusable workflow fails must not describe delivery as
+    successful.
+  - The operational receipt must contain no raw Issue body, arbitrary workflow input,
+    unbounded logs, secrets, credentials, source payload, model transcript, chain-of-thought,
+    semantic verdict, verification evidence body, or copied canonical RESULT/FAILURE
+    body.
+  - README must document the operational boundary ladder, the distinction between
+    transport/runner/AIOS/RUN/terminal facts, exact typed-cause reuse, terminal-pointer
+    rule, and why pre-AIOS operational failure is not a canonical RUN FAILURE.
+  - Preserve direct local AIOS commands, Runtime verification/evidence ownership,
+    Reviewer, Publisher, TASK-113 attention, BP-1 authorization, existing dispatch
+    reconciliation, and frozen Kernel behavior not explicitly narrowed above.
+  - Do not push from Executor implementation execution.
+acceptance:
+- id: AC1
+  condition: Each addressed PRIMARY, steady-state/fallback REMEDIATION, and REPAIR
+    handoff can expose one bounded machine-readable Operational Receipt v2 correlated
+    to its exact existing family delivery identity and reporting only the highest
+    boundary actually proven, without creating repository lifecycle truth or a new
+    generic dispatch authority.
+- id: AC2
+  condition: Deterministic regressions prove representative self-host failures before
+    AIOS invocation produce OPERATIONAL_FAILED with a stable typed workflow-owned
+    reason, run_created=false and executor_invoked=false semantics, while creating
+    no canonical RUN, FAILURE, Admission Failure, or inferred lifecycle state.
+- id: AC3
+  condition: After AIOS invocation, an exact blocked admission/correction preserves
+    the existing authoritative phase/reason_code for that same invocation; no test
+    path depends on free-form error parsing, newest-file selection, timestamps, or
+    a competing BP-2 admission taxonomy.
+- id: AC4
+  condition: RUN_ATTRIBUTED appears only after the existing durable dispatch journal
+    binds the exact delivery identity to one RUN. Unbound, ambiguous, competing, or
+    later unrelated RUNs cannot be attributed by matching metadata and remain operationally
+    unresolved/blocked without re-execution.
+- id: AC5
+  condition: When the exact attributed RUN has canonical RESULT or FAILURE truth,
+    the operational projection emits only a bounded TERMINAL_POINTER to that canonical
+    terminal identity and does not copy its error/result/evidence/review/publication
+    claims; TASK-113 terminal attention remains unchanged.
+- id: AC6
+  condition: Unified Human Surface preserves an available authoritative typed lower-layer
+    cause or terminal pointer for PRIMARY, REMEDIATION, and REPAIR delegated failure
+    paths. DELEGATED_OPERATION_FAILED is used only when the exact delegated attempt
+    has no authoritative typed cause/pointer and creates no second diagnostic/lifecycle
+    artifact.
+- id: AC7
+  condition: Carrier and workflow receipts distinguish CARRIER_ADMITTED, DISPATCH_REQUEST_ACCEPTED,
+    self-host completion/operational failure, and downstream lifecycle success. PRIMARY
+    asynchronous dispatch acceptance never claims runner or RUN success, and REMEDIATION/REPAIR
+    admitted-but-downstream-failed receipts do not describe successful delivery.
+- id: AC8
+  condition: TASK-130 PRIMARY six-selector authorization, family-specific dispatch
+    journals, A3/A6 approval, TASK-112 remediation intent, REPAIR action/Executor
+    rules, exact replay/collision/crash semantics, direct local commands, Admission
+    Failure v2, Correction Preflight, Unified State, Runtime verification, Reviewer,
+    Publisher, TASK-113 terminal attention, and frozen Kernel semantics remain compatible;
+    focused deterministic verification passes with zero unresolved items and modifications
+    stay within TASK-149 scope.
+verification:
+  required:
+  - python -m pytest -q tests/test_operational_receipt.py tests/test_github_issue_wakeup_workflow.py
+    tests/test_self_hosted_wakeup.py tests/test_github_issue_remediation_intent_workflow.py
+    tests/test_remediation_wakeup.py tests/test_github_issue_repair_wakeup_workflow.py
+    tests/test_operator_human_surface.py tests/test_operator_correction_preflight.py
+  - git diff --check
