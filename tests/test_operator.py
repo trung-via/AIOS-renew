@@ -386,11 +386,14 @@ class RepairRunner:
 
 
 class HistoricalRepairRunner:
-    def __init__(self) -> None:
+    def __init__(self, control_repo: Path | None = None) -> None:
+        self.control_repo = control_repo
         self.calls = 0
         self.initial_head = None
         self.workspace = None
         self.initial_pin = None
+        self.workspace_has_git_directory = False
+        self.control_resolved_candidate_before_transfer = None
 
     def __call__(self, command, **kwargs):
         self.calls += 1
@@ -399,12 +402,29 @@ class HistoricalRepairRunner:
         )
         subject = Path(execution["run"]["workspace"])
         self.workspace = subject
+        self.workspace_has_git_directory = (subject / ".git").is_dir()
         self.initial_head = git(subject, "rev-parse", "HEAD")
         self.initial_pin = (subject / "AIOS_PIN").read_text(encoding="utf-8")
         (subject / "OUTPUT.txt").write_text("historically repaired\n", encoding="utf-8")
         git(subject, "add", "OUTPUT.txt")
         git(subject, "commit", "--quiet", "-m", "historical repair")
         head_sha = git(subject, "rev-parse", "HEAD")
+        if self.control_repo is not None:
+            resolved = subprocess.run(
+                (
+                    "git",
+                    "-C",
+                    str(self.control_repo),
+                    "cat-file",
+                    "-e",
+                    f"{head_sha}^{{commit}}",
+                ),
+                capture_output=True,
+                check=False,
+            )
+            self.control_resolved_candidate_before_transfer = (
+                resolved.returncode == 0
+            )
         return subprocess.CompletedProcess(
             command,
             returncode=0,
@@ -5129,7 +5149,7 @@ def test_historical_repair_isolates_subject_and_preserves_control_checkout(
         "instructions": ["Correct the historical candidate only."],
         "constraints": ["Commit the output."],
     }
-    runner = HistoricalRepairRunner()
+    runner = HistoricalRepairRunner(repo)
 
     summary = run_repair(
         failed_run_id,
@@ -5143,6 +5163,8 @@ def test_historical_repair_isolates_subject_and_preserves_control_checkout(
     assert runner.calls == 1
     assert runner.initial_head == failed_head
     assert runner.initial_pin == "old-runtime\n"
+    assert runner.workspace_has_git_directory is True
+    assert runner.control_resolved_candidate_before_transfer is False
     assert runner.workspace is not None and not runner.workspace.exists()
     assert git(repo, "rev-parse", "HEAD") == control_head
     assert git(repo, "branch", "--show-current") == "main"
@@ -5151,6 +5173,13 @@ def test_historical_repair_isolates_subject_and_preserves_control_checkout(
     assert git(repo, "show", f"{summary.head_sha}:AIOS_PIN") == "old-runtime"
     git(repo, "merge-base", "--is-ancestor", failed_head, summary.head_sha)
     assert git(repo, "rev-list", "--count", f"{failed_head}..{summary.head_sha}") == "1"
+    upstream = tmp_path / "upstream.git"
+    review_ref = f"refs/heads/aios/review/{summary.run_id}"
+    artifacts_ref = f"refs/heads/aios/artifacts/{summary.run_id}"
+    assert git(upstream, "rev-parse", review_ref) == summary.head_sha
+    assert git(
+        upstream, "show", f"{artifacts_ref}:.ai/transport/result.json"
+    ) == summary.result_path.read_text(encoding="utf-8")
 
 
 def test_remote_remediation_executes_historical_reviewed_subject_in_isolation(

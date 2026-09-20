@@ -1273,6 +1273,7 @@ def _persist_repair_failure(
     if attempt.run_path is None or attempt.subject_repo is None or attempt.task is None:
         return
     run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
+    transfer_error = _prepare_historical_failure_transport(control_repo, attempt)
     persist_failure(
         attempt.subject_repo,
         state=state,
@@ -1282,7 +1283,11 @@ def _persist_repair_failure(
         failure=failure,
         observation_tracker=observation_tracker,
         interruption_phase=interruption_phase,
+        transport=transfer_error is None,
         transport_repo=control_repo,
+    )
+    _persist_historical_transfer_error(
+        state, attempt.run_path.stem, transfer_error
     )
 
 
@@ -1306,6 +1311,123 @@ def _remove_historical_workspace(
     shutil.rmtree(workspace, onerror=make_writable_and_retry)
     if workspace.exists():
         raise OperatorError("historical subject cleanup failed")
+
+
+def _prepare_historical_terminalization(
+    control_repo: Path, attempt: _RunAttempt
+) -> None:
+    """Make an isolated historical candidate visible to control transport."""
+
+    if attempt.historical_workspace is None:
+        return
+    if attempt.subject_repo is None:
+        raise OperatorError("historical subject is unavailable for terminalization")
+    _transfer_historical_candidate_objects(control_repo, attempt.subject_repo)
+
+
+def _prepare_historical_failure_transport(
+    control_repo: Path, attempt: _RunAttempt
+) -> OperatorError | None:
+    """Prepare candidate transport without masking the admitted failure."""
+
+    try:
+        _prepare_historical_terminalization(control_repo, attempt)
+    except OperatorError as exc:
+        return exc
+    return None
+
+
+def _persist_historical_transfer_error(
+    state: RuntimePaths, run_id: str, error: OperatorError | None
+) -> None:
+    if error is None:
+        return
+    try:
+        _write_json(
+            state.failures / f"{run_id}.transport.json",
+            {"run_id": run_id, "error": str(error)},
+        )
+    except (OSError, UnicodeError):
+        # Failure persistence remains subordinate to the admitted failure.
+        return
+
+
+def _transfer_historical_candidate_objects(
+    control_repo: Path, subject_repo: Path
+) -> None:
+    """Copy one candidate's object graph locally without creating control refs."""
+
+    control_head = _git(control_repo, "rev-parse", "HEAD")
+    control_branch = _git(
+        control_repo, "rev-parse", "--abbrev-ref", "HEAD"
+    )
+    _require_control_checkout_unchanged(
+        control_repo, head_sha=control_head, branch=control_branch
+    )
+    candidate_sha = _git(
+        subject_repo, "rev-parse", "--verify", "HEAD^{commit}"
+    )
+    if candidate_sha != _git(subject_repo, "rev-parse", "HEAD"):
+        raise OperatorError("historical candidate commit mismatch")
+
+    try:
+        with tempfile.TemporaryFile() as pack_stream:
+            packed = subprocess.run(
+                (
+                    "git",
+                    "-C",
+                    str(subject_repo),
+                    "pack-objects",
+                    "--stdout",
+                    "--revs",
+                ),
+                input=f"{candidate_sha}\n".encode("ascii"),
+                stdout=pack_stream,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            packed_stderr = _decode_utf8(packed.stderr)
+            if packed.returncode != 0:
+                raise OperatorError(
+                    "historical candidate object packing failed: "
+                    f"{packed_stderr.strip()}"
+                )
+            pack_stream.seek(0)
+            unpacked = subprocess.run(
+                (
+                    "git",
+                    "-C",
+                    str(control_repo),
+                    "unpack-objects",
+                    "-r",
+                ),
+                stdin=pack_stream,
+                capture_output=True,
+                check=False,
+            )
+            unpacked_stdout = _decode_utf8(unpacked.stdout)
+            unpacked_stderr = _decode_utf8(unpacked.stderr)
+            if unpacked.returncode != 0:
+                detail = unpacked_stderr.strip() or unpacked_stdout.strip()
+                raise OperatorError(
+                    f"historical candidate object transfer failed: {detail}"
+                )
+    except (OSError, UnicodeError) as exc:
+        raise OperatorError(
+            f"historical candidate object transfer failed: {exc}"
+        ) from exc
+
+    resolved_candidate = _git(
+        control_repo,
+        "rev-parse",
+        "--verify",
+        f"{candidate_sha}^{{commit}}",
+    )
+    if resolved_candidate != candidate_sha:
+        raise OperatorError("historical candidate is not object-exact in control")
+    _require_control_checkout_unchanged(
+        control_repo, head_sha=control_head, branch=control_branch
+    )
 
 
 def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
@@ -1479,6 +1601,7 @@ def _persist_primary_recovery_failure(
     ):
         return
     run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
+    transfer_error = _prepare_historical_failure_transport(control_repo, attempt)
     persist_failure(
         attempt.subject_repo,
         state=state,
@@ -1488,7 +1611,11 @@ def _persist_primary_recovery_failure(
         failure=failure,
         observation_tracker=observation_tracker,
         interruption_phase=interruption_phase,
+        transport=transfer_error is None,
         transport_repo=control_repo,
+    )
+    _persist_historical_transfer_error(
+        state, attempt.run_path.stem, transfer_error
     )
 
 
@@ -1569,6 +1696,7 @@ def _recover_primary_impl(
             transport_repo=repo,
         )
         attempt.bind_completion(completion)
+        _prepare_historical_terminalization(repo, attempt)
         outcome = completion.complete(
             resolved_admission.structural_package,
             primary_completion_policy(task, base_sha=source_run.base_sha),
@@ -2269,6 +2397,7 @@ def _run_repair_impl(
             transport_repo=repo,
         )
         attempt.bind_completion(runtime_completion)
+        _prepare_historical_terminalization(repo, attempt)
         completion = runtime_completion.complete(
             package,
             repair_completion_policy(
@@ -3383,6 +3512,9 @@ def _persist_remediation_failure(
     try:
         run_data = json.loads(attempt.run_path.read_text(encoding="utf-8"))
         run = _remediation_execution_from_data(run_data["execution"]).run
+        transfer_error = _prepare_historical_failure_transport(
+            control_repo, attempt
+        )
         persist_failure(
             attempt.subject_repo,
             state=state,
@@ -3392,7 +3524,11 @@ def _persist_remediation_failure(
             failure=failure,
             observation_tracker=observation_tracker,
             interruption_phase=interruption_phase,
+            transport=transfer_error is None,
             transport_repo=control_repo,
+        )
+        _persist_historical_transfer_error(
+            state, attempt.run_path.stem, transfer_error
         )
     except Exception:
         # Failure recording is subordinate and never masks the admitted failure.
@@ -3993,6 +4129,9 @@ def _run_remediation_impl(
                 raise OperatorError(
                     "historical remediation candidate does not descend from execution base"
                 )
+            if attempt is None:
+                raise OperatorError("historical remediation attempt is unavailable")
+            _prepare_historical_terminalization(root, attempt)
 
         runtime_completion = RuntimeCompletion(
             repo=subject_repo,
