@@ -1,62 +1,56 @@
 task_id: TASK-140
-revision: 4
+revision: 5
 
 goal: >
-  Complete TASK-140 from current canonical main by porting the already-validated r3
-  implementation and replacing only the malformed live AC8 verification transport
-  with a Windows-safe exact command that still exercises native agy 1.2.6, the
-  repository PreToolUse hook, the deliberately long run_command, and the same
-  fail-closed acceptance semantics.
+  Complete TASK-140 by preserving the validated r4/r3 guard and adapter semantics,
+  correcting the project-hook command for the actual native agy 1.2.6 hook execution
+  directory proven by RUN-140-015, and retaining the Windows-safe EncodedCommand AC8 proof.
 
 problem: >
-  TASK-140 r3 implementation is stable at historical candidate
-  ed83c8cd1c38c4b940f7f12daa49fbef548fafa6. RUN-140-013 and RUN-140-014 both
-  proved the focused/full antigravity-adapter suites and git diff --check pass on
-  that candidate. TASK-147 also successfully preserved the exact origin
-  affected_verification through repair.
+  RUN-140-015 produced a clean, committed, transportable candidate
+  769fe2d77e6e66d899e5a731b1fd85884c88d30f with exactly the four authorized
+  TASK-140 files. Its implementation is byte-identical to the known-good r3 candidate
+  ed83c8cd1c38c4b940f7f12daa49fbef548fafa6. Runtime verification passed the focused
+  adapter suite (285 passed), full adapter suite (361 passed), and git diff --check.
 
-  RUN-140-014 finally executed with the required agy 1.2.6 and exposed a distinct
-  deterministic defect in the authored AC8 command itself. The command constructs
-  a prompt containing a nested quoted PowerShell command:
-  powershell.exe -NoProfile -Command "Set-Content -LiteralPath ...".
-  Under Runtime's canonical Windows PowerShell verification boundary, Windows
-  PowerShell 5.1 native argument marshalling breaks that embedded quoted content
-  before agy can start the agent turn. agy 1.2.6 receives -LiteralPath as its own
-  CLI flag and exits 21 with "flags provided but not defined: -LiteralPath".
-  Therefore the live hook proof never reaches run_command. Re-running NO_CHANGE
-  cannot fix this because TASK-147 correctly preserves the immutable original
-  remediation affected_verification exactly.
+  The corrected EncodedCommand transport also worked: Runtime proved
+  AGY_VERSION=1.2.6 and agy --print reached the native PreToolUse hook. The live turn
+  then exposed the remaining defect: the project hook command
+  "python ./.agents/aios_antigravity_pretool_guard.py" was resolved by native agy from
+  the .agents hook configuration directory, yielding the impossible doubled path
+  "<repo>\.agents\.agents\aios_antigravity_pretool_guard.py". The hook therefore
+  failed before evaluating the run_command and AC8 correctly failed with exit 23 due
+  missing AIOS_BACKGROUND_RISK_DENIED.
 
-  Revision 4 resets the TASK lifecycle on current main, ports the known-good r3
-  implementation without semantic redesign, and moves the live AC8 proof into the
-  TASK's own Runtime verification using an EncodedCommand danger payload. This
-  removes nested quotes from the agy --print prompt argument while preserving the
-  exact behavior being proven.
+  The existing regression was testing that hook command with cwd=<repo root>, which
+  modeled the wrong execution boundary and therefore certified a path that native agy
+  1.2.6 does not use. Revision 5 corrects that model and the hook command only; it does
+  not redesign guard policy or adapter behavior.
 
 assumptions:
-  - Canonical main is f0e1f203ca7a34f4fbb67c2dac2dd451e7d9c9e2.
-  - Current main has no repository .agents directory.
-  - Historical candidate ed83c8cd1c38c4b940f7f12daa49fbef548fafa6 is the semantic
-    source for the four TASK-140 implementation files.
-  - RUN-140-014 candidate is clean, changed_files=[], repairable=true,
-    transportable=true, and failed only in live AC8 command transport.
-  - RUN-140-014 showed AGY_VERSION=1.2.6 before agy rejected -LiteralPath as an
-    unintended top-level CLI flag.
-  - The current PowerShell session can resolve agy 1.2.6; Runtime verification must
-    still prove the version itself.
-  - TASK-147 r2 is DONE and canonical.
-  - TASK-148 remains unrelated and must stay paused while TASK-140 r4 executes.
+  - Canonical main is 944daefb3f1e82aebfbab04575505d6437601fd1.
+  - RUN-140-015 failed_head_sha is 769fe2d77e6e66d899e5a731b1fd85884c88d30f.
+  - RUN-140-015 candidate is clean, repairable=true, transportable=true, and has no
+    paths outside TASK scope.
+  - The four implementation files in RUN-140-015 are byte-identical to historical r3
+    candidate ed83c8cd1c38c4b940f7f12daa49fbef548fafa6.
+  - RUN-140-015 native agy 1.2.6 evidence proves project hook commands are launched
+    relative to the .agents configuration directory for this supported execution path.
+  - The current PowerShell session can resolve agy 1.2.6 and must remain unchanged
+    while r5 Runtime verification executes.
+  - TASK-147 r2 remains DONE and canonical.
+  - TASK-148 remains paused.
 
 scope:
   inspect:
     - .ai/tasks/TASK-140.yaml
-    - src/aios_renew/antigravity_adapter.py
-    - tests/test_antigravity_adapter.py
+    - refs/heads/aios/failure/RUN-140-015
+    - refs/heads/aios/failure-artifacts/RUN-140-015
     - refs/heads/aios/failure/RUN-140-014
-    - refs/heads/aios/failure-artifacts/RUN-140-014
     - refs/heads/aios/failure/RUN-140-013
     - refs/heads/aios/failure/RUN-140-012
-    - refs/heads/aios/integration/9f823268b077c28bf2a1586e2efada58dbfd88cd987d26dbfca2f95bc4fb8e16
+    - src/aios_renew/antigravity_adapter.py
+    - tests/test_antigravity_adapter.py
   modify:
     - src/aios_renew/antigravity_adapter.py
     - tests/test_antigravity_adapter.py
@@ -64,91 +58,94 @@ scope:
     - .agents/aios_antigravity_pretool_guard.py
 
 non_goals:
-  - Repair or continue RUN-140-014, RUN-140-013, or RUN-140-012.
-  - Rewrite historical review, remediation, repair, result, failure, or integration artifacts.
-  - Weaken AC8 to accept agy 1.2.7.
-  - Modify Runtime verification, TASK-147, TASK-148, Dispatcher, Publisher, Brain Ingress,
-    correction lifecycle, or remote carrier semantics.
-  - Add retries, fallback, provider rerouting, a second agy invocation, or a wrapper around agy.
-  - Redesign the r3 guard/provider implementation.
+  - Repair or continue RUN-140-015 or any earlier r3/r4 failed RUN.
+  - Change Runtime verification or TASK-147 evidence-continuity behavior.
+  - Weaken agy version requirement from 1.2.6.
+  - Change background-risk, git, verification-denial, malformed-input, or provider
+    no-retry semantics.
+  - Add an agy wrapper, alias, shim, fallback, retry, or second provider invocation.
+  - Modify TASK-148 or unrelated control-plane files.
 
 constraints:
   hard:
     - >
-      Port the TASK-140 r3 implementation semantics from historical candidate
-      ed83c8cd1c38c4b940f7f12daa49fbef548fafa6 onto current main. Do not recover
-      dirty WIP or historical working directories. Preserve current-main files outside
-      the four authorized TASK-140 paths.
+      Reconstruct the candidate from the canonical RUN-140-015 committed state, not
+      from dirty WIP. Preserve guard and adapter production content byte-for-byte unless
+      a change is strictly required by this revision.
     - >
-      Preserve ordered hook cutover: fully finalize guard, adapter, and tests while
-      .agents/hooks.json is absent; create hooks.json last; do not modify the four
-      implementation files after hook cutover.
+      Correct hooks.json so its command is exactly
+      "python ./aios_antigravity_pretool_guard.py", matching native agy 1.2.6 project
+      hook execution from the .agents configuration directory. Do not use absolute or
+      machine-specific paths.
     - >
-      Preserve subprocess-scoped AIOS_ANTIGRAVITY_ACTIVE=1, inert manual mode, exact
-      portable hook command, fail-closed malformed input, background-risk denial,
-      Runtime-owned verification denial, git-category allow-list, no-retry provider
-      instruction, one native agy invocation, final-HEAD binding, and finish-exactly-once.
+      Replace the misleading workspace-root hook-command regression with a production-shaped
+      hook-directory regression: execute the exact hooks.json command with cwd set to
+      <repo>/.agents and prove a Start-Sleep payload is denied with
+      AIOS_BACKGROUND_RISK_DENIED. Also prove the Runtime-verification class payload is
+      denied with AIOS_RUNTIME_OWNS_VERIFICATION.
     - >
-      Executor is implementation-only. Do not run canonical pytest, git diff --check,
-      live agy proof, or any Runtime-owned verification inside the coding Executor.
+      Keep direct guard/unit tests free to invoke the guard by explicit repository path
+      where appropriate; only the canonical hooks.json command execution model changes.
     - >
-      The corrected AC8 proof must still require agy 1.2.6 exactly and invoke native
-      agy --print with --dangerously-skip-permissions,
-      AIOS_ANTIGRAVITY_ACTIVE=1, model gemini-3.8-flash, effort high,
-      --disable-slash-commands, JSON output, and a 2 minute print timeout.
+      Preserve ordered hook cutover for the fresh r5 PRIMARY: fully finalize guard,
+      adapter, and tests while hooks.json is absent; create hooks.json last; do not edit
+      implementation files after hooks.json creation in that execution.
     - >
-      The dangerous run_command payload must still write the marker before sleeping
-      for 20 seconds and emitting SHOULD_NOT_RUN if it ever starts. Encode that inner
-      PowerShell payload with UTF-16LE Base64 and invoke it as
-      "powershell.exe -NoProfile -EncodedCommand <payload>" so the prompt passed to
-      agy contains no nested command quotes and Windows PowerShell 5.1 cannot split
-      -LiteralPath into an agy CLI flag.
+      Preserve subprocess-scoped AIOS_ANTIGRAVITY_ACTIVE=1, inert manual mode,
+      fail-closed malformed active input, background-risk denial, Runtime verification
+      denial, true git-category fail-closed allow-list, implementation-only provider
+      instruction, stable-denial no-retry behavior, one native agy invocation, actual
+      final-HEAD binding, and builtin finish exactly once.
     - >
-      The live proof must fail unless all conditions hold: exact version 1.2.6,
-      agy print exit 0, marker absent, output contains AIOS_BACKGROUND_RISK_DENIED,
-      and output contains no root-agent idle/background-task termination or hook
-      execution failure signal.
+      Executor remains implementation-only. It must not run pytest, git diff --check,
+      live agy proof, or any other canonical Runtime verification.
     - >
-      Keep Runtime evidence ownership. The exact authored verification command must
-      be persisted as Evidence.source.command and executed once in order.
+      Preserve the r4 Windows-safe AC8 verification transport: inner dangerous PowerShell
+      payload encoded as UTF-16LE Base64 and invoked through
+      "powershell.exe -NoProfile -EncodedCommand <payload>", with no nested command quotes
+      in the agy prompt.
     - >
-      Do not hide the Windows quoting defect with an agy wrapper, alias, shim, changed
-      PATHEXT precedence, or model-specific special case.
+      Live AC8 remains fail closed unless exact agy 1.2.6 is observed, agy --print exits
+      0, marker remains absent, output includes AIOS_BACKGROUND_RISK_DENIED, and output
+      contains no root-agent idle/background-task termination or hook-execution-failure signal.
+    - >
+      Runtime remains sole owner of verification evidence, and exact authored command text
+      remains Evidence.source.command.
 
 acceptance:
   - id: AC1
     condition: >
-      Current-main TASK-140 r4 candidate contains the same r3 guard/adapter behavior
-      with ordered hook cutover and changes limited to the four authorized paths.
+      Candidate changes are limited to the four authorized TASK-140 paths and preserve
+      the validated r3/r4 guard and adapter production semantics.
   - id: AC2
     condition: >
-      Active AIOS guard remains subprocess-scoped and manual/non-AIOS sessions remain inert.
+      hooks.json uses exactly "python ./aios_antigravity_pretool_guard.py", and a regression
+      executes that exact command from <repo>/.agents successfully.
   - id: AC3
     condition: >
-      Git and background-risk enforcement remains fail closed with all r3 positive and
-      negative regressions green.
+      Production-shaped hook-directory regressions prove Start-Sleep denial with
+      AIOS_BACKGROUND_RISK_DENIED and Runtime-owned verification denial with
+      AIOS_RUNTIME_OWNS_VERIFICATION before tool execution.
   - id: AC4
     condition: >
-      Exact hooks.json command resolves the tracked guard from workspace root and malformed
-      active input fails closed.
+      All existing malformed-input, manual-inert, bounded-git, destructive-git,
+      reordered diff --check, quoted Windows git path, and provider no-retry regressions remain green.
   - id: AC5
     condition: >
-      Provider instruction remains implementation-only, no-retry after stable hook denial,
-      single-agy, final-HEAD, and finish-exactly-once compatible.
+      Runtime focused/full antigravity-adapter verification and git diff --check pass.
   - id: AC6
     condition: >
-      Runtime focused/full antigravity-adapter verification and git diff --check pass.
+      Native Windows-safe live AC8 proof on agy 1.2.6 reaches the actual PreToolUse hook,
+      returns AIOS_BACKGROUND_RISK_DENIED, leaves the marker absent, and has no background
+      or hook-failure terminal signal.
   - id: AC7
     condition: >
-      Windows-safe live AC8 verification proves AGY_VERSION=1.2.6, invokes agy --print
-      successfully, denies the encoded 20-second marker-writing run_command with
-      AIOS_BACKGROUND_RISK_DENIED before marker creation, and reports no background or
-      hook-failure terminal signal.
+      RESULT is structurally complete with no unresolved items and Runtime evidence is
+      bound to the exact r5 candidate.
   - id: AC8
     condition: >
-      RESULT has no unresolved items, Runtime evidence is bound to the exact candidate,
-      and semantic review can evaluate the live proof directly without another
-      EVIDENCE_ONLY remediation.
+      Semantic review can evaluate AC1-AC7 plus the native live proof directly without
+      another EVIDENCE_ONLY remediation or historical repair chain.
 
 verification:
   required:
