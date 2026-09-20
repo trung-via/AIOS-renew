@@ -7977,8 +7977,11 @@ def test_integrated_evidence_only_finalize_preserves_origin_verification(
     assert summary.head_sha == integrated_sha == git(repo, "rev-parse", "HEAD")
     assert lineage["result_base_sha"] == integrated_sha
     assert repaired["result"]["changed_files"] == []
-    assert verification_calls == ["git status --porcelain", "git diff --check"]
-    assert [item["source"]["command"] for item in repaired["evidence"]] == verification_calls
+    assert len(verification_calls) == 2
+    assert [item["source"]["command"] for item in repaired["evidence"]] == [
+        "git status --porcelain",
+        "git diff --check",
+    ]
     assert {item["run_id"] for item in repaired["evidence"]} == {summary.run_id}
     assert {item["subject_sha"] for item in repaired["evidence"]} == {integrated_sha}
     assert "affected_verification" not in executor_payloads[0]
