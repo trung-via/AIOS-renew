@@ -1,0 +1,138 @@
+task_id: TASK-151
+revision: 1
+
+goal: >
+  Restore parseable GitHub Actions self-host workflow definitions for PRIMARY,
+  steady-state/fallback REMEDIATION, and REPAIR after TASK-149 Operational Receipt v2
+  introduced runner.temp at job-level env positions that GitHub rejects during dispatch.
+  Preserve all BP-2 receipt semantics, family identities, Runtime authority, and exact
+  dispatch selectors while making the existing workflows dispatchable again.
+
+problem: >
+  After TASK-149 was reviewed and published, GitHub rejects PRIMARY workflow dispatch
+  before any self-host runner or AIOS invocation with HTTP 422:
+  "failed to parse workflow ... Unrecognized named-value: 'runner' ... runner.temp".
+  The same job-level AIOS_OPERATIONAL_RECEIPT_PATH pattern exists in four addressed
+  self-host workflows. TASK-150 PRIMARY wakeups #366 and #367 both reproduced the exact
+  pre-AIOS failure and created no RUN or canonical FAILURE. This is a transport/workflow
+  regression in BP-2 implementation, not a TASK-150, Executor, permission, or network
+  failure.
+
+assumptions:
+  - Canonical main at TASK-151 authoring is 90a46d0f4a9b20b1b82c47cb88619b16831a56c0.
+  - TASK-150 r1 is canonically authored and remains the BP-V1 semantic work item.
+  - >
+    TASK-151 is a maintenance unblocker required before remote/self-host execution can
+    resume. Completing TASK-151 does not complete or reinterpret TASK-150/BP-V1.
+  - >
+    The regression was introduced by TASK-149/BP-2 receipt persistence changes. Existing
+    Operational Receipt v2 semantics, upload-artifact persistence, exact delivery identities,
+    and terminal projection rules remain authoritative and must be preserved.
+  - >
+    GitHub workflow parseability is a transport prerequisite. A parse failure before AIOS
+    invocation creates no RUN, FAILURE, Admission Failure, Executor invocation, or lifecycle
+    truth.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-149.yaml
+    - .ai/reviews/REVIEW-149-004.yaml
+    - .github/workflows/aios-brain-wakeup.yml
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - .github/workflows/aios-brain-remediation-intent.yml
+    - .github/workflows/aios-approved-remediation-intent.yml
+    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - .github/workflows/aios-brain-repair-wakeup.yml
+    - .github/workflows/aios-self-hosted-repair-wakeup.yml
+    - tests/test_self_hosted_wakeup.py
+    - tests/test_github_issue_remediation_intent_workflow.py
+    - tests/test_github_issue_repair_wakeup_workflow.py
+    - README.md
+  modify:
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - .github/workflows/aios-approved-remediation-intent.yml
+    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - .github/workflows/aios-self-hosted-repair-wakeup.yml
+    - tests/test_self_hosted_wakeup.py
+    - tests/test_github_issue_remediation_intent_workflow.py
+    - tests/test_github_issue_repair_wakeup_workflow.py
+
+non_goals:
+  - Change TASK-150 semantics, implementation scope, or verification contract work.
+  - Change Operational Receipt v2 schema, boundary vocabulary, delivery identities, or terminal-pointer semantics.
+  - Change PRIMARY exact six-selector authorization or any REMEDIATION/REPAIR selector set.
+  - Change AIOS Runtime, Operator, dispatch journals, lifecycle artifacts, Reviewer, Publisher, or terminal attention.
+  - Add a new workflow family, execution router, retry/failover mechanism, polling loop, daemon, or state store.
+  - Change self-host runner labels, repository variables, permissions, or GitHub Issue carrier admission policy.
+  - Add direct Codex/Antigravity invocation to workflows.
+  - Broaden receipt contents, persist raw logs, or weaken bounded machine-readable receipt behavior.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Remove the invalid use of runner.temp from job-level env in each addressed self-host
+      workflow. Establish AIOS_OPERATIONAL_RECEIPT_PATH only at a context where GitHub allows
+      runner.temp, or derive the equivalent path within the runner step, without changing
+      the bounded receipt filename, contents, family identity, or artifact persistence contract.
+    - >
+      The resulting YAML for each addressed workflow must be accepted by GitHub Actions'
+      workflow parser for its existing workflow_dispatch/workflow_call surface. Tests must
+      assert the path is not defined from runner.temp at job-level env and remains available
+      to all steps that write/expose/upload the exact Operational Receipt v2.
+    - >
+      Preserve the exact receipt artifact name aios-operational-receipt-v2, upload-artifact@v4,
+      if-no-files-found error behavior, retention-days 30, and the family-specific receipt
+      filenames introduced by TASK-149.
+    - >
+      Preserve all existing pre-AIOS typed operational failure behavior, post-AIOS
+      reprojection, exit-code preservation, and exact terminal-pointer projection from TASK-149.
+    - >
+      PRIMARY remains only aios wakeup through the existing self-host workflow; REMEDIATION
+      remains approved-remediation-intent / approved-remediation-wakeup as currently defined;
+      REPAIR remains repair-wakeup. No direct aios run, remediate, repair, Codex, or Antigravity
+      command may be introduced.
+    - >
+      Preserve current workflow permissions, triggers, inputs, runner labels, no-checkout
+      boundary, AIOS_REPO_ROOT binding, and exact selector validation.
+    - >
+      Add deterministic regression coverage for all four affected workflows so a future
+      job-level runner.temp regression fails focused tests before publication.
+    - >
+      Do not modify files outside scope.modify and do not push from Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      PRIMARY self-host workflow no longer references runner.temp from job-level env and
+      remains structurally equivalent in triggers, inputs, permissions, runner routing,
+      AIOS wakeup command, receipt filename, receipt artifact, and BP-2 semantics.
+  - id: AC2
+    condition: >
+      Steady-state REMEDIATION intent workflow and fallback REMEDIATION wakeup workflow no
+      longer reference runner.temp from job-level env and preserve their existing selectors,
+      commands, receipt filenames, artifact contract, and BP-2 semantics.
+  - id: AC3
+    condition: >
+      REPAIR self-host workflow no longer references runner.temp from job-level env and
+      preserves its existing selectors, repair-wakeup command, receipt filename, artifact
+      contract, and BP-2 semantics.
+  - id: AC4
+    condition: >
+      Focused regression tests prove AIOS_OPERATIONAL_RECEIPT_PATH is established only at a
+      GitHub-supported runner/step context while every writer/exposer/uploader still resolves
+      the same bounded run-scoped receipt path.
+  - id: AC5
+    condition: >
+      No Runtime, dispatch, authorization, lifecycle, review, publication, or Executor
+      semantics change; TASK-150 remains unmodified and no canonical RUN/FAILURE is fabricated
+      for the earlier pre-AIOS #366/#367 transport failures.
+  - id: AC6
+    condition: >
+      Focused tests pass, git diff --check passes, and all modifications remain within the
+      authorized four workflows plus three regression test files.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_self_hosted_wakeup.py tests/test_github_issue_remediation_intent_workflow.py tests/test_github_issue_repair_wakeup_workflow.py
+    - git diff --check
