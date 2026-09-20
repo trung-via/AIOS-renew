@@ -65,6 +65,34 @@ def test_exact_journal_binding_is_required_for_run_attribution(tmp_path: Path) -
     assert "run_id" not in receipt
 
 
+def test_run_attribution_does_not_claim_executor_invocation(tmp_path: Path) -> None:
+    root = tmp_path / "aios"
+    run_id = "RUN-149-001"
+    _journal(
+        root,
+        "dispatches",
+        "delivery-149",
+        {
+            "dispatch_id": "delivery-149",
+            "task_id": "TASK-149",
+            "executor": "codex",
+            "run_id": run_id,
+        },
+    )
+
+    receipt = project_delivery_receipt(
+        root,
+        family="PRIMARY",
+        delivery_id="delivery-149",
+        selectors={"task_id": "TASK-149", "executor": "codex"},
+    ).as_dict()
+
+    assert receipt["boundary"] == "RUN_ATTRIBUTED"
+    assert receipt["run_id"] == run_id
+    assert receipt["run_created"] is True
+    assert receipt["executor_invoked"] is False
+
+
 def test_terminal_projection_contains_pointer_not_terminal_body(tmp_path: Path) -> None:
     root = tmp_path / "aios"
     run_id = "RUN-149-001"
@@ -102,6 +130,7 @@ def test_terminal_projection_contains_pointer_not_terminal_body(tmp_path: Path) 
         "run_id": run_id,
         "artifact": f".git/aios/failures/{run_id}.json",
     }
+    assert receipt["executor_invoked"] is False
     assert "secret" not in json.dumps(receipt)
 
 

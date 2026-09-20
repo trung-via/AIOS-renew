@@ -244,14 +244,13 @@ def project_delivery_receipt(
     if result_path.is_file() or failure_path.is_file():
         kind = "RESULT" if result_path.is_file() else "FAILURE"
         artifact = f".git/aios/{kind.lower()}s/{run_id}.json"
-        executor_invoked = record.get("executor") is not None
         return OperationalReceipt(
             family=family,
             delivery_id=delivery_id,
             boundary="TERMINAL_POINTER",
             selectors=bounded,
             run_created=True,
-            executor_invoked=executor_invoked,
+            executor_invoked=False,
             run_id=run_id,
             terminal_pointer={"kind": kind, "run_id": run_id, "artifact": artifact},
         )
@@ -261,7 +260,7 @@ def project_delivery_receipt(
         boundary="RUN_ATTRIBUTED",
         selectors=bounded,
         run_created=True,
-        executor_invoked=record.get("executor") is not None,
+        executor_invoked=False,
         run_id=run_id,
     )
 
