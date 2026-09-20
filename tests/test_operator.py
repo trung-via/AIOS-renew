@@ -8200,12 +8200,15 @@ def test_v2_authorized_task_identity_drift_fails_before_run_and_executor(
         executor_calls.append((command, kwargs))
         raise AssertionError("executor must not be invoked")
 
+    preflight_sha = git(repo, "rev-parse", "HEAD")
     with pytest.raises(OperatorError, match=message):
         run_task(
             "TASK-101",
             executor="codex",
             repo=repo,
             native_runner=runner,
+            synchronize=False,
+            preflight_sha=preflight_sha,
             task_revision=task_revision,
             task_blob_sha=task_blob,
             task_commit_sha=task_commit,
