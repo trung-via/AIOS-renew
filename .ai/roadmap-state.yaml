@@ -26,7 +26,7 @@ verification_foundation_audit:
     Historical Performance Closure engineering artifacts remain immutable and are not
     reinterpreted by this planning decision.
 next_items:
-  - bp-2-operational-attribution-v2
+  - bp-v1-verification-contract-hardening
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -115,15 +115,20 @@ sequence:
       Bind new PRIMARY authorization to exact TASK semantic identity while allowing
       unrelated newer admissible main state when the authorized TASK artifact is unchanged.
   - id: bp-2-operational-attribution-v2
-    status: NEXT
-    task_id: TASK-149
-    task_revision: 1
+    status: DONE
+    completed_by:
+      task_id: TASK-149
+      task_revision: 1
+      run_id: RUN-149-004
+      review_id: REVIEW-149-004
+      reviewed_sha: "df4a3e45d6437d66d595f04a5c0291c01316e835"
+      published_sha: "df4a3e45d6437d66d595f04a5c0291c01316e835"
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Close pre-AIOS/self-host attribution gaps and preserve typed lower-layer causes
       without fabricating engineering lifecycle truth.
   - id: bp-v1-verification-contract-hardening
-    status: PLANNED
+    status: NEXT
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-0
