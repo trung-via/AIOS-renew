@@ -110,10 +110,18 @@ def repair_completion_policy(
     action: str,
     modification_scope: Sequence[str],
     lineage_path: Path,
+    origin_affected_verification: Sequence[str] = (),
 ) -> CompletionPolicy:
+    verification_commands = task.verification.required
+    if origin_affected_verification:
+        verification_commands = tuple(
+            dict.fromkeys(
+                (*verification_commands, *origin_affected_verification)
+            )
+        )
     return CompletionPolicy(
         kind="REPAIR",
-        verification_commands=task.verification.required,
+        verification_commands=verification_commands,
         result_base_sha=(
             root_base_sha if result_base_sha is None else result_base_sha
         ),

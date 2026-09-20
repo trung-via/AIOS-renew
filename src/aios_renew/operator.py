@@ -370,6 +370,7 @@ class _HistoricalRepairAdmission:
     result_base_sha: str
     remote_run_ids: tuple[str, ...]
     preverification: bytes | None
+    origin_affected_verification: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -385,6 +386,7 @@ class _RepairAdmission:
     action: str
     scope: list[str]
     reusable_package: ResultPackage | None
+    origin_affected_verification: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -1713,6 +1715,90 @@ def _resolve_primary_recovery_admission(
         raise OperatorError(f"PRIMARY recovery source rejected: {exc}") from exc
 
 
+def _resolve_local_repair_remediation_origin(
+    state: RuntimePaths,
+    *,
+    failed_run_id: str,
+    task: Task,
+    failure: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], RemediationExecution] | None:
+    """Recover an exact REMEDIATION origin without trusting REPAIR prose."""
+
+    current_run_id = failed_run_id
+    seen: set[str] = set()
+    while current_run_id not in seen:
+        seen.add(current_run_id)
+        run_path = state.runs / f"{current_run_id}.json"
+        if not run_path.is_file():
+            raise OperatorError("persisted failed RUN lineage not found")
+        try:
+            run_data = json.loads(run_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise OperatorError(f"invalid persisted failed RUN lineage: {exc}") from exc
+        if not isinstance(run_data, Mapping):
+            raise OperatorError("invalid persisted failed RUN lineage")
+        try:
+            if run_data.get("kind") == "REMEDIATION":
+                execution = _remediation_execution_from_data(run_data["execution"])
+                if (
+                    execution.run.run_id != current_run_id
+                    or execution.run.task.id != task.task_id
+                    or execution.run.task.revision != task.revision
+                    or not execution.remediation.affected_verification
+                ):
+                    raise ValueError("REMEDIATION origin identity mismatch")
+                if (
+                    current_run_id == failed_run_id
+                    and (
+                        failure.get("run_id") != current_run_id
+                        or failure.get("base_sha") != execution.run.base_sha
+                    )
+                ):
+                    raise ValueError("FAILURE does not match failed REMEDIATION RUN")
+                return run_data, execution
+            if "kind" in run_data:
+                raise ValueError("unknown failed RUN kind")
+            run = _run_from_data(run_data)
+            if (
+                run.run_id != current_run_id
+                or run.task.id != task.task_id
+                or run.task.revision != task.revision
+            ):
+                raise ValueError("failed RUN identity mismatch")
+            if (
+                current_run_id == failed_run_id
+                and (
+                    failure.get("run_id") != current_run_id
+                    or failure.get("base_sha") != run.base_sha
+                )
+            ):
+                raise ValueError("FAILURE does not match failed RUN")
+        except (KeyError, TypeError, ValueError, ReviewValidationError) as exc:
+            raise OperatorError(f"invalid persisted failed RUN lineage: {exc}") from exc
+
+        repair_path = state.repairs / f"{current_run_id}.json"
+        if not repair_path.is_file():
+            return None
+        try:
+            lineage = json.loads(repair_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise OperatorError(f"invalid persisted REPAIR lineage: {exc}") from exc
+        task_data = lineage.get("task") if isinstance(lineage, Mapping) else None
+        predecessor = lineage.get("failed_run_id") if isinstance(lineage, Mapping) else None
+        if (
+            not isinstance(lineage, Mapping)
+            or lineage.get("run") != dict(run_data)
+            or not isinstance(task_data, Mapping)
+            or task_data.get("task_id") != task.task_id
+            or task_data.get("revision") != task.revision
+            or not isinstance(predecessor, str)
+            or not predecessor
+        ):
+            raise OperatorError("invalid persisted REPAIR lineage")
+        current_run_id = predecessor
+    raise OperatorError("cyclic persisted REPAIR lineage")
+
+
 def _resolve_repair_admission(
     failed_run_id: str,
     *,
@@ -1765,6 +1851,9 @@ def _resolve_repair_admission(
         result_base_sha = resolved_admission.result_base_sha
         remote_run_ids = resolved_admission.remote_run_ids
         transported_preverification = resolved_admission.preverification
+        origin_affected_verification = (
+            resolved_admission.origin_affected_verification
+        )
         if local_failure is not None and dict(local_failure) != dict(failure):
             raise OperatorError("local and canonical remote FAILURE conflict")
     else:
@@ -1775,25 +1864,35 @@ def _resolve_repair_admission(
         )
         task = load_task(repo, failure["task"]["id"])
         continuation_of = failure.get("continuation_of")
-        if continuation_of is None:
-            failed_run_path = state.runs / f"{failed_run_id}.json"
-            run_data = json.loads(failed_run_path.read_text(encoding="utf-8"))
-            if run_data.get("kind") == "REMEDIATION":
-                execution = _remediation_execution_from_data(run_data["execution"])
-                root_base_sha = _derive_remediation_source_root(
-                    repo, task=task, execution=execution
+        origin = _resolve_local_repair_remediation_origin(
+            state, failed_run_id=failed_run_id, task=task, failure=failure
+        )
+        origin_affected_verification = (
+            () if origin is None else origin[1].remediation.affected_verification
+        )
+        if origin is not None:
+            origin_run_data, execution = origin
+            if (
+                "execution_base" not in origin_run_data
+                and execution.run.base_sha != execution.remediation.reviewed_sha
+            ):
+                raise OperatorError(
+                    "legacy REMEDIATION origin base does not match reviewed SHA"
                 )
-                result_base_sha = _repair_result_base_from_origin(
-                    repo,
-                    task=task,
-                    run_data=run_data,
-                    run=execution.run,
-                    root_base_sha=root_base_sha,
-                )
-            else:
-                root_base_sha = failure.get("base_sha")
-                result_base_sha = root_base_sha
-        else:
+            root_base_sha = _derive_remediation_source_root(
+                repo, task=task, execution=execution
+            )
+            result_base_sha = _repair_result_base_from_origin(
+                repo,
+                task=task,
+                run_data=origin_run_data,
+                run=execution.run,
+                root_base_sha=root_base_sha,
+            )
+        elif continuation_of is None:
+            root_base_sha = failure.get("base_sha")
+            result_base_sha = root_base_sha
+        if continuation_of is not None:
             prior_execution_path = state.repairs / f"{failed_run_id}.json"
             if not prior_execution_path.is_file():
                 raise OperatorError("persisted REPAIR lineage not found")
@@ -1802,10 +1901,18 @@ def _resolve_repair_admission(
             )
             if prior_execution.get("failed_run_id") != continuation_of:
                 raise OperatorError("invalid persisted REPAIR lineage")
-            root_base_sha = prior_execution.get("root_base_sha")
-            result_base_sha = prior_execution.get(
-                "result_base_sha", root_base_sha
+            persisted_root = prior_execution.get("root_base_sha")
+            persisted_result_base = prior_execution.get(
+                "result_base_sha", persisted_root
             )
+            if origin is None:
+                root_base_sha = persisted_root
+                result_base_sha = persisted_result_base
+            elif (
+                persisted_root != root_base_sha
+                or persisted_result_base != result_base_sha
+            ):
+                raise OperatorError("conflicting REPAIR origin lineage")
         if not isinstance(root_base_sha, str) or not root_base_sha:
             raise OperatorError("invalid original TASK root lineage")
         if not isinstance(result_base_sha, str) or not result_base_sha:
@@ -1979,6 +2086,7 @@ def _resolve_repair_admission(
         action=action,
         scope=scope,
         reusable_package=reusable_package,
+        origin_affected_verification=origin_affected_verification,
     )
 
 
@@ -2020,6 +2128,7 @@ def _run_repair_impl(
     action = resolved.action
     scope = resolved.scope
     reusable_package = resolved.reusable_package
+    origin_affected_verification = resolved.origin_affected_verification
     if executor is None and reusable_package is None:
         raise OperatorError("coding Executor is required for REPAIR")
     # TASK-064 reusable verification state bypasses dispatcher invocation.  Its
@@ -2161,6 +2270,7 @@ def _run_repair_impl(
                 action=action,
                 modification_scope=scope,
                 lineage_path=state.repairs / f"{run_id}.json",
+                origin_affected_verification=origin_affected_verification,
             ),
         )
         return RepairSummary(
@@ -2318,6 +2428,18 @@ def _resolve_historical_repair_admission(
     if terminal_execution is None:
         root_base_sha = terminal_run.base_sha
     else:
+        if not terminal_execution.remediation.affected_verification:
+            raise OperatorError(
+                "historical REMEDIATION origin affected verification is empty"
+            )
+        if (
+            "execution_base" not in terminal_run_data
+            and terminal_run.base_sha
+            != terminal_execution.remediation.reviewed_sha
+        ):
+            raise OperatorError(
+                "legacy REMEDIATION origin base does not match reviewed SHA"
+            )
         root_base_sha = _derive_remediation_source_root(
             repo, task=task, execution=terminal_execution
         )
@@ -2354,6 +2476,11 @@ def _resolve_historical_repair_admission(
         result_base_sha,
         recovery.remote_run_ids,
         target_artifact.preverification,
+        (
+            ()
+            if terminal_execution is None
+            else terminal_execution.remediation.affected_verification
+        ),
     )
 
 
@@ -2378,15 +2505,14 @@ def _repair_result_base_from_origin(
         raise OperatorError(
             f"integrated REMEDIATION execution_base rejected: {exc}"
         ) from exc
+    if base.candidate_sha != run.base_sha:
+        qualifier = "integrated REMEDIATION" if base.is_integrated else "REMEDIATION"
+        raise OperatorError(f"{qualifier} execution_base does not match RUN base")
     if not base.is_integrated:
         return root_base_sha
     if set(raw_base) != _CANONICAL_INTEGRATED_EXECUTION_BASE_FIELDS:
         raise OperatorError(
             "integrated REMEDIATION execution_base fields are not canonical"
-        )
-    if base.integration_candidate_sha != run.base_sha:
-        raise OperatorError(
-            "integrated REMEDIATION execution_base does not match RUN base"
         )
     try:
         lifecycle = resolve_remote_task_lifecycle(
@@ -2586,6 +2712,8 @@ def _derive_remediation_source_root(
     execution: RemediationExecution,
     seen: frozenset[tuple[str, str]] = frozenset(),
 ) -> str:
+    if execution.original_constraints != execution.remediation.constraints:
+        raise OperatorError("REMEDIATION origin constraints mismatch")
     identity = (execution.review_id, execution.remediation.reviewed_sha)
     if identity in seen:
         raise OperatorError("cyclic reviewed source lineage")
@@ -2653,12 +2781,16 @@ def _derive_remediation_source_root(
                 task=task, result=result, review=review, prior_review=prior_review
             )
             validate_remediation(review=review, remediation=remediation, task=task)
+            canonical_finding = next(
+                item for item in review.findings if item.id == remediation.finding_id
+            )
             if review.review_id != execution.review_id:
                 continue
             if (
                 remote.source_run_id != source_run.run_id
                 or review.reviewed_sha != execution.remediation.reviewed_sha
                 or remediation != execution.remediation
+                or canonical_finding != execution.finding
                 or result.head_sha != execution.remediation.reviewed_sha
             ):
                 raise ValueError("reviewed source identity or SHA mismatch")

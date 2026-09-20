@@ -13,6 +13,7 @@ import pytest
 import aios_renew.operator as operator_module
 import aios_renew.publication as publication_module
 import aios_renew.runtime as runtime_module
+from aios_renew.codex_adapter import CodexAdapter
 from aios_renew.review_transport import (
     RemoteFailureArtifacts,
     RemoteLifecycleReview,
@@ -118,6 +119,125 @@ def test_repair_completion_policy_keeps_semantic_and_result_bases_distinct(
     assert policy.mutation_base_sha == failed_head
     assert policy.result_scope == task.scope.modify
     assert policy.mutation_scope == ("OUTPUT.txt",)
+
+
+def test_repair_completion_policy_appends_origin_verification_once() -> None:
+    task = operator_module.parse_task(TASK_SOURCE)
+    reviewed_sha = "1" * 40
+    execution_base = "2" * 40
+    review = operator_module.parse_review(
+        f"""review_id: REVIEW-101-EVIDENCE
+reviewed_sha: {reviewed_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R-EVIDENCE
+    basis: AC1
+    action: EVIDENCE_ONLY
+    location: OUTPUT.txt
+    issue: Independent evidence is required.
+    expected: Collect the exact live proof.
+"""
+    )
+    remediation = operator_module.parse_remediation(
+        f"""finding_id: R-EVIDENCE
+action: EVIDENCE_ONLY
+reviewed_sha: {reviewed_sha}
+modification_scope: []
+affected_verification:
+  - git status --porcelain
+  - git diff --check
+  - git diff --check
+constraints:
+  hard: [Commit the output.]
+"""
+    )
+    execution = operator_module.RemediationExecution(
+        review_id=review.review_id,
+        finding=review.findings[0],
+        remediation=remediation,
+        run=operator_module.Run(
+            run_id="RUN-101-009",
+            task=operator_module.RunTaskReference(id="TASK-101", revision=1),
+            executor="codex",
+            base_sha=execution_base,
+            workspace="bounded",
+            head_sha=None,
+            status="ACTIVE",
+        ),
+        original_constraints=remediation.constraints,
+    )
+
+    policy = runtime_module.repair_completion_policy(
+        task,
+        root_base_sha=reviewed_sha,
+        result_base_sha=execution_base,
+        failed_head_sha=execution_base,
+        action="FINALIZE_CANDIDATE",
+        modification_scope=(),
+        lineage_path=Path("repair.json"),
+        origin_affected_verification=execution.remediation.affected_verification,
+    )
+
+    assert policy.verification_commands == (
+        "git status --porcelain",
+        "git diff --check",
+    )
+
+
+def test_codex_evidence_only_prompt_binds_head_to_admitted_base() -> None:
+    task = operator_module.parse_task(TASK_SOURCE)
+    reviewed_sha = "1" * 40
+    execution_base = "2" * 40
+    review = operator_module.parse_review(
+        f"""review_id: REVIEW-101-EVIDENCE
+reviewed_sha: {reviewed_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance: {{AC1: FAIL}}
+findings:
+  - id: R-EVIDENCE
+    basis: AC1
+    action: EVIDENCE_ONLY
+    location: OUTPUT.txt
+    issue: Independent evidence is required.
+    expected: Collect the exact live proof.
+"""
+    )
+    remediation = operator_module.parse_remediation(
+        f"""finding_id: R-EVIDENCE
+action: EVIDENCE_ONLY
+reviewed_sha: {reviewed_sha}
+modification_scope: []
+affected_verification: [git diff --check]
+constraints:
+  hard: [Commit the output.]
+"""
+    )
+    execution = operator_module.RemediationExecution(
+        review_id=review.review_id,
+        finding=review.findings[0],
+        remediation=remediation,
+        run=operator_module.Run.from_task(
+            run_id="RUN-101-009",
+            task=task,
+            executor="codex",
+            base_sha=execution_base,
+            workspace="bounded",
+        ),
+        original_constraints=remediation.constraints,
+    )
+
+    prompt = CodexAdapter.remediation_prompt_for(execution=execution)
+    serialized = json.loads(prompt.split("REMEDIATION_INPUT:\n", 1)[1])
+
+    assert "actual final Git HEAD" in prompt
+    assert "unchanged admitted run.base_sha" in prompt
+    assert "not remediation.reviewed_sha" in prompt
+    assert serialized["run"]["base_sha"] == execution_base
+    assert serialized["remediation"]["reviewed_sha"] == reviewed_sha
+    assert "affected_verification" not in serialized["remediation"]
 
 
 def canonical_result_payload(
@@ -5699,6 +5819,43 @@ def test_reviewed_sha_mismatch_is_rejected_before_workspace_or_executor(
     )
 
 
+def test_forged_origin_affected_verification_is_rejected_before_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    recovery, source = historical_remediation_source_fixture(repo)
+    artifact = recovery.failures[0]
+    run_data = json.loads(artifact.run)
+    run_data["execution"]["remediation"]["affected_verification"] = [
+        "forged verification command"
+    ]
+    forged = replace(artifact, run=json.dumps(run_data).encode())
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_repair_recovery",
+        lambda repo, *, failed_run_id: RemoteRepairRecovery(
+            (forged,), recovery.remote_run_ids
+        ),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "read_remote_task",
+        lambda repo, *, commit_sha, task_id: TASK_SOURCE.encode(),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_remediation_lineages",
+        lambda repo, *, finding_id, **kwargs: (source,),
+    )
+
+    assert_historical_repair_rejected_before_mutation(
+        repo,
+        monkeypatch,
+        failed_run_id="RUN-101-004",
+        message="reviewed source identity or SHA mismatch",
+    )
+
+
 def test_ambiguous_reviewed_source_is_rejected_before_workspace_or_executor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -7621,6 +7778,211 @@ findings:
         int_result.integration_candidate_sha,
         completed.head_sha,
     ).splitlines() == ["OUTPUT.txt"]
+
+
+def test_integrated_evidence_only_finalize_preserves_origin_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    source_run_id = "RUN-101-000"
+    source_run = {
+        "run_id": source_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": reviewed_sha,
+        "workspace": "canonical-source",
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    source_result = result_payload(source_run_id, reviewed_sha, changed_files=[])
+    source_result["result"]["claims"][0]["evidence"] = ["E-SOURCE"]
+    source_result["evidence"] = [{
+        "evidence_id": "E-SOURCE",
+        "run_id": source_run_id,
+        "subject_sha": reviewed_sha,
+        "type": "TEST",
+        "source": {"command": "git status --porcelain"},
+        "result": {"exit_code": 0, "summary": "verified"},
+        "raw": {"path": ".ai/evidence/E-SOURCE.log"},
+    }]
+    review = {
+        "review_id": "REVIEW-101-EVIDENCE",
+        "reviewed_sha": reviewed_sha,
+        "mode": "PRIMARY",
+        "verdict": "CHANGES_REQUIRED",
+        "acceptance": {"AC1": "FAIL"},
+        "findings": [{
+            "id": "R-EVIDENCE",
+            "basis": "AC1",
+            "action": "EVIDENCE_ONLY",
+            "location": "OUTPUT.txt",
+            "issue": "Independent live evidence is required.",
+            "expected": "Collect the exact live proof.",
+        }],
+    }
+    remediation = {
+        "finding_id": "R-EVIDENCE",
+        "action": "EVIDENCE_ONLY",
+        "reviewed_sha": reviewed_sha,
+        "modification_scope": [],
+        "affected_verification": ["git diff --check"],
+        "constraints": ["Commit the output."],
+    }
+    source_lineage = RemoteRemediationLineage(
+        ref="refs/heads/aios/remediation/RUN-101-000-R-EVIDENCE",
+        source_run_id=source_run_id,
+        review=json.dumps(review).encode(),
+        remediation=json.dumps(remediation).encode(),
+        run=json.dumps(source_run).encode(),
+        result=json.dumps(source_result).encode(),
+        repair=None,
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_remediation_lineages",
+        lambda repo, *, finding_id, **kwargs: (source_lineage,),
+    )
+
+    (repo / "MAIN.txt").write_text("integrated main\n", encoding="utf-8")
+    git(repo, "add", "MAIN.txt")
+    git(repo, "commit", "--quiet", "-m", "integrated execution base")
+    integrated_sha = git(repo, "rev-parse", "HEAD")
+    integration_id = "INTEGRATION-101-EVIDENCE"
+    lifecycle = RemoteTaskLifecycle(
+        integrated_sha,
+        (RemoteLifecycleTerminal(
+            source_run_id,
+            "RESULT",
+            reviewed_sha,
+            json.dumps(source_run).encode(),
+            json.dumps(source_result).encode(),
+        ),),
+        (), (), (), (),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_remote_task_lifecycle",
+        lambda *_args, **_kwargs: lifecycle,
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "resolve_valid_integration",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            integration_id=integration_id,
+            integration_candidate_sha=integrated_sha,
+        ),
+    )
+
+    failed_run_id = "RUN-101-001"
+    origin_run = {
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": integrated_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    (state.runs / f"{failed_run_id}.json").write_text(
+        json.dumps({
+            "kind": "REMEDIATION",
+            "execution_base": {
+                "version": 1,
+                "kind": "INTEGRATED",
+                "cumulative_tip_run_id": source_run_id,
+                "cumulative_tip_candidate_sha": reviewed_sha,
+                "authorized_main_sha": integrated_sha,
+                "integration_candidate_sha": integrated_sha,
+                "integration_id": integration_id,
+            },
+            "execution": {
+                "review_id": review["review_id"],
+                "finding": review["findings"][0],
+                "remediation": remediation,
+                "run": origin_run,
+                "original_constraints": remediation["constraints"],
+            },
+        }),
+        encoding="utf-8",
+    )
+    failure = {
+        "kind": "FAILURE",
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-101", "revision": 1},
+        "executor": "codex",
+        "base_sha": integrated_sha,
+        "failed_head_sha": integrated_sha,
+        "phase": "COMPLETION_GATE",
+        "error": {"type": "OperatorError", "message": "RESULT.head_sha mismatch"},
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }
+    (state.failures / f"{failed_run_id}.json").write_text(
+        json.dumps(failure), encoding="utf-8"
+    )
+    repair = {
+        "repair_id": "REPAIR-101-EVIDENCE",
+        "failed_run_id": failed_run_id,
+        "failed_head_sha": integrated_sha,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "FINALIZE_CANDIDATE",
+        "modification_scope": [],
+        "instructions": ["Return the complete structural TASK package."],
+        "constraints": ["Commit the output."],
+    }
+    executor_payloads = []
+
+    def finalize_runner(command, **kwargs):
+        payload = kwargs["input"].decode().split("REPAIR_INPUT:\n", 1)[1]
+        executor_payloads.append(payload)
+        execution = json.loads(payload)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(result_payload(
+                execution["run"]["run_id"], integrated_sha, changed_files=[]
+            )),
+            stderr="",
+        )
+
+    verification_calls = []
+
+    def verify(command, **kwargs):
+        verification_calls.append(command)
+        assert kwargs["cwd"] == repo
+        assert git(repo, "rev-parse", "HEAD") == integrated_sha
+        return subprocess.CompletedProcess(command, 0, stdout=b"ok\n", stderr=b"")
+
+    summary = run_repair(
+        failed_run_id,
+        executor="codex",
+        repo=repo,
+        repair=repair,
+        native_runner=finalize_runner,
+        verification_runner=verify,
+    )
+
+    repaired = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    lineage = json.loads(
+        (state.repairs / f"{summary.run_id}.json").read_text(encoding="utf-8")
+    )
+    assert summary.head_sha == integrated_sha == git(repo, "rev-parse", "HEAD")
+    assert lineage["result_base_sha"] == integrated_sha
+    assert repaired["result"]["changed_files"] == []
+    assert verification_calls == ["git status --porcelain", "git diff --check"]
+    assert [item["source"]["command"] for item in repaired["evidence"]] == verification_calls
+    assert {item["run_id"] for item in repaired["evidence"]} == {summary.run_id}
+    assert {item["subject_sha"] for item in repaired["evidence"]} == {integrated_sha}
+    assert "affected_verification" not in executor_payloads[0]
+    assert "git diff --check" not in executor_payloads[0]
 
 
 def test_remediation_direct_candidate_revision_1_sibling_preserves_cumulative_tip_ac2_ac3(
