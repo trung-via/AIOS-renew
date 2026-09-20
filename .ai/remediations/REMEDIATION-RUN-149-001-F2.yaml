@@ -1,0 +1,9 @@
+finding_id: F2
+action: CODE_FIX
+reviewed_sha: f86440bffe7319da3b89a2046e215485058ca9dd
+modification_scope:
+- src/aios_renew/operational_receipt.py
+- tests/test_operational_receipt.py
+affected_verification:
+- python -m pytest -q tests/test_operational_receipt.py
+- git diff --check
