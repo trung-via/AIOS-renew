@@ -1,0 +1,7 @@
+finding_id: FINDING-130-002
+action: EVIDENCE_ONLY
+reviewed_sha: 486e2226149ed07686337dfe7c3f310abf6ea9cf
+modification_scope: []
+affected_verification:
+  - python -m pytest -q tests/test_operator.py::test_v2_authorized_task_identity_drift_fails_before_run_and_executor
+constraints: []
