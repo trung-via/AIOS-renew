@@ -3,8 +3,11 @@
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+import aios_renew.authoring_ingress as authoring_ingress_module
 
 from aios_renew.authoring_ingress import (
     AuthoringIngressError,
@@ -24,6 +27,28 @@ from aios_renew.review_transport import (
     transport_post_pass,
 )
 from aios_renew.unified_state import observe_unified_state
+
+
+def test_repair_review_semantics_require_exact_remediation_finding() -> None:
+    prior = SimpleNamespace()
+    exact = SimpleNamespace(mode="DELTA", prior_finding_id="R-EXACT")
+    authoring_ingress_module._validate_repair_review_semantics(
+        exact,
+        prior_review=prior,
+        repaired_finding_id="R-EXACT",
+    )
+
+    for invalid in (
+        SimpleNamespace(mode="PRIMARY", prior_finding_id=None),
+        SimpleNamespace(mode="DELTA", prior_finding_id=None),
+        SimpleNamespace(mode="DELTA", prior_finding_id="R-SIBLING"),
+    ):
+        with pytest.raises(AuthoringIngressError, match="exact repaired DELTA"):
+            authoring_ingress_module._validate_repair_review_semantics(
+                invalid,
+                prior_review=prior,
+                repaired_finding_id="R-EXACT",
+            )
 
 
 def git(repo: Path, *args: str, check: bool = True) -> str:
@@ -2437,3 +2462,419 @@ assert "aios_renew.antigravity_minimax_adapter" not in sys.modules
         check=True,
     )
     assert result.returncode == 0
+
+
+def _integrated_remediation_repair_review_lineage(
+    root: Path,
+    *,
+    execution_base_mutation: str | None = None,
+) -> dict[str, object]:
+    """Build RUN-140-008 -> RUN-140-009 -> REPAIR using canonical transports."""
+
+    from aios_renew.correction_integration import integrate_correction
+
+    repo, remote, _ = setup_test_repo(root)
+    task_id = "TASK-140"
+    source_run_id = "RUN-140-008"
+    remediation_run_id = "RUN-140-009"
+    repair_run_id = "RUN-140-010"
+    task_source = TASK_105_SOURCE.replace("TASK-105", task_id)
+    task_dir = repo / ".ai" / "tasks"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / f"{task_id}.yaml").write_text(task_source, encoding="utf-8")
+    (repo / "src").mkdir(parents=True, exist_ok=True)
+    (repo / "src" / "sample.py").write_text("# reviewed\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "TASK-140 reviewed candidate")
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    state = root / "integrated-review-state"
+    state.mkdir()
+    source_run = {
+        "run_id": source_run_id,
+        "task": {"id": task_id, "revision": 1},
+        "executor": "codex",
+        "base_sha": reviewed_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    source_result = {
+        "result": {
+            "head_sha": reviewed_sha,
+            "claims": [{
+                "id": "C1",
+                "satisfies": ["AC1"],
+                "claim": "The source candidate was reviewed.",
+                "evidence": ["E1"],
+            }],
+            "changed_files": [],
+            "unresolved": [],
+        },
+        "evidence": [{
+            "evidence_id": "E1",
+            "run_id": source_run_id,
+            "subject_sha": reviewed_sha,
+            "type": "TEST",
+            "source": {"command": "git diff --check"},
+            "result": {"exit_code": 0, "summary": "clean"},
+            "raw": {"path": ".ai/evidence/E1.log"},
+        }],
+    }
+    source_run_path = state / "source-run.json"
+    source_result_path = state / "source-result.json"
+    source_run_path.write_text(json.dumps(source_run), encoding="utf-8")
+    source_result_path.write_text(json.dumps(source_result), encoding="utf-8")
+    transport_post_pass(
+        repo,
+        run_id=source_run_id,
+        head_sha=reviewed_sha,
+        run_path=source_run_path,
+        result_path=source_result_path,
+    )
+
+    review_source = f"""review_id: REVIEW-140-008
+reviewed_sha: {reviewed_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: src/sample.py
+    issue: The reviewed sample needs correction.
+    expected: Correct the sample.
+"""
+    review_dir = repo / ".ai" / "reviews"
+    remediation_dir = repo / ".ai" / "remediations"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    remediation_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "REVIEW-140-008.yaml").write_text(review_source, encoding="utf-8")
+    (remediation_dir / "F1.yaml").write_text(
+        f"""finding_id: F1
+action: CODE_FIX
+reviewed_sha: {reviewed_sha}
+modification_scope: [src/sample.py]
+affected_verification: [git diff --check]
+constraints: [Bounded mutation authority only.]
+""",
+        encoding="utf-8",
+    )
+    git(repo, "add", ".ai")
+    git(repo, "commit", "--quiet", "-m", "TASK-140 review and remediation")
+    git(
+        repo,
+        "push",
+        "--quiet",
+        "origin",
+        f"HEAD:refs/heads/aios/remediation/{source_run_id}-F1",
+    )
+
+    git(repo, "reset", "--hard", "--quiet", reviewed_sha)
+    (repo / "UNRELATED.txt").write_text("authorized main advance\n", encoding="utf-8")
+    git(repo, "add", "UNRELATED.txt")
+    git(repo, "commit", "--quiet", "-m", "advance authorized main")
+    authorized_main_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+    integration = integrate_correction(
+        task_id,
+        task_revision=1,
+        cumulative_tip_run_id=source_run_id,
+        cumulative_tip_candidate_sha=reviewed_sha,
+        authorized_main_sha=authorized_main_sha,
+        repo=repo,
+    )
+    git(
+        repo,
+        "push",
+        "--quiet",
+        "origin",
+        f"{integration.integration_candidate_sha}:{integration.integration_ref}",
+    )
+
+    git(repo, "reset", "--hard", "--quiet", integration.integration_candidate_sha)
+    (repo / "src" / "sample.py").write_text("# failed remediation\n", encoding="utf-8")
+    git(repo, "add", "src/sample.py")
+    git(repo, "commit", "--quiet", "-m", "failed integrated remediation")
+    failed_head_sha = git(repo, "rev-parse", "HEAD")
+    execution_base = {
+        "version": 1,
+        "kind": "INTEGRATED",
+        "cumulative_tip_run_id": source_run_id,
+        "cumulative_tip_candidate_sha": reviewed_sha,
+        "authorized_main_sha": authorized_main_sha,
+        "integration_candidate_sha": integration.integration_candidate_sha,
+        "integration_id": integration.integration_id,
+    }
+    if execution_base_mutation == "authorized_main":
+        execution_base["authorized_main_sha"] = reviewed_sha
+    elif execution_base_mutation == "integration_candidate":
+        execution_base["integration_candidate_sha"] = failed_head_sha
+
+    remediation_run = {
+        "run_id": remediation_run_id,
+        "task": {"id": task_id, "revision": 1},
+        "executor": "codex",
+        "base_sha": integration.integration_candidate_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    remediation_run_payload = {
+        "kind": "REMEDIATION",
+        "predecessor": {
+            "source_run_id": source_run_id,
+            "review_id": "REVIEW-140-008",
+            "finding_id": "F1",
+            "reviewed_sha": reviewed_sha,
+        },
+        "execution_base": execution_base,
+        "execution": {
+            "review_id": "REVIEW-140-008",
+            "finding": {
+                "id": "F1",
+                "basis": "AC1",
+                "action": "CODE_FIX",
+                "location": "src/sample.py",
+                "issue": "The reviewed sample needs correction.",
+                "expected": "Correct the sample.",
+            },
+            "remediation": {
+                "finding_id": "F1",
+                "action": "CODE_FIX",
+                "reviewed_sha": reviewed_sha,
+                "modification_scope": ["src/sample.py"],
+                "affected_verification": ["git diff --check"],
+                "constraints": ["Bounded mutation authority only."],
+            },
+            "run": remediation_run,
+            "original_constraints": ["Bounded mutation authority only."],
+        },
+    }
+    failure = {
+        "kind": "FAILURE",
+        "run_id": remediation_run_id,
+        "task": {"id": task_id, "revision": 1},
+        "executor": "codex",
+        "base_sha": integration.integration_candidate_sha,
+        "failed_head_sha": failed_head_sha,
+        "phase": "VERIFICATION",
+        "error": {"type": "RuntimeVerificationError", "message": "failed"},
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": ["src/sample.py"],
+            "outside_task_scope": [],
+        },
+    }
+    remediation_run_path = state / "remediation-run.json"
+    failure_path = state / "failure.json"
+    remediation_run_path.write_text(json.dumps(remediation_run_payload), encoding="utf-8")
+    failure_path.write_text(json.dumps(failure), encoding="utf-8")
+    transport_failure(
+        repo,
+        run_id=remediation_run_id,
+        head_sha=failed_head_sha,
+        run_path=remediation_run_path,
+        failure_path=failure_path,
+    )
+
+    repair = {
+        "repair_id": "REPAIR-140-009",
+        "failed_run_id": remediation_run_id,
+        "failed_head_sha": failed_head_sha,
+        "task": {"id": task_id, "revision": 1},
+        "action": "CODE_FIX",
+        "modification_scope": ["src/sample.py"],
+        "instructions": ["Repair the failed integrated remediation."],
+        "constraints": ["Bounded mutation authority only."],
+    }
+    authorization = execute_ingress(
+        IngressEnvelope(
+            "AIOS_INGRESS_ENVELOPE",
+            1,
+            "AUTHOR_REPAIR",
+            {"failed_run_id": remediation_run_id},
+            {"expected_failed_head_sha": failed_head_sha},
+            repair,
+        ),
+        repo=repo,
+    )
+
+    (repo / "src" / "sample.py").write_text("# repaired remediation\n", encoding="utf-8")
+    git(repo, "add", "src/sample.py")
+    git(repo, "commit", "--quiet", "-m", "repair integrated remediation")
+    repaired_sha = git(repo, "rev-parse", "HEAD")
+    repair_run = {
+        "run_id": repair_run_id,
+        "task": {"id": task_id, "revision": 1},
+        "executor": "codex",
+        "base_sha": failed_head_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    repair_lineage = {
+        "failed_run_id": remediation_run_id,
+        "root_base_sha": reviewed_sha,
+        "result_base_sha": integration.integration_candidate_sha,
+        "failed_head_sha": failed_head_sha,
+        "failure": failure,
+        "task": {"task_id": task_id, "revision": 1},
+        "repair": repair,
+        "repair_authorization_sha": authorization.canonical_sha,
+        "run": repair_run,
+    }
+    repair_result = {
+        "result": {
+            "head_sha": repaired_sha,
+            "claims": [{
+                "id": "C1",
+                "satisfies": ["AC1"],
+                "claim": "The integrated remediation was repaired.",
+                "evidence": ["E1"],
+            }],
+            "changed_files": ["src/sample.py"],
+            "unresolved": [],
+        },
+        "evidence": [{
+            "evidence_id": "E1",
+            "run_id": repair_run_id,
+            "subject_sha": repaired_sha,
+            "type": "TEST",
+            "source": {"command": "git diff --check"},
+            "result": {"exit_code": 0, "summary": "clean"},
+            "raw": {"path": ".ai/evidence/E1.log"},
+        }],
+    }
+    repair_run_path = state / "repair-run.json"
+    repair_result_path = state / "repair-result.json"
+    repair_lineage_path = state / "repair-lineage.json"
+    repair_run_path.write_text(json.dumps(repair_run), encoding="utf-8")
+    repair_result_path.write_text(json.dumps(repair_result), encoding="utf-8")
+    repair_lineage_path.write_text(json.dumps(repair_lineage), encoding="utf-8")
+    transport_post_pass(
+        repo,
+        run_id=repair_run_id,
+        head_sha=repaired_sha,
+        run_path=repair_run_path,
+        result_path=repair_result_path,
+        lineage_path=repair_lineage_path,
+    )
+    return {
+        "repo": repo,
+        "remote": remote,
+        "run_id": repair_run_id,
+        "reviewed_sha": reviewed_sha,
+        "repaired_sha": repaired_sha,
+        "failed_head_sha": failed_head_sha,
+        "integration_candidate_sha": integration.integration_candidate_sha,
+        "integration_ref": integration.integration_ref,
+    }
+
+
+def test_submit_review_reconstructs_exact_integrated_remediation_repair_delta(tmp_path):
+    lineage = _integrated_remediation_repair_review_lineage(tmp_path)
+    repo = lineage["repo"]
+    repaired_sha = lineage["repaired_sha"]
+    assert lineage["failed_head_sha"] != lineage["reviewed_sha"]
+    assert lineage["integration_candidate_sha"] != lineage["reviewed_sha"]
+
+    wrong_review = f"""review_id: REVIEW-140-010-WRONG
+reviewed_sha: {repaired_sha}
+mode: DELTA
+verdict: PASS
+prior_finding_id: F2
+acceptance:
+  AC1: PASS
+findings: []
+"""
+    with pytest.raises(AuthoringIngressError, match="exact repaired DELTA finding"):
+        execute_ingress(
+            IngressEnvelope(
+                "AIOS_INGRESS_ENVELOPE",
+                1,
+                "SUBMIT_REVIEW",
+                {"run_id": lineage["run_id"]},
+                {"expected_candidate_sha": repaired_sha},
+                wrong_review,
+            ),
+            repo=repo,
+        )
+
+    review = wrong_review.replace("REVIEW-140-010-WRONG", "REVIEW-140-010").replace(
+        "prior_finding_id: F2", "prior_finding_id: F1"
+    )
+    result = execute_ingress(
+        IngressEnvelope(
+            "AIOS_INGRESS_ENVELOPE",
+            1,
+            "SUBMIT_REVIEW",
+            {"run_id": lineage["run_id"]},
+            {"expected_candidate_sha": repaired_sha},
+            review,
+        ),
+        repo=repo,
+    )
+    assert result.status == "CANONICALIZED"
+    assert_exact_metadata_delta(
+        repo,
+        result.canonical_sha,
+        repaired_sha,
+        ".ai/reviews/REVIEW-140-010.yaml",
+        review.encode("utf-8"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("missing_ref", "canonical ref .* is missing or ambiguous"),
+        ("moved_ref", "remote integration ref does not match"),
+        ("authorized_main", "integration_id does not match"),
+        ("integration_candidate", "candidate SHA does not match RUN base_sha"),
+    ],
+)
+def test_submit_review_rejects_forged_or_unavailable_integration_evidence(
+    tmp_path, mutation, message
+):
+    execution_mutation = mutation if mutation in {"authorized_main", "integration_candidate"} else None
+    lineage = _integrated_remediation_repair_review_lineage(
+        tmp_path, execution_base_mutation=execution_mutation
+    )
+    remote = lineage["remote"]
+    if mutation == "missing_ref":
+        git(remote, "update-ref", "-d", lineage["integration_ref"])
+    elif mutation == "moved_ref":
+        git(
+            remote,
+            "update-ref",
+            lineage["integration_ref"],
+            lineage["failed_head_sha"],
+        )
+    review = f"""review_id: REVIEW-140-010
+reviewed_sha: {lineage['repaired_sha']}
+mode: DELTA
+verdict: PASS
+prior_finding_id: F1
+acceptance:
+  AC1: PASS
+findings: []
+"""
+    with pytest.raises(AuthoringIngressError, match=message):
+        execute_ingress(
+            IngressEnvelope(
+                "AIOS_INGRESS_ENVELOPE",
+                1,
+                "SUBMIT_REVIEW",
+                {"run_id": lineage["run_id"]},
+                {"expected_candidate_sha": lineage["repaired_sha"]},
+                review,
+            ),
+            repo=lineage["repo"],
+        )

@@ -1,0 +1,156 @@
+task_id: TASK-144
+revision: 2
+
+goal: >
+  Publish the already-verified TASK-144 integrated-REMEDIATION repair semantics onto the
+  current canonical main through an ordinary PRIMARY lifecycle, avoiding the self-hosting
+  bootstrap deadlock where canonical main cannot yet author or publish the DELTA REPAIR review
+  whose support is itself introduced by TASK-144.
+
+problem: >
+  TASK-144 r1 reached a successful canonical RESULT at RUN-144-005 with candidate
+  3d66d1d47cb4a58f08ba97d7cc33d87c0378a406. Runtime verification passed all required
+  focused suites (6 operator tests, 7 authoring-ingress tests, 42 publication tests,
+  378 combined tests, and git diff --check) with unresolved=[]; semantic audit confirmed
+  the production-shaped integrated REMEDIATION -> REPAIR -> continuation flow plus the
+  required Authoring Ingress and Publisher fail-closed negatives. However SUBMIT_REVIEW
+  issue #286 failed before creating a review-decision ref with
+  "DELTA prior_finding_id requires a prior REVIEW". This is not a defect in the r1
+  candidate: canonical GitHub Brain Ingress checks out and installs current main before
+  interpreting the review, and current main 49ad4d7... predates TASK-144's new canonical
+  REPAIR-review reconstruction. Likewise auto-publication checks out current main as its
+  control plane. Therefore r1 cannot use the new DELTA REPAIR review/publication semantics
+  until those semantics are first published, creating a deterministic self-host bootstrap
+  cycle. Revision 2 re-admits the same TASK-144 semantic implementation on current main as
+  a normal PRIMARY candidate so existing canonical review/publication can safely publish it.
+
+assumptions:
+  - Canonical main is 49ad4d7a1e57a4c25ba44e60589d8320cb0f57b2.
+  - TASK-145 r2 and TASK-146 are DONE and are part of current main.
+  - RUN-144-005 canonical RESULT candidate is 3d66d1d47cb4a58f08ba97d7cc33d87c0378a406.
+  - RUN-144-005 result artifact is 1e0b216b1d09664d2427f6783b5be1dd5540b65f.
+  - SUBMIT_REVIEW issue #286 created no review-decision ref and made no canonical-main mutation.
+  - The r1 cumulative semantic delta from TASK-144 task root b227993543bfc9d0ab242a6cebede1f584222ec9
+    to RUN-144-005 is limited to the seven TASK-144 authorized implementation/test files.
+  - TASK-140 remains paused until TASK-144 revision 2 is published.
+
+scope:
+  inspect:
+    - src/aios_renew/operator.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/correction_integration.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/review_transport.py
+    - tests/test_operator.py
+    - tests/test_publication.py
+    - tests/test_authoring_ingress.py
+    - refs/heads/aios/artifacts/RUN-144-005
+    - refs/heads/aios/review/RUN-144-005
+    - refs/heads/aios/review-decision/RUN-144-002
+    - refs/heads/aios/integration/14e37a5af0334930e9993a91ace872be0d30c6b0555cae33fc35cbbe36ba603e
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_operator.py
+    - tests/test_publication.py
+    - tests/test_authoring_ingress.py
+
+non_goals:
+  - Rewrite, delete, force-move, or synthesize TASK-144 r1 RUN/review/failure/repair artifacts.
+  - Create a review-decision ref manually or bypass Brain Ingress / safe publication authority.
+  - Modify TASK-140 guard, adapter, tests, findings, or historical candidates.
+  - Modify TASK-145/TASK-146 behavior or regress their published fixes.
+  - Change TASK-143 Unified State integrated-remediation semantics.
+  - Relax TASK scope, REPAIR scope, review identity, integration identity, canonical evidence,
+    ResultPackage evidence, or fail-closed checks.
+  - Add task/run-specific exceptions, retries, planner/router behavior, or fallback authority.
+
+constraints:
+  hard:
+    - >
+      Treat RUN-144-005 as validated implementation evidence, not as a branch to publish directly.
+      Port the r1 semantic delta onto current main; do not reset/cherry-pick the historical candidate
+      in a way that discards post-r1 canonical changes.
+    - >
+      Preserve all current-main TASK-145/TASK-146 fixes. Where tests/test_operator.py or another
+      authorized file overlaps later canonical changes, merge semantically so both the current-main
+      behavior and TASK-144 behavior remain present.
+    - >
+      Preserve two distinct bases for integrated-REMEDIATION repair semantics: immutable semantic
+      root_base_sha and validated integrated repair-result base. Immediate repair mutation remains
+      bound to failed_head_sha while continuation repairs retain the same result_base_sha.
+    - >
+      Integrated repair-result base is authoritative only after exact canonical validation of
+      TASK/revision, cumulative tip RUN/SHA, authorized main SHA, integration id/ref/candidate,
+      exact integration parents, and clean merge tree. Missing, moved, stale, forged, or mismatched
+      evidence must fail closed.
+    - >
+      Runtime completion must compute ResultPackage.changed_files against the validated repair-result
+      base and separately enforce repair mutation scope from the immediate failed head.
+    - >
+      Authoring Ingress must reconstruct successful REPAIR lineage from canonical artifacts. A
+      REPAIR of REMEDIATION requires DELTA mode and prior_finding_id equal to the exact repaired
+      finding; a REPAIR before any semantic finding retains PRIMARY semantics.
+    - >
+      Publisher must validate the same canonical integrated result base and must not rely on the
+      obsolete equality run.base_sha == remediation.reviewed_sha.
+    - >
+      Preserve the production-shaped r1 regression covering integrated REMEDIATION -> failed REPAIR
+      -> continuation REPAIR, including result-base preservation and changed_files attribution.
+    - >
+      Preserve Authoring Ingress negative coverage for wrong prior_finding_id, missing/moved
+      integration ref, forged authorized main, and forged integration candidate.
+    - >
+      Preserve Publisher success and negative coverage for wrong repaired finding, wrong package
+      changed_files, missing/moved integration ref, forged authorized main, and forged integration
+      candidate.
+    - >
+      Existing PRIMARY, repaired-PRIMARY, non-integrated REPAIR, ordinary REMEDIATION, TASK-141,
+      TASK-142, TASK-143, TASK-145, and TASK-146 behavior must remain compatible.
+    - >
+      Revision 2 is an ordinary PRIMARY execution on current main. Its review must not depend on
+      TASK-144's new DELTA-REPAIR review path, thereby breaking the self-host bootstrap cycle without
+      weakening canonical authority.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The validated TASK-144 r1 semantic implementation is present on a candidate descending from
+      current canonical main without overwriting later canonical fixes.
+  - id: AC2
+    condition: >
+      Runtime distinguishes semantic root_base_sha from integrated repair-result base and preserves
+      one deterministic result base across REPAIR continuations while enforcing immediate mutation scope.
+  - id: AC3
+    condition: >
+      Forged, missing, moved, stale, or mismatched integrated execution evidence remains fail closed.
+  - id: AC4
+    condition: >
+      Authoring Ingress reconstructs canonical REPAIR-of-REMEDIATION review lineage and enforces exact
+      DELTA/prior_finding_id semantics, while repaired PRIMARY remains compatible.
+  - id: AC5
+    condition: >
+      Publisher validates integrated REMEDIATION repair lineage and ResultPackage.changed_files using
+      the same validated repair-result base, without the legacy run.base_sha==reviewed_sha assumption.
+  - id: AC6
+    condition: >
+      Production-shaped success/continuation and required negative regressions from FINDING-144-001
+      remain present and pass.
+  - id: AC7
+    condition: >
+      All focused TASK-144 suites, the combined operator/authoring/publication suite, the complete
+      current-main pytest suite, and git diff --check pass with zero unresolved items and changes
+      limited to authorized scope.
+
+verification:
+  required:
+    - python -m pytest -q tests/test_operator.py -k "repair and (remediation or integrated or historical)"
+    - python -m pytest -q tests/test_authoring_ingress.py -k "repair_review or repair"
+    - python -m pytest -q tests/test_publication.py -k "repair or integrated"
+    - python -m pytest -q tests/test_operator.py tests/test_authoring_ingress.py tests/test_publication.py
+    - python -m pytest -q
+    - git diff --check

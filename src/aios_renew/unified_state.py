@@ -190,6 +190,7 @@ class _LifecycleRun:
     run_document: Mapping[str, Any] | None = None
     semantic_predecessor: Any | None = None
     execution_base_run_id: str | None = None
+    execution_base: Any | None = None
 
 
 def _unified_blocked(
@@ -371,6 +372,7 @@ def _validate_lifecycle_failure(
 def _decode_remote_lifecycle(
     repo: Path, task: Task, lifecycle: RemoteTaskLifecycle
 ) -> tuple[list[_LifecycleRun], dict[str, Review]]:
+    op = _operator()
     reviews: dict[str, Review] = {}
     for item in lifecycle.reviews:
         if item.run_id in reviews:
@@ -388,14 +390,20 @@ def _decode_remote_lifecycle(
         )
         semantic_predecessor = None
         execution_base_run_id = None
+        execution_base = None
         if family == "REMEDIATION" and "predecessor" in run_document:
             semantic_predecessor = op._parse_remediation_predecessor(
                 run_document["predecessor"]
             )
             if "execution_base" in run_document:
-                execution_base_run_id = op._parse_remediation_execution_base(
+                execution_base = op._parse_remediation_execution_base(
                     run_document["execution_base"]
-                ).run_id
+                )
+                execution_base_run_id = (
+                    execution_base.cumulative_tip_run_id
+                    if execution_base.is_integrated
+                    else execution_base.run_id
+                )
             else:
                 execution_base_run_id = semantic_predecessor.source_run_id
         if (
@@ -486,6 +494,7 @@ def _decode_remote_lifecycle(
                 run_document,
                 semantic_predecessor,
                 execution_base_run_id,
+                execution_base,
             )
         )
     # A remediation points to the uniquely reviewed predecessor with the same
@@ -520,14 +529,54 @@ def _decode_remote_lifecycle(
             ]
         if len(parents) != 1:
             raise ValueError("REMEDIATION predecessor is missing or ambiguous")
-        base_parents = [
-            parent for parent in decoded
-            if parent.run_id == item.execution_base_run_id
-            and parent.terminal_kind == "RESULT"
-            and parent.candidate_sha == item.run.base_sha
-        ]
-        if item.execution_base_run_id is not None and len(base_parents) != 1:
-            raise ValueError("REMEDIATION execution base is missing or ambiguous")
+        if item.execution_base is not None and getattr(item.execution_base, "is_integrated", False):
+            base_parents = [
+                parent for parent in decoded
+                if parent.run_id == item.execution_base.cumulative_tip_run_id
+                and parent.terminal_kind == "RESULT"
+                and parent.candidate_sha == item.execution_base.cumulative_tip_candidate_sha
+            ]
+            if len(base_parents) != 1:
+                raise ValueError("REMEDIATION execution base cumulative tip is missing or ambiguous")
+            if item.run.base_sha != item.execution_base.integration_candidate_sha:
+                raise ValueError("REMEDIATION execution base candidate does not match RUN base")
+            try:
+                if not op._git_is_ancestor(
+                    repo, item.execution_base.authorized_main_sha, lifecycle.main_sha
+                ):
+                    raise ValueError(
+                        "REMEDIATION execution base authorized main is not an ancestor of canonical main"
+                    )
+            except op.OperatorError as exc:
+                raise ValueError(
+                    "REMEDIATION execution base authorized main ancestry is invalid"
+                ) from exc
+            from .correction_integration import resolve_valid_integration
+
+            integration = resolve_valid_integration(
+                repo,
+                task_id=task.task_id,
+                task_revision=task.revision,
+                cumulative_tip_run_id=item.execution_base.cumulative_tip_run_id,
+                cumulative_tip_candidate_sha=item.execution_base.cumulative_tip_candidate_sha,
+                authorized_main_sha=item.execution_base.authorized_main_sha,
+                require_remote=True,
+            )
+            if (
+                integration is None
+                or integration.integration_id != item.execution_base.integration_id
+                or integration.integration_candidate_sha != item.execution_base.integration_candidate_sha
+            ):
+                raise ValueError("REMEDIATION integration candidate or evidence is invalid")
+        else:
+            base_parents = [
+                parent for parent in decoded
+                if parent.run_id == item.execution_base_run_id
+                and parent.terminal_kind == "RESULT"
+                and parent.candidate_sha == item.run.base_sha
+            ]
+            if item.execution_base_run_id is not None and len(base_parents) != 1:
+                raise ValueError("REMEDIATION execution base is missing or ambiguous")
         resolved.append(replace(item, parent_run_id=parents[0].run_id))
 
     # A REPAIR keeps its immediate failed RUN as parent, while inheriting the
@@ -617,8 +666,11 @@ def _correction_prior_review(
 
 
 def _operational_parent(item: _LifecycleRun) -> str | None:
-    if item.family == "REMEDIATION" and item.execution_base_run_id is not None:
-        return item.execution_base_run_id
+    if item.family == "REMEDIATION":
+        if item.execution_base is not None and getattr(item.execution_base, "is_integrated", False):
+            return item.execution_base.cumulative_tip_run_id
+        if item.execution_base_run_id is not None:
+            return item.execution_base_run_id
     return item.parent_run_id
 
 
@@ -843,6 +895,7 @@ def _local_pending_runs(
         correction = None
         semantic_predecessor = None
         execution_base_run_id = None
+        execution_base = None
         repair_path = state.repairs / path.name
         if repair_path.is_file():
             if family != "PRIMARY":
@@ -887,9 +940,14 @@ def _local_pending_runs(
                     local_value["predecessor"]
                 )
             if "execution_base" in local_value:
-                execution_base_run_id = op._parse_remediation_execution_base(
+                execution_base = op._parse_remediation_execution_base(
                     local_value["execution_base"]
-                ).run_id
+                )
+                execution_base_run_id = (
+                    execution_base.cumulative_tip_run_id
+                    if execution_base.is_integrated
+                    else execution_base.run_id
+                )
             elif execution.remediation.reviewed_sha != run.base_sha:
                 raise ValueError("persisted legacy REMEDIATION reviewed SHA is invalid")
             parents = [
@@ -921,9 +979,20 @@ def _local_pending_runs(
                 if parent.run_id == parent_run_id
                 and parent.candidate_sha == run.base_sha
                 and parent.terminal_kind == "FAILURE"
+                and correction is not None
+                and isinstance(correction.get("failure"), Mapping)
+                and dict(correction["failure"]) == dict(parent.terminal)
+                and parent.terminal.get("base_sha") == parent.run.base_sha
             ]
             if len(parents) != 1:
                 parent_run_id = None
+            elif parents[0].family in ("REMEDIATION", "REPAIR"):
+                # Match canonical lifecycle decoding: correction identity belongs
+                # to the exact failed correction chain, never to repair prose or
+                # a task-wide finding search.  A PRIMARY origin intentionally
+                # leaves both values unset.
+                review_id = parents[0].review_id
+                finding_id = parents[0].finding_id
         result_path = state.results / path.name
         failure_path = state.failures / path.name
         has_result = result_path.is_file()
@@ -939,6 +1008,7 @@ def _local_pending_runs(
                         correction=correction, run_document=run_document,
                         semantic_predecessor=semantic_predecessor,
                         execution_base_run_id=execution_base_run_id,
+                        execution_base=execution_base,
                     )
                 )
             continue
@@ -988,6 +1058,7 @@ def _local_pending_runs(
                 or canonical.family != family
                 or canonical.parent_run_id != parent_run_id
                 or canonical.execution_base_run_id != execution_base_run_id
+                or canonical.execution_base != execution_base
                 or canonical.review_id != review_id
                 or canonical.finding_id != finding_id
                 or canonical.run_document is None
@@ -1009,6 +1080,7 @@ def _local_pending_runs(
                 correction=correction, run_document=run_document,
                 semantic_predecessor=semantic_predecessor,
                 execution_base_run_id=execution_base_run_id,
+                execution_base=execution_base,
             )
         )
     return terminal_pending, active_pending

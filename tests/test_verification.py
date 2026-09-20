@@ -1,9 +1,11 @@
 import os
+import stat
 import subprocess
 from pathlib import Path
 
 import pytest
 
+import aios_renew.verification as verification_module
 from aios_renew.artifacts import Claim, Result
 from aios_renew.verification import (
     RuntimeVerificationError,
@@ -103,8 +105,10 @@ def test_windows_uses_one_noninteractive_powershell_wrapper_with_utf8_preamble(
     isolated = runner.calls[0][1]["env"]["TEMP"]
     assert runner.calls[0][1]["env"]["TMP"] == isolated
     assert runner.calls[0][1]["env"]["TMPDIR"] == isolated
-    assert Path(isolated).is_dir()
-    assert Path(isolated).name == "temporary"
+    isolated_path = Path(isolated)
+    assert isolated_path.name.startswith("aios-verification-RUN-027-002-")
+    assert not isolated_path.is_relative_to(tmp_path.resolve())
+    assert not isolated_path.exists()
     assert evidence[0].source.command == command
 
 
@@ -151,6 +155,7 @@ def test_windows_temp_isolation_overrides_conflicting_ambient_values_for_all_com
         "TMPDIR": "ambient-tmpdir",
         "UNCHANGED": "preserved",
     }
+    assert not Path(isolated).exists()
 
 
 def test_windows_temp_isolation_does_not_mutate_process_environment(
@@ -207,16 +212,20 @@ def test_windows_verification_executions_use_distinct_temp_roots(
     first_temp = first_runner.calls[0][1]["env"]["TEMP"]
     second_temp = second_runner.calls[0][1]["env"]["TEMP"]
     assert first_temp != second_temp
-    assert Path(first_temp).is_dir()
-    assert Path(second_temp).is_dir()
+    assert not Path(first_temp).exists()
+    assert not Path(second_temp).exists()
 
 
 def test_windows_temp_isolation_failure_stops_before_command_execution(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     raw = tmp_path / "runtime" / "RUN-120-004"
-    (raw / "temporary").mkdir(parents=True)
     runner = RecordingRunner([completed()])
+
+    def fail_create(*args, **kwargs):
+        raise OSError("isolated create denied")
+
+    monkeypatch.setattr(verification_module.tempfile, "mkdtemp", fail_create)
 
     with pytest.raises(RuntimeVerificationError, match="could not be isolated"):
         execute_verification(
@@ -231,6 +240,170 @@ def test_windows_temp_isolation_failure_stops_before_command_execution(
         )
 
     assert runner.calls == []
+
+
+def test_windows_temp_is_outside_repository_git_ancestry_and_shared_until_cleanup(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "subject"
+    (repository / ".git").mkdir(parents=True)
+    seen: list[Path] = []
+
+    def runner(command, **kwargs):
+        isolated = Path(kwargs["env"]["TEMP"])
+        assert isolated.is_dir()
+        assert not isolated.is_relative_to(repository.resolve())
+        assert not any((parent / ".git").exists() for parent in isolated.parents)
+        seen.append(isolated)
+        return completed()
+
+    raw = repository / ".git" / "aios" / "verification" / "RUN-120-007"
+    execute_verification(
+        ("first", "second"),
+        run_id="RUN-120-007",
+        subject_sha="abc123",
+        repository=repository,
+        raw_directory=raw,
+        runner=runner,
+        platform="nt",
+        environment={},
+    )
+
+    assert len(seen) == 2
+    assert seen[0] == seen[1]
+    assert not seen[0].exists()
+    assert (raw / "RUN-120-007-V001.raw").is_file()
+    assert (raw / "RUN-120-007-V002.raw").is_file()
+
+
+def test_windows_temp_cleanup_failure_fails_closed_and_preserves_raw_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = RecordingRunner([completed(stdout=b"captured\n")])
+    raw = tmp_path / "runtime" / "RUN-120-008"
+    real_rmtree = verification_module.shutil.rmtree
+    isolated: Path | None = None
+
+    def fail_cleanup(path, *args, **kwargs):
+        nonlocal isolated
+        isolated = Path(path)
+        raise OSError("isolated cleanup denied")
+
+    monkeypatch.setattr(verification_module.shutil, "rmtree", fail_cleanup)
+    try:
+        with pytest.raises(
+            RuntimeVerificationError, match="could not be cleaned"
+        ) as caught:
+            execute_verification(
+                ("one-command",),
+                run_id="RUN-120-008",
+                subject_sha="abc123",
+                repository=tmp_path,
+                raw_directory=raw,
+                runner=runner,
+                platform="nt",
+                environment={},
+            )
+    finally:
+        if isolated is not None and isolated.exists():
+            real_rmtree(isolated)
+
+    assert len(caught.value.evidence) == 1
+    assert caught.value.evidence[0].result.exit_code == 0
+    assert (raw / "RUN-120-008-V001.raw").read_bytes().endswith(
+        b"captured\n\nSTDERR\n"
+    )
+
+
+def test_temp_cleanup_recovers_read_only_git_object_tree(tmp_path: Path) -> None:
+    temp_root = tmp_path / "isolated-verification-root"
+    object_directory = temp_root / "smoke-repo" / ".git" / "objects" / "0a"
+    object_directory.mkdir(parents=True)
+    object_file = object_directory / "76e58f038b4db6cd072967d84f862c896a01f2"
+    object_file.write_bytes(b"git-object")
+    object_file.chmod(stat.S_IREAD)
+    object_directory.chmod(stat.S_IREAD)
+
+    verification_module._remove_temp_root(temp_root)
+
+    assert not temp_root.exists()
+
+
+def test_temp_cleanup_retries_transient_permission_failure_until_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    temp_root = tmp_path / "isolated-verification-root"
+    temp_root.mkdir()
+    real_rmtree = verification_module.shutil.rmtree
+    attempts = 0
+    sleeps: list[float] = []
+
+    def transient_rmtree(path, *args, **kwargs):
+        error = PermissionError("Git object is temporarily locked")
+
+        def transient_remove(locked_path):
+            nonlocal attempts
+            attempts += 1
+            if attempts <= 3:
+                raise PermissionError("Git object is temporarily locked")
+            real_rmtree(locked_path)
+
+        kwargs["onerror"](
+            transient_remove,
+            os.fspath(path),
+            (PermissionError, error, None),
+        )
+
+    monkeypatch.setattr(verification_module.shutil, "rmtree", transient_rmtree)
+    monkeypatch.setattr(verification_module.time, "sleep", sleeps.append)
+
+    verification_module._remove_temp_root(temp_root)
+
+    assert attempts == 4
+    assert sleeps == [0.05, 0.1, 0.2]
+    assert not temp_root.exists()
+
+
+def test_temp_cleanup_persistent_permission_failure_exhausts_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    temp_root = tmp_path / "isolated-verification-root"
+    temp_root.mkdir()
+    attempts = 0
+    now = 0.0
+
+    def persistent_rmtree(path, *args, **kwargs):
+        error = PermissionError("Git object remains locked")
+
+        def persistent_remove(locked_path):
+            nonlocal attempts
+            attempts += 1
+            raise PermissionError("Git object remains locked")
+
+        kwargs["onerror"](
+            persistent_remove,
+            os.fspath(path),
+            (PermissionError, error, None),
+        )
+
+    def advance(delay: float) -> None:
+        nonlocal now
+        now += delay
+
+    monkeypatch.setattr(verification_module.shutil, "rmtree", persistent_rmtree)
+    monkeypatch.setattr(verification_module.time, "monotonic", lambda: now)
+    monkeypatch.setattr(verification_module.time, "sleep", advance)
+    monkeypatch.setattr(
+        verification_module, "_TEMP_CLEANUP_MAX_ELAPSED_SECONDS", 0.2
+    )
+
+    with pytest.raises(PermissionError, match="remains locked"):
+        verification_module._remove_temp_root(temp_root)
+
+    assert attempts == 4
+    assert now == pytest.approx(0.2)
+    assert temp_root.exists()
+    temp_root.rmdir()
 
 
 def test_windows_nonzero_remains_canonical_failure_without_retry(
@@ -254,6 +427,7 @@ def test_windows_nonzero_remains_canonical_failure_without_retry(
     assert len(runner.calls) == 1
     assert caught.value.evidence[0].source.command == command
     assert caught.value.evidence[0].result.exit_code == 9
+    assert not Path(runner.calls[0][1]["env"]["TEMP"]).exists()
 
 
 def test_posix_environment_not_mutated_with_windows_encoding(

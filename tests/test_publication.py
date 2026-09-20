@@ -1,12 +1,47 @@
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import aios_renew.publication as publication_module
 from aios_renew.publication import PublicationError, publish_review_decision
 from aios_renew.review_transport import transport_failure, transport_post_pass
+
+
+def test_repair_package_uses_integrated_result_base_for_attribution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    integrated_base = "1" * 40
+    repaired_head = "2" * 40
+    observed: list[tuple[str, str]] = []
+    package = object()
+    monkeypatch.setattr(
+        publication_module,
+        "validate_result_package",
+        lambda **_kwargs: package,
+    )
+    monkeypatch.setattr(
+        publication_module,
+        "_changed_files",
+        lambda _repo, base, head: observed.append((base, head))
+        or {"product.txt"},
+    )
+
+    actual = publication_module._validate_repair_package(
+        tmp_path,
+        source_sha=repaired_head,
+        result_base_sha=integrated_base,
+        task=SimpleNamespace(scope=SimpleNamespace(modify=("product.txt",))),
+        run=object(),
+        result=SimpleNamespace(changed_files=("product.txt",)),
+        evidence=(),
+    )
+
+    assert actual is package
+    assert observed == [(integrated_base, repaired_head)]
 
 
 TASK_SOURCE = """\
@@ -239,6 +274,163 @@ def make_lineage(
         "run_id": run_id,
         "base_sha": base_sha,
         "intermediate_sha": intermediate_sha,
+        "candidate_sha": candidate_sha,
+        "decision_sha": decision_sha,
+    }
+
+
+def make_integrated_remediation_repair_lineage(
+    root: Path,
+    *,
+    execution_base_mutation: str | None = None,
+    result_changed_files: tuple[str, ...] = ("product.txt",),
+    prior_finding_id: str = "R1",
+) -> dict[str, object]:
+    """Turn the production-shaped integrated REMEDIATION into a repaired RUN."""
+
+    lineage = make_integrated_predecessor_lineage(root)
+    repo = lineage["repo"]
+    remote = lineage["remote"]
+    failed_run_id = lineage["run_id"]
+    run_id = "RUN-063-003"
+    failed_head_sha = lineage["candidate_sha"]
+    remediation_run = json.loads(json.dumps(lineage["remediation_run"]))
+    execution_base = remediation_run["execution_base"]
+    if execution_base_mutation == "authorized_main":
+        execution_base["authorized_main_sha"] = lineage["base_sha"]
+    elif execution_base_mutation == "integration_candidate":
+        execution_base["integration_candidate_sha"] = failed_head_sha
+
+    for ref in (
+        f"refs/heads/aios/artifacts/{failed_run_id}",
+        f"refs/heads/aios/review/{failed_run_id}",
+        f"refs/heads/aios/review-decision/{failed_run_id}",
+    ):
+        git(remote, "update-ref", "-d", ref)
+    git(repo, "reset", "--hard", "--quiet", failed_head_sha)
+
+    failure = {
+        "kind": "FAILURE",
+        "run_id": failed_run_id,
+        "task": {"id": "TASK-063", "revision": 2},
+        "executor": "codex",
+        "base_sha": lineage["integration_candidate_sha"],
+        "failed_head_sha": failed_head_sha,
+        "phase": "VERIFICATION",
+        "error": {"type": "RuntimeVerificationError", "message": "failed"},
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": ["product.txt"],
+            "outside_task_scope": [],
+        },
+    }
+    state = root / "integrated-repair-state"
+    state.mkdir()
+    failed_run_path = state / "failed-run.json"
+    failure_path = state / "failure.json"
+    failed_run_path.write_text(json.dumps(remediation_run), encoding="utf-8")
+    failure_path.write_text(json.dumps(failure), encoding="utf-8")
+    transport_failure(
+        repo,
+        run_id=failed_run_id,
+        head_sha=failed_head_sha,
+        run_path=failed_run_path,
+        failure_path=failure_path,
+    )
+
+    authorization = {
+        "repair_id": "REPAIR-063-002",
+        "failed_run_id": failed_run_id,
+        "failed_head_sha": failed_head_sha,
+        "task": {"id": "TASK-063", "revision": 2},
+        "action": "CODE_FIX",
+        "modification_scope": ["product.txt"],
+        "instructions": ["Repair the failed integrated remediation."],
+        "constraints": [],
+    }
+    authorization_sha = _push_repair_authorization(
+        repo, failed_run_id=failed_run_id, authorization=authorization
+    )
+    (repo / "product.txt").write_text(
+        "repaired integrated remediation\n", encoding="utf-8"
+    )
+    git(repo, "add", "product.txt")
+    git(repo, "commit", "--quiet", "-m", "repair integrated remediation")
+    candidate_sha = git(repo, "rev-parse", "HEAD")
+    repair_run = {
+        "run_id": run_id,
+        "task": {"id": "TASK-063", "revision": 2},
+        "executor": "codex",
+        "base_sha": failed_head_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    repair_lineage = {
+        "failed_run_id": failed_run_id,
+        "root_base_sha": lineage["base_sha"],
+        "result_base_sha": lineage["integration_candidate_sha"],
+        "failed_head_sha": failed_head_sha,
+        "failure": failure,
+        "task": {"task_id": "TASK-063", "revision": 2},
+        "repair": authorization,
+        "repair_authorization_sha": authorization_sha,
+        "run": repair_run,
+    }
+    run_path = state / "run.json"
+    result_path = state / "result.json"
+    repair_path = state / "repair.json"
+    run_path.write_text(json.dumps(repair_run), encoding="utf-8")
+    result_path.write_text(
+        json.dumps(
+            result_payload(
+                run_id,
+                candidate_sha,
+                changed_files=result_changed_files,
+            )
+        ),
+        encoding="utf-8",
+    )
+    repair_path.write_text(json.dumps(repair_lineage), encoding="utf-8")
+    transport_post_pass(
+        repo,
+        run_id=run_id,
+        head_sha=candidate_sha,
+        run_path=run_path,
+        result_path=result_path,
+        lineage_path=repair_path,
+    )
+
+    review = f"""review_id: REVIEW-063-003
+reviewed_sha: {candidate_sha}
+mode: DELTA
+verdict: PASS
+prior_finding_id: {prior_finding_id}
+acceptance:
+  AC1: PASS
+findings: []
+"""
+    review_path = repo / ".ai" / "reviews" / "REVIEW-063-003.yaml"
+    review_path.parent.mkdir(parents=True, exist_ok=True)
+    review_path.write_text(review, encoding="utf-8")
+    git(repo, "add", ".ai/reviews/REVIEW-063-003.yaml")
+    git(repo, "commit", "--quiet", "-m", "review repaired integrated remediation")
+    decision_sha = git(repo, "rev-parse", "HEAD")
+    git(
+        repo,
+        "push",
+        "--quiet",
+        "origin",
+        f"HEAD:refs/heads/aios/review-decision/{run_id}",
+    )
+    return {
+        **lineage,
+        "run_id": run_id,
+        "failed_run_id": failed_run_id,
+        "failed_head_sha": failed_head_sha,
         "candidate_sha": candidate_sha,
         "decision_sha": decision_sha,
     }
@@ -2669,6 +2861,7 @@ findings: []
         "integration_ref": int_result.integration_ref,
         "candidate_sha": candidate_sha,
         "decision_sha": decision_sha,
+        "remediation_run": rem_run_payload,
     }
 
 
@@ -2682,6 +2875,59 @@ def test_integrated_remediation_publication_advances_main_ac7(
     assert report.source_run == lineage["run_id"]
     assert report.reviewed_sha == lineage["candidate_sha"]
     assert remote_main(lineage) == lineage["candidate_sha"]
+
+
+def test_integrated_remediation_repair_publication_validates_result_base_package_ac6(
+    tmp_path: Path,
+) -> None:
+    lineage = make_integrated_remediation_repair_lineage(tmp_path)
+    assert lineage["integration_candidate_sha"] != lineage["base_sha"]
+    assert lineage["failed_head_sha"] != lineage["base_sha"]
+
+    report = publish(lineage)
+
+    assert report.outcome == "PUBLISHED"
+    assert report.source_run == "RUN-063-003"
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        ("wrong_finding", "prior finding does not match repaired REMEDIATION"),
+        ("wrong_package", "REPAIR RESULT.changed_files mismatch"),
+        ("missing_ref", "canonical ref .* is missing or ambiguous"),
+        ("moved_ref", "remote integration ref does not match"),
+        ("authorized_main", "integration_id does not match"),
+        ("integration_candidate", "candidate SHA does not match RUN base_sha"),
+    ],
+)
+def test_integrated_remediation_repair_publication_fails_closed_on_forged_lineage(
+    tmp_path: Path, case: str, message: str
+) -> None:
+    lineage = make_integrated_remediation_repair_lineage(
+        tmp_path,
+        execution_base_mutation=(
+            case if case in {"authorized_main", "integration_candidate"} else None
+        ),
+        result_changed_files=() if case == "wrong_package" else ("product.txt",),
+        prior_finding_id="R2" if case == "wrong_finding" else "R1",
+    )
+    if case == "missing_ref":
+        git(lineage["remote"], "update-ref", "-d", lineage["integration_ref"])
+    elif case == "moved_ref":
+        git(
+            lineage["remote"],
+            "update-ref",
+            lineage["integration_ref"],
+            lineage["failed_head_sha"],
+        )
+
+    with pytest.raises(PublicationError, match=message):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["new_main_sha"]
 
 
 def test_integrated_remediation_publication_rejects_missing_ref_and_stale_main_ac7(
