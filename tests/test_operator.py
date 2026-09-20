@@ -8157,6 +8157,72 @@ def test_v2_task_authorization_rejects_revision_content_and_provenance_drift(
         )
 
 
+@pytest.mark.parametrize(
+    ("drift", "message"),
+    [
+        ("revision", "id or revision"),
+        ("content", "blob does not match"),
+        ("provenance", "not an ancestor"),
+    ],
+)
+def test_v2_authorized_task_identity_drift_fails_before_run_and_executor(
+    tmp_path: Path,
+    drift: str,
+    message: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    state = runtime_paths(repo)
+    authorized_commit = git(repo, "rev-parse", "HEAD")
+    task_blob = git(repo, "rev-parse", "HEAD:.ai/tasks/TASK-101.yaml")
+    task_revision = 1
+    task_commit = authorized_commit
+
+    if drift == "revision":
+        task_revision = 2
+    elif drift == "content":
+        publish_upstream(
+            repo,
+            {
+                ".ai/tasks/TASK-101.yaml": TASK_SOURCE.replace(
+                    "Create one deterministic operator test output.",
+                    "Create changed deterministic operator semantics.",
+                )
+            },
+            "drift authorized task content",
+        )
+    else:
+        tree = git(repo, "rev-parse", f"{authorized_commit}^{{tree}}")
+        task_commit = git(repo, "commit-tree", tree, "-m", "unrelated provenance")
+
+    executor_calls = []
+
+    def runner(command, **kwargs):
+        executor_calls.append((command, kwargs))
+        raise AssertionError("executor must not be invoked")
+
+    with pytest.raises(OperatorError, match=message):
+        run_task(
+            "TASK-101",
+            executor="codex",
+            repo=repo,
+            native_runner=runner,
+            task_revision=task_revision,
+            task_blob_sha=task_blob,
+            task_commit_sha=task_commit,
+        )
+
+    assert executor_calls == []
+    assert not list(state.runs.glob("*.json"))
+    records = admission_failure_records(repo)
+    assert len(records) == 1
+    assert records[0]["format"] == "AIOS_ADMISSION_FAILURE"
+    assert records[0]["version"] == 2
+    assert records[0]["kind"] == "ADMISSION_FAILURE"
+    assert records[0]["executor_invoked"] is False
+    assert records[0]["phase"] == "TASK_ADMISSION"
+    assert records[0]["reason_code"] == "AUTHORIZED_TASK_IDENTITY_MISMATCH"
+
+
 def test_remediation_direct_candidate_revision_1_sibling_preserves_cumulative_tip_ac2_ac3(
     tmp_path: Path,
 ) -> None:
