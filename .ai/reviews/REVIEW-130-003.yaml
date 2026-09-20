@@ -1,0 +1,32 @@
+review_id: REVIEW-130-003
+reviewed_sha: 486e2226149ed07686337dfe7c3f310abf6ea9cf
+mode: DELTA
+verdict: CHANGES_REQUIRED
+prior_finding_id: FINDING-130-001
+acceptance:
+  AC10: FAIL
+findings:
+  - id: FINDING-130-002
+    basis: AC10
+    action: EVIDENCE_ONLY
+    location: RUN-130-003 affected verification
+    issue: >-
+      The remediation added the intended end-to-end regression
+      test_v2_authorized_task_identity_drift_fails_before_run_and_executor, but the
+      authorized affected verification command used
+      -k "v2_task_authorization". That selector matches the two pre-existing tests named
+      test_v2_task_authorization_* and does not match the newly added
+      test_v2_authorized_task_identity_drift_* test. The reported "2 passed, 265
+      deselected" therefore does not execute or prove the exact regression introduced to
+      resolve FINDING-130-001. Source inspection shows the new test asserts revision,
+      content, and provenance drift through run_task with zero Executor calls, zero RUN
+      allocation, and typed Admission Failure v2, but AC10 requires deterministic
+      regression evidence rather than reviewer inference alone.
+    expected: >-
+      Produce Runtime-owned evidence on the unchanged candidate
+      486e2226149ed07686337dfe7c3f310abf6ea9cf that executes the exact new regression,
+      using a selector that actually matches it (for example the exact pytest node or
+      -k "v2_authorized_task_identity_drift"), together with git diff --check if required
+      by the evidence-only continuation. Do not change production code or the reviewed
+      test unless execution reveals a real defect. Reuse all still-valid prior evidence
+      and do not rerun the broader TASK-130 verification suite merely for ceremony.
