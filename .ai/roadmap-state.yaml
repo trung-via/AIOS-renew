@@ -163,7 +163,7 @@ sequence:
   - id: bp-v2-full-suite-harness-acceleration
     status: NEXT
     task_id: TASK-152
-    task_revision: 1
+    task_revision: 2
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
