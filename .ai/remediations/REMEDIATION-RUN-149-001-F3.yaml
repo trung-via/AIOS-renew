@@ -1,0 +1,17 @@
+finding_id: F3
+action: CODE_FIX
+reviewed_sha: f86440bffe7319da3b89a2046e215485058ca9dd
+modification_scope:
+- src/aios_renew/operator.py
+- .github/workflows/aios-self-hosted-wakeup.yml
+- .github/workflows/aios-approved-remediation-intent.yml
+- .github/workflows/aios-approved-remediation-wakeup.yml
+- .github/workflows/aios-self-hosted-repair-wakeup.yml
+- tests/test_self_hosted_wakeup.py
+- tests/test_github_issue_remediation_intent_workflow.py
+- tests/test_remediation_wakeup.py
+- tests/test_github_issue_repair_wakeup_workflow.py
+affected_verification:
+- python -m pytest -q tests/test_self_hosted_wakeup.py tests/test_github_issue_remediation_intent_workflow.py
+  tests/test_remediation_wakeup.py tests/test_github_issue_repair_wakeup_workflow.py
+- git diff --check
