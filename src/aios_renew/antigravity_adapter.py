@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
@@ -60,13 +61,45 @@ _NATIVE_EXECUTOR_INSTRUCTION = (
     "another AIOS execution. Use the supplied bounded execution context to begin "
     "the authorized implementation directly. Do not perform repository-wide "
     "rediscovery when that context is sufficient. Runtime is the canonical "
-    "verification owner: do not spend execution time on baseline, full, or "
-    "canonical verification before implementation or duplicate it for ceremony. "
+    "verification owner: this Executor is strictly implementation-only, so do not "
+    "run any Runtime-owned verification, baseline, full, or canonical verification "
+    "command and do not run any implementation-local sanity test or local verification "
+    "command. A hook denial with AIOS_RUNTIME_OWNS_VERIFICATION, "
+    "AIOS_BACKGROUND_RISK_DENIED, or AIOS_GIT_OPERATION_NOT_ADMITTED is expected "
+    "policy; do not retry, translate, or replace the denied command with an equivalent. "
+    "Continue only authorized implementation and terminalization. "
 )
 
 
 ANTIGRAVITY_DEFAULT_MODEL = "gemini-3.8-flash"
 ANTIGRAVITY_DEFAULT_EFFORT = "high"
+
+AIOS_ANTIGRAVITY_ACTIVE_ENV = "AIOS_ANTIGRAVITY_ACTIVE"
+AIOS_ANTIGRAVITY_ACTIVE_VALUE = "1"
+AIOS_PRETOOL_GUARD_FILENAME = "aios_antigravity_pretool_guard.py"
+
+
+def aios_subprocess_env() -> dict[str, str]:
+    """Return subprocess env with AIOS antigravity mode enabled.
+
+    The activation marker is propagated only to the subprocess spawned
+    by the adapter. The marker is *not* a global state mutation; it is
+    injected per-invocation so manual / non-AIOS Antigravity sessions
+    remain unaffected.
+    """
+    return {**os.environ, AIOS_ANTIGRAVITY_ACTIVE_ENV: AIOS_ANTIGRAVITY_ACTIVE_VALUE}
+
+
+def aios_pretool_guard_path(repo: str | Path) -> Path:
+    """Resolve the canonical on-disk path of the PreToolUse guard script.
+
+    The script ships inside the repository workspace at
+    ``<repo>/.agents/aios_antigravity_pretool_guard.py`` so it is loaded
+    by Antigravity for every workspace tool execution. The path is
+    canonical (absolute, resolved) for callers that need to invoke the
+    guard outside the hook pipeline (e.g. tests).
+    """
+    return Path(repo).resolve() / ".agents" / AIOS_PRETOOL_GUARD_FILENAME
 
 
 class AntigravityExecutionError(RuntimeError):
@@ -225,6 +258,7 @@ class AntigravityAdapter:
                 capture_output=True,
                 text=False,
                 check=False,
+                env=aios_subprocess_env(),
                 timeout=self._execution_policy.process_watchdog_seconds,
             )
             stdout = _decode_utf8(completed.stdout)
@@ -365,9 +399,12 @@ HEADLESS_PRINT_MODE_CONTRACT = (
     "Do not start, detach, or leave background tasks, asynchronous manage_task work, or long-lived servers or watchers. "
     "Do not invoke delegated implementation subagents or invoke_subagent-style delegation. "
     "Every command used during execution must be bounded and complete synchronously before the agent proceeds. "
-    "Because Runtime owns canonical verification, the Executor must not run full test suites, builds, watchers, or other "
-    "long-running verification commands merely for ceremony; only short bounded implementation-local sanity checks on the "
-    "changed surface are permitted when useful. "
+    "Because Runtime owns canonical verification and this Executor is strictly implementation-only, the Executor must not "
+    "run full test suites, builds, watchers, or other long-running verification commands and must not run any "
+    "implementation-local sanity test or local verification command. "
+    "A hook denial with AIOS_RUNTIME_OWNS_VERIFICATION, AIOS_BACKGROUND_RISK_DENIED, or AIOS_GIT_OPERATION_NOT_ADMITTED is "
+    "expected policy; do not retry, translate, or replace the denied command with an equivalent. Continue only authorized "
+    "implementation and terminalization. "
     "Do not complete execution or invoke finish while any tool, subagent, or background work remains active. "
     "If the platform nevertheless reports that a tool became a background task, the agent must not start additional dependent "
     "work and must not invoke finish while that task is active; it must deterministically wait or join for real completion if "
@@ -390,9 +427,13 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
             + f"Read the AIOS handoff JSON at {handoff_path}. "
             "Execute its TASK implementation context and RUN exactly within the supplied "
             "repository. Runtime owns canonical verification; do not execute canonical "
-            "verification commands and do not generate verification evidence. Minimum "
-            "implementation-local sanity checks on the changed surface are permitted when "
-            "useful, but they are not canonical verification or EVIDENCE. Complete all "
+            "verification commands, do not run any implementation-local sanity test or "
+            "local verification command, and do not generate verification evidence. "
+            "A hook denial with AIOS_RUNTIME_OWNS_VERIFICATION, "
+            "AIOS_BACKGROUND_RISK_DENIED, or AIOS_GIT_OPERATION_NOT_ADMITTED is expected "
+            "policy; do not retry, translate, or replace the denied command with an "
+            "equivalent. Continue only authorized implementation and terminalization. "
+            "Complete all "
             "authorized implementation work and required commit completion first; "
             "zero-mutation actions must not create a commit merely to satisfy terminal "
             "mechanics. Do not push. Obtain actual final Git HEAD, then invoke the builtin "
@@ -420,10 +461,14 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
             "For CODE_FIX, commit the permitted remediation delta before invoking finish; "
             "for EVIDENCE_ONLY, do not create a code commit. Zero-mutation actions must not "
             "create a commit merely to satisfy terminal mechanics. Do not push. Runtime owns "
-            "affected verification; do not execute verification commands and do not generate "
-            "verification evidence. Minimum implementation-local sanity checks on the "
-            "changed surface are permitted when useful, but they are not canonical "
-            "verification or EVIDENCE. Complete all authorized remediation work and required "
+            "affected verification; do not execute verification commands, do not run any "
+            "implementation-local sanity test or local verification command, and do not "
+            "generate verification evidence. "
+            "A hook denial with AIOS_RUNTIME_OWNS_VERIFICATION, "
+            "AIOS_BACKGROUND_RISK_DENIED, or AIOS_GIT_OPERATION_NOT_ADMITTED is expected "
+            "policy; do not retry, translate, or replace the denied command with an equivalent. "
+            "Continue only authorized remediation work and terminalization. "
+            "Complete all authorized remediation work and required "
             "commit completion first. Obtain actual final Git HEAD, then invoke the builtin "
             "finish tool exactly once satisfying the supplied response schema as the only "
             "successful terminal action. Do not emit conversational terminal prose, "
@@ -465,9 +510,12 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
         "scope, recursively continue, perform semantic review, or invoke an AIOS operator "
         "or worker launcher. Do not push. "
         "Runtime owns complete original TASK verification; do not execute canonical "
-        "verification commands or construct EVIDENCE. Minimum implementation-local sanity "
-        "checks on the changed surface remain permitted when useful, but they are not "
-        "canonical verification or EVIDENCE. Runtime derives and persists "
+        "verification commands, do not run any implementation-local sanity test or "
+        "local verification command, and do not construct EVIDENCE. "
+        "A hook denial with AIOS_RUNTIME_OWNS_VERIFICATION, "
+        "AIOS_BACKGROUND_RISK_DENIED, or AIOS_GIT_OPERATION_NOT_ADMITTED is expected "
+        "policy; do not retry, translate, or replace the denied command with an equivalent. "
+        "Continue only authorized repair work and terminalization. Runtime derives and persists "
         "canonical result.changed_files from the original TASK root base to final HEAD; "
         "do not reconstruct or enumerate that historical file set. Complete all authorized "
         "repair work and required commit completion first. For CODE_FIX and "
