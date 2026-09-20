@@ -26,7 +26,7 @@ verification_foundation_audit:
     Historical Performance Closure engineering artifacts remain immutable and are not
     reinterpreted by this planning decision.
 next_items:
-  - maintenance-self-host-workflow-dispatch-recovery
+  - bp-v1-verification-contract-hardening
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -128,19 +128,21 @@ sequence:
       Close pre-AIOS/self-host attribution gaps and preserve typed lower-layer causes
       without fabricating engineering lifecycle truth.
   - id: maintenance-self-host-workflow-dispatch-recovery
-    status: NEXT
-    task_id: TASK-151
-    task_revision: 1
+    status: DONE
+    completed_by:
+      task_id: TASK-151
+      task_revision: 1
+      run_id: RUN-151-001
+      review_id: REVIEW-151-001
+      reviewed_sha: "95f44e3244d611bab442ef5e492d18c8e4432636"
+      published_sha: "95f44e3244d611bab442ef5e492d18c8e4432636"
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Restore parseable self-host workflow dispatch after the BP-2 runner.temp
       regression, then resume the already-authored BP-V1 TASK-150 without changing
       its semantics or fabricating lifecycle state for pre-AIOS transport failures.
   - id: bp-v1-verification-contract-hardening
-    status: BLOCKED
-    blocked_by:
-      task_id: TASK-151
-      task_revision: 1
+    status: NEXT
     task_id: TASK-150
     task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
