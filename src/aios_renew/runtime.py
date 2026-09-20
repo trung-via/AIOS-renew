@@ -30,6 +30,7 @@ from .verification import (
     attach_verification_evidence,
     execute_verification,
 )
+from .verification_contract import MINIMUM_SUFFICIENT_V1, normalize_verification
 
 
 class RuntimeState(Protocol):
@@ -114,10 +115,11 @@ def repair_completion_policy(
 ) -> CompletionPolicy:
     verification_commands = task.verification.required
     if origin_affected_verification:
-        verification_commands = tuple(
-            dict.fromkeys(
-                (*verification_commands, *origin_affected_verification)
-            )
+        combined = (*verification_commands, *origin_affected_verification)
+        verification_commands = (
+            normalize_verification(combined)
+            if task.verification.policy == MINIMUM_SUFFICIENT_V1
+            else tuple(dict.fromkeys(combined))
         )
     return CompletionPolicy(
         kind="REPAIR",

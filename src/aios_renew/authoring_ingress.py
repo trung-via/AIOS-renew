@@ -58,6 +58,7 @@ from .run import (
     SUPPORTED_EXECUTORS,
 )
 from .task import Task, TaskValidationError, parse_task
+from .verification_contract import MINIMUM_SUFFICIENT_V1
 from .unified_state import observe_unified_state
 
 
@@ -416,6 +417,12 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path) -> IngressResult
             raise AuthoringIngressError(
                 f"new TASK must have revision 1, got {task.revision}"
             )
+
+    if task.verification.policy != MINIMUM_SUFFICIENT_V1:
+        raise AuthoringIngressError(
+            "new TASK identities and revisions require verification.policy "
+            f"{MINIMUM_SUFFICIENT_V1}"
+        )
 
     if current_main_sha != expected_main_sha:
         raise AuthoringIngressError(

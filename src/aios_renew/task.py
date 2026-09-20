@@ -9,6 +9,12 @@ from typing import Any
 
 import yaml
 
+from .verification_contract import (
+    MINIMUM_SUFFICIENT_V1,
+    VerificationContractError,
+    validate_v1_verification,
+)
+
 
 class TaskValidationError(ValueError):
     """Raised when TASK input does not satisfy the canonical contract."""
@@ -34,6 +40,8 @@ class AcceptanceCriterion:
 @dataclass(frozen=True)
 class TaskVerification:
     required: tuple[str, ...]
+    policy: str | None = None
+    full_suite_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -90,7 +98,9 @@ def validate_task(data: Any) -> Task:
     verification = _mapping(
         _required(root, "verification", "TASK"), "verification"
     )
-    _reject_unknown(verification, {"required"}, "verification")
+    _reject_unknown(
+        verification, {"policy", "required", "full_suite_reason"}, "verification"
+    )
 
     acceptance_data = _list(
         _required(root, "acceptance", "TASK"), "acceptance"
@@ -136,13 +146,38 @@ def validate_task(data: Any) -> Task:
         raise TaskValidationError(
             "verification.required must contain at least one command"
         )
-    seen_commands: set[str] = set()
-    for command in required_verification:
-        if command in seen_commands:
+    verification_policy = None
+    full_suite_reason = None
+    if "policy" in verification:
+        verification_policy = _string(verification["policy"], "verification.policy")
+        if verification_policy != MINIMUM_SUFFICIENT_V1:
             raise TaskValidationError(
-                f"verification.required contains duplicate command: {command}"
+                f"verification.policy must be {MINIMUM_SUFFICIENT_V1}"
             )
-        seen_commands.add(command)
+        if "full_suite_reason" in verification:
+            full_suite_reason = _string(
+                verification["full_suite_reason"], "verification.full_suite_reason"
+            )
+        try:
+            validate_v1_verification(
+                required_verification,
+                full_suite_reason=full_suite_reason,
+                path="verification.required",
+            )
+        except VerificationContractError as exc:
+            raise TaskValidationError(str(exc)) from exc
+    else:
+        if "full_suite_reason" in verification:
+            raise TaskValidationError(
+                "verification.full_suite_reason requires verification.policy"
+            )
+        seen_commands: set[str] = set()
+        for command in required_verification:
+            if command in seen_commands:
+                raise TaskValidationError(
+                    f"verification.required contains duplicate command: {command}"
+                )
+            seen_commands.add(command)
 
     return Task(
         task_id=_string(_required(root, "task_id", "TASK"), "task_id"),
@@ -168,7 +203,11 @@ def validate_task(data: Any) -> Task:
             )
         ),
         acceptance=tuple(acceptance),
-        verification=TaskVerification(required=required_verification),
+        verification=TaskVerification(
+            required=required_verification,
+            policy=verification_policy,
+            full_suite_reason=full_suite_reason,
+        ),
     )
 
 

@@ -112,6 +112,32 @@ def test_rejects_duplicate_required_verification_deterministically() -> None:
         parse_task(source)
 
 
+def test_parses_minimum_sufficient_v1_verification() -> None:
+    source = VALID_TASK.replace(
+        "verification:\n",
+        "verification:\n  policy: minimum-sufficient-v1\n",
+    )
+
+    task = parse_task(source)
+
+    assert task.verification.policy == "minimum-sufficient-v1"
+    assert task.verification.full_suite_reason is None
+
+
+def test_v1_task_rejects_known_redundant_verification() -> None:
+    source = VALID_TASK.replace(
+        "verification:\n  required:\n    - pytest tests/test_task.py\n",
+        "verification:\n"
+        "  policy: minimum-sufficient-v1\n"
+        "  required:\n"
+        "    - pytest tests\n"
+        "    - pytest tests/test_task.py\n",
+    )
+
+    with pytest.raises(TaskValidationError, match="provably subsumed"):
+        parse_task(source)
+
+
 @pytest.mark.parametrize(
     "invalid_path",
     [

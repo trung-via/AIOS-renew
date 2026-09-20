@@ -5,13 +5,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
 
 from .artifacts import Result
 from .run import Run
 from .task import Task
+from .verification_contract import (
+    MINIMUM_SUFFICIENT_V1,
+    VerificationContractError,
+    validate_v1_verification,
+)
 
 
 REVIEW_MODES = frozenset({"PRIMARY", "DELTA"})
@@ -53,6 +58,16 @@ class Remediation:
     modification_scope: tuple[str, ...] = ()
     affected_verification: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
+    verification_policy: ClassVar[str | None] = None
+    full_suite_reason: ClassVar[str | None] = None
+
+
+@dataclass(frozen=True)
+class _V1Remediation(Remediation):
+    """V1 extension that leaves serialized legacy remediation unchanged."""
+
+    verification_policy: str = MINIMUM_SUFFICIENT_V1
+    full_suite_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -243,15 +258,74 @@ def parse_remediation(source: str) -> Remediation:
     modification_scope = _optional_remediation_list(
         root, "modification_scope", nested=("scope", "modify")
     )
+    verification_policy = None
+    full_suite_reason = None
     affected_verification = _optional_remediation_list(
         root, "affected_verification", nested=("verification", "affected")
     )
-    if not affected_verification and "verification" in root:
+    if "verification" in root:
         verification = _mapping(root["verification"], "verification")
-        if "required" in verification:
+        if "policy" in verification:
+            unknown = sorted(
+                repr(key)
+                for key in verification
+                if key not in {"policy", "affected", "full_suite_reason"}
+            )
+            if unknown:
+                raise ReviewValidationError(
+                    "verification contains unknown field(s): " + ", ".join(unknown)
+                )
+            verification_policy = _string(
+                verification["policy"], "verification.policy"
+            )
+            if verification_policy != MINIMUM_SUFFICIENT_V1:
+                raise ReviewValidationError(
+                    f"verification.policy must be {MINIMUM_SUFFICIENT_V1}"
+                )
+            if "affected" not in verification:
+                raise ReviewValidationError("verification.affected is required")
+            affected_verification = _string_tuple(
+                verification["affected"], "verification.affected"
+            )
+            if "full_suite_reason" in verification:
+                full_suite_reason = _string(
+                    verification["full_suite_reason"],
+                    "verification.full_suite_reason",
+                )
+            try:
+                validate_v1_verification(
+                    affected_verification,
+                    full_suite_reason=full_suite_reason,
+                    path="verification.affected",
+                )
+            except VerificationContractError as exc:
+                raise ReviewValidationError(str(exc)) from exc
+        elif "required" in verification and not affected_verification:
             affected_verification = _string_tuple(
                 verification["required"], "verification.required"
             )
+    elif root.get("verification_policy") is not None:
+        # Dataclass transports use this flat spelling when rehydrating the
+        # already-validated canonical remediation contract.
+        verification_policy = _string(
+            root["verification_policy"], "verification_policy"
+        )
+        if verification_policy != MINIMUM_SUFFICIENT_V1:
+            raise ReviewValidationError(
+                f"verification_policy must be {MINIMUM_SUFFICIENT_V1}"
+            )
+        if root.get("full_suite_reason") is not None:
+            full_suite_reason = _string(
+                root["full_suite_reason"], "full_suite_reason"
+            )
+        try:
+            validate_v1_verification(
+                affected_verification,
+                full_suite_reason=full_suite_reason,
+                path="affected_verification",
+            )
+        except VerificationContractError as exc:
+            raise ReviewValidationError(str(exc)) from exc
     constraints: tuple[str, ...] = ()
     if "constraints" in root:
         value = root["constraints"]
@@ -262,22 +336,29 @@ def parse_remediation(source: str) -> Remediation:
         else:
             constraints = _string_tuple(value, "constraints")
 
-    return Remediation(
-        finding_id=_string(
+    values = {
+        "finding_id": _string(
             _required(root, "finding_id", "REMEDIATION"), "finding_id"
         ),
-        action=_choice(
+        "action": _choice(
             _required(root, "action", "REMEDIATION"),
             "action",
             REMEDIATION_ACTIONS,
         ),
-        reviewed_sha=_string(
+        "reviewed_sha": _string(
             _required(root, "reviewed_sha", "REMEDIATION"),
             "reviewed_sha",
         ),
-        modification_scope=modification_scope,
-        affected_verification=affected_verification,
-        constraints=constraints,
+        "modification_scope": modification_scope,
+        "affected_verification": affected_verification,
+        "constraints": constraints,
+    }
+    if verification_policy is None:
+        return Remediation(**values)
+    return _V1Remediation(
+        **values,
+        verification_policy=verification_policy,
+        full_suite_reason=full_suite_reason,
     )
 
 
@@ -301,6 +382,12 @@ def validate_remediation(
             "REMEDIATION action does not match finding action"
         )
     if task is not None:
+        if task.verification.policy == MINIMUM_SUFFICIENT_V1:
+            if remediation.verification_policy != MINIMUM_SUFFICIENT_V1:
+                raise ReviewValidationError(
+                    "REMEDIATION for a minimum-sufficient-v1 TASK must use "
+                    "verification.policy minimum-sufficient-v1"
+                )
         outside_scope = set(remediation.modification_scope).difference(
             task.scope.modify
         )

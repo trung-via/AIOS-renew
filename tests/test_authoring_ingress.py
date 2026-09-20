@@ -135,6 +135,13 @@ verification:
     - git diff --check
 """
 
+V1_TASK_105_SOURCE = TASK_105_SOURCE.replace(
+    "verification:\n", "verification:\n  policy: minimum-sufficient-v1\n"
+)
+V1_TASK_105_R2_SOURCE = TASK_105_R2_SOURCE.replace(
+    "verification:\n", "verification:\n  policy: minimum-sufficient-v1\n"
+)
+
 
 def setup_test_repo(root: Path) -> tuple[Path, Path, str]:
     """Create local repo and bare upstream git repo."""
@@ -459,7 +466,7 @@ def test_author_task_new_and_revision(tmp_path):
         operation="AUTHOR_TASK",
         identity={"task_id": "TASK-105"},
         expected_state={"expected_main_sha": base_sha},
-        payload=TASK_105_SOURCE,
+        payload=V1_TASK_105_SOURCE,
     )
     result = execute_ingress(envelope, repo=repo)
     assert result.status == "CANONICALIZED"
@@ -478,7 +485,7 @@ def test_author_task_new_and_revision(tmp_path):
     assert replay_result.canonical_sha == new_main_sha
 
     # 3. Conflicting attempt (different payload for same revision 1) fails closed
-    conflicting_source = TASK_105_SOURCE.replace("Implement generic ingress capability.", "Different goal.")
+    conflicting_source = V1_TASK_105_SOURCE.replace("Implement generic ingress capability.", "Different goal.")
     conflicting_env = IngressEnvelope(
         format="AIOS_INGRESS_ENVELOPE",
         version=1,
@@ -497,13 +504,13 @@ def test_author_task_new_and_revision(tmp_path):
         operation="AUTHOR_TASK",
         identity={"task_id": "TASK-105"},
         expected_state={"expected_main_sha": base_sha},  # stale
-        payload=TASK_105_R2_SOURCE,
+        payload=V1_TASK_105_R2_SOURCE,
     )
     with pytest.raises(AuthoringIngressError, match="expected main SHA mismatch"):
         execute_ingress(stale_env, repo=repo)
 
     # 5. Continuity violation: revision 3 when revision 1 is on main fails closed
-    r3_source = TASK_105_R2_SOURCE.replace("revision: 2", "revision: 3")
+    r3_source = V1_TASK_105_R2_SOURCE.replace("revision: 2", "revision: 3")
     r3_env = IngressEnvelope(
         format="AIOS_INGRESS_ENVELOPE",
         version=1,
@@ -522,11 +529,47 @@ def test_author_task_new_and_revision(tmp_path):
         operation="AUTHOR_TASK",
         identity={"task_id": "TASK-105"},
         expected_state={"expected_main_sha": new_main_sha},
-        payload=TASK_105_R2_SOURCE,
+        payload=V1_TASK_105_R2_SOURCE,
     )
     r2_result = execute_ingress(r2_env, repo=repo)
     assert r2_result.status == "CANONICALIZED"
     assert "revision: 2" in (repo / ".ai" / "tasks" / "TASK-105.yaml").read_text(encoding="utf-8")
+
+
+def test_author_task_rejects_new_legacy_but_replays_historical_revision(tmp_path):
+    repo, _, base_sha = setup_test_repo(tmp_path)
+    new_envelope = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="AUTHOR_TASK",
+        identity={"task_id": "TASK-105"},
+        expected_state={"expected_main_sha": base_sha},
+        payload=TASK_105_SOURCE,
+    )
+    with pytest.raises(AuthoringIngressError, match="minimum-sufficient-v1"):
+        execute_ingress(new_envelope, repo=repo)
+
+    task_path = repo / ".ai" / "tasks" / "TASK-105.yaml"
+    task_path.parent.mkdir(parents=True)
+    task_path.write_text(TASK_105_SOURCE, encoding="utf-8")
+    git(repo, "add", ".ai/tasks/TASK-105.yaml")
+    git(repo, "commit", "--quiet", "-m", "historical task")
+    historical_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    replay = execute_ingress(
+        IngressEnvelope(
+            format="AIOS_INGRESS_ENVELOPE",
+            version=1,
+            operation="AUTHOR_TASK",
+            identity={"task_id": "TASK-105"},
+            expected_state={"expected_main_sha": historical_sha},
+            payload=TASK_105_SOURCE,
+        ),
+        repo=repo,
+    )
+    assert replay.status == "IDEMPOTENT"
+    assert replay.canonical_sha == historical_sha
 
 
 # ===========================================================================
@@ -1182,6 +1225,78 @@ constraints:
         "show",
         f"{malformed_sha}:.ai/remediations/REMEDIATION-{run_id}-F1.yaml",
     )
+
+
+def test_author_remediation_for_v1_task_requires_v1_verification(tmp_path):
+    lineage = setup_candidate_lineage(
+        tmp_path, task_source=V1_TASK_105_SOURCE
+    )
+    repo = lineage["repo"]
+    run_id = lineage["run_id"]
+    candidate_sha = lineage["candidate_sha"]
+    review = f"""\
+review_id: REVIEW-105-001
+reviewed_sha: {candidate_sha}
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+findings:
+  - id: F1
+    basis: AC1
+    action: CODE_FIX
+    location: src/sample.py
+    issue: Defect found.
+    expected: Fix defect.
+"""
+    execute_ingress(
+        IngressEnvelope(
+            format="AIOS_INGRESS_ENVELOPE",
+            version=1,
+            operation="SUBMIT_REVIEW",
+            identity={"run_id": run_id},
+            expected_state={"expected_candidate_sha": candidate_sha},
+            payload=review,
+        ),
+        repo=repo,
+    )
+
+    legacy_payload = f"""\
+finding_id: F1
+action: CODE_FIX
+reviewed_sha: {candidate_sha}
+modification_scope: [src/sample.py]
+affected_verification: [git diff --check]
+"""
+    envelope = IngressEnvelope(
+        format="AIOS_INGRESS_ENVELOPE",
+        version=1,
+        operation="AUTHOR_REMEDIATION",
+        identity={"source_run_id": run_id, "finding_id": "F1"},
+        expected_state={"expected_reviewed_sha": candidate_sha},
+        payload=legacy_payload,
+    )
+    with pytest.raises(AuthoringIngressError, match="must use verification.policy"):
+        execute_ingress(envelope, repo=repo)
+
+    v1_payload = legacy_payload.replace(
+        "affected_verification: [git diff --check]",
+        "verification:\n"
+        "  policy: minimum-sufficient-v1\n"
+        "  affected: [git diff --check]",
+    )
+    result = execute_ingress(
+        IngressEnvelope(
+            format=envelope.format,
+            version=envelope.version,
+            operation=envelope.operation,
+            identity=envelope.identity,
+            expected_state=envelope.expected_state,
+            payload=v1_payload,
+        ),
+        repo=repo,
+    )
+    assert result.status == "CANONICALIZED"
 
 
 def test_author_remediation_rejects_already_resolved_finding(tmp_path):

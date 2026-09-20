@@ -329,6 +329,42 @@ def test_operation_policies_share_one_runtime_completion_lifecycle(
     assert completion.result_path.is_file()
 
 
+def test_v1_repair_normalizes_task_and_origin_verification_without_mutation(
+    tmp_path: Path,
+) -> None:
+    task, _, _, _, _ = completion_fixture(tmp_path)
+    task_commands = (
+        "pytest -q tests/test_task.py",
+        "python -m pytest tests/test_task.py",
+    )
+    origin_commands = ("pytest tests", "opaque command")
+    task = replace(
+        task,
+        verification=TaskVerification(
+            required=task_commands,
+            policy="minimum-sufficient-v1",
+        ),
+    )
+
+    policy = repair_completion_policy(
+        task,
+        root_base_sha="base",
+        failed_head_sha="failed",
+        action="CODE_FIX",
+        modification_scope=("OUTPUT.txt",),
+        lineage_path=tmp_path / "repairs" / "RUN-052-001.json",
+        origin_affected_verification=origin_commands,
+    )
+
+    assert policy.verification_commands == (
+        "python -m pytest tests/test_task.py",
+        "pytest tests",
+        "opaque command",
+    )
+    assert task.verification.required == task_commands
+    assert origin_commands == ("pytest tests", "opaque command")
+
+
 @pytest.mark.parametrize("action", ("CODE_FIX", "CONTINUE_IMPLEMENTATION"))
 @pytest.mark.parametrize(
     "declared_changed_files",

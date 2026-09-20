@@ -1,3 +1,6 @@
+import json
+from dataclasses import asdict
+
 import pytest
 
 from aios_renew import (
@@ -261,6 +264,59 @@ constraints:
     assert validate_remediation(
         review=review, remediation=remediation, task=task
     ) is remediation
+
+
+def test_v1_task_requires_v1_remediation_and_validates_affected_commands() -> None:
+    task = parse_task(
+        TASK_SOURCE.replace(
+            "verification:\n",
+            "verification:\n  policy: minimum-sufficient-v1\n",
+        )
+    )
+    review = parse_review(CHANGES_REVIEW)
+    legacy = parse_remediation(
+        """
+finding_id: R1
+action: CODE_FIX
+reviewed_sha: def456
+affected_verification: [pytest tests/test_review.py]
+"""
+    )
+    with pytest.raises(ReviewValidationError, match="must use verification.policy"):
+        validate_remediation(review=review, remediation=legacy, task=task)
+
+    remediation = parse_remediation(
+        """
+finding_id: R1
+action: CODE_FIX
+reviewed_sha: def456
+verification:
+  policy: minimum-sufficient-v1
+  affected:
+    - pytest tests/test_review.py
+"""
+    )
+    assert validate_remediation(
+        review=review, remediation=remediation, task=task
+    ) is remediation
+    assert (
+        parse_remediation(json.dumps(asdict(remediation))).verification_policy
+        == "minimum-sufficient-v1"
+    )
+
+    with pytest.raises(ReviewValidationError, match="provably subsumed"):
+        parse_remediation(
+            """
+finding_id: R1
+action: CODE_FIX
+reviewed_sha: def456
+verification:
+  policy: minimum-sufficient-v1
+  affected:
+    - pytest tests
+    - pytest tests/test_review.py
+"""
+        )
 
 
 def test_remediation_scope_cannot_widen_original_task() -> None:
