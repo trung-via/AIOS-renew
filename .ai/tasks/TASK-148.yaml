@@ -1,49 +1,60 @@
 task_id: TASK-148
-revision: 1
+revision: 2
 
 goal: >
-  Harden the existing TASK-058 historical-subject Runtime boundary so canonical
-  verification executes unchanged inside an isolated historical repository whose
-  Git metadata has ordinary repository-local .git directory semantics. A historical
-  REPAIR or primary recovery must therefore support exact TASK verification commands
-  that legitimately use relative .git/... paths without rewriting those commands,
-  while preserving current-control authority, exact failed/candidate SHA binding,
-  isolation, cleanup, and all existing repair/recovery semantics.
+  Re-admit the TASK-148 historical-subject Runtime hardening on the current
+  canonical AIOS-renew main after RUN-148-001 was made non-repairable by an
+  unrelated canonical-main advance during its PRIMARY execution. Preserve the
+  original TASK-148 semantic authority from revision 1: historical REPAIR and
+  primary recovery must execute unchanged canonical verification commands inside
+  an isolated exact historical repository whose local .git is a usable directory
+  namespace, while current-control authority, exact SHA binding, isolation,
+  cleanup, Runtime verification ownership, and evidence semantics remain unchanged.
 
 problem: >
-  Downstream python_complete_agent, pinned exactly to reviewed/source-published
-  AIOS-renew 1a68db9acb6989dfa81bf875503db62e54a4bed6, exposed a deterministic
-  historical verification defect while recovering TASK-207 revision 7. Canonical
-  RUN-207-009 is a REPAIR continuation of RUN-207-008 at exact candidate
-  39277166d69ea788ae9eaa4626707e7412a5f114. Executor completion succeeded far
-  enough for Runtime-owned verification to start, but verification failed with
-  172 passed / 53 errors. The repeated cause was FileNotFoundError while pytest
-  attempted to create the exact TASK-authorized
-  --basetemp=.git/aios/pytest-task207-r7 path inside the isolated historical subject:
-  C:/Users/TRUNG/AppData/Local/Temp/aios-historical-repair-.../.git/aios/....
-  TASK-058 currently constructs that subject with git worktree add --detach, so
-  workspace/.git is a linked-worktree pointer file rather than a directory and
-  cannot contain .git/aios. The TASK verification command is valid in an ordinary
-  repository checkout and must execute exactly as authored; Runtime must not rewrite
-  or special-case downstream pytest arguments merely to accommodate an incidental
-  historical-workspace representation.
+  TASK-148 revision 1 was canonically authored at
+  3edeb3cc430eb2c9e506d148bbf11834986380d3 and admitted as RUN-148-001.
+  During that PRIMARY, independent TASK-147 revision 2 authoring advanced the
+  shared control checkout to 407fd0a419a03a181d1836da4d4a7cd61aa0d3ae.
+  RUN-148-001 therefore terminalized at EXECUTION with candidate dirty=true,
+  descends_from_base=true, outside_task_scope containing .ai/tasks/TASK-147.yaml,
+  repairable=false, transportable=false, and Antigravity terminal prose indicating
+  one background task. RUN-148-001 is immutable failed history and cannot be
+  repaired or reused as candidate authority.
 
-  This is a regression/hardening gap inside TASK-058 historical subject ownership,
-  with TASK-146 verification guarantees also relevant because Runtime must preserve
-  exact command order/cwd/evidence semantics. It is not a Python Agent product defect
-  and not a reason to rerun TASK-207 from the beginning.
+  TASK-147 revision 2 subsequently completed successfully as RUN-147-004,
+  REVIEW-147-004 PASS, source candidate
+  f0e1f203ca7a34f4fbb67c2dac2dd451e7d9c9e2, with focused tests, complete
+  operator suite, full 1226-test suite, and git diff --check all passing; that
+  source is published and remains an ancestor of current main.
+
+  TASK-140 revision 5 also completed after TASK-147, with final reviewed/published
+  source at current canonical main
+  5240d90c2cbcde43d69d1beeba4acb93acaabc1e. Those later control-plane changes are
+  unrelated to TASK-148 and must be preserved exactly.
+
+  The original downstream blocker remains unresolved. python_complete_agent
+  RUN-207-009 failed during Runtime verification because TASK-058 historical
+  recovery uses git worktree add --detach, making subject/.git a pointer file.
+  The exact downstream verification command
+  --basetemp=.git/aios/pytest-task207-r7 then cannot create its path beneath
+  subject/.git, causing 53 FileNotFoundError setup errors after 172 tests passed.
+  Revision 2 must solve that generic historical-subject representation defect on
+  current AIOS main without rewriting downstream verification commands or creating
+  a second authority.
 
 assumptions:
-  - Canonical AIOS-renew main at authoring is e00da88f64b0e2074f0e512fa7e54008fa61352c.
-  - TASK-147 revision 1 is canonically authored on that main but unrelated to this blocker; TASK-148 must not implement, modify, review, repair, or advance TASK-147.
-  - TASK-058 revision 2 remains the semantic authority for isolated historical REPAIR subject workspaces and current-control/historical-subject separation.
-  - TASK-064 remains authority for reusable verification-only NO_CHANGE continuation and must not be reimplemented here.
-  - TASK-146 remains authority for Windows Runtime verification temp isolation and exact verification command/cwd/evidence semantics.
-  - Current Runtime helper _create_historical_workspace uses git worktree add --detach and _remove_historical_workspace uses git worktree remove.
-  - A linked Git worktree exposes workspace/.git as a file pointing to the common Git dir; therefore an exact verification path rooted at workspace/.git/... cannot be created.
-  - Downstream RUN-207-009 is phase VERIFICATION, dirty=false, repairable=true, transportable=true, changed_files=[], failed_head_sha=39277166d69ea788ae9eaa4626707e7412a5f114, and its verification failure is environmental/workspace-structural rather than a demonstrated implementation defect.
-  - Downstream pin migration and continuation of RUN-207-009 are separate downstream work after this upstream fix is independently reviewed and source-published.
-  - Mutable future AIOS-renew main is not downstream authority until an explicit downstream exact-pin migration occurs.
+  - Canonical AIOS-renew main at revision-2 authoring is 5240d90c2cbcde43d69d1beeba4acb93acaabc1e.
+  - TASK-147 revision 2 is DONE via RUN-147-004 / REVIEW-147-004 PASS and source f0e1f203ca7a34f4fbb67c2dac2dd451e7d9c9e2 is published.
+  - TASK-140 revision 5 is DONE on current main and its hook/Antigravity guard changes must remain unchanged.
+  - RUN-148-001 is canonical non-repairable/non-transportable failed revision-1 history and must not be repaired, recovered, cherry-picked, or used as implementation authority.
+  - TASK-058 revision 2 remains sole semantic authority for historical subject construction and current-control/historical-subject separation.
+  - TASK-064 remains authority for verification-only NO_CHANGE reuse and is not reimplemented here.
+  - TASK-146 remains authority for Windows verification TEMP/TMP/TMPDIR isolation and exact command/cwd/evidence semantics.
+  - Current _create_historical_workspace still uses git worktree add --detach and current _remove_historical_workspace removes that linked worktree.
+  - A linked worktree exposes subject/.git as a file rather than a directory, which is incompatible with otherwise-valid exact verification commands that use relative .git/... paths.
+  - Downstream python_complete_agent remains separately pinned to older exact AIOS source until an explicit reviewed downstream migration occurs.
+  - No other AIOS task or canonical-main mutation may execute concurrently with TASK-148 revision-2 PRIMARY/verification.
 
 scope:
   inspect:
@@ -52,8 +63,13 @@ scope:
     - docs/CHATGPT_PROJECT_CONTRACT.md
     - .ai/tasks/TASK-058.yaml
     - .ai/tasks/TASK-064.yaml
+    - .ai/tasks/TASK-140.yaml
     - .ai/tasks/TASK-146.yaml
     - .ai/tasks/TASK-147.yaml
+    - .ai/tasks/TASK-148.yaml
+    - refs/heads/aios/failure-artifacts/RUN-148-001
+    - refs/heads/aios/artifacts/RUN-147-004
+    - refs/heads/aios/review-decision/RUN-147-004
     - src/aios_renew/operator.py
     - src/aios_renew/runtime.py
     - src/aios_renew/verification.py
@@ -66,96 +82,97 @@ scope:
     - tests/test_verification.py
 
 non_goals:
-  - Modify downstream python_complete_agent source, TASK-207, RUN-207-009 artifacts, REPAIR lineage, workflow bindings, or dependency pin.
-  - Rewrite or sanitize canonical TASK verification commands, replace relative .git paths, strip --basetemp, inject task/run-specific command exceptions, or weaken exact-command verification.
-  - Change TASK-064 NO_CHANGE eligibility/reuse semantics, verification ownership, evidence schemas, RESULT/FAILURE semantics, repair action meanings, Executor selection, retry/fallback/reroute, or publication/review authority.
-  - Change TASK-146 Windows TEMP/TMP/TMPDIR isolation or move volatile test temp roots back under repository ancestry.
-  - Build a generic clone manager, generic worktree manager, snapshot service, scheduler, broker, planner, or branch orchestration subsystem.
+  - Repair, retry, recover, publish, or otherwise revive RUN-148-001.
+  - Modify TASK-147, RUN-147-004, TASK-140 revision 5, its guard/hooks/adapter files, or their reviewed/published semantics.
+  - Modify downstream python_complete_agent source, TASK-207, RUN-207-009 artifacts, REPAIR lineage, workflows, or dependency pin.
+  - Rewrite/sanitize canonical verification commands, replace relative .git paths, strip --basetemp, or add downstream/TASK-specific verification exceptions.
+  - Change TASK-064 NO_CHANGE semantics, TASK-146 Windows temp isolation, verification/evidence schemas, RESULT/FAILURE semantics, correction actions, Executor selection, retry/fallback/reroute, Reviewer, or Publisher authority.
   - Use network access to construct historical subjects.
-  - Mutate, reset, detach, stash, commit, or otherwise change the current control checkout merely to create a historical subject.
-  - Implement or advance TASK-147 or the Brain Portability roadmap.
-  - Add downstream-specific identifiers, paths, TASK ids, RUN ids, candidate SHAs, or pytest-only production special cases.
+  - Mutate/reset/detach/stash/commit the current control checkout merely to create a historical subject.
+  - Build a generic clone/worktree/snapshot manager, scheduler, planner, router, broker, or second historical-recovery authority.
+  - Advance the Brain Portability roadmap or unrelated AIOS work as part of this task.
 
 constraints:
   hard:
     - >
-      Preserve TASK-058 authority: current control repository remains authoritative for
-      Runtime provenance, canonical remote resolution, mutation lock/state root, repair
-      authorization, RUN allocation, terminal state, and transport. The historical
-      subject remains only the exact Git subject of execution and verification.
+      Preserve TASK-058 authority. Current control repository remains authoritative
+      for Runtime provenance, canonical remote resolution, lock/state root, repair
+      authorization, RUN allocation, terminal state and transport. Historical subject
+      remains only the exact Git execution/verification subject.
     - >
-      Historical subject creation must begin from the exact authorized historical
-      commit and expose ordinary repository-local Git metadata semantics sufficient
-      for an unchanged canonical command to create/read paths beneath subject/.git/.
-      The fix must not rewrite verification commands or substitute current-main files.
+      Construct the historical subject from the exact authorized historical commit
+      using local/offline Git objects while exposing an ordinary repository-local
+      .git directory namespace. Missing objects, wrong HEAD, dirty subject, or any
+      control-checkout mutation must fail closed before Executor/verification proceeds.
     - >
-      Subject construction must be local/offline and object-exact. Reuse of the
-      current repository object store is allowed only as a subordinate storage
-      mechanism; missing objects, wrong HEAD, dirty subject, or control-checkout
-      mutation must fail closed before Executor/verification authority proceeds.
+      Do not rewrite verification commands to compensate for workspace representation.
+      An unchanged canonical command using .git/aios/... must work from cwd equal to
+      the historical subject repository.
     - >
-      The subject must remain isolated from the attached control checkout. Its branch,
-      index, worktree, commits, and repository-local .git state must not mutate control
-      HEAD/index/worktree or create a second semantic authority.
+      Subject branch/index/worktree/repository-local metadata must be isolated from the
+      attached control checkout and may not alter control HEAD/index/worktree or create
+      competing semantic authority.
     - >
-      Cleanup must be deterministic for both success and failure and must not depend
-      on git worktree registration if the chosen historical-subject representation no
-      longer uses linked worktrees. Cleanup failure must not silently corrupt control
-      repository worktree metadata.
+      Cleanup must be deterministic on success and failure. If the corrected subject is
+      no longer a linked worktree, cleanup must not depend on git worktree registration
+      and must not leave stale worktree metadata or leaked temporary repositories.
     - >
-      Preserve exact historical TASK loading from the subject, exact failed/candidate
-      SHA checks, clean-worktree checks, scope/mutation gates, Runtime-owned
-      verification, raw evidence, strict UTF-8, stop-on-first-failure, and transport
-      semantics.
+      Preserve exact historical TASK loading, failed/candidate SHA validation,
+      clean-worktree and mutation-scope gates, Runtime-owned verification, raw evidence,
+      strict UTF-8, stop-on-first-failure, terminal transport, and current-control
+      immutability checks.
     - >
-      Preserve TASK-146 verification behavior: commands execute exactly once, in
-      authored order, with cwd equal to the historical subject repository and Windows
-      TEMP/TMP/TMPDIR isolated outside Git ancestry. Raw Runtime evidence continues to
-      use the control Runtime state root as already designed.
+      Preserve TASK-146 behavior exactly: verification executes once in authored order,
+      cwd is the subject repo, Windows TEMP/TMP/TMPDIR remains isolated outside Git
+      ancestry, and raw evidence remains in control Runtime state.
     - >
-      Add a production-shaped Windows regression equivalent to the downstream
-      RUN-207-009 topology: create a historical subject, prove subject/.git is usable
-      as a directory namespace, execute an unchanged verification command whose
-      --basetemp or equivalent writes beneath .git/aios, and observe successful
-      Runtime verification without touching control HEAD/index/worktree.
+      Add production-shaped regression coverage proving a historical subject can use
+      subject/.git/aios as a real directory namespace and an unchanged command equivalent
+      to --basetemp=.git/aios/... succeeds without touching control state.
     - >
-      Preserve historical REPAIR and recover-primary compatibility, including fresh
-      local Runtime state and exact remote lineage. Existing historical subject tests
-      must remain green without weakening their isolation assertions.
+      Historical REPAIR and recover-primary must use the same corrected subject boundary,
+      including fresh local Runtime state and exact remote lineage.
     - >
-      No behavior may depend on concrete downstream paths, Windows username, TASK-207,
-      RUN-207-009, or candidate 39277166; those values are evidence only.
+      Preserve current TASK-147 and TASK-140 behavior through complete regression coverage.
+      Do not modify their production files merely to satisfy TASK-148 tests.
+    - >
+      Execute revision 2 serially. While its PRIMARY or Runtime verification is active,
+      no AUTHOR_TASK, PRIMARY, FIX, REPAIR, remediation, publication-source mutation, or
+      other canonical-main-changing operation may run in this AIOS-renew checkout.
+    - >
+      No production behavior may depend on concrete downstream paths, Windows username,
+      TASK-207, RUN-207-009, candidate 39277166, RUN-148-001, or other evidence identifiers.
 
 acceptance:
   - id: AC1
     condition: >
-      A Runtime-created historical subject at an exact historical SHA provides
-      repository-local .git directory semantics compatible with unchanged canonical
-      verification paths beneath .git/... while current control checkout remains unchanged.
+      Runtime historical subject at an exact historical SHA provides repository-local
+      .git directory semantics compatible with unchanged paths beneath .git/... while
+      current control checkout remains unchanged.
   - id: AC2
     condition: >
-      Historical REPAIR can complete Runtime verification for a production-shaped
-      command using --basetemp=.git/aios/... without command rewriting, linked-worktree
-      FileNotFoundError, or downstream-specific exception.
+      Production-shaped historical REPAIR verification using a relative
+      .git/aios basetemp path completes without linked-worktree FileNotFoundError or
+      command rewriting.
   - id: AC3
     condition: >
-      Historical recover-primary uses the same corrected subject boundary and retains
-      exact candidate/TASK/verification semantics without mutating current control state.
+      Historical recover-primary uses the same corrected subject boundary and preserves
+      exact candidate/TASK/verification semantics without mutating control state.
   - id: AC4
     condition: >
       Historical subject creation and cleanup are deterministic, offline, object-exact,
-      and fail closed for missing/wrong HEAD, dirty subject, or control mutation, with
-      no stale linked-worktree registration or leaked temporary repository on normal completion.
+      fail closed on invalid state, and leave no stale linked-worktree registration or
+      temporary repository on normal completion.
   - id: AC5
     condition: >
-      TASK-064 verification-only continuation and TASK-146 Windows verification
-      isolation/evidence behavior remain unchanged, including exact command order/cwd
-      and isolated TEMP/TMP/TMPDIR.
+      TASK-064 verification-only continuation, TASK-146 Windows verification isolation,
+      TASK-147 evidence-continuity behavior, and TASK-140 revision-5 current behavior
+      remain compatible and unchanged.
   - id: AC6
     condition: >
-      Focused historical-repair/recovery and verification regressions, complete operator
-      and verification suites, full pytest suite, and git diff --check pass with zero
-      unresolved items and changes limited to authorized scope.
+      Focused historical repair/recovery tests, complete verification suite, complete
+      operator suite, full pytest suite, and git diff --check pass with zero unresolved
+      items and source changes limited to the three authorized files.
 
 verification:
   required:
