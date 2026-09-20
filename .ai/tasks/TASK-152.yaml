@@ -1,0 +1,161 @@
+task_id: TASK-152
+revision: 1
+
+goal: >
+  Establish the canonical BP-V2 pre-optimization serial full-suite baseline and one
+  executable Git-fixture isolation contract without accelerating the harness yet, so the
+  later acceleration task can be judged against exact before evidence on the supported
+  Windows self-host class while preserving canonical test population and real-Git semantics.
+
+problem: >
+  BP-V2 requires before/after evidence on the same supported self-host class and at least
+  50 percent serial full-suite wall-time reduction without reducing semantic coverage.
+  Historical RUN-144-006 and RUN-145-002 prove that Git-heavy control-plane tests dominate
+  wall time, but they are not a valid current baseline because canonical source and test
+  population have changed. A fresh baseline must therefore be produced before any fixture
+  acceleration. At the same time, the future optimization needs an executable guard that
+  permits reuse of immutable Git objects but forbids writable-state sharing between tests.
+
+assumptions:
+  - Canonical main at TASK authoring is b2879402e91c3ffe12ffe680f13602e870cc5a70.
+  - BP-V2 Full-Suite Harness Acceleration is the unique canonical NEXT roadmap milestone.
+  - TASK-150/BP-V1 is reviewed and published and new TASKs must use verification policy minimum-sufficient-v1.
+  - >
+    Historical performance evidence is diagnostic only. RUN-144-006 observed 1222 tests in
+    1578.39 seconds and the operator/authoring-ingress/publication group at 1192.47 seconds;
+    RUN-145-002 observed 1207 tests in 1343.67 seconds. TASK-152 must not reuse those timings
+    as the official BP-V2 before baseline.
+  - >
+    Runtime EVIDENCE preserves exact verification command output, including pytest collection
+    and elapsed-time summaries, so TASK-152 does not need a new timing schema, database,
+    benchmark service, or Runtime telemetry authority.
+  - >
+    The standard PRIMARY self-host workflow targets labels [self-hosted, windows, x64,
+    aios-renew]. Operational workflow/receipt metadata may support environment provenance
+    but does not become lifecycle or verification truth.
+
+scope:
+  inspect:
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-PERFORMANCE-CLOSURE.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - src/aios_renew/verification.py
+    - src/aios_renew/artifacts.py
+    - tests/operator_test_support.py
+    - tests/test_operator.py
+    - tests/test_authoring_ingress.py
+    - tests/test_publication.py
+    - tests/test_review_transport.py
+    - tests/test_operator_unified_state.py
+  modify:
+    - tests/test_git_fixture_isolation.py
+
+non_goals:
+  - Modify tests/operator_test_support.py or accelerate make_repo, setup_test_repo, make_lineage, or any existing fixture/helper.
+  - Introduce reusable immutable Git baseline implementation; that belongs to the subsequent BP-V2 acceleration task.
+  - Modify any src/aios_renew production module, Runtime verification semantics, EVIDENCE schema, Operator, Publisher, or lifecycle authority.
+  - Add pytest-xdist, parallel workers, worker-count selection, async test execution, or other BP-V4 behavior.
+  - Change verification workspace isolation or control-checkout movement semantics; that belongs to BP-V3.
+  - Add pytest result caching, skip, xfail, deselection, timeout inflation, broad Git mocks, or reduced canonical test population.
+  - Claim BP-V2 performance success or the 50 percent exit gate from TASK-152.
+  - Create a performance database, benchmark daemon, telemetry service, second evidence store, Planner, or routing authority.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Add exactly one new test module, tests/test_git_fixture_isolation.py. Existing
+      production code, test helpers, and existing tests remain unchanged in TASK-152.
+    - >
+      The isolation test must use the existing real-Git test harness to construct at least
+      two independent sandboxes and prove that mutation of sandbox A is not observable as
+      mutable state in sandbox B.
+    - >
+      The contract must cover independent worktree/index state, local refs or branches,
+      writable remote refs, repository-local Git configuration, clean/dirty state, and
+      .git/aios Runtime state or locks where applicable.
+    - >
+      Do not require separate immutable Git object databases. The contract must permit a
+      later implementation to reuse immutable Git objects or immutable baseline material,
+      provided every test retains isolated writable worktree, index, refs, remotes/config,
+      locks, and Runtime state.
+    - >
+      Keep all Git-boundary assertions production-shaped with real local Git repositories
+      and local bare remotes. Do not replace ancestry, ref, remote, dirty-state, lock, or
+      transport semantics with broad mocks.
+    - >
+      TASK-152 itself must not reduce Git subprocess count or optimize fixture construction.
+      Its purpose is to establish the before state and the conformance guard only.
+    - >
+      The canonical full-suite baseline is valid for BP-V2 planning only when RUN-152 is
+      executed through the standard PRIMARY self-host path on the supported Windows x64
+      aios-renew runner class. Workflow/receipt metadata is supporting operational
+      provenance only; Runtime RESULT/EVIDENCE remains verification truth.
+    - >
+      The collection evidence and full-suite evidence from the same admitted RUN-152
+      candidate define the BP-V2 before baseline. A later TASK must preserve every baseline
+      collected node; additional tests are allowed, removal or silent deselection is not.
+    - >
+      No TASK-152 code or review may interpret historical RUN-144/RUN-145 timing as the
+      official baseline or claim that BP-V2 has achieved the 50 percent performance gate.
+    - >
+      Do not modify files outside scope.modify and do not push from Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The candidate changes exactly tests/test_git_fixture_isolation.py and leaves all
+      existing production modules, test helpers, test modules, pytest configuration, and
+      workflows unchanged.
+  - id: AC2
+    condition: >
+      The new real-Git conformance test proves two independently created test sandboxes do
+      not share writable worktree/index state, local refs or branches, writable remote refs,
+      repository-local Git config, clean/dirty state, or .git/aios Runtime/lock state.
+  - id: AC3
+    condition: >
+      The isolation contract does not forbid immutable Git object reuse and therefore can
+      remain valid when TASK-153 replaces repeated baseline construction with an immutable
+      reusable source plus isolated mutable per-test sandboxes.
+  - id: AC4
+    condition: >
+      Canonical Runtime evidence for python -m pytest --collect-only -q records the complete
+      current collected test-node population after the isolation guard is added, establishing
+      the BP-V2 pre-optimization semantic population.
+  - id: AC5
+    condition: >
+      Canonical Runtime evidence for python -m pytest -q passes the complete serial suite and
+      records the exact pytest pass count and elapsed time for the same candidate, establishing
+      the BP-V2 pre-optimization serial timing baseline.
+  - id: AC6
+    condition: >
+      The baseline RUN is executed through the standard PRIMARY self-host path targeting
+      [self-hosted, windows, x64, aios-renew]; this environment provenance is observed from
+      the current workflow/operational surface and is not promoted into lifecycle truth.
+  - id: AC7
+    condition: >
+      There are no new skips, xfails, deselection rules, pytest parallelism, test-result
+      caches, timeout inflation, broad Git mocks, or other mechanisms that reduce or evade
+      canonical semantic coverage.
+  - id: AC8
+    condition: >
+      TASK-152 makes no BP-V2 acceleration-success claim. The 50 percent serial wall-time
+      exit gate remains pending a later before/after comparison against this exact RUN-152
+      collection and full-suite evidence.
+  - id: AC9
+    condition: >
+      Runtime/EVIDENCE contracts, production code, roadmap engineering truth, and all
+      Human/Brain/Reviewer/Publisher authority boundaries remain unchanged.
+
+verification:
+  policy: minimum-sufficient-v1
+  full_suite_reason: >
+    Establish the canonical pre-optimization serial full-suite timing and exact collected
+    test population required for the BP-V2 before/after exit gate on the supported Windows
+    self-host class.
+  required:
+    - python -m pytest --collect-only -q
+    - python -m pytest -q
+    - git diff --check
