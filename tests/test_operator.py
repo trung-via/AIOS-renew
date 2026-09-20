@@ -281,13 +281,33 @@ class HistoricalRepairRunner:
         self.workspace = subject
         self.initial_head = git(subject, "rev-parse", "HEAD")
         self.initial_pin = (subject / "AIOS_PIN").read_text(encoding="utf-8")
-        repair_id = execution["repair"]["repair_id"]
-        (subject / "OUTPUT.txt").write_text(
-            f"historically repaired by {repair_id}\n", encoding="utf-8"
-        )
+        (subject / "OUTPUT.txt").write_text("historically repaired\n", encoding="utf-8")
         git(subject, "add", "OUTPUT.txt")
-        git(subject, "commit", "--quiet", "-m", repair_id)
+        git(subject, "commit", "--quiet", "-m", "historical repair")
         head_sha = git(subject, "rev-parse", "HEAD")
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(
+                result_payload(execution["run"]["run_id"], head_sha)
+            ),
+            stderr="",
+        )
+
+
+class WorkspaceRepairRunner:
+    def __call__(self, command, **kwargs):
+        execution = json.loads(
+            kwargs["input"].decode("utf-8").split("REPAIR_INPUT:\n", 1)[1]
+        )
+        workspace = Path(execution["run"]["workspace"])
+        repair_id = execution["repair"]["repair_id"]
+        (workspace / "OUTPUT.txt").write_text(
+            f"repaired by {repair_id}\n", encoding="utf-8"
+        )
+        git(workspace, "add", "OUTPUT.txt")
+        git(workspace, "commit", "--quiet", "-m", repair_id)
+        head_sha = git(workspace, "rev-parse", "HEAD")
         return subprocess.CompletedProcess(
             command,
             returncode=0,
@@ -7550,7 +7570,7 @@ findings:
         "instructions": ["Correct the integrated remediation candidate."],
         "constraints": ["Commit the output."],
     }
-    first_repair_runner = HistoricalRepairRunner()
+    first_repair_runner = WorkspaceRepairRunner()
     with pytest.raises(OperatorError, match="exit code 9"):
         run_repair(
             "RUN-101-001",
@@ -7577,7 +7597,7 @@ findings:
         "failed_run_id": "RUN-101-002",
         "failed_head_sha": continuation_failure["failed_head_sha"],
     }
-    continuation_repair_runner = HistoricalRepairRunner()
+    continuation_repair_runner = WorkspaceRepairRunner()
     completed = run_repair(
         "RUN-101-002",
         executor="codex",
