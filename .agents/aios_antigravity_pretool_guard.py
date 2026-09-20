@@ -85,6 +85,8 @@ import json
 import os
 import re
 import sys
+import base64
+import binascii
 from typing import Any, List, Sequence, Tuple
 
 
@@ -305,6 +307,133 @@ def _strip_powershell_call_operator(cmd):
     if base not in ("git", "git.exe"):
         return None
     return rest
+
+
+_POWERSHELL_EXECUTABLES = frozenset({
+    "powershell", "powershell.exe", "pwsh", "pwsh.exe",
+})
+_POWERSHELL_ENCODED_FLAGS = frozenset({"-encodedcommand", "-enc"})
+# Windows PowerShell accepts unambiguous parameter-name prefixes. Only the
+# two spellings above are supported for normalization; other aliases that
+# PowerShell may interpret as EncodedCommand must fail closed instead of
+# leaving an opaque payload to the ordinary command policy.
+_POWERSHELL_UNSUPPORTED_ENCODED_FLAGS = frozenset({
+    "-e", "-en", "-enco", "-encod", "-encode", "-encoded",
+    "-encodedc", "-encodedco", "-encodedcom", "-encodedcomm",
+    "-encodedcomma", "-encodedcomman",
+})
+_POWERSHELL_COMMAND_SELECTORS = frozenset({
+    "-command", "-c", "-file", "-f",
+})
+
+
+def _split_wrapper_arguments(text):
+    """Split a narrow Windows command tail into quote-aware arguments.
+
+    This is intentionally not a general shell parser. It handles the quoted
+    executable/options used by PowerShell launchers and returns None for
+    unmatched quotes so encoded input can fail closed.
+    """
+    args = []
+    current = []
+    quote = None
+    token_started = False
+    for char in text:
+        if quote is not None:
+            if char == quote:
+                quote = None
+            else:
+                current.append(char)
+            token_started = True
+            continue
+        if char in ("\"", "\x27"):
+            quote = char
+            token_started = True
+        elif char.isspace():
+            if token_started:
+                args.append("".join(current))
+                current = []
+                token_started = False
+        else:
+            current.append(char)
+            token_started = True
+    if quote is not None:
+        return None
+    if token_started:
+        args.append("".join(current))
+    return args
+
+
+def _normalize_powershell_encoded_command(cmd):
+    """Return (kind, command) for a supported PowerShell encoded wrapper.
+
+    kind is ``plain`` when the command is not an encoded PowerShell wrapper,
+    ``decoded`` when a single strict UTF-16LE Base64 payload was normalized,
+    and ``malformed`` for an opaque or ambiguous encoded wrapper.
+    """
+    if not isinstance(cmd, str):
+        return ("plain", cmd)
+    stripped = cmd.lstrip()
+    match = _GIT_EXECUTABLE_RE.match(stripped)
+    if match is None:
+        return ("plain", cmd)
+    executable = match.group(0)
+    if _basename_of_executable(executable).lower() not in _POWERSHELL_EXECUTABLES:
+        return ("plain", cmd)
+
+    args = _split_wrapper_arguments(stripped[match.end():])
+    lowered_tail = stripped[match.end():].lower()
+    if args is None:
+        if "encodedcommand" in lowered_tail or "-enc" in lowered_tail:
+            return ("malformed", None)
+        return ("plain", cmd)
+
+    lowered_args = [arg.lower() for arg in args]
+    if any(arg in _POWERSHELL_UNSUPPORTED_ENCODED_FLAGS for arg in lowered_args):
+        return ("malformed", None)
+    if any(
+        arg.startswith(flag + ":") or arg.startswith(flag + "=")
+        for arg in lowered_args
+        for flag in _POWERSHELL_ENCODED_FLAGS
+    ):
+        return ("malformed", None)
+    encoded_indexes = [
+        index for index, arg in enumerate(lowered_args)
+        if arg in _POWERSHELL_ENCODED_FLAGS
+    ]
+    if not encoded_indexes:
+        return ("plain", cmd)
+    if len(encoded_indexes) != 1:
+        return ("malformed", None)
+
+    index = encoded_indexes[0]
+    # EncodedCommand is a terminal command selector. Combining it with a
+    # second command/file selector, omitting its value, or appending tokens
+    # after the payload is ambiguous and therefore denied.
+    if any(arg in _POWERSHELL_COMMAND_SELECTORS for arg in lowered_args[:index]):
+        return ("malformed", None)
+    if index + 1 >= len(args) or index + 2 != len(args):
+        return ("malformed", None)
+    encoded = args[index + 1]
+    if not encoded:
+        return ("malformed", None)
+
+    try:
+        encoded_ascii = encoded.encode("ascii", errors="strict")
+        raw = base64.b64decode(encoded_ascii, validate=True)
+    except (UnicodeEncodeError, binascii.Error, ValueError):
+        return ("malformed", None)
+    if not raw or len(raw) % 2:
+        return ("malformed", None)
+    try:
+        decoded = raw.decode("utf-16-le", errors="strict")
+    except UnicodeDecodeError:
+        return ("malformed", None)
+    if decoded.startswith("\ufeff"):
+        decoded = decoded[1:]
+    if not decoded.strip() or "\x00" in decoded:
+        return ("malformed", None)
+    return ("decoded", decoded)
 
 
 _BOUNDED_GIT_SUBCOMMANDS = frozenset({
@@ -565,6 +694,26 @@ def evaluate(payload):
         return _deny(
             DENY_REASON_MALFORMED,
             message="AIOS PreToolUse guard received a tool call with no command",
+        )
+
+    # Normalize supported PowerShell EncodedCommand wrappers before every
+    # existing policy check. This makes the decoded command subject to the
+    # same git, re-invocation, background-risk, and verification policy as a
+    # directly supplied command. Malformed or ambiguous wrappers fail closed.
+    for _ in range(4):
+        encoded_kind, normalized = _normalize_powershell_encoded_command(cmd)
+        if encoded_kind == "plain":
+            break
+        if encoded_kind == "malformed":
+            return _deny(
+                DENY_REASON_MALFORMED,
+                message="AIOS PreToolUse guard received malformed PowerShell EncodedCommand input",
+            )
+        cmd = normalized
+    else:
+        return _deny(
+            DENY_REASON_MALFORMED,
+            message="AIOS PreToolUse guard received excessively nested PowerShell EncodedCommand input",
         )
 
     # Normalize the PowerShell call-operator form. A leading `& ` followed

@@ -3061,3 +3061,108 @@ def test_task140_r3_active_guard_call_operator_normalization_preserves_inactive_
         env_active=False,
     )
     assert out == {"decision": "allow"}
+
+
+# ---------------------------------------------------------------------------
+# TASK-140 r5 REPAIR: PowerShell EncodedCommand normalization
+# ---------------------------------------------------------------------------
+
+def _powershell_encoded(command_line):
+    import base64 as _base64
+
+    return _base64.b64encode(command_line.encode("utf-16-le")).decode("ascii")
+
+
+@pytest.mark.parametrize(
+    ("executable", "flag"),
+    [
+        ("powershell", "-EncodedCommand"),
+        ("powershell.exe", "-enc"),
+        ("PoWeRsHeLl.ExE", "-ENCODEDCOMMAND"),
+        ("pwsh", "-Enc"),
+        ("pwsh.exe", "-ENC"),
+    ],
+)
+def test_task140_r5_encoded_command_exact_ac8_payload_denied(executable, flag):
+    """The live AC8 payload is decoded before background classification."""
+    payload = _powershell_encoded(
+        "Set-Content -LiteralPath 'marker' -Value EXECUTED; "
+        "Start-Sleep -Seconds 20; Write-Output SHOULD_NOT_RUN"
+    )
+    out = _run_guard_with(
+        f"{executable} -NoProfile {flag} {payload}", env_active=True
+    )
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_BACKGROUND_RISK_DENIED",
+    }
+
+
+@pytest.mark.parametrize(
+    ("decoded", "expected"),
+    [
+        ("git status", {"decision": "allow"}),
+        (
+            "git push origin main",
+            {"decision": "deny", "reason": "AIOS_GIT_OPERATION_NOT_ADMITTED"},
+        ),
+        (
+            "agy --print forbidden",
+            {"decision": "deny", "reason": "AIOS_RUNTIME_OWNS_VERIFICATION"},
+        ),
+        (
+            "pytest tests/test_x.py",
+            {"decision": "deny", "reason": "AIOS_RUNTIME_OWNS_VERIFICATION"},
+        ),
+    ],
+)
+def test_task140_r5_encoded_command_uses_existing_policy(decoded, expected):
+    payload = _powershell_encoded(decoded)
+    out = _run_guard_with(
+        f"powershell.exe -NoProfile -EncodedCommand {payload}", env_active=True
+    )
+    assert out == expected
+
+
+@pytest.mark.parametrize(
+    "command_line",
+    [
+        "powershell.exe -EncodedCommand",
+        "powershell.exe -EncodedCommand ''",
+        "powershell.exe -EncodedCommand not-base64!",
+        "powershell.exe -EncodedCommand QQ==",  # odd decoded byte count
+        "powershell.exe -EncodedCommand ANg=",  # unpaired UTF-16 surrogate
+        "powershell.exe -EncodedCommand ZQBjAGgAbwA= trailing",
+        "powershell.exe -EncodedCommand ZQBjAGgAbwA= -enc ZQBjAGgAbwA=",
+        "powershell.exe -Command echo -EncodedCommand ZQBjAGgAbwA=",
+        "powershell.exe -EncodedComm ZQBjAGgAbwA=",
+        "powershell.exe -EncodedCommand:ZQBjAGgAbwA=",
+        "powershell.exe -en ZQBjAGgAbwA= -enc ZQBjAGgAbwA=",
+        "pwsh.exe -en ZQBjAGgAbwA=",
+    ],
+)
+def test_task140_r5_malformed_encoded_command_fails_closed(command_line):
+    out = _run_guard_with(command_line, env_active=True)
+    assert out == {
+        "decision": "deny",
+        "reason": "AIOS_GUARD_MALFORMED_INPUT",
+    }
+
+
+def test_task140_r5_production_hook_denies_exact_ac8_encoded_payload():
+    """The exact hooks.json command decodes and denies AC8 from .agents cwd."""
+    import json as _json
+
+    payload = _powershell_encoded(
+        "Set-Content -LiteralPath 'marker' -Value EXECUTED; "
+        "Start-Sleep -Seconds 20; Write-Output SHOULD_NOT_RUN"
+    )
+    completed = _run_canonical_hook_from_config_dir(
+        f"powershell.exe -NoProfile -EncodedCommand {payload}"
+    )
+    assert completed.returncode == 0
+    assert completed.stderr == ""
+    assert _json.loads(completed.stdout) == {
+        "decision": "deny",
+        "reason": "AIOS_BACKGROUND_RISK_DENIED",
+    }
