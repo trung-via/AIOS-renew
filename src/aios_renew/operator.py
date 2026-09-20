@@ -1314,6 +1314,7 @@ def run_repair(
         reason_code="CANONICAL_LINEAGE_MISSING",
         executor=executor,
         failed_run_id=failed_run_id,
+        repair_dispatch_id=repair_dispatch_id,
     )
     try:
         return _run_repair_impl(
@@ -3514,6 +3515,7 @@ def run_remediation(
         ),
         task_id=task_id,
         executor=executor,
+        correction_dispatch_id=correction_dispatch_id,
     )
     if finding_id is not None:
         admission["finding_id"] = finding_id
@@ -3688,6 +3690,8 @@ def _persist_and_transport_admission_failure(
             "failed_run_id",
             "source_run_id",
             "dispatch_id",
+            "correction_dispatch_id",
+            "repair_dispatch_id",
             "task_blob_sha",
             "task_commit_sha",
             "current_task_blob_sha",
@@ -5246,6 +5250,16 @@ def run_repair_wakeup(
             failed_run_id, repo=root, required_repair_sha=repair_sha
         )
         if preflight.status != "READY" or preflight.task_id is None:
+            _project_blocked_correction_delivery(
+                family="REPAIR",
+                delivery_id=repair_dispatch_id,
+                preflight=preflight.as_dict(),
+                selectors={
+                    "failed_run_id": failed_run_id,
+                    "repair_sha": repair_sha,
+                    "executor": executor,
+                },
+            )
             raise OperatorError("canonical REPAIR preflight does not authorize execution")
         observation = observe_unified_state(preflight.task_id, repo=root)
         if (
@@ -5546,6 +5560,59 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _project_operational_delivery(
+    root: Path,
+    *,
+    family: str,
+    delivery_id: str,
+    selectors: Mapping[str, Any],
+) -> None:
+    """Best-effort workflow projection; never changes command authority/outcome."""
+
+    try:
+        from .operational_receipt import (
+            project_delivery_receipt,
+            write_environment_receipt,
+        )
+
+        receipt = project_delivery_receipt(
+            runtime_state_root(root),
+            family=family,
+            delivery_id=delivery_id,
+            selectors=selectors,
+        )
+        write_environment_receipt(receipt)
+    except Exception:
+        return
+
+
+def _project_blocked_correction_delivery(
+    *,
+    family: str,
+    delivery_id: str,
+    preflight: Mapping[str, Any],
+    selectors: Mapping[str, Any],
+) -> None:
+    """Best-effort projection of the exact preflight returned by this invocation."""
+
+    try:
+        from .operational_receipt import (
+            correction_preflight_receipt,
+            write_environment_receipt,
+        )
+
+        write_environment_receipt(
+            correction_preflight_receipt(
+                family,
+                delivery_id,
+                preflight,
+                selectors=selectors,
+            )
+        )
+    except Exception:
+        return
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -5665,6 +5732,18 @@ def main(
                 task_blob_sha=args.task_blob_sha,
                 task_commit_sha=args.task_commit_sha,
             )
+            _project_operational_delivery(
+                repo_root,
+                family="PRIMARY",
+                delivery_id=args.dispatch_id,
+                selectors={
+                    "task_id": args.task_id,
+                    "task_revision": args.task_revision,
+                    "task_blob_sha": args.task_blob_sha,
+                    "task_commit_sha": args.task_commit_sha,
+                    "executor": args.executor,
+                },
+            )
             print(outcome.render())
             return outcome.exit_code
         elif args.command == "remote-status":
@@ -5716,6 +5795,17 @@ def main(
                 native_runner=native_runner,
                 verification_runner=verification_runner,
                 monotonic_clock=monotonic_clock,
+            )
+            intent_root = resolve_repository(args.repo)
+            _project_operational_delivery(
+                intent_root,
+                family="REMEDIATION",
+                delivery_id=args.correction_dispatch_id,
+                selectors={
+                    "source_run_id": args.source_run_id,
+                    "finding_id": args.finding_id,
+                    "executor": args.executor,
+                },
             )
             print(approval.render())
             print(outcome.render())
@@ -5776,6 +5866,16 @@ def main(
                 )
             except (RemoteSurfaceError, CorrectionDispatchError) as exc:
                 raise OperatorError(str(exc)) from exc
+            _project_operational_delivery(
+                repo_root,
+                family="REMEDIATION",
+                delivery_id=args.correction_dispatch_id,
+                selectors={
+                    "source_run_id": args.source_run_id,
+                    "finding_id": args.finding_id,
+                    "executor": args.executor,
+                },
+            )
             print(outcome.render())
             return outcome.exit_code
         elif args.command == "remediate":
@@ -5833,6 +5933,17 @@ def main(
                 native_runner=native_runner,
                 verification_runner=verification_runner,
                 monotonic_clock=monotonic_clock,
+            )
+            repair_root = resolve_repository(args.repo)
+            _project_operational_delivery(
+                repair_root,
+                family="REPAIR",
+                delivery_id=args.repair_dispatch_id,
+                selectors={
+                    "failed_run_id": args.failed_run_id,
+                    "repair_sha": args.repair_sha,
+                    "executor": args.executor,
+                },
             )
             print(outcome.render())
             return outcome.exit_code

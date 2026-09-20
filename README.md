@@ -125,6 +125,47 @@ Before the first PRIMARY call, A2 stores a version-2 path-safe, hashed dispatch 
 
 This dispatch record is operational control/telemetry state outside the product worktree and canonical artifact schemas. Authorization and dispatch acceptance provide delivery and RUN attribution only; neither is TASK truth, RESULT/EVIDENCE, verification success, review approval, or publication proof. The separate A3 status surface can observe this record but cannot reconcile or mutate it.
 
+### Operational Receipt v2
+
+The PRIMARY, steady-state and fallback REMEDIATION, and REPAIR handoffs expose one
+bounded `AIOS_OPERATIONAL_RECEIPT` version 2 in their workflow-run output/summary.
+It is correlated by the existing family identity (`dispatch_id`,
+`correction_dispatch_id`, or `repair_dispatch_id`) and reports only the highest
+boundary directly proven for that exact delivery:
+
+`CARRIER_ADMITTED -> DISPATCH_REQUEST_ACCEPTED -> RUNNER_STARTED -> AIOS_INVOKED -> ADMISSION_ACCEPTED/ADMISSION_REJECTED -> RUN_ATTRIBUTED -> TERMINAL_POINTER`
+
+Not every family observes every rung. In particular, PRIMARY
+`createWorkflowDispatch` proves only `DISPATCH_REQUEST_ACCEPTED`; it does not prove
+that a runner started, AIOS ran, a RUN exists, or verification/review/publication
+succeeded. A reusable self-host workflow completion is labeled
+`SELF_HOST_COMPLETED`, while an admitted carrier whose reusable workflow fails is
+`OPERATIONAL_FAILED`, not successful delivery.
+
+Before AIOS invocation, the workflow may emit `OPERATIONAL_FAILED` only for its
+small stable taxonomy: missing `AIOS_REPO_ROOT`, unavailable or invalid configured
+repository, unavailable bounded `aios` command, invalid bounded input, and the
+fixed REPAIR repository/ref/actor checks. Such a failure explicitly has
+`run_created=false` and `executor_invoked=false`. It is workflow observability,
+not a canonical RUN `FAILURE`, Admission Failure, retry authorization, or inferred
+Unified State.
+
+After `AIOS_INVOKED`, the projection reuses the exact Admission Failure v2 or
+Correction Preflight `phase` and `reason_code` returned for the same delivery. It
+does not parse error text, choose the newest diagnostic, or define a competing
+admission taxonomy. `RUN_ATTRIBUTED` appears only after the existing family
+dispatch journal durably binds that delivery to one exact RUN; task/finding/
+Executor similarity, timestamps, an unrelated later RUN, and an ambiguous RUN are
+never attribution.
+
+When that exact RUN has canonical RESULT or FAILURE truth, the receipt reduces to
+a `TERMINAL_POINTER` containing only terminal kind, RUN id, and the canonical
+artifact pointer. It never copies the terminal body, errors, result claims,
+EVIDENCE, REVIEW, or publication state. TASK-113 remains the reverse terminal
+attention mechanism. Operational receipts create no lifecycle store, dispatch
+authority, next action, semantic verdict, or retry; Runtime and canonical lineage
+remain the owners of verification and engineering truth.
+
 A duplicate terminal delivery performs no re-execution. A successful dispatch returns the same dispatch/RUN attribution with success; a failed dispatch preserves its prior nonzero outcome. Reusing a `dispatch_id` with any different authorized selector fails closed. TASK mutation or revision drift requires fresh authorization and a new dispatch identity. After a process or host interruption, re-delivery only observes the recorded pre-invocation RUN namespace and canonical `.git/aios` RUN/RESULT/FAILURE state. It can link one uniquely attributable terminal RUN, report an execution still in progress, or return reconciliation blocked. This is attribution and no re-execution, not automatic retry or recovery: it never starts a second RUN, invokes an Executor again, repairs an incomplete RUN, or synthesizes terminal artifacts.
 
 ### Public Repository Security Boundary

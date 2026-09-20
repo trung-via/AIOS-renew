@@ -131,6 +131,9 @@ def test_receipt_is_bounded_and_never_claims_execution_success() -> None:
     assert "status: DISPATCH_ACCEPTED" in text
     assert "execution_outcome: not_observed" in text
     assert "this is not RUN, verification, review, or publication success" in text
+    assert "boundary: 'DISPATCH_REQUEST_ACCEPTED'" in text
+    assert "boundary: 'CARRIER_ADMITTED'" in text
+    assert "AIOS_OPERATIONAL_RECEIPT_V2=" in text
     assert "steps.admission.outcome == 'success'" in text
 
 

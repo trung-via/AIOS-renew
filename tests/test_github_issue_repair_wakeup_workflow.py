@@ -72,6 +72,10 @@ def test_receipt_accepts_only_successful_admission_and_dispatch() -> None:
     assert "verification: not_asserted_by_carrier" in text
     assert "semantic_review: not_asserted_by_carrier" in text
     assert "publication: not_asserted_by_carrier" in text
+    assert "status: ${accepted ? 'SELF_HOST_COMPLETED' : 'REJECTED'}" in text
+    assert "boundary: dispatched ? 'SELF_HOST_COMPLETED' : 'OPERATIONAL_FAILED'" in text
+    assert "DOWNSTREAM_WORKFLOW_FAILED" in text
+    assert "AIOS_OPERATIONAL_RECEIPT_V2=" in text
     rejected = workflow["jobs"]["receipt"]["steps"][1]
     assert rejected["if"] == (
         "needs.admit.result != 'success' || needs.dispatch.result != 'success'"

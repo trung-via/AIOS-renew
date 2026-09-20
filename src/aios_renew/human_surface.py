@@ -215,6 +215,7 @@ def _human_surface_delegation_failed(
     operation: str,
     executor: str | None,
     executor_required: bool,
+    blocker: Mapping[str, Any] | None = None,
 ) -> tuple[HumanSurfaceResult, int]:
     """Project one canonical operation failure without creating new authority."""
 
@@ -226,9 +227,32 @@ def _human_surface_delegation_failed(
             executor=executor,
             executor_required=executor_required,
             delegated_operation=operation,
-            blocker={"code": "DELEGATED_OPERATION_FAILED"},
+            blocker=blocker or {"code": "DELEGATED_OPERATION_FAILED"},
         ),
         1,
+    )
+
+
+def _admission_failure_snapshot(root: Path) -> tuple[Path, frozenset[str]]:
+    directory = _operator().runtime_paths(root).admission_failures
+    names = frozenset(path.name for path in directory.glob("*.json"))
+    return directory, names
+
+
+def _delegated_admission_blocker(
+    snapshot: tuple[Path, frozenset[str]],
+    *,
+    operation: str,
+    exact_facts: Mapping[str, Any],
+) -> Mapping[str, str] | None:
+    from .operational_receipt import new_admission_blocker
+
+    directory, before = snapshot
+    return new_admission_blocker(
+        directory,
+        before=before,
+        operation=operation,
+        exact_facts=exact_facts,
     )
 
 
@@ -363,6 +387,7 @@ def continue_task(
     delegated_operation: str
     if action == "EXECUTE_PRIMARY":
         assert executor is not None
+        admission_snapshot = _admission_failure_snapshot(root)
         try:
             preflight = op._preflight_primary_admission(
                 root,
@@ -388,6 +413,14 @@ def continue_task(
             return _human_surface_delegation_failed(
                 observation, operation="PRIMARY", executor=executor,
                 executor_required=executor_required,
+                blocker=_delegated_admission_blocker(
+                    admission_snapshot,
+                    operation="PRIMARY",
+                    exact_facts={
+                        "requested_task_id": task_id,
+                        "requested_executor": executor,
+                    },
+                ),
             )
         delegated_operation = "PRIMARY"
         resulting_run_id = summary.run_id
@@ -397,6 +430,7 @@ def continue_task(
         if not all((observation.source_run_id, observation.finding_id,
                     observation.correction_sha)):
             raise op.OperatorError("Unified State remediation selectors are incomplete")
+        admission_snapshot = _admission_failure_snapshot(root)
         try:
             summary = op.run_remediation(
                 task_id,
@@ -413,6 +447,15 @@ def continue_task(
             return _human_surface_delegation_failed(
                 observation, operation="REMEDIATION", executor=executor,
                 executor_required=executor_required,
+                blocker=_delegated_admission_blocker(
+                    admission_snapshot,
+                    operation="REMEDIATION",
+                    exact_facts={
+                        "source_run_id": observation.source_run_id,
+                        "finding_id": observation.finding_id,
+                        "requested_executor": executor,
+                    },
+                ),
             )
         delegated_operation = "REMEDIATION"
         resulting_run_id = summary.run_id
@@ -432,6 +475,7 @@ def continue_task(
             raise op.OperatorError(
                 f"{exact_repair_action} requires an explicit coding Executor"
             )
+        admission_snapshot = _admission_failure_snapshot(root)
         try:
             summary = op.run_repair(
                 observation.failed_run_id,
@@ -447,6 +491,18 @@ def continue_task(
             return _human_surface_delegation_failed(
                 observation, operation="REPAIR", executor=delegated_executor,
                 executor_required=executor_required,
+                blocker=_delegated_admission_blocker(
+                    admission_snapshot,
+                    operation="REPAIR",
+                    exact_facts={
+                        "failed_run_id": observation.failed_run_id,
+                        **(
+                            {"requested_executor": delegated_executor}
+                            if delegated_executor is not None
+                            else {}
+                        ),
+                    },
+                ),
             )
         delegated_operation = "REPAIR"
         resulting_run_id = summary.run_id

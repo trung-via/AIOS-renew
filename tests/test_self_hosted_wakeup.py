@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tempfile
@@ -212,11 +213,28 @@ def test_workflow_preflight_missing_repo_variable_fails_ac5(tmp_path: Path) -> N
     # AIOS_REPO_ROOT unset / empty
     env = dict(os.environ)
     env["AIOS_REPO_ROOT"] = ""
+    receipt_path = tmp_path / "operational-receipt.json"
+    env.update(
+        {
+            "AIOS_OPERATIONAL_RECEIPT_PATH": str(receipt_path),
+            "AIOS_DISPATCH_ID": "dispatch-149-preflight",
+            "AIOS_TASK_ID": "TASK-149",
+            "AIOS_TASK_REVISION": "1",
+            "AIOS_TASK_BLOB_SHA": "a" * 40,
+            "AIOS_TASK_COMMIT_SHA": "b" * 40,
+            "AIOS_EXECUTOR": "codex",
+        }
+    )
     result = run_powershell_script(preflight_script, env=env)
     assert result.returncode != 0
     assert "AIOS_REPO_ROOT repository variable is not set or empty" in (
         normalized_process_output(result)
     )
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8-sig"))
+    assert receipt["boundary"] == "OPERATIONAL_FAILED"
+    assert receipt["cause"]["reason_code"] == "AIOS_REPO_ROOT_NOT_CONFIGURED"
+    assert receipt["run_created"] is False
+    assert receipt["executor_invoked"] is False
 
 
 def test_workflow_preflight_invalid_git_root_fails_ac5(tmp_path: Path) -> None:

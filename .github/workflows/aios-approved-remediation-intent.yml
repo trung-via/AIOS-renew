@@ -49,24 +49,44 @@ jobs:
     runs-on: [self-hosted, windows, x64, aios-renew]
     env:
       AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}
+      AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-remediation-intent-operational-receipt-v2.json
+      AIOS_CORRECTION_DISPATCH_ID: ${{ inputs.correction_dispatch_id }}
+      AIOS_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      AIOS_FINDING_ID: ${{ inputs.finding_id }}
+      AIOS_EXECUTOR: ${{ inputs.executor }}
+      AIOS_APPROVER: ${{ github.actor }}
     steps:
       - name: Preflight persistent environment
         shell: powershell
         run: |
+          function Write-OperationalFailure([string]$Reason) {
+            if ([string]::IsNullOrWhiteSpace($env:AIOS_OPERATIONAL_RECEIPT_PATH)) { return }
+            if ($env:AIOS_CORRECTION_DISPATCH_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { return }
+            $selectors = @{}
+            if ($env:AIOS_SOURCE_RUN_ID -match '^RUN-[A-Za-z0-9_-]+-[0-9]{3,}$') { $selectors.source_run_id = $env:AIOS_SOURCE_RUN_ID }
+            if ($env:AIOS_FINDING_ID -match '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { $selectors.finding_id = $env:AIOS_FINDING_ID }
+            if ($env:AIOS_EXECUTOR -in @('codex', 'antigravity')) { $selectors.executor = $env:AIOS_EXECUTOR }
+            $receipt = [ordered]@{format='AIOS_OPERATIONAL_RECEIPT';version=2;kind='OPERATIONAL_RECEIPT';family='REMEDIATION';delivery=@{kind='correction_dispatch_id';id=$env:AIOS_CORRECTION_DISPATCH_ID};boundary='OPERATIONAL_FAILED';selectors=$selectors;run_created=$false;executor_invoked=$false;cause=@{authority='WORKFLOW';phase='PRE_AIOS';reason_code=$Reason}}
+            Set-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Value ($receipt | ConvertTo-Json -Compress -Depth 5) -Encoding utf8
+          }
           if ([string]::IsNullOrWhiteSpace($env:AIOS_REPO_ROOT)) {
+            Write-OperationalFailure 'AIOS_REPO_ROOT_NOT_CONFIGURED'
             Write-Error "AIOS_REPO_ROOT repository variable is not configured."
             exit 1
           }
           if (-not (Test-Path -LiteralPath $env:AIOS_REPO_ROOT -PathType Container)) {
+            Write-OperationalFailure 'CONFIGURED_REPOSITORY_UNAVAILABLE'
             Write-Error "The configured persistent repository is unavailable."
             exit 1
           }
           git -C $env:AIOS_REPO_ROOT rev-parse --is-inside-work-tree
           if ($LASTEXITCODE -ne 0) {
+            Write-OperationalFailure 'CONFIGURED_REPOSITORY_INVALID'
             Write-Error "The configured persistent repository is invalid."
             exit 1
           }
           if (-not (Get-Command aios -ErrorAction SilentlyContinue)) {
+            Write-OperationalFailure 'AIOS_COMMAND_UNAVAILABLE'
             Write-Error "The bounded AIOS command is unavailable."
             exit 1
           }
@@ -80,27 +100,56 @@ jobs:
           AIOS_APPROVER: ${{ github.actor }}
         shell: powershell
         run: |
+          function Write-OperationalState([string]$Boundary, [string]$Reason) {
+            if ([string]::IsNullOrWhiteSpace($env:AIOS_OPERATIONAL_RECEIPT_PATH)) { return }
+            if ($env:AIOS_CORRECTION_DISPATCH_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { return }
+            $selectors = @{}
+            if ($env:AIOS_SOURCE_RUN_ID -match '^RUN-[A-Za-z0-9_-]+-[0-9]{3,}$') { $selectors.source_run_id = $env:AIOS_SOURCE_RUN_ID }
+            if ($env:AIOS_FINDING_ID -match '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { $selectors.finding_id = $env:AIOS_FINDING_ID }
+            if ($env:AIOS_EXECUTOR -in @('codex', 'antigravity')) { $selectors.executor = $env:AIOS_EXECUTOR }
+            $receipt = [ordered]@{format='AIOS_OPERATIONAL_RECEIPT';version=2;kind='OPERATIONAL_RECEIPT';family='REMEDIATION';delivery=@{kind='correction_dispatch_id';id=$env:AIOS_CORRECTION_DISPATCH_ID};boundary=$Boundary;selectors=$selectors;run_created=$false;executor_invoked=$false}
+            if ($Reason) { $receipt.cause = @{authority='WORKFLOW';phase='PRE_AIOS';reason_code=$Reason} }
+            Set-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Value ($receipt | ConvertTo-Json -Compress -Depth 5) -Encoding utf8
+          }
           if ($env:AIOS_CORRECTION_DISPATCH_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') {
+            Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Invalid correction dispatch identity."
             exit 1
           }
           if ($env:AIOS_SOURCE_RUN_ID -notmatch '^RUN-[A-Za-z0-9_-]+-[0-9]{3,}$') {
+            Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Invalid source RUN identity."
             exit 1
           }
           if ($env:AIOS_FINDING_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') {
+            Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Invalid finding identity."
             exit 1
           }
           if ($env:AIOS_EXECUTOR -notin @('codex', 'antigravity')) {
+            Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Unsupported coding Executor."
             exit 1
           }
           if ($env:AIOS_APPROVER -notmatch '^[A-Za-z0-9][A-Za-z0-9_\-\[\]]{0,99}$') {
+            Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Invalid trusted approver attribution."
             exit 1
           }
+          Write-OperationalState 'AIOS_INVOKED' ''
           aios approved-remediation-intent $env:AIOS_CORRECTION_DISPATCH_ID $env:AIOS_SOURCE_RUN_ID $env:AIOS_FINDING_ID --executor $env:AIOS_EXECUTOR --approver $env:AIOS_APPROVER --repo $env:AIOS_REPO_ROOT
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
+          }
+
+      - name: Expose bounded Operational Receipt v2
+        if: always()
+        shell: powershell
+        run: |
+          if (Test-Path -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -PathType Leaf) {
+            $receipt = Get-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Raw
+            Write-Output "AIOS_OPERATIONAL_RECEIPT_V2=$receipt"
+            if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
+              Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $receipt -Encoding utf8
+            }
           }

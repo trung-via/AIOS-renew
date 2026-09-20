@@ -80,20 +80,29 @@ jobs:
             const accepted = admitted && dispatched;
             const lines = [
               'AIOS REPAIR WAKEUP CARRIER RECEIPT',
-              `status: ${accepted ? 'DISPATCH_ACCEPTED' : 'REJECTED'}`,
-              `dispatch_accepted: ${accepted}`,
+              `status: ${accepted ? 'SELF_HOST_COMPLETED' : 'REJECTED'}`,
+              `self_host_completed: ${accepted}`,
               'repair_run_outcome: not_asserted_by_carrier',
               'verification: not_asserted_by_carrier',
               'semantic_review: not_asserted_by_carrier',
               'publication: not_asserted_by_carrier',
             ];
             if (admitted) {
+              const operationalReceipt = {
+                format: 'AIOS_OPERATIONAL_RECEIPT', version: 2, kind: 'OPERATIONAL_RECEIPT',
+                family: 'REPAIR',
+                delivery: {kind: 'repair_dispatch_id', id: process.env.AIOS_REPAIR_DISPATCH_ID},
+                boundary: dispatched ? 'SELF_HOST_COMPLETED' : 'OPERATIONAL_FAILED',
+                selectors: {failed_run_id: process.env.AIOS_FAILED_RUN_ID, repair_sha: process.env.AIOS_REPAIR_SHA, executor: process.env.AIOS_EXECUTOR || undefined},
+              };
+              if (!dispatched) operationalReceipt.cause = {authority: 'CARRIER', phase: 'DOWNSTREAM_WORKFLOW', reason_code: 'DOWNSTREAM_WORKFLOW_FAILED'};
               lines.push(
                 `repair_dispatch_id: ${process.env.AIOS_REPAIR_DISPATCH_ID}`,
                 `failed_run_id: ${process.env.AIOS_FAILED_RUN_ID}`,
                 `repair_sha: ${process.env.AIOS_REPAIR_SHA}`,
                 `executor: ${process.env.AIOS_EXECUTOR || 'none'}`,
-                'detail: Carrier acceptance asserts only successful admission and delivery to the fixed REPAIR workflow.',
+                `detail: ${dispatched ? 'The reusable self-host workflow completed; this does not itself assert REPAIR RUN, verification, review, or publication success.' : 'Carrier admission succeeded but the reusable self-host workflow failed; delivery is not successful.'}`,
+                `AIOS_OPERATIONAL_RECEIPT_V2=${JSON.stringify(operationalReceipt)}`,
               );
             } else {
               lines.push('reason: GitHub rejected the repository-owned carrier admission.');

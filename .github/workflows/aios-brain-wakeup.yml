@@ -95,6 +95,13 @@ jobs:
               && process.env.AIOS_DISPATCH_OUTCOME === 'success';
             let receipt;
             if (accepted) {
+              const operationalReceipt = JSON.stringify({
+                format: 'AIOS_OPERATIONAL_RECEIPT', version: 2, kind: 'OPERATIONAL_RECEIPT',
+                family: 'PRIMARY',
+                delivery: {kind: 'dispatch_id', id: process.env.AIOS_DISPATCH_ID},
+                boundary: 'DISPATCH_REQUEST_ACCEPTED',
+                selectors: {task_id: process.env.AIOS_TASK_ID, task_revision: Number(process.env.AIOS_TASK_REVISION), task_blob_sha: process.env.AIOS_TASK_BLOB_SHA, task_commit_sha: process.env.AIOS_TASK_COMMIT_SHA, executor: process.env.AIOS_EXECUTOR},
+              });
               receipt = [
                 'AIOS BRAIN WAKEUP RECEIPT',
                 'status: DISPATCH_ACCEPTED',
@@ -107,14 +114,23 @@ jobs:
                 `task_commit_sha: ${process.env.AIOS_TASK_COMMIT_SHA}`,
                 `executor: ${process.env.AIOS_EXECUTOR}`,
                 'detail: GitHub accepted one fixed A1 workflow dispatch; this is not RUN, verification, review, or publication success.',
+                `AIOS_OPERATIONAL_RECEIPT_V2=${operationalReceipt}`,
               ].join('\n');
             } else if (process.env.AIOS_ADMISSION_OUTCOME === 'success') {
+              const operationalReceipt = JSON.stringify({
+                format: 'AIOS_OPERATIONAL_RECEIPT', version: 2, kind: 'OPERATIONAL_RECEIPT',
+                family: 'PRIMARY',
+                delivery: {kind: 'dispatch_id', id: process.env.AIOS_DISPATCH_ID},
+                boundary: 'CARRIER_ADMITTED',
+                selectors: {task_id: process.env.AIOS_TASK_ID, task_revision: Number(process.env.AIOS_TASK_REVISION), task_blob_sha: process.env.AIOS_TASK_BLOB_SHA, task_commit_sha: process.env.AIOS_TASK_COMMIT_SHA, executor: process.env.AIOS_EXECUTOR},
+              });
               receipt = [
                 'AIOS BRAIN WAKEUP RECEIPT',
                 'status: REJECTED',
                 'dispatch_accepted: false',
                 'execution_outcome: not_observed',
                 'reason: GitHub did not accept the fixed A1 workflow dispatch.',
+                `AIOS_OPERATIONAL_RECEIPT_V2=${operationalReceipt}`,
               ].join('\n');
             } else {
               receipt = 'AIOS BRAIN WAKEUP RECEIPT\nstatus: REJECTED\ndispatch_accepted: false\nexecution_outcome: not_observed\nreason: carrier produced no receipt';

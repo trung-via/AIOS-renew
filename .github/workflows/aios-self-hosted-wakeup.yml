@@ -43,24 +43,47 @@ jobs:
     runs-on: [self-hosted, windows, x64, aios-renew]
     env:
       AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}
+      AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-primary-operational-receipt-v2.json
+      AIOS_DISPATCH_ID: ${{ inputs.dispatch_id }}
+      AIOS_TASK_ID: ${{ inputs.task_id }}
+      AIOS_TASK_REVISION: ${{ inputs.task_revision }}
+      AIOS_TASK_BLOB_SHA: ${{ inputs.task_blob_sha }}
+      AIOS_TASK_COMMIT_SHA: ${{ inputs.task_commit_sha }}
+      AIOS_EXECUTOR: ${{ inputs.executor }}
     steps:
       - name: Preflight persistent environment
         shell: powershell
         run: |
+          function Write-OperationalFailure([string]$Reason) {
+            if ([string]::IsNullOrWhiteSpace($env:AIOS_OPERATIONAL_RECEIPT_PATH)) { return }
+            if ($env:AIOS_DISPATCH_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { return }
+            $selectors = @{}
+            if ($env:AIOS_TASK_ID -match '^TASK-[A-Za-z0-9_-]+$') { $selectors.task_id = $env:AIOS_TASK_ID }
+            if ($env:AIOS_TASK_REVISION -match '^[1-9][0-9]*$') { $selectors.task_revision = [int]$env:AIOS_TASK_REVISION }
+            if ($env:AIOS_TASK_BLOB_SHA -match '^[0-9a-f]{40}$') { $selectors.task_blob_sha = $env:AIOS_TASK_BLOB_SHA }
+            if ($env:AIOS_TASK_COMMIT_SHA -match '^[0-9a-f]{40}$') { $selectors.task_commit_sha = $env:AIOS_TASK_COMMIT_SHA }
+            if ($env:AIOS_EXECUTOR -in @('codex', 'antigravity')) { $selectors.executor = $env:AIOS_EXECUTOR }
+            $receipt = [ordered]@{format='AIOS_OPERATIONAL_RECEIPT';version=2;kind='OPERATIONAL_RECEIPT';family='PRIMARY';delivery=@{kind='dispatch_id';id=$env:AIOS_DISPATCH_ID};boundary='OPERATIONAL_FAILED';selectors=$selectors;run_created=$false;executor_invoked=$false;cause=@{authority='WORKFLOW';phase='PRE_AIOS';reason_code=$Reason}}
+            Set-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Value ($receipt | ConvertTo-Json -Compress -Depth 5) -Encoding utf8
+          }
           if ([string]::IsNullOrWhiteSpace($env:AIOS_REPO_ROOT)) {
+            Write-OperationalFailure 'AIOS_REPO_ROOT_NOT_CONFIGURED'
             Write-Error "AIOS_REPO_ROOT repository variable is not set or empty."
             exit 1
           }
           if (-not (Test-Path -Path $env:AIOS_REPO_ROOT -PathType Container)) {
+            Write-OperationalFailure 'CONFIGURED_REPOSITORY_UNAVAILABLE'
             Write-Error "AIOS_REPO_ROOT directory does not exist: $env:AIOS_REPO_ROOT"
             exit 1
           }
           git -C $env:AIOS_REPO_ROOT rev-parse --is-inside-work-tree
           if ($LASTEXITCODE -ne 0) {
+            Write-OperationalFailure 'CONFIGURED_REPOSITORY_INVALID'
             Write-Error "AIOS_REPO_ROOT is not a valid Git repository: $env:AIOS_REPO_ROOT"
             exit 1
           }
           if (-not (Get-Command aios -ErrorAction SilentlyContinue)) {
+            Write-OperationalFailure 'AIOS_COMMAND_UNAVAILABLE'
             Write-Error "aios executable was not found on PATH."
             exit 1
           }
@@ -75,27 +98,58 @@ jobs:
           AIOS_EXECUTOR: ${{ inputs.executor }}
         shell: powershell
         run: |
+          function Write-OperationalState([string]$Boundary, [string]$Reason) {
+            if ([string]::IsNullOrWhiteSpace($env:AIOS_OPERATIONAL_RECEIPT_PATH)) { return }
+            if ($env:AIOS_DISPATCH_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { return }
+            $selectors = @{}
+            if ($env:AIOS_TASK_ID -match '^TASK-[A-Za-z0-9_-]+$') { $selectors.task_id = $env:AIOS_TASK_ID }
+            if ($env:AIOS_TASK_REVISION -match '^[1-9][0-9]*$') { $selectors.task_revision = [int]$env:AIOS_TASK_REVISION }
+            if ($env:AIOS_TASK_BLOB_SHA -match '^[0-9a-f]{40}$') { $selectors.task_blob_sha = $env:AIOS_TASK_BLOB_SHA }
+            if ($env:AIOS_TASK_COMMIT_SHA -match '^[0-9a-f]{40}$') { $selectors.task_commit_sha = $env:AIOS_TASK_COMMIT_SHA }
+            if ($env:AIOS_EXECUTOR -in @('codex', 'antigravity')) { $selectors.executor = $env:AIOS_EXECUTOR }
+            $receipt = [ordered]@{format='AIOS_OPERATIONAL_RECEIPT';version=2;kind='OPERATIONAL_RECEIPT';family='PRIMARY';delivery=@{kind='dispatch_id';id=$env:AIOS_DISPATCH_ID};boundary=$Boundary;selectors=$selectors;run_created=$false;executor_invoked=$false}
+            if ($Reason) { $receipt.cause = @{authority='WORKFLOW';phase='PRE_AIOS';reason_code=$Reason} }
+            Set-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Value ($receipt | ConvertTo-Json -Compress -Depth 5) -Encoding utf8
+          }
           if ($env:AIOS_DISPATCH_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') {
+            Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Invalid dispatch_id format."
             exit 1
           }
           if ($env:AIOS_TASK_ID -notmatch '^TASK-[A-Za-z0-9_-]+$') {
+            Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Invalid task_id format: $env:AIOS_TASK_ID"
             exit 1
           }
           if ($env:AIOS_TASK_REVISION -notmatch '^[1-9][0-9]*$') {
+            Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Invalid task_revision format."
             exit 1
           }
           if ($env:AIOS_TASK_BLOB_SHA -notmatch '^[0-9a-f]{40}$') {
+            Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Invalid task_blob_sha format."
             exit 1
           }
           if ($env:AIOS_TASK_COMMIT_SHA -notmatch '^[0-9a-f]{40}$') {
+            Write-OperationalState 'OPERATIONAL_FAILED' 'INVALID_BOUNDED_INPUT'
             Write-Error "Invalid task_commit_sha format."
             exit 1
           }
+          Write-OperationalState 'AIOS_INVOKED' ''
           aios wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --task-revision $env:AIOS_TASK_REVISION --task-blob-sha $env:AIOS_TASK_BLOB_SHA --task-commit-sha $env:AIOS_TASK_COMMIT_SHA --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
+          }
+
+      - name: Expose bounded Operational Receipt v2
+        if: always()
+        shell: powershell
+        run: |
+          if (Test-Path -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -PathType Leaf) {
+            $receipt = Get-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Raw
+            Write-Output "AIOS_OPERATIONAL_RECEIPT_V2=$receipt"
+            if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
+              Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $receipt -Encoding utf8
+            }
           }
