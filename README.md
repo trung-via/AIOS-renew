@@ -35,9 +35,9 @@ Use `--repo PATH` to target a repository other than the current Git repository.
 
 ## Remote Wakeup (GitHub Actions Self-Hosted)
 
-A1 provides a thin repository-native GitHub Actions wakeup (`.github/workflows/aios-self-hosted-wakeup.yml`) so an authorized remote Human or Brain can start one canonical PRIMARY execution on the designated Windows self-hosted runner without being physically present at the execution machine. A2 adds one stable outer `dispatch_id` so re-delivery cannot start that PRIMARY execution again.
+A1 provides a thin repository-native GitHub Actions wakeup (`.github/workflows/aios-self-hosted-wakeup.yml`) so an authorized remote Human or Brain can start one canonical PRIMARY execution on the designated Windows self-hosted runner without being physically present at the execution machine. A2 adds one stable outer `dispatch_id` so re-delivery cannot start that PRIMARY execution again. Every new wakeup uses authorization version 2 and binds that delivery to the exact TASK id, positive revision, Git blob SHA, provenance commit SHA, and Human-selected Executor.
 
-GitHub Actions calls the Human-facing outer surface (`aios wakeup <DISPATCH_ID> <TASK_ID> --executor <EXECUTOR> --repo <AIOS_REPO_ROOT>`), which durably journals the delivery and delegates a new request to the same existing PRIMARY implementation used by `aios run`. It does not replace AIOS Operator authority. Admission, pre-admission synchronization (TASK-062), RUN allocation, mutation authority, verification, and completion truth remain owned by the invoked AIOS process. Direct local `aios run` behavior is unchanged.
+GitHub Actions calls the bounded outer surface (`aios wakeup <DISPATCH_ID> <TASK_ID> --task-revision <REVISION> --task-blob-sha <BLOB_SHA> --task-commit-sha <COMMIT_SHA> --executor <EXECUTOR> --repo <AIOS_REPO_ROOT>`), which durably journals the delivery and delegates a new request to the same existing PRIMARY implementation used by `aios run`. It does not replace AIOS Operator authority. Admission, pre-admission synchronization (TASK-062), RUN allocation, mutation authority, verification, and completion truth remain owned by the invoked AIOS process. Direct local `aios run` behavior is unchanged.
 
 ### One-Time Host Prerequisites
 
@@ -52,15 +52,15 @@ Self-hosted runner registration and host configuration are operational setup, no
 
 ### Triggering Remote Wakeup
 
-An authorized remote Human or Brain must generate one stable `dispatch_id` for the intended delivery before triggering the workflow. Use 1–128 ASCII letters, digits, `_`, or `-`, starting with a letter or digit (a UUID without braces is suitable). Reuse that exact value with the same `task_id` and `executor` for every API retry, workflow re-delivery, or manual resubmission of the same request. Use a new value only for a genuinely new requested execution.
+An authorized remote Human or Brain must generate one stable `dispatch_id` for the intended delivery before triggering the workflow. Use 1–128 ASCII letters, digits, `_`, or `-`, starting with a letter or digit (a UUID without braces is suitable). Reuse that exact value only with the same `task_id`, `task_revision`, `task_blob_sha`, `task_commit_sha`, and `executor` for every API retry, workflow re-delivery, or manual resubmission. Use a new value for a genuinely new request or after any TASK mutation or revision change.
 
 Trigger through GitHub's workflow-dispatch surfaces:
-- **Web UI**: Navigate to Actions > "AIOS self-hosted primary wakeup" > "Run workflow", enter the stable `dispatch_id`, enter the `task_id` (e.g. `TASK-068`), and select the `executor` (`codex` or `antigravity`).
+- **Web UI**: Navigate to Actions > "AIOS self-hosted primary wakeup" > "Run workflow", then enter all six authorization selectors: `dispatch_id`, `task_id`, `task_revision`, `task_blob_sha`, `task_commit_sha`, and `executor`.
 - **GitHub CLI (`gh`)**:
   ```powershell
-  gh workflow run aios-self-hosted-wakeup.yml -f dispatch_id=4f53b1a8-8491-42c7-baba-62f9c3816f5c -f task_id=TASK-068 -f executor=antigravity
+  gh workflow run aios-self-hosted-wakeup.yml -f dispatch_id=4f53b1a8-8491-42c7-baba-62f9c3816f5c -f task_id=TASK-130 -f task_revision=1 -f task_blob_sha=<40-lowercase-hex-blob-sha> -f task_commit_sha=<40-lowercase-hex-commit-sha> -f executor=antigravity
   ```
-- **GitHub REST API**: `POST /repos/{owner}/{repo}/actions/workflows/aios-self-hosted-wakeup.yml/dispatches` with `ref` and `inputs` containing exactly `dispatch_id`, `task_id`, and `executor`.
+- **GitHub REST API**: `POST /repos/{owner}/{repo}/actions/workflows/aios-self-hosted-wakeup.yml/dispatches` with `ref: main` and `inputs` containing exactly those six selectors. These manual A1 surfaces are the fallback when the Issue carrier is unavailable; they do not bypass exact TASK admission.
 
 ### Bounded Brain Issue Wakeup Carrier
 
@@ -72,9 +72,12 @@ exactly `codex` or `antigravity`. The Brain may then open one new Issue in
 
 ```yaml
 format: AIOS_PRIMARY_WAKEUP_REQUEST
-version: 1
-dispatch_id: brain-wakeup-108
-task_id: TASK-108
+version: 2
+dispatch_id: brain-wakeup-130
+task_id: TASK-130
+task_revision: 1
+task_blob_sha: 0123456789abcdef0123456789abcdef01234567
+task_commit_sha: 89abcdef0123456789abcdef0123456789abcdef
 executor: codex
 ```
 
@@ -86,14 +89,15 @@ The complete flow is deliberately one-way and bounded:
 runs entirely on a GitHub-hosted runner. It authenticates the exact repository,
 Issue author/event actor, action, title marker, positive Issue number, UTF-8 body,
 and the reviewed 4096-byte limit from `.ai/brain-wakeup-carriers.yaml`. The body
-must contain exactly `format`, `version`, `dispatch_id`, `task_id`, and `executor`;
+must contain exactly `format`, `version`, `dispatch_id`, `task_id`,
+`task_revision`, `task_blob_sha`, `task_commit_sha`, and `executor`;
 missing, extra, malformed, or unsupported values fail before Actions dispatch.
 Request data cannot choose a workflow, ref, path, command, runner, model,
 reasoning setting, verification behavior, or credential authority.
 
 After admission, the GitHub-hosted job makes exactly one request for the fixed
 `.github/workflows/aios-self-hosted-wakeup.yml` workflow on fixed ref `main`,
-forwarding only the validated `dispatch_id`, `task_id`, and `executor`. Raw Issue
+forwarding only the six validated operational selectors. Raw Issue
 data and that job's `actions: write` token never enter the separate self-hosted
 A1 run, AIOS process, or coding Executor. A1 still performs the sole self-hosted
 `aios wakeup`, and A2 remains the sole durable binding, collision, terminal replay,
@@ -117,16 +121,18 @@ unchanged. Downstream repositories receive none of this behavior automatically:
 each remains governed by its exact pinned AIOS revision until a separate reviewed
 adoption updates that pin and repository-specific policy.
 
-Before the first PRIMARY call, A2 stores a path-safe, hashed dispatch record under repository-local `.git/aios/dispatches`. This is operational control/telemetry state outside the product worktree and canonical artifact schemas. It provides delivery and RUN attribution only; it is not TASK truth, RESULT/EVIDENCE, review input, publication proof, or semantic completion truth. The separate A3 status surface can observe this record but cannot reconcile or mutate it.
+Before the first PRIMARY call, A2 stores a version-2 path-safe, hashed dispatch record under repository-local `.git/aios/dispatches`, immutably binding all six selectors. After synchronization, admission proves the authorization commit is an ancestor of current main, the exact TASK path has the authorized blob at that commit and current HEAD, and the parsed current TASK has the authorized id and revision. The commit supplies provenance rather than an execution-base pin: unrelated newer main commits are allowed when that TASK blob is unchanged, and the RUN uses the latest admissible current main. Historical version-1 records remain readable and reconcilable without rewriting, but a first-seen legacy request cannot create a new version-1 record or start PRIMARY.
 
-A duplicate terminal delivery performs no re-execution. A successful dispatch returns the same dispatch/RUN attribution with success; a failed dispatch preserves its prior nonzero outcome. Reusing a `dispatch_id` with a different TASK or Executor fails closed. After a process or host interruption, re-delivery only observes the recorded pre-invocation RUN namespace and canonical `.git/aios` RUN/RESULT/FAILURE state. It can link one uniquely attributable terminal RUN, report an execution still in progress, or return reconciliation blocked. This is attribution and no re-execution, not automatic retry or recovery: it never starts a second RUN, invokes an Executor again, repairs an incomplete RUN, or synthesizes terminal artifacts.
+This dispatch record is operational control/telemetry state outside the product worktree and canonical artifact schemas. Authorization and dispatch acceptance provide delivery and RUN attribution only; neither is TASK truth, RESULT/EVIDENCE, verification success, review approval, or publication proof. The separate A3 status surface can observe this record but cannot reconcile or mutate it.
+
+A duplicate terminal delivery performs no re-execution. A successful dispatch returns the same dispatch/RUN attribution with success; a failed dispatch preserves its prior nonzero outcome. Reusing a `dispatch_id` with any different authorized selector fails closed. TASK mutation or revision drift requires fresh authorization and a new dispatch identity. After a process or host interruption, re-delivery only observes the recorded pre-invocation RUN namespace and canonical `.git/aios` RUN/RESULT/FAILURE state. It can link one uniquely attributable terminal RUN, report an execution still in progress, or return reconciliation blocked. This is attribution and no re-execution, not automatic retry or recovery: it never starts a second RUN, invokes an Executor again, repairs an incomplete RUN, or synthesizes terminal artifacts.
 
 ### Public Repository Security Boundary
 
 Because AIOS-renew is a public repository and self-hosted runners run on a host with privileged local development tooling and authenticated credentials:
 - The wakeup workflow trigger is strictly `workflow_dispatch` only. It never triggers on `pull_request`, `push`, `issue_comment`, `schedule`, `repository_dispatch`, or any untrusted code-change event.
 - The workflow never checks out or runs an event-controlled ref.
-- `dispatch_id`, `task_id`, and `executor` enter PowerShell only through environment data bindings. The bounded dispatch id is hashed for journal filenames and never becomes a path, Git ref, command, or authority token.
+- All six selectors enter PowerShell only through validated environment data bindings. The bounded dispatch id is hashed for journal filenames and never becomes a path, Git ref, command, or authority token.
 - The runner should be a dedicated repository runner labeled `aios-renew` rather than shared with unrelated or untrusted public repositories.
 
 

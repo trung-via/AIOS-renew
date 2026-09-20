@@ -81,8 +81,11 @@ def test_workflow_dispatch_only_and_inputs_ac1() -> None:
     assert set(inputs.keys()) == {
         "dispatch_id",
         "task_id",
+        "task_revision",
+        "task_blob_sha",
+        "task_commit_sha",
         "executor",
-    }, f"inputs must contain only dispatch_id, task_id and executor, got {set(inputs.keys())}"
+    }
 
     dispatch_id_input = inputs["dispatch_id"]
     assert dispatch_id_input.get("required") is True
@@ -91,6 +94,12 @@ def test_workflow_dispatch_only_and_inputs_ac1() -> None:
     task_id_input = inputs["task_id"]
     assert task_id_input.get("required") is True
     assert task_id_input.get("type") == "string"
+
+    assert inputs["task_revision"].get("required") is True
+    assert inputs["task_revision"].get("type") == "number"
+    for sha_input in ("task_blob_sha", "task_commit_sha"):
+        assert inputs[sha_input].get("required") is True
+        assert inputs[sha_input].get("type") == "string"
 
     executor_input = inputs["executor"]
     assert executor_input.get("required") is True
@@ -150,10 +159,13 @@ def test_workflow_authority_and_no_direct_executor_ac3() -> None:
     step_env = step.get("env", {})
     assert step_env.get("AIOS_DISPATCH_ID") == "${{ inputs.dispatch_id }}"
     assert step_env.get("AIOS_TASK_ID") == "${{ inputs.task_id }}"
+    assert step_env.get("AIOS_TASK_REVISION") == "${{ inputs.task_revision }}"
+    assert step_env.get("AIOS_TASK_BLOB_SHA") == "${{ inputs.task_blob_sha }}"
+    assert step_env.get("AIOS_TASK_COMMIT_SHA") == "${{ inputs.task_commit_sha }}"
     assert step_env.get("AIOS_EXECUTOR") == "${{ inputs.executor }}"
     assert "${{ inputs." not in step.get("run", "")
     assert (
-        "aios wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT"
+        "aios wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --task-revision $env:AIOS_TASK_REVISION --task-blob-sha $env:AIOS_TASK_BLOB_SHA --task-commit-sha $env:AIOS_TASK_COMMIT_SHA --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT"
         in raw_text
     )
 
@@ -264,6 +276,9 @@ def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> N
     env["AIOS_REPO_ROOT"] = str(tmp_path)
     env["AIOS_DISPATCH_ID"] = "dispatch-066-failure"
     env["AIOS_TASK_ID"] = "TASK-066"
+    env["AIOS_TASK_REVISION"] = "1"
+    env["AIOS_TASK_BLOB_SHA"] = "a" * 40
+    env["AIOS_TASK_COMMIT_SHA"] = "b" * 40
     env["AIOS_EXECUTOR"] = "antigravity"
     env["PATH"] = f"{bin_dir};{env['PATH']}"
 
@@ -304,6 +319,9 @@ def test_workflow_execution_success_invokes_aios_wakeup_once_ac3(tmp_path: Path)
     env["AIOS_REPO_ROOT"] = str(repo_dir)
     env["AIOS_DISPATCH_ID"] = "dispatch-066-success"
     env["AIOS_TASK_ID"] = "TASK-066"
+    env["AIOS_TASK_REVISION"] = "1"
+    env["AIOS_TASK_BLOB_SHA"] = "a" * 40
+    env["AIOS_TASK_COMMIT_SHA"] = "b" * 40
     env["AIOS_EXECUTOR"] = "antigravity"
     env["PATH"] = f"{bin_dir};{env['PATH']}"
 
@@ -321,7 +339,7 @@ def test_workflow_execution_success_invokes_aios_wakeup_once_ac3(tmp_path: Path)
     invocations = recorder_file.read_text(encoding="utf-8").strip().splitlines()
     assert len(invocations) == 1
     expected_args = (
-        f"wakeup dispatch-066-success TASK-066 --executor antigravity --repo {repo_dir}"
+        f"wakeup dispatch-066-success TASK-066 --task-revision 1 --task-blob-sha {'a' * 40} --task-commit-sha {'b' * 40} --executor antigravity --repo {repo_dir}"
     )
     assert invocations[0].strip() == expected_args
 
@@ -336,6 +354,9 @@ def test_task_id_injection_cannot_execute_second_command_ac1(tmp_path: Path) -> 
     step_env = step.get("env", {})
     assert step_env.get("AIOS_DISPATCH_ID") == "${{ inputs.dispatch_id }}"
     assert step_env.get("AIOS_TASK_ID") == "${{ inputs.task_id }}"
+    assert step_env.get("AIOS_TASK_REVISION") == "${{ inputs.task_revision }}"
+    assert step_env.get("AIOS_TASK_BLOB_SHA") == "${{ inputs.task_blob_sha }}"
+    assert step_env.get("AIOS_TASK_COMMIT_SHA") == "${{ inputs.task_commit_sha }}"
     assert step_env.get("AIOS_EXECUTOR") == "${{ inputs.executor }}"
 
     # Create dummy git repository
@@ -409,6 +430,9 @@ def test_dispatch_id_injection_is_data_bound_and_rejected_ac1(tmp_path: Path) ->
     env = dict(os.environ)
     env["AIOS_REPO_ROOT"] = str(tmp_path)
     env["AIOS_TASK_ID"] = "TASK-066"
+    env["AIOS_TASK_REVISION"] = "1"
+    env["AIOS_TASK_BLOB_SHA"] = "a" * 40
+    env["AIOS_TASK_COMMIT_SHA"] = "b" * 40
     env["AIOS_EXECUTOR"] = "codex"
     env["PATH"] = f"{bin_dir};{env['PATH']}"
 

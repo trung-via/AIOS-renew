@@ -11,6 +11,18 @@ on:
         description: "Canonical TASK id to execute"
         required: true
         type: string
+      task_revision:
+        description: "Authorized canonical TASK revision"
+        required: true
+        type: number
+      task_blob_sha:
+        description: "Authorized TASK Git blob SHA"
+        required: true
+        type: string
+      task_commit_sha:
+        description: "Canonical provenance commit containing the TASK blob"
+        required: true
+        type: string
       executor:
         description: "Explicit coding Executor"
         required: true
@@ -57,6 +69,9 @@ jobs:
         env:
           AIOS_DISPATCH_ID: ${{ inputs.dispatch_id }}
           AIOS_TASK_ID: ${{ inputs.task_id }}
+          AIOS_TASK_REVISION: ${{ inputs.task_revision }}
+          AIOS_TASK_BLOB_SHA: ${{ inputs.task_blob_sha }}
+          AIOS_TASK_COMMIT_SHA: ${{ inputs.task_commit_sha }}
           AIOS_EXECUTOR: ${{ inputs.executor }}
         shell: powershell
         run: |
@@ -68,7 +83,19 @@ jobs:
             Write-Error "Invalid task_id format: $env:AIOS_TASK_ID"
             exit 1
           }
-          aios wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
+          if ($env:AIOS_TASK_REVISION -notmatch '^[1-9][0-9]*$') {
+            Write-Error "Invalid task_revision format."
+            exit 1
+          }
+          if ($env:AIOS_TASK_BLOB_SHA -notmatch '^[0-9a-f]{40}$') {
+            Write-Error "Invalid task_blob_sha format."
+            exit 1
+          }
+          if ($env:AIOS_TASK_COMMIT_SHA -notmatch '^[0-9a-f]{40}$') {
+            Write-Error "Invalid task_commit_sha format."
+            exit 1
+          }
+          aios wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --task-revision $env:AIOS_TASK_REVISION --task-blob-sha $env:AIOS_TASK_BLOB_SHA --task-commit-sha $env:AIOS_TASK_COMMIT_SHA --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

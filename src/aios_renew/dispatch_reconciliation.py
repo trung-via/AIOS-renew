@@ -14,6 +14,7 @@ from typing import Any, BinaryIO
 
 DISPATCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 TASK_ID_PATTERN = re.compile(r"^TASK-[A-Za-z0-9_-]+$")
+GIT_OBJECT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 SUPPORTED_EXECUTORS = frozenset({"codex", "antigravity"})
 IN_PROGRESS_EXIT_CODE = 75
 RECONCILIATION_BLOCKED_EXIT_CODE = 76
@@ -21,7 +22,7 @@ _TERMINAL = frozenset({"SUCCEEDED", "FAILED"})
 _NONTERMINAL = frozenset(
     {"STARTED", "IN_PROGRESS", "RECONCILIATION_BLOCKED"}
 )
-_RECORD_KEYS = frozenset(
+_V1_RECORD_KEYS = frozenset(
     {
         "version",
         "dispatch_id",
@@ -33,6 +34,9 @@ _RECORD_KEYS = frozenset(
         "exit_code",
         "detail",
     }
+)
+_V2_RECORD_KEYS = _V1_RECORD_KEYS | frozenset(
+    {"task_revision", "task_blob_sha", "task_commit_sha"}
 )
 _RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9_-]+-\d{3,}$")
 
@@ -144,6 +148,10 @@ def _validate_attributed_run(path: Path, record: Mapping[str, Any]) -> None:
         or data.get("run_id") != record["run_id"]
         or not isinstance(task, Mapping)
         or task.get("id") != record["task_id"]
+        or (
+            record["version"] == 2
+            and task.get("revision") != record["task_revision"]
+        )
         or data.get("executor") != record["executor"]
     ):
         raise DispatchError("attributed RUN record does not match dispatch")
@@ -156,10 +164,16 @@ def execute_dispatch(
     task_id: str,
     executor: str,
     invoke_primary: Callable[[], DispatchInvocation],
+    task_revision: int | None = None,
+    task_blob_sha: str | None = None,
+    task_commit_sha: str | None = None,
 ) -> DispatchOutcome:
     """Invoke PRIMARY once for a new dispatch or reconcile an existing one."""
 
     _validate_request(dispatch_id, task_id, executor)
+    authorization = _authorization_tuple(
+        task_revision, task_blob_sha, task_commit_sha, required=False
+    )
     dispatches = state_root / "dispatches"
     dispatch_key = _dispatch_key(dispatch_id)
     record_path = dispatches / f"{dispatch_key}.json"
@@ -170,7 +184,9 @@ def execute_dispatch(
     with _DispatchLock(lock_path):
         if record_path.exists():
             record = _read_record(record_path)
-            _require_same_request(record, dispatch_id, task_id, executor)
+            _require_same_request(
+                record, dispatch_id, task_id, executor, *authorization
+            )
             if record["status"] in _TERMINAL:
                 return _outcome(record, replayed=True)
             if _lock_is_held(active_path):
@@ -185,12 +201,18 @@ def execute_dispatch(
             _write_record(record_path, reconciled)
             return _outcome(reconciled, replayed=True)
 
+        authorization = _authorization_tuple(
+            task_revision, task_blob_sha, task_commit_sha, required=True
+        )
         pre_run_ids = _primary_run_ids(state_root / "runs", task_id)
         record: dict[str, Any] = {
-            "version": 1,
+            "version": 2,
             "dispatch_id": dispatch_id,
             "task_id": task_id,
             "executor": executor,
+            "task_revision": authorization[0],
+            "task_blob_sha": authorization[1],
+            "task_commit_sha": authorization[2],
             "status": "STARTED",
             "pre_run_ids": list(pre_run_ids),
             "run_id": None,
@@ -206,7 +228,9 @@ def execute_dispatch(
 
         with _DispatchLock(lock_path):
             current = _read_record(record_path)
-            _require_same_request(current, dispatch_id, task_id, executor)
+            _require_same_request(
+                current, dispatch_id, task_id, executor, *authorization
+            )
             finalized = _finalize_invocation(state_root, current, invocation)
             _write_record(record_path, finalized)
             return _outcome(finalized, replayed=False)
@@ -222,6 +246,9 @@ def bind_dispatch_run(
     task_id: str,
     executor: str,
     run_id: str,
+    task_revision: int | None = None,
+    task_blob_sha: str | None = None,
+    task_commit_sha: str | None = None,
 ) -> None:
     """Durably bind a dispatch at the canonical PRIMARY admission boundary."""
 
@@ -236,7 +263,15 @@ def bind_dispatch_run(
         if not record_path.is_file():
             raise DispatchError("dispatch admission record does not exist")
         record = _read_record(record_path)
-        _require_same_request(record, dispatch_id, task_id, executor)
+        _require_same_request(
+            record,
+            dispatch_id,
+            task_id,
+            executor,
+            task_revision,
+            task_blob_sha,
+            task_commit_sha,
+        )
         if record["status"] != "STARTED":
             raise DispatchError("dispatch is not awaiting PRIMARY admission")
         if record["run_id"] is not None:
@@ -253,6 +288,10 @@ def bind_dispatch_run(
             or run_data.get("run_id") != run_id
             or not isinstance(run_task, Mapping)
             or run_task.get("id") != task_id
+            or (
+                record["version"] == 2
+                and run_task.get("revision") != record["task_revision"]
+            )
             or run_data.get("executor") != executor
         ):
             raise DispatchError("admitted PRIMARY RUN does not match dispatch")
@@ -289,11 +328,29 @@ def _dispatch_key(dispatch_id: str) -> str:
 
 
 def _require_same_request(
-    record: Mapping[str, Any], dispatch_id: str, task_id: str, executor: str
+    record: Mapping[str, Any],
+    dispatch_id: str,
+    task_id: str,
+    executor: str,
+    task_revision: int | None,
+    task_blob_sha: str | None,
+    task_commit_sha: str | None,
 ) -> None:
     if record["dispatch_id"] != dispatch_id:
         raise DispatchError("dispatch journal hash collision")
-    if record["task_id"] != task_id or record["executor"] != executor:
+    identity_matches = record["task_id"] == task_id and record["executor"] == executor
+    if record["version"] == 1:
+        identity_matches = identity_matches and all(
+            value is None
+            for value in (task_revision, task_blob_sha, task_commit_sha)
+        )
+    else:
+        identity_matches = identity_matches and (
+            record["task_revision"],
+            record["task_blob_sha"],
+            record["task_commit_sha"],
+        ) == (task_revision, task_blob_sha, task_commit_sha)
+    if not identity_matches:
         raise DispatchError(
             "dispatch_id collision: existing request binding does not match"
         )
@@ -304,12 +361,21 @@ def _read_record(path: Path) -> dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise DispatchError(f"invalid dispatch record: {exc}") from exc
-    if not isinstance(data, dict) or set(data) != _RECORD_KEYS:
+    if not isinstance(data, dict):
         raise DispatchError("invalid dispatch record shape")
-    if data.get("version") != 1:
+    version = data.get("version")
+    expected_keys = _V1_RECORD_KEYS if version == 1 else _V2_RECORD_KEYS
+    if isinstance(version, bool) or version not in (1, 2) or set(data) != expected_keys:
         raise DispatchError("unsupported dispatch record version")
     try:
         _validate_request(data["dispatch_id"], data["task_id"], data["executor"])
+        if version == 2:
+            _authorization_tuple(
+                data["task_revision"],
+                data["task_blob_sha"],
+                data["task_commit_sha"],
+                required=True,
+            )
     except (KeyError, DispatchError) as exc:
         raise DispatchError(f"invalid dispatch record binding: {exc}") from exc
     status = data.get("status")
@@ -339,6 +405,29 @@ def _read_record(path: Path) -> dict[str, Any]:
     if status == "FAILED" and (exit_code is None or exit_code == 0):
         raise DispatchError("failed dispatch record has invalid exit code")
     return data
+
+
+def _authorization_tuple(
+    task_revision: int | None,
+    task_blob_sha: str | None,
+    task_commit_sha: str | None,
+    *,
+    required: bool,
+) -> tuple[int | None, str | None, str | None]:
+    values = (task_revision, task_blob_sha, task_commit_sha)
+    if not required and all(value is None for value in values):
+        return values
+    if (
+        isinstance(task_revision, bool)
+        or not isinstance(task_revision, int)
+        or task_revision < 1
+        or not isinstance(task_blob_sha, str)
+        or not GIT_OBJECT_SHA_PATTERN.fullmatch(task_blob_sha)
+        or not isinstance(task_commit_sha, str)
+        or not GIT_OBJECT_SHA_PATTERN.fullmatch(task_commit_sha)
+    ):
+        raise DispatchError("complete valid version-2 TASK authorization is required")
+    return values
 
 
 def _write_record(path: Path, record: Mapping[str, Any]) -> None:

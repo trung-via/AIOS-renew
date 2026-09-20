@@ -7884,6 +7884,87 @@ def test_integrated_evidence_only_finalize_preserves_origin_verification(
         "head_sha": None,
         "status": "ACTIVE",
     }
+
+
+def test_v2_task_authorization_allows_newer_main_with_same_task_blob(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    authorized_commit = git(repo, "rev-parse", "HEAD")
+    task_blob = git(repo, "rev-parse", "HEAD:.ai/tasks/TASK-101.yaml")
+    (repo / "UNRELATED.txt").write_text("new main content\n", encoding="utf-8")
+    git(repo, "add", "UNRELATED.txt")
+    git(repo, "commit", "-m", "advance unrelated main")
+    current_head = git(repo, "rev-parse", "HEAD")
+    admission: dict[str, object] = {}
+
+    task = operator_module._admit_authorized_task_identity(
+        repo,
+        task_id="TASK-101",
+        task_revision=1,
+        task_blob_sha=task_blob,
+        task_commit_sha=authorized_commit,
+        current_head=current_head,
+        admission=admission,
+    )
+
+    assert task.task_id == "TASK-101"
+    assert task.revision == 1
+    assert admission["current_task_blob_sha"] == task_blob
+
+
+def test_v2_task_authorization_rejects_revision_content_and_provenance_drift(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    authorized_commit = git(repo, "rev-parse", "HEAD")
+    task_blob = git(repo, "rev-parse", "HEAD:.ai/tasks/TASK-101.yaml")
+
+    with pytest.raises(OperatorError, match="id or revision"):
+        operator_module._admit_authorized_task_identity(
+            repo,
+            task_id="TASK-101",
+            task_revision=2,
+            task_blob_sha=task_blob,
+            task_commit_sha=authorized_commit,
+            current_head=authorized_commit,
+            admission={},
+        )
+
+    task_path = repo / ".ai" / "tasks" / "TASK-101.yaml"
+    task_path.write_text(
+        task_path.read_text(encoding="utf-8").replace(
+            "Create one deterministic operator test output.",
+            "Create changed deterministic operator semantics.",
+        ),
+        encoding="utf-8",
+    )
+    git(repo, "add", ".ai/tasks/TASK-101.yaml")
+    git(repo, "commit", "-m", "drift task content")
+    current_head = git(repo, "rev-parse", "HEAD")
+    with pytest.raises(OperatorError, match="blob does not match"):
+        operator_module._admit_authorized_task_identity(
+            repo,
+            task_id="TASK-101",
+            task_revision=1,
+            task_blob_sha=task_blob,
+            task_commit_sha=authorized_commit,
+            current_head=current_head,
+            admission={},
+        )
+
+    tree = git(repo, "rev-parse", f"{authorized_commit}^{{tree}}")
+    non_ancestor = git(repo, "commit-tree", tree, "-m", "unrelated provenance")
+    with pytest.raises(OperatorError, match="not an ancestor"):
+        operator_module._admit_authorized_task_identity(
+            repo,
+            task_id="TASK-101",
+            task_revision=1,
+            task_blob_sha=task_blob,
+            task_commit_sha=non_ancestor,
+            current_head=current_head,
+            admission={},
+        )
     source_result = result_payload(source_run_id, reviewed_sha, changed_files=[])
     source_result["result"]["claims"][0]["evidence"] = ["E-SOURCE"]
     source_result["evidence"] = [{

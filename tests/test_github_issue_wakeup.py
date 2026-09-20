@@ -25,9 +25,12 @@ POLICY = {
 def _body(**updates: object) -> str:
     request: dict[str, object] = {
         "format": "AIOS_PRIMARY_WAKEUP_REQUEST",
-        "version": 1,
+        "version": 2,
         "dispatch_id": "brain-wakeup-108",
         "task_id": "TASK-108",
+        "task_revision": 3,
+        "task_blob_sha": "a" * 40,
+        "task_commit_sha": "b" * 40,
         "executor": "codex",
     }
     request.update(updates)
@@ -62,7 +65,7 @@ def _write_event(tmp_path: Path, event: object) -> Path:
     return path
 
 
-def test_valid_issue_produces_only_the_three_sanitized_a1_inputs(
+def test_valid_issue_produces_only_the_six_sanitized_a1_inputs(
     tmp_path: Path,
 ) -> None:
     policy = carrier.load_policy(_write_policy(tmp_path))
@@ -71,11 +74,17 @@ def test_valid_issue_produces_only_the_three_sanitized_a1_inputs(
     assert request == carrier.WakeupRequest(
         dispatch_id="brain-wakeup-108",
         task_id="TASK-108",
+        task_revision=3,
+        task_blob_sha="a" * 40,
+        task_commit_sha="b" * 40,
         executor="codex",
     )
     assert request.github_outputs().splitlines() == [
         "dispatch_id=brain-wakeup-108",
         "task_id=TASK-108",
+        "task_revision=3",
+        f"task_blob_sha={'a' * 40}",
+        f"task_commit_sha={'b' * 40}",
         "executor=codex",
     ]
 
@@ -100,6 +109,9 @@ def test_downstream_policy_admits_only_its_exact_repository_and_actor(
     assert request.github_outputs().splitlines() == [
         "dispatch_id=brain-wakeup-108",
         "task_id=TASK-108",
+        "task_revision=3",
+        f"task_blob_sha={'a' * 40}",
+        f"task_commit_sha={'b' * 40}",
         "executor=codex",
     ]
     event["repository"]["full_name"] = "trung-via/AIOS-renew"
@@ -181,6 +193,10 @@ def test_policy_is_versioned_and_fully_bound(
         ({"dispatch_id": "../escape"}, "dispatch_id"),
         ({"dispatch_id": "$(git push)"}, "dispatch_id"),
         ({"task_id": "TASK-108; touch owned"}, "task_id"),
+        ({"task_revision": 0}, "task_revision"),
+        ({"task_revision": True}, "task_revision"),
+        ({"task_blob_sha": "A" * 40}, "task_blob_sha"),
+        ({"task_commit_sha": "a" * 39}, "task_commit_sha"),
         ({"executor": "fallback"}, "executor"),
     ],
 )
@@ -193,9 +209,12 @@ def test_unknown_authority_fields_and_malicious_values_are_rejected(
 
 def test_missing_field_and_duplicate_key_fail_closed() -> None:
     missing = """format: AIOS_PRIMARY_WAKEUP_REQUEST
-version: 1
+version: 2
 dispatch_id: brain-wakeup-108
 task_id: TASK-108
+task_revision: 3
+task_blob_sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+task_commit_sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 """
     duplicate = _body() + "executor: antigravity\n"
     with pytest.raises(carrier.GitHubIssueWakeupError, match="missing"):

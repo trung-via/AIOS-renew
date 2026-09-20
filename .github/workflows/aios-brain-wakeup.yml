@@ -54,6 +54,9 @@ jobs:
         env:
           AIOS_DISPATCH_ID: ${{ steps.admission.outputs.dispatch_id }}
           AIOS_TASK_ID: ${{ steps.admission.outputs.task_id }}
+          AIOS_TASK_REVISION: ${{ steps.admission.outputs.task_revision }}
+          AIOS_TASK_BLOB_SHA: ${{ steps.admission.outputs.task_blob_sha }}
+          AIOS_TASK_COMMIT_SHA: ${{ steps.admission.outputs.task_commit_sha }}
           AIOS_EXECUTOR: ${{ steps.admission.outputs.executor }}
         with:
           script: |
@@ -65,6 +68,9 @@ jobs:
               inputs: {
                 dispatch_id: process.env.AIOS_DISPATCH_ID,
                 task_id: process.env.AIOS_TASK_ID,
+                task_revision: process.env.AIOS_TASK_REVISION,
+                task_blob_sha: process.env.AIOS_TASK_BLOB_SHA,
+                task_commit_sha: process.env.AIOS_TASK_COMMIT_SHA,
                 executor: process.env.AIOS_EXECUTOR,
               },
             });
@@ -78,6 +84,9 @@ jobs:
           AIOS_DISPATCH_OUTCOME: ${{ steps.dispatch.outcome }}
           AIOS_DISPATCH_ID: ${{ steps.admission.outputs.dispatch_id }}
           AIOS_TASK_ID: ${{ steps.admission.outputs.task_id }}
+          AIOS_TASK_REVISION: ${{ steps.admission.outputs.task_revision }}
+          AIOS_TASK_BLOB_SHA: ${{ steps.admission.outputs.task_blob_sha }}
+          AIOS_TASK_COMMIT_SHA: ${{ steps.admission.outputs.task_commit_sha }}
           AIOS_EXECUTOR: ${{ steps.admission.outputs.executor }}
         with:
           script: |
@@ -93,6 +102,9 @@ jobs:
                 'execution_outcome: not_observed',
                 `dispatch_id: ${process.env.AIOS_DISPATCH_ID}`,
                 `task_id: ${process.env.AIOS_TASK_ID}`,
+                `task_revision: ${process.env.AIOS_TASK_REVISION}`,
+                `task_blob_sha: ${process.env.AIOS_TASK_BLOB_SHA}`,
+                `task_commit_sha: ${process.env.AIOS_TASK_COMMIT_SHA}`,
                 `executor: ${process.env.AIOS_EXECUTOR}`,
                 'detail: GitHub accepted one fixed A1 workflow dispatch; this is not RUN, verification, review, or publication success.',
               ].join('\n');

@@ -21,6 +21,27 @@ from aios_renew.dispatch_reconciliation import (
 )
 
 
+TASK_REVISION = 1
+TASK_BLOB_SHA = "a" * 40
+TASK_COMMIT_SHA = "b" * 40
+_execute_dispatch = execute_dispatch
+_bind_dispatch_run = bind_dispatch_run
+
+
+def execute_dispatch(**kwargs: object):
+    kwargs.setdefault("task_revision", TASK_REVISION)
+    kwargs.setdefault("task_blob_sha", TASK_BLOB_SHA)
+    kwargs.setdefault("task_commit_sha", TASK_COMMIT_SHA)
+    return _execute_dispatch(**kwargs)
+
+
+def bind_dispatch_run(**kwargs: object) -> None:
+    kwargs.setdefault("task_revision", TASK_REVISION)
+    kwargs.setdefault("task_blob_sha", TASK_BLOB_SHA)
+    kwargs.setdefault("task_commit_sha", TASK_COMMIT_SHA)
+    _bind_dispatch_run(**kwargs)
+
+
 def write_run(
     state_root: Path,
     run_id: str,
@@ -79,6 +100,51 @@ def crash_after_started(state_root: Path, dispatch_id: str = "delivery-068") -> 
         )
 
 
+def test_first_seen_legacy_request_is_rejected_without_journal(tmp_path: Path) -> None:
+    state_root = tmp_path / ".git" / "aios"
+    with pytest.raises(DispatchError, match="version-2"):
+        _execute_dispatch(
+            state_root=state_root,
+            dispatch_id="legacy-new",
+            task_id="TASK-068",
+            executor="codex",
+            invoke_primary=lambda: pytest.fail("legacy request invoked PRIMARY"),
+        )
+    assert not (state_root / "dispatches").exists()
+
+
+def test_historical_v1_record_remains_readable_without_rewrite(tmp_path: Path) -> None:
+    state_root = tmp_path / ".git" / "aios"
+    dispatch_id = "legacy-existing"
+    record_path = (
+        state_root / "dispatches" / f"{dispatch._dispatch_key(dispatch_id)}.json"
+    )
+    record_path.parent.mkdir(parents=True)
+    legacy = {
+        "version": 1,
+        "dispatch_id": dispatch_id,
+        "task_id": "TASK-068",
+        "executor": "codex",
+        "status": "FAILED",
+        "pre_run_ids": [],
+        "run_id": None,
+        "exit_code": 1,
+        "detail": "historical terminal failure",
+    }
+    record_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    outcome = _execute_dispatch(
+        state_root=state_root,
+        dispatch_id=dispatch_id,
+        task_id="TASK-068",
+        executor="codex",
+        invoke_primary=lambda: pytest.fail("historical replay invoked PRIMARY"),
+    )
+
+    assert outcome.replayed is True
+    assert json.loads(record_path.read_text(encoding="utf-8")) == legacy
+
+
 def test_first_seen_is_durable_before_one_primary_invocation_and_replays(
     tmp_path: Path,
 ) -> None:
@@ -92,10 +158,14 @@ def test_first_seen_is_durable_before_one_primary_invocation_and_replays(
         records = list((state_root / "dispatches").glob("*.json"))
         assert len(records) == 1
         started = json.loads(records[0].read_text(encoding="utf-8"))
+        assert started["version"] == 2
         assert started["status"] == "STARTED"
         assert started["dispatch_id"] == "delivery-068"
         assert started["task_id"] == "TASK-068"
         assert started["executor"] == "codex"
+        assert started["task_revision"] == TASK_REVISION
+        assert started["task_blob_sha"] == TASK_BLOB_SHA
+        assert started["task_commit_sha"] == TASK_COMMIT_SHA
         assert started["pre_run_ids"] == ["RUN-068-001"]
         admit_dispatch_run(state_root, "delivery-068", "RUN-068-002")
         write_terminal(state_root, "results", "RUN-068-002")
@@ -193,6 +263,12 @@ def test_wakeup_sync_restart_continues_the_same_durable_dispatch(
             "wakeup",
             "delivery-073",
             "TASK-073",
+            "--task-revision",
+            "1",
+            "--task-blob-sha",
+            TASK_BLOB_SHA,
+            "--task-commit-sha",
+            TASK_COMMIT_SHA,
             "--executor",
             "codex",
             "--repo",
@@ -220,6 +296,12 @@ def test_wakeup_sync_restart_continues_the_same_durable_dispatch(
         "wakeup",
         "delivery-073",
         "TASK-073",
+        "--task-revision",
+        "1",
+        "--task-blob-sha",
+        TASK_BLOB_SHA,
+        "--task-commit-sha",
+        TASK_COMMIT_SHA,
         "--executor",
         "codex",
         "--repo",
@@ -356,6 +438,22 @@ def test_dispatch_binding_collision_fails_closed_without_mutation(
                 task_id=task_id,
                 executor=executor,
                 invoke_primary=lambda: pytest.fail("collision invoked PRIMARY"),
+            )
+        assert record_path.read_bytes() == before
+
+    for changed_identity in (
+        {"task_revision": 2},
+        {"task_blob_sha": "c" * 40},
+        {"task_commit_sha": "d" * 40},
+    ):
+        with pytest.raises(DispatchError, match="binding does not match"):
+            execute_dispatch(
+                state_root=state_root,
+                dispatch_id="bound-delivery",
+                task_id="TASK-068",
+                executor="codex",
+                invoke_primary=lambda: pytest.fail("collision invoked PRIMARY"),
+                **changed_identity,
             )
         assert record_path.read_bytes() == before
 

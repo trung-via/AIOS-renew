@@ -51,7 +51,7 @@ def test_permissions_are_the_exact_minimum_and_checkout_is_fixed_main() -> None:
     }
 
 
-def test_one_fixed_dispatch_forwards_only_three_sanitized_outputs() -> None:
+def test_one_fixed_dispatch_forwards_only_six_sanitized_outputs() -> None:
     workflow, text = _workflow()
     steps = workflow["jobs"]["admit-and-dispatch"]["steps"]
     dispatch = next(step for step in steps if step.get("id") == "dispatch")
@@ -65,13 +65,32 @@ def test_one_fixed_dispatch_forwards_only_three_sanitized_outputs() -> None:
     assert set(dispatch["env"]) == {
         "AIOS_DISPATCH_ID",
         "AIOS_TASK_ID",
+        "AIOS_TASK_REVISION",
+        "AIOS_TASK_BLOB_SHA",
+        "AIOS_TASK_COMMIT_SHA",
         "AIOS_EXECUTOR",
     }
     assert set(
         line.split(":", 1)[0].strip()
         for line in script.splitlines()
-        if line.strip().startswith(("dispatch_id:", "task_id:", "executor:"))
-    ) == {"dispatch_id", "task_id", "executor"}
+        if line.strip().startswith(
+            (
+                "dispatch_id:",
+                "task_id:",
+                "task_revision:",
+                "task_blob_sha:",
+                "task_commit_sha:",
+                "executor:",
+            )
+        )
+    ) == {
+        "dispatch_id",
+        "task_id",
+        "task_revision",
+        "task_blob_sha",
+        "task_commit_sha",
+        "executor",
+    }
     for forbidden in (
         "github.event.issue.body",
         "GITHUB_EVENT_PATH",
@@ -133,5 +152,8 @@ def test_policy_and_existing_a1_contract_are_separate_and_exact() -> None:
     assert set(a1["on"]["workflow_dispatch"]["inputs"]) == {
         "dispatch_id",
         "task_id",
+        "task_revision",
+        "task_blob_sha",
+        "task_commit_sha",
         "executor",
     }

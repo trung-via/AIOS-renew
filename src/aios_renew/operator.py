@@ -464,6 +464,68 @@ def load_task(repo: str | Path, task_id: str) -> Task:
     return task
 
 
+def _admit_authorized_task_identity(
+    repo: Path,
+    *,
+    task_id: str,
+    task_revision: int | None,
+    task_blob_sha: str | None,
+    task_commit_sha: str | None,
+    current_head: str,
+    admission: dict[str, Any],
+) -> Task:
+    """Prove one immutable v2 TASK authorization against synchronized main."""
+
+    if (
+        isinstance(task_revision, bool)
+        or not isinstance(task_revision, int)
+        or task_revision < 1
+        or not isinstance(task_blob_sha, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", task_blob_sha)
+        or not isinstance(task_commit_sha, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", task_commit_sha)
+    ):
+        raise OperatorError(
+            "authorized TASK identity mismatch: incomplete or malformed authorization"
+        )
+
+    task_path = f".ai/tasks/{task_id}.yaml"
+    try:
+        _git(repo, "cat-file", "-e", f"{task_commit_sha}^{{commit}}")
+        _git(repo, "merge-base", "--is-ancestor", task_commit_sha, current_head)
+    except OperatorError as exc:
+        raise OperatorError(
+            "authorized TASK identity mismatch: authorization commit is unavailable "
+            "or is not an ancestor of current HEAD"
+        ) from exc
+
+    try:
+        authorized_blob = _git(repo, "rev-parse", f"{task_commit_sha}:{task_path}")
+        current_blob = _git(repo, "rev-parse", f"{current_head}:{task_path}")
+    except OperatorError as exc:
+        raise OperatorError(
+            "authorized TASK identity mismatch: TASK blob is unavailable"
+        ) from exc
+
+    admission["current_task_blob_sha"] = current_blob
+    if authorized_blob != task_blob_sha or current_blob != task_blob_sha:
+        raise OperatorError(
+            "authorized TASK identity mismatch: TASK blob does not match authorization"
+        )
+    try:
+        task = load_task(repo, task_id)
+    except OperatorError as exc:
+        raise OperatorError(
+            "authorized TASK identity mismatch: current TASK is missing or malformed"
+        ) from exc
+    _bind_admission_task(admission, task)
+    if task.task_id != task_id or task.revision != task_revision:
+        raise OperatorError(
+            "authorized TASK identity mismatch: TASK id or revision does not match authorization"
+        )
+    return task
+
+
 def load_review(path: str | Path) -> Review:
     """Load and structurally validate one canonical REVIEW file."""
 
@@ -928,6 +990,9 @@ def run_task(
     synchronize: bool = True,
     preflight_sha: str | None = None,
     dispatch_id: str | None = None,
+    task_revision: int | None = None,
+    task_blob_sha: str | None = None,
+    task_commit_sha: str | None = None,
 ) -> RunSummary:
     """Execute a TASK and persist/transport deterministic pre-PASS failure facts."""
 
@@ -948,6 +1013,9 @@ def run_task(
         task_id=task_id,
         executor=executor,
         dispatch_id=dispatch_id,
+        requested_task_revision=task_revision,
+        task_blob_sha=task_blob_sha,
+        task_commit_sha=task_commit_sha,
     )
     try:
         return _run_task_impl(
@@ -958,6 +1026,9 @@ def run_task(
             synchronize=synchronize,
             preflight_sha=preflight_sha,
             dispatch_id=dispatch_id,
+            task_revision=task_revision,
+            task_blob_sha=task_blob_sha,
+            task_commit_sha=task_commit_sha,
             admission=admission,
         )
     except KeyboardInterrupt as original:
@@ -1010,6 +1081,9 @@ def _run_task_impl(
     synchronize: bool = True,
     preflight_sha: str | None = None,
     dispatch_id: str | None = None,
+    task_revision: int | None = None,
+    task_blob_sha: str | None = None,
+    task_commit_sha: str | None = None,
     admission: dict[str, Any] | None = None,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
@@ -1022,6 +1096,9 @@ def _run_task_impl(
         task_id=task_id,
         executor=executor,
         dispatch_id=dispatch_id,
+        requested_task_revision=task_revision,
+        task_blob_sha=task_blob_sha,
+        task_commit_sha=task_commit_sha,
     )
     if executor not in ("codex", "antigravity", "antigravity-minimax"):
         _set_admission_boundary(
@@ -1054,10 +1131,27 @@ def _run_task_impl(
         if preflight_sha is not None and current_sha != preflight_sha:
             raise OperatorError("current HEAD does not match preflight state")
         admission["current_head_sha"] = current_sha
-        _set_admission_boundary(
-            admission, "TASK_ADMISSION", "TASK_CONTRACT_REJECTED"
-        )
-        task = load_task(root, task_id)
+        if any(
+            value is not None
+            for value in (task_revision, task_blob_sha, task_commit_sha)
+        ):
+            _set_admission_boundary(
+                admission, "TASK_ADMISSION", "AUTHORIZED_TASK_IDENTITY_MISMATCH"
+            )
+            task = _admit_authorized_task_identity(
+                root,
+                task_id=task_id,
+                task_revision=task_revision,
+                task_blob_sha=task_blob_sha,
+                task_commit_sha=task_commit_sha,
+                current_head=current_sha,
+                admission=admission,
+            )
+        else:
+            _set_admission_boundary(
+                admission, "TASK_ADMISSION", "TASK_CONTRACT_REJECTED"
+            )
+            task = load_task(root, task_id)
         _bind_admission_task(admission, task)
         base_sha = current_sha
         _set_admission_boundary(
@@ -1084,6 +1178,9 @@ def _run_task_impl(
                 task_id=task_id,
                 executor=executor,
                 run_id=run_id,
+                task_revision=task_revision,
+                task_blob_sha=task_blob_sha,
+                task_commit_sha=task_commit_sha,
             )
         observation_tracker.admit(run)
         observed_native_runner = observation_tracker.wrap_native_runner(
@@ -3591,6 +3688,9 @@ def _persist_and_transport_admission_failure(
             "failed_run_id",
             "source_run_id",
             "dispatch_id",
+            "task_blob_sha",
+            "task_commit_sha",
+            "current_task_blob_sha",
             "observed_ref",
             "observed_sha",
             "observed_snapshot_sha256",
@@ -3598,6 +3698,13 @@ def _persist_and_transport_admission_failure(
             value = admission.get(name)
             if isinstance(value, str) and len(value) <= 256:
                 record[name] = value
+        requested_task_revision = admission.get("requested_task_revision")
+        if (
+            isinstance(requested_task_revision, int)
+            and not isinstance(requested_task_revision, bool)
+            and requested_task_revision > 0
+        ):
+            record["requested_task_revision"] = requested_task_revision
         observed_ref_count = admission.get("observed_ref_count")
         if isinstance(observed_ref_count, int) and observed_ref_count >= 0:
             record["observed_ref_count"] = observed_ref_count
@@ -5276,6 +5383,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     wakeup_parser.add_argument("dispatch_id")
     wakeup_parser.add_argument("task_id")
+    wakeup_parser.add_argument("--task-revision", type=int)
+    wakeup_parser.add_argument("--task-blob-sha")
+    wakeup_parser.add_argument("--task-commit-sha")
     wakeup_parser.add_argument(
         "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
@@ -5496,11 +5606,16 @@ def main(
                 "wakeup",
                 args.dispatch_id,
                 args.task_id,
-                "--executor",
-                args.executor,
-                "--repo",
-                str(repo_root),
             ]
+            if args.task_revision is not None:
+                wakeup_argv.extend(["--task-revision", str(args.task_revision)])
+            if args.task_blob_sha is not None:
+                wakeup_argv.extend(["--task-blob-sha", args.task_blob_sha])
+            if args.task_commit_sha is not None:
+                wakeup_argv.extend(["--task-commit-sha", args.task_commit_sha])
+            wakeup_argv.extend(
+                ["--executor", args.executor, "--repo", str(repo_root)]
+            )
 
             def invoke_primary() -> DispatchInvocation:
                 try:
@@ -5524,6 +5639,9 @@ def main(
                         synchronize=False,
                         preflight_sha=preflight.preflight_sha,
                         dispatch_id=args.dispatch_id,
+                        task_revision=args.task_revision,
+                        task_blob_sha=args.task_blob_sha,
+                        task_commit_sha=args.task_commit_sha,
                     )
                     return DispatchInvocation(0, summary.run_id)
                 except OperatorError as exc:
@@ -5543,6 +5661,9 @@ def main(
                 task_id=args.task_id,
                 executor=args.executor,
                 invoke_primary=invoke_primary,
+                task_revision=args.task_revision,
+                task_blob_sha=args.task_blob_sha,
+                task_commit_sha=args.task_commit_sha,
             )
             print(outcome.render())
             return outcome.exit_code

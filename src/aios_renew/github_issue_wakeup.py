@@ -16,6 +16,7 @@ import yaml
 
 from .dispatch_reconciliation import (
     DISPATCH_ID_PATTERN,
+    GIT_OBJECT_SHA_PATTERN,
     SUPPORTED_EXECUTORS,
     TASK_ID_PATTERN,
 )
@@ -38,7 +39,16 @@ _ISSUE_POLICY_KEYS = frozenset(
     }
 )
 _REQUEST_KEYS = frozenset(
-    {"format", "version", "dispatch_id", "task_id", "executor"}
+    {
+        "format",
+        "version",
+        "dispatch_id",
+        "task_id",
+        "task_revision",
+        "task_blob_sha",
+        "task_commit_sha",
+        "executor",
+    }
 )
 _MAX_CONFIGURED_BODY_BYTES = 16_384
 _MAX_EVENT_FILE_BYTES = 1_048_576
@@ -61,14 +71,20 @@ class GitHubIssueWakeupPolicy:
 class WakeupRequest:
     dispatch_id: str
     task_id: str
+    task_revision: int
+    task_blob_sha: str
+    task_commit_sha: str
     executor: str
 
     def github_outputs(self) -> str:
-        """Render only the three grammar-constrained A1 inputs."""
+        """Render only the six grammar-constrained A1 inputs."""
 
         return (
             f"dispatch_id={self.dispatch_id}\n"
             f"task_id={self.task_id}\n"
+            f"task_revision={self.task_revision}\n"
+            f"task_blob_sha={self.task_blob_sha}\n"
+            f"task_commit_sha={self.task_commit_sha}\n"
             f"executor={self.executor}\n"
         )
 
@@ -271,7 +287,7 @@ def admit_event(
 
 
 def parse_request(raw: bytes | str) -> WakeupRequest:
-    """Parse only the five-field, versioned PRIMARY wakeup request."""
+    """Parse only the exact version-2 PRIMARY wakeup request."""
 
     source = raw.encode("utf-8", errors="strict") if isinstance(raw, str) else raw
     request = _mapping(_load_yaml(source, "wakeup request"), "wakeup request")
@@ -285,7 +301,7 @@ def parse_request(raw: bytes | str) -> WakeupRequest:
         request.get("format") != _REQUEST_FORMAT
         or isinstance(version, bool)
         or not isinstance(version, int)
-        or version != 1
+        or version != 2
     ):
         raise GitHubIssueWakeupError(
             "unsupported wakeup request format or version"
@@ -293,6 +309,9 @@ def parse_request(raw: bytes | str) -> WakeupRequest:
 
     dispatch_id = request.get("dispatch_id")
     task_id = request.get("task_id")
+    task_revision = request.get("task_revision")
+    task_blob_sha = request.get("task_blob_sha")
+    task_commit_sha = request.get("task_commit_sha")
     executor = request.get("executor")
     if not isinstance(dispatch_id, str) or not DISPATCH_ID_PATTERN.fullmatch(
         dispatch_id
@@ -300,10 +319,29 @@ def parse_request(raw: bytes | str) -> WakeupRequest:
         raise GitHubIssueWakeupError("invalid dispatch_id")
     if not isinstance(task_id, str) or not TASK_ID_PATTERN.fullmatch(task_id):
         raise GitHubIssueWakeupError("invalid task_id")
+    if (
+        isinstance(task_revision, bool)
+        or not isinstance(task_revision, int)
+        or task_revision < 1
+    ):
+        raise GitHubIssueWakeupError("invalid task_revision")
+    if not isinstance(task_blob_sha, str) or not GIT_OBJECT_SHA_PATTERN.fullmatch(
+        task_blob_sha
+    ):
+        raise GitHubIssueWakeupError("invalid task_blob_sha")
+    if not isinstance(task_commit_sha, str) or not GIT_OBJECT_SHA_PATTERN.fullmatch(
+        task_commit_sha
+    ):
+        raise GitHubIssueWakeupError("invalid task_commit_sha")
     if not isinstance(executor, str) or executor not in SUPPORTED_EXECUTORS:
         raise GitHubIssueWakeupError("unsupported executor")
     return WakeupRequest(
-        dispatch_id=dispatch_id, task_id=task_id, executor=executor
+        dispatch_id=dispatch_id,
+        task_id=task_id,
+        task_revision=task_revision,
+        task_blob_sha=task_blob_sha,
+        task_commit_sha=task_commit_sha,
+        executor=executor,
     )
 
 
@@ -333,6 +371,9 @@ def render_admitted(request: WakeupRequest) -> str:
         "execution_outcome: not_observed\n"
         f"dispatch_id: {request.dispatch_id}\n"
         f"task_id: {request.task_id}\n"
+        f"task_revision: {request.task_revision}\n"
+        f"task_blob_sha: {request.task_blob_sha}\n"
+        f"task_commit_sha: {request.task_commit_sha}\n"
         f"executor: {request.executor}"
     )
 
