@@ -206,6 +206,31 @@ def test_workflow_permissions_and_no_secrets_ac4() -> None:
     assert "SSH_KEY" not in raw_text
 
 
+def test_workflow_persists_run_scoped_receipt_artifact() -> None:
+    workflow = load_workflow()
+    job = workflow["jobs"]["wakeup"]
+    upload = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Persist bounded Operational Receipt v2"
+    )
+
+    assert upload["if"] == "always()"
+    assert upload["uses"] == "actions/upload-artifact@v4"
+    assert upload["with"] == {
+        "name": "aios-operational-receipt-v2",
+        "path": "${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}",
+        "if-no-files-found": "error",
+        "retention-days": 30,
+    }
+    assert job["env"]["AIOS_OPERATIONAL_RECEIPT_PATH"] == (
+        "${{ runner.temp }}/aios-primary-operational-receipt-v2.json"
+    )
+    assert "delivery=@{kind='dispatch_id';id=$env:AIOS_DISPATCH_ID}" in (
+        WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+
+
 def test_workflow_preflight_missing_repo_variable_fails_ac5(tmp_path: Path) -> None:
     workflow = load_workflow()
     preflight_script = workflow["jobs"]["wakeup"]["steps"][0]["run"]

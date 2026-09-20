@@ -8,6 +8,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 CARRIER_PATH = ROOT / ".github/workflows/aios-brain-remediation-intent.yml"
 INTENT_PATH = ROOT / ".github/workflows/aios-approved-remediation-intent.yml"
+WAKEUP_PATH = ROOT / ".github/workflows/aios-approved-remediation-wakeup.yml"
 POLICY_PATH = ROOT / ".ai/brain-remediation-intent-carriers.yaml"
 
 
@@ -89,6 +90,46 @@ def test_receipt_never_fabricates_downstream_semantic_success() -> None:
     assert preserve_rejected["if"] == (
         "needs.admit.result != 'success' || needs.dispatch.result != 'success'"
     )
+
+
+def test_remediation_workflows_persist_exact_run_receipt_artifact() -> None:
+    for path, job_name, receipt_file in (
+        (
+            INTENT_PATH,
+            "approve-and-wake",
+            "aios-remediation-intent-operational-receipt-v2.json",
+        ),
+        (
+            WAKEUP_PATH,
+            "wakeup",
+            "aios-remediation-operational-receipt-v2.json",
+        ),
+    ):
+        workflow, text = _workflow(path)
+        job = workflow["jobs"][job_name]
+        upload = next(
+            step
+            for step in job["steps"]
+            if step.get("name") == "Persist bounded Operational Receipt v2"
+        )
+        assert upload == {
+            "name": "Persist bounded Operational Receipt v2",
+            "if": "always()",
+            "uses": "actions/upload-artifact@v4",
+            "with": {
+                "name": "aios-operational-receipt-v2",
+                "path": "${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}",
+                "if-no-files-found": "error",
+                "retention-days": "30",
+            },
+        }
+        assert job["env"]["AIOS_OPERATIONAL_RECEIPT_PATH"] == (
+            f"${{{{ runner.temp }}}}/{receipt_file}"
+        )
+        assert (
+            "delivery=@{kind='correction_dispatch_id';id=$env:AIOS_CORRECTION_DISPATCH_ID}"
+            in text
+        )
 
 
 def test_policy_is_distinct_and_exact() -> None:

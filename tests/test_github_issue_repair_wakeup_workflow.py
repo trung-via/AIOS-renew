@@ -82,6 +82,32 @@ def test_receipt_accepts_only_successful_admission_and_dispatch() -> None:
     )
 
 
+def test_repair_workflow_persists_exact_run_receipt_artifact() -> None:
+    workflow, text = _workflow(TARGET)
+    job = workflow["jobs"]["execute-repair"]
+    upload = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Persist bounded Operational Receipt v2"
+    )
+
+    assert upload == {
+        "name": "Persist bounded Operational Receipt v2",
+        "if": "always()",
+        "uses": "actions/upload-artifact@v4",
+        "with": {
+            "name": "aios-operational-receipt-v2",
+            "path": "${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}",
+            "if-no-files-found": "error",
+            "retention-days": "30",
+        },
+    }
+    assert job["env"]["AIOS_OPERATIONAL_RECEIPT_PATH"] == (
+        "${{ runner.temp }}/aios-repair-operational-receipt-v2.json"
+    )
+    assert "delivery=@{kind='repair_dispatch_id';id=$env:AIOS_REPAIR_DISPATCH_ID}" in text
+
+
 def test_policy_is_dedicated_and_exact() -> None:
     assert yaml.safe_load(POLICY.read_text(encoding="utf-8")) == {
         "format": "AIOS_BRAIN_REPAIR_WAKEUP_CARRIERS_POLICY",

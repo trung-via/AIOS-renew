@@ -127,9 +127,11 @@ This dispatch record is operational control/telemetry state outside the product 
 
 ### Operational Receipt v2
 
-The PRIMARY, steady-state and fallback REMEDIATION, and REPAIR handoffs expose one
-bounded `AIOS_OPERATIONAL_RECEIPT` version 2 in their workflow-run output/summary.
-It is correlated by the existing family identity (`dispatch_id`,
+The PRIMARY, steady-state and fallback REMEDIATION, and REPAIR handoffs persist one
+bounded `AIOS_OPERATIONAL_RECEIPT` version 2 as the exact
+`aios-operational-receipt-v2` artifact on each workflow run. A machine consumer
+retrieves that named artifact from the exact run; the receipt is correlated by the
+existing family identity (`dispatch_id`,
 `correction_dispatch_id`, or `repair_dispatch_id`) and reports only the highest
 boundary directly proven for that exact delivery:
 
@@ -164,7 +166,9 @@ artifact pointer. It never copies the terminal body, errors, result claims,
 EVIDENCE, REVIEW, or publication state. TASK-113 remains the reverse terminal
 attention mechanism. Operational receipts create no lifecycle store, dispatch
 authority, next action, semantic verdict, or retry; Runtime and canonical lineage
-remain the owners of verification and engineering truth.
+remain the owners of verification and engineering truth. Log output and the step
+summary may render the same receipt for Humans, but those optional views are not
+the machine-readable retrieval contract or an authoritative receipt surface.
 
 A duplicate terminal delivery performs no re-execution. A successful dispatch returns the same dispatch/RUN attribution with success; a failed dispatch preserves its prior nonzero outcome. Reusing a `dispatch_id` with any different authorized selector fails closed. TASK mutation or revision drift requires fresh authorization and a new dispatch identity. After a process or host interruption, re-delivery only observes the recorded pre-invocation RUN namespace and canonical `.git/aios` RUN/RESULT/FAILURE state. It can link one uniquely attributable terminal RUN, report an execution still in progress, or return reconciliation blocked. This is attribution and no re-execution, not automatic retry or recovery: it never starts a second RUN, invokes an Executor again, repairs an incomplete RUN, or synthesizes terminal artifacts.
 
