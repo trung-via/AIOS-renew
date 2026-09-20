@@ -30,6 +30,38 @@ def completed(returncode=0, stdout=b"ok\n", stderr=b""):
     )
 
 
+def test_relative_git_basetemp_command_runs_unchanged_from_subject_repo(
+    tmp_path: Path,
+) -> None:
+    subject = tmp_path / "historical-subject"
+    subject.mkdir()
+    (subject / ".git").mkdir()
+    (subject / "basetemp_probe.py").write_text(
+        "import sys\n"
+        "from pathlib import Path\n"
+        "Path(sys.argv[1].split('=', 1)[1]).mkdir(parents=True)\n",
+        encoding="utf-8",
+    )
+    command = (
+        "python basetemp_probe.py "
+        "--basetemp=.git/aios/pytest-historical-subject"
+    )
+
+    evidence = execute_verification(
+        (command,),
+        run_id="RUN-148-TEST",
+        subject_sha="a" * 40,
+        repository=subject,
+        raw_directory=tmp_path / "control-runtime" / "verification",
+    )
+
+    assert evidence[0].source.command == command
+    assert evidence[0].result.exit_code == 0
+    assert (
+        subject / ".git" / "aios" / "pytest-historical-subject"
+    ).is_dir()
+
+
 def test_executes_posix_commands_once_in_exact_order_and_builds_evidence(
     tmp_path: Path,
 ) -> None:

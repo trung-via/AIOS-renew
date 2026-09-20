@@ -7,6 +7,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1284,19 +1286,26 @@ def _persist_repair_failure(
     )
 
 
-def _remove_historical_workspace(control_repo: Path, workspace: Path | None) -> None:
-    if workspace is None:
+def _remove_historical_workspace(
+    _control_repo: Path, workspace: Path | None
+) -> None:
+    if workspace is None or not workspace.exists():
         return
-    try:
-        subprocess.run(
-            ("git", "-C", str(control_repo), "worktree", "remove", "--force", str(workspace)),
-            capture_output=True,
-            check=False,
-        )
-        if workspace.exists():
-            workspace.rmdir()
-    except OSError:
-        pass
+
+    def make_writable_and_retry(remove, path: str, exc_info) -> None:
+        error = exc_info[1]
+        if not isinstance(error, PermissionError):
+            raise error
+        current_mode = os.stat(path, follow_symlinks=False).st_mode
+        writable_mode = current_mode | stat.S_IREAD | stat.S_IWRITE
+        if stat.S_ISDIR(current_mode):
+            writable_mode |= stat.S_IEXEC
+        os.chmod(path, writable_mode)
+        remove(path)
+
+    shutil.rmtree(workspace, onerror=make_writable_and_retry)
+    if workspace.exists():
+        raise OperatorError("historical subject cleanup failed")
 
 
 def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
@@ -2880,15 +2889,36 @@ def _decode_remote_mapping(content: bytes | None, name: str) -> Mapping[str, Any
 
 def _create_historical_workspace(repo: Path, failed_head: str) -> Path:
     control_head = _git(repo, "rev-parse", "HEAD")
+    control_branch = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    exact_commit = _git(
+        repo, "rev-parse", "--verify", f"{failed_head}^{{commit}}"
+    )
+    if exact_commit != failed_head:
+        raise OperatorError("historical subject commit mismatch")
+    origin_url = _git(repo, "remote", "get-url", "origin")
     workspace = Path(tempfile.mkdtemp(prefix="aios-historical-repair-"))
     try:
-        _git(repo, "worktree", "add", "--detach", str(workspace), failed_head)
+        _git(
+            repo,
+            "clone",
+            "--local",
+            "--no-hardlinks",
+            "--no-checkout",
+            "--no-tags",
+            str(repo),
+            str(workspace),
+        )
+        _git(workspace, "remote", "set-url", "origin", origin_url)
+        _git(workspace, "checkout", "--detach", failed_head)
+        if not (workspace / ".git").is_dir():
+            raise OperatorError("historical subject Git directory is unavailable")
         if _git(workspace, "rev-parse", "HEAD") != failed_head:
             raise OperatorError("historical subject HEAD mismatch")
         if _git(workspace, "status", "--porcelain"):
             raise OperatorError("historical subject workspace is dirty")
-        if _git(repo, "rev-parse", "HEAD") != control_head:
-            raise OperatorError("historical admission changed control HEAD")
+        _require_control_checkout_unchanged(
+            repo, head_sha=control_head, branch=control_branch
+        )
         return workspace
     except Exception:
         _remove_historical_workspace(repo, workspace)

@@ -5371,10 +5371,49 @@ def test_historical_remediation_workspace_failure_precedes_run_and_executor(
     assert git(repo, "status", "--porcelain") == ""
 
 
-def test_historical_verification_only_repair_uses_transported_candidate(
+def test_historical_workspace_rejects_missing_object_before_temp_allocation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = make_repo(tmp_path)
+    control_head = git(repo, "rev-parse", "HEAD")
+    worktrees_before = git(repo, "worktree", "list", "--porcelain")
+
+    monkeypatch.setattr(
+        operator_module.tempfile,
+        "mkdtemp",
+        lambda *args, **kwargs: pytest.fail(
+            "missing historical object must fail before allocation"
+        ),
+    )
+
+    with pytest.raises(OperatorError, match="Git command failed"):
+        operator_module._create_historical_workspace(repo, "f" * 40)
+
+    assert git(repo, "rev-parse", "HEAD") == control_head
+    assert git(repo, "status", "--porcelain") == ""
+    assert git(repo, "worktree", "list", "--porcelain") == worktrees_before
+
+
+def test_historical_verification_only_repair_uses_transported_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    canonical_command = (
+        "python basetemp_probe.py "
+        "--basetemp=.git/aios/pytest-historical-repair"
+    )
+    historical_task_source = TASK_SOURCE.replace(
+        "git status --porcelain", canonical_command
+    )
+    repo = make_repo(tmp_path, task_source=historical_task_source)
+    (repo / "basetemp_probe.py").write_text(
+        "import sys\n"
+        "from pathlib import Path\n"
+        "Path(sys.argv[1].split('=', 1)[1]).mkdir(parents=True)\n",
+        encoding="utf-8",
+    )
+    git(repo, "add", "basetemp_probe.py")
+    git(repo, "commit", "--quiet", "-m", "add historical verification probe")
+    git(repo, "push", "--quiet", "origin", "main")
     root_base_sha = git(repo, "rev-parse", "HEAD")
     git(repo, "switch", "--quiet", "-c", "historical-verification")
     (repo / "OUTPUT.txt").write_text("historical candidate\n", encoding="utf-8")
@@ -5446,16 +5485,25 @@ def test_historical_verification_only_repair_uses_transported_candidate(
     monkeypatch.setattr(
         operator_module,
         "read_remote_task",
-        lambda repo, *, commit_sha, task_id: TASK_SOURCE.encode(),
+        lambda repo, *, commit_sha, task_id: historical_task_source.encode(),
     )
     verification_workspaces = []
+    worktrees_before = git(repo, "worktree", "list", "--porcelain")
 
     def verify(command, **kwargs):
-        verification_workspaces.append(kwargs["cwd"])
-        assert git(kwargs["cwd"], "rev-parse", "HEAD") == failed_head
-        return subprocess.CompletedProcess(
-            command, returncode=0, stdout=b"clean\n", stderr=b""
-        )
+        subject_repo = kwargs["cwd"]
+        verification_workspaces.append(subject_repo)
+        assert git(subject_repo, "rev-parse", "HEAD") == failed_head
+        assert (subject_repo / ".git").is_dir()
+        assert not (subject_repo / ".git" / "aios").exists()
+        completed = subprocess.run(command, **kwargs)
+        assert (
+            subject_repo / ".git" / "aios" / "pytest-historical-repair"
+        ).is_dir()
+        cleanup_probe = subject_repo / ".git" / "aios" / "readonly-probe"
+        cleanup_probe.write_text("cleanup must handle read-only Git metadata\n")
+        cleanup_probe.chmod(0o444)
+        return completed
 
     summary = run_repair(
         failed_run_id,
@@ -5481,8 +5529,11 @@ def test_historical_verification_only_repair_uses_transported_candidate(
     assert summary.head_sha == failed_head
     assert len(verification_workspaces) == 1
     assert not verification_workspaces[0].exists()
+    assert git(repo, "worktree", "list", "--porcelain") == worktrees_before
     assert git(repo, "rev-parse", "HEAD") == control_head
     assert git(repo, "status", "--porcelain") == ""
+    persisted = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    assert persisted["evidence"][0]["source"]["command"] == canonical_command
 
 
 def test_historical_repair_rejects_remote_duplicate_before_workspace_creation(
@@ -6492,10 +6543,17 @@ def test_recover_primary_rebinds_exact_candidate_with_fresh_evidence(
     fresh = clone_runtime_fresh(source, tmp_path / "fresh")
     control_head = git(fresh, "rev-parse", "HEAD")
     control_status = git(fresh, "status", "--porcelain")
+    control_origin = git(fresh, "remote", "get-url", "origin")
+    worktrees_before = git(fresh, "worktree", "list", "--porcelain")
     verification_calls = []
 
     def counting_verification(command, **kwargs):
         verification_calls.append(command)
+        subject_repo = kwargs["cwd"]
+        assert (subject_repo / ".git").is_dir()
+        assert not (subject_repo / ".git" / "aios").exists()
+        assert git(subject_repo, "remote", "get-url", "origin") == control_origin
+        assert git(subject_repo, "rev-parse", "HEAD") == success.head_sha
         return subprocess.run(command, **kwargs)
 
     recovered = recover_primary(
@@ -6509,6 +6567,7 @@ def test_recover_primary_rebinds_exact_candidate_with_fresh_evidence(
     assert len(verification_calls) == 1
     assert git(fresh, "rev-parse", "HEAD") == control_head
     assert git(fresh, "status", "--porcelain") == control_status
+    assert git(fresh, "worktree", "list", "--porcelain") == worktrees_before
     state = runtime_paths(fresh)
     result = json.loads(recovered.result_path.read_text(encoding="utf-8"))
     assert {item["run_id"] for item in result["evidence"]} == {"RUN-101-002"}
