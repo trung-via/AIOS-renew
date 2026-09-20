@@ -27,7 +27,9 @@ from .artifacts import (
 )
 from .publication import (
     _parse_remediation_run,
+    _repair_review_lineage,
     _validate_remediation_package,
+    _validate_repair_package,
     _validate_repair_authorization,
 )
 from .review import (
@@ -569,6 +571,7 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
 
     run_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/run.json")
     result_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/result.json")
+    repair_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/repair.json")
     if run_bytes is None or result_bytes is None:
         raise AuthoringIngressError(
             f"canonical artifacts content missing for {run_id}"
@@ -661,11 +664,66 @@ def _execute_submit_review(envelope: IngressEnvelope, repo: Path) -> IngressResu
         raise AuthoringIngressError(f"invalid canonical EVIDENCE: {exc}") from exc
 
     prior_review = None
-    if review.mode == "DELTA":
+    repaired_finding_id = None
+    repair_result_base_sha = None
+    if repair_bytes is not None:
+        if remediation is not None:
+            raise AuthoringIngressError(
+                "canonical artifacts contain conflicting REMEDIATION/REPAIR lineage"
+            )
+        if remote is None:
+            raise AuthoringIngressError(
+                "canonical remote is required for REPAIR review lineage"
+            )
+        try:
+            (
+                _,
+                repair_result_base_sha,
+                prior_review,
+                repaired_finding_id,
+            ) = _repair_review_lineage(
+                repo,
+                remote=remote,
+                publication_run_id=run_id,
+                child_run_data=run_data,
+                child_run=run,
+                child_head_sha=candidate_sha,
+                lineage_bytes=repair_bytes,
+                task=task,
+            )
+        except (
+            ArtifactValidationError,
+            ReviewValidationError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+            KeyError,
+            UnicodeError,
+        ) as exc:
+            raise AuthoringIngressError(
+                f"invalid canonical REPAIR lineage: {exc}"
+            ) from exc
+        _validate_repair_review_semantics(
+            review,
+            prior_review=prior_review,
+            repaired_finding_id=repaired_finding_id,
+        )
+    elif review.mode == "DELTA":
         prior_review = _resolve_prior_review(repo, remote, run_data, review)
 
     try:
-        if remediation is None:
+        if repair_bytes is not None:
+            assert repair_result_base_sha is not None
+            _validate_repair_package(
+                repo,
+                source_sha=candidate_sha,
+                result_base_sha=repair_result_base_sha,
+                task=task,
+                run=run,
+                result=result,
+                evidence=evidence,
+            )
+        elif remediation is None:
             validate_result_package(
                 task=task,
                 run=run,
@@ -1244,6 +1302,28 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
+def _validate_repair_review_semantics(
+    review: Review,
+    *,
+    prior_review: Review | None,
+    repaired_finding_id: str | None,
+) -> None:
+    if prior_review is None:
+        if review.mode != "PRIMARY" or review.prior_finding_id is not None:
+            raise AuthoringIngressError(
+                "REPAIR before a semantic finding requires a PRIMARY review"
+            )
+        return
+    if (
+        repaired_finding_id is None
+        or review.mode != "DELTA"
+        or review.prior_finding_id != repaired_finding_id
+    ):
+        raise AuthoringIngressError(
+            "REPAIR of REMEDIATION requires the exact repaired DELTA finding"
+        )
+
 
 def _payload_to_str(payload: str | Mapping[str, Any]) -> str:
     if isinstance(payload, str):

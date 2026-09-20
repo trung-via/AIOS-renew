@@ -39,6 +39,7 @@ from .correction_integration import (
     CorrectionIntegrationError,
     CorrectionIntegrationResult,
     integrate_correction as _integrate_correction_impl,
+    resolve_valid_integration,
 )
 from .dispatcher import (
     DispatcherError,
@@ -366,6 +367,7 @@ class _HistoricalRepairAdmission:
     failure: Mapping[str, Any]
     task: Task
     root_base_sha: str
+    result_base_sha: str
     remote_run_ids: tuple[str, ...]
     preverification: bytes | None
 
@@ -375,6 +377,7 @@ class _RepairAdmission:
     failure: Mapping[str, Any]
     task: Task
     root_base_sha: str
+    result_base_sha: str
     remote_run_ids: tuple[str, ...]
     historical: bool
     repair: Mapping[str, Any]
@@ -1759,6 +1762,7 @@ def _resolve_repair_admission(
         failure = resolved_admission.failure
         task = resolved_admission.task
         root_base_sha = resolved_admission.root_base_sha
+        result_base_sha = resolved_admission.result_base_sha
         remote_run_ids = resolved_admission.remote_run_ids
         transported_preverification = resolved_admission.preverification
         if local_failure is not None and dict(local_failure) != dict(failure):
@@ -1766,9 +1770,29 @@ def _resolve_repair_admission(
     else:
         failure = local_failure
         assert isinstance(failure, Mapping)
+        _set_admission_boundary(
+            admission, "TASK_ADMISSION", "TASK_CONTRACT_REJECTED"
+        )
+        task = load_task(repo, failure["task"]["id"])
         continuation_of = failure.get("continuation_of")
         if continuation_of is None:
-            root_base_sha = failure.get("base_sha")
+            failed_run_path = state.runs / f"{failed_run_id}.json"
+            run_data = json.loads(failed_run_path.read_text(encoding="utf-8"))
+            if run_data.get("kind") == "REMEDIATION":
+                execution = _remediation_execution_from_data(run_data["execution"])
+                root_base_sha = _derive_remediation_source_root(
+                    repo, task=task, execution=execution
+                )
+                result_base_sha = _repair_result_base_from_origin(
+                    repo,
+                    task=task,
+                    run_data=run_data,
+                    run=execution.run,
+                    root_base_sha=root_base_sha,
+                )
+            else:
+                root_base_sha = failure.get("base_sha")
+                result_base_sha = root_base_sha
         else:
             prior_execution_path = state.repairs / f"{failed_run_id}.json"
             if not prior_execution_path.is_file():
@@ -1779,12 +1803,13 @@ def _resolve_repair_admission(
             if prior_execution.get("failed_run_id") != continuation_of:
                 raise OperatorError("invalid persisted REPAIR lineage")
             root_base_sha = prior_execution.get("root_base_sha")
+            result_base_sha = prior_execution.get(
+                "result_base_sha", root_base_sha
+            )
         if not isinstance(root_base_sha, str) or not root_base_sha:
             raise OperatorError("invalid original TASK root lineage")
-        _set_admission_boundary(
-            admission, "TASK_ADMISSION", "TASK_CONTRACT_REJECTED"
-        )
-        task = load_task(repo, failure["task"]["id"])
+        if not isinstance(result_base_sha, str) or not result_base_sha:
+            raise OperatorError("invalid REPAIR result-base lineage")
     _bind_admission_task(admission, task)
     if isinstance(failure.get("failed_head_sha"), str):
         admission["failed_head_sha"] = failure["failed_head_sha"]
@@ -1935,12 +1960,14 @@ def _resolve_repair_admission(
             local_content=local_preverification if historical else None,
             repo=(remote_repo or repo) if historical else repo,
             root_base_sha=root_base_sha,
+            result_base_sha=result_base_sha,
         )
 
     return _RepairAdmission(
         failure=failure,
         task=task,
         root_base_sha=root_base_sha,
+        result_base_sha=result_base_sha,
         remote_run_ids=remote_run_ids,
         historical=historical,
         repair=repair_data,
@@ -1985,6 +2012,7 @@ def _run_repair_impl(
     failure = resolved.failure
     task = resolved.task
     root_base_sha = resolved.root_base_sha
+    result_base_sha = resolved.result_base_sha
     remote_run_ids = resolved.remote_run_ids
     historical = resolved.historical
     repair_data = resolved.repair
@@ -2050,6 +2078,7 @@ def _run_repair_impl(
         execution = {
             "failed_run_id": failed_run_id,
             "root_base_sha": root_base_sha,
+            "result_base_sha": result_base_sha,
             "failed_head_sha": failed_head,
             "failure": failure,
             "task": _executor_task_data(task),
@@ -2127,6 +2156,7 @@ def _run_repair_impl(
             repair_completion_policy(
                 task,
                 root_base_sha=root_base_sha,
+                result_base_sha=result_base_sha,
                 failed_head_sha=failed_head,
                 action=action,
                 modification_scope=scope,
@@ -2191,7 +2221,9 @@ def _resolve_historical_repair_admission(
     if task.task_id != task_id or task.revision != revision:
         raise OperatorError("historical TASK identity or revision mismatch")
 
-    parsed: list[tuple[RemoteFailureArtifacts, Mapping[str, Any], Run, Any]] = []
+    parsed: list[
+        tuple[RemoteFailureArtifacts, Mapping[str, Any], Mapping[str, Any], Run, Any]
+    ] = []
     expected_task = {"id": task_id, "revision": revision}
     for artifact in recovery.failures:
         failure = _decode_remote_mapping(artifact.failure, "FAILURE")
@@ -2218,14 +2250,14 @@ def _resolve_historical_repair_admission(
             raise OperatorError("historical RUN TASK lineage mismatch")
         if failure.get("base_sha") != run.base_sha:
             raise OperatorError("historical FAILURE base does not match RUN")
-        parsed.append((artifact, failure, run, execution))
+        parsed.append((artifact, failure, run_data, run, execution))
 
-    for index, (artifact, failure, run, execution) in enumerate(parsed[:-1]):
+    for index, (artifact, failure, _, run, execution) in enumerate(parsed[:-1]):
         if execution is not None:
             raise OperatorError("REMEDIATION cannot contain REPAIR continuation metadata")
         predecessor = parsed[index + 1]
         continuation = failure.get("continuation_of")
-        if continuation != predecessor[2].run_id:
+        if continuation != predecessor[3].run_id:
             raise OperatorError("historical continuation chain mismatch")
         if run.base_sha != predecessor[1].get("failed_head_sha"):
             raise OperatorError("historical REPAIR base does not match failed head")
@@ -2274,7 +2306,13 @@ def _resolve_historical_repair_admission(
         ):
             raise OperatorError("historical REPAIR authorization mismatch")
 
-    terminal_artifact, terminal_failure, terminal_run, terminal_execution = parsed[-1]
+    (
+        terminal_artifact,
+        terminal_failure,
+        terminal_run_data,
+        terminal_run,
+        terminal_execution,
+    ) = parsed[-1]
     if terminal_failure.get("continuation_of") is not None:
         raise OperatorError("historical correction lineage terminates incompletely")
     if terminal_execution is None:
@@ -2283,16 +2321,29 @@ def _resolve_historical_repair_admission(
         root_base_sha = _derive_remediation_source_root(
             repo, task=task, execution=terminal_execution
         )
+    result_base_sha = _repair_result_base_from_origin(
+        repo,
+        task=task,
+        run_data=terminal_run_data,
+        run=terminal_run,
+        root_base_sha=root_base_sha,
+    )
     if not isinstance(root_base_sha, str) or not root_base_sha:
         raise OperatorError("invalid original TASK root lineage")
     if not _git_is_ancestor(repo, root_base_sha, target_artifact.candidate_sha):
         raise OperatorError("historical failed head does not descend from TASK root")
-    for artifact, _, _, _ in parsed[:-1]:
+    for artifact, _, _, _, _ in parsed[:-1]:
         if artifact.repair is None:
             continue
         lineage = _decode_remote_mapping(artifact.repair, "REPAIR execution")
         if lineage.get("root_base_sha") != root_base_sha:
             raise OperatorError("conflicting original TASK root lineage")
+        persisted_result_base = lineage.get("result_base_sha")
+        if (
+            persisted_result_base is not None
+            and persisted_result_base != result_base_sha
+        ):
+            raise OperatorError("conflicting REPAIR result-base lineage")
     candidate = target_failure.get("candidate")
     if not isinstance(candidate, Mapping) or candidate.get("repairable") is not True:
         raise OperatorError("failed candidate is not safely bound for REPAIR")
@@ -2300,9 +2351,109 @@ def _resolve_historical_repair_admission(
         target_failure,
         task,
         root_base_sha,
+        result_base_sha,
         recovery.remote_run_ids,
         target_artifact.preverification,
     )
+
+
+def _repair_result_base_from_origin(
+    repo: Path,
+    *,
+    task: Task,
+    run_data: Mapping[str, Any],
+    run: Run,
+    root_base_sha: str,
+) -> str:
+    """Derive the Git attribution base without changing semantic TASK lineage."""
+
+    if run_data.get("kind") != "REMEDIATION" or "execution_base" not in run_data:
+        return root_base_sha
+    raw_base = run_data["execution_base"]
+    if not isinstance(raw_base, Mapping):
+        raise OperatorError("integrated REMEDIATION execution_base is invalid")
+    try:
+        base = _parse_remediation_execution_base(raw_base)
+    except (TypeError, ValueError) as exc:
+        raise OperatorError(
+            f"integrated REMEDIATION execution_base rejected: {exc}"
+        ) from exc
+    if not base.is_integrated:
+        return root_base_sha
+    if set(raw_base) != _CANONICAL_INTEGRATED_EXECUTION_BASE_FIELDS:
+        raise OperatorError(
+            "integrated REMEDIATION execution_base fields are not canonical"
+        )
+    if base.integration_candidate_sha != run.base_sha:
+        raise OperatorError(
+            "integrated REMEDIATION execution_base does not match RUN base"
+        )
+    try:
+        lifecycle = resolve_remote_task_lifecycle(
+            repo, task_id=task.task_id, task_revision=task.revision
+        )
+    except ReviewTransportError as exc:
+        raise OperatorError(
+            f"integrated REMEDIATION lifecycle evidence rejected: {exc}"
+        ) from exc
+    if not _git_is_ancestor(repo, base.authorized_main_sha, lifecycle.main_sha):
+        raise OperatorError(
+            "integrated REMEDIATION authorized main is not canonical history"
+        )
+    cumulative = [
+        item
+        for item in lifecycle.terminals
+        if item.run_id == base.cumulative_tip_run_id
+        and item.kind == "RESULT"
+        and item.candidate_sha == base.cumulative_tip_candidate_sha
+    ]
+    if len(cumulative) != 1:
+        raise OperatorError(
+            "integrated REMEDIATION cumulative tip evidence is missing or ambiguous"
+        )
+    cumulative_run_data = _decode_remote_mapping(
+        cumulative[0].run, "integrated cumulative RUN"
+    )
+    if cumulative_run_data.get("kind") == "REMEDIATION":
+        cumulative_run = _remediation_execution_from_data(
+            cumulative_run_data["execution"]
+        ).run
+    elif "kind" not in cumulative_run_data:
+        cumulative_run = _run_from_data(cumulative_run_data)
+    else:
+        raise OperatorError("integrated cumulative RUN kind is invalid")
+    cumulative_result = _decode_remote_mapping(
+        cumulative[0].terminal, "integrated cumulative RESULT"
+    )
+    try:
+        cumulative_head = validate_result(cumulative_result["result"]).head_sha
+    except (ArtifactValidationError, KeyError, TypeError, ValueError) as exc:
+        raise OperatorError("integrated cumulative RESULT is invalid") from exc
+    if (
+        cumulative_run.run_id != base.cumulative_tip_run_id
+        or cumulative_run.task.id != task.task_id
+        or cumulative_run.task.revision != task.revision
+        or cumulative_head != base.cumulative_tip_candidate_sha
+    ):
+        raise OperatorError("integrated cumulative evidence identity mismatch")
+    integration = resolve_valid_integration(
+        repo,
+        task_id=task.task_id,
+        task_revision=task.revision,
+        cumulative_tip_run_id=base.cumulative_tip_run_id,
+        cumulative_tip_candidate_sha=base.cumulative_tip_candidate_sha,
+        authorized_main_sha=base.authorized_main_sha,
+        require_remote=True,
+    )
+    if (
+        integration is None
+        or integration.integration_id != base.integration_id
+        or integration.integration_candidate_sha != base.integration_candidate_sha
+    ):
+        raise OperatorError(
+            "integrated REMEDIATION integration evidence is invalid"
+        )
+    return base.integration_candidate_sha
 
 
 def _read_optional_bytes(path: Path) -> bytes | None:
@@ -2331,6 +2482,7 @@ def _eligible_reusable_repair_package(
     local_content: bytes | None = None,
     repo: Path | None = None,
     root_base_sha: str | None = None,
+    result_base_sha: str | None = None,
 ) -> ResultPackage | None:
     """Fail closed on present state and admit only exact verification reuse."""
 
@@ -2365,11 +2517,13 @@ def _eligible_reusable_repair_package(
     ):
         raise OperatorError("invalid pre-verification candidate changed-files binding")
     if repo is not None:
-        resolved_root_base = root_base_sha
+        resolved_root_base = result_base_sha
+        if resolved_root_base is None:
+            resolved_root_base = root_base_sha
         if resolved_root_base is None and failure.get("continuation_of") is None:
             resolved_root_base = failure.get("base_sha")
         if not isinstance(resolved_root_base, str) or not resolved_root_base:
-            raise OperatorError("invalid original TASK root lineage")
+            raise OperatorError("invalid REPAIR result-base lineage")
         actual_root_changed = _committed_changed_files(
             repo, resolved_root_base, failed_head
         )
