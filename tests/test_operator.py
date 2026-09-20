@@ -8180,16 +8180,16 @@ def test_v2_authorized_task_identity_drift_fails_before_run_and_executor(
     if drift == "revision":
         task_revision = 2
     elif drift == "content":
-        publish_upstream(
-            repo,
-            {
-                ".ai/tasks/TASK-101.yaml": TASK_SOURCE.replace(
-                    "Create one deterministic operator test output.",
-                    "Create changed deterministic operator semantics.",
-                )
-            },
-            "drift authorized task content",
+        task_path = repo / ".ai" / "tasks" / "TASK-101.yaml"
+        task_path.write_text(
+            task_path.read_text(encoding="utf-8").replace(
+                "Create one deterministic operator test output.",
+                "Create changed deterministic operator semantics.",
+            ),
+            encoding="utf-8",
         )
+        git(repo, "add", ".ai/tasks/TASK-101.yaml")
+        git(repo, "commit", "-m", "drift authorized task content")
     else:
         tree = git(repo, "rev-parse", f"{authorized_commit}^{{tree}}")
         task_commit = git(repo, "commit-tree", tree, "-m", "unrelated provenance")
