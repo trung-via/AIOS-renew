@@ -129,6 +129,8 @@ sequence:
       without fabricating engineering lifecycle truth.
   - id: bp-v1-verification-contract-hardening
     status: NEXT
+    task_id: TASK-150
+    task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-0
