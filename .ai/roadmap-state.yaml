@@ -12,6 +12,19 @@ planning_baseline:
     BP-0 is the Human-approved architecture and roadmap planning baseline. It does
     not claim implementation completion for BP-1 through BP-9, does not create RUN
     or verification truth, and does not alter frozen Kernel v0.1 semantics.
+verification_foundation_audit:
+  id: ta-0-ta-1-verification-foundation
+  status: HUMAN_APPROVED
+  approved_on: "2026-09-20"
+  approved_against_main_sha: "edd7d8d92d54900c56442bbfcddb8648ec4d2e09"
+  authority: HUMAN_BRAIN_PLANNING
+  note: >-
+    TA-0 and TA-1 confirmed a prospective verification-foundation gap: minimum-sufficient
+    verification/subsumption enforcement is incomplete, intrinsic full-suite runtime is
+    dominated by Git-heavy control-plane test harnesses, long verification is coupled to
+    mutable control-checkout movement, and parallel speedup is not yet conformance-proven.
+    Historical Performance Closure engineering artifacts remain immutable and are not
+    reinterpreted by this planning decision.
 next_items:
   - bp-1-primary-exact-intent-binding-v2
 sequence:
@@ -102,6 +115,44 @@ sequence:
     objective: >-
       Close pre-AIOS/self-host attribution gaps and preserve typed lower-layer causes
       without fabricating engineering lifecycle truth.
+  - id: bp-v1-verification-contract-hardening
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-0
+      - TA-1
+    objective: >-
+      Enforce minimum-sufficient deterministic verification, known coverage/subsumption
+      de-duplication, and bounded full-suite justification without moving semantic
+      judgment or verification truth out of Runtime.
+  - id: bp-v2-full-suite-harness-acceleration
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-1
+    objective: >-
+      Reduce intrinsic serial full-suite wall time by accelerating isolated real-Git
+      fixtures and separating pure semantic from Git-boundary tests where valid, while
+      preserving the canonical test population and production-shaped Git evidence.
+  - id: bp-v3-verification-workspace-isolation
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-0
+      - TA-1
+    objective: >-
+      Isolate exact candidate verification from unrelated mutable control-checkout
+      movement while preserving SHA binding, Runtime evidence ownership, clean-state
+      checks, and fail-closed mutation detection inside the verification subject.
+  - id: bp-v4-parallel-verification-performance-guard
+    status: PLANNED
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-1
+    objective: >-
+      After serial harness acceleration is proven, establish measured bounded parallel
+      full-suite conformance and verification-cost regression visibility without
+      heuristic worker selection or new semantic authority.
   - id: bp-3-brain-context-foundation
     status: PLANNED
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md

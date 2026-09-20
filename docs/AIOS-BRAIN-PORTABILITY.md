@@ -253,6 +253,49 @@ Close the self-host/pre-AIOS dark zone and preserve typed lower-level causes thr
 
 Exit gate: every addressed handoff can be explained by a typed operational boundary or canonical pointer without inventing lifecycle truth.
 
+### Verification Foundation planning gate — TA-0 / TA-1
+
+Human-approved on 2026-09-20 against canonical main `edd7d8d92d54900c56442bbfcddb8648ec4d2e09`.
+
+TA-0 and TA-1 are read-only architecture audits that prospectively harden the Brain Portability roadmap. They do not reopen or rewrite historical Performance Closure TASK/RUN/REVIEW evidence, do not themselves authorize production mutation, and do not change frozen Kernel v0.1 semantics.
+
+The audits established the following planning facts:
+
+- minimum-sufficient verification and reuse-until-invalidated remain constitutional requirements;
+- the historical Performance Closure P1 design required duplicate/subset-then-full-suite detection before RUN admission, but current TASK validation only rejects exact duplicate command strings and Runtime executes the authorized command list in order;
+- RUN-145-002 spent 1450.91 seconds in Runtime verification; its one full-suite command ran 1207 tests in 1343.67 seconds, so intrinsic full-suite cost is a separate defect from nested verification duplication;
+- RUN-144-006 showed the Git-heavy `test_operator.py + test_authoring_ingress.py + test_publication.py` group consuming 1192.47 seconds for 378 tests while the full 1222-test suite consumed 1578.39 seconds, identifying the control-plane Git fixture harness as the dominant observed hotspot;
+- production-shaped Git boundary coverage must remain real where Git ancestry, refs, remotes, transport, publication, or race semantics are under test; optimization must not achieve speed by adding skips/xfails, deselecting canonical coverage, broadly mocking Git, weakening fail-closed gates, or merely increasing timeouts;
+- common immutable Git baselines may be reused only when every test retains isolated mutable worktrees/remotes/refs;
+- serial harness acceleration must be measured before parallel execution is accepted, and any worker count must be chosen from deterministic self-host measurements rather than an automatic heuristic;
+- long verification must be isolated from unrelated mutable control-checkout movement so valid candidate verification is not discarded merely because an independent planning/control mutation advances the shared checkout.
+
+The verification foundation is therefore a prerequisite before BP-3 begins, after BP-1 correctness and BP-2 attribution hardening.
+
+### BP-V1 — Verification Contract Hardening
+
+Enforce minimum-sufficient canonical verification without moving semantic judgment into Runtime. Repository-owned deterministic policy must reject or normalize known redundant verification coverage such as exact duplicates and known subset/full-suite subsumption on unchanged relevant state, while preserving justified full-suite execution.
+
+Exit gate: TASK/correction verification contracts cannot silently require known redundant proof on the same unchanged subject; full-suite use has an explicit bounded reason; Runtime remains deterministic and evidence-preserving.
+
+### BP-V2 — Full-Suite Harness Acceleration
+
+Reduce intrinsic full-suite wall time without reducing the canonical test population or weakening production-shaped Git semantics. Profile the exact Windows self-host baseline, eliminate repeated construction of equivalent Git baselines, separate pure semantic tests from Git-boundary integration tests where authority permits, and preserve isolated mutable repositories/remotes/refs per test.
+
+Exit gate: before/after evidence on the same self-host class proves the same canonical semantic coverage with no new skip/xfail/deselect behavior and at least 50% serial full-suite wall-time reduction, or the milestone does not claim performance success.
+
+### BP-V3 — Verification Workspace Isolation
+
+Decouple candidate verification from unrelated movement of the mutable control checkout while preserving exact candidate SHA, clean-state, provenance, Runtime evidence ownership, and fail-closed mutation detection inside the verification subject.
+
+Exit gate: an unrelated authorized planning/control-main advance cannot invalidate an otherwise unchanged verification subject; mutation of the actual verification subject still fails closed.
+
+### BP-V4 — Parallel Verification and Performance Guard
+
+After serial fixture isolation/acceleration is proven, establish bounded parallel full-suite conformance and verification-cost observability. Worker count must be selected from deterministic measurements on the supported self-host class, and performance telemetry must surface material regression without becoming semantic completion authority.
+
+Exit gate: parallel execution preserves the same canonical test population and deterministic evidence semantics, is free of cross-test mutable-state sharing, and demonstrates a measured improvement over the optimized serial baseline.
+
 ### BP-3 — Brain Context Foundation
 
 Add transient Work Context projection, thin Flow Resolver, and repository-owned Flow Cards by composing existing Brain Sync, Unified State, roadmap and canonical lineage.
@@ -301,6 +344,10 @@ Exit gate: no downstream repository is silently retargeted to mutable AIOS-renew
 BP-0 Architecture Baseline
   -> BP-1 PRIMARY Exact Intent Binding v2
   -> BP-2 Operational Attribution v2
+  -> BP-V1 Verification Contract Hardening
+  -> BP-V2 Full-Suite Harness Acceleration
+  -> BP-V3 Verification Workspace Isolation
+  -> BP-V4 Parallel Verification and Performance Guard
   -> BP-3 Brain Context Foundation
   -> BP-4 Decision Packet Compiler
   -> BP-5 Brain Provider Protocol
@@ -343,3 +390,10 @@ The architecture is additive and versioned above frozen Kernel v0.1 wherever pos
 ## 19. BP-0 decision
 
 BP-0 is Human-approved as the planning baseline. This approval authorizes canonical roadmap planning for the Brain Portability track. It does not itself implement BP-1 through BP-9, does not claim any engineering milestone complete, does not authorize Executor mutation outside future TASK contracts, and does not alter frozen Kernel v0.1 semantics.
+
+
+## 20. TA-0 / TA-1 decision
+
+TA-0 (Verification Architecture Audit) and TA-1 (Full-Suite Performance Audit) are Human-approved planning inputs as of 2026-09-20. Their approval inserts BP-V1 through BP-V4 between BP-2 and BP-3. BP-1 / TASK-130 remains the unique current NEXT implementation milestone; no BP-V implementation TASK is authored by this planning decision.
+
+The prior Performance Closure lineage remains immutable historical engineering truth. This decision records a prospective closure-completeness follow-up: test-surface decomposition and performance observation were useful, but current observed evidence requires additional deterministic verification-contract enforcement, intrinsic full-suite harness acceleration, verification-workspace isolation, and measured parallel/performance hardening before provider-driven zero-touch work proceeds.
