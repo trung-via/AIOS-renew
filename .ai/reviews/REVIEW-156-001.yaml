@@ -1,0 +1,44 @@
+review_id: REVIEW-156-001
+reviewed_sha: 96364eb99c0dc63e0fa1d4aafc9cdac5dbf795c5
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings:
+- id: FINDING-156-001
+  basis: AC6
+  action: CODE_FIX
+  location: src/aios_renew/operator.py::accept_candidate/_accept_candidate_impl and
+    tests/test_operator.py
+  issue: RUN-156-001 correctly isolates canonical verification for the shared RuntimeCompletion
+    path and Runtime evidence is green (356 passed; git diff --check passed). However
+    DIRECT_CANDIDATE does not bind its RuntimeCompletion into the _RunAttempt and
+    its outer exception path calls _persist_and_transport_failure without attempt.interruption_phase
+    or attempt.verification_subject_sha. If the control checkout moves after the isolated
+    verification subject is materialized and DIRECT_CANDIDATE verification then fails,
+    persist_failure correctly infers phase VERIFICATION from the RuntimeVerificationError
+    cause but receives no exact verification_subject_sha, so it falls back to the
+    current mutable control HEAD for failed_head_sha/changed-files attribution. This
+    violates AC6 exact verification-stage FAILURE binding and AC3's requirement that
+    DIRECT_CANDIDATE obtain the same isolation property as the other completion flows.
+    The new regressions cover PRIMARY/remediation subject mutation and a Runtime-level
+    explicit verification_subject_sha case, but do not exercise this DIRECT_CANDIDATE
+    failure path.
+  expected: Keep the reviewed isolation design. In DIRECT_CANDIDATE, retain the RuntimeCompletion
+    object, bind it to the existing _RunAttempt before complete(), and propagate attempt.interruption_phase
+    plus attempt.verification_subject_sha through the direct-candidate exception persistence
+    path just as PRIMARY/REMEDIATION/REPAIR/recovery now do. Add a deterministic production-shaped
+    regression where a direct candidate's control HEAD moves after verification-subject
+    materialization and verification fails; assert FAILURE.phase is VERIFICATION and
+    FAILURE.failed_head_sha/changed-files remain bound to the exact candidate rather
+    than the moved control HEAD. Do not widen scope, change Reviewer/Publisher semantics,
+    weaken RepositoryLock, or add concurrency/retry/routing behavior.
