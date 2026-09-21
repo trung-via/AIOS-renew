@@ -48,6 +48,7 @@ def test_real_git_sandboxes_isolate_all_writable_state(
         tmp_path / "sandbox-b" / "upstream.git"
     )
     assert (repo_a / ".git").resolve() != (repo_b / ".git").resolve()
+    assert git(repo_a, "rev-parse", "HEAD") != git(repo_b, "rev-parse", "HEAD")
 
     (repo_a / "README.md").write_text(
         "# sandbox A worktree mutation\n", encoding="utf-8"
