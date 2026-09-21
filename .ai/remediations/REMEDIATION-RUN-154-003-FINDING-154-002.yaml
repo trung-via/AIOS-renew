@@ -1,0 +1,23 @@
+finding_id: FINDING-154-002
+action: CODE_FIX
+reviewed_sha: fee0adcef39b130b549b5a126dae2e7f9abf3c54
+modification_scope:
+- tests/git_fixture_support.py
+- tests/operator_test_support.py
+- tests/test_authoring_ingress.py
+- tests/test_publication.py
+- tests/test_review_transport.py
+- tests/test_git_fixture_isolation.py
+- tests/conftest.py
+verification:
+  policy: minimum-sufficient-v1
+  affected:
+  - python -m pytest --collect-only -q
+  - python -m pytest -q
+  - git diff --check
+  full_suite_reason: The remediation changes shared test-only Git fixture/plumbing
+    behavior used across the canonical suite and must re-prove the exact 1581-node
+    population, real-Git semantic boundary conformance, writable-state isolation,
+    semantic green status, and the BP-V2 serial timing gate on the same Windows self-host
+    class.
+constraints: []
