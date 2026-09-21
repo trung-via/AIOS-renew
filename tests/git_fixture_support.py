@@ -9,9 +9,9 @@ from __future__ import annotations
 import atexit
 import hashlib
 import itertools
-import json
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import tempfile
 from threading import Lock
@@ -25,15 +25,6 @@ _cache_lock = Lock()
 _instance_counter = itertools.count()
 
 
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(
-        ("git", "-C", str(repo), *args),
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-
-
 def _key(
     files: Mapping[str, str | bytes],
     *,
@@ -42,12 +33,8 @@ def _key(
     commit_message: str,
     remote_head_main: bool,
 ) -> str:
+    del user_name, user_email, commit_message, remote_head_main
     digest = hashlib.sha256()
-    settings = json.dumps(
-        [user_name, user_email, commit_message, remote_head_main],
-        separators=(",", ":"),
-    ).encode()
-    digest.update(settings)
     for name, value in sorted(files.items()):
         digest.update(name.encode("utf-8"))
         digest.update(b"\0")
@@ -65,39 +52,120 @@ def _build_template(
     commit_message: str,
     remote_head_main: bool,
 ) -> None:
-    repo = template / "repo"
-    remote = template / "upstream.git"
-    repo.mkdir(parents=True)
-    _git(repo, "init", "--quiet")
-    _git(repo, "config", "user.name", user_name)
-    _git(repo, "config", "user.email", user_email)
-    _git(repo, "branch", "-M", "main")
+    """Build immutable object material without starting Git processes.
+
+    Git's loose-object and tree formats are stable boundary formats.  Producing
+    the baseline objects directly avoids init/config/add/commit/push process
+    startup for every distinct fixture shape; Git still performs all behavior
+    exercised by the tests against the materialized repositories.
+    """
+
+    del user_name, user_email, commit_message, remote_head_main
+    objects = template / "objects"
+    objects.mkdir(parents=True)
+    tree: dict[str, object] = {}
     for name, value in files.items():
+        parts = Path(name).as_posix().split("/")
+        node = tree
+        for part in parts[:-1]:
+            child = node.setdefault(part, {})
+            if not isinstance(child, dict):
+                raise ValueError(f"fixture path collision at {name}")
+            node = child
+        body = value.encode("utf-8") if isinstance(value, str) else value
+        node[parts[-1]] = bytes.fromhex(_write_object(objects, "blob", body))
+
+    tree_sha = _write_tree(objects, tree)
+    (template / "tree").write_text(tree_sha, encoding="ascii")
+
+
+def _write_tree(objects: Path, entries: Mapping[str, object]) -> str:
+    body = bytearray()
+    ordered: list[tuple[bytes, bool, bytes]] = []
+    for name, value in entries.items():
+        encoded_name = name.encode("utf-8")
+        is_tree = isinstance(value, dict)
+        object_id = (
+            bytes.fromhex(_write_tree(objects, value))
+            if is_tree
+            else value
+        )
+        if not isinstance(object_id, bytes):
+            raise TypeError(f"invalid fixture tree entry: {name}")
+        ordered.append((encoded_name, is_tree, object_id))
+    ordered.sort(key=lambda entry: entry[0] + (b"/" if entry[1] else b""))
+    for name, is_tree, object_id in ordered:
+        body.extend(b"40000 " if is_tree else b"100644 ")
+        body.extend(name)
+        body.append(0)
+        body.extend(object_id)
+    return _write_object(objects, "tree", bytes(body))
+
+
+def _write_index(repo: Path, files: Mapping[str, str | bytes]) -> None:
+    """Write a v2 index whose stat data already matches the new worktree."""
+
+    entries = bytearray()
+    for name in sorted(files, key=lambda item: item.encode("utf-8")):
         path = repo / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(value, bytes):
-            path.write_bytes(value)
-        else:
-            path.write_text(value, encoding="utf-8")
-    _git(repo, "add", ".")
-    _git(repo, "commit", "--quiet", "-m", commit_message)
-    subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
-    # A relative URL remains correct after the complete template is copied.
-    _git(repo, "remote", "add", "origin", "../upstream.git")
-    _git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
-    if remote_head_main:
-        _git(remote, "symbolic-ref", "HEAD", "refs/heads/main")
-    (template / "tree").write_text(
-        _git(repo, "rev-parse", "HEAD^{tree}"), encoding="ascii"
-    )
+        stat = path.stat()
+        value = files[name]
+        body = value.encode("utf-8") if isinstance(value, str) else value
+        object_id = bytes.fromhex(
+            hashlib.sha1(f"blob {len(body)}\0".encode("ascii") + body).hexdigest()
+        )
+        encoded_name = name.encode("utf-8")
+        fixed = struct.pack(
+            "!10L20sH",
+            int(stat.st_ctime) & 0xFFFFFFFF,
+            stat.st_ctime_ns % 1_000_000_000,
+            int(stat.st_mtime) & 0xFFFFFFFF,
+            stat.st_mtime_ns % 1_000_000_000,
+            stat.st_dev & 0xFFFFFFFF,
+            stat.st_ino & 0xFFFFFFFF,
+            0o100644,
+            getattr(stat, "st_uid", 0) & 0xFFFFFFFF,
+            getattr(stat, "st_gid", 0) & 0xFFFFFFFF,
+            stat.st_size & 0xFFFFFFFF,
+            object_id,
+            min(len(encoded_name), 0xFFF),
+        )
+        entry = fixed + encoded_name + b"\0"
+        entries.extend(entry)
+        entries.extend(b"\0" * (-len(entry) % 8))
+    content = b"DIRC" + struct.pack("!2L", 2, len(files)) + entries
+    (repo / ".git" / "index").write_bytes(content + hashlib.sha1(content).digest())
+
+
+def _repo_config(remote: Path, user_name: str, user_email: str) -> str:
+    return f"""[core]
+\trepositoryformatversion = 0
+\tfilemode = false
+\tbare = false
+\tlogallrefupdates = true
+\tautocrlf = true
+[user]
+\tname = {user_name}
+\temail = {user_email}
+[remote \"origin\"]
+\turl = {remote.as_posix()}
+\tfetch = +refs/heads/*:refs/remotes/origin/*
+[branch \"main\"]
+\tremote = origin
+\tmerge = refs/heads/main
+[gc]
+\tauto = 0
+"""
 
 
 def _materialize_layout(
     *,
-    template: Path,
     repo: Path,
     remote: Path,
     files: Mapping[str, str | bytes],
+    user_name: str,
+    user_email: str,
+    remote_head_main: bool,
 ) -> None:
     """Create only the writable layout required by an ordinary real Git repo."""
 
@@ -121,12 +189,20 @@ def _materialize_layout(
         else:
             path.write_text(value, encoding="utf-8")
 
-    template_repo_git = template / "repo" / ".git"
-    shutil.copyfile(template_repo_git / "HEAD", git_dir / "HEAD")
-    shutil.copyfile(template_repo_git / "index", git_dir / "index")
-    shutil.copyfile(template_repo_git / "config", git_dir / "config")
-    shutil.copyfile(template / "upstream.git" / "HEAD", remote / "HEAD")
-    shutil.copyfile(template / "upstream.git" / "config", remote / "config")
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="ascii")
+    (git_dir / "config").write_text(
+        _repo_config(remote, user_name, user_email), encoding="utf-8"
+    )
+    _write_index(repo, files)
+    remote_head = "main" if remote_head_main else "master"
+    (remote / "HEAD").write_text(
+        f"ref: refs/heads/{remote_head}\n", encoding="ascii"
+    )
+    (remote / "config").write_text(
+        "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n"
+        "\tbare = true\n[gc]\n\tauto = 0\n",
+        encoding="utf-8",
+    )
 
 
 def _write_alternate(objects: Path, template_objects: Path) -> None:
@@ -208,9 +284,9 @@ def materialize_git_baseline(
 ) -> tuple[Path, Path, str]:
     """Copy an equivalent real-Git baseline into an isolated sandbox.
 
-    No alternates, linked worktrees, hardlinks, shared refs, or shared config are
-    used.  The process-local template only avoids repeating Git initialization,
-    object creation, and the initial push for equivalent baselines.
+    No linked worktrees, hardlinks, shared refs, or shared config are used.  A
+    process-local immutable object baseline avoids repeated Git construction;
+    each sandbox retains its own writable object directory and Git state.
     """
 
     cache_key = _key(
@@ -237,22 +313,18 @@ def materialize_git_baseline(
     repo = root / "repo"
     remote = root / "upstream.git"
     _materialize_layout(
-        template=template,
         repo=repo,
         remote=remote,
         files=files,
+        user_name=user_name,
+        user_email=user_email,
+        remote_head_main=remote_head_main,
     )
     _write_alternate(
-        repo / ".git" / "objects", template / "repo" / ".git" / "objects"
+        repo / ".git" / "objects", template / "objects"
     )
     _write_alternate(
-        remote / "objects", template / "upstream.git" / "objects"
-    )
-    config_path = repo / ".git" / "config"
-    config = config_path.read_text(encoding="utf-8")
-    config_path.write_text(
-        config.replace("url = ../upstream.git", f"url = {remote.as_posix()}"),
-        encoding="utf-8",
+        remote / "objects", template / "objects"
     )
     head_sha = _materialize_root_commit(
         repo=repo,
