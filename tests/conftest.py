@@ -15,11 +15,9 @@ def isolate_runtime_restart_marker() -> None:
     previous_marker = os.environ.pop(marker, None)
     git_environment = {
         "GIT_OPTIONAL_LOCKS": "0",
-        # Every fixture has complete repository-local identity/configuration.
-        # Avoid re-probing system/global config and attributes for each of the
-        # thousands of short-lived, test-only Git processes on Windows.
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
+        # System attributes are not part of the test fixtures.  Keep ordinary
+        # system/global config resolution intact: historical and temporary
+        # repositories may rely on it for Git identity and other semantics.
         "GIT_ATTR_NOSYSTEM": "1",
     }
     previous_git_environment = {

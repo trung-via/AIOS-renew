@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -98,3 +99,48 @@ def test_real_git_sandboxes_isolate_all_writable_state(
     assert runtime_after_a["locks/executor.lock"].strip() == b"sandbox-a-lock"
     assert runtime_after_a["runs/RUN-ISOLATION-A.json"].strip() == b'{"sandbox":"a"}'
     assert _runtime_files(repo_b) == runtime_before_b
+
+
+def test_fast_materialization_supports_real_git_and_immutable_object_reuse(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path / "sandbox")
+
+    baseline = git(repo, "rev-parse", "HEAD")
+    assert git(repo, "cat-file", "-t", baseline) == "commit"
+    assert git(repo, "show", f"{baseline}:README.md") == "# operator test"
+
+    (repo / "ordinary-commit.txt").write_text(
+        "committed by real Git\n", encoding="utf-8"
+    )
+    git(repo, "add", "ordinary-commit.txt")
+    git(repo, "commit", "--quiet", "-m", "ordinary real Git commit")
+    committed = git(repo, "rev-parse", "HEAD")
+    assert committed != baseline
+    assert git(repo, "show", f"{committed}:ordinary-commit.txt") == (
+        "committed by real Git"
+    )
+
+    source = tmp_path / "source-objects"
+    destination = tmp_path / "destination-objects"
+    object_id = git_fixture_support._write_object(source, "blob", b"immutable\n")
+    source_path = source / object_id[:2] / object_id[2:]
+    fixed_time = 946684800_000_000_000
+    os.utime(source_path, ns=(fixed_time, fixed_time))
+
+    assert (
+        git_fixture_support._write_object(source, "blob", b"immutable\n")
+        == object_id
+    )
+    assert source_path.stat().st_mtime_ns == fixed_time
+
+    git_fixture_support._copy_loose_objects(source, destination)
+    destination_path = destination / object_id[:2] / object_id[2:]
+    os.utime(destination_path, ns=(fixed_time, fixed_time))
+    git_fixture_support._copy_loose_objects(source, destination)
+    assert destination_path.stat().st_mtime_ns == fixed_time
+
+    destination_path.write_bytes(b"not a Git object")
+    with pytest.raises(ValueError, match="corrupt Git object"):
+        git_fixture_support._copy_loose_objects(source, destination)
+    assert destination_path.read_bytes() == b"not a Git object"

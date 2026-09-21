@@ -218,8 +218,40 @@ def _write_object(objects: Path, kind: str, body: bytes) -> str:
     object_id = hashlib.sha1(payload).hexdigest()
     path = objects / object_id[:2] / object_id[2:]
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(zlib.compress(payload))
+    compressed = zlib.compress(payload)
+    try:
+        with path.open("xb") as stream:
+            stream.write(compressed)
+    except FileExistsError:
+        existing = _validated_loose_object(path, object_id)
+        if existing != payload:
+            raise ValueError(
+                f"inconsistent existing Git object: {object_id}"
+            )
     return object_id
+
+
+def _validated_loose_object(path: Path, object_id: str) -> bytes:
+    """Return a strictly validated loose object without modifying its path."""
+
+    try:
+        compressed = path.read_bytes()
+        decoder = zlib.decompressobj()
+        payload = decoder.decompress(compressed) + decoder.flush()
+        if not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
+            raise ValueError("invalid zlib stream")
+        header, separator, body = payload.partition(b"\0")
+        kind, encoded_size = header.split(b" ", 1)
+        if (
+            separator != b"\0"
+            or kind not in {b"blob", b"tree", b"commit", b"tag"}
+            or int(encoded_size) != len(body)
+            or hashlib.sha1(payload).hexdigest() != object_id
+        ):
+            raise ValueError("invalid Git object payload")
+    except (OSError, ValueError, zlib.error) as exc:
+        raise ValueError(f"corrupt Git object: {object_id}") from exc
+    return payload
 
 
 def _git_dir(repo: Path) -> Path:
@@ -357,8 +389,19 @@ def _copy_loose_objects(source: Path, destination: Path) -> None:
         target_fanout.mkdir(exist_ok=True)
         for obj in fanout.iterdir():
             target = target_fanout / obj.name
-            if obj.is_file() and not target.exists():
-                shutil.copyfile(obj, target)
+            if not obj.is_file():
+                continue
+            object_id = f"{fanout.name}{obj.name}"
+            payload = _validated_loose_object(obj, object_id)
+            try:
+                with target.open("xb") as stream:
+                    stream.write(obj.read_bytes())
+            except FileExistsError:
+                existing = _validated_loose_object(target, object_id)
+                if existing != payload:
+                    raise ValueError(
+                        f"inconsistent existing Git object: {object_id}"
+                    )
 
 
 def commit_fixture_state(
