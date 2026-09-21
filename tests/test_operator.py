@@ -3646,6 +3646,63 @@ def test_control_head_movement_does_not_change_exact_verification_subject(
     assert {item["subject_sha"] for item in stored["evidence"]} == {candidate_sha}
 
 
+def test_direct_candidate_verification_failure_stays_bound_to_candidate_after_control_moves(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    remediation_contract(repo)
+    publish_direct_candidate_lineage(repo, tmp_path)
+    reviewed_sha = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("direct candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "human-selected executor candidate")
+    candidate_head = git(repo, "rev-parse", "HEAD")
+    state = runtime_paths(repo)
+    verification_subjects = []
+    moved_head = None
+
+    def move_control_and_fail_verification(command, **kwargs):
+        nonlocal moved_head
+        subject = kwargs["cwd"]
+        verification_subjects.append(subject)
+        assert git(subject, "rev-parse", "HEAD") == candidate_head
+        assert git(subject, "status", "--porcelain") == ""
+        git(repo, "reset", "--quiet", "--hard", f"{candidate_head}^")
+        (repo / "DIVERGENT.txt").write_text("divergent\n", encoding="utf-8")
+        git(repo, "add", "DIVERGENT.txt")
+        git(repo, "commit", "--quiet", "-m", "divergent control head")
+        moved_head = git(repo, "rev-parse", "HEAD")
+        return subprocess.CompletedProcess(
+            command, returncode=1, stdout=b"", stderr=b"direct candidate verification failed\n"
+        )
+
+    with pytest.raises(OperatorError, match="verification command failed"):
+        accept_candidate(
+            "TASK-101",
+            finding_id="R1",
+            executor="codex",
+            repo=repo,
+            verification_runner=move_control_and_fail_verification,
+        )
+
+    assert moved_head is not None
+    assert git(repo, "rev-parse", "HEAD") == moved_head
+    assert moved_head != candidate_head
+    assert len(set(verification_subjects)) == 1
+    assert not verification_subjects[0].exists()
+    assert not (state.results / "RUN-101-001.json").exists()
+
+    failure_path = state.failures / "RUN-101-001.json"
+    assert failure_path.is_file()
+    failure = json.loads(failure_path.read_text(encoding="utf-8"))
+    assert failure["phase"] == "VERIFICATION"
+    assert failure["failed_head_sha"] == candidate_head
+    assert failure["failed_head_sha"] != moved_head
+    assert failure["candidate"]["changed_files"] == ["OUTPUT.txt"]
+    assert failure["candidate"]["changed_files"] != ["DIVERGENT.txt"]
+    assert failure["candidate"]["dirty"] is False
+
+
 def test_missing_agy_executable_fails_clearly(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
 

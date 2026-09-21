@@ -4333,6 +4333,25 @@ def accept_candidate(
             attempt=attempt,
             admission=admission,
         )
+    except KeyboardInterrupt as original:
+        if (
+            attempt.run_path is not None
+            and not (state.results / attempt.run_path.name).is_file()
+        ):
+            _persist_and_transport_failure(
+                root,
+                task_id=task_id,
+                run_path=attempt.run_path,
+                failure=original,
+                observation_tracker=observation_tracker,
+                interruption_phase=attempt.interruption_phase,
+                verification_subject_sha=attempt.verification_subject_sha,
+            )
+        elif attempt.run_path is None:
+            _persist_and_transport_admission_failure(
+                root, admission=admission, failure=original
+            )
+        raise
     except Exception as original:
         if (
             attempt.run_path is not None
@@ -4344,6 +4363,8 @@ def accept_candidate(
                 run_path=attempt.run_path,
                 failure=original,
                 observation_tracker=observation_tracker,
+                interruption_phase=attempt.interruption_phase,
+                verification_subject_sha=attempt.verification_subject_sha,
             )
         elif attempt.run_path is None:
             _persist_and_transport_admission_failure(
@@ -4550,7 +4571,7 @@ def _accept_candidate_impl(
             if cumulative
             else remediation_completion_policy(execution, direct_candidate=True)
         )
-        completion = RuntimeCompletion(
+        runtime_completion = RuntimeCompletion(
             repo=repo,
             state=state,
             task=task,
@@ -4559,7 +4580,9 @@ def _accept_candidate_impl(
             verification_runner=verification_runner,
             observation_tracker=observation_tracker,
             error_type=OperatorError,
-        ).complete(
+        )
+        attempt.bind_completion(runtime_completion)
+        completion = runtime_completion.complete(
             structural_package,
             completion_policy,
         )
