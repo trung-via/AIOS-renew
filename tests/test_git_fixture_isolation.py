@@ -1,6 +1,10 @@
+import os
 from pathlib import Path
 
+import pytest
+
 from aios_renew.operator import runtime_state_root
+import tests.git_fixture_support as git_fixture_support
 from tests.operator_test_support import git, make_repo
 
 
@@ -15,16 +19,37 @@ def _runtime_files(repo: Path) -> dict[str, bytes]:
     }
 
 
-def test_real_git_sandboxes_isolate_all_writable_state(tmp_path: Path) -> None:
+def test_real_git_sandboxes_isolate_all_writable_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Mutable Git and Runtime state must remain local to each sandbox.
 
     The contract intentionally makes no assertion about Git object-directory
     identity: immutable objects or baseline material may be reused later.
     """
     repo_a = make_repo(tmp_path / "sandbox-a")
-    repo_b = make_repo(tmp_path / "sandbox-b")
+
+    def fail_if_rebuilt(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("equivalent baseline was rebuilt")
+
+    with monkeypatch.context() as cache_guard:
+        cache_guard.setattr(
+            git_fixture_support.subprocess,
+            "run",
+            fail_if_rebuilt,
+        )
+        repo_b = make_repo(tmp_path / "sandbox-b")
     remote_ref = "refs/heads/sandbox-a-only"
     runtime_before_b = _runtime_files(repo_b)
+
+    assert Path(git(repo_a, "remote", "get-url", "origin")) == (
+        tmp_path / "sandbox-a" / "upstream.git"
+    )
+    assert Path(git(repo_b, "remote", "get-url", "origin")) == (
+        tmp_path / "sandbox-b" / "upstream.git"
+    )
+    assert (repo_a / ".git").resolve() != (repo_b / ".git").resolve()
+    assert git(repo_a, "rev-parse", "HEAD") != git(repo_b, "rev-parse", "HEAD")
 
     (repo_a / "README.md").write_text(
         "# sandbox A worktree mutation\n", encoding="utf-8"
@@ -74,3 +99,48 @@ def test_real_git_sandboxes_isolate_all_writable_state(tmp_path: Path) -> None:
     assert runtime_after_a["locks/executor.lock"].strip() == b"sandbox-a-lock"
     assert runtime_after_a["runs/RUN-ISOLATION-A.json"].strip() == b'{"sandbox":"a"}'
     assert _runtime_files(repo_b) == runtime_before_b
+
+
+def test_fast_materialization_supports_real_git_and_immutable_object_reuse(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path / "sandbox")
+
+    baseline = git(repo, "rev-parse", "HEAD")
+    assert git(repo, "cat-file", "-t", baseline) == "commit"
+    assert git(repo, "show", f"{baseline}:README.md") == "# operator test"
+
+    (repo / "ordinary-commit.txt").write_text(
+        "committed by real Git\n", encoding="utf-8"
+    )
+    git(repo, "add", "ordinary-commit.txt")
+    git(repo, "commit", "--quiet", "-m", "ordinary real Git commit")
+    committed = git(repo, "rev-parse", "HEAD")
+    assert committed != baseline
+    assert git(repo, "show", f"{committed}:ordinary-commit.txt") == (
+        "committed by real Git"
+    )
+
+    source = tmp_path / "source-objects"
+    destination = tmp_path / "destination-objects"
+    object_id = git_fixture_support._write_object(source, "blob", b"immutable\n")
+    source_path = source / object_id[:2] / object_id[2:]
+    fixed_time = 946684800_000_000_000
+    os.utime(source_path, ns=(fixed_time, fixed_time))
+
+    assert (
+        git_fixture_support._write_object(source, "blob", b"immutable\n")
+        == object_id
+    )
+    assert source_path.stat().st_mtime_ns == fixed_time
+
+    git_fixture_support._copy_loose_objects(source, destination)
+    destination_path = destination / object_id[:2] / object_id[2:]
+    os.utime(destination_path, ns=(fixed_time, fixed_time))
+    git_fixture_support._copy_loose_objects(source, destination)
+    assert destination_path.stat().st_mtime_ns == fixed_time
+
+    destination_path.write_bytes(b"not a Git object")
+    with pytest.raises(ValueError, match="corrupt Git object"):
+        git_fixture_support._copy_loose_objects(source, destination)
+    assert destination_path.read_bytes() == b"not a Git object"

@@ -28,6 +28,7 @@ from aios_renew.review_transport import (
 from tests.operator_test_support import (
     TASK_SOURCE,
     canonical_result_payload,
+    commit_setup_state,
     git,
     make_repo,
     publish_test_remediation_lineage,
@@ -1268,13 +1269,13 @@ def test_unified_state_delta_binds_repair_of_failed_remediation(
     repo = make_repo(tmp_path)
     reviewed_sha = git(repo, "rev-parse", "HEAD")
     (repo / "OUTPUT.txt").write_text("failed\n", encoding="utf-8")
-    git(repo, "add", "OUTPUT.txt")
-    git(repo, "commit", "--quiet", "-m", "failed correction candidate")
-    failed_sha = git(repo, "rev-parse", "HEAD")
+    failed_sha = commit_setup_state(
+        repo, "OUTPUT.txt", message="failed correction candidate"
+    )
     (repo / "OUTPUT.txt").write_text("repaired\n", encoding="utf-8")
-    git(repo, "add", "OUTPUT.txt")
-    git(repo, "commit", "--quiet", "-m", "repaired correction candidate")
-    repaired_sha = git(repo, "rev-parse", "HEAD")
+    repaired_sha = commit_setup_state(
+        repo, "OUTPUT.txt", message="repaired correction candidate"
+    )
     primary_id = "RUN-101-001"
     failed_remediation_id = "RUN-101-002"
     repair_id = "RUN-101-003"
@@ -1647,14 +1648,15 @@ def test_unified_state_and_preflight_agree_on_cumulative_execution_base_regardle
             TASK_SOURCE.replace("revision: 1", f"revision: {task_revision}"),
             encoding="utf-8",
         )
-        git(repo, "add", ".ai/tasks/TASK-101.yaml")
-        git(repo, "commit", "--quiet", "-m", "bump revision")
+        commit_setup_state(
+            repo, ".ai/tasks/TASK-101.yaml", message="bump revision"
+        )
     head = git(repo, "rev-parse", "HEAD")
 
     (repo / "OUTPUT.txt").write_text("sibling content\n", encoding="utf-8")
-    git(repo, "add", "OUTPUT.txt")
-    git(repo, "commit", "--quiet", "-m", "advance sibling candidate")
-    sibling_sha = git(repo, "rev-parse", "HEAD")
+    sibling_sha = commit_setup_state(
+        repo, "OUTPUT.txt", message="advance sibling candidate"
+    )
 
     primary_id = "RUN-101-001"
     sibling_id = "RUN-101-002"
@@ -2103,9 +2105,9 @@ def test_unified_state_repaired_primary_result_reduces_to_execute_remediation_an
     head = git(repo, "rev-parse", "HEAD")
 
     (repo / "OUTPUT.txt").write_text("repaired candidate content\n", encoding="utf-8")
-    git(repo, "add", "OUTPUT.txt")
-    git(repo, "commit", "--quiet", "-m", "repaired candidate")
-    candidate_sha = git(repo, "rev-parse", "HEAD")
+    candidate_sha = commit_setup_state(
+        repo, "OUTPUT.txt", message="repaired candidate"
+    )
 
     primary_id = "RUN-101-001"
     repair_1_id = "RUN-101-002"
@@ -2381,9 +2383,9 @@ def test_unified_state_task_140_shaped_repaired_primary_with_divergent_main_requ
 
     # Repaired PRIMARY candidate commit on top of head
     (repo / "OUTPUT.txt").write_text("repaired candidate content\n", encoding="utf-8")
-    git(repo, "add", "OUTPUT.txt")
-    git(repo, "commit", "--quiet", "-m", "repaired candidate")
-    candidate_sha = git(repo, "rev-parse", "HEAD")
+    candidate_sha = commit_setup_state(
+        repo, "OUTPUT.txt", message="repaired candidate"
+    )
 
     primary_id = "RUN-101-001"
     repair_1_id = "RUN-101-002"
@@ -2607,9 +2609,9 @@ def _setup_divergent_integrated_topology(tmp_path: Path, monkeypatch: pytest.Mon
     head = git(repo, "rev-parse", "HEAD")
 
     (repo / "OUTPUT.txt").write_text("repaired candidate content\n", encoding="utf-8")
-    git(repo, "add", "OUTPUT.txt")
-    git(repo, "commit", "--quiet", "-m", "repaired candidate")
-    candidate_sha = git(repo, "rev-parse", "HEAD")
+    candidate_sha = commit_setup_state(
+        repo, "OUTPUT.txt", message="repaired candidate"
+    )
 
     primary_id = "RUN-101-001"
     repair_1_id = "RUN-101-002"

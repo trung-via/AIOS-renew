@@ -6,6 +6,11 @@ import subprocess
 import aios_renew.operator as operator_module
 from aios_renew.operator import runtime_paths, runtime_state_root
 from aios_renew.review_transport import transport_post_pass
+from tests.git_fixture_support import (
+    commit_fixture_state,
+    materialize_git_baseline,
+    read_git_ref,
+)
 
 TASK_SOURCE = """
 task_id: TASK-101
@@ -46,6 +51,8 @@ READONLY_MULTI_ACCEPTANCE_TASK_SOURCE = MULTI_ACCEPTANCE_TASK_SOURCE.replace(
 )
 
 def git(repo: Path, *args: str) -> str:
+    if args == ("rev-parse", "HEAD"):
+        return read_git_ref(repo)
     return subprocess.run(
         ("git", "-C", str(repo), *args),
         capture_output=True,
@@ -58,28 +65,43 @@ def make_repo(
     *,
     task_source: str | None = TASK_SOURCE,
 ) -> Path:
-    repo = root / "repo"
-    repo.mkdir(parents=True, exist_ok=True)
-    git(repo, "init", "--quiet")
-    git(repo, "config", "user.name", "AIOS Operator Test")
-    git(repo, "config", "user.email", "operator@example.invalid")
-    git(repo, "branch", "-M", "main")
-    (repo / "README.md").write_text("# operator test\n", encoding="utf-8")
+    files: dict[str, str] = {"README.md": "# operator test\n"}
     if task_source is not None:
-        task_dir = repo / ".ai" / "tasks"
-        task_dir.mkdir(parents=True, exist_ok=True)
-        (task_dir / "TASK-101.yaml").write_text(task_source, encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "--quiet", "-m", "baseline")
-    upstream = root / "upstream.git"
-    subprocess.run(("git", "init", "--bare", "--quiet", str(upstream)), check=True)
-    git(repo, "remote", "add", "origin", str(upstream))
-    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
-    subprocess.run(
-        ("git", "-C", str(upstream), "symbolic-ref", "HEAD", "refs/heads/main"),
-        check=True,
+        files[".ai/tasks/TASK-101.yaml"] = task_source
+    repo, _, _ = materialize_git_baseline(
+        root,
+        files=files,
+        user_name="AIOS Operator Test",
+        user_email="operator@example.invalid",
+        commit_message="baseline",
+        remote_head_main=True,
     )
     return repo
+
+
+def commit_setup_state(
+    repo: Path,
+    *paths: str,
+    message: str,
+    user_name: str = "AIOS Operator Test",
+    user_email: str = "operator@example.invalid",
+) -> str:
+    """Materialize an ordinary commit used only as pre-test fixture state.
+
+    Callers must keep Git operations real when the command itself, index/dirty
+    behavior, refs, remotes, ancestry failure, or transport is under test.
+    Production code still observes the real objects, index, and refs created
+    here through its normal Git boundary.
+    """
+
+    return commit_fixture_state(
+        repo,
+        paths=paths,
+        message=message,
+        user_name=user_name,
+        user_email=user_email,
+    )
+
 
 def canonical_result_payload(
     run_id: str,
@@ -214,16 +236,19 @@ def publish_upstream(
         )
     else:
         git(publisher, "pull", "--quiet")
-    git(publisher, "config", "user.name", "AIOS Publisher")
-    git(publisher, "config", "user.email", "publisher@example.invalid")
     for name, content in files.items():
         path = publisher / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-    git(publisher, "add", ".")
-    git(publisher, "commit", "--quiet", "-m", message)
-    git(publisher, "push", "--quiet")
-    return git(publisher, "rev-parse", "HEAD")
+    return commit_fixture_state(
+        publisher,
+        paths=(".",),
+        message=message,
+        user_name="AIOS Publisher",
+        user_email="publisher@example.invalid",
+        remote=repo.parent / "upstream.git",
+        remote_ref="refs/heads/main",
+    )
 
 def publish_test_remediation_lineage(
     repo: Path,
@@ -285,8 +310,6 @@ def publish_test_remediation_lineage(
         ("git", "clone", "--quiet", str(root / "upstream.git"), str(author)),
         check=True,
     )
-    git(author, "config", "user.name", "AIOS Reviewer Test")
-    git(author, "config", "user.email", "reviewer@example.invalid")
     review_dir = author / ".ai" / "reviews"
     remediation_dir = author / ".ai" / "remediations"
     review_dir.mkdir(parents=True, exist_ok=True)
@@ -335,10 +358,16 @@ constraints:
 """,
         encoding="utf-8",
     )
-    git(author, "add", ".ai")
-    git(author, "commit", "--quiet", "-m", "canonical review and remediation")
     ref = f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"
-    git(author, "push", "--quiet", "origin", f"HEAD:{ref}")
+    commit_fixture_state(
+        author,
+        paths=(".ai",),
+        message="canonical review and remediation",
+        user_name="AIOS Reviewer Test",
+        user_email="reviewer@example.invalid",
+        remote=root / "upstream.git",
+        remote_ref=ref,
+    )
     return ref
 
 def _runtime_bytes(repo: Path) -> dict[str, bytes]:
