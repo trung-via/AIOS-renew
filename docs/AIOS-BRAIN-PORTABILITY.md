@@ -282,7 +282,7 @@ Exit gate: TASK/correction verification contracts cannot silently require known 
 
 Reduce intrinsic full-suite wall time without reducing the canonical test population or weakening production-shaped Git semantics. Profile the exact Windows self-host baseline, eliminate repeated construction of equivalent Git baselines, separate pure semantic tests from Git-boundary integration tests where authority permits, and preserve isolated mutable repositories/remotes/refs per test.
 
-Exit gate: before/after evidence on the same self-host class proves the same canonical semantic coverage with no new skip/xfail/deselect behavior and at least 50% serial full-suite wall-time reduction, or the milestone does not claim performance success.
+Exit gate: before/after evidence on the same self-host class proves the same canonical semantic coverage with no new skip/xfail/deselect behavior, and one bounded serial-harness saturation pass has exhausted the clearly safe setup-only optimization surface while preserving production-shaped real-Git boundaries. Reviewer owns the saturation judgment from canonical evidence. The historical 50% / 1170.145 second estimate from the earlier audit and TASK-154 r1 remains useful planning context but is not a mandatory completion threshold and must not be pursued by weakening semantics or by unbounded optimization.
 
 ### BP-V3 — Verification Workspace Isolation
 

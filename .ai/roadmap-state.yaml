@@ -178,7 +178,23 @@ sequence:
   - id: bp-v2-full-suite-harness-acceleration
     status: NEXT
     task_id: TASK-154
-    task_revision: 1
+    task_revision: 2
+    planning_amendment:
+      approved_on: "2026-09-21"
+      authority: HUMAN_BRAIN_PLANNING
+      basis:
+        run_id: RUN-154-006
+        review_id: REVIEW-154-006
+        reviewed_sha: "332c3ce111c0e275df2c573f89f4df620c785fb8"
+        serial_full_suite_seconds: 1728.84
+      note: >-
+        Human clarified prospectively that the prior 50 percent / 1170.145 second
+        figure was an audit estimate rather than a mandatory completion threshold.
+        BP-V2 now closes only after one bounded caller-aware serial saturation pass
+        preserves canonical coverage and real-Git semantics and Reviewer judges that
+        remaining material serial cost is required semantic-boundary work or that no
+        further clearly safe setup-only optimization is justified. Historical TASK-154
+        r1 and REVIEW-154-006 remain immutable evidence and are not reinterpreted.
     baseline_completed_by:
       task_id: TASK-152
       task_revision: 2
