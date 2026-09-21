@@ -1,0 +1,31 @@
+review_id: REVIEW-154-003
+reviewed_sha: fee0adcef39b130b549b5a126dae2e7f9abf3c54
+mode: DELTA
+verdict: CHANGES_REQUIRED
+prior_finding_id: FINDING-154-001
+acceptance:
+  AC2: FAIL
+findings:
+- id: FINDING-154-002
+  basis: AC2
+  action: CODE_FIX
+  location: authorized TASK-154 test-harness scope, especially high-frequency fixture-state
+    Git helpers in tests/operator_test_support.py and the shared Git fixture support
+  issue: RUN-154-003 preserves correctness and the exact baseline test population
+    but still misses the explicit BP-V2 performance gate. Canonical Runtime evidence
+    collected the exact same 1581 node IDs as RUN-152-003, passed all 1581 tests,
+    and passed git diff --check. The serial full suite took 1862.49 seconds versus
+    the 2340.29 second canonical baseline, about 20.42 percent faster overall, but
+    remains 692.345 seconds above the required 1170.145 second threshold. The remediation
+    improved RUN-154-002 by about 234.11 seconds, yet it still does not establish
+    the required at-least-50-percent acceleration.
+  expected: Do not claim BP-V2 success and do not immediately repeat blind baseline-materialization
+    tuning. Before authoring the next correction, re-audit the remaining serial cost
+    within TASK-154's authorized scope, with particular attention to high-frequency
+    test-only Git process spawning and fixture-state construction that still occurs
+    after baseline materialization. Any subsequent CODE_FIX must preserve the exact
+    1581 baseline node IDs, real-Git semantic boundaries, unrelated-history and writable-state
+    isolation, no production changes, no parallelism, no skips/xfails/deselection,
+    no timeout inflation, and no persistent cross-run result cache. Runtime must again
+    prove a green serial full suite at no more than 1170.145 seconds on the same self-host
+    class.
