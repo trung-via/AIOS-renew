@@ -1,0 +1,158 @@
+task_id: TASK-153
+revision: 1
+
+goal: >
+  Restore the canonical serial full suite to compatibility with already-published
+  PRIMARY exact-intent v2, Operational Attribution v2, and Verification Contract v1
+  semantics so BP-V2 can obtain a valid green pre-optimization baseline from TASK-152
+  without weakening production behavior or test coverage.
+
+problem: >
+  TASK-152 r2 RUN-152-002 reached Runtime verification on the standard Windows self-host
+  path. Collection succeeded with 1581 tests, but the full suite failed with 11 failures
+  and 1570 passes in 2026.73 seconds. The TASK-152 candidate changed only
+  tests/test_git_fixture_isolation.py and the failures are outside that file. Audit shows
+  the failures are stale synthetic tests/harness assumptions that predate already-published
+  contract changes: v1 PRIMARY carrier fixtures no longer reach executor validation under
+  exact-intent v2; the Antigravity smoke handoff serializes verification.policy=None and
+  cannot round-trip under Verification Contract v1; one synchronization test double does
+  not admit the current rev-parse --git-dir observation; one operator ingress fixture authors
+  a new TASK without minimum-sufficient-v1; and one remote-surface fixture invokes PRIMARY
+  dispatch without the required v2 TASK authorization tuple.
+
+assumptions:
+  - Canonical main at TASK-153 authoring is c94849ea8fa13f057a22d7daab5466e57d0a4b58.
+  - BP-V2 remains the active Human/Brain planning priority and TASK-152 r2 remains the intended baseline task.
+  - >
+    RUN-152-002 is immutable canonical FAILURE at VERIFICATION with failed_head_sha
+    e7b51e1cd88bc0f62fc36e26f9d81ffd11de5a3c. Its collection evidence reports
+    1581 tests collected in 0.60s; its full-suite evidence reports 11 failed,
+    1570 passed in 2026.73s.
+  - >
+    The 11 failures are compatibility failures in synthetic tests/harness code, not evidence
+    that TASK-152's isolation test violated its authorized scope or semantics.
+  - >
+    Published production semantics from TASK-130, TASK-149, TASK-150, and TASK-151 are
+    authoritative. This maintenance task adapts tests/harnesses to those semantics; it does
+    not relax or reinterpret them.
+  - >
+    TASK-153 does not establish the BP-V2 before baseline. After TASK-153 is reviewed and
+    published, TASK-152 r2 must execute again and obtain its own green canonical collection
+    and full-suite evidence.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-152.yaml
+    - refs/heads/aios/failure/RUN-152-002
+    - refs/heads/aios/failure-artifacts/RUN-152-002
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/task.py
+    - scripts/antigravity_smoke.py
+    - tests/test_antigravity_smoke.py
+    - tests/test_antigravity_minimax_adapter.py
+    - tests/test_dispatch_reconciliation.py
+    - tests/test_operator.py
+    - tests/test_remote_surface.py
+  modify:
+    - scripts/antigravity_smoke.py
+    - tests/test_antigravity_smoke.py
+    - tests/test_antigravity_minimax_adapter.py
+    - tests/test_dispatch_reconciliation.py
+    - tests/test_operator.py
+    - tests/test_remote_surface.py
+
+non_goals:
+  - Modify any src/aios_renew production module or GitHub workflow.
+  - Change PRIMARY exact-intent v2 selectors, dispatch authorization, Operational Receipt v2, or admission semantics.
+  - Change Verification Contract v1, prospective authoring activation, Runtime verification, EVIDENCE ownership, or completion gates.
+  - Modify TASK-152, its failed candidate, or its immutable FAILURE lineage.
+  - Add or begin BP-V2 fixture acceleration, immutable baseline reuse, Git subprocess reduction, workspace isolation, or parallel verification.
+  - Remove, skip, xfail, deselect, rename away, or weaken any failing test merely to make the suite green.
+  - Add broad mocks that bypass the production contract the test is intended to exercise.
+  - Treat RUN-152-002 timing as the official BP-V2 green baseline.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      The maintenance delta must remain entirely within scope.modify. No production source
+      or workflow behavior may change.
+    - >
+      Update the antigravity-minimax remote-carrier rejection test so each request first
+      satisfies the current carrier's required version/framing/selectors and then fails
+      specifically because antigravity-minimax is not admitted on the remote carrier surface.
+      Do not weaken the carrier parser or supported-executor allowlist.
+    - >
+      Update the Antigravity smoke harness so its synthetic TASK round-trips through current
+      canonical TASK serialization/validation without verification.policy=None becoming an
+      invalid authored field. Preserve the smoke's real-Git behavior and negative repository/
+      ResultPackage assertions. Prefer explicit current TASK semantics over parser exceptions
+      or special-case compatibility bypasses.
+    - >
+      Update the synchronization restart test double only as narrowly as needed to model the
+      current read-only Git observations, including rev-parse --git-dir, while preserving
+      fail-on-unexpected-Git behavior for other invocations.
+    - >
+      Update the operator ingress synthetic TASK fixture to satisfy the published prospective
+      minimum-sufficient-v1 authoring contract. Do not weaken Authoring Ingress validation.
+    - >
+      Update the remote-surface dispatch fixture to supply the complete valid version-2 TASK
+      authorization tuple required by the published dispatch contract. Do not make the
+      production tuple optional.
+    - >
+      Add or adjust assertions where useful so these fixtures explicitly guard the current
+      contract rather than merely avoiding failure.
+    - >
+      No skips, xfails, deselection, timeout inflation, result caching, parallelism, broad Git
+      mocking, or test-population reduction is permitted.
+    - >
+      Do not modify files outside scope.modify and do not push from Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The candidate changes only the six authorized synthetic test/harness files and changes
+      no production source, workflow, TASK, Runtime, dispatch, verification, review, or
+      publication semantics.
+  - id: AC2
+    condition: >
+      The antigravity-minimax remote-carrier test uses structurally valid current requests
+      and still proves that the remote carrier rejects antigravity-minimax specifically at
+      the executor admission boundary.
+  - id: AC3
+    condition: >
+      The Antigravity smoke synthetic TASK and exported handoff round-trip under the current
+      verification contract, while all positive and negative smoke repository/ResultPackage
+      checks retain their original semantic intent.
+  - id: AC4
+    condition: >
+      The synchronization restart test double admits only the additional current read-only
+      Git observation needed by operator operational projection and continues to fail on
+      unrelated unexpected Git invocations.
+  - id: AC5
+    condition: >
+      The operator ingress fixture authors its synthetic new TASK using
+      minimum-sufficient-v1 without weakening the prospective authoring gate.
+  - id: AC6
+    condition: >
+      The remote-surface dispatch fixture supplies the complete v2 TASK authorization tuple
+      and continues to prove read-only status behavior without weakening dispatch binding.
+  - id: AC7
+    condition: >
+      No test is removed, skipped, xfailed, deselected, broadly mocked, parallelized, or
+      otherwise weakened to obtain a green suite, and TASK-153 makes no BP-V2 performance
+      success or baseline claim.
+
+verification:
+  policy: minimum-sufficient-v1
+  full_suite_reason: >
+    Prove that all compatibility failures exposed by RUN-152-002 are restored without
+    introducing regressions elsewhere before TASK-152 is rerun to establish the BP-V2
+    pre-optimization baseline.
+  required:
+    - python -m pytest -q
+    - git diff --check
