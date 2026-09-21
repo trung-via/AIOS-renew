@@ -1,0 +1,34 @@
+review_id: REVIEW-154-006
+reviewed_sha: 332c3ce111c0e275df2c573f89f4df620c785fb8
+mode: DELTA
+verdict: CHANGES_REQUIRED
+prior_finding_id: FINDING-154-002
+acceptance:
+  AC2: FAIL
+findings:
+- id: FINDING-154-003
+  basis: AC2
+  action: CODE_FIX
+  location: TASK-154 authorized test-harness acceleration scope and BP-V2 serial performance
+    exit gate
+  issue: 'RUN-154-006 is semantically green and preserves the canonical baseline population:
+    Runtime collected 1582 tests, all 1581 RUN-152-003 baseline node IDs remain present
+    with one additional conformance regression, all 1582 tests passed, and git diff
+    --check passed on subject 332c3ce111c0e275df2c573f89f4df620c785fb8. However the
+    serial full suite took 1728.84 seconds. Against the canonical 2340.29 second baseline
+    this is about a 26.13 percent reduction, but it remains 558.695 seconds above
+    the required 1170.145 second BP-V2 threshold. The correctness repair is therefore
+    accepted as evidence, but the existing AC2 performance correction frontier remains
+    unresolved.'
+  expected: Do not claim BP-V2 success or advance BP-V3/BP-V4. Do not immediately
+    repeat another blind fast-fixture micro-optimization. First perform a bounded
+    Brain architecture/scope audit of the remaining serial cost on the green RUN-154-006
+    candidate. Determine whether TASK-154 r1's current seven-file helper/test scope
+    can still plausibly recover the remaining 558.695 seconds while preserving real-Git
+    semantic boundaries, all 1581 baseline node IDs, writable-state isolation, no
+    production changes, no parallelism, no skips/xfails/deselection, no timeout inflation,
+    and no persistent cross-run result cache. If that audit shows the current helper-only
+    scope is insufficient, revise/canonicalize TASK semantics or create the appropriate
+    subsequent bounded task rather than weakening the 1170.145 second gate. Any further
+    candidate must be Runtime-verified green on the same self-host class before this
+    finding can close.
