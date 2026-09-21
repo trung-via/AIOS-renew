@@ -177,6 +177,8 @@ sequence:
       claiming a BP-V2 performance baseline.
   - id: bp-v2-full-suite-harness-acceleration
     status: NEXT
+    task_id: TASK-154
+    task_revision: 1
     baseline_completed_by:
       task_id: TASK-152
       task_revision: 2
