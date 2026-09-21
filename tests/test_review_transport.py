@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 import aios_renew.review_transport as review_transport
-from tests.git_fixture_support import materialize_git_baseline
+from tests.git_fixture_support import (
+    commit_fixture_state,
+    materialize_git_baseline,
+    read_git_ref,
+)
 from aios_renew.review_transport import (
     ReviewTransportError,
     read_remote_task,
@@ -63,6 +67,8 @@ def test_runtime_failure_binding_rejects_candidate_facts_that_cannot_be_repairab
 
 
 def git(repo: Path, *args: str) -> str:
+    if args == ("rev-parse", "HEAD"):
+        return read_git_ref(repo)
     return subprocess.run(
         ("git", "-C", str(repo), *args),
         capture_output=True,
@@ -211,9 +217,13 @@ def test_unified_lifecycle_snapshot_is_bounded_and_read_only(tmp_path: Path) -> 
 
 def commit_candidate(repo: Path, label: str) -> str:
     (repo / "subject.txt").write_text(f"{label}\n", encoding="utf-8")
-    git(repo, "add", "subject.txt")
-    git(repo, "commit", "--quiet", "-m", label)
-    return git(repo, "rev-parse", "HEAD")
+    return commit_fixture_state(
+        repo,
+        paths=("subject.txt",),
+        message=label,
+        user_name="Review Transport Test",
+        user_email="transport@example.invalid",
+    )
 
 
 def write_json(path: Path, value: object) -> bytes:
@@ -988,10 +998,16 @@ def publish_remediation_ref(
             f"finding_id: {finding_id}\naction: CODE_FIX\nreviewed_sha: {reviewed_sha}\nmodification_scope:\n  - subject.txt\naffected_verification:\n  - git status --porcelain\nconstraints:\n  - hard: [c]\n",
             encoding="utf-8",
         )
-    git(repo, "add", ".ai")
-    git(repo, "commit", "--quiet", "-m", f"remediation {source_run_id}-{finding_id}")
     ref = f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"
-    git(repo, "push", "--quiet", "origin", f"HEAD:{ref}")
+    commit_fixture_state(
+        repo,
+        paths=(".ai",),
+        message=f"remediation {source_run_id}-{finding_id}",
+        user_name="Review Transport Test",
+        user_email="transport@example.invalid",
+        remote=repo.parent / "upstream.git",
+        remote_ref=ref,
+    )
     git(repo, "checkout", "--quiet", "main")
     git(repo, "branch", "--quiet", "-D", branch_name)
     return ref

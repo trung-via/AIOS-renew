@@ -8,7 +8,11 @@ import pytest
 import aios_renew.publication as publication_module
 from aios_renew.publication import PublicationError, publish_review_decision
 from aios_renew.review_transport import transport_failure, transport_post_pass
-from tests.git_fixture_support import materialize_git_baseline
+from tests.git_fixture_support import (
+    commit_fixture_state,
+    materialize_git_baseline,
+    read_git_ref,
+)
 
 
 def test_repair_package_uses_integrated_result_base_for_attribution(
@@ -66,6 +70,8 @@ verification:
 
 
 def git(repo: Path, *args: str, check: bool = True) -> str:
+    if check and args == ("rev-parse", "HEAD"):
+        return read_git_ref(repo)
     return subprocess.run(
         ("git", "-C", str(repo), *args),
         capture_output=True,
@@ -180,13 +186,21 @@ def make_lineage(
         (repo / "product.txt").write_text(
             "intermediate candidate\n", encoding="utf-8"
         )
-        git(repo, "add", "product.txt")
-        git(repo, "commit", "--quiet", "-m", "intermediate candidate")
-        intermediate_sha = git(repo, "rev-parse", "HEAD")
+        intermediate_sha = commit_fixture_state(
+            repo,
+            paths=("product.txt",),
+            message="intermediate candidate",
+            user_name="AIOS Publication Test",
+            user_email="publication@example.invalid",
+        )
     (repo / "product.txt").write_text("candidate\n", encoding="utf-8")
-    git(repo, "add", "product.txt")
-    git(repo, "commit", "--quiet", "-m", "candidate")
-    candidate_sha = git(repo, "rev-parse", "HEAD")
+    candidate_sha = commit_fixture_state(
+        repo,
+        paths=("product.txt",),
+        message="candidate",
+        user_name="AIOS Publication Test",
+        user_email="publication@example.invalid",
+    )
     state = root / "state"
     state.mkdir()
     run_path = state / "run.json"
@@ -261,15 +275,14 @@ def make_lineage(
         metadata = repo / ".ai" / "decision.txt"
         metadata.parent.mkdir(parents=True, exist_ok=True)
         metadata.write_text("no review\n", encoding="utf-8")
-    git(repo, "add", ".ai")
-    git(repo, "commit", "--quiet", "-m", "review decision metadata")
-    decision_sha = git(repo, "rev-parse", "HEAD")
-    git(
+    decision_sha = commit_fixture_state(
         repo,
-        "push",
-        "--quiet",
-        "origin",
-        f"HEAD:refs/heads/aios/review-decision/{run_id}",
+        paths=(".ai",),
+        message="review decision metadata",
+        user_name="AIOS Publication Test",
+        user_email="publication@example.invalid",
+        remote=remote,
+        remote_ref=f"refs/heads/aios/review-decision/{run_id}",
     )
     return {
         "repo": repo,
@@ -360,9 +373,13 @@ def make_integrated_remediation_repair_lineage(
     (repo / "product.txt").write_text(
         "repaired integrated remediation\n", encoding="utf-8"
     )
-    git(repo, "add", "product.txt")
-    git(repo, "commit", "--quiet", "-m", "repair integrated remediation")
-    candidate_sha = git(repo, "rev-parse", "HEAD")
+    candidate_sha = commit_fixture_state(
+        repo,
+        paths=("product.txt",),
+        message="repair integrated remediation",
+        user_name="AIOS Publication Test",
+        user_email="publication@example.invalid",
+    )
     repair_run = {
         "run_id": run_id,
         "task": {"id": "TASK-063", "revision": 2},
@@ -419,15 +436,14 @@ findings: []
     review_path = repo / ".ai" / "reviews" / "REVIEW-063-003.yaml"
     review_path.parent.mkdir(parents=True, exist_ok=True)
     review_path.write_text(review, encoding="utf-8")
-    git(repo, "add", ".ai/reviews/REVIEW-063-003.yaml")
-    git(repo, "commit", "--quiet", "-m", "review repaired integrated remediation")
-    decision_sha = git(repo, "rev-parse", "HEAD")
-    git(
+    decision_sha = commit_fixture_state(
         repo,
-        "push",
-        "--quiet",
-        "origin",
-        f"HEAD:refs/heads/aios/review-decision/{run_id}",
+        paths=(".ai/reviews/REVIEW-063-003.yaml",),
+        message="review repaired integrated remediation",
+        user_name="AIOS Publication Test",
+        user_email="publication@example.invalid",
+        remote=remote,
+        remote_ref=f"refs/heads/aios/review-decision/{run_id}",
     )
     return {
         **lineage,
@@ -458,15 +474,14 @@ def _push_repair_authorization(
     path = repo / ".ai" / "transport" / "repair.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(authorization), encoding="utf-8")
-    git(repo, "add", ".ai/transport/repair.json")
-    git(repo, "commit", "--quiet", "-m", "canonical repair authorization")
-    auth_sha = git(repo, "rev-parse", "HEAD")
-    git(
+    auth_sha = commit_fixture_state(
         repo,
-        "push",
-        "--quiet",
-        "origin",
-        f"HEAD:refs/heads/aios/repair/{failed_run_id}",
+        paths=(".ai/transport/repair.json",),
+        message="canonical repair authorization",
+        user_name="AIOS Publication Test",
+        user_email="publication@example.invalid",
+        remote=repo.parent / "upstream.git",
+        remote_ref=f"refs/heads/aios/repair/{failed_run_id}",
     )
     git(repo, "reset", "--hard", "--quiet", subject_sha)
     return auth_sha
@@ -496,15 +511,19 @@ def _push_repair_supersession(
         "failure_artifacts_sha": failure_artifacts_sha,
     }
     supersession_path.write_text(json.dumps(supersession_payload), encoding="utf-8")
-    git(repo, "add", ".ai/transport/repair.json", ".ai/transport/repair-supersession.json")
-    git(repo, "commit", "--quiet", "-m", f"superseding repair authorization r{revision}")
-    supersession_sha = git(repo, "rev-parse", "HEAD")
-    git(
+    supersession_sha = commit_fixture_state(
         repo,
-        "push",
-        "--quiet",
-        "origin",
-        f"HEAD:refs/heads/aios/repair-supersession/{failed_run_id}/{revision}",
+        paths=(
+            ".ai/transport/repair.json",
+            ".ai/transport/repair-supersession.json",
+        ),
+        message=f"superseding repair authorization r{revision}",
+        user_name="AIOS Publication Test",
+        user_email="publication@example.invalid",
+        remote=repo.parent / "upstream.git",
+        remote_ref=(
+            f"refs/heads/aios/repair-supersession/{failed_run_id}/{revision}"
+        ),
     )
     if branch:
         git(repo, "checkout", "--quiet", branch)
@@ -603,10 +622,21 @@ def make_repair_lineage(
         (repo / "product.txt").write_text(
             "failed remediation state\n", encoding="utf-8"
         )
-        git(repo, "add", "product.txt")
-        git(repo, "commit", "--quiet", "-m", "failed correction candidate")
+        commit_fixture_state(
+            repo,
+            paths=("product.txt",),
+            message="failed correction candidate",
+            user_name="AIOS Publication Test",
+            user_email="publication@example.invalid",
+        )
     elif failed_state == "empty_commit":
-        git(repo, "commit", "--quiet", "--allow-empty", "-m", "empty failed state")
+        commit_fixture_state(
+            repo,
+            paths=(),
+            message="empty failed state",
+            user_name="AIOS Publication Test",
+            user_email="publication@example.invalid",
+        )
     elif failed_state != "unchanged":
         raise ValueError(f"unknown failed_state: {failed_state}")
     failed_head_sha = git(repo, "rev-parse", "HEAD")
@@ -778,21 +808,42 @@ def make_repair_lineage(
         (repo / "product.txt").write_text(
             "repaired candidate\n", encoding="utf-8"
         )
-        git(repo, "add", "product.txt")
-        git(repo, "commit", "--quiet", "-m", "repair failed candidate")
+        commit_fixture_state(
+            repo,
+            paths=("product.txt",),
+            message="repair failed candidate",
+            user_name="AIOS Publication Test",
+            user_email="publication@example.invalid",
+        )
     elif final_state == "outside_scope":
         (repo / "secondary.txt").write_text(
             "unauthorized mutation\n", encoding="utf-8"
         )
-        git(repo, "add", "secondary.txt")
-        git(repo, "commit", "--quiet", "-m", "mutate outside repair scope")
+        commit_fixture_state(
+            repo,
+            paths=("secondary.txt",),
+            message="mutate outside repair scope",
+            user_name="AIOS Publication Test",
+            user_email="publication@example.invalid",
+        )
     elif final_state == "empty_commit":
-        git(repo, "commit", "--quiet", "--allow-empty", "-m", "empty repair")
+        commit_fixture_state(
+            repo,
+            paths=(),
+            message="empty repair",
+            user_name="AIOS Publication Test",
+            user_email="publication@example.invalid",
+        )
     elif final_state == "divergent":
         git(repo, "reset", "--hard", "--quiet", base_sha)
         (repo / "product.txt").write_text("divergent candidate\n", encoding="utf-8")
-        git(repo, "add", "product.txt")
-        git(repo, "commit", "--quiet", "-m", "divergent repair candidate")
+        commit_fixture_state(
+            repo,
+            paths=("product.txt",),
+            message="divergent repair candidate",
+            user_name="AIOS Publication Test",
+            user_email="publication@example.invalid",
+        )
     elif final_state != "unchanged":
         raise ValueError(f"unknown final_state: {final_state}")
     candidate_sha = git(repo, "rev-parse", "HEAD")
@@ -882,15 +933,14 @@ def make_repair_lineage(
         ).replace("REVIEW-063-001", "REVIEW-063-002"),
         encoding="utf-8",
     )
-    git(repo, "add", ".ai/reviews/REVIEW-063-002.yaml")
-    git(repo, "commit", "--quiet", "-m", "review repaired candidate")
-    decision_sha = git(repo, "rev-parse", "HEAD")
-    git(
+    decision_sha = commit_fixture_state(
         repo,
-        "push",
-        "--quiet",
-        "origin",
-        f"HEAD:refs/heads/aios/review-decision/{run_id}",
+        paths=(".ai/reviews/REVIEW-063-002.yaml",),
+        message="review repaired candidate",
+        user_name="AIOS Publication Test",
+        user_email="publication@example.invalid",
+        remote=remote,
+        remote_ref=f"refs/heads/aios/review-decision/{run_id}",
     )
     return {
         "repo": repo,

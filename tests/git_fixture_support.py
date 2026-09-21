@@ -15,7 +15,7 @@ import struct
 import subprocess
 import tempfile
 from threading import Lock
-from typing import Mapping
+from typing import Iterable, Mapping
 import zlib
 
 
@@ -220,6 +220,211 @@ def _write_object(objects: Path, kind: str, body: bytes) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(zlib.compress(payload))
     return object_id
+
+
+def _git_dir(repo: Path) -> Path:
+    candidate = repo / ".git"
+    return candidate if candidate.is_dir() else repo
+
+
+def _read_ref(repo: Path, name: str = "HEAD") -> str:
+    """Resolve a loose or packed ref without starting a short-lived Git process."""
+
+    git_dir = _git_dir(repo)
+    ref = name
+    if name == "HEAD":
+        head = (git_dir / "HEAD").read_text(encoding="ascii").strip()
+        if not head.startswith("ref: "):
+            return head
+        ref = head[5:]
+    elif not name.startswith("refs/"):
+        for candidate in (
+            f"refs/heads/{name}",
+            f"refs/remotes/{name}",
+            f"refs/tags/{name}",
+        ):
+            if (git_dir / candidate).is_file():
+                ref = candidate
+                break
+
+    loose = git_dir / ref
+    if loose.is_file():
+        return loose.read_text(encoding="ascii").strip()
+    packed = git_dir / "packed-refs"
+    if packed.is_file():
+        suffix = f" {ref}"
+        for line in packed.read_text(encoding="ascii").splitlines():
+            if line and not line.startswith(("#", "^")) and line.endswith(suffix):
+                return line.split(" ", 1)[0]
+    raise ValueError(f"unknown Git ref: {name}")
+
+
+def read_git_ref(repo: Path, name: str = "HEAD") -> str:
+    """Read a fixture ref directly; all mutations still use real Git storage."""
+
+    return _read_ref(repo, name)
+
+
+def _object_roots(repo: Path) -> tuple[Path, ...]:
+    objects = _git_dir(repo) / "objects"
+    roots = [objects]
+    alternates = objects / "info" / "alternates"
+    if alternates.is_file():
+        roots.extend(
+            Path(line.strip())
+            for line in alternates.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+    return tuple(roots)
+
+
+def _read_object(repo: Path, object_id: str) -> tuple[str, bytes]:
+    for objects in _object_roots(repo):
+        path = objects / object_id[:2] / object_id[2:]
+        if not path.is_file():
+            continue
+        payload = zlib.decompress(path.read_bytes())
+        header, body = payload.split(b"\0", 1)
+        kind, _size = header.decode("ascii").split(" ", 1)
+        return kind, body
+    raise ValueError(f"fixture object is not loose: {object_id}")
+
+
+def _tree_files(repo: Path, tree_sha: str, prefix: str = "") -> dict[str, bytes]:
+    kind, body = _read_object(repo, tree_sha)
+    if kind != "tree":
+        raise ValueError(f"expected tree object, got {kind}")
+    files: dict[str, bytes] = {}
+    offset = 0
+    while offset < len(body):
+        header_end = body.index(b"\0", offset)
+        mode, encoded_name = body[offset:header_end].split(b" ", 1)
+        object_id = body[header_end + 1:header_end + 21].hex()
+        offset = header_end + 21
+        name = f"{prefix}{encoded_name.decode('utf-8')}"
+        if mode == b"40000":
+            files.update(_tree_files(repo, object_id, f"{name}/"))
+        else:
+            blob_kind, content = _read_object(repo, object_id)
+            if blob_kind != "blob":
+                raise ValueError(f"expected blob object, got {blob_kind}")
+            files[name] = content
+    return files
+
+
+def _head_files(repo: Path) -> tuple[str, dict[str, bytes]]:
+    head_sha = _read_ref(repo)
+    kind, commit = _read_object(repo, head_sha)
+    if kind != "commit":
+        raise ValueError(f"fixture HEAD is not a commit: {head_sha}")
+    tree_line = commit.splitlines()[0]
+    if not tree_line.startswith(b"tree "):
+        raise ValueError(f"fixture commit has no tree: {head_sha}")
+    return head_sha, _tree_files(repo, tree_line[5:].decode("ascii"))
+
+
+def _selected_worktree_files(
+    repo: Path, paths: Iterable[str]
+) -> dict[str, bytes | None]:
+    def clean(path: Path) -> bytes:
+        content = path.read_bytes()
+        # Fixture repositories intentionally match Git for Windows' default
+        # core.autocrlf=true configuration. Git's text clean conversion keeps
+        # committed/index content LF-normalized while the worktree stays CRLF.
+        return content if b"\0" in content else content.replace(b"\r\n", b"\n")
+
+    selected: dict[str, bytes | None] = {}
+    normalized = tuple(Path(item).as_posix().rstrip("/") or "." for item in paths)
+    for name in normalized:
+        target = repo if name == "." else repo / name
+        if target.is_dir():
+            for path in target.rglob("*"):
+                if path.is_file() and ".git" not in path.relative_to(repo).parts:
+                    selected[path.relative_to(repo).as_posix()] = clean(path)
+        elif target.is_file():
+            selected[name] = clean(target)
+        else:
+            selected[name] = None
+    return selected
+
+
+def _copy_loose_objects(source: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for fanout in source.iterdir():
+        if len(fanout.name) != 2 or not fanout.is_dir() or fanout.name == "info":
+            continue
+        target_fanout = destination / fanout.name
+        target_fanout.mkdir(exist_ok=True)
+        for obj in fanout.iterdir():
+            target = target_fanout / obj.name
+            if obj.is_file() and not target.exists():
+                shutil.copyfile(obj, target)
+
+
+def commit_fixture_state(
+    repo: Path,
+    *,
+    paths: Iterable[str],
+    message: str,
+    user_name: str,
+    user_email: str,
+    remote: Path | None = None,
+    remote_ref: str | None = None,
+) -> str:
+    """Create fixture-only state as real loose Git objects, without Git startup.
+
+    This is deliberately limited to test setup.  The resulting repository,
+    index, commits, and optional bare-remote ref are ordinary Git data, so the
+    production behavior under test continues to cross the real Git boundary.
+    """
+
+    parent_sha, files = _head_files(repo)
+    selected = _selected_worktree_files(repo, paths)
+    for name, content in selected.items():
+        if content is None:
+            files.pop(name, None)
+        else:
+            files[name] = content
+
+    objects = _git_dir(repo) / "objects"
+    tree: dict[str, object] = {}
+    for name, content in files.items():
+        node = tree
+        parts = name.split("/")
+        for part in parts[:-1]:
+            child = node.setdefault(part, {})
+            if not isinstance(child, dict):
+                raise ValueError(f"fixture path collision at {name}")
+            node = child
+        node[parts[-1]] = bytes.fromhex(_write_object(objects, "blob", content))
+    tree_sha = _write_tree(objects, tree)
+    timestamp = 946684800 + next(_instance_counter)
+    identity = f"{user_name} <{user_email}> {timestamp} +0000"
+    body = (
+        f"tree {tree_sha}\n"
+        f"parent {parent_sha}\n"
+        f"author {identity}\n"
+        f"committer {identity}\n"
+        f"\n{message}\n"
+    ).encode("utf-8")
+    head_sha = _write_object(objects, "commit", body)
+
+    git_dir = _git_dir(repo)
+    head = (git_dir / "HEAD").read_text(encoding="ascii").strip()
+    head_path = git_dir / head[5:] if head.startswith("ref: ") else git_dir / "HEAD"
+    head_path.parent.mkdir(parents=True, exist_ok=True)
+    head_path.write_text(f"{head_sha}\n", encoding="ascii")
+    _write_index(repo, files)
+
+    if remote is not None or remote_ref is not None:
+        if remote is None or remote_ref is None:
+            raise ValueError("remote and remote_ref must be supplied together")
+        remote_objects = _git_dir(remote) / "objects"
+        _copy_loose_objects(objects, remote_objects)
+        ref_path = _git_dir(remote) / remote_ref
+        ref_path.parent.mkdir(parents=True, exist_ok=True)
+        ref_path.write_text(f"{head_sha}\n", encoding="ascii")
+    return head_sha
 
 
 def _materialize_root_commit(
