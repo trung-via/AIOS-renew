@@ -8,6 +8,11 @@ from types import SimpleNamespace
 import pytest
 
 import aios_renew.authoring_ingress as authoring_ingress_module
+from tests.git_fixture_support import (
+    commit_fixture_state,
+    materialize_git_baseline,
+    read_git_ref,
+)
 
 from aios_renew.authoring_ingress import (
     AuthoringIngressError,
@@ -52,6 +57,8 @@ def test_repair_review_semantics_require_exact_remediation_finding() -> None:
 
 
 def git(repo: Path, *args: str, check: bool = True) -> str:
+    if check and args == ("rev-parse", "HEAD"):
+        return read_git_ref(repo)
     proc = subprocess.run(
         ("git", "-C", str(repo), *args),
         capture_output=True,
@@ -145,23 +152,13 @@ V1_TASK_105_R2_SOURCE = TASK_105_R2_SOURCE.replace(
 
 def setup_test_repo(root: Path) -> tuple[Path, Path, str]:
     """Create local repo and bare upstream git repo."""
-    repo = root / "repo"
-    remote = root / "upstream.git"
-    repo.mkdir(parents=True, exist_ok=True)
-    subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
-
-    git(repo, "init", "--quiet")
-    git(repo, "config", "user.name", "AIOS Test")
-    git(repo, "config", "user.email", "test@example.invalid")
-    git(repo, "branch", "-M", "main")
-    (repo / "README.md").write_text("initial repo\n", encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "--quiet", "-m", "initial commit")
-    base_sha = git(repo, "rev-parse", "HEAD")
-
-    git(repo, "remote", "add", "origin", str(remote))
-    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
-    return repo, remote, base_sha
+    return materialize_git_baseline(
+        root,
+        files={"README.md": "initial repo\n"},
+        user_name="AIOS Test",
+        user_email="test@example.invalid",
+        commit_message="initial commit",
+    )
 
 
 def setup_candidate_lineage(
@@ -183,17 +180,26 @@ def setup_candidate_lineage(
     workflow.parent.mkdir(parents=True, exist_ok=True)
     workflow.write_text("name: AIOS auto publish\n", encoding="utf-8")
     (repo / "README.md").write_text("base content\n", encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "--quiet", "-m", f"add {task_id}")
-    task_main_sha = git(repo, "rev-parse", "HEAD")
-    git(repo, "push", "--quiet", "origin", "main")
+    task_main_sha = commit_fixture_state(
+        repo,
+        paths=(".",),
+        message=f"add {task_id}",
+        user_name="AIOS Test",
+        user_email="test@example.invalid",
+        remote=remote,
+        remote_ref="refs/heads/main",
+    )
 
     sample_path = repo / candidate_file
     sample_path.parent.mkdir(parents=True, exist_ok=True)
     sample_path.write_text(candidate_content, encoding="utf-8")
-    git(repo, "add", candidate_file)
-    git(repo, "commit", "--quiet", "-m", "candidate implementation")
-    candidate_sha = git(repo, "rev-parse", "HEAD")
+    candidate_sha = commit_fixture_state(
+        repo,
+        paths=(candidate_file,),
+        message="candidate implementation",
+        user_name="AIOS Test",
+        user_email="test@example.invalid",
+    )
 
     # Post-pass transport
     state = root / "state"

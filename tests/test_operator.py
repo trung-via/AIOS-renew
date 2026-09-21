@@ -63,6 +63,7 @@ from tests.operator_test_support import (
     READONLY_TASK_SOURCE,
     TASK_SOURCE,
     canonical_result_payload,
+    commit_setup_state,
     git,
     make_repo,
     publish_test_remediation_lineage,
@@ -320,9 +321,9 @@ class FakeCodexRunner:
             f"operator output {self.count}\n",
             encoding="utf-8",
         )
-        git(self.repo, "add", "OUTPUT.txt")
-        git(self.repo, "commit", "--quiet", "-m", f"executor {self.count}")
-        actual_head = git(self.repo, "rev-parse", "HEAD")
+        actual_head = commit_setup_state(
+            self.repo, "OUTPUT.txt", message=f"executor {self.count}"
+        )
         if self.dirty_after:
             (self.repo / "DIRTY.txt").write_text("dirty\n", encoding="utf-8")
         payload = result_payload(run_id, self.reported_head or actual_head)
@@ -376,9 +377,11 @@ class RepairRunner:
         (self.repo / "OUTPUT.txt").write_text(
             f"repaired by {execution['repair']['repair_id']}\n", encoding="utf-8"
         )
-        git(self.repo, "add", "OUTPUT.txt")
-        git(self.repo, "commit", "--quiet", "-m", execution["repair"]["repair_id"])
-        head_sha = git(self.repo, "rev-parse", "HEAD")
+        head_sha = commit_setup_state(
+            self.repo,
+            "OUTPUT.txt",
+            message=execution["repair"]["repair_id"],
+        )
         payload = result_payload(execution["run"]["run_id"], head_sha)
         return subprocess.CompletedProcess(
             command, returncode=0, stdout=json.dumps(payload), stderr=""
@@ -521,9 +524,9 @@ class FakeAntigravityRunner:
                 "antigravity output\n",
                 encoding="utf-8",
             )
-            git(self.repo, "add", "OUTPUT.txt")
-            git(self.repo, "commit", "--quiet", "-m", "antigravity executor")
-            head_sha = git(self.repo, "rev-parse", "HEAD")
+            head_sha = commit_setup_state(
+                self.repo, "OUTPUT.txt", message="antigravity executor"
+            )
             payload = result_payload(handoff["run"]["run_id"], head_sha)
             stdout = antigravity_envelope(payload)
         return subprocess.CompletedProcess(
@@ -606,9 +609,9 @@ class CommitResultRunner:
             target = self.repo / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
-        git(self.repo, "add", "-A")
-        git(self.repo, "commit", "--quiet", "-m", "executor changes")
-        head_sha = git(self.repo, "rev-parse", "HEAD")
+        head_sha = commit_setup_state(
+            self.repo, ".", message="executor changes"
+        )
         payload = result_payload(
             run_id,
             head_sha,
@@ -845,9 +848,9 @@ class RemediationRunner:
         (self.repo / "OUTPUT.txt").write_text(
             f"remediated by {execution['run']['run_id']}\n", encoding="utf-8"
         )
-        git(self.repo, "add", "OUTPUT.txt")
-        git(self.repo, "commit", "--quiet", "-m", "narrow remediation")
-        head_sha = git(self.repo, "rev-parse", "HEAD")
+        head_sha = commit_setup_state(
+            self.repo, "OUTPUT.txt", message="narrow remediation"
+        )
         payload = {
             "result": {
                 "head_sha": head_sha,
