@@ -122,7 +122,7 @@ def prepare_handoff(
     handoff_path = _handoff_path(target)
     result_path = _result_path(target)
     payload = {
-        "task": asdict(task),
+        "task": _task_payload(task),
         "run": asdict(run),
         "result_package": {
             "format": "canonical ResultPackage JSON",
@@ -252,6 +252,17 @@ def _load_handoff(workspace: Path) -> tuple[Task, Run]:
     except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise AntigravitySmokeFailure(f"invalid handoff file: {exc}") from exc
     return task, run
+
+
+def _task_payload(task: Task) -> dict[str, Any]:
+    """Serialize a TASK without inventing absent optional authored fields."""
+
+    payload = asdict(task)
+    verification = payload["verification"]
+    payload["verification"] = {
+        key: value for key, value in verification.items() if value is not None
+    }
+    return payload
 
 
 def _task() -> Task:

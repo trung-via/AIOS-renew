@@ -7,6 +7,11 @@ from aios_renew.dispatch_reconciliation import DispatchInvocation, execute_dispa
 from aios_renew.remote_surface import RemoteSurfaceError, remote_status
 
 
+TASK_REVISION = 1
+TASK_BLOB_SHA = "a" * 40
+TASK_COMMIT_SHA = "b" * 40
+
+
 def _write_run(state_root: Path, run_id: str = "RUN-074-001") -> None:
     runs = state_root / "runs"
     runs.mkdir(parents=True, exist_ok=True)
@@ -41,6 +46,9 @@ def test_status_reports_allowlisted_dispatch_and_run_facts_without_mutation(
             task_id="TASK-074",
             executor="codex",
             run_id="RUN-074-001",
+            task_revision=TASK_REVISION,
+            task_blob_sha=TASK_BLOB_SHA,
+            task_commit_sha=TASK_COMMIT_SHA,
         )
         results = state_root / "results"
         results.mkdir(parents=True)
@@ -53,6 +61,9 @@ def test_status_reports_allowlisted_dispatch_and_run_facts_without_mutation(
         task_id="TASK-074",
         executor="codex",
         invoke_primary=invoke,
+        task_revision=TASK_REVISION,
+        task_blob_sha=TASK_BLOB_SHA,
+        task_commit_sha=TASK_COMMIT_SHA,
     )
     before = {
         path.relative_to(state_root): path.read_bytes()
@@ -68,6 +79,14 @@ def test_status_reports_allowlisted_dispatch_and_run_facts_without_mutation(
     assert summary.run_id == "RUN-074-001"
     assert summary.observed_run_state == "RESULT_AVAILABLE"
     assert "ignored-by-status" not in summary.render()
+    dispatch_record = next((state_root / "dispatches").glob("*.json"))
+    dispatch_data = json.loads(dispatch_record.read_text(encoding="utf-8"))
+    assert dispatch_data["version"] == 2
+    assert (
+        dispatch_data["task_revision"],
+        dispatch_data["task_blob_sha"],
+        dispatch_data["task_commit_sha"],
+    ) == (TASK_REVISION, TASK_BLOB_SHA, TASK_COMMIT_SHA)
     after = {
         path.relative_to(state_root): path.read_bytes()
         for path in state_root.rglob("*")

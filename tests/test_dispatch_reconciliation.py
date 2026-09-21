@@ -224,13 +224,14 @@ def test_wakeup_sync_restart_continues_the_same_durable_dispatch(
     monkeypatch.setattr(
         operator_module, "_synchronize_primary_branch", synchronize
     )
-    monkeypatch.setattr(
-        operator_module,
-        "_git",
-        lambda _repo, *args, **_kwargs: "b" * 40
-        if args == ("rev-parse", "HEAD")
-        else pytest.fail(f"unexpected git invocation: {args}"),
-    )
+    def observe_git(_repo: Path, *args: str, **_kwargs: object) -> str:
+        if args == ("rev-parse", "HEAD"):
+            return "b" * 40
+        if args == ("rev-parse", "--git-dir"):
+            return ".git"
+        pytest.fail(f"unexpected git invocation: {args}")
+
+    monkeypatch.setattr(operator_module, "_git", observe_git)
 
     primary_calls = 0
 

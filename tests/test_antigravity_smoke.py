@@ -90,6 +90,7 @@ def test_exported_task_is_executor_neutral_and_compact(tmp_path: Path) -> None:
     assert "antigravity" not in json.dumps(handoff["task"]).lower()
     assert handoff["task"]["goal"] == "Create file SMOKE_OK.txt."
     assert handoff["task"]["scope"]["modify"] == ["SMOKE_OK.txt"]
+    assert set(handoff["task"]["verification"]) == {"required"}
     assert handoff["task"]["verification"]["required"] == [
         "python -c \"from pathlib import Path; assert "
         "Path('SMOKE_OK.txt').read_bytes() == b'AIOS smoke pass\\n'\"",

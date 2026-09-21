@@ -9073,6 +9073,7 @@ acceptance:
   - id: AC1
     condition: Works.
 verification:
+  policy: minimum-sufficient-v1
   required:
     - git diff --check
 """

@@ -1537,13 +1537,19 @@ def test_github_issue_remote_carriers_reject_antigravity_minimax() -> None:
     primary_body = yaml.safe_dump(
         {
             "format": "AIOS_PRIMARY_WAKEUP_REQUEST",
-            "version": 1,
+            "version": 2,
             "dispatch_id": "brain-wakeup-139",
             "task_id": "TASK-139",
+            "task_revision": 1,
+            "task_blob_sha": "a" * 40,
+            "task_commit_sha": "b" * 40,
             "executor": "antigravity-minimax",
         }
     )
-    with pytest.raises(GitHubIssueWakeupError, match="executor"):
+    primary_request = yaml.safe_load(primary_body)
+    primary_request["executor"] = "codex"
+    assert parse_primary_request(yaml.safe_dump(primary_request)).executor == "codex"
+    with pytest.raises(GitHubIssueWakeupError, match="unsupported executor"):
         parse_primary_request(primary_body)
 
     remediation_body = yaml.safe_dump(
@@ -1556,7 +1562,15 @@ def test_github_issue_remote_carriers_reject_antigravity_minimax() -> None:
             "executor": "antigravity-minimax",
         }
     )
-    with pytest.raises(GitHubIssueRemediationIntentError, match="executor"):
+    remediation_request = yaml.safe_load(remediation_body)
+    remediation_request["executor"] = "codex"
+    assert (
+        parse_remediation_request(yaml.safe_dump(remediation_request)).executor
+        == "codex"
+    )
+    with pytest.raises(
+        GitHubIssueRemediationIntentError, match="unsupported executor"
+    ):
         parse_remediation_request(remediation_body)
 
     repair_body = yaml.safe_dump(
@@ -1569,5 +1583,8 @@ def test_github_issue_remote_carriers_reject_antigravity_minimax() -> None:
             "executor": "antigravity-minimax",
         }
     )
-    with pytest.raises(GitHubIssueRepairWakeupError, match="executor"):
+    repair_request = yaml.safe_load(repair_body)
+    repair_request["executor"] = "codex"
+    assert parse_repair_request(yaml.safe_dump(repair_request)).executor == "codex"
+    with pytest.raises(GitHubIssueRepairWakeupError, match="unsupported executor"):
         parse_repair_request(repair_body)
