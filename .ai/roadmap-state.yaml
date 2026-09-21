@@ -26,7 +26,7 @@ verification_foundation_audit:
     Historical Performance Closure engineering artifacts remain immutable and are not
     reinterpreted by this planning decision.
 next_items:
-  - bp-v2-full-suite-harness-acceleration
+  - maintenance-full-suite-contract-compatibility
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -160,8 +160,21 @@ sequence:
       Enforce minimum-sufficient deterministic verification, known coverage/subsumption
       de-duplication, and bounded full-suite justification without moving semantic
       judgment or verification truth out of Runtime.
-  - id: bp-v2-full-suite-harness-acceleration
+  - id: maintenance-full-suite-contract-compatibility
     status: NEXT
+    task_id: TASK-153
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Restore stale synthetic test/harness compatibility with already-published
+      exact-intent v2, Operational Attribution v2, and Verification Contract v1
+      semantics exposed by RUN-152-002, without changing production behavior or
+      claiming a BP-V2 performance baseline.
+  - id: bp-v2-full-suite-harness-acceleration
+    status: BLOCKED
+    blocked_by:
+      task_id: TASK-153
+      task_revision: 1
     task_id: TASK-152
     task_revision: 2
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
