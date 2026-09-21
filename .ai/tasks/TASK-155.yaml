@@ -1,0 +1,155 @@
+task_id: TASK-155
+revision: 1
+
+goal: >
+  Restore deterministic review/publication lineage validation for a truthful
+  pre-verification zero-delta CODE_FIX repair failure followed by an authorized
+  CONTINUE_IMPLEMENTATION repair, so the already-green RUN-154-006 candidate can
+  be semantically reviewed without weakening successful-repair mutation requirements
+  or changing Runtime authority.
+
+problem: >
+  Canonical TASK-154 lineage currently contains RUN-154-004 VERIFICATION FAILURE,
+  REPAIR-154-004 CODE_FIX, RUN-154-005 EXECUTION FAILURE with no repository delta
+  because the selected Codex model was at capacity, REPAIR-154-005
+  CONTINUE_IMPLEMENTATION, and green RUN-154-006 RESULT on
+  332c3ce111c0e275df2c573f89f4df620c785fb8. Runtime accepted and transported the
+  truthful RUN-154-005 pre-verification failure with failed_head_sha equal to its
+  base, changed_files=[], dirty=false, descends_from_base=true,
+  outside_task_scope=[], repairable=true, and transportable=true. The subsequent
+  CONTINUE_IMPLEMENTATION produced a green candidate. However
+  src/aios_renew/publication.py recursive REPAIR lineage validation unconditionally
+  rejects the historical CODE_FIX node as "CODE_FIX REPAIR committed delta is empty"
+  before SUBMIT_REVIEW can validate RUN-154-006. The same module already has bounded
+  canonical-failure validation for truthful zero-delta CONTINUE_IMPLEMENTATION
+  history, so the CODE_FIX branch is inconsistent with admitted pre-verification
+  failure semantics.
+
+assumptions:
+  - Canonical main at TASK-155 authoring is 6a6e13cf51f23cc1cad03bdf1c055d02b6586e2d.
+  - >
+    TASK-154 remains the unique active BP-V2 roadmap NEXT milestone. TASK-155 is a
+    bounded maintenance blocker-clearing task and does not advance, replace, or
+    reinterpret TASK-154 or the Brain Portability roadmap.
+  - >
+    RUN-154-005 is immutable canonical FAILURE at phase EXECUTION with
+    base_sha=failed_head_sha=2da8ecdf0d48710d1213deffa3cee167ef5b4f5c,
+    changed_files=[], dirty=false, descends_from_base=true,
+    outside_task_scope=[], repairable=true, and transportable=true.
+  - >
+    RUN-154-006 is immutable canonical RESULT on
+    332c3ce111c0e275df2c573f89f4df620c785fb8. Runtime collected 1582 tests,
+    passed all 1582 in 1728.84 seconds, and passed git diff --check. This maintenance
+    task neither re-verifies nor semantically decides TASK-154 performance success.
+  - >
+    Successful CODE_FIX repair semantics remain unchanged: a successful CODE_FIX
+    candidate must advance HEAD with a non-empty authorized committed correction delta.
+  - >
+    Runtime owns canonical RUN/FAILURE/RESULT and verification truth. Reviewer owns
+    semantic verdict. Publisher owns publication. Historical lineage validation may
+    recognize already-canonical failure facts but must not fabricate or relax them.
+
+scope:
+  inspect:
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-154.yaml
+    - refs/heads/aios/failure-artifacts/RUN-154-005
+    - refs/heads/aios/repair/RUN-154-005
+    - refs/heads/aios/artifacts/RUN-154-006
+    - src/aios_renew/publication.py
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/operator.py
+    - tests/test_publication.py
+    - tests/test_authoring_ingress.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/publication.py
+    - tests/test_publication.py
+    - tests/test_authoring_ingress.py
+
+non_goals:
+  - Modify Runtime, Operator, Reviewer contract semantics, repair authorization, dispatch, GitHub workflows, carrier semantics, or frozen Kernel authority boundaries.
+  - Modify TASK-154, RUN-154-006, its candidate, its verification evidence, or its performance threshold.
+  - Treat RUN-154-006 as reviewed, published, or BP-V2 complete as part of this maintenance task.
+  - Permit a successful CODE_FIX repair with unchanged HEAD or an empty committed correction delta.
+  - Generalize zero-delta acceptance to VERIFICATION failures, dirty candidates, divergent candidates, out-of-scope mutations, non-repairable candidates, non-transportable candidates, forged FAILURE facts, or mismatched RUN/TASK/executor/base identities.
+  - Add retry, failover, automatic Executor selection, new lifecycle routing, new semantic authority, or new persistent state.
+  - Weaken publication, review-ingress, canonical-ref, SHA-binding, or fail-closed lineage checks.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Change only the recursive historical REPAIR lineage validation needed to distinguish
+      a truthful canonical pre-verification CODE_FIX failure with zero mutation from a
+      successful CODE_FIX completion. Do not weaken the successful CODE_FIX non-empty-delta
+      invariant.
+    - >
+      A historical zero-delta CODE_FIX node may be accepted only when its canonical FAILURE
+      proves phase EXECUTION or COMPLETION_GATE and exact zero-delta clean transportable
+      repairable state: failed_head_sha equals the child RUN base, actual committed delta is
+      empty, candidate.changed_files is empty, dirty is false, descends_from_base is true,
+      outside_task_scope is empty, repairable is true, and transportable is true, with exact
+      canonical RUN/TASK/executor/base/SHA identity binding.
+    - >
+      Reuse or factor the existing deterministic canonical FAILURE binding checks where
+      semantically equivalent instead of creating a parallel permissive validator. Any
+      malformed, stale, forged, ambiguous, or inconsistent history must continue to fail closed.
+    - >
+      Preserve existing truthful zero-delta CONTINUE_IMPLEMENTATION handling and
+      FINALIZE_CANDIDATE/NO_CHANGE semantics unchanged.
+    - >
+      Add a production-shaped recursive lineage regression representing:
+      CODE_FIX repair admitted -> pre-verification zero-delta canonical FAILURE ->
+      CONTINUE_IMPLEMENTATION -> successful RESULT, and prove both publication lineage
+      validation and SUBMIT_REVIEW ingress can traverse that exact history.
+    - >
+      Retain negative coverage proving rejection for CODE_FIX zero delta without canonical
+      failure evidence, phase VERIFICATION, failed/base/SHA or identity mismatch, dirty or
+      divergent state, changed_files mismatch, outside-scope state, non-repairable or
+      non-transportable state, and successful CODE_FIX zero delta.
+    - >
+      Do not modify files outside scope.modify and do not push from Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The candidate changes only src/aios_renew/publication.py,
+      tests/test_publication.py, and tests/test_authoring_ingress.py, with no Runtime,
+      Operator, workflow, TASK-154, roadmap, dispatch, Reviewer-contract, or carrier change.
+  - id: AC2
+    condition: >
+      Recursive REPAIR lineage validation accepts a canonical historical CODE_FIX node with
+      zero committed delta only when exact canonical FAILURE evidence proves a clean,
+      transportable, repairable pre-verification failure at EXECUTION or COMPLETION_GATE
+      with no committed mutation.
+  - id: AC3
+    condition: >
+      Successful CODE_FIX repair completion still requires HEAD advancement and a non-empty
+      authorized committed correction delta; zero-delta successful CODE_FIX remains rejected.
+  - id: AC4
+    condition: >
+      A production-shaped CODE_FIX -> truthful zero-delta pre-verification FAILURE ->
+      CONTINUE_IMPLEMENTATION -> RESULT chain validates through both publication lineage
+      handling and SUBMIT_REVIEW ingress without altering the reviewed candidate or fabricating
+      lifecycle state.
+  - id: AC5
+    condition: >
+      Malformed or forged zero-delta CODE_FIX histories continue to fail closed for phase,
+      identity, SHA/base, candidate cleanliness, ancestry, changed-files, scope,
+      repairability, and transportability mismatches, while existing
+      CONTINUE_IMPLEMENTATION/FINALIZE_CANDIDATE/NO_CHANGE behavior remains intact.
+  - id: AC6
+    condition: >
+      The maintenance fix introduces no new semantic authority, automatic retry/failover,
+      lifecycle router, persistent state, review verdict, publication claim, or BP-V2
+      performance-success claim.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_publication.py tests/test_authoring_ingress.py
+    - git diff --check
