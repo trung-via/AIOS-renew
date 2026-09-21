@@ -178,7 +178,7 @@ sequence:
   - id: bp-v2-full-suite-harness-acceleration
     status: NEXT
     task_id: TASK-154
-    task_revision: 2
+    task_revision: 3
     planning_amendment:
       approved_on: "2026-09-21"
       authority: HUMAN_BRAIN_PLANNING
