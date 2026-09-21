@@ -609,9 +609,17 @@ class CommitResultRunner:
             target = self.repo / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
-        head_sha = commit_setup_state(
-            self.repo, ".", message="executor changes"
-        )
+        if self.renames:
+            # Rename-sensitive cases exercise the same real Git index/commit
+            # boundary as an executor.  The fixture-only commit fast path does
+            # not model deletion discovery for a directory-wide pathspec.
+            git(self.repo, "add", "-A")
+            git(self.repo, "commit", "--quiet", "-m", "executor changes")
+            head_sha = git(self.repo, "rev-parse", "HEAD")
+        else:
+            head_sha = commit_setup_state(
+                self.repo, ".", message="executor changes"
+            )
         payload = result_payload(
             run_id,
             head_sha,
