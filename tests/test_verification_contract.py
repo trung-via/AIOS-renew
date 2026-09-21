@@ -5,6 +5,7 @@ import pytest
 from aios_renew.verification_contract import (
     VerificationContractError,
     normalize_verification,
+    parse_bp_v4_probe_workers,
     parse_pytest_coverage,
     validate_v1_verification,
 )
@@ -92,4 +93,98 @@ def test_normalization_keeps_earliest_equivalent_and_broader_command() -> None:
         "opaque --one",
         "pytest tests",
         "python -m pytest tests/test_task.py",
+    )
+
+
+@pytest.mark.parametrize(
+    ("command", "workers"),
+    [
+        ("python scripts/bp_v4_parallel_probe.py --workers 2", (2,)),
+        ("python scripts/bp_v4_parallel_probe.py --workers 2 3", (2, 3)),
+        ("python scripts/bp_v4_parallel_probe.py --workers 2 3 4", (2, 3, 4)),
+        ("python scripts/bp_v4_parallel_probe.py --workers 3 4", (3, 4)),
+    ],
+)
+def test_bp_v4_probe_exact_grammar_is_recognized(command, workers) -> None:
+    assert parse_bp_v4_probe_workers(command) == workers
+    coverage = parse_pytest_coverage(command)
+    assert coverage is not None
+    assert coverage.launcher == "python -m pytest"
+    assert coverage.is_full_suite
+    assert coverage.measurement
+    validate_v1_verification(
+        (command,),
+        full_suite_reason="One bounded same-subject BP-V4 measurement experiment.",
+        path="verification.required",
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python scripts/bp_v4_parallel_probe.py",
+        "python scripts/bp_v4_parallel_probe.py --workers",
+        "python scripts/bp_v4_parallel_probe.py --workers auto",
+        "python scripts/bp_v4_parallel_probe.py --workers 1",
+        "python scripts/bp_v4_parallel_probe.py --workers 5",
+        "python scripts/bp_v4_parallel_probe.py --workers 2 2",
+        "python scripts/bp_v4_parallel_probe.py --workers 3 2",
+        "python scripts/bp_v4_parallel_probe.py --workers 2 --extra",
+        "python scripts/bp_v4_parallel_probe.py --workers 2 && echo injected",
+        "python scripts/bp_v4_parallel_probe.py --workers '2",
+        "py scripts/bp_v4_parallel_probe.py --workers 2",
+        "python .\\scripts\\bp_v4_parallel_probe.py --workers 2",
+        "python scripts/BP_V4_PARALLEL_PROBE.py --workers 2",
+    ],
+)
+def test_malformed_probe_family_fails_closed(command) -> None:
+    assert parse_bp_v4_probe_workers(command) is None
+    with pytest.raises(VerificationContractError, match="malformed BP-V4 probe"):
+        validate_v1_verification(
+            (command,), full_suite_reason=None, path="verification.required"
+        )
+
+
+def test_probe_subsumes_module_full_suite_but_not_direct_launcher() -> None:
+    probe_command = "python scripts/bp_v4_parallel_probe.py --workers 2 4"
+    module_full_suite = "python -m pytest -q"
+    direct_full_suite = "pytest -q"
+
+    with pytest.raises(VerificationContractError, match="subsumed"):
+        validate_v1_verification(
+            (module_full_suite, probe_command),
+            full_suite_reason="The bounded probe contains the module full-suite proof.",
+            path="verification.required",
+        )
+    assert normalize_verification((module_full_suite, probe_command)) == (
+        probe_command,
+    )
+    assert normalize_verification((probe_command, module_full_suite)) == (
+        probe_command,
+    )
+    assert normalize_verification((direct_full_suite, probe_command)) == (
+        direct_full_suite,
+        probe_command,
+    )
+
+
+def test_multiple_probe_commands_cannot_authorize_duplicate_measurement() -> None:
+    commands = (
+        "python scripts/bp_v4_parallel_probe.py --workers 2",
+        "python scripts/bp_v4_parallel_probe.py --workers 2 3",
+    )
+    with pytest.raises(VerificationContractError, match="coverage-equivalent"):
+        validate_v1_verification(
+            commands,
+            full_suite_reason="Only one measurement is permitted.",
+            path="verification.required",
+        )
+    assert normalize_verification(commands) == (commands[0],)
+
+
+def test_unrelated_opaque_behavior_remains_compatible() -> None:
+    command = "python scripts/unrelated_probe.py --workers auto && echo opaque"
+    assert parse_pytest_coverage(command) is None
+    validate_v1_verification(
+        (command,), full_suite_reason=None, path="verification.required"
     )

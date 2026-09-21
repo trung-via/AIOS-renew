@@ -14,6 +14,8 @@ from typing import Sequence
 
 MINIMUM_SUFFICIENT_V1 = "minimum-sufficient-v1"
 FULL_SUITE_REASON_LIMIT = 512
+BP_V4_PROBE_PATH = "scripts/bp_v4_parallel_probe.py"
+BP_V4_WORKERS = (2, 3, 4)
 
 
 class VerificationContractError(ValueError):
@@ -27,6 +29,7 @@ class PytestCoverage:
     launcher: str
     paths: tuple[str, ...]
     filter_expression: str | None
+    measurement: bool = False
 
     @property
     def is_full_suite(self) -> bool:
@@ -35,6 +38,15 @@ class PytestCoverage:
 
 def parse_pytest_coverage(command: str) -> PytestCoverage | None:
     """Return proven coverage for a supported command, otherwise ``None``."""
+
+    probe_workers = parse_bp_v4_probe_workers(command)
+    if probe_workers is not None:
+        return PytestCoverage(
+            launcher="python -m pytest",
+            paths=(),
+            filter_expression=None,
+            measurement=True,
+        )
 
     try:
         tokens = shlex.split(command, posix=True)
@@ -91,6 +103,32 @@ def parse_pytest_coverage(command: str) -> PytestCoverage | None:
     )
 
 
+def parse_bp_v4_probe_workers(command: str) -> tuple[int, ...] | None:
+    """Return the explicitly authorized workers for one exact BP-V4 probe."""
+
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        return None
+    prefix = ["python", BP_V4_PROBE_PATH, "--workers"]
+    if tokens[:3] != prefix or not 4 <= len(tokens) <= 6:
+        return None
+    encoded = tokens[3:]
+    allowed = {str(worker) for worker in BP_V4_WORKERS}
+    if any(value not in allowed for value in encoded):
+        return None
+    workers = tuple(int(value) for value in encoded)
+    if workers != tuple(sorted(set(workers))):
+        return None
+    return workers
+
+
+def _is_bp_v4_probe_family(command: str) -> bool:
+    """Identify probe-like input so malformed forms cannot become opaque."""
+
+    return "bp_v4_parallel_probe.py" in command.casefold()
+
+
 def validate_v1_verification(
     commands: Sequence[str],
     *,
@@ -111,6 +149,15 @@ def validate_v1_verification(
         if len(reason) > FULL_SUITE_REASON_LIMIT:
             raise VerificationContractError(
                 f"full_suite_reason must be at most {FULL_SUITE_REASON_LIMIT} characters"
+            )
+
+    for command in commands:
+        if (
+            _is_bp_v4_probe_family(command)
+            and parse_bp_v4_probe_workers(command) is None
+        ):
+            raise VerificationContractError(
+                f"{path} contains malformed BP-V4 probe command: {command!r}"
             )
 
     coverages = [parse_pytest_coverage(command) for command in commands]
@@ -156,6 +203,15 @@ def normalize_verification(commands: Sequence[str]) -> tuple[str, ...]:
     subsumed by another recognized command is removed.  Opaque commands are
     affected only by exact string duplication.
     """
+
+    for command in commands:
+        if (
+            _is_bp_v4_probe_family(command)
+            and parse_bp_v4_probe_workers(command) is None
+        ):
+            raise VerificationContractError(
+                f"verification contains malformed BP-V4 probe command: {command!r}"
+            )
 
     unique: list[str] = []
     for command in commands:
@@ -204,6 +260,10 @@ def _coverage_relation(
 
 def _subsumes(broader: PytestCoverage, narrower: PytestCoverage) -> bool:
     if broader.launcher != narrower.launcher:
+        return False
+    # A probe contains the ordinary module-launched full-suite proof as well as
+    # its measurement profiles.  The ordinary proof cannot replace the probe.
+    if narrower.measurement and not broader.measurement:
         return False
     if broader.filter_expression is not None:
         if broader.filter_expression != narrower.filter_expression:

@@ -17,6 +17,30 @@ Operational surfaces, transport mechanisms, Git refs, and handoffs are subordina
 pip install -e .
 ```
 
+### Optional BP-V4 measurement toolchain
+
+The bounded BP-V4 parallel probe has a repository-owned optional dependency
+surface. Provision it once on the designated measurement/test host with:
+
+```powershell
+pip install -e ".[bp-v4-measurement]"
+```
+
+This extra is only for the one-time BP-V4 measurement experiment. It is not a
+core AIOS runtime dependency, a canonical parallel default, Runtime authority,
+or a per-RUN installation step. The probe never installs packages. If this
+compatible optional toolchain is absent, the probe fails explicitly instead of
+falling back to serial execution. A later Runtime-owned measurement may invoke
+an explicitly bounded experiment such as:
+
+```powershell
+python scripts/bp_v4_parallel_probe.py --workers 2 3 4
+```
+
+Worker candidates must be an explicit unique ascending subset of `2`, `3`, and
+`4`; the probe adds only its fixed serial control and does not choose or
+recommend a worker profile.
+
 Store canonical engineering tasks in the target repository:
 
 ```text
