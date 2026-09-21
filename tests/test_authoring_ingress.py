@@ -646,6 +646,236 @@ findings: []
     assert code != 0, "candidate on main must not contain review metadata"
 
 
+def test_submit_review_accepts_code_fix_zero_delta_failure_continuation(
+    tmp_path: Path,
+) -> None:
+    repo, _, _ = setup_test_repo(tmp_path)
+    task_dir = repo / ".ai" / "tasks"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "TASK-105.yaml").write_text(TASK_105_SOURCE, encoding="utf-8")
+    (repo / "src").mkdir()
+    (repo / "src" / "sample.py").write_text("value = 'base'\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "task candidate base")
+    root_base_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    state = tmp_path / "zero-delta-code-fix"
+    state.mkdir()
+    (repo / "src" / "sample.py").write_text("value = 'failed'\n", encoding="utf-8")
+    git(repo, "add", "src/sample.py")
+    git(repo, "commit", "--quiet", "-m", "failed implementation")
+    failed_code_sha = git(repo, "rev-parse", "HEAD")
+
+    first_run_id = "RUN-105-002"
+    first_run = {
+        "run_id": first_run_id,
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "codex",
+        "base_sha": root_base_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    first_failure = {
+        "kind": "FAILURE",
+        "run_id": first_run_id,
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "codex",
+        "base_sha": root_base_sha,
+        "failed_head_sha": failed_code_sha,
+        "phase": "VERIFICATION",
+        "error": {"type": "RuntimeVerificationError", "message": "failed"},
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": ["src/sample.py"],
+            "outside_task_scope": [],
+        },
+    }
+    first_run_path = state / "first-run.json"
+    first_failure_path = state / "first-failure.json"
+    first_run_path.write_text(json.dumps(first_run), encoding="utf-8")
+    first_failure_path.write_text(json.dumps(first_failure), encoding="utf-8")
+    transport_failure(
+        repo,
+        run_id=first_run_id,
+        head_sha=failed_code_sha,
+        run_path=first_run_path,
+        failure_path=first_failure_path,
+    )
+    code_fix = {
+        "repair_id": "REPAIR-105-002",
+        "failed_run_id": first_run_id,
+        "failed_head_sha": failed_code_sha,
+        "task": {"id": "TASK-105", "revision": 1},
+        "action": "CODE_FIX",
+        "modification_scope": ["src/sample.py"],
+        "instructions": ["Correct the failed implementation."],
+        "constraints": [],
+    }
+    code_fix_auth = execute_ingress(
+        IngressEnvelope(
+            "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
+            {"failed_run_id": first_run_id},
+            {"expected_failed_head_sha": failed_code_sha}, code_fix,
+        ),
+        repo=repo,
+    )
+
+    zero_run_id = "RUN-105-003"
+    zero_run = {
+        "run_id": zero_run_id,
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "codex",
+        "base_sha": failed_code_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    code_fix_lineage = {
+        "failed_run_id": first_run_id,
+        "root_base_sha": root_base_sha,
+        "failed_head_sha": failed_code_sha,
+        "failure": first_failure,
+        "task": {"task_id": "TASK-105", "revision": 1},
+        "repair": code_fix,
+        "repair_authorization_sha": code_fix_auth.canonical_sha,
+        "run": zero_run,
+    }
+    zero_failure = {
+        "kind": "FAILURE",
+        "run_id": zero_run_id,
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "codex",
+        "base_sha": failed_code_sha,
+        "failed_head_sha": failed_code_sha,
+        "phase": "EXECUTION",
+        "error": {"type": "ExecutorUnavailable", "message": "capacity"},
+        "candidate": {
+            "transportable": True,
+            "repairable": True,
+            "dirty": False,
+            "descends_from_base": True,
+            "changed_files": [],
+            "outside_task_scope": [],
+        },
+    }
+    zero_run_path = state / "zero-run.json"
+    zero_failure_path = state / "zero-failure.json"
+    code_fix_lineage_path = state / "code-fix-lineage.json"
+    zero_run_path.write_text(json.dumps(zero_run), encoding="utf-8")
+    zero_failure_path.write_text(json.dumps(zero_failure), encoding="utf-8")
+    code_fix_lineage_path.write_text(json.dumps(code_fix_lineage), encoding="utf-8")
+    transport_failure(
+        repo,
+        run_id=zero_run_id,
+        head_sha=failed_code_sha,
+        run_path=zero_run_path,
+        failure_path=zero_failure_path,
+        lineage_path=code_fix_lineage_path,
+    )
+    continuation = {
+        "repair_id": "REPAIR-105-003",
+        "failed_run_id": zero_run_id,
+        "failed_head_sha": failed_code_sha,
+        "task": {"id": "TASK-105", "revision": 1},
+        "action": "CONTINUE_IMPLEMENTATION",
+        "modification_scope": ["src/sample.py"],
+        "instructions": ["Continue the authorized correction."],
+        "constraints": [],
+    }
+    continuation_auth = execute_ingress(
+        IngressEnvelope(
+            "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
+            {"failed_run_id": zero_run_id},
+            {"expected_failed_head_sha": failed_code_sha}, continuation,
+        ),
+        repo=repo,
+    )
+
+    (repo / "src" / "sample.py").write_text("value = 'repaired'\n", encoding="utf-8")
+    git(repo, "add", "src/sample.py")
+    git(repo, "commit", "--quiet", "-m", "complete continued implementation")
+    candidate_sha = git(repo, "rev-parse", "HEAD")
+    final_run_id = "RUN-105-004"
+    final_run = {
+        "run_id": final_run_id,
+        "task": {"id": "TASK-105", "revision": 1},
+        "executor": "codex",
+        "base_sha": failed_code_sha,
+        "workspace": str(repo),
+        "head_sha": None,
+        "status": "ACTIVE",
+    }
+    continuation_lineage = {
+        "failed_run_id": zero_run_id,
+        "root_base_sha": root_base_sha,
+        "failed_head_sha": failed_code_sha,
+        "failure": zero_failure,
+        "task": {"task_id": "TASK-105", "revision": 1},
+        "repair": continuation,
+        "repair_authorization_sha": continuation_auth.canonical_sha,
+        "run": final_run,
+    }
+    final_result = {
+        "result": {
+            "head_sha": candidate_sha,
+            "claims": [{
+                "id": "C1", "satisfies": ["AC1"],
+                "claim": "The continued implementation is complete.",
+                "evidence": ["E1"],
+            }],
+            "changed_files": ["src/sample.py"],
+            "unresolved": [],
+        },
+        "evidence": [{
+            "evidence_id": "E1", "run_id": final_run_id,
+            "subject_sha": candidate_sha, "type": "TEST",
+            "source": {"command": "git diff --check"},
+            "result": {"exit_code": 0, "summary": "clean"},
+            "raw": {"path": ".ai/evidence/E1.log"},
+        }],
+    }
+    final_run_path = state / "final-run.json"
+    final_result_path = state / "final-result.json"
+    continuation_lineage_path = state / "continuation-lineage.json"
+    final_run_path.write_text(json.dumps(final_run), encoding="utf-8")
+    final_result_path.write_text(json.dumps(final_result), encoding="utf-8")
+    continuation_lineage_path.write_text(json.dumps(continuation_lineage), encoding="utf-8")
+    transport_post_pass(
+        repo, run_id=final_run_id, head_sha=candidate_sha,
+        run_path=final_run_path, result_path=final_result_path,
+        lineage_path=continuation_lineage_path,
+    )
+
+    review = f"""review_id: REVIEW-105-004
+reviewed_sha: {candidate_sha}
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+"""
+    result = execute_ingress(
+        IngressEnvelope(
+            "AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW",
+            {"run_id": final_run_id},
+            {"expected_candidate_sha": candidate_sha}, review,
+        ),
+        repo=repo,
+    )
+
+    assert result.status == "CANONICALIZED"
+    assert result.canonical_destination == f"refs/heads/aios/review-decision/{final_run_id}"
+    assert_exact_metadata_delta(
+        repo, result.canonical_sha, candidate_sha,
+        ".ai/reviews/REVIEW-105-004.yaml", review.encode("utf-8"),
+    )
+
+
 def test_changes_required_review_observable_in_unified_state(tmp_path):
     lineage = setup_candidate_lineage(tmp_path)
     repo = lineage["repo"]

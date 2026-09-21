@@ -960,21 +960,22 @@ def _canonical_repair_authorization(
     )
 
 
-def _validate_zero_delta_continue_failure(
+def _validate_zero_delta_historical_failure(
     repo: Path,
     *,
+    action: str,
     failure: Mapping[str, Any] | None,
     run: Run,
     failed_head_sha: str,
     task: Any,
 ) -> None:
-    """Bind a zero-delta historical continuation to its canonical FAILURE."""
+    """Bind a zero-delta historical REPAIR attempt to its canonical FAILURE."""
 
     if failure is None:
-        raise ValueError("CONTINUE_IMPLEMENTATION REPAIR committed delta is empty")
+        raise ValueError(f"{action} REPAIR committed delta is empty")
     if failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE"):
         raise ValueError(
-            "zero-delta CONTINUE_IMPLEMENTATION requires a pre-verification failure"
+            f"zero-delta {action} requires a pre-verification failure"
         )
     code, _, _ = _git(
         repo,
@@ -1012,7 +1013,7 @@ def _validate_zero_delta_continue_failure(
         or candidate.get("transportable") is not True
     ):
         raise ValueError(
-            "zero-delta CONTINUE_IMPLEMENTATION failure facts are invalid"
+            f"zero-delta {action} failure facts are invalid"
         )
 
 
@@ -1169,7 +1170,14 @@ def _repair_review_lineage(
         raise ValueError("REPAIR committed delta exceeds modification scope")
     if embedded_authorization["action"] == "CODE_FIX":
         if child_head_sha == failed_head_sha or not mutation:
-            raise ValueError("CODE_FIX REPAIR committed delta is empty")
+            _validate_zero_delta_historical_failure(
+                repo,
+                action="CODE_FIX",
+                failure=historical_child_failure,
+                run=child_run,
+                failed_head_sha=child_head_sha,
+                task=task,
+            )
     elif embedded_authorization["action"] == "CONTINUE_IMPLEMENTATION":
         if failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE"):
             raise ValueError(
@@ -1197,8 +1205,9 @@ def _repair_review_lineage(
                 "CONTINUE_IMPLEMENTATION candidate does not descend from failed head"
             )
         if child_head_sha == failed_head_sha or not mutation:
-            _validate_zero_delta_continue_failure(
+            _validate_zero_delta_historical_failure(
                 repo,
+                action="CONTINUE_IMPLEMENTATION",
                 failure=historical_child_failure,
                 run=child_run,
                 failed_head_sha=child_head_sha,

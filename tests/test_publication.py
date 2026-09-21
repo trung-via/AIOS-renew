@@ -521,6 +521,8 @@ def make_repair_lineage(
     failed_state: str = "mutation",
     final_state: str = "mutation",
     recursive_continue: bool = False,
+    recursive_action: str = "CONTINUE_IMPLEMENTATION",
+    recursive_failure_phase: str = "COMPLETION_GATE",
     recursive_authorization_conflict: bool = False,
     include_repair_authorization_sha: bool = False,
     repair_authorization_sha: str | int | None = None,
@@ -571,7 +573,7 @@ def make_repair_lineage(
             "executor": "codex",
             "base_sha": base_sha,
             "failed_head_sha": base_sha,
-            "phase": "COMPLETION_GATE",
+            "phase": recursive_failure_phase,
             "error": {"type": "RuntimeCompletionError", "message": "blocked"},
             "candidate": {
                 "transportable": True,
@@ -598,7 +600,7 @@ def make_repair_lineage(
             "failed_run_id": prior_failed_run_id,
             "failed_head_sha": base_sha,
             "task": {"id": "TASK-063", "revision": 2},
-            "action": "CONTINUE_IMPLEMENTATION",
+            "action": recursive_action,
             "modification_scope": ["product.txt"],
             "instructions": ["Continue the unfinished implementation."],
             "constraints": [],
@@ -1265,6 +1267,50 @@ def test_recursive_repair_accepts_truthful_zero_delta_continue_failure(
     )
 
 
+def test_recursive_repair_accepts_truthful_zero_delta_code_fix_failure(
+    tmp_path: Path,
+) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CONTINUE_IMPLEMENTATION",
+        phase="EXECUTION",
+        failed_state="unchanged",
+        recursive_continue=True,
+        recursive_action="CODE_FIX",
+        recursive_failure_phase="VERIFICATION",
+    )
+
+    report = publish(lineage)
+
+    failure = lineage["failure"]
+    prior_failure = lineage["prior_failure"]
+    prior_authorization = lineage["prior_authorization"]
+    authorization = lineage["authorization"]
+    assert report.outcome == "PUBLISHED"
+    assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+    assert prior_failure["phase"] == "VERIFICATION"
+    assert prior_authorization["action"] == "CODE_FIX"
+    assert authorization["action"] == "CONTINUE_IMPLEMENTATION"
+    assert (
+        failure["base_sha"]
+        == failure["failed_head_sha"]
+        == lineage["successful_run"]["base_sha"]
+        == lineage["base_sha"]
+    )
+    assert failure["phase"] == "EXECUTION"
+    assert failure["candidate"] == {
+        "transportable": True,
+        "repairable": True,
+        "dirty": False,
+        "descends_from_base": True,
+        "changed_files": [],
+        "outside_task_scope": [],
+    }
+
+
 @pytest.mark.parametrize(
     ("kwargs", "match"),
     [
@@ -1273,26 +1319,46 @@ def test_recursive_repair_accepts_truthful_zero_delta_continue_failure(
             "FAILURE identity",
         ),
         (
+            {"failure_overrides": {"executor": "antigravity"}},
+            "FAILURE identity",
+        ),
+        (
+            {
+                "failure_overrides": {
+                    "task": {"id": "TASK-063", "revision": 1}
+                }
+            },
+            "FAILURE identity",
+        ),
+        (
+            {"failure_overrides": {"failed_head_sha": "0" * 40}},
+            "FAILURE identity",
+        ),
+        (
             {"phase": "VERIFICATION"},
             "requires a pre-verification failure",
         ),
         (
             {"candidate_overrides": {"transportable": False}},
-            "FAILURE candidate repair binding",
+            "requires a clean transportable candidate",
+        ),
+        (
+            {"candidate_overrides": {"repairable": False}},
+            "not authorized as repairable",
         ),
         (
             {"candidate_overrides": {"dirty": True}},
-            "FAILURE candidate repair binding",
+            "requires a clean transportable candidate",
         ),
         (
             {"candidate_overrides": {"descends_from_base": False}},
-            "FAILURE candidate repair binding",
+            "requires a clean transportable candidate",
         ),
         (
             {
                 "candidate_overrides": {"outside_task_scope": ["secondary.txt"]}
             },
-            "FAILURE candidate scope binding",
+            "requires a clean transportable candidate",
         ),
         (
             {"candidate_overrides": {"changed_files": ["product.txt"]}},
@@ -1300,7 +1366,7 @@ def test_recursive_repair_accepts_truthful_zero_delta_continue_failure(
         ),
         (
             {"failed_state": "empty_commit"},
-            "zero-delta CONTINUE_IMPLEMENTATION failure facts are invalid",
+            "zero-delta CODE_FIX failure facts are invalid",
         ),
         (
             {"recursive_authorization_conflict": True},
@@ -1312,7 +1378,7 @@ def test_recursive_repair_accepts_truthful_zero_delta_continue_failure(
         ),
     ],
 )
-def test_invalid_zero_delta_continue_failure_does_not_mutate_main(
+def test_invalid_zero_delta_code_fix_failure_does_not_mutate_main(
     tmp_path: Path, kwargs: dict[str, object], match: str
 ) -> None:
     settings: dict[str, object] = {
@@ -1323,12 +1389,31 @@ def test_invalid_zero_delta_continue_failure_does_not_mutate_main(
     lineage = make_repair_lineage(
         tmp_path,
         predecessor_kind="PRIMARY",
-        action="CODE_FIX",
+        action="CONTINUE_IMPLEMENTATION",
         recursive_continue=True,
+        recursive_action="CODE_FIX",
         **settings,
     )
 
     with pytest.raises(PublicationError, match=match):
+        publish(lineage)
+
+    assert remote_main(lineage) == lineage["base_sha"]
+
+
+@pytest.mark.parametrize("final_state", ["unchanged", "empty_commit"])
+def test_successful_code_fix_still_requires_committed_delta(
+    tmp_path: Path, final_state: str
+) -> None:
+    lineage = make_repair_lineage(
+        tmp_path,
+        predecessor_kind="PRIMARY",
+        action="CODE_FIX",
+        failed_state="mutation",
+        final_state=final_state,
+    )
+
+    with pytest.raises(PublicationError, match="CODE_FIX REPAIR committed delta is empty"):
         publish(lineage)
 
     assert remote_main(lineage) == lineage["base_sha"]
