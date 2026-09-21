@@ -6,6 +6,7 @@ import subprocess
 import aios_renew.operator as operator_module
 from aios_renew.operator import runtime_paths, runtime_state_root
 from aios_renew.review_transport import transport_post_pass
+from tests.git_fixture_support import materialize_git_baseline
 
 TASK_SOURCE = """
 task_id: TASK-101
@@ -58,26 +59,16 @@ def make_repo(
     *,
     task_source: str | None = TASK_SOURCE,
 ) -> Path:
-    repo = root / "repo"
-    repo.mkdir(parents=True, exist_ok=True)
-    git(repo, "init", "--quiet")
-    git(repo, "config", "user.name", "AIOS Operator Test")
-    git(repo, "config", "user.email", "operator@example.invalid")
-    git(repo, "branch", "-M", "main")
-    (repo / "README.md").write_text("# operator test\n", encoding="utf-8")
+    files: dict[str, str] = {"README.md": "# operator test\n"}
     if task_source is not None:
-        task_dir = repo / ".ai" / "tasks"
-        task_dir.mkdir(parents=True, exist_ok=True)
-        (task_dir / "TASK-101.yaml").write_text(task_source, encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "--quiet", "-m", "baseline")
-    upstream = root / "upstream.git"
-    subprocess.run(("git", "init", "--bare", "--quiet", str(upstream)), check=True)
-    git(repo, "remote", "add", "origin", str(upstream))
-    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
-    subprocess.run(
-        ("git", "-C", str(upstream), "symbolic-ref", "HEAD", "refs/heads/main"),
-        check=True,
+        files[".ai/tasks/TASK-101.yaml"] = task_source
+    repo, _, _ = materialize_git_baseline(
+        root,
+        files=files,
+        user_name="AIOS Operator Test",
+        user_email="operator@example.invalid",
+        commit_message="baseline",
+        remote_head_main=True,
     )
     return repo
 

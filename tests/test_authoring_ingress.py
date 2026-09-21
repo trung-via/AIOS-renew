@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import aios_renew.authoring_ingress as authoring_ingress_module
+from tests.git_fixture_support import materialize_git_baseline
 
 from aios_renew.authoring_ingress import (
     AuthoringIngressError,
@@ -145,23 +146,13 @@ V1_TASK_105_R2_SOURCE = TASK_105_R2_SOURCE.replace(
 
 def setup_test_repo(root: Path) -> tuple[Path, Path, str]:
     """Create local repo and bare upstream git repo."""
-    repo = root / "repo"
-    remote = root / "upstream.git"
-    repo.mkdir(parents=True, exist_ok=True)
-    subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
-
-    git(repo, "init", "--quiet")
-    git(repo, "config", "user.name", "AIOS Test")
-    git(repo, "config", "user.email", "test@example.invalid")
-    git(repo, "branch", "-M", "main")
-    (repo / "README.md").write_text("initial repo\n", encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "--quiet", "-m", "initial commit")
-    base_sha = git(repo, "rev-parse", "HEAD")
-
-    git(repo, "remote", "add", "origin", str(remote))
-    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
-    return repo, remote, base_sha
+    return materialize_git_baseline(
+        root,
+        files={"README.md": "initial repo\n"},
+        user_name="AIOS Test",
+        user_email="test@example.invalid",
+        commit_message="initial commit",
+    )
 
 
 def setup_candidate_lineage(

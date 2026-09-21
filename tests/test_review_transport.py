@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import aios_renew.review_transport as review_transport
+from tests.git_fixture_support import materialize_git_baseline
 from aios_renew.review_transport import (
     ReviewTransportError,
     read_remote_task,
@@ -73,43 +74,31 @@ def git(repo: Path, *args: str) -> str:
 def make_repo(
     root: Path, *, downstream_attention: bool = False
 ) -> tuple[Path, Path]:
-    repo = root / "repo"
-    remote = root / "upstream.git"
-    repo.mkdir()
-    git(repo, "init", "--quiet")
-    git(repo, "config", "user.name", "Review Transport Test")
-    git(repo, "config", "user.email", "transport@example.invalid")
-    git(repo, "branch", "-M", "main")
-    task_dir = repo / ".ai" / "tasks"
-    task_dir.mkdir(parents=True)
-    (task_dir / "TASK-058.yaml").write_text(
-        "task_id: TASK-058\nrevision: 2\ngoal: historical contract\n",
-        encoding="utf-8",
-    )
-    (repo / "subject.txt").write_text("root\n", encoding="utf-8")
+    files = {
+        ".ai/tasks/TASK-058.yaml": (
+            "task_id: TASK-058\nrevision: 2\ngoal: historical contract\n"
+        ),
+        "subject.txt": "root\n",
+    }
     if downstream_attention:
-        workflow = repo / ".github/workflows/aios-terminal-attention.yml"
-        workflow.parent.mkdir(parents=True, exist_ok=True)
-        workflow.write_text(
+        files[".github/workflows/aios-terminal-attention.yml"] = (
             "run: |\n  python -m pip install --no-input "
-            f"-r {PINNED_PROVENANCE_PATH}\n",
-            encoding="utf-8",
+            f"-r {PINNED_PROVENANCE_PATH}\n"
         )
-        policy = repo / ".ai/brain-terminal-attention-carriers.yaml"
-        policy.parent.mkdir(parents=True, exist_ok=True)
-        policy.write_text("reviewed: downstream policy\n", encoding="utf-8")
-        provenance = repo / PINNED_PROVENANCE_PATH
-        provenance.parent.mkdir(parents=True, exist_ok=True)
-        provenance.write_text(
+        files[".ai/brain-terminal-attention-carriers.yaml"] = (
+            "reviewed: downstream policy\n"
+        )
+        files[PINNED_PROVENANCE_PATH] = (
             "aios-renew @ git+https://github.com/trung-via/AIOS-renew.git@"
-            f"{PINNED_AIOS_RENEW_SHA}\n",
-            encoding="utf-8",
+            f"{PINNED_AIOS_RENEW_SHA}\n"
         )
-    git(repo, "add", ".")
-    git(repo, "commit", "--quiet", "-m", "root")
-    subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
-    git(repo, "remote", "add", "origin", str(remote))
-    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
+    repo, remote, _ = materialize_git_baseline(
+        root,
+        files=files,
+        user_name="Review Transport Test",
+        user_email="transport@example.invalid",
+        commit_message="root",
+    )
     return repo, remote
 
 

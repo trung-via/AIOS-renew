@@ -8,6 +8,7 @@ import pytest
 import aios_renew.publication as publication_module
 from aios_renew.publication import PublicationError, publish_review_decision
 from aios_renew.review_transport import transport_failure, transport_post_pass
+from tests.git_fixture_support import materialize_git_baseline
 
 
 def test_repair_package_uses_integrated_result_base_for_attribution(
@@ -71,6 +72,24 @@ def git(repo: Path, *args: str, check: bool = True) -> str:
         text=True,
         check=check,
     ).stdout.strip()
+
+
+def materialize_publication_baseline(
+    root: Path, *, secondary: bool = False
+) -> tuple[Path, Path, str]:
+    files = {
+        ".ai/tasks/TASK-063.yaml": TASK_SOURCE,
+        "product.txt": "base\n",
+    }
+    if secondary:
+        files["secondary.txt"] = "base\n"
+    return materialize_git_baseline(
+        root,
+        files=files,
+        user_name="AIOS Publication Test",
+        user_email="publication@example.invalid",
+        commit_message="base",
+    )
 
 
 def review_source(
@@ -154,23 +173,7 @@ def make_lineage(
     remediation: bool = False,
     remediation_scope: tuple[str, ...] = ("product.txt",),
 ) -> dict[str, object]:
-    repo = root / "repo"
-    remote = root / "upstream.git"
-    repo.mkdir()
-    git(repo, "init", "--quiet")
-    git(repo, "config", "user.name", "AIOS Publication Test")
-    git(repo, "config", "user.email", "publication@example.invalid")
-    git(repo, "branch", "-M", "main")
-    task_dir = repo / ".ai" / "tasks"
-    task_dir.mkdir(parents=True)
-    (task_dir / "TASK-063.yaml").write_text(TASK_SOURCE, encoding="utf-8")
-    (repo / "product.txt").write_text("base\n", encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "--quiet", "-m", "base")
-    base_sha = git(repo, "rev-parse", "HEAD")
-    subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
-    git(repo, "remote", "add", "origin", str(remote))
-    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
+    repo, remote, base_sha = materialize_publication_baseline(root)
 
     intermediate_sha = None
     if intermediate_candidate:
@@ -529,24 +532,9 @@ def make_repair_lineage(
     supersede_revision_count: int = 1,
     use_superseded_authorization: bool | int = False,
 ) -> dict[str, object]:
-    repo = root / "repo"
-    remote = root / "upstream.git"
-    repo.mkdir()
-    git(repo, "init", "--quiet")
-    git(repo, "config", "user.name", "AIOS Publication Test")
-    git(repo, "config", "user.email", "publication@example.invalid")
-    git(repo, "branch", "-M", "main")
-    task_dir = repo / ".ai" / "tasks"
-    task_dir.mkdir(parents=True)
-    (task_dir / "TASK-063.yaml").write_text(TASK_SOURCE, encoding="utf-8")
-    (repo / "product.txt").write_text("base\n", encoding="utf-8")
-    (repo / "secondary.txt").write_text("base\n", encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "--quiet", "-m", "base")
-    base_sha = git(repo, "rev-parse", "HEAD")
-    subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
-    git(repo, "remote", "add", "origin", str(remote))
-    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
+    repo, remote, base_sha = materialize_publication_baseline(
+        root, secondary=True
+    )
 
     state = root / "state"
     state.mkdir()
@@ -1781,23 +1769,7 @@ def make_predecessor_lineage(
     sibling_findings: bool = False,
     remediation_scope: tuple[str, ...] = ("product.txt",),
 ) -> dict[str, object]:
-    repo = root / "repo"
-    remote = root / "upstream.git"
-    repo.mkdir(parents=True, exist_ok=True)
-    git(repo, "init", "--quiet")
-    git(repo, "config", "user.name", "AIOS Publication Test")
-    git(repo, "config", "user.email", "publication@example.invalid")
-    git(repo, "branch", "-M", "main")
-    task_dir = repo / ".ai" / "tasks"
-    task_dir.mkdir(parents=True)
-    (task_dir / "TASK-063.yaml").write_text(TASK_SOURCE, encoding="utf-8")
-    (repo / "product.txt").write_text("base\n", encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "--quiet", "-m", "base")
-    base_sha = git(repo, "rev-parse", "HEAD")
-    subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
-    git(repo, "remote", "add", "origin", str(remote))
-    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
+    repo, remote, base_sha = materialize_publication_baseline(root)
 
     state = root / "state"
     state.mkdir()
@@ -2656,23 +2628,7 @@ def make_integrated_predecessor_lineage(root: Path) -> dict[str, object]:
     pred_run_id = "RUN-063-001"
     rem_run_id = "RUN-063-002"
 
-    repo = root / "repo"
-    remote = root / "upstream.git"
-    repo.mkdir(parents=True, exist_ok=True)
-    git(repo, "init", "--quiet")
-    git(repo, "config", "user.name", "AIOS Publication Test")
-    git(repo, "config", "user.email", "publication@example.invalid")
-    git(repo, "branch", "-M", "main")
-    task_dir = repo / ".ai" / "tasks"
-    task_dir.mkdir(parents=True)
-    (task_dir / "TASK-063.yaml").write_text(TASK_SOURCE, encoding="utf-8")
-    (repo / "product.txt").write_text("base\n", encoding="utf-8")
-    git(repo, "add", ".")
-    git(repo, "commit", "--quiet", "-m", "base")
-    base_sha = git(repo, "rev-parse", "HEAD")
-    subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
-    git(repo, "remote", "add", "origin", str(remote))
-    git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
+    repo, remote, base_sha = materialize_publication_baseline(root)
 
     state = root / "state"
     state.mkdir(exist_ok=True)
