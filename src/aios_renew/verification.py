@@ -11,8 +11,10 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Iterable, Mapping
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from typing import Iterator
 
 from .artifacts import Claim, Evidence, EvidenceOutcome, EvidenceSource, Result
 
@@ -33,6 +35,104 @@ class RuntimeVerificationError(RuntimeError):
     def __init__(self, message: str, *, evidence: Iterable[Evidence] = ()) -> None:
         super().__init__(message)
         self.evidence = tuple(evidence)
+
+
+@contextmanager
+def materialize_verification_subject(
+    repository: Path,
+    *,
+    run_id: str,
+    subject_sha: str,
+    environment: Mapping[str, str] | None = None,
+) -> Iterator[Path]:
+    """Yield one clean, independently mutable checkout of an exact commit.
+
+    The clone deliberately has its own Git directory rather than using a linked
+    worktree.  Immutable objects may be copied from the control repository, but
+    its index, refs, configuration, and other mutable Git state are isolated.
+    Cleanup is subordinate: it can neither change verification's verdict nor
+    replace a canonical terminal with a cleanup failure.
+    """
+
+    repository = repository.resolve()
+    temp_root: Path | None = None
+    try:
+        exact_commit = _git(
+            repository, "rev-parse", "--verify", f"{subject_sha}^{{commit}}"
+        )
+        if exact_commit != subject_sha:
+            raise RuntimeVerificationError("verification subject commit mismatch")
+        temp_root = _isolated_temp_root(
+            repository=repository,
+            run_id=run_id,
+            environment=environment,
+        )
+        subject = temp_root / "subject"
+        hooks = temp_root / "hooks"
+        hooks.mkdir()
+        origin_url = _optional_git(repository, "remote", "get-url", "origin")
+        _git(
+            repository,
+            "-c",
+            f"core.hooksPath={hooks}",
+            "clone",
+            "--local",
+            "--no-hardlinks",
+            "--no-checkout",
+            "--no-tags",
+            str(repository),
+            str(subject),
+        )
+        if origin_url is not None:
+            _git(subject, "remote", "set-url", "origin", origin_url)
+        _git(
+            subject,
+            "-c",
+            f"core.hooksPath={hooks}",
+            "checkout",
+            "--detach",
+            subject_sha,
+        )
+        if not (subject / ".git").is_dir():
+            raise RuntimeVerificationError(
+                "verification subject Git directory is unavailable"
+            )
+        if _git(subject, "rev-parse", "HEAD") != subject_sha:
+            raise RuntimeVerificationError("verification subject HEAD mismatch")
+        if _git(subject, "status", "--porcelain"):
+            raise RuntimeVerificationError("verification subject is initially dirty")
+    except RuntimeVerificationError:
+        if temp_root is not None:
+            try:
+                _remove_temp_root(temp_root)
+            except OSError:
+                pass
+        raise
+    except (OSError, UnicodeError, RuntimeError) as exc:
+        if temp_root is not None:
+            try:
+                _remove_temp_root(temp_root)
+            except OSError:
+                pass
+        raise RuntimeVerificationError(
+            f"verification subject could not be materialized: {exc}"
+        ) from exc
+    except BaseException:
+        if temp_root is not None:
+            try:
+                _remove_temp_root(temp_root)
+            except OSError:
+                pass
+        raise
+
+    try:
+        yield subject
+    finally:
+        if temp_root is not None:
+            try:
+                _remove_temp_root(temp_root)
+            except OSError:
+                pass
 
 
 def execute_verification(
@@ -268,6 +368,38 @@ def _windows_temp_bases(
 
 def _has_git_ancestor(path: Path) -> bool:
     return any((parent / ".git").exists() for parent in (path, *path.parents))
+
+
+def _git(repository: Path, *args: str) -> str:
+    try:
+        completed = subprocess.run(
+            ("git", "-C", str(repository), *args),
+            capture_output=True,
+            text=False,
+            check=False,
+        )
+        stdout = completed.stdout.decode("utf-8", errors="strict")
+        stderr = completed.stderr.decode("utf-8", errors="strict")
+    except (OSError, UnicodeError) as exc:
+        raise RuntimeError(f"Git invocation failed: {exc}") from exc
+    if completed.returncode != 0:
+        detail = stderr.strip() or stdout.strip()
+        raise RuntimeError(f"Git command failed: {detail}")
+    return stdout.strip()
+
+
+def _optional_git(repository: Path, *args: str) -> str | None:
+    try:
+        completed = subprocess.run(
+            ("git", "-C", str(repository), *args),
+            capture_output=True,
+            text=False,
+            check=False,
+        )
+        stdout = completed.stdout.decode("utf-8", errors="strict")
+    except (OSError, UnicodeError) as exc:
+        raise RuntimeError(f"Git invocation failed: {exc}") from exc
+    return stdout.strip() if completed.returncode == 0 else None
 
 
 def _remove_temp_root(temp_root: Path) -> None:

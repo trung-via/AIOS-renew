@@ -12,6 +12,7 @@ from typing import Any, Literal, Protocol
 from .antigravity_adapter import AntigravityExecutionError
 from .artifacts import (
     ArtifactValidationError,
+    Evidence,
     ResultPackage,
     validate_evidence,
     validate_result_package,
@@ -29,6 +30,7 @@ from .verification import (
     VerificationRunner,
     attach_verification_evidence,
     execute_verification,
+    materialize_verification_subject,
 )
 from .verification_contract import MINIMUM_SUFFICIENT_V1, normalize_verification
 
@@ -168,6 +170,7 @@ class RuntimeCompletion:
         self.error_type = error_type
         self.transport_repo = transport_repo or repo
         self.interruption_phase = "COMPLETION_GATE"
+        self.verification_subject_sha: str | None = None
 
     def complete(
         self, package: ResultPackage, policy: CompletionPolicy
@@ -217,28 +220,37 @@ class RuntimeCompletion:
             )
 
         self.interruption_phase = "VERIFICATION"
+        self.verification_subject_sha = actual_head
         verification_started = (
             None
             if self.observation_tracker is None
             else self.observation_tracker.begin_verification()
         )
         try:
-            runtime_evidence = execute_verification(
-                policy.verification_commands,
+            with materialize_verification_subject(
+                self.repo,
                 run_id=self.run.run_id,
                 subject_sha=actual_head,
-                repository=self.repo,
-                raw_directory=self.state.verification / self.run.run_id,
-                runner=self.verification_runner,
-            )
+            ) as verification_subject:
+                runtime_evidence = execute_verification(
+                    policy.verification_commands,
+                    run_id=self.run.run_id,
+                    subject_sha=actual_head,
+                    repository=verification_subject,
+                    raw_directory=self.state.verification / self.run.run_id,
+                    runner=self.verification_runner,
+                )
+                self._require_post_verification_state(
+                    verification_subject,
+                    expected_head=actual_head,
+                    evidence=runtime_evidence,
+                )
         except RuntimeVerificationError as exc:
             self._raise(str(exc), cause=exc)
         finally:
             if self.observation_tracker is not None:
                 self.observation_tracker.end_verification(verification_started)
         self.interruption_phase = "COMPLETION_GATE"
-
-        self._require_post_verification_state(expected_head=actual_head)
         if policy.remediation_execution is None:
             canonical_result = attach_verification_evidence(
                 package.result, runtime_evidence
@@ -471,11 +483,26 @@ class RuntimeCompletion:
                     + command
                 )
 
-    def _require_post_verification_state(self, *, expected_head: str) -> None:
-        if self._git("rev-parse", "HEAD") != expected_head:
-            self._raise("verification changed Git HEAD")
-        if self._git("status", "--porcelain"):
-            self._raise("verification dirtied working tree")
+    def _require_post_verification_state(
+        self,
+        repository: Path,
+        *,
+        expected_head: str,
+        evidence: Sequence[Evidence] = (),
+    ) -> None:
+        try:
+            if self._git_at(repository, "rev-parse", "HEAD") != expected_head:
+                raise RuntimeVerificationError(
+                    "verification changed Git HEAD", evidence=evidence
+                )
+            if self._git_at(repository, "status", "--porcelain"):
+                raise RuntimeVerificationError(
+                    "verification dirtied working tree", evidence=evidence
+                )
+        except RuntimeVerificationError:
+            raise
+        except self.error_type as exc:
+            raise RuntimeVerificationError(str(exc), evidence=evidence) from exc
 
     def _committed_changed_files(self, base_sha: str, head_sha: str) -> set[str]:
         output = self._git(
@@ -496,9 +523,14 @@ class RuntimeCompletion:
             self._raise(str(exc), cause=exc)
 
     def _git(self, *args: str, strip_stdout: bool = True) -> str:
+        return self._git_at(self.repo, *args, strip_stdout=strip_stdout)
+
+    def _git_at(
+        self, repository: Path, *args: str, strip_stdout: bool = True
+    ) -> str:
         try:
             completed = subprocess.run(
-                ("git", "-C", str(self.repo), *args),
+                ("git", "-C", str(repository), *args),
                 capture_output=True,
                 text=False,
                 check=False,
@@ -552,6 +584,7 @@ def persist_failure(
     interruption_phase: str | None = None,
     transport: bool = True,
     transport_repo: Path | None = None,
+    verification_subject_sha: str | None = None,
 ) -> None:
     """Persist one admitted FAILURE and optionally best-effort transport it."""
 
@@ -560,17 +593,6 @@ def persist_failure(
             observation_path = persist_terminal_observation(
                 state, observation_tracker, "FAILURE"
             )
-        head_sha = _git(root, "rev-parse", "HEAD")
-        dirty = bool(_git(root, "status", "--porcelain"))
-        descendant = _git_is_ancestor(root, run.base_sha, head_sha)
-        changed = (
-            _committed_changed_files(root, run.base_sha, head_sha)
-            if descendant
-            else set()
-        )
-        outside_scope = changed.difference(task.scope.modify)
-        repairable = not dirty and descendant
-        transportable = repairable and not outside_scope
         cause = failure.__cause__
         if isinstance(failure, KeyboardInterrupt) and interruption_phase is not None:
             phase = interruption_phase
@@ -582,6 +604,32 @@ def persist_failure(
             phase = "VERIFICATION"
         else:
             phase = "COMPLETION_GATE"
+        exact_verification_subject = (
+            verification_subject_sha
+            if phase == "VERIFICATION" and verification_subject_sha is not None
+            else None
+        )
+        head_sha = (
+            exact_verification_subject
+            if exact_verification_subject is not None
+            else _git(root, "rev-parse", "HEAD")
+        )
+        # A verification failure describes the immutable candidate materialized
+        # from PRE_VERIFICATION_CANDIDATE, never a later control checkout HEAD.
+        dirty = (
+            False
+            if exact_verification_subject is not None
+            else bool(_git(root, "status", "--porcelain"))
+        )
+        descendant = _git_is_ancestor(root, run.base_sha, head_sha)
+        changed = (
+            _committed_changed_files(root, run.base_sha, head_sha)
+            if descendant
+            else set()
+        )
+        outside_scope = changed.difference(task.scope.modify)
+        repairable = not dirty and descendant
+        transportable = repairable and not outside_scope
         error_message = str(failure)
         if isinstance(cause, (CodexExecutionError, AntigravityExecutionError)):
             error_message = str(cause).splitlines()[0][:512]

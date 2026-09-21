@@ -3528,7 +3528,7 @@ def test_runtime_verification_decode_failure_persists_no_result(
         ("head", "verification changed Git HEAD"),
     ],
 )
-def test_successful_verification_repository_mutation_fails_closed(
+def test_successful_verification_subject_mutation_fails_closed(
     tmp_path: Path,
     flow: str,
     mutation: str,
@@ -3540,19 +3540,32 @@ def test_successful_verification_repository_mutation_fails_closed(
     )
     state = runtime_paths(repo)
     heads_before_mutation = []
+    subjects = []
 
     def mutating_verification(command, **kwargs):
-        heads_before_mutation.append(git(repo, "rev-parse", "HEAD"))
+        subject = kwargs["cwd"]
+        subjects.append(subject)
+        heads_before_mutation.append(git(subject, "rev-parse", "HEAD"))
         if mutation == "dirty":
-            (repo / "VERIFICATION_DIRTY.txt").write_text(
+            (subject / "VERIFICATION_DIRTY.txt").write_text(
                 "verification mutation\n", encoding="utf-8"
             )
         else:
-            (repo / "VERIFICATION_COMMIT.txt").write_text(
+            (subject / "VERIFICATION_COMMIT.txt").write_text(
                 "verification mutation\n", encoding="utf-8"
             )
-            git(repo, "add", "VERIFICATION_COMMIT.txt")
-            git(repo, "commit", "--quiet", "-m", "verification mutation")
+            git(subject, "add", "VERIFICATION_COMMIT.txt")
+            git(
+                subject,
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "--quiet",
+                "-m",
+                "verification mutation",
+            )
         return subprocess.CompletedProcess(
             command, returncode=0, stdout=b"passed\n", stderr=b""
         )
@@ -3579,11 +3592,58 @@ def test_successful_verification_repository_mutation_fails_closed(
             )
 
     assert not (state.results / "RUN-101-001.json").exists()
-    if mutation == "dirty":
-        assert (repo / "VERIFICATION_DIRTY.txt").is_file()
-        assert git(repo, "status", "--porcelain")
-    else:
-        assert git(repo, "rev-parse", "HEAD") != heads_before_mutation[0]
+    assert len(subjects) == 1
+    assert not subjects[0].exists()
+    assert not (repo / "VERIFICATION_DIRTY.txt").exists()
+    assert not (repo / "VERIFICATION_COMMIT.txt").exists()
+    assert git(repo, "status", "--porcelain") == ""
+    failure = json.loads(
+        (state.failures / "RUN-101-001.json").read_text(encoding="utf-8")
+    )
+    assert failure["phase"] == "VERIFICATION"
+    assert failure["failed_head_sha"] == heads_before_mutation[0]
+
+
+def test_control_head_movement_does_not_change_exact_verification_subject(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    verification_subjects = []
+    candidate_sha = None
+
+    def move_control_after_materialization(command, **kwargs):
+        nonlocal candidate_sha
+        subject = kwargs["cwd"]
+        verification_subjects.append(subject)
+        observed_subject = git(subject, "rev-parse", "HEAD")
+        if candidate_sha is None:
+            candidate_sha = observed_subject
+            git(repo, "reset", "--quiet", "--hard", f"{candidate_sha}^")
+        assert git(subject, "rev-parse", "HEAD") == candidate_sha
+        assert git(subject, "status", "--porcelain") == ""
+        return subprocess.CompletedProcess(
+            command, returncode=0, stdout=b"passed\n", stderr=b""
+        )
+
+    summary = run_task(
+        "TASK-101",
+        executor="codex",
+        repo=repo,
+        native_runner=CommitResultRunner(
+            repo,
+            writes={"OUTPUT.txt": "candidate\n"},
+            changed_files=["OUTPUT.txt"],
+        ),
+        verification_runner=move_control_after_materialization,
+    )
+
+    assert candidate_sha is not None
+    assert summary.head_sha == candidate_sha
+    assert git(repo, "rev-parse", "HEAD") != candidate_sha
+    assert len(set(verification_subjects)) == 1
+    assert not verification_subjects[0].exists()
+    stored = json.loads(summary.result_path.read_text(encoding="utf-8"))
+    assert {item["subject_sha"] for item in stored["evidence"]} == {candidate_sha}
 
 
 def test_missing_agy_executable_fails_clearly(tmp_path: Path) -> None:
@@ -4892,7 +4952,8 @@ def test_no_change_verification_only_continuations_reuse_exact_candidate(
     assert native_calls == []
     assert len(success_calls) == 1
     _, verification_cwd, _, capture_output, text, check = success_calls[0]
-    assert verification_cwd == repo.resolve()
+    assert verification_cwd != repo.resolve()
+    assert not verification_cwd.exists()
     assert capture_output is True
     assert text is False
     assert check is False
@@ -8056,7 +8117,9 @@ def test_integrated_evidence_only_finalize_preserves_origin_verification(
 
     def verify(command, **kwargs):
         verification_calls.append(command)
-        assert kwargs["cwd"] == repo
+        verification_subject = kwargs["cwd"]
+        assert verification_subject != repo
+        assert git(verification_subject, "rev-parse", "HEAD") == integrated_sha
         assert git(repo, "rev-parse", "HEAD") == integrated_sha
         return subprocess.CompletedProcess(command, 0, stdout=b"ok\n", stderr=b"")
 

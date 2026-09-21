@@ -11,6 +11,7 @@ from aios_renew.verification import (
     RuntimeVerificationError,
     attach_verification_evidence,
     execute_verification,
+    materialize_verification_subject,
 )
 
 
@@ -28,6 +29,77 @@ def completed(returncode=0, stdout=b"ok\n", stderr=b""):
     return subprocess.CompletedProcess(
         ("shell",), returncode=returncode, stdout=stdout, stderr=stderr
     )
+
+
+def git(repository: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ("git", "-C", str(repository), *args),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return completed.stdout.strip()
+
+
+def test_materializes_one_clean_exact_subject_with_independent_git_state(
+    tmp_path: Path,
+) -> None:
+    control = tmp_path / "control"
+    control.mkdir()
+    git(control, "init")
+    git(control, "config", "user.name", "Test")
+    git(control, "config", "user.email", "test@example.invalid")
+    (control / "tracked.txt").write_text("candidate\n", encoding="utf-8")
+    git(control, "add", "tracked.txt")
+    git(control, "commit", "-m", "candidate")
+    candidate = git(control, "rev-parse", "HEAD")
+
+    with materialize_verification_subject(
+        control, run_id="RUN-156-001", subject_sha=candidate
+    ) as subject:
+        assert subject != control
+        assert (subject / ".git").is_dir()
+        assert git(subject, "rev-parse", "HEAD") == candidate
+        assert git(subject, "status", "--porcelain") == ""
+        git(subject, "config", "aios.subject", "isolated")
+        git(subject, "branch", "subject-only")
+        control_config = subprocess.run(
+            ("git", "-C", str(control), "config", "--get", "aios.subject"),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert control_config.returncode == 1
+        assert "subject-only" not in git(control, "branch", "--list")
+        subject_root = subject.parent
+
+    assert not subject_root.exists()
+
+
+def test_materialized_subject_stays_exact_when_control_head_moves(
+    tmp_path: Path,
+) -> None:
+    control = tmp_path / "control"
+    control.mkdir()
+    git(control, "init")
+    git(control, "config", "user.name", "Test")
+    git(control, "config", "user.email", "test@example.invalid")
+    (control / "tracked.txt").write_text("candidate\n", encoding="utf-8")
+    git(control, "add", "tracked.txt")
+    git(control, "commit", "-m", "candidate")
+    candidate = git(control, "rev-parse", "HEAD")
+
+    with materialize_verification_subject(
+        control, run_id="RUN-156-002", subject_sha=candidate
+    ) as subject:
+        (control / "tracked.txt").write_text("later\n", encoding="utf-8")
+        git(control, "add", "tracked.txt")
+        git(control, "commit", "-m", "move control")
+
+        assert git(control, "rev-parse", "HEAD") != candidate
+        assert git(subject, "rev-parse", "HEAD") == candidate
+        assert (subject / "tracked.txt").read_text(encoding="utf-8") == "candidate\n"
+        assert git(subject, "status", "--porcelain") == ""
 
 
 def test_relative_git_basetemp_command_runs_unchanged_from_subject_repo(

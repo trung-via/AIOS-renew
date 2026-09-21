@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from aios_renew.review_transport import ReviewTransportError
 from aios_renew.run import Run
 from aios_renew.runtime import (
     RuntimeCompletion,
+    persist_failure,
     primary_completion_policy,
     remediation_completion_policy,
     repair_completion_policy,
@@ -30,10 +32,24 @@ from aios_renew.task import (
     TaskScope,
     TaskVerification,
 )
+from aios_renew.verification import RuntimeVerificationError
 
 
 class BoundaryError(RuntimeError):
     pass
+
+
+@pytest.fixture(autouse=True)
+def stub_verification_subject(monkeypatch: pytest.MonkeyPatch):
+    """Keep completion-policy unit tests independent of Git materialization."""
+
+    @contextmanager
+    def materialize(repository: Path, **kwargs):
+        yield repository
+
+    monkeypatch.setattr(
+        runtime_module, "materialize_verification_subject", materialize
+    )
 
 
 class StubRuntimeCompletion(RuntimeCompletion):
@@ -48,6 +64,11 @@ class StubRuntimeCompletion(RuntimeCompletion):
         if args == ("status", "--porcelain"):
             return ""
         raise AssertionError(f"unexpected Git observation: {args}")
+
+    def _git_at(
+        self, repository: Path, *args: str, strip_stdout: bool = True
+    ) -> str:
+        return self._git(*args, strip_stdout=strip_stdout)
 
     def _committed_changed_files(self, base_sha: str, head_sha: str) -> set[str]:
         return set(self.changed_files)
@@ -363,6 +384,65 @@ def test_v1_repair_normalizes_task_and_origin_verification_without_mutation(
     )
     assert task.verification.required == task_commands
     assert origin_commands == ("pytest tests", "opaque command")
+
+
+def test_verification_failure_stays_bound_to_candidate_after_control_moves(
+    tmp_path: Path,
+) -> None:
+    task, _, state, run_path, _ = completion_fixture(tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        completed = runtime_module.subprocess.run(
+            ("git", "-C", str(repo), *args),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return completed.stdout.strip()
+
+    git("init")
+    git("config", "user.name", "Test")
+    git("config", "user.email", "test@example.invalid")
+    (repo / "BASE.txt").write_text("base\n", encoding="utf-8")
+    git("add", "BASE.txt")
+    git("commit", "-m", "base")
+    base_sha = git("rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("candidate\n", encoding="utf-8")
+    git("add", "OUTPUT.txt")
+    git("commit", "-m", "candidate")
+    candidate_sha = git("rev-parse", "HEAD")
+    run = Run.from_task(
+        run_id="RUN-052-001",
+        task=task,
+        executor="codex",
+        base_sha=base_sha,
+        workspace=str(repo),
+    )
+    git("checkout", "--detach", base_sha)
+    failure = BoundaryError("verification failed")
+    failure.__cause__ = RuntimeVerificationError("command failed")
+
+    persist_failure(
+        repo,
+        state=state,
+        task=task,
+        run=run,
+        run_path=run_path,
+        failure=failure,
+        transport=False,
+        verification_subject_sha=candidate_sha,
+    )
+
+    stored = json.loads(
+        (state.failures / f"{run.run_id}.json").read_text(encoding="utf-8")
+    )
+    assert git("rev-parse", "HEAD") == base_sha
+    assert stored["phase"] == "VERIFICATION"
+    assert stored["failed_head_sha"] == candidate_sha
+    assert stored["candidate"]["dirty"] is False
+    assert stored["candidate"]["changed_files"] == ["OUTPUT.txt"]
 
 
 @pytest.mark.parametrize("action", ("CODE_FIX", "CONTINUE_IMPLEMENTATION"))

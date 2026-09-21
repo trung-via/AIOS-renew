@@ -145,6 +145,12 @@ class _RunAttempt:
             return "EXECUTION"
         return self.completion.interruption_phase
 
+    @property
+    def verification_subject_sha(self) -> str | None:
+        if self.completion is None:
+            return None
+        return self.completion.verification_subject_sha
+
 
 class OperatorError(RuntimeError):
     """Raised for a clear operator-level failure."""
@@ -1042,6 +1048,7 @@ def run_task(
                     failure=original,
                     observation_tracker=observation_tracker,
                     interruption_phase=attempt.interruption_phase,
+                    verification_subject_sha=attempt.verification_subject_sha,
                 )
         else:
             _persist_and_transport_admission_failure(
@@ -1061,6 +1068,8 @@ def run_task(
                     run_path=run_path,
                     failure=original,
                     observation_tracker=observation_tracker,
+                    interruption_phase=attempt.interruption_phase,
+                    verification_subject_sha=attempt.verification_subject_sha,
                 )
         else:
             _persist_and_transport_admission_failure(
@@ -1261,6 +1270,7 @@ def _persist_and_transport_failure(
     observation_path: Path | None = None,
     interruption_phase: str | None = None,
     transport: bool = True,
+    verification_subject_sha: str | None = None,
 ) -> None:
     """Delegate admitted FAILURE terminalization and optional transport to Runtime."""
     state = runtime_paths(root)
@@ -1283,6 +1293,7 @@ def _persist_and_transport_failure(
             observation_path=observation_path,
             interruption_phase=interruption_phase,
             transport=transport,
+            verification_subject_sha=verification_subject_sha,
         )
     except Exception:
         # Delegation setup is also subordinate to the original failure.
@@ -1347,6 +1358,7 @@ def run_repair(
                     _persist_repair_failure(
                         root, state=state, attempt=attempt, failure=original,
                         observation_tracker=observation_tracker,
+                        interruption_phase=attempt.interruption_phase,
                     )
                 except Exception:
                     pass
@@ -1383,6 +1395,7 @@ def _persist_repair_failure(
         interruption_phase=interruption_phase,
         transport=transfer_error is None,
         transport_repo=control_repo,
+        verification_subject_sha=attempt.verification_subject_sha,
     )
     _persist_historical_transfer_error(
         state, attempt.run_path.stem, transfer_error
@@ -1670,6 +1683,7 @@ def recover_primary(
                 attempt=attempt,
                 failure=original,
                 observation_tracker=observation_tracker,
+                interruption_phase=attempt.interruption_phase,
             )
         except Exception:
             pass
@@ -1711,6 +1725,7 @@ def _persist_primary_recovery_failure(
         interruption_phase=interruption_phase,
         transport=transfer_error is None,
         transport_repo=control_repo,
+        verification_subject_sha=attempt.verification_subject_sha,
     )
     _persist_historical_transfer_error(
         state, attempt.run_path.stem, transfer_error
@@ -3579,6 +3594,7 @@ def run_remediation(
                     attempt=attempt,
                     failure=original,
                     observation_tracker=observation_tracker,
+                    interruption_phase=attempt.interruption_phase,
                 )
         else:
             _persist_and_transport_admission_failure(
@@ -3625,6 +3641,7 @@ def _persist_remediation_failure(
             interruption_phase=interruption_phase,
             transport=transfer_error is None,
             transport_repo=control_repo,
+            verification_subject_sha=attempt.verification_subject_sha,
         )
         _persist_historical_transfer_error(
             state, attempt.run_path.stem, transfer_error
