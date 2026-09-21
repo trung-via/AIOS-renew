@@ -177,8 +177,22 @@ sequence:
       claiming a BP-V2 performance baseline.
   - id: bp-v2-full-suite-harness-acceleration
     status: NEXT
-    task_id: TASK-152
-    task_revision: 2
+    baseline_completed_by:
+      task_id: TASK-152
+      task_revision: 2
+      run_id: RUN-152-003
+      review_id: REVIEW-152-003
+      reviewed_sha: "0e40a6dfdae610dca0144200eaf38bd0a43696a7"
+      published_sha: "0e40a6dfdae610dca0144200eaf38bd0a43696a7"
+      collection_evidence_id: RUN-152-003-V001
+      full_suite_evidence_id: RUN-152-003-V002
+      collected_tests: 1581
+      serial_full_suite_seconds: 2340.29
+      self_host_class:
+        - self-hosted
+        - windows
+        - x64
+        - aios-renew
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
