@@ -1,0 +1,239 @@
+task_id: TASK-156
+revision: 1
+
+goal: >
+  Implement BP-V3 Exact Verification Subject Isolation by decoupling
+  Runtime-owned canonical verification from the mutable execution/control
+  checkout. Canonical verification must execute against one transient,
+  independently mutable Git subject bound to the exact pre-verification
+  candidate SHA, while preserving Runtime evidence ownership, exact
+  RESULT/FAILURE lineage, verification-subject mutation detection, and all
+  existing review, transport, publication, and correction authorities.
+
+problem: >
+  Current RuntimeCompletion uses the same repository object for structural
+  completion, canonical verification cwd, post-verification HEAD/clean-state
+  checks, and admitted FAILURE candidate inspection. execute_verification
+  records subject_sha in evidence but executes with cwd equal to that mutable
+  repository. This couples exact candidate verification to unrelated movement
+  of the control checkout. The coupling is deeper than cwd alone:
+  persist_failure derives failed_head_sha, dirty state, ancestry, and changed
+  files from the repository supplied at failure time, so a control checkout
+  that moves while an exact candidate is being verified can misattribute a
+  VERIFICATION failure to the wrong HEAD. Historical recovery already proves
+  the repository can materialize exact isolated Git subjects, but its policy
+  intentionally requires the control checkout to remain unchanged and cannot
+  simply be reused as the BP-V3 policy. BP-V3 must create a verification
+  boundary in which candidate identity is immutable, control movement is
+  irrelevant to verification validity, and mutation of the actual verification
+  subject still fails closed.
+
+assumptions:
+  - Canonical main at TASK-156 authoring is 4e4e1a9410c2f44a81f38e5a4a6149dab1b6f18b.
+  - >
+    Canonical roadmap state has BP-V2 DONE and bp-v3-verification-workspace-isolation
+    as the unique NEXT item. TASK-156 implements that planning milestone only.
+  - >
+    Runtime owns canonical verification, evidence construction, completion
+    gates, admitted FAILURE/RESULT persistence, and lifecycle truth. Executor
+    owns implementation HOW. Reviewer owns semantic verdict. Publisher owns
+    publication of the exact eligible reviewed candidate.
+  - >
+    The existing PRE_VERIFICATION_CANDIDATE is Runtime-owned reusable state
+    bound to one exact subject_sha and structural ResultPackage before
+    canonical verification starts.
+  - >
+    Existing RuntimeCompletion is shared by PRIMARY, REMEDIATION, REPAIR,
+    DIRECT_CANDIDATE, and recovery paths; verification isolation must therefore
+    be a shared completion-boundary property rather than a PRIMARY-only special
+    case.
+  - >
+    Existing historical workspace machinery is valid evidence that exact
+    detached Git subjects can be materialized, but historical execution policy
+    and verification-isolation policy remain distinct.
+  - >
+    BP-V3 does not authorize concurrency, parallel verification, worker
+    selection, xdist, retry, failover, automatic routing, or BP-V4 behavior.
+  - >
+    Existing publication already distinguishes fast-forward, already-included,
+    and integration-required outcomes. A later main divergence must not
+    retroactively invalidate otherwise valid candidate verification.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/publication.py
+    - tests/test_operator.py
+    - tests/test_runtime.py
+    - tests/test_verification.py
+    - tests/test_repair_preverification_eligibility.py
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/verification.py
+    - tests/test_operator.py
+    - tests/test_runtime.py
+    - tests/test_verification.py
+    - tests/test_repair_preverification_eligibility.py
+
+non_goals:
+  - Modify the frozen Kernel specification, Constitution, Project Contract, roadmap semantics, or provider-neutral authority boundaries.
+  - Modify Reviewer semantics, review artifacts, publication.py, review_transport.py, publication continuation, or integration-required behavior.
+  - Change RUN.workspace into a verification-workspace identity or persist the transient verification workspace as lifecycle truth.
+  - Create a workspace manager with Planner, router, retry, failover, scheduling, semantic-selection, or independent lifecycle authority.
+  - Release or weaken RepositoryLock, admit concurrent mutation authorities, run multiple RUNs concurrently, or implement BP-V4 parallel verification.
+  - Add pytest-xdist, worker-count selection, asynchronous verification scheduling, persistent verification caches, or performance routing.
+  - Treat control/main movement after verification-subject materialization as proof that the candidate changed or that existing candidate evidence became invalid.
+  - Weaken fail-closed verification-subject HEAD, index, worktree, ancestry, SHA, scope, or evidence checks.
+  - Reinterpret existing RUN, RESULT, FAILURE, REVIEW, REMEDIATION, REPAIR, or publication lineage.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve one immutable bridge into canonical verification:
+      PRE_VERIFICATION_CANDIDATE.subject_sha. The exact verification subject
+      initial HEAD, every canonical verification EVIDENCE.subject_sha, successful
+      RESULT.head_sha, and verification-stage FAILURE.failed_head_sha must bind
+      to that same exact candidate SHA rather than a later mutable control HEAD.
+    - >
+      Canonical verification must not execute in the mutable execution/control
+      checkout. Materialize one transient Git verification subject for the whole
+      ordered verification command set, bound to the exact candidate SHA and
+      clean before commands begin.
+    - >
+      The verification subject must have independently mutable worktree, index,
+      refs/config, and other Git metadata whose mutation could otherwise alter
+      the control repository. Reuse of immutable Git objects is allowed only
+      where it cannot create shared mutable authority or change exact candidate
+      identity.
+    - >
+      Keep execution/control repository identity separate from verification
+      subject identity. RUN.workspace remains the Executor operational workspace.
+      Existing .git/aios Runtime state, pre-verification state, raw evidence,
+      RESULT/FAILURE files, and transport state remain under existing Runtime
+      authority and must not migrate into the transient verification subject.
+    - >
+      Apply verification isolation consistently through the shared
+      RuntimeCompletion lifecycle used by PRIMARY, REMEDIATION, REPAIR,
+      DIRECT_CANDIDATE, and recovery flows. Do not add a PRIMARY-only bypass or
+      duplicate verification authority.
+    - >
+      After the verification subject is materialized, unrelated movement of the
+      control checkout or canonical main must not alter verification cwd, exact
+      subject SHA, evidence binding, or by itself cause candidate verification
+      failure. Do not require the control checkout to remain unchanged during
+      canonical verification.
+    - >
+      Mutation of the actual verification subject must still fail closed.
+      Verification plus its post-command subject-integrity checks form the
+      VERIFICATION phase: changed HEAD, dirty worktree/index, or other admitted
+      subject-integrity violation must produce no canonical RESULT and must be
+      attributed to the exact verification subject.
+    - >
+      On verification failure or interruption, canonical failure attribution
+      must inspect and bind the exact verification candidate rather than reread
+      candidate identity from a possibly moved control checkout. Preserve
+      repairability, transportability, changed-files, scope, ancestry, and
+      PRE_VERIFICATION_CANDIDATE reuse semantics against the correct subject.
+    - >
+      Maintain the existing distinction between verification subject and
+      transport surface. Review/artifact/failure transport continues through
+      the existing control/transport repository and must not grant transport or
+      publication authority to the transient verification subject.
+    - >
+      Historical recovery/remediation/repair behavior must remain compatible.
+      Shared low-level exact-subject materialization may be factored where
+      semantically identical, but historical policy requiring control stability
+      must not be copied into BP-V3 verification policy and BP-V3 policy must not
+      weaken historical guards.
+    - >
+      Create at most one verification subject per Runtime completion
+      verification contract and execute the existing ordered canonical command
+      list against that same subject. Do not rematerialize a fresh subject for
+      each command.
+    - >
+      Verification-subject cleanup is subordinate operational work. Cleanup
+      failure must not fabricate a second lifecycle terminal, convert an already
+      canonical RESULT into FAILURE, or mask the primary verification failure.
+      Cleanup must remain bounded and must not introduce persistent semantic
+      state.
+    - >
+      Preserve RepositoryLock and current mutation-authority serialization.
+      Workspace isolation is not authorization for parallel RUN execution or a
+      new scheduler.
+    - >
+      Do not modify files outside scope.modify and do not push or publish from
+      Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Canonical Runtime verification no longer uses the mutable execution/control
+      checkout as its verification cwd; the shared completion path materializes
+      one transient exact verification subject for the full ordered command set.
+  - id: AC2
+    condition: >
+      The transient verification subject is initially clean and exact-bound to
+      PRE_VERIFICATION_CANDIDATE.subject_sha, with independently mutable Git
+      state sufficient for control-checkout movement not to alter the subject.
+  - id: AC3
+    condition: >
+      PRIMARY, REMEDIATION, REPAIR, DIRECT_CANDIDATE, and recovery completion
+      paths obtain the same isolation property without adding a second Runtime,
+      lifecycle router, Planner, or operation-specific verification authority.
+  - id: AC4
+    condition: >
+      Unrelated control/main movement after verification-subject materialization
+      does not change verification cwd, exact subject identity, canonical
+      EVIDENCE.subject_sha, or by itself invalidate an otherwise unchanged
+      verification subject.
+  - id: AC5
+    condition: >
+      Mutation of the actual verification subject, including HEAD advancement
+      or dirty index/worktree state, still fails closed during the VERIFICATION
+      phase and cannot produce a canonical RESULT.
+  - id: AC6
+    condition: >
+      Verification-stage RESULT, FAILURE, EVIDENCE, changed-files, ancestry,
+      repairability, transportability, and reusable PRE_VERIFICATION_CANDIDATE
+      lineage remain bound to the exact candidate being verified even when the
+      control checkout has moved to a different HEAD.
+  - id: AC7
+    condition: >
+      RUN.workspace and existing .git/aios canonical Runtime state retain their
+      existing execution/control meanings; the transient verification subject
+      does not become persistent lifecycle truth, a new state store, or a
+      publication/transport authority.
+  - id: AC8
+    condition: >
+      Existing historical recovery, remediation, repair, NO_CHANGE reusable
+      pre-verification behavior, review transport, and publication/integration
+      semantics remain compatible and are not weakened by verification isolation.
+  - id: AC9
+    condition: >
+      One Runtime completion uses at most one isolated verification subject for
+      its ordered verification command set, preserving command order and exact
+      Runtime evidence ownership without per-command rematerialization.
+  - id: AC10
+    condition: >
+      The change introduces no RepositoryLock weakening, concurrent RUN mutation,
+      parallel verification, xdist, automatic retry/failover, worker selection,
+      persistent verification cache, generic routing, or new semantic authority,
+      and transient workspace cleanup cannot rewrite canonical terminal truth.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_verification.py tests/test_runtime.py tests/test_operator.py tests/test_repair_preverification_eligibility.py
+    - git diff --check
