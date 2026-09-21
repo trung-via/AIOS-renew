@@ -1,63 +1,59 @@
 task_id: TASK-154
-revision: 2
+revision: 3
 
 goal: >
-  Complete BP-V2 with one bounded serial-harness saturation pass: preserve the
-  already-proven RUN-154-006 Git-fixture acceleration semantics on current canonical
-  main, selectively remove remaining setup-only Git process churn in the two largest
-  caller hotspots where semantics permit, and produce green same-class serial evidence
-  sufficient for a Reviewer to decide that further serial optimization is no longer
-  justified by its marginal benefit and semantic risk.
+  Complete the same bounded BP-V2 serial-harness saturation pass defined by TASK-154 r2,
+  while correcting the r2 completion-contract boundary so Executor claims cover only
+  pre-verification implementation properties, Runtime owns canonical verification/timing,
+  and Reviewer alone owns the post-verification saturation judgment.
 
 problem: >
-  TASK-154 r1 produced a semantically green RUN-154-006 on
-  332c3ce111c0e275df2c573f89f4df620c785fb8. Runtime collected 1582 tests, preserved
-  all 1581 RUN-152-003 baseline node IDs, passed all 1582 tests, and passed
-  git diff --check. Its serial full suite improved from the RUN-152-003 baseline
-  2340.29 seconds to 1728.84 seconds, about 26.13 percent faster. REVIEW-154-006
-  correctly returned CHANGES_REQUIRED under r1 because r1 encoded 1170.145 seconds
-  as a mandatory threshold. Human has now clarified prospectively that the historical
-  50 percent / 1170.145 second figure was an audit estimate, not a performance target
-  to pursue at any semantic or engineering cost. The current r1 helper-only modify
-  scope also cannot directly classify many remaining Git operations in
-  tests/test_operator.py and tests/test_operator_unified_state.py, even though static
-  audit shows those callers retain substantial setup-time Git process churn. BP-V2
-  therefore needs one final bounded caller-aware saturation pass, not an unbounded
-  attempt to force the suite below a fixed number.
+  RUN-154-007 executed TASK-154 r2 with Codex and produced a clean, transportable,
+  in-scope candidate at 062baea55a25a83d9abfb897dd7909d091efd0ca, changing exactly
+  the nine authorized test-harness files. Runtime stopped before verification at
+  COMPLETION_GATE because the Executor RESULT did not claim AC6 and AC7. That omission
+  was semantically correct: r2 AC6 required future Runtime-owned verification/timing and
+  r2 AC7 required a future Reviewer-owned saturation judgment. Runtime's existing
+  completion contract requires every TASK acceptance criterion to be structurally claimed
+  before verification begins, so r2 accidentally asked the Executor to claim facts and
+  authority it did not yet own. r3 preserves the r2 optimization intent and candidate
+  semantics, removes only that acceptance-boundary defect, and must not turn the incident
+  into a production Runtime/Operator change.
 
 assumptions:
-  - Canonical main at TASK-154 r2 authoring is 35aaadb02e349fed74a1cf466312524f4512b94e.
+  - Canonical main at TASK-154 r3 authoring is 7ff6905fbd9dd2034c0b7a60c67b8fd446615d2d.
   - >
-    Current main includes the reviewed/published TASK-155 maintenance fix for truthful
-    pre-verification zero-delta CODE_FIX repair lineage. r2 must preserve that newer
-    canonical work and must not reset main to the older RUN-154-006 candidate.
+    TASK-154 r2 remains immutable historical intent and RUN-154-007 remains immutable
+    canonical FAILURE truth: phase COMPLETION_GATE, failed head
+    062baea55a25a83d9abfb897dd7909d091efd0ca, dirty=false,
+    descends_from_base=true, outside_task_scope=[], repairable=true,
+    transportable=true.
+  - >
+    RUN-154-007 verification_seconds is null; therefore no canonical r2 collect-only,
+    full-suite, or diff-check evidence exists and no test failure has been established
+    for that candidate.
+  - >
+    The RUN-154-007 candidate changed exactly tests/conftest.py,
+    tests/git_fixture_support.py, tests/operator_test_support.py,
+    tests/test_authoring_ingress.py, tests/test_git_fixture_isolation.py,
+    tests/test_operator.py, tests/test_operator_unified_state.py,
+    tests/test_publication.py, and tests/test_review_transport.py.
   - >
     RUN-152-003 remains the canonical before baseline on the standard Windows x64
     aios-renew self-host class: 1581 collected tests and 1581 passed in 2340.29 seconds
     on 0e40a6dfdae610dca0144200eaf38bd0a43696a7.
   - >
-    RUN-154-006 is the canonical green r1 reference point: 1582 collected, 1582 passed
-    in 1728.84 seconds, git diff --check PASS, subject
-    332c3ce111c0e275df2c573f89f4df620c785fb8, with all 1581 baseline node IDs present
-    and one additional real-Git conformance regression.
+    RUN-154-006 remains the canonical green r1 reference point: 1582 collected,
+    1582 passed in 1728.84 seconds, git diff --check PASS, subject
+    332c3ce111c0e275df2c573f89f4df620c785fb8.
   - >
-    REVIEW-154-006 / FINDING-154-003 is immutable historical review truth for TASK-154
-    r1. r2 does not rewrite that verdict; it prospectively changes the TASK semantics
-    under explicit Human authority.
-  - >
-    The prior 1170.145 second threshold remains useful historical planning context but
-    is no longer a mandatory r2 acceptance threshold. Runtime timing remains evidence,
-    not a value to optimize by weakening semantics.
-  - >
-    Static audit of RUN-154-006 shows tests/test_operator.py retains approximately
-    385 git(...) call sites and 187 make_repo(...) uses, while
-    tests/test_operator_unified_state.py retains approximately 101 git(...) call sites
-    and 32 make_repo(...) uses. Many are setup-state construction, but some exercise
-    Git as the semantic subject and must remain real Git.
+    Human-approved planning already defines BP-V2 completion by bounded saturation
+    review rather than a mandatory 1170.145 second threshold. r3 does not alter that
+    planning decision.
   - >
     Runtime owns canonical verification and timing evidence. Reviewer owns the semantic
-    decision that the bounded serial optimization surface is saturated. Executor owns
-    implementation HOW only.
+    saturation verdict. Executor owns implementation HOW and may claim only implementation
+    properties that exist before Runtime verification.
 
 scope:
   inspect:
@@ -66,6 +62,7 @@ scope:
     - refs/heads/aios/artifacts/RUN-152-003
     - refs/heads/aios/artifacts/RUN-154-006
     - refs/heads/aios/review-decision/RUN-154-006
+    - refs/heads/aios/failure-artifacts/RUN-154-007
     - docs/AIOS-BRAIN-PORTABILITY.md
     - docs/AIOS-PERFORMANCE-CLOSURE.md
     - tests/git_fixture_support.py
@@ -90,108 +87,99 @@ scope:
     - tests/conftest.py
 
 non_goals:
-  - Modify any src/aios_renew production module, frozen Kernel semantics, Runtime, Operator, verification engine, Reviewer, Publisher, workflow, carrier, or lifecycle authority.
-  - Modify roadmap/planning files from Executor implementation; Human/Brain planning canonicalization is separate.
+  - Modify any src/aios_renew production module, Runtime, Operator, verification engine, Reviewer, Publisher, workflow, carrier, frozen Kernel, or lifecycle authority to accommodate the r2 contract mistake.
+  - Repair RUN-154-007 under TASK-154 r2 or fabricate verification evidence for that failed RUN.
+  - Reinterpret RUN-154-007 as a RESULT, PASS, reviewed candidate, or BP-V2 completion.
+  - Redesign the r2 optimization strategy unless exact current-main compatibility requires a bounded adjustment inside the same nine-file authority.
   - Implement BP-V3 verification-workspace isolation or BP-V4 parallel execution.
-  - Add pytest-xdist, parallel workers, asynchronous test scheduling, worker heuristics, or concurrency as a serial-performance shortcut.
-  - Add persistent cross-run result caches, benchmark databases, telemetry services, daemons, or shared mutable fixture state.
-  - Remove, rename, skip, xfail, deselect, or weaken any baseline or current regression test merely to improve timing.
-  - Replace real Git with broad mocks, PATH interception, global subprocess monkeypatching, or an in-memory fake Git implementation.
-  - Force all remaining Git calls through a fast path. Ambiguous call sites must remain real Git.
-  - Treat 1170.145 seconds or any other fixed elapsed-time number as a mandatory completion target for r2.
+  - Add pytest-xdist, parallel workers, asynchronous scheduling, persistent caches, telemetry services, shared mutable fixture state, broad Git mocks, PATH interception, or global subprocess monkeypatching.
+  - Remove, rename, skip, xfail, deselect, weaken, or timeout-inflate tests for timing.
+  - Treat 1170.145 seconds or any other fixed wall-time number as a mandatory completion target.
   - Push or publish from Executor implementation execution.
 
 constraints:
   hard:
     - >
-      Start from current canonical main and preserve TASK-155 behavior. Reuse or port
-      only compatible already-green RUN-154-006 test-harness acceleration semantics;
-      do not reset, force-update, or blindly cherry-pick the older candidate over newer main.
+      Start from current canonical main. Preserve TASK-155 publication-lineage behavior
+      and the Human/Brain BP-V2 saturation planning amendment already on main.
     - >
-      Classify candidate optimization sites by semantic role. Git used only to construct
-      fixture state may use deterministic fixture-state helpers. Git ancestry, merge-base,
-      dirty/index behavior, repository configuration behavior when under test, remotes,
-      refs, non-fast-forward/divergence, races, publication, transport, malformed lineage,
-      or other Git-boundary semantics must continue to cross ordinary real Git.
+      Treat 062baea55a25a83d9abfb897dd7909d091efd0ca as reusable failed-candidate evidence.
+      Preserve/reuse its compatible nine-file implementation delta rather than redoing
+      the optimization from scratch. HOW of reuse belongs to Executor; do not reset or
+      overwrite newer canonical main state.
     - >
-      If a call site cannot be shown to be setup-only without changing what the test proves,
-      leave it on real Git. Optimization must be conservative rather than maximizing the
-      number of bypassed git.exe invocations.
+      Preserve the r2 semantic split: setup-only Git state construction may use
+      deterministic fixture helpers; Git ancestry, merge-base, dirty/index behavior,
+      repository configuration behavior when under test, remotes, refs,
+      non-fast-forward/divergence, races, publication, transport, malformed lineage,
+      and other Git-boundary semantics must continue to cross ordinary real Git.
     - >
-      Preserve independent writable worktree/index, local refs, remote refs, repository-local
-      config, clean/dirty state, locks, object write paths, and .git/aios Runtime state for
-      every sandbox. Immutable baseline/object reuse may remain shared only where already
-      conformance-proven.
+      If a call site cannot be shown to be setup-only without changing what the test
+      proves, leave it on real Git.
     - >
-      Preserve the RUN-154-006 immutable-object create-only/idempotent behavior and real-Git
-      follow-up commit conformance. Do not reintroduce session-wide Git config suppression
-      that breaks ordinary real Git commit identity or semantics.
+      Preserve independent writable worktree/index, local refs, remote refs,
+      repository-local config, clean/dirty state, locks, object write paths, and
+      .git/aios Runtime state for every sandbox. Shared reuse is limited to immutable
+      baseline/object material already conformance-proven.
     - >
-      Keep every exact node ID present in RUN-152-003-V001. Also preserve the additional
-      RUN-154-006 conformance regression unless a later canonical-main equivalent already
-      supersedes it. New current-main TASK-155 regressions must remain intact.
+      Preserve RUN-154-006 immutable-object create-only/idempotent behavior and real-Git
+      follow-up commit conformance. Do not reintroduce session-wide Git config suppression.
     - >
-      Do not use a fixed wall-time threshold as a pass/fail implementation oracle. Runtime
-      must record the final serial timing on the same self-host class; Reviewer must compare
-      it with 2340.29 seconds and 1728.84 seconds and decide whether the remaining serial cost
-      is predominantly required semantic-boundary work or whether one more bounded setup-only
-      optimization is clearly justified.
+      Do not intentionally remove or rename any RUN-152-003 baseline node, the
+      RUN-154-006 conformance regression, or current-main TASK-155 regressions.
     - >
-      The saturation decision belongs to Reviewer, not Executor or Runtime. Executor must not
-      claim BP-V2 completion merely from timing or its own assessment of diminishing returns.
+      Executor RESULT must not claim Runtime verification completion, measured suite
+      timing, semantic saturation, Reviewer PASS, publication, or BP-V2 completion.
+      Those authorities occur only after structural completion.
+    - >
+      Runtime must execute the r3 verification contract once after structural completion.
+      Reviewer must then compare canonical evidence with 2340.29 seconds and
+      1728.84 seconds and decide saturation without a fixed pass/fail timing threshold.
     - >
       Do not modify files outside scope.modify and do not push from Executor implementation.
 
 acceptance:
   - id: AC1
     condition: >
-      The candidate changes only the nine authorized test-harness files and changes no
-      production source, workflow, Runtime, verification, review, publication, carrier,
-      roadmap, or lifecycle semantics.
+      The implementation delta changes only the nine authorized test-harness files and
+      changes no production source, workflow, Runtime, verification, review, publication,
+      carrier, roadmap, planning, or lifecycle semantics.
   - id: AC2
     condition: >
-      Current-main implementation retains the already-green RUN-154-006 reusable immutable
-      Git baseline/object semantics, writable-state isolation, real-Git follow-up conformance,
-      and TASK-155 compatibility without reintroducing the RUN-154-004 regressions.
+      The implementation preserves the compatible RUN-154-007 / RUN-154-006 reusable
+      immutable Git baseline/object construction, writable-state isolation,
+      create-only/idempotent object behavior, real-Git follow-up conformance, and
+      current-main TASK-155 compatibility.
   - id: AC3
     condition: >
-      Remaining high-frequency setup-only Git state construction in test_operator.py and
+      High-frequency setup-only Git state construction in test_operator.py and
       test_operator_unified_state.py is selectively reduced through deterministic fixture
-      helpers where semantic equivalence is explicit; ambiguous and Git-boundary call sites
-      remain ordinary real Git.
+      helpers only where semantic equivalence is explicit; ambiguous sites remain real Git.
   - id: AC4
     condition: >
       Tests whose subject includes ancestry, refs, remotes, config semantics, dirty/index
       behavior, publication, transport, races, divergence, malformed lineage, or failure
-      behavior still exercise production-shaped real Git boundaries.
+      behavior continue to exercise production-shaped real Git boundaries.
   - id: AC5
     condition: >
-      All 1581 RUN-152-003 baseline node IDs remain present, the RUN-154-006 conformance
-      regression remains represented, current-main regressions remain intact, and the suite
-      gains no optimization-motivated skip, xfail, deselection, timeout inflation, or broad mock.
+      The implementation introduces no optimization-motivated skip, xfail, deselection,
+      test removal/rename, timeout inflation, broad Git mock, persistent shared mutable
+      fixture state, parallel execution, or production semantic shortcut.
   - id: AC6
     condition: >
-      Canonical Runtime produces one green collect-only/full-serial-suite/diff-check evidence
-      set on the standard Windows x64 aios-renew self-host class and records final elapsed time
-      for comparison with both 2340.29 seconds and 1728.84 seconds.
-  - id: AC7
-    condition: >
-      The resulting evidence is sufficient for Reviewer to make a bounded saturation judgment:
-      remaining material serial Git cost is either demonstrably semantic-boundary work that
-      should stay real, or any clearly safe setup-only optimization still left is identified
-      as a specific bounded finding rather than inferred from failure to meet a fixed time target.
-  - id: AC8
-    condition: >
-      The implementation introduces no new semantic authority, automatic optimization selector,
-      planner/router, retry/failover behavior, persistent state, or parallel verification behavior.
+      The implementation introduces no new semantic authority, automatic optimization
+      selector, planner/router, retry/failover behavior, Reviewer decision, publication
+      claim, or BP-V2 completion claim.
 
 verification:
   policy: minimum-sufficient-v1
   full_suite_reason: >
-    BP-V2 r2 is the final serial-harness saturation pass. The Reviewer needs one canonical
-    same-class collection and serial full-suite measurement to prove coverage preservation,
-    semantic-boundary integrity across the whole suite, and the final before/r1/r2 timing
-    comparison without parallelism.
+    BP-V2 r3 corrects only the r2 pre-verification acceptance-boundary defect while
+    preserving the bounded saturation candidate. Canonical Runtime therefore needs one
+    same-class collect-only/full-serial-suite/diff-check evidence set to establish exact
+    test population, correctness, production-shaped behavior, and final elapsed time.
+    After that evidence exists, Reviewer—not Executor or Runtime—decides whether the
+    serial optimization surface is saturated.
   required:
     - python -m pytest --collect-only -q
     - python -m pytest -q
