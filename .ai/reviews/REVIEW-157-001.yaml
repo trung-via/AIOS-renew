@@ -1,0 +1,35 @@
+review_id: REVIEW-157-001
+reviewed_sha: 31e05125f4b9b466317d36afe70a7deaa26797a4
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: PASS
+findings:
+- id: FINDING-157-001
+  basis: AC3
+  action: CODE_FIX
+  location: src/aios_renew/verification_contract.py::_is_bp_v4_probe_family and tests/test_verification_contract.py
+  issue: The malformed-probe family guard is a case-insensitive substring search for
+    bp_v4_parallel_probe.py anywhere in the command. That rejects unrelated opaque
+    commands which merely mention the probe filename/path as data or text, even though
+    AC3 and the hard constraint require unrelated unsupported commands to retain existing
+    conservative opaque behavior. For example, an opaque python -c or echo command
+    containing the filename is treated as a malformed BP-V4 probe despite not attempting
+    to invoke the repository-owned probe.
+  expected: Narrow the malformed-family guard to commands that actually attempt to
+    invoke the repository-owned BP-V4 probe launcher/path while continuing to fail
+    closed for malformed forms of that invocation, including malformed quoting after
+    the exact invocation prefix. Add deterministic regressions showing unrelated opaque
+    commands that merely mention the probe filename/path remain opaque/valid, while
+    malformed real probe invocations remain rejected. Do not widen scope, alter the
+    valid probe grammar, worker bounds, Runtime, probe execution semantics, or other
+    BP-V4 authority.
