@@ -10,6 +10,10 @@ from aios_renew.authoring_ingress import AuthoringIngressError, IngressResult
 from aios_renew import github_issue_ingress as carrier
 
 
+ROOT = Path(__file__).resolve().parents[1]
+BRAIN_INGRESS_WORKFLOW = ROOT / ".github/workflows/aios-brain-ingress.yml"
+SELF_HOSTED_REPAIR_WORKFLOW = ROOT / ".github/workflows/aios-self-hosted-repair-wakeup.yml"
+
 POLICY = {
     "format": "AIOS_BRAIN_INGRESS_CARRIERS_POLICY",
     "version": 1,
@@ -412,6 +416,35 @@ def test_successful_author_repair_emits_deterministic_repair_handoff(
         f"repair_sha={canonical_sha}\n"
     )
     assert delivery.github_outputs() == expected_outputs
+
+    emitted = dict(
+        line.split("=", 1) for line in delivery.github_outputs().splitlines()
+    )
+    assert emitted["repair_dispatch_id"] == (
+        f"repair-{emitted['failed_run_id']}-{emitted['repair_sha']}"
+    )
+
+    ingress_workflow = BRAIN_INGRESS_WORKFLOW.read_text(encoding="utf-8")
+    assert "workflow_id: 'aios-self-hosted-repair-wakeup.yml'" in ingress_workflow
+    assert (
+        "AIOS_REPAIR_DISPATCH_ID: ${{ steps.ingress.outputs.repair_dispatch_id }}"
+        in ingress_workflow
+    )
+    assert (
+        "AIOS_FAILED_RUN_ID: ${{ steps.ingress.outputs.failed_run_id }}"
+        in ingress_workflow
+    )
+    assert "AIOS_REPAIR_SHA: ${{ steps.ingress.outputs.repair_sha }}" in ingress_workflow
+    assert "executor: ''," in ingress_workflow
+
+    target_workflow = SELF_HOSTED_REPAIR_WORKFLOW.read_text(encoding="utf-8")
+    assert "$env:AIOS_DELIVERY_ACTOR -ceq 'github-actions[bot]'" in target_workflow
+    assert "$env:AIOS_DELIVERY_EVENT -cne 'workflow_dispatch'" in target_workflow
+    assert (
+        '$expectedRepairDispatchId = "repair-$($env:AIOS_FAILED_RUN_ID)-$($env:AIOS_REPAIR_SHA)"'
+        in target_workflow
+    )
+    assert "$env:AIOS_REPAIR_DISPATCH_ID -cne $expectedRepairDispatchId" in target_workflow
 
 
 @pytest.mark.parametrize("revision", [2, 3])

@@ -49,6 +49,8 @@ jobs:
       AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}
       AIOS_CONTROL_SHA: ${{ github.sha }}
       AIOS_CONTROL_REF: ${{ github.ref }}
+      AIOS_DELIVERY_ACTOR: ${{ github.actor }}
+      AIOS_DELIVERY_EVENT: ${{ github.event_name }}
       AIOS_REPAIR_DISPATCH_ID: ${{ inputs.repair_dispatch_id }}
       AIOS_FAILED_RUN_ID: ${{ inputs.failed_run_id }}
       AIOS_REPAIR_SHA: ${{ inputs.repair_sha }}
@@ -82,7 +84,46 @@ jobs:
             Write-Error "REPAIR wakeup must execute from canonical main."
             exit 1
           }
-          if ($env:GITHUB_ACTOR -ne 'trung-via') {
+          if ($env:AIOS_REPAIR_DISPATCH_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') {
+            Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
+            Write-Error "Invalid REPAIR dispatch identity."
+            exit 1
+          }
+          if ($env:AIOS_FAILED_RUN_ID -notmatch '^RUN-[A-Za-z0-9_-]+-[0-9]{3,}$') {
+            Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
+            Write-Error "Invalid failed RUN identity."
+            exit 1
+          }
+          if ($env:AIOS_REPAIR_SHA -notmatch '^[0-9a-f]{40}$') {
+            Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
+            Write-Error "Invalid REPAIR authorization SHA."
+            exit 1
+          }
+          if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR) -and $env:AIOS_EXECUTOR -notin @('codex', 'antigravity')) {
+            Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
+            Write-Error "Unsupported coding Executor."
+            exit 1
+          }
+          if ($env:AIOS_DELIVERY_ACTOR -ceq 'trung-via') {
+            # Preserve the dedicated Human delivery path and its existing Runtime semantics.
+          } elseif ($env:AIOS_DELIVERY_ACTOR -ceq 'github-actions[bot]') {
+            if ($env:AIOS_DELIVERY_EVENT -cne 'workflow_dispatch') {
+              Write-OperationalFailure 'UNAUTHORIZED_DELIVERY_EVENT'
+              Write-Error "Automation REPAIR delivery requires workflow_dispatch provenance."
+              exit 1
+            }
+            if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR)) {
+              Write-OperationalFailure 'UNAUTHORIZED_AUTOMATION_EXECUTOR'
+              Write-Error "Automation REPAIR delivery cannot select a coding Executor."
+              exit 1
+            }
+            $expectedRepairDispatchId = "repair-$($env:AIOS_FAILED_RUN_ID)-$($env:AIOS_REPAIR_SHA)"
+            if ($env:AIOS_REPAIR_DISPATCH_ID -cne $expectedRepairDispatchId) {
+              Write-OperationalFailure 'REPAIR_DISPATCH_ID_MISMATCH'
+              Write-Error "Automation REPAIR delivery identity does not match its selectors."
+              exit 1
+            }
+          } else {
             Write-OperationalFailure 'UNAUTHORIZED_DELIVERY_ACTOR'
             Write-Error "Unauthorized REPAIR delivery actor."
             exit 1

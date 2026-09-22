@@ -15,6 +15,33 @@ TARGET = ROOT / ".github/workflows/aios-self-hosted-repair-wakeup.yml"
 POLICY = ROOT / ".ai/brain-repair-wakeup-carriers.yaml"
 
 
+def _self_host_provenance_admits(
+    *,
+    actor: str,
+    event: str,
+    repair_dispatch_id: str,
+    failed_run_id: str,
+    repair_sha: str,
+    executor: str,
+) -> bool:
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", repair_dispatch_id) is None:
+        return False
+    if re.fullmatch(r"RUN-[A-Za-z0-9_-]+-[0-9]{3,}", failed_run_id) is None:
+        return False
+    if re.fullmatch(r"[0-9a-f]{40}", repair_sha) is None:
+        return False
+    if executor not in {"", "codex", "antigravity"}:
+        return False
+    if actor == "trung-via":
+        return True
+    return (
+        actor == "github-actions[bot]"
+        and event == "workflow_dispatch"
+        and executor == ""
+        and repair_dispatch_id == f"repair-{failed_run_id}-{repair_sha}"
+    )
+
+
 def _workflow(path: Path) -> tuple[dict, str]:
     text = path.read_text(encoding="utf-8")
     return yaml.load(text, Loader=yaml.BaseLoader), text
@@ -67,6 +94,142 @@ def test_fixed_target_has_manual_and_reusable_carriers_and_one_command_surface()
         assert forbidden not in text.lower()
     assert "$aiosExitCode = $LASTEXITCODE" in text
     assert "exit $aiosExitCode" in text
+
+
+def test_fixed_target_uses_exact_github_owned_provenance_gate() -> None:
+    workflow, text = _workflow(TARGET)
+    expected_inputs = {"repair_dispatch_id", "failed_run_id", "repair_sha", "executor"}
+    assert set(workflow["on"]["workflow_dispatch"]["inputs"]) == expected_inputs
+    assert set(workflow["on"]["workflow_call"]["inputs"]) == expected_inputs
+
+    job = workflow["jobs"]["execute-repair"]
+    assert job["env"]["AIOS_DELIVERY_ACTOR"] == "${{ github.actor }}"
+    assert job["env"]["AIOS_DELIVERY_EVENT"] == "${{ github.event_name }}"
+    assert "$env:AIOS_DELIVERY_ACTOR -ceq 'trung-via'" in text
+    assert "$env:AIOS_DELIVERY_ACTOR -ceq 'github-actions[bot]'" in text
+    assert "$env:AIOS_DELIVERY_EVENT -cne 'workflow_dispatch'" in text
+    assert "-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR)" in text
+    assert (
+        '$expectedRepairDispatchId = "repair-$($env:AIOS_FAILED_RUN_ID)-$($env:AIOS_REPAIR_SHA)"'
+        in text
+    )
+    assert "$env:AIOS_REPAIR_DISPATCH_ID -cne $expectedRepairDispatchId" in text
+
+    gate_position = text.index("$env:AIOS_DELIVERY_ACTOR -ceq 'trung-via'")
+    command_position = text.index("$controlSource repair-wakeup ")
+    assert gate_position < command_position
+
+
+@pytest.mark.parametrize(
+    (
+        "actor",
+        "event",
+        "dispatch_mutation",
+        "failed_run_id",
+        "repair_sha",
+        "executor",
+        "expected",
+    ),
+    [
+        ("trung-via", "issues", "human", "RUN-160-001", "a" * 40, "codex", True),
+        (
+            "trung-via",
+            "workflow_dispatch",
+            "human",
+            "RUN-160-001",
+            "a" * 40,
+            "",
+            True,
+        ),
+        (
+            "github-actions[bot]",
+            "workflow_dispatch",
+            "exact",
+            "RUN-160-001",
+            "a" * 40,
+            "",
+            True,
+        ),
+        (
+            "github-actions[bot]",
+            "workflow_dispatch",
+            "exact",
+            "RUN-160-001",
+            "a" * 40,
+            "codex",
+            False,
+        ),
+        (
+            "github-actions[bot]",
+            "issues",
+            "exact",
+            "RUN-160-001",
+            "a" * 40,
+            "",
+            False,
+        ),
+        (
+            "github-actions[bot]",
+            "workflow_dispatch",
+            "mismatch",
+            "RUN-160-001",
+            "a" * 40,
+            "",
+            False,
+        ),
+        (
+            "github-actions[bot]",
+            "workflow_dispatch",
+            "exact",
+            "bad-run",
+            "a" * 40,
+            "",
+            False,
+        ),
+        (
+            "github-actions[bot]",
+            "workflow_dispatch",
+            "exact",
+            "RUN-160-001",
+            "A" * 40,
+            "",
+            False,
+        ),
+        (
+            "intruder",
+            "workflow_dispatch",
+            "exact",
+            "RUN-160-001",
+            "a" * 40,
+            "",
+            False,
+        ),
+    ],
+)
+def test_self_host_provenance_truth_table_is_fail_closed(
+    actor: str,
+    event: str,
+    dispatch_mutation: str,
+    failed_run_id: str,
+    repair_sha: str,
+    executor: str,
+    expected: bool,
+) -> None:
+    if dispatch_mutation == "exact":
+        repair_dispatch_id = f"repair-{failed_run_id}-{repair_sha}"
+    elif dispatch_mutation == "mismatch":
+        repair_dispatch_id = f"repair-{failed_run_id}-{'b' * 40}"
+    else:
+        repair_dispatch_id = "repair-human-selected"
+
+    assert _self_host_provenance_admits(
+        actor=actor,
+        event=event,
+        repair_dispatch_id=repair_dispatch_id,
+        failed_run_id=failed_run_id,
+        repair_sha=repair_sha,
+        executor=executor,
+    ) is expected
 
 
 def test_repair_cli_reprojects_exact_delivery_when_execution_fails(
