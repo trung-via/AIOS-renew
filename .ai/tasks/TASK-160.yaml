@@ -1,0 +1,222 @@
+task_id: TASK-160
+revision: 1
+
+goal: >
+  Restore the production post-AUTHOR_REPAIR continuation path by making the fixed
+  self-hosted REPAIR target distinguish the existing Human-originated REPAIR
+  delivery from the repository-owned post-ingress GitHub Actions transport.
+  Permit only the bounded bot-delivery shape that cannot carry coding-Executor
+  authority, while preserving the existing Human actor gate, exact canonical
+  REPAIR resolution, Runtime admission, at-most-once dispatch binding, and all
+  REPAIR semantic authority.
+
+problem: >
+  Production evidence from self-host workflow run 35718119095 shows that
+  AUTHOR_REPAIR for RUN-159-003 canonicalized successfully and the repository-owned
+  Brain ingress then requested the exact deterministic REPAIR workflow_dispatch,
+  but the self-host target rejected it at PRE_AIOS with
+  UNAUTHORIZED_DELIVERY_ACTOR because createWorkflowDispatch runs the downstream
+  workflow as github-actions[bot] while the target currently permits only
+  GITHUB_ACTOR=trung-via. No AIOS command ran, no continuation RUN was created,
+  and no canonical FAILURE exists for that operational event. TASK-127 established
+  the post-canonicalization handoff but did not align its downstream actor
+  provenance with the existing self-host gate. The correction must close only
+  this transport mismatch without treating github-actions[bot] as Human authority
+  or granting bot-originated coding execution.
+
+assumptions:
+  - >
+    Canonical main at TASK-160 authoring is
+    99f8abd6ce04700503b044c16105ffe8d8bbdc92.
+  - >
+    TASK-159 r3 remains the active BP-V4 measurement work. RUN-159-003 is a
+    canonical VERIFICATION failure whose exact NO_CHANGE REPAIR authorization is
+    REPAIR-159-003 at
+    51b4085cee6db06dcc648e1ebdcd0a7feed1ab01. The later self-host workflow run
+    35718119095 is PRE_AIOS operational evidence only and created no RUN or
+    canonical FAILURE.
+  - >
+    The Human has provisioned the optional bp-v4-measurement host toolchain
+    outside the RUN. TASK-160 does not verify or reinterpret that host mutation
+    and does not execute TASK-159 measurement.
+  - >
+    TASK-111 revision 2 remains authoritative for dedicated REPAIR delivery,
+    explicit Human Executor selection for coding REPAIR actions, NO_CHANGE
+    forbidding a coding Executor, exact immutable dispatch binding, and Runtime
+    ownership of canonical REPAIR admission and execution.
+  - >
+    TASK-127 remains authoritative for the repository-owned deterministic
+    post-canonicalization AUTHOR_REPAIR handoff. A successful non-replayed
+    AUTHOR_REPAIR may request at most one exact downstream REPAIR delivery bound
+    to failed_run_id and canonical repair SHA.
+  - >
+    TASK-149 Operational Receipt v2 and TASK-158 trusted Control Source remain
+    authoritative. PRE_AIOS transport failures remain subordinate operational
+    facts with run_created=false and executor_invoked=false and must not fabricate
+    engineering lifecycle state.
+  - >
+    The current Brain ingress post-AUTHOR_REPAIR workflow_dispatch supplies
+    repair_dispatch_id=repair-{failed_run_id}-{repair_sha}, exact failed_run_id,
+    exact canonical repair_sha, and executor as the empty string.
+  - >
+    The dedicated Human REPAIR Issue policy continues to authorize only the Human
+    actor trung-via. github-actions[bot] must not be added to that Human carrier
+    allowlist or treated as a Human intent authority.
+  - >
+    Canonical roadmap planning remains on
+    bp-v4-parallel-verification-performance-guard. TASK-160 is a maintenance
+    unblocker and does not advance, replace, or complete that milestone.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-111.yaml
+    - .ai/tasks/TASK-127.yaml
+    - .ai/tasks/TASK-149.yaml
+    - .ai/tasks/TASK-158.yaml
+    - .ai/tasks/TASK-159.yaml
+    - .ai/brain-repair-wakeup-carriers.yaml
+    - .github/workflows/aios-brain-ingress.yml
+    - .github/workflows/aios-brain-repair-wakeup.yml
+    - .github/workflows/aios-self-hosted-repair-wakeup.yml
+    - src/aios_renew/github_issue_ingress.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/operational_receipt.py
+    - tests/test_github_issue_ingress.py
+    - tests/test_github_issue_repair_wakeup.py
+    - tests/test_github_issue_repair_wakeup_workflow.py
+    - tests/test_repair_dispatch.py
+    - tests/test_control_source_isolation.py
+    - tests/test_operational_receipt.py
+  modify:
+    - .github/workflows/aios-self-hosted-repair-wakeup.yml
+    - tests/test_github_issue_ingress.py
+    - tests/test_github_issue_repair_wakeup_workflow.py
+
+non_goals:
+  - Modify TASK-159, REPAIR-159-003, RUN-159-003, its reusable pre-verification candidate, or BP-V4 probe semantics.
+  - Retry, redeliver, execute, verify, review, publish, or otherwise resolve TASK-159 as part of TASK-160 execution.
+  - Add github-actions[bot] to the dedicated Human REPAIR Issue carrier allowlist or treat a bot identity as Human intent, Human approval, or Executor-selection authority.
+  - Permit github-actions[bot] to deliver a non-empty Executor selector or thereby authorize CODE_FIX, CONTINUE_IMPLEMENTATION, or FINALIZE_CANDIDATE coding execution.
+  - Trust a caller-supplied boolean, source, actor, provenance, authorization, or equivalent input as evidence that a workflow invocation is privileged.
+  - Add PATs, service-account credentials, OIDC identity exchange, new secrets, persistent credentials, or another authentication service.
+  - Change REPAIR authorization schema, repair_dispatch journal schema, Runtime admission, Unified State, correction preflight, ResultPackage, verification, Reviewer, Publisher, or frozen Kernel semantics.
+  - Change the dedicated [AIOS REPAIR WAKEUP] Issue carrier request schema, actor policy, or Human Executor-selection contract.
+  - Add retry/failover, a generic lifecycle router, queue, daemon, scheduler, polling loop, or automatic correction selector.
+  - Automatically infer a coding Executor from prior chat, task history, canonical repair content, or provider availability.
+  - Advance roadmap state or mark BP-V4 complete.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve the existing Human delivery path: GITHUB_ACTOR=trung-via remains
+      admissible under the current self-host target subject to all existing exact
+      repository/ref/input/control-source checks. Do not weaken or replace the
+      dedicated Human Issue carrier policy.
+    - >
+      The only additional PRE_AIOS actor shape admitted by the self-host target is
+      the repository-owned GitHub Actions automation identity
+      github-actions[bot] when the event is workflow_dispatch, the Executor input
+      is empty, and the repair_dispatch_id exactly equals
+      repair-{failed_run_id}-{repair_sha} using the same bounded failed RUN and
+      forty-lowercase-hex repair SHA inputs already validated by the workflow.
+    - >
+      A bot-originated invocation with a non-empty Executor, wrong event family,
+      malformed or mismatched deterministic repair_dispatch_id, malformed
+      failed_run_id, malformed repair_sha, noncanonical workflow ref, unexpected
+      repository, or failed control-source proof must fail before the bounded AIOS
+      command is invoked.
+    - >
+      Do not add a new provenance input. Actor and event provenance must come from
+      GitHub-owned workflow context, while repair identity remains the exact
+      deterministic selector tuple already emitted by successful non-replayed
+      AUTHOR_REPAIR ingress.
+    - >
+      Passing the PRE_AIOS provenance gate grants transport only. The workflow must
+      continue to delegate into the existing repair-wakeup command, which
+      independently resolves the exact current canonical REPAIR authorization,
+      Unified State/correction preflight, action/Executor compatibility, dispatch
+      journal identity, and canonical RUN admission.
+    - >
+      The automated bot path must carry no coding Executor. Existing Runtime and
+      repair_dispatch semantics remain the fail-closed authority: coding actions
+      require an explicit supported Executor, while NO_CHANGE forbids one. TASK-160
+      must not infer that an empty Executor means NO_CHANGE at the workflow layer.
+    - >
+      Preserve exact at-most-once and collision behavior of the existing
+      repair_dispatch_id. Do not introduce a second delivery identity, alternate
+      dispatch journal, or fallback execution route for the same canonical REPAIR.
+    - >
+      Preserve Operational Receipt v2 behavior. Rejected PRE_AIOS deliveries
+      continue to report bounded WORKFLOW-owned causes with run_created=false and
+      executor_invoked=false; successful provenance admission must not itself
+      claim RUN creation, verification, review, publication, or TASK resolution.
+    - >
+      Preserve TASK-158 exact transient Control Source preparation, published-main
+      SHA binding, persistent AIOS_REPO_ROOT isolation, no per-RUN package install,
+      no exported import override, and cleanup semantics.
+    - >
+      Regression coverage must exercise the cross-boundary topology missed by
+      TASK-127: successful non-replayed AUTHOR_REPAIR emits the deterministic
+      selectors used by the bot workflow_dispatch, and the self-host provenance
+      gate admits exactly that executor-empty bot shape while rejecting nearby
+      privilege-escalating or mismatched shapes.
+    - >
+      Keep implementation and regression changes inside scope.modify and do not
+      push or publish from Executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The fixed self-hosted REPAIR workflow preserves the existing
+      GITHUB_ACTOR=trung-via Human delivery path and additionally recognizes only
+      the bounded github-actions[bot] workflow_dispatch provenance shape defined
+      by this TASK.
+  - id: AC2
+    condition: >
+      The admitted bot shape requires executor to be empty and
+      repair_dispatch_id to exactly equal
+      repair-{failed_run_id}-{repair_sha}; the workflow does not accept a
+      caller-provided provenance flag or broaden the Human carrier actor policy.
+  - id: AC3
+    condition: >
+      Bot delivery with a non-empty Executor or a mismatched event, deterministic
+      dispatch identity, failed RUN selector, repair SHA, repository/ref, or
+      trusted-control-source condition remains PRE_AIOS fail-closed before the
+      repair-wakeup command can execute.
+  - id: AC4
+    condition: >
+      The workflow continues to delegate all semantic REPAIR decisions to the
+      existing repair-wakeup/Runtime path; it neither resolves REPAIR action nor
+      infers NO_CHANGE or a coding Executor at the workflow layer.
+  - id: AC5
+    condition: >
+      Existing REPAIR at-most-once dispatch binding, collision rejection,
+      NO_CHANGE/coding Executor rules, Runtime verification ownership, Reviewer,
+      Publisher, and canonical engineering-state semantics are unchanged.
+  - id: AC6
+    condition: >
+      Operational Receipt v2 retains bounded PRE_AIOS attribution with
+      run_created=false and executor_invoked=false for rejected delivery, and no
+      transport success is represented as RUN, verification, review, publication,
+      or TASK success.
+  - id: AC7
+    condition: >
+      Deterministic regression coverage connects the existing
+      post-AUTHOR_REPAIR output tuple to the self-host provenance gate and proves
+      the exact bot/empty-executor path is admitted while Human delivery remains
+      compatible and privilege-escalating bot variants are rejected.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_github_issue_ingress.py tests/test_github_issue_repair_wakeup.py tests/test_github_issue_repair_wakeup_workflow.py tests/test_repair_dispatch.py tests/test_control_source_isolation.py tests/test_operational_receipt.py
+    - git diff --check
