@@ -1,0 +1,34 @@
+review_id: REVIEW-160-001
+reviewed_sha: 1a23707b2513aa473e7e8fba0d75a747d5f880ad
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+findings:
+- id: FINDING-160-001
+  basis: AC6
+  action: CODE_FIX
+  location: .github/workflows/aios-self-hosted-repair-wakeup.yml and tests/test_github_issue_repair_wakeup_workflow.py
+  issue: The candidate introduces three new inline PRE_AIOS reason_code values (UNAUTHORIZED_DELIVERY_EVENT,
+    UNAUTHORIZED_AUTOMATION_EXECUTOR, and REPAIR_DISPATCH_ID_MISMATCH), but the canonical
+    Operational Receipt v2 WORKFLOW_REASONS taxonomy in src/aios_renew/operational_receipt.py
+    does not recognize them. TASK-160 explicitly requires preserving Operational Receipt
+    v2 and does not authorize changing that schema/taxonomy. The workflow can therefore
+    emit WORKFLOW-owned receipts that the repository-owned operational receipt contract
+    itself would reject, creating two inconsistent reason vocabularies for the same
+    boundary.
+  expected: Keep the bounded provenance gate and all accepted/rejected actor semantics,
+    but reuse existing canonical PRE_AIOS reason codes already admitted by Operational
+    Receipt v2 instead of creating new taxonomy. Use an existing authorization/input
+    reason such as UNAUTHORIZED_DELIVERY_ACTOR for unauthorized provenance and INVALID_BOUNDED_INPUT
+    for invalid executor/selector binding as appropriate. Add a deterministic regression
+    in the authorized workflow test file proving every reason_code emitted by the
+    modified provenance gate belongs to the existing repository-owned WORKFLOW_REASONS
+    set. Do not modify src/aios_renew/operational_receipt.py, widen TASK-160 scope,
+    weaken the bot empty-executor/exact-ID constraints, or change Runtime/REPAIR semantics.
