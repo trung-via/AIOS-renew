@@ -49,7 +49,6 @@ jobs:
     runs-on: [self-hosted, windows, x64, aios-renew]
     env:
       AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}
-      AIOS_CONTROL_ROOT: ${{ runner.temp }}/aios-control-${{ github.run_id }}-${{ github.run_attempt }}
       AIOS_CONTROL_SHA: ${{ github.sha }}
       AIOS_CONTROL_REF: ${{ github.ref }}
       AIOS_CORRECTION_DISPATCH_ID: ${{ inputs.correction_dispatch_id }}
@@ -60,6 +59,7 @@ jobs:
     steps:
       - name: Prepare exact transient control source
         env:
+          AIOS_CONTROL_ROOT: ${{ runner.temp }}/aios-control-${{ github.run_id }}-${{ github.run_attempt }}
           AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-remediation-intent-operational-receipt-v2.json
           AIOS_CONTROL_TOKEN: ${{ github.token }}
         shell: powershell
@@ -103,6 +103,7 @@ jobs:
           $controlCandidate = [IO.Path]::GetFullPath($env:AIOS_CONTROL_ROOT)
           $persistentPrefix = $persistentRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
           if ($controlCandidate -eq $persistentRoot -or $controlCandidate.StartsWith($persistentPrefix, [StringComparison]::OrdinalIgnoreCase)) { Write-OperationalFailure 'CONTROL_SOURCE_NOT_DISTINCT'; exit 1 }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "AIOS_CONTROL_ROOT=$env:AIOS_CONTROL_ROOT" -Encoding utf8
           New-Item -ItemType Directory -Path $env:AIOS_CONTROL_ROOT | Out-Null
           Add-Content -LiteralPath $env:GITHUB_ENV -Value 'AIOS_CONTROL_PREPARED=1' -Encoding utf8
           $controlRoot = (Resolve-Path -LiteralPath $env:AIOS_CONTROL_ROOT).Path

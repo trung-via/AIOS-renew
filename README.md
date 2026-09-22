@@ -70,7 +70,7 @@ Steady-state self-host delivery keeps four subjects deliberately separate:
 3. The **Execution Subject** remains the workspace selected and owned by the existing Runtime and Executor contract.
 4. The exact transient **Verification Subject** remains the Runtime-owned TASK-156/BP-V3 subject. It is not the control checkout.
 
-The control entry changes `sys.path` only inside its own Python process long enough to import the trusted Operator. It exports no `PYTHONPATH`, PATH rebinding, editable install, or site-package change to the Executor or verification children. A dirty, wrong-SHA, non-`main`, missing, non-distinct, or otherwise unprovable control source fails before the Operator is invoked. Operational Receipt v2 may record the exact `control_sha`; that provenance never asserts RUN creation, Executor invocation, verification, review, or publication.
+The self-host control entry does not replace AIOS Operator authority. It changes `sys.path` only inside its own Python process long enough to import the trusted Operator. It exports no `PYTHONPATH`, PATH rebinding, editable install, or site-package change to the Executor or verification children. A dirty, wrong-SHA, non-`main`, missing, non-distinct, or otherwise unprovable control source fails before the Operator is invoked. Operational Receipt v2 may record the exact `control_sha`; that provenance never asserts RUN creation, Executor invocation, verification, review, or publication.
 
 ### One-Time Host Prerequisites
 

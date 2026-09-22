@@ -27,10 +27,19 @@ def test_every_self_host_control_surface_is_exact_sha_bound() -> None:
         workflow = yaml.load(text, Loader=yaml.BaseLoader)
         job = next(iter(workflow["jobs"].values()))
         env = job["env"]
+        prepare = next(
+            step
+            for step in job["steps"]
+            if step.get("name") == "Prepare exact transient control source"
+        )
 
         assert env["AIOS_CONTROL_SHA"] == "${{ github.sha }}"
         assert env["AIOS_CONTROL_REF"] == "${{ github.ref }}"
-        assert env["AIOS_CONTROL_ROOT"].startswith("${{ runner.temp }}/aios-control-")
+        assert "AIOS_CONTROL_ROOT" not in env
+        assert prepare["env"]["AIOS_CONTROL_ROOT"].startswith(
+            "${{ runner.temp }}/aios-control-"
+        )
+        assert 'AIOS_CONTROL_ROOT=$env:AIOS_CONTROL_ROOT' in prepare["run"]
         assert "refs/heads/main" in text
         assert "fetch --quiet --no-tags --depth=1" in text
         assert "checkout --quiet --detach FETCH_HEAD" in text
