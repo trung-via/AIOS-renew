@@ -1,0 +1,182 @@
+task_id: TASK-161
+revision: 1
+
+goal: >
+  Harden the existing BP-V4 measurement primitive with bounded deterministic
+  pytest failure diagnostics so a canonical nonzero measurement identifies which
+  test node(s) and pytest phase(s) failed without exposing unbounded console text,
+  changing Runtime evidence ownership, changing measurement scheduling, selecting
+  a worker profile, or adding retry/fallback behavior.
+
+problem: >
+  TASK-159 r4 reached canonical Runtime verification on current main and
+  RUN-159-004 executed the exact BP-V4 serial plus workers 2/3/4 matrix. Collection
+  identity, subject stability, and observable worker isolation all conformed, but
+  every profile returned pytest exit status 1. The probe intentionally suppresses
+  pytest stdout/stderr and its structured plugin currently records collection,
+  worker-isolation facts, and exit status only. Canonical FAILURE therefore proves
+  correctness_passed=false but does not identify the failing test node(s), making a
+  repeat of the same roughly full-matrix verification low-value and preventing a
+  narrow causal repair. Add bounded structured failure identities to the existing
+  probe/plugin path while preserving BP-V4 measurement and authority semantics.
+
+assumptions:
+  - >
+    Canonical main at TASK-161 authoring is
+    372930d457e1ab7b602ea987bc9cfc4d5f596a49 and contains TASK-159 r4.
+  - >
+    RUN-159-004 is immutable canonical FAILURE lineage for TASK-159 r4 at phase
+    VERIFICATION. Its probe observed 1655 canonical tests with consistent
+    collection identity, clean unchanged subject, and conformant observable worker
+    isolation, while serial and workers 2/3/4 all returned pytest exit status 1.
+  - >
+    The RUN-159-004 failure does not establish that parallelism caused the test
+    failure because the serial control failed as well. Its profile timings are not
+    worker-adoption authority.
+  - >
+    TASK-157 remains authoritative for the BP-V4 bounded worker set, exact profile
+    order, one-execution-per-profile rule, structured measurement envelope,
+    correctness semantics, and prohibition on worker selection/retry/fallback.
+  - >
+    TASK-159 r4 remains authoritative for current-main same-subject measurement
+    semantics. TASK-161 is maintenance observability hardening only and does not
+    repair or review RUN-159-004 and does not advance the roadmap.
+  - >
+    Runtime already captures the probe stdout as verification evidence summary/raw
+    output. Therefore diagnostics can remain inside the repository-owned structured
+    probe output; Runtime and generic verification machinery need no change.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-157.yaml
+    - .ai/tasks/TASK-159.yaml
+    - scripts/bp_v4_parallel_probe.py
+    - tests/bp_v4_probe_plugin.py
+    - tests/test_bp_v4_parallel_probe.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/verification_contract.py
+  modify:
+    - scripts/bp_v4_parallel_probe.py
+    - tests/bp_v4_probe_plugin.py
+    - tests/test_bp_v4_parallel_probe.py
+
+non_goals:
+  - Diagnose, repair, suppress, skip, xfail, or change the actual failing tests from RUN-159-004.
+  - Re-run TASK-159, RUN-159-004, or the real serial/parallel full-suite matrix inside TASK-161.
+  - Change the authorized worker set, profile order, distribution mode, one-run-per-profile rule, or canonical collection identity.
+  - Select, rank, recommend, persist, or automatically adapt a worker count.
+  - Add retries, failover, early-exit profile omission, benchmark rerouting, a scheduler, router, daemon, database, or new lifecycle state.
+  - Capture assertion bodies, tracebacks, arbitrary stdout/stderr, environment values, secrets, or other unbounded pytest console text as diagnostics.
+  - Change Runtime, verification execution, evidence ownership, Reviewer, Publisher, RepositoryLock, transport, self-host authority, roadmap state, or frozen Kernel semantics.
+  - Change verification_contract probe grammar or add a new diagnostic CLI mode.
+  - Install or update packages.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      Preserve the exact BP-V4 command surface and measurement topology:
+      python scripts/bp_v4_parallel_probe.py --workers <authorized subset>, one
+      canonical collection, one serial profile, then each explicit unique ascending
+      worker candidate from 2/3/4 exactly once. Diagnostics must not change,
+      repeat, skip, short-circuit, or reorder those operations.
+    - >
+      Extend the existing structured pytest plugin path rather than relying on
+      pytest console scraping. Record only bounded failure identity facts derived
+      from failed pytest reports: normalized test node identity and pytest phase
+      limited to setup, call, or teardown, plus bounded count/truncation metadata.
+      Do not record assertion text, traceback text, captured output, exception
+      messages, environment data, or arbitrary repr strings.
+    - >
+      Failure diagnostics must be deterministic across serial and xdist scheduling.
+      Normalize path separators, use deterministic ordering, de-duplicate displayed
+      node/phase identities, and enforce one repository-owned maximum displayed
+      identity count per profile. Parallel aggregation must not depend on which
+      worker happened to execute a failing test.
+    - >
+      Preserve boundedness even for pathological parametrized node identities:
+      impose a deterministic per-identity representation bound while retaining a
+      stable digest or equivalent deterministic fingerprint when exact display text
+      must be clipped. Normal ordinary node identities should remain directly
+      actionable.
+    - >
+      The structured profile output may add a narrowly named failure-diagnostics
+      field only for a nonzero pytest profile. Successful profile output and the
+      existing AIOS_BP_V4_MEASUREMENT version-1 correctness/conformance semantics
+      must remain compatible. Diagnostics are observational evidence only and must
+      not affect worker selection, timing interpretation, or semantic authority.
+    - >
+      A nonzero pytest profile must preserve its existing exit status and
+      correctness failure while also exposing bounded diagnostics when failed test
+      reports exist. Internal/collection/infrastructure exits that have no failed
+      runtest report must remain representable with an empty diagnostic identity
+      list plus the existing pytest exit status; diagnostics must not fabricate a
+      test identity.
+    - >
+      Keep xdist worker-local failure capture subordinate to the controller-owned
+      profile observation. Workers may return bounded structured facts through the
+      existing workeroutput channel, but they must not write competing canonical
+      observation files or create persistent state.
+    - >
+      Do not change subject identity checks, collection digest rules, temporary-root
+      isolation, Git-fixture cache isolation, process-distinctness checks, toolchain
+      bounds, stdout/stderr suppression, or fail-closed conformance behavior except
+      as strictly necessary to attach the new bounded diagnostics.
+    - >
+      Focused regression tests must prove serial failure capture, xdist aggregation
+      independent of worker assignment/order, deterministic normalization and
+      clipping/fingerprint behavior, bounded truncation, success compatibility,
+      and no change to one-collection/one-profile execution topology without
+      executing the real full suite.
+    - >
+      Do not modify files outside scope.modify and do not push or publish from
+      Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The BP-V4 pytest plugin records failed runtest identities as structured
+      node/phase facts with deterministic path normalization, bounded display, and
+      no assertion/traceback/captured-output payload.
+  - id: AC2
+    condition: >
+      Serial and xdist profile observations expose a bounded deterministic
+      failure-diagnostics summary containing exact reported count metadata,
+      deterministically ordered displayed identities up to one fixed repository
+      bound, and explicit truncation state; parallel aggregation is invariant to
+      worker assignment/order for the same failed node/phase set.
+  - id: AC3
+    condition: >
+      Overlong node identities use a deterministic bounded representation that
+      retains a stable fingerprint, while normal node identities remain directly
+      readable and actionable.
+  - id: AC4
+    condition: >
+      A nonzero pytest profile retains existing exit/correctness semantics and adds
+      diagnostics without fabricating identities when no failed runtest report is
+      available; successful profiles remain compatible with the existing
+      AIOS_BP_V4_MEASUREMENT v1 output and gain no worker-selection semantics.
+  - id: AC5
+    condition: >
+      The existing measurement topology, worker authorization, profile ordering,
+      collection/conformance checks, subject checks, timing semantics, and
+      no-retry/no-fallback behavior are unchanged, and no Runtime,
+      verification-contract, Reviewer, Publisher, transport, or roadmap authority
+      is added or modified.
+  - id: AC6
+    condition: >
+      Focused deterministic regression coverage exercises serial diagnostics,
+      multi-worker aggregation/order invariance, bounds/truncation, long-node
+      fingerprinting, success compatibility, and unchanged profile execution
+      topology without running the real BP-V4 full-suite matrix.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_bp_v4_parallel_probe.py
+    - git diff --check
