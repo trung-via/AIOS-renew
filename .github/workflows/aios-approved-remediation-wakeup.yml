@@ -35,14 +35,18 @@ jobs:
     runs-on: [self-hosted, windows, x64, aios-renew]
     env:
       AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}
+      AIOS_CONTROL_ROOT: ${{ runner.temp }}/aios-control-${{ github.run_id }}-${{ github.run_attempt }}
+      AIOS_CONTROL_SHA: ${{ github.sha }}
+      AIOS_CONTROL_REF: ${{ github.ref }}
       AIOS_CORRECTION_DISPATCH_ID: ${{ inputs.correction_dispatch_id }}
       AIOS_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
       AIOS_FINDING_ID: ${{ inputs.finding_id }}
       AIOS_EXECUTOR: ${{ inputs.executor }}
     steps:
-      - name: Preflight persistent environment
+      - name: Prepare exact transient control source
         env:
           AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-remediation-operational-receipt-v2.json
+          AIOS_CONTROL_TOKEN: ${{ github.token }}
         shell: powershell
         run: |
           function Write-OperationalFailure([string]$Reason) {
@@ -53,6 +57,7 @@ jobs:
             if ($env:AIOS_FINDING_ID -match '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { $selectors.finding_id = $env:AIOS_FINDING_ID }
             if ($env:AIOS_EXECUTOR -in @('codex', 'antigravity')) { $selectors.executor = $env:AIOS_EXECUTOR }
             $receipt = [ordered]@{format='AIOS_OPERATIONAL_RECEIPT';version=2;kind='OPERATIONAL_RECEIPT';family='REMEDIATION';delivery=@{kind='correction_dispatch_id';id=$env:AIOS_CORRECTION_DISPATCH_ID};boundary='OPERATIONAL_FAILED';selectors=$selectors;run_created=$false;executor_invoked=$false;cause=@{authority='WORKFLOW';phase='PRE_AIOS';reason_code=$Reason}}
+            if ($env:AIOS_CONTROL_SHA -match '^[0-9a-f]{40}$') { $receipt.control_sha = $env:AIOS_CONTROL_SHA }
             Set-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Value ($receipt | ConvertTo-Json -Compress -Depth 5) -Encoding utf8
           }
           if ([string]::IsNullOrWhiteSpace($env:AIOS_REPO_ROOT)) {
@@ -71,11 +76,35 @@ jobs:
             Write-Error "The configured persistent repository is invalid."
             exit 1
           }
-          if (-not (Get-Command aios -ErrorAction SilentlyContinue)) {
+          if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
             Write-OperationalFailure 'AIOS_COMMAND_UNAVAILABLE'
-            Write-Error "The bounded AIOS command is unavailable."
+            Write-Error "Python is unavailable for the bounded AIOS control entry."
             exit 1
           }
+          if ($env:GITHUB_REPOSITORY -ne 'trung-via/AIOS-renew') { Write-OperationalFailure 'UNEXPECTED_REPOSITORY_IDENTITY'; exit 1 }
+          if ($env:AIOS_CONTROL_REF -ne 'refs/heads/main' -or $env:AIOS_CONTROL_SHA -notmatch '^[0-9a-f]{40}$') { Write-OperationalFailure 'NONCANONICAL_WORKFLOW_REF'; exit 1 }
+          if (Test-Path -LiteralPath $env:AIOS_CONTROL_ROOT) { Write-OperationalFailure 'CONTROL_SOURCE_PATH_OCCUPIED'; exit 1 }
+          $persistentRoot = (Resolve-Path -LiteralPath $env:AIOS_REPO_ROOT).Path
+          $controlCandidate = [IO.Path]::GetFullPath($env:AIOS_CONTROL_ROOT)
+          $persistentPrefix = $persistentRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+          if ($controlCandidate -eq $persistentRoot -or $controlCandidate.StartsWith($persistentPrefix, [StringComparison]::OrdinalIgnoreCase)) { Write-OperationalFailure 'CONTROL_SOURCE_NOT_DISTINCT'; exit 1 }
+          New-Item -ItemType Directory -Path $env:AIOS_CONTROL_ROOT | Out-Null
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value 'AIOS_CONTROL_PREPARED=1' -Encoding utf8
+          $controlRoot = (Resolve-Path -LiteralPath $env:AIOS_CONTROL_ROOT).Path
+          git -C $controlRoot init --quiet
+          if ($LASTEXITCODE -ne 0) { Write-OperationalFailure 'CONTROL_SOURCE_MATERIALIZATION_FAILED'; exit 1 }
+          $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:AIOS_CONTROL_TOKEN"))
+          $env:GIT_CONFIG_COUNT = '1'; $env:GIT_CONFIG_KEY_0 = 'http.extraHeader'; $env:GIT_CONFIG_VALUE_0 = "AUTHORIZATION: basic $basic"
+          try { git -C $controlRoot fetch --quiet --no-tags --depth=1 "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY.git" $env:AIOS_CONTROL_SHA }
+          finally { Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue; $basic = $null }
+          if ($LASTEXITCODE -ne 0) { Write-OperationalFailure 'CONTROL_SOURCE_MATERIALIZATION_FAILED'; exit 1 }
+          git -C $controlRoot checkout --quiet --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { Write-OperationalFailure 'CONTROL_SOURCE_MATERIALIZATION_FAILED'; exit 1 }
+          $actualSha = git -C $controlRoot rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actualSha -ne $env:AIOS_CONTROL_SHA) { Write-OperationalFailure 'CONTROL_SOURCE_SHA_MISMATCH'; exit 1 }
+          $controlStatus = @(git -C $controlRoot status --porcelain)
+          if ($LASTEXITCODE -ne 0 -or $controlStatus.Count -ne 0) { Write-OperationalFailure 'CONTROL_SOURCE_DIRTY'; exit 1 }
+          if (-not (Test-Path -LiteralPath (Join-Path $controlRoot 'scripts/aios_control_entry.py') -PathType Leaf)) { Write-OperationalFailure 'CONTROL_ENTRY_UNAVAILABLE'; exit 1 }
 
       - name: Wake exactly approved remediation
         env:
@@ -94,6 +123,7 @@ jobs:
             if ($env:AIOS_FINDING_ID -match '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { $selectors.finding_id = $env:AIOS_FINDING_ID }
             if ($env:AIOS_EXECUTOR -in @('codex', 'antigravity')) { $selectors.executor = $env:AIOS_EXECUTOR }
             $receipt = [ordered]@{format='AIOS_OPERATIONAL_RECEIPT';version=2;kind='OPERATIONAL_RECEIPT';family='REMEDIATION';delivery=@{kind='correction_dispatch_id';id=$env:AIOS_CORRECTION_DISPATCH_ID};boundary=$Boundary;selectors=$selectors;run_created=$false;executor_invoked=$false}
+            if ($env:AIOS_CONTROL_SHA -match '^[0-9a-f]{40}$') { $receipt.control_sha = $env:AIOS_CONTROL_SHA }
             if ($Reason) { $receipt.cause = @{authority='WORKFLOW';phase='PRE_AIOS';reason_code=$Reason} }
             Set-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Value ($receipt | ConvertTo-Json -Compress -Depth 5) -Encoding utf8
           }
@@ -113,7 +143,10 @@ jobs:
             exit 1
           }
           Write-OperationalState 'AIOS_INVOKED' ''
-          aios approved-remediation-wakeup $env:AIOS_CORRECTION_DISPATCH_ID $env:AIOS_SOURCE_RUN_ID $env:AIOS_FINDING_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
+          $controlSource = $env:AIOS_CONTROL_ROOT
+          $entry = Join-Path $controlSource 'scripts/aios_control_entry.py'
+          Remove-Item Env:AIOS_CONTROL_ROOT, Env:AIOS_CONTROL_REF, Env:AIOS_CONTROL_PREPARED -ErrorAction SilentlyContinue
+          python $entry $controlSource approved-remediation-wakeup $env:AIOS_CORRECTION_DISPATCH_ID $env:AIOS_SOURCE_RUN_ID $env:AIOS_FINDING_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
           $aiosExitCode = $LASTEXITCODE
           if ($aiosExitCode -ne 0) {
             exit $aiosExitCode
@@ -143,3 +176,16 @@ jobs:
           path: ${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}
           if-no-files-found: error
           retention-days: 30
+
+      - name: Remove transient control source
+        if: always()
+        continue-on-error: true
+        env:
+          AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-remediation-operational-receipt-v2.json
+        shell: powershell
+        run: |
+          $runnerTemp = (Resolve-Path -LiteralPath $env:RUNNER_TEMP).Path
+          if ($env:AIOS_CONTROL_PREPARED -eq '1' -and (Test-Path -LiteralPath $env:AIOS_CONTROL_ROOT)) {
+            $controlRoot = (Resolve-Path -LiteralPath $env:AIOS_CONTROL_ROOT).Path
+            if ((Split-Path -Parent $controlRoot) -eq $runnerTemp -and (Split-Path -Leaf $controlRoot) -match '^aios-control-[0-9]+-[0-9]+$') { Remove-Item -LiteralPath $controlRoot -Recurse -Force }
+          }

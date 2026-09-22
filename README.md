@@ -61,18 +61,27 @@ Use `--repo PATH` to target a repository other than the current Git repository.
 
 A1 provides a thin repository-native GitHub Actions wakeup (`.github/workflows/aios-self-hosted-wakeup.yml`) so an authorized remote Human or Brain can start one canonical PRIMARY execution on the designated Windows self-hosted runner without being physically present at the execution machine. A2 adds one stable outer `dispatch_id` so re-delivery cannot start that PRIMARY execution again. Every new wakeup uses authorization version 2 and binds that delivery to the exact TASK id, positive revision, Git blob SHA, provenance commit SHA, and Human-selected Executor.
 
-GitHub Actions calls the bounded outer surface (`aios wakeup <DISPATCH_ID> <TASK_ID> --task-revision <REVISION> --task-blob-sha <BLOB_SHA> --task-commit-sha <COMMIT_SHA> --executor <EXECUTOR> --repo <AIOS_REPO_ROOT>`), which durably journals the delivery and delegates a new request to the same existing PRIMARY implementation used by `aios run`. It does not replace AIOS Operator authority. Admission, pre-admission synchronization (TASK-062), RUN allocation, mutation authority, verification, and completion truth remain owned by the invoked AIOS process. Direct local `aios run` behavior is unchanged.
+GitHub Actions enters the bounded outer surface through `scripts/aios_control_entry.py`, loading the existing Operator from an exact transient control checkout at the workflow invocation's published `main` commit. The resulting Operator call is equivalent to `aios wakeup <DISPATCH_ID> <TASK_ID> --task-revision <REVISION> --task-blob-sha <BLOB_SHA> --task-commit-sha <COMMIT_SHA> --executor <EXECUTOR> --repo <AIOS_REPO_ROOT>` and continues to durably journal the delivery and delegate to the existing PRIMARY implementation. The entry adds no lifecycle authority: admission, TASK-062 synchronization/restart, RUN allocation, mutation authority, verification, and completion truth remain owned by the invoked AIOS process. Direct local/debug use of the installed `aios` CLI is unchanged.
+
+Steady-state self-host delivery keeps four subjects deliberately separate:
+
+1. The **Control Source Subject** is a clean, detached, transient Git checkout of the exact `github.sha` associated with a workflow invocation on `refs/heads/main`. Its read token exists only in the materialization step's process environment and is not stored in Git configuration or passed to AIOS.
+2. The persistent **Runtime/Transport Subject** is `AIOS_REPO_ROOT`. It retains `.git/aios`, delivery journals, locks, transport refs, and the existing PRIMARY synchronization semantics; bootstrap never resets, checks out, or cleans it.
+3. The **Execution Subject** remains the workspace selected and owned by the existing Runtime and Executor contract.
+4. The exact transient **Verification Subject** remains the Runtime-owned TASK-156/BP-V3 subject. It is not the control checkout.
+
+The control entry changes `sys.path` only inside its own Python process long enough to import the trusted Operator. It exports no `PYTHONPATH`, PATH rebinding, editable install, or site-package change to the Executor or verification children. A dirty, wrong-SHA, non-`main`, missing, non-distinct, or otherwise unprovable control source fails before the Operator is invoked. Operational Receipt v2 may record the exact `control_sha`; that provenance never asserts RUN creation, Executor invocation, verification, review, or publication.
 
 ### One-Time Host Prerequisites
 
 Self-hosted runner registration and host configuration are operational setup, not Executor implementation work or canonical AIOS authority:
 1. **Register Runner**: Register one Windows x64 self-hosted runner for this repository with custom label `aios-renew` (targeting `[self-hosted, windows, x64, aios-renew]`).
 2. **Environment & Toolchain**: Run the runner under an account and environment that has the working AIOS/Codex/Antigravity toolchain:
-   - `aios` CLI available on `PATH`;
+   - Python available on `PATH` with the repository's already-provisioned runtime dependencies;
    - Native coding Executors (`codex`, `antigravity`) installed and authenticated;
-   - Python environment with repository dependencies installed (`pip install -e .`).
-3. **Repository Variable `AIOS_REPO_ROOT`**: Configure the non-secret repository variable `AIOS_REPO_ROOT` in GitHub repository settings (Settings > Secrets and variables > Actions > Variables) pointing to the persistent canonical checkout (e.g. `C:\TOOL\Projects\AIOS-renew`). The workflow does not checkout code or create fresh worktrees; it executes against this persistent checkout.
-4. **Existing Git Credentials**: Ensure the persistent repository already has the non-interactive Git credentials required for existing AIOS transport (e.g. Git credential manager, SSH key, or stored credentials for `origin`). GitHub Actions runs with minimum read-only permissions and injects no write token, PAT, deploy key, or secret into the AIOS or Executor process.
+   - no per-RUN package installation; an editable `aios` install may remain available for direct local/debug use but is not the self-host control source.
+3. **Repository Variable `AIOS_REPO_ROOT`**: Configure the non-secret repository variable `AIOS_REPO_ROOT` in GitHub repository settings (Settings > Secrets and variables > Actions > Variables) pointing to the persistent Runtime/transport checkout (e.g. `C:\TOOL\Projects\AIOS-renew`). The workflow materializes control code elsewhere under `runner.temp` and does not realign this persistent checkout.
+4. **Existing Git Credentials**: Ensure the persistent repository already has the non-interactive Git credentials required for existing AIOS transport (e.g. Git credential manager, SSH key, or stored credentials for `origin`). The workflow's read-only `github.token` is used process-locally only to fetch the exact transient control commit; it is not persisted or exposed to AIOS, an Executor, or Runtime verification.
 
 ### Triggering Remote Wakeup
 
@@ -236,7 +245,7 @@ that ref and cannot authorize the changed content; a new Human approval is requi
 
 Both workflows are `workflow_dispatch`-only, request only `contents: read`, run only
 on `[self-hosted, windows, x64, aios-renew]`, use the fixed `AIOS_REPO_ROOT`
-repository variable, perform no checkout, and pass workflow/event values through
+repository variable, materialize only the exact transient Control Source Subject, and pass workflow/event values through
 environment data bindings. Neither status nor approval invokes PRIMARY, a coding
 Executor, verification, reconciliation writes, remediation, repair, recovery,
 transport, retry, or publication. In particular, approval records authorization
@@ -284,8 +293,8 @@ approval, publication proof, or authority for semantic DELTA review/publication.
 
 The A6 workflow retains the dedicated self-hosted security boundary used by A1/A3:
 manual `workflow_dispatch` only, `[self-hosted, windows, x64, aios-renew]`, the
-configured persistent `AIOS_REPO_ROOT`, read-only GitHub contents permission, no
-checkout, and event values passed as command data. It introduces no GitHub write
+configured persistent `AIOS_REPO_ROOT`, read-only GitHub contents permission, an
+exact transient control checkout, and event values passed as command data. It introduces no GitHub write
 credential, scheduler, queue, retry, router, fallback, or model call.
 
 ### One-action approved remediation intent
@@ -314,8 +323,8 @@ The fixed `.github/workflows/aios-approved-remediation-intent.yml` workflow supp
 manual `workflow_dispatch` and the repository-owned reusable call from the Issue
 carrier. It accepts only the four immutable intent selectors and derives Human
 attribution from trusted `github.actor`. It runs on
-`[self-hosted, windows, x64, aios-renew]`, uses persistent `AIOS_REPO_ROOT`, checks
-out no event-controlled code, grants only `contents: read`, and injects no new write
+`[self-hosted, windows, x64, aios-renew]`, uses persistent `AIOS_REPO_ROOT`, loads
+control only from the invocation's exact published main commit, grants only `contents: read`, and injects no new write
 credential into AIOS or the selected Executor. The older direct A3 and A6 workflows
 remain valid diagnostic/emergency surfaces.
 

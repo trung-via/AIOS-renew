@@ -24,8 +24,13 @@ jobs:
     runs-on: [self-hosted, windows, x64, aios-renew]
     env:
       AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}
+      AIOS_CONTROL_ROOT: ${{ runner.temp }}/aios-control-${{ github.run_id }}-${{ github.run_attempt }}
+      AIOS_CONTROL_SHA: ${{ github.sha }}
+      AIOS_CONTROL_REF: ${{ github.ref }}
     steps:
-      - name: Preflight persistent environment
+      - name: Prepare exact transient control source
+        env:
+          AIOS_CONTROL_TOKEN: ${{ github.token }}
         shell: powershell
         run: |
           if ([string]::IsNullOrWhiteSpace($env:AIOS_REPO_ROOT)) {
@@ -41,10 +46,33 @@ jobs:
             Write-Error "The configured persistent repository is invalid."
             exit 1
           }
-          if (-not (Get-Command aios -ErrorAction SilentlyContinue)) {
-            Write-Error "The bounded AIOS command is unavailable."
+          if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+            Write-Error "Python is unavailable for the bounded AIOS control entry."
             exit 1
           }
+          if ($env:GITHUB_REPOSITORY -ne 'trung-via/AIOS-renew' -or $env:AIOS_CONTROL_REF -ne 'refs/heads/main' -or $env:AIOS_CONTROL_SHA -notmatch '^[0-9a-f]{40}$') { Write-Error "Control source is not an exact canonical main invocation."; exit 1 }
+          if (Test-Path -LiteralPath $env:AIOS_CONTROL_ROOT) { Write-Error "Transient control source path is occupied."; exit 1 }
+          $persistentRoot = (Resolve-Path -LiteralPath $env:AIOS_REPO_ROOT).Path
+          $controlCandidate = [IO.Path]::GetFullPath($env:AIOS_CONTROL_ROOT)
+          $persistentPrefix = $persistentRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+          if ($controlCandidate -eq $persistentRoot -or $controlCandidate.StartsWith($persistentPrefix, [StringComparison]::OrdinalIgnoreCase)) { Write-Error "Control source must be outside AIOS_REPO_ROOT."; exit 1 }
+          New-Item -ItemType Directory -Path $env:AIOS_CONTROL_ROOT | Out-Null
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value 'AIOS_CONTROL_PREPARED=1' -Encoding utf8
+          $controlRoot = (Resolve-Path -LiteralPath $env:AIOS_CONTROL_ROOT).Path
+          git -C $controlRoot init --quiet
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:AIOS_CONTROL_TOKEN"))
+          $env:GIT_CONFIG_COUNT = '1'; $env:GIT_CONFIG_KEY_0 = 'http.extraHeader'; $env:GIT_CONFIG_VALUE_0 = "AUTHORIZATION: basic $basic"
+          try { git -C $controlRoot fetch --quiet --no-tags --depth=1 "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY.git" $env:AIOS_CONTROL_SHA }
+          finally { Remove-Item Env:GIT_CONFIG_COUNT, Env:GIT_CONFIG_KEY_0, Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue; $basic = $null }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          git -C $controlRoot checkout --quiet --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $actualSha = git -C $controlRoot rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $actualSha -ne $env:AIOS_CONTROL_SHA) { Write-Error "Control source SHA proof failed."; exit 1 }
+          $controlStatus = @(git -C $controlRoot status --porcelain)
+          if ($LASTEXITCODE -ne 0 -or $controlStatus.Count -ne 0) { Write-Error "Control source cleanliness proof failed."; exit 1 }
+          if (-not (Test-Path -LiteralPath (Join-Path $controlRoot 'scripts/aios_control_entry.py') -PathType Leaf)) { Write-Error "Trusted control entry is unavailable."; exit 1 }
 
       - name: Record exact Human approval
         env:
@@ -65,7 +93,21 @@ jobs:
             Write-Error "Invalid trusted approver attribution."
             exit 1
           }
-          aios remote-approve $env:AIOS_SOURCE_RUN_ID $env:AIOS_FINDING_ID --approver $env:AIOS_APPROVER --repo $env:AIOS_REPO_ROOT
+          $controlSource = $env:AIOS_CONTROL_ROOT
+          $entry = Join-Path $controlSource 'scripts/aios_control_entry.py'
+          Remove-Item Env:AIOS_CONTROL_ROOT, Env:AIOS_CONTROL_REF, Env:AIOS_CONTROL_PREPARED -ErrorAction SilentlyContinue
+          python $entry $controlSource remote-approve $env:AIOS_SOURCE_RUN_ID $env:AIOS_FINDING_ID --approver $env:AIOS_APPROVER --repo $env:AIOS_REPO_ROOT
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
+          }
+
+      - name: Remove transient control source
+        if: always()
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $runnerTemp = (Resolve-Path -LiteralPath $env:RUNNER_TEMP).Path
+          if ($env:AIOS_CONTROL_PREPARED -eq '1' -and (Test-Path -LiteralPath $env:AIOS_CONTROL_ROOT)) {
+            $controlRoot = (Resolve-Path -LiteralPath $env:AIOS_CONTROL_ROOT).Path
+            if ((Split-Path -Parent $controlRoot) -eq $runnerTemp -and (Split-Path -Leaf $controlRoot) -match '^aios-control-[0-9]+-[0-9]+$') { Remove-Item -LiteralPath $controlRoot -Recurse -Force }
           }

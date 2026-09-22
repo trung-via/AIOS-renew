@@ -33,6 +33,12 @@ WORKFLOW_REASONS = frozenset({
     "CONFIGURED_REPOSITORY_UNAVAILABLE",
     "CONFIGURED_REPOSITORY_INVALID",
     "AIOS_COMMAND_UNAVAILABLE",
+    "CONTROL_SOURCE_PATH_OCCUPIED",
+    "CONTROL_SOURCE_MATERIALIZATION_FAILED",
+    "CONTROL_SOURCE_SHA_MISMATCH",
+    "CONTROL_SOURCE_DIRTY",
+    "CONTROL_SOURCE_NOT_DISTINCT",
+    "CONTROL_ENTRY_UNAVAILABLE",
     "INVALID_BOUNDED_INPUT",
     "UNEXPECTED_REPOSITORY_IDENTITY",
     "NONCANONICAL_WORKFLOW_REF",
@@ -46,6 +52,7 @@ _DELIVERY_FIELDS = {
 }
 _DELIVERY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 _RUN_PATTERN = re.compile(r"^RUN-[A-Za-z0-9_-]+-\d{3,}$")
+_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 _SELECTOR_FIELDS = frozenset({
     "task_id", "task_revision", "task_blob_sha", "task_commit_sha", "executor",
     "source_run_id", "finding_id", "failed_run_id", "repair_sha",
@@ -69,6 +76,7 @@ class OperationalReceipt:
     cause: Mapping[str, str] | None = None
     run_id: str | None = None
     terminal_pointer: Mapping[str, str] | None = None
+    control_sha: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         _validate_family_delivery(self.family, self.delivery_id)
@@ -87,6 +95,11 @@ class OperationalReceipt:
             "run_created": self.run_created,
             "executor_invoked": self.executor_invoked,
         }
+        control_sha = self.control_sha or os.environ.get("AIOS_CONTROL_SHA")
+        if control_sha is not None:
+            if not isinstance(control_sha, str) or not _SHA_PATTERN.fullmatch(control_sha):
+                raise OperationalReceiptError("invalid control source SHA")
+            payload["control_sha"] = control_sha
         if self.cause is not None:
             authority = self.cause.get("authority")
             phase = self.cause.get("phase")

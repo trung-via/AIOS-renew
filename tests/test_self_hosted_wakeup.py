@@ -153,8 +153,9 @@ def test_workflow_routing_and_no_checkout_ac2() -> None:
 def test_workflow_authority_and_no_direct_executor_ac3() -> None:
     raw_text = WORKFLOW_PATH.read_text(encoding="utf-8")
 
-    # Exactly one thin outer wakeup invocation; PRIMARY remains inside the Operator.
-    assert raw_text.count("aios wakeup") == 1
+    # Exactly one thin control-entry wakeup invocation; PRIMARY remains inside the Operator.
+    assert raw_text.count("$controlSource wakeup") == 1
+    assert raw_text.count("scripts/aios_control_entry.py") >= 2
     assert "aios run" not in raw_text
 
     # Outer identity and semantic selectors pass through environment data bindings.
@@ -169,7 +170,7 @@ def test_workflow_authority_and_no_direct_executor_ac3() -> None:
     assert step_env.get("AIOS_EXECUTOR") == "${{ inputs.executor }}"
     assert "${{ inputs." not in step.get("run", "")
     assert (
-        "aios wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --task-revision $env:AIOS_TASK_REVISION --task-blob-sha $env:AIOS_TASK_BLOB_SHA --task-commit-sha $env:AIOS_TASK_COMMIT_SHA --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT"
+        "python $entry $controlSource wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --task-revision $env:AIOS_TASK_REVISION --task-blob-sha $env:AIOS_TASK_BLOB_SHA --task-commit-sha $env:AIOS_TASK_COMMIT_SHA --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT"
         in raw_text
     )
 
@@ -184,9 +185,9 @@ def test_workflow_authority_and_no_direct_executor_ac3() -> None:
     for duplicate in ("aios task", "aios run", "aios remediate", "aios accept-candidate", "aios repair", "aios transport"):
         assert duplicate not in raw_text, f"duplicate AIOS command forbidden: {duplicate}"
 
-    # No manual Git synchronization commands
-    for git_sync in ("git pull", "git fetch", "git merge", "git reset", "git rebase", "git checkout"):
-        assert git_sync not in raw_text, f"manual Git sync forbidden: {git_sync}"
+    # No bootstrap mutation of the persistent repository.
+    for git_sync in ("pull", "fetch", "merge", "reset", "rebase", "checkout"):
+        assert f"git -C $env:AIOS_REPO_ROOT {git_sync}" not in raw_text
 
     # No canonical verification commands in workflow
     for verify_cmd in ("pytest", "python -m pytest", "flake8", "ruff"):
@@ -286,7 +287,7 @@ def test_workflow_preflight_invalid_git_root_fails_ac5(tmp_path: Path) -> None:
     assert "not a valid Git repository" in normalized_process_output(result)
 
 
-def test_workflow_preflight_missing_aios_executable_fails_ac5(tmp_path: Path) -> None:
+def test_workflow_preflight_missing_python_executable_fails_ac5(tmp_path: Path) -> None:
     workflow = load_workflow()
     preflight_script = workflow["jobs"]["wakeup"]["steps"][0]["run"]
 
@@ -307,18 +308,18 @@ def test_workflow_preflight_missing_aios_executable_fails_ac5(tmp_path: Path) ->
 
     result = run_powershell_script(preflight_script, env=env)
     assert result.returncode != 0
-    assert "aios executable was not found on PATH" in normalized_process_output(result)
+    assert "Python is unavailable" in normalized_process_output(result)
 
 
 def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> None:
     workflow = load_workflow()
     run_script = workflow["jobs"]["wakeup"]["steps"][1]["run"]
 
-    # Create mock aios that exits with 42
+    # Create mock Python control entry that exits with 42
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    mock_aios = bin_dir / "aios.bat"
-    mock_aios.write_text("@echo off\nexit /b 42\n", encoding="utf-8")
+    mock_python = bin_dir / "python.bat"
+    mock_python.write_text("@echo off\nexit /b 42\n", encoding="utf-8")
 
     env = dict(os.environ)
     env["AIOS_REPO_ROOT"] = str(tmp_path)
@@ -328,6 +329,7 @@ def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> N
     env["AIOS_TASK_BLOB_SHA"] = "a" * 40
     env["AIOS_TASK_COMMIT_SHA"] = "b" * 40
     env["AIOS_EXECUTOR"] = "antigravity"
+    env["AIOS_CONTROL_ROOT"] = str(tmp_path / "control")
     env["PATH"] = f"{bin_dir};{env['PATH']}"
 
     result = run_powershell_script(run_script, env=env)
@@ -336,7 +338,7 @@ def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> N
     ), f"expected exit code 42 to be preserved, got {result.returncode}"
 
     # Also verify exit code 1
-    mock_aios.write_text("@echo off\nexit /b 1\n", encoding="utf-8")
+    mock_python.write_text("@echo off\nexit /b 1\n", encoding="utf-8")
     result = run_powershell_script(run_script, env=env)
     assert (
         result.returncode == 1
@@ -402,7 +404,6 @@ def test_primary_cli_reprojects_exact_delivery_when_dispatch_fails(
 
 def test_workflow_execution_success_invokes_aios_wakeup_once_ac3(tmp_path: Path) -> None:
     workflow = load_workflow()
-    preflight_script = workflow["jobs"]["wakeup"]["steps"][0]["run"]
     run_script = workflow["jobs"]["wakeup"]["steps"][1]["run"]
 
     # Create dummy git repository
@@ -410,12 +411,12 @@ def test_workflow_execution_success_invokes_aios_wakeup_once_ac3(tmp_path: Path)
     repo_dir.mkdir()
     subprocess.run(["git", "init", str(repo_dir)], check=True, capture_output=True)
 
-    # Create mock aios that logs arguments
+    # Create mock Python that logs the entry and arguments.
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     recorder_file = tmp_path / "aios_invocations.txt"
-    mock_aios = bin_dir / "aios.bat"
-    mock_aios.write_text(
+    mock_python = bin_dir / "python.bat"
+    mock_python.write_text(
         f"@echo off\necho %* >> \"{recorder_file}\"\nexit /b 0\n",
         encoding="utf-8",
     )
@@ -428,13 +429,8 @@ def test_workflow_execution_success_invokes_aios_wakeup_once_ac3(tmp_path: Path)
     env["AIOS_TASK_BLOB_SHA"] = "a" * 40
     env["AIOS_TASK_COMMIT_SHA"] = "b" * 40
     env["AIOS_EXECUTOR"] = "antigravity"
+    env["AIOS_CONTROL_ROOT"] = str(tmp_path / "control")
     env["PATH"] = f"{bin_dir};{env['PATH']}"
-
-    # Run preflight step
-    preflight_result = run_powershell_script(preflight_script, env=env)
-    assert (
-        preflight_result.returncode == 0
-    ), f"preflight failed: {preflight_result.stderr}"
 
     # Run execution step
     run_result = run_powershell_script(run_script, env=env)
@@ -444,7 +440,7 @@ def test_workflow_execution_success_invokes_aios_wakeup_once_ac3(tmp_path: Path)
     invocations = recorder_file.read_text(encoding="utf-8").strip().splitlines()
     assert len(invocations) == 1
     expected_args = (
-        f"wakeup dispatch-066-success TASK-066 --task-revision 1 --task-blob-sha {'a' * 40} --task-commit-sha {'b' * 40} --executor antigravity --repo {repo_dir}"
+        f"{tmp_path / 'control' / 'scripts' / 'aios_control_entry.py'} {tmp_path / 'control'} wakeup dispatch-066-success TASK-066 --task-revision 1 --task-blob-sha {'a' * 40} --task-commit-sha {'b' * 40} --executor antigravity --repo {repo_dir}"
     )
     assert invocations[0].strip() == expected_args
 

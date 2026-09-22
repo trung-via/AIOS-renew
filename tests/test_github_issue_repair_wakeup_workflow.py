@@ -62,7 +62,7 @@ def test_fixed_target_has_manual_and_reusable_carriers_and_one_command_surface()
     assert workflow["permissions"] == {"contents": "read"}
     assert "actions/checkout" not in text
     assert "AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}" in text
-    assert text.count("aios repair-wakeup ") == 1
+    assert text.count("$controlSource repair-wakeup ") == 1
     for forbidden in ("aios continue", "aios repair ", "codex ", "antigravity "):
         assert forbidden not in text.lower()
     assert "$aiosExitCode = $LASTEXITCODE" in text

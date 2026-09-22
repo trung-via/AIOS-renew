@@ -72,9 +72,9 @@ def test_fixed_intent_workflow_preserves_self_hosted_boundary_and_a3_a6_command(
     assert "actions/checkout" not in text
     assert "AIOS_REPO_ROOT: ${{ vars.AIOS_REPO_ROOT }}" in text
     assert "AIOS_APPROVER: ${{ github.actor }}" in text
-    assert text.count("aios approved-remediation-intent ") == 1
+    assert text.count("$controlSource approved-remediation-intent ") == 1
     assert "aios remote-approve " not in text
-    assert "aios approved-remediation-wakeup " not in text
+    assert "$controlSource approved-remediation-wakeup " not in text
     assert "$aiosExitCode = $LASTEXITCODE" in text
     assert "exit $aiosExitCode" in text
 

@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from aios_renew.operational_receipt import (
     new_admission_blocker,
     project_delivery_receipt,
@@ -35,6 +37,21 @@ def test_pre_aios_failure_is_operational_only() -> None:
         "reason_code": "AIOS_REPO_ROOT_NOT_CONFIGURED",
     }
     assert "run_id" not in receipt and "terminal_pointer" not in receipt
+
+
+def test_receipt_binds_exact_control_sha_from_workflow_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    control_sha = "a" * 40
+    monkeypatch.setenv("AIOS_CONTROL_SHA", control_sha)
+
+    receipt = workflow_failure_receipt(
+        "PRIMARY", "delivery-158", "CONTROL_SOURCE_DIRTY"
+    ).as_dict()
+
+    assert receipt["control_sha"] == control_sha
+    assert receipt["run_created"] is False
+    assert receipt["executor_invoked"] is False
 
 
 def test_exact_journal_binding_is_required_for_run_attribution(tmp_path: Path) -> None:
