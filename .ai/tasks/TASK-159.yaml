@@ -1,69 +1,77 @@
 task_id: TASK-159
-revision: 1
+revision: 2
 
 goal: >
   Execute BP-V4B Canonical Same-Subject Parallel Measurement as one bounded,
-  Runtime-owned verification experiment on the exact current candidate: establish
-  one canonical pytest collection identity, one optimized serial full-suite
-  control, and explicitly authorized parallel full-suite profiles with workers
-  2, 3, and 4, producing canonical correctness, isolation, and elapsed-time
-  evidence for a later Human/Brain worker-adoption decision without modifying
-  production source, selecting a winner, enabling a parallel default, or
-  advancing roadmap semantics.
+  Runtime-owned verification experiment on the exact admitted candidate while
+  preserving AIOS stage and authority boundaries: the selected Executor prepares
+  only a truthful read-only structural ResultPackage from pre-verification facts,
+  and Runtime alone executes the existing repository-owned BP-V4 probe for one
+  canonical pytest collection, one serial full-suite control, and explicit
+  parallel profiles with workers 2, 3, and 4. Produce canonical measurement
+  EVIDENCE for later Reviewer and Human/Brain interpretation without source
+  mutation, worker selection, parallel-default adoption, or roadmap advancement.
 
 problem: >
-  TASK-157 implemented the bounded BP-V4 measurement contract and probe but
-  deliberately did not execute the real serial/parallel benchmark matrix or
-  select a worker profile. BP-V4 cannot safely adopt parallel verification from
-  historical timing or heuristic CPU selection: the serial control and every
-  bounded parallel candidate must be measured on the same exact verification
-  subject, with the same toolchain and canonical test population, while proving
-  worker collection equivalence and mutable-root/process isolation. The current
-  canonical state also includes TASK-158 trusted self-host control-source
-  isolation, so this measurement must now be performed as canonical Runtime
-  verification without introducing a source mutation merely to create a
-  benchmark candidate.
+  TASK-159 r1 placed post-verification measurement outcomes into TASK acceptance
+  criteria even though the PRIMARY Executor is intentionally not given
+  verification commands and Runtime requires complete acceptance coverage before
+  canonical verification begins. RUN-159-001 therefore failed correctly at the
+  pre-verification completion gate with verification_seconds=null and no
+  repository mutation. Revision 2 must preserve that immutable failure lineage,
+  retain the existing BP-V4 measurement primitive, and move only facts knowable
+  before verification into structural acceptance. Actual collection equivalence,
+  profile correctness, worker isolation, toolchain observations, and timings must
+  remain Runtime-owned verification EVIDENCE evaluated only after the probe runs.
 
 assumptions:
   - >
-    Canonical main at TASK-159 authoring is
-    5f6696382d26164f43d12f24f249dbb1919d6be9, the reviewed and published
-    TASK-158 repair candidate.
+    Canonical main at TASK-159 revision-2 authoring is
+    700e0387b1b94b02d284d147b72c4f9a09e1f292, which contains TASK-159 r1 and
+    descends from the reviewed/published TASK-158 candidate.
+  - >
+    RUN-159-001 is immutable canonical FAILURE lineage for TASK-159 r1. Its
+    failure phase is COMPLETION_GATE, its failed head equals its base
+    700e0387b1b94b02d284d147b72c4f9a09e1f292, its changed_files are empty, its
+    candidate is clean/repairable/transportable, and canonical verification never
+    started. Revision 2 does not repair, erase, reinterpret, or continue that RUN.
   - >
     Canonical roadmap state keeps
     bp-v4-parallel-verification-performance-guard as the unique NEXT milestone.
-    TASK-159 performs the BP-V4B real measurement step only and does not itself
+    TASK-159 r2 performs the BP-V4B real measurement step only and does not itself
     complete BP-V4 or advance roadmap state.
   - >
-    TASK-157 is authoritative for the AIOS_BP_V4_MEASUREMENT version-1 probe,
-    bounded worker candidates 2, 3, and 4, collection digest rule, structured
-    worker isolation facts, timing-neutral correctness semantics, and optional
-    bp-v4-measurement dependency surface.
+    TASK-157 remains authoritative for AIOS_BP_V4_MEASUREMENT version 1, explicit
+    bounded workers 2, 3, and 4, canonical collection identity, structured worker
+    isolation facts, same-subject checks, timing-neutral correctness semantics,
+    and the optional bp-v4-measurement dependency surface.
   - >
-    TASK-154/BP-V2 historical serial timing remains useful context but is not an
-    exact comparator for worker selection. TASK-159 must use the serial profile
-    produced inside the same probe experiment as the only direct timing control
-    for its parallel profiles.
+    TASK-154/BP-V2 historical serial timing is historical context only. The
+    serial profile produced inside this same TASK-159 Runtime probe is the direct
+    timing control for workers 2, 3, and 4.
   - >
-    TASK-156/BP-V3 is authoritative for the exact transient verification
-    subject. Runtime must execute the TASK-159 probe inside that same exact
+    TASK-156/BP-V3 remains authoritative for exact transient verification-subject
+    isolation. Runtime must execute TASK-159 verification inside that exact
     isolated subject and retain canonical EVIDENCE ownership.
   - >
-    TASK-158 is authoritative for trusted self-host control-source provenance.
-    TASK-159 does not modify, bypass, or reinterpret self-host control-source,
-    PRIMARY synchronization, transport, Reviewer, or Publisher behavior.
+    TASK-158 remains authoritative for trusted self-host control-source
+    provenance. TASK-159 r2 does not modify or reinterpret self-host bootstrap,
+    PRIMARY synchronization, Runtime, transport, Reviewer, or Publisher behavior.
   - >
-    The designated Windows x64 aios-renew self-host may be provisioned once with
-    the repository-owned optional bp-v4-measurement extra. The RUN and probe
-    themselves must never install or mutate host packages. If the compatible
-    optional toolchain is absent, the probe must fail explicitly rather than
-    fabricate parallel evidence or fall back to serial-only execution.
+    PRIMARY native Executor adapters intentionally omit TASK.verification from the
+    Executor prompt, require empty executor-supplied evidence, and instruct the
+    Executor not to run canonical verification. Runtime verifies only after the
+    structural ResultPackage passes its pre-verification completion gates.
   - >
-    Runtime owns canonical verification and EVIDENCE; Reviewer owns the semantic
+    The designated Windows x64 aios-renew self-host may already have the
+    repository-owned optional bp-v4-measurement extra provisioned outside a RUN.
+    If compatible pytest/pytest-xdist capability is absent, Runtime verification
+    must fail explicitly; TASK-159 must not install packages or silently fall back.
+  - >
+    Runtime owns canonical verification and EVIDENCE; Reviewer owns semantic
     verdict; Human/Brain own interpretation of timing evidence and any later
-    fixed-worker choice; Publisher owns publication. Executor selection is
-    explicitly Human-authorized as codex for this RUN, but Executor must not
-    choose or recommend a worker profile.
+    fixed-worker authorization; Publisher owns publication. No measured timing
+    alone changes any of those authorities.
 
 scope:
   inspect:
@@ -80,6 +88,7 @@ scope:
     - .ai/tasks/TASK-156.yaml
     - .ai/tasks/TASK-157.yaml
     - .ai/tasks/TASK-158.yaml
+    - .ai/tasks/TASK-159.yaml
     - pyproject.toml
     - README.md
     - scripts/bp_v4_parallel_probe.py
@@ -89,87 +98,98 @@ scope:
     - src/aios_renew/runtime.py
     - src/aios_renew/run_observation.py
     - src/aios_renew/performance_observation.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/executor.py
+    - src/aios_renew/artifacts.py
     - tests/test_bp_v4_parallel_probe.py
     - tests/test_verification_contract.py
     - tests/test_git_fixture_isolation.py
   modify: []
 
 non_goals:
+  - Repair, supersede, delete, or reinterpret RUN-159-001 or any TASK-159 r1 failure artifact.
   - Modify production code, tests, documentation, workflows, dependency declarations, frozen Kernel, Constitution, Project Contract, or roadmap state.
+  - Make Executor claims about actual Runtime measurement outcomes that are unknowable before canonical verification.
   - Select, rank, recommend, persist, or automatically adapt a worker count.
   - Enable parallel execution as the canonical verification default.
-  - Treat TASK-154 historical serial timing as the direct comparator for TASK-159 parallel profiles.
-  - Add or install pytest, pytest-xdist, or any package during Executor execution, Runtime verification, workflow bootstrap, or probe execution.
-  - Add a scheduler, worker router, retry/failover mechanism, benchmark cache, performance database, daemon, background collector, or automatic optimizer.
-  - Retry, omit, reorder, duplicate, or add worker profiles after observing intermediate results.
-  - Treat faster or slower timing by itself as correctness, semantic completion, review, publication, or roadmap authority.
+  - Treat TASK-154 historical serial timing as the direct comparator for TASK-159 r2 profiles.
+  - Install or update pytest, pytest-xdist, the optional measurement extra, or any other package during Executor execution, Runtime verification, workflow bootstrap, or probe execution.
+  - Add a scheduler, generic worker router, retry/failover mechanism, benchmark cache, performance database, daemon, background collector, automatic optimizer, or new lifecycle state.
+  - Retry, omit, reorder, duplicate, or add worker profiles after observing intermediate measurement results.
+  - Treat faster or slower timing by itself as TASK completion, correctness, semantic review, publication, or roadmap authority.
   - Weaken, skip, xfail, deselect, rename, broadly mock, or otherwise alter the canonical test population to improve timing.
-  - Change Runtime, Reviewer, Publisher, transport, RepositoryLock, self-host control-source, Executor-selection, or verification-subject authority.
-  - Push or publish from Executor implementation execution.
+  - Change Runtime, Reviewer, Publisher, transport, RepositoryLock, self-host control-source, Executor selection, or verification-subject authority.
+  - Add a new VERIFICATION_ONLY lifecycle mode or bypass the existing PRIMARY structural ResultPackage boundary.
+  - Push or publish from Executor execution.
 
 constraints:
   hard:
     - >
-      TASK-159 is a measurement-only PRIMARY with an empty modification scope.
-      The Executor must leave the repository at the exact admitted candidate
-      commit with a clean worktree, report changed_files as empty, and must not
-      create a source/documentation/test change merely to advance HEAD.
+      TASK-159 r2 is a read-only measurement-preparation PRIMARY with empty
+      scope.modify. The Executor must leave final Git HEAD equal to the admitted
+      RUN base, leave the worktree clean, return changed_files as empty, and must
+      not create a source, test, documentation, workflow, TASK, dependency, or
+      benchmark-result commit merely to advance HEAD.
     - >
-      Canonical verification must contain exactly one BP-V4 measurement command:
+      Executor structural claims are restricted to pre-verification facts it can
+      truthfully establish by bounded inspection of the admitted repository and
+      supplied TASK/RUN context. The Executor must not claim that the BP-V4 probe
+      ran or passed, that actual collections matched, that any worker actually
+      isolated mutable state, that any measured timing has a value, or that any
+      parallel profile is faster, better, selected, recommended, or adoptable.
+    - >
+      The Executor must not execute the canonical measurement command, synthesize
+      benchmark output, construct canonical verification EVIDENCE, or infer the
+      Runtime outcome. Runtime alone executes and records canonical verification.
+    - >
+      Canonical verification contains exactly one command:
       python scripts/bp_v4_parallel_probe.py --workers 2 3 4. Do not add a
       separate pytest full-suite command, duplicate probe, collection-only
-      command, git diff command, or other verification work that the existing
-      bounded measurement primitive already subsumes or makes unnecessary.
+      command, git diff command, or other verification work already subsumed by
+      the existing measurement primitive.
     - >
       The existing minimum-sufficient-v1 verification contract and TASK-157 probe
-      grammar remain authoritative. Worker candidates are exactly 2, 3, and 4 in
-      ascending order; worker 1 is the probe-owned serial control. No auto,
-      cpu_count, environment-derived, historical-fastest, adaptive, random, or
-      Executor-selected profile is permitted.
+      grammar remain authoritative. Worker candidates are explicitly and only 2,
+      3, and 4 in ascending order, while worker 1 is the probe-owned serial
+      control. No auto, cpu_count, environment-derived, historical-fastest,
+      adaptive, random, or Executor-selected profile is permitted.
     - >
-      Runtime must execute the probe on one exact TASK-156 verification subject
-      bound to the pre-verification candidate SHA. The probe must observe one
-      canonical collection identity and compare serial and every parallel worker
-      collection against that identity without allowing unrelated control/main
-      movement to alter the verification subject.
+      Runtime must execute the probe on the exact TASK-156 transient verification
+      subject bound to the admitted candidate SHA. The probe, not the Executor,
+      owns canonical collection observation, actual profile execution, structured
+      conformance checks, same-subject mutation detection, and measured elapsed
+      time.
     - >
-      The probe must execute one serial profile and workers 2, 3, and 4 exactly
-      once each in the authorized order. No retry, fallback, repetition,
-      speculative extra profile, or omission is allowed after measurement starts.
+      Existing probe semantics must remain fail-closed: incompatible or missing
+      optional toolchain, collection failure or mismatch, missing/unexpected worker
+      data, malformed structured observation, shared mutable pytest temporary
+      roots, shared process-local Git fixture cache roots, non-distinct worker
+      processes, test failure, or verification-subject mutation invalidates the
+      measurement command. There is no retry, fallback, cherry-pick, or worker
+      adoption decision inside this TASK.
     - >
-      Every parallel profile must fail closed on test failure, collection
-      mismatch, missing/unexpected worker data, incompatible optional toolchain,
-      malformed structured observation, shared mutable temporary root, shared
-      process-local Git fixture cache root, shared process identity, or
-      verification-subject mutation. A failing profile invalidates the
-      measurement experiment; the system must not cherry-pick another passing
-      worker as an adoption decision.
-    - >
-      The successful Runtime evidence must preserve the versioned
+      Successful Runtime evidence must remain the existing versioned
       AIOS_BP_V4_MEASUREMENT envelope with exact subject identity when available,
-      bounded toolchain identity, deterministic collection count/digest,
-      per-profile mode, worker count, elapsed duration, exit status, and explicit
-      conformance facts. Measurement output must not add selected, recommended,
-      winner, best, score, or automatic policy fields.
+      bounded toolchain identity, deterministic collection identity, per-profile
+      mode/worker count/elapsed duration/exit status, and explicit conformance
+      facts. TASK-159 r2 does not add selected, recommended, winner, best, score,
+      threshold-verdict, or automatic-policy fields.
     - >
       Timing is observational only. A slower parallel profile is not a semantic
-      failure when correctness and conformance hold, and a faster parallel
-      profile does not itself authorize canonical adoption. Human/Brain will
-      evaluate the canonical same-subject timing evidence after Reviewer review.
+      TASK failure when the existing probe's correctness/conformance contract
+      succeeds, and a faster profile does not authorize canonical adoption.
+      Human/Brain may interpret timing only after canonical Runtime evidence and
+      Reviewer review.
     - >
-      Runtime/Result evidence must remain bound to the exact candidate SHA and
-      the repository must remain unchanged by verification. No separate
-      measurement store or new lifecycle truth may be introduced.
+      Optional bp-v4-measurement dependencies are one-time host prerequisites
+      outside the RUN. Missing or incompatible capability must yield explicit
+      canonical verification failure without package installation, host mutation,
+      serial fallback, or fabricated measurement evidence.
     - >
-      Optional bp-v4-measurement dependencies are a one-time host prerequisite,
-      not part of the RUN. Missing/incompatible capability must produce explicit
-      canonical verification failure with no package install, host mutation, or
-      serial fallback.
-    - >
-      TASK-159 PASS means only that the requested same-subject measurement
-      experiment completed correctly and produced trustworthy canonical evidence.
-      It must not mark BP-V4 DONE, choose a worker, change the canonical
-      verification profile, or advance roadmap semantics.
+      TASK-159 r2 success establishes only trustworthy same-subject measurement
+      evidence. Runtime, Reviewer, Publisher, self-host control-source,
+      RepositoryLock, canonical verification defaults, worker-selection authority,
+      and roadmap state remain unchanged.
     - >
       Do not modify any repository file and do not push or publish from Executor
       execution.
@@ -177,50 +197,42 @@ constraints:
 acceptance:
   - id: AC1
     condition: >
-      Canonical Runtime verification produces exactly one successful
-      AIOS_BP_V4_MEASUREMENT version-1 experiment bound to the exact TASK-159
-      candidate/verification subject SHA.
+      The admitted TASK-159 r2 PRIMARY remains a zero-delta read-only candidate:
+      final Git HEAD equals the admitted RUN base, the worktree is clean,
+      RESULT.changed_files is empty, and no repository mutation is created for
+      measurement preparation.
   - id: AC2
     condition: >
-      The experiment establishes one deterministic canonical collection identity
-      and serial plus worker-2, worker-3, and worker-4 profiles all report the
-      same canonical test population/digest under the same bounded toolchain.
+      Bounded inspection confirms the admitted candidate already contains the
+      repository-owned BP-V4 measurement contract and probe that define one
+      canonical collection, one serial control, explicit workers 2/3/4, exact
+      ordered profile execution, same-subject checks, and structured conformance
+      observations; Executor introduces no replacement measurement mechanism.
   - id: AC3
     condition: >
-      One serial profile and parallel workers 2, 3, and 4 execute exactly once in
-      the authorized order with no retry, fallback, repetition, omission,
-      reordering, hidden profile, or adaptive selection.
+      Bounded inspection confirms the existing measurement path is fail-closed
+      rather than adaptive: it has no package installation, CPU/auto worker
+      heuristic, retry/fallback, benchmark-driven reroute, or automatic worker
+      selection, and incompatible optional tooling is represented as probe failure
+      rather than silent fallback.
   - id: AC4
     condition: >
-      Serial and all three parallel profiles pass correctness and conformance,
-      and every parallel profile proves distinct worker process identities,
-      distinct mutable pytest temporary roots, and distinct process-local Git
-      fixture cache roots.
+      TASK-159 r2 contains no worker adoption decision: no worker is selected,
+      ranked, recommended, persisted, or made the canonical parallel default, and
+      timing remains observational input for later Human/Brain reasoning.
   - id: AC5
     condition: >
-      Canonical measurement evidence contains elapsed durations for serial,
-      worker 2, worker 3, and worker 4 on the same exact subject and toolchain,
-      while containing no selected/recommended/best/winner/score or equivalent
-      worker-adoption decision.
+      Existing authority boundaries remain unchanged by this zero-delta
+      preparation: Runtime owns canonical verification/EVIDENCE, Reviewer owns the
+      semantic verdict, Human/Brain own any later worker-adoption authorization,
+      Publisher owns publication, and roadmap state is not advanced by execution.
   - id: AC6
     condition: >
-      TASK-159 produces no repository mutation: candidate HEAD remains the
-      admitted exact commit, worktree remains clean, RESULT.changed_files is
-      empty, and no source/test/docs/workflow/dependency change is created for
-      measurement purposes.
-  - id: AC7
-    condition: >
-      Measurement performs no package installation or host mutation and uses no
-      CPU heuristic, auto worker mode, dynamic scheduler, retry/failover,
-      benchmark cache, or Executor-selected worker count; missing or incompatible
-      optional tooling fails explicitly.
-  - id: AC8
-    condition: >
-      A successful TASK-159 establishes measurement evidence only. Runtime,
-      Reviewer, Publisher, self-host control-source, RepositoryLock, canonical
-      verification defaults, worker-selection authority, and roadmap state are
-      unchanged, leaving any BP-V4C fixed-worker adoption decision to a later
-      Human/Brain-authorized task.
+      The structural ResultPackage makes only pre-verification claims for AC1-AC5
+      with executor-supplied evidence empty, and makes no claim about actual probe
+      execution, actual collection equivalence, actual worker isolation, actual
+      elapsed timings, or a successful measurement outcome; those facts are left
+      exclusively to subsequent Runtime verification EVIDENCE.
 
 verification:
   policy: minimum-sufficient-v1
