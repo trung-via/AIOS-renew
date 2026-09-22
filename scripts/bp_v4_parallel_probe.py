@@ -24,6 +24,9 @@ PYTEST_RANGE = ((8, 2), (9, 0))
 XDIST_RANGE = ((3, 6), (4, 0))
 PLUGIN_NAME = "bp_v4_probe_plugin"
 PLUGIN_OUTPUT_ENV = "AIOS_BP_V4_PLUGIN_OUTPUT"
+MAX_FAILURE_IDENTITIES = 20
+MAX_NODEID_DISPLAY_CHARS = 240
+FAILURE_PHASES = {"setup", "call", "teardown"}
 
 
 class ProbeError(RuntimeError):
@@ -239,6 +242,99 @@ def _observation_exit_status(observation: dict[str, Any]) -> int:
     return value
 
 
+def _failure_diagnostics(observation: dict[str, Any]) -> dict[str, Any]:
+    """Validate the plugin's bounded identity-only failure summary."""
+
+    value = observation.get("failure_diagnostics")
+    if not isinstance(value, dict):
+        raise ProbeError("missing structured pytest failure diagnostics")
+    count = value.get("reported_count")
+    displayed_count = value.get("displayed_count")
+    limit = value.get("display_limit")
+    identities = value.get("displayed_identities")
+    truncated = value.get("truncated")
+    if (
+        not isinstance(count, int)
+        or isinstance(count, bool)
+        or count < 0
+        or not isinstance(displayed_count, int)
+        or isinstance(displayed_count, bool)
+        or displayed_count < 0
+        or displayed_count > count
+        or limit != MAX_FAILURE_IDENTITIES
+        or not isinstance(identities, list)
+        or displayed_count != len(identities)
+        or displayed_count > MAX_FAILURE_IDENTITIES
+        or not isinstance(truncated, bool)
+    ):
+        raise ProbeError("malformed structured pytest failure diagnostics")
+
+    previous: tuple[str, int, str] | None = None
+    phase_order = {"setup": 0, "call": 1, "teardown": 2}
+    for identity in identities:
+        if not isinstance(identity, dict) or set(identity) != {
+            "nodeid",
+            "phase",
+            "clipped",
+            "fingerprint",
+        }:
+            raise ProbeError("malformed pytest failure identity")
+        nodeid = identity["nodeid"]
+        phase = identity["phase"]
+        clipped = identity["clipped"]
+        fingerprint = identity["fingerprint"]
+        if (
+            not isinstance(nodeid, str)
+            or not nodeid
+            or "\\" in nodeid
+            or len(nodeid) > MAX_NODEID_DISPLAY_CHARS
+            or phase not in FAILURE_PHASES
+            or not isinstance(clipped, bool)
+            or (not clipped and fingerprint is not None)
+            or (
+                clipped
+                and (
+                    not isinstance(fingerprint, str)
+                    or not fingerprint.startswith("sha256:")
+                    or len(fingerprint) != 71
+                    or any(
+                        character not in "0123456789abcdef"
+                        for character in fingerprint[7:]
+                    )
+                    or not nodeid.endswith(f"...#{fingerprint}")
+                )
+            )
+        ):
+            raise ProbeError("malformed pytest failure identity")
+        key = (nodeid, phase_order[phase], fingerprint or "")
+        if previous is not None and key <= previous:
+            raise ProbeError("unordered or duplicate pytest failure identities")
+        previous = key
+    return value
+
+
+def _profile_result(
+    *,
+    mode: str,
+    workers: int,
+    elapsed: float,
+    status: int,
+    observation: dict[str, Any],
+    conformance: dict[str, bool],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "mode": mode,
+        "workers": workers,
+        "elapsed_seconds": round(elapsed, 6),
+        "exit_status": status,
+        "pytest_exit_status": _observation_exit_status(observation),
+        "conformance": conformance,
+    }
+    if status != 0 or result["pytest_exit_status"] != 0:
+        result["failure_diagnostics"] = _failure_diagnostics(observation)
+    return result
+
+
 def _parallel_conformance(
     observation: dict[str, Any], canonical: dict[str, Any], expected: int
 ) -> dict[str, bool]:
@@ -338,16 +434,14 @@ def measure(
                 raise ProbeError("serial profile changed the verification subject")
             serial_facts["subject_unchanged"] = True
             profiles.append(
-                {
-                    "mode": "serial",
-                    "workers": 1,
-                    "elapsed_seconds": round(serial_elapsed, 6),
-                    "exit_status": serial_status,
-                    "pytest_exit_status": _observation_exit_status(
-                        serial_observation
-                    ),
-                    "conformance": serial_facts,
-                }
+                _profile_result(
+                    mode="serial",
+                    workers=1,
+                    elapsed=serial_elapsed,
+                    status=serial_status,
+                    observation=serial_observation,
+                    conformance=serial_facts,
+                )
             )
         except ProbeError as exc:
             profile_defects.append(f"serial: {exc}")
@@ -368,14 +462,14 @@ def measure(
                     )
                 facts["subject_unchanged"] = True
                 profiles.append(
-                    {
-                        "mode": "parallel",
-                        "workers": candidate,
-                        "elapsed_seconds": round(elapsed, 6),
-                        "exit_status": status,
-                        "pytest_exit_status": _observation_exit_status(observation),
-                        "conformance": facts,
-                    }
+                    _profile_result(
+                        mode="parallel",
+                        workers=candidate,
+                        elapsed=elapsed,
+                        status=status,
+                        observation=observation,
+                        conformance=facts,
+                    )
                 )
             except ProbeError as exc:
                 profile_defects.append(f"parallel-{candidate}: {exc}")

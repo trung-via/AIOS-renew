@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts import bp_v4_parallel_probe as probe
+import bp_v4_probe_plugin as plugin
 
 
 NODEIDS = ["tests/test_b.py::test_two", "tests\\test_a.py::test_one"]
@@ -21,6 +22,7 @@ def observation(
     nodeids: list[str] | None = None,
     exit_status: int = 0,
     shared_root: bool = False,
+    failures: dict[str, object] | None = None,
 ) -> dict[str, object]:
     collection = NODEIDS if nodeids is None else nodeids
     worker_collections = {
@@ -45,6 +47,15 @@ def observation(
         "controller_collection": list(collection) if workers == 0 else None,
         "worker_collections": worker_collections,
         "workers": worker_data,
+        "failure_diagnostics": failures
+        if failures is not None
+        else {
+            "reported_count": 0,
+            "displayed_count": 0,
+            "display_limit": probe.MAX_FAILURE_IDENTITIES,
+            "displayed_identities": [],
+            "truncated": False,
+        },
     }
 
 
@@ -208,6 +219,109 @@ def test_test_failure_changes_outcome_but_timing_does_not(
         toolchain_loader=lambda: {},
     )
     assert success is False
+
+
+def test_nonzero_profiles_add_serial_failure_identity_and_success_stays_compatible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = plugin._failure_identity("tests\\test_bad.py::test_broken", "call")
+    diagnostics = {
+        "reported_count": 1,
+        "displayed_count": 1,
+        "display_limit": probe.MAX_FAILURE_IDENTITIES,
+        "displayed_identities": [identity],
+        "truncated": False,
+    }
+
+    def runner(repository, temporary_root, *, label, workers, collect_only):
+        del repository, temporary_root, collect_only
+        failed = label == "serial"
+        return (1 if failed else 0), 0.01, observation(
+            workers=0 if workers == 1 else workers,
+            exit_status=1 if failed else 0,
+            failures=diagnostics if failed else None,
+        )
+
+    monkeypatch.setattr(
+        probe,
+        "subject_identity",
+        lambda _repository: {"kind": "unavailable", "head_sha": None},
+    )
+    envelope, success = probe.measure(
+        Path.cwd(), (2,), runner=runner, toolchain_loader=lambda: {}
+    )
+    assert success is False
+    assert envelope["profiles"][0]["failure_diagnostics"] == diagnostics
+    displayed = envelope["profiles"][0]["failure_diagnostics"][
+        "displayed_identities"
+    ]
+    assert displayed[0]["nodeid"] == "tests/test_bad.py::test_broken"
+    assert "failure_diagnostics" not in envelope["profiles"][1]
+
+
+def test_empty_diagnostics_do_not_fabricate_identity_for_non_runtest_exit() -> None:
+    data = observation(exit_status=3)
+    result = probe._profile_result(
+        mode="serial",
+        workers=1,
+        elapsed=0.01,
+        status=3,
+        observation=data,
+        conformance={"collection_matches_canonical": True},
+    )
+    assert result["failure_diagnostics"]["reported_count"] == 0
+    assert result["failure_diagnostics"]["displayed_identities"] == []
+
+
+def test_failure_identity_clips_with_stable_fingerprint() -> None:
+    long_nodeid = "tests\\test_params.py::test_value[" + "x" * 400 + "]"
+    first = plugin._failure_identity(long_nodeid, "setup")
+    second = plugin._failure_identity(long_nodeid, "setup")
+    assert first == second
+    assert first["clipped"] is True
+    assert len(first["nodeid"]) == plugin.MAX_NODEID_DISPLAY_CHARS
+    assert first["nodeid"].endswith(f"...#{first['fingerprint']}")
+    assert "\\" not in first["nodeid"]
+
+
+def test_parallel_failure_merge_is_order_invariant_and_bounded() -> None:
+    facts = [
+        plugin._failure_identity(f"tests/test_{index:02d}.py::test_bad", "call")
+        for index in range(plugin.MAX_FAILURE_IDENTITIES + 3)
+    ]
+
+    def merged(groups):
+        plugin.pytest_sessionstart(None)
+        for index, group in enumerate(groups):
+            node = SimpleNamespace(
+                gateway=SimpleNamespace(id=f"gw{index}"),
+                workeroutput={
+                    "aios_bp_v4_failures": {
+                        "reported_count": len(group),
+                        "displayed_identities": group,
+                        "truncated": False,
+                    }
+                },
+            )
+            plugin.pytest_testnodedown(node, None)
+        return plugin._summary(
+            plugin._parallel_failure_count,
+            plugin._parallel_failure_facts,
+            plugin._parallel_failure_truncated,
+        )
+
+    forward = merged([facts[::2], facts[1::2]])
+    reassigned = merged(
+        [
+            list(reversed(facts[::3])),
+            list(reversed(facts[1::3])),
+            list(reversed(facts[2::3])),
+        ]
+    )
+    assert forward == reassigned
+    assert forward["reported_count"] == len(facts)
+    assert forward["displayed_count"] == plugin.MAX_FAILURE_IDENTITIES
+    assert forward["truncated"] is True
 
 
 @pytest.mark.parametrize("defect", ["collection", "shared-roots", "missing-worker"])
