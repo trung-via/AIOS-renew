@@ -108,18 +108,18 @@ jobs:
             # Preserve the dedicated Human delivery path and its existing Runtime semantics.
           } elseif ($env:AIOS_DELIVERY_ACTOR -ceq 'github-actions[bot]') {
             if ($env:AIOS_DELIVERY_EVENT -cne 'workflow_dispatch') {
-              Write-OperationalFailure 'UNAUTHORIZED_DELIVERY_EVENT'
+              Write-OperationalFailure 'UNAUTHORIZED_DELIVERY_ACTOR'
               Write-Error "Automation REPAIR delivery requires workflow_dispatch provenance."
               exit 1
             }
             if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR)) {
-              Write-OperationalFailure 'UNAUTHORIZED_AUTOMATION_EXECUTOR'
+              Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
               Write-Error "Automation REPAIR delivery cannot select a coding Executor."
               exit 1
             }
             $expectedRepairDispatchId = "repair-$($env:AIOS_FAILED_RUN_ID)-$($env:AIOS_REPAIR_SHA)"
             if ($env:AIOS_REPAIR_DISPATCH_ID -cne $expectedRepairDispatchId) {
-              Write-OperationalFailure 'REPAIR_DISPATCH_ID_MISMATCH'
+              Write-OperationalFailure 'INVALID_BOUNDED_INPUT'
               Write-Error "Automation REPAIR delivery identity does not match its selectors."
               exit 1
             }

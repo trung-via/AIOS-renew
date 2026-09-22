@@ -7,6 +7,7 @@ import pytest
 import yaml
 
 from aios_renew import operator
+from aios_renew.operational_receipt import WORKFLOW_REASONS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -118,6 +119,20 @@ def test_fixed_target_uses_exact_github_owned_provenance_gate() -> None:
     gate_position = text.index("$env:AIOS_DELIVERY_ACTOR -ceq 'trung-via'")
     command_position = text.index("$controlSource repair-wakeup ")
     assert gate_position < command_position
+
+
+def test_provenance_gate_emits_only_canonical_workflow_reasons() -> None:
+    _, text = _workflow(TARGET)
+    gate_start = text.index("if ($env:AIOS_DELIVERY_ACTOR -ceq 'trung-via')")
+    gate_end = text.index(
+        "if ([string]::IsNullOrWhiteSpace($env:AIOS_REPO_ROOT))", gate_start
+    )
+    emitted_reasons = set(
+        re.findall(r"Write-OperationalFailure '([A-Z_]+)'", text[gate_start:gate_end])
+    )
+
+    assert emitted_reasons == {"INVALID_BOUNDED_INPUT", "UNAUTHORIZED_DELIVERY_ACTOR"}
+    assert emitted_reasons <= WORKFLOW_REASONS
 
 
 @pytest.mark.parametrize(
