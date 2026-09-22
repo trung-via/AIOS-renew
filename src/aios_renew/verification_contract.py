@@ -128,7 +128,9 @@ def _is_bp_v4_probe_family(command: str) -> bool:
     """Identify probe-like input so malformed forms cannot become opaque."""
 
     try:
-        tokens = shlex.split(command, posix=True)
+        # Preserve Windows path separators while identifying the invocation
+        # family; the exact valid grammar above remains POSIX-normalized.
+        tokens = shlex.split(command, posix=False)
     except ValueError:
         # A broken quote after an invocation prefix must still fail closed.
         return re.match(
