@@ -1,0 +1,1 @@
+{"kind":"PRE_VERIFICATION_CANDIDATE","package":{"evidence":[],"result":{"changed_files":["src/aios_renew/verification_contract.py","tests/test_verification_contract.py"],"claims":[],"head_sha":"aa0a30aa7bf349a6f5694aa4780957a36db446ce","unresolved":[]}},"run_id":"RUN-157-002","subject_sha":"aa0a30aa7bf349a6f5694aa4780957a36db446ce","task":{"id":"TASK-157","revision":1}}
