@@ -6,6 +6,7 @@ does not select or execute tests.  Commands outside that grammar remain opaque.
 
 from __future__ import annotations
 
+import re
 import shlex
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -126,7 +127,24 @@ def parse_bp_v4_probe_workers(command: str) -> tuple[int, ...] | None:
 def _is_bp_v4_probe_family(command: str) -> bool:
     """Identify probe-like input so malformed forms cannot become opaque."""
 
-    return "bp_v4_parallel_probe.py" in command.casefold()
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        # A broken quote after an invocation prefix must still fail closed.
+        return re.match(
+            r'^\s*(?:["\']?(?:python|py)["\']?)\s+'
+            r'["\']?(?:\.[\\/])?scripts[\\/]bp_v4_parallel_probe\.py'
+            r'(?=["\']|\s|$)',
+            command,
+            flags=re.IGNORECASE,
+        ) is not None
+
+    if len(tokens) < 2 or tokens[0].casefold() not in {"python", "py"}:
+        return False
+    probe_path = tokens[1].replace("\\", "/").casefold()
+    if probe_path.startswith("./"):
+        probe_path = probe_path[2:]
+    return probe_path == BP_V4_PROBE_PATH.casefold()
 
 
 def validate_v1_verification(

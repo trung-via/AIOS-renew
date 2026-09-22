@@ -132,6 +132,7 @@ def test_bp_v4_probe_exact_grammar_is_recognized(command, workers) -> None:
         "python scripts/bp_v4_parallel_probe.py --workers 2 --extra",
         "python scripts/bp_v4_parallel_probe.py --workers 2 && echo injected",
         "python scripts/bp_v4_parallel_probe.py --workers '2",
+        'python scripts/bp_v4_parallel_probe.py --workers "2',
         "py scripts/bp_v4_parallel_probe.py --workers 2",
         "python .\\scripts\\bp_v4_parallel_probe.py --workers 2",
         "python scripts/BP_V4_PARALLEL_PROBE.py --workers 2",
@@ -182,9 +183,18 @@ def test_multiple_probe_commands_cannot_authorize_duplicate_measurement() -> Non
     assert normalize_verification(commands) == (commands[0],)
 
 
-def test_unrelated_opaque_behavior_remains_compatible() -> None:
-    command = "python scripts/unrelated_probe.py --workers auto && echo opaque"
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python scripts/unrelated_probe.py --workers auto && echo opaque",
+        "echo scripts/bp_v4_parallel_probe.py",
+        'python -c "print(\'scripts/bp_v4_parallel_probe.py\')"',
+        'python -c "value = \'bp_v4_parallel_probe.py\'"',
+    ],
+)
+def test_unrelated_opaque_behavior_remains_compatible(command) -> None:
     assert parse_pytest_coverage(command) is None
     validate_v1_verification(
         (command,), full_suite_reason=None, path="verification.required"
     )
+    assert normalize_verification((command,)) == (command,)
