@@ -1492,3 +1492,145 @@ def test_transport_failure_includes_execution_profile(tmp_path: Path) -> None:
             publish_candidate=False,
             execution_profile_path=conflict_path,
         )
+
+
+def test_transport_post_pass_missing_remote_profile_fails_when_expected(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path)
+    head_sha = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-058-903"
+    files = tmp_path / "files" / run_id
+    run_path = files / "run.json"
+    result_path = files / "result.json"
+    profile_path = files / "execution-profile.json"
+
+    write_json(
+        run_path,
+        {
+            "run_id": run_id,
+            "task": TASK,
+            "executor": "codex",
+            "base_sha": head_sha,
+            "workspace": "ws",
+            "head_sha": None,
+            "status": "ACTIVE",
+        },
+    )
+    write_json(
+        result_path,
+        {
+            "result": {
+                "head_sha": head_sha,
+                "claims": [],
+                "changed_files": [],
+                "unresolved": [],
+            },
+            "evidence": [],
+        },
+    )
+    # First publish without profile (simulates remote missing profile)
+    transport_post_pass(
+        repo,
+        run_id=run_id,
+        head_sha=head_sha,
+        run_path=run_path,
+        result_path=result_path,
+    )
+
+    # Now local has a profile that is expected to be transported
+    profile_data = {
+        "format": "AIOS_EXECUTION_PROFILE",
+        "version": 1,
+        "run_id": run_id,
+        "executor": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "high",
+        "model_source": "REPOSITORY_DEFAULT",
+        "effort_source": "REPOSITORY_DEFAULT",
+    }
+    write_json(profile_path, profile_data)
+
+    with pytest.raises(ReviewTransportError, match="exists with different artifact content"):
+        transport_post_pass(
+            repo,
+            run_id=run_id,
+            head_sha=head_sha,
+            run_path=run_path,
+            result_path=result_path,
+            execution_profile_path=profile_path,
+        )
+
+
+def test_transport_failure_missing_remote_profile_fails_when_expected(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path)
+    head_sha = git(repo, "rev-parse", "HEAD")
+    run_id = "RUN-058-904"
+    files = tmp_path / "files" / run_id
+    run_path = files / "run.json"
+    failure_path = files / "failure.json"
+    profile_path = files / "execution-profile.json"
+
+    write_json(
+        run_path,
+        {
+            "run_id": run_id,
+            "task": TASK,
+            "executor": "antigravity",
+            "base_sha": head_sha,
+            "workspace": "ws",
+            "head_sha": None,
+            "status": "ACTIVE",
+        },
+    )
+    write_json(
+        failure_path,
+        {
+            "kind": "FAILURE",
+            "run_id": run_id,
+            "task": TASK,
+            "executor": "antigravity",
+            "base_sha": head_sha,
+            "failed_head_sha": head_sha,
+            "phase": "EXECUTION",
+            "candidate": {
+                "transportable": False,
+                "repairable": False,
+                "dirty": False,
+                "descends_from_base": True,
+                "changed_files": [],
+                "outside_task_scope": [],
+            },
+        },
+    )
+    # First publish without profile (simulating remote missing profile)
+    transport_failure(
+        repo,
+        run_id=run_id,
+        head_sha=head_sha,
+        run_path=run_path,
+        failure_path=failure_path,
+        publish_candidate=False,
+    )
+
+    profile_data = {
+        "format": "AIOS_EXECUTION_PROFILE",
+        "version": 1,
+        "run_id": run_id,
+        "executor": "antigravity",
+        "model": "gemini-3.8-flash",
+        "reasoning_effort": "high",
+        "model_source": "REPOSITORY_DEFAULT",
+        "effort_source": "REPOSITORY_DEFAULT",
+    }
+    write_json(profile_path, profile_data)
+
+    with pytest.raises(ReviewTransportError, match="exists with different execution profile content"):
+        transport_failure(
+            repo,
+            run_id=run_id,
+            head_sha=head_sha,
+            run_path=run_path,
+            failure_path=failure_path,
+            publish_candidate=False,
+            execution_profile_path=profile_path,
+        )
+

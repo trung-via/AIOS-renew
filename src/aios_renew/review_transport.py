@@ -2117,10 +2117,7 @@ def transport_failure(
         remote_execution_profile = _read_remote_blob(
             repo, remote, refs[artifacts_ref], ".ai/transport/execution-profile.json"
         )
-        if (
-            expected_execution_profile is not None
-            and remote_execution_profile not in (None, expected_execution_profile)
-        ):
+        if remote_execution_profile != expected_execution_profile:
             raise ReviewTransportError(
                 f"remote failure artifacts ref {artifacts_ref} exists with different execution profile content"
             )
@@ -2492,10 +2489,7 @@ def transport_post_pass(
                 expected_observation_bytes is None
                 or remote_observation_bytes in (None, expected_observation_bytes)
             )
-            and (
-                expected_execution_profile_bytes is None
-                or remote_execution_profile_bytes in (None, expected_execution_profile_bytes)
-            )
+            and remote_execution_profile_bytes == expected_execution_profile_bytes
         ):
             push_artifacts = False
         else:

@@ -143,17 +143,17 @@ class Dispatcher:
         if self._execution_profile is not None:
             if self._execution_profile.executor != self._selected_executor:
                 raise DispatcherError(
-                    f"execution profile executor {self._execution_profile.executor!r} "
+                    f"execution profile executor mismatch: {self._execution_profile.executor!r} "
                     f"does not match selected executor {self._selected_executor!r}"
                 )
             if self._execution_profile.executor != run.executor:
                 raise DispatcherError(
-                    f"execution profile executor {self._execution_profile.executor!r} "
+                    f"execution profile executor mismatch: {self._execution_profile.executor!r} "
                     f"does not match RUN executor {run.executor!r}"
                 )
             if self._execution_profile.run_id != run.run_id:
                 raise DispatcherError(
-                    f"execution profile run_id {self._execution_profile.run_id!r} "
+                    f"execution profile run_id mismatch: {self._execution_profile.run_id!r} "
                     f"does not match RUN {run.run_id!r}"
                 )
         if self._invoked:

@@ -332,8 +332,10 @@ def test_dispatcher_execution_profile_executor_mismatch_fails(tmp_path: Path) ->
         native_runner=lambda *args, **kwargs: None,
         execution_profile=profile,
     )
+    leases = RunLeaseRegistry()
+    lease = leases.acquire(run)
     with pytest.raises(DispatcherError, match="execution profile executor mismatch"):
-        dispatcher.dispatch_primary(task=task, run=run)
+        dispatcher.dispatch_primary(task=task, run=run, lease=lease, leases=leases)
 
 
 def test_dispatcher_execution_profile_run_id_mismatch_fails(tmp_path: Path) -> None:
@@ -356,8 +358,10 @@ def test_dispatcher_execution_profile_run_id_mismatch_fails(tmp_path: Path) -> N
         native_runner=lambda *args, **kwargs: None,
         execution_profile=profile,
     )
+    leases = RunLeaseRegistry()
+    lease = leases.acquire(run)
     with pytest.raises(DispatcherError, match="execution profile run_id mismatch"):
-        dispatcher.dispatch_primary(task=task, run=run)
+        dispatcher.dispatch_primary(task=task, run=run, lease=lease, leases=leases)
 
 
 def test_dispatcher_propagates_execution_profile_to_adapter(tmp_path: Path) -> None:

@@ -13,7 +13,6 @@ from aios_renew.execution_profile import (
     ExecutionProfileConflictError,
     ExecutionProfileError,
     ExecutionProfilePolicy,
-    ExecutionProfilePolicyError,
     ExecutionProfileValidationError,
     ResolvedExecutionProfile,
     default_execution_profile,
@@ -31,12 +30,12 @@ def test_default_policy_loads_and_has_exact_task_061_defaults() -> None:
     policy = load_execution_profile_policy()
     assert policy.format == "AIOS_EXECUTOR_PROFILES_POLICY"
     assert policy.version == 1
-    assert policy.defaults["codex"]["model"] == "gpt-5.6-sol"
-    assert policy.defaults["codex"]["reasoning_effort"] == "high"
-    assert policy.defaults["antigravity"]["model"] == "gemini-3.8-flash"
-    assert policy.defaults["antigravity"]["reasoning_effort"] == "high"
-    assert set(policy.supported_efforts["codex"]) == {"low", "medium", "high"}
-    assert set(policy.supported_efforts["antigravity"]) == {"low", "medium", "high"}
+    assert policy.executors["codex"].default_model == "gpt-5.6-sol"
+    assert policy.executors["codex"].default_reasoning_effort == "high"
+    assert policy.executors["antigravity"].default_model == "gemini-3.8-flash"
+    assert policy.executors["antigravity"].default_reasoning_effort == "high"
+    assert set(policy.executors["codex"].supported_reasoning_efforts) == {"low", "medium", "high"}
+    assert set(policy.executors["antigravity"].supported_reasoning_efforts) == {"low", "medium", "high"}
 
 
 def test_is_profile_managed_executor() -> None:
@@ -187,7 +186,7 @@ def test_policy_rejection_of_malformed_yaml(tmp_path: Path) -> None:
     bad_policy_path.parent.mkdir(parents=True)
     bad_policy_path.write_text("invalid: [yaml: broken", encoding="utf-8")
 
-    with pytest.raises(ExecutionProfilePolicyError):
+    with pytest.raises(ExecutionProfileValidationError):
         load_execution_profile_policy(tmp_path)
 
 
@@ -198,10 +197,47 @@ def test_policy_rejection_of_missing_executor(tmp_path: Path) -> None:
         json.dumps({
             "format": "AIOS_EXECUTOR_PROFILES_POLICY",
             "version": 1,
-            "defaults": {"codex": {"model": "gpt-5.6-sol", "reasoning_effort": "high"}},
-            "supported_efforts": {"codex": ["low", "medium", "high"]},
+            "executors": {
+                "codex": {
+                    "default_model": "gpt-5.6-sol",
+                    "default_reasoning_effort": "high",
+                    "supported_reasoning_efforts": ["low", "medium", "high"],
+                }
+            },
         }),
         encoding="utf-8",
     )
-    with pytest.raises(ExecutionProfilePolicyError, match="missing required executor 'antigravity'"):
+    with pytest.raises(ExecutionProfileValidationError, match="missing required executor 'antigravity'"):
         load_execution_profile_policy(tmp_path)
+
+
+def test_parse_execution_profile_strict_validation() -> None:
+    base = {
+        "format": "AIOS_EXECUTION_PROFILE",
+        "version": 1,
+        "run_id": "RUN-001",
+        "executor": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "high",
+        "model_source": "REPOSITORY_DEFAULT",
+        "effort_source": "REPOSITORY_DEFAULT",
+    }
+    parsed = parse_execution_profile(base)
+    assert parsed.run_id == "RUN-001"
+    assert parsed.model == "gpt-5.6-sol"
+    assert parsed.reasoning_effort == "high"
+    assert parsed.model_source == "REPOSITORY_DEFAULT"
+    assert parsed.effort_source == "REPOSITORY_DEFAULT"
+
+    with pytest.raises(ExecutionProfileValidationError, match="format"):
+        parse_execution_profile(dict(base, format="WRONG_FORMAT"))
+
+    with pytest.raises(ExecutionProfileValidationError, match="version"):
+        parse_execution_profile(dict(base, version=2))
+
+    with pytest.raises(ExecutionProfileValidationError, match="unsupported executor"):
+        parse_execution_profile(dict(base, executor="unknown"))
+
+    with pytest.raises(ExecutionProfileValidationError, match="invalid model identifier"):
+        parse_execution_profile(dict(base, model="invalid model!"))
+

@@ -1303,6 +1303,7 @@ def test_codex_execute_output_error_preserves_token_usage() -> None:
 
 def test_codex_adapter_consumes_injected_profile_and_synthetic_future_model() -> None:
     from aios_renew.execution_profile import ResolvedExecutionProfile
+
     task, run, _, _ = make_execution()
     profile = ResolvedExecutionProfile(
         run_id=run.run_id,
@@ -1313,18 +1314,29 @@ def test_codex_adapter_consumes_injected_profile_and_synthetic_future_model() ->
         effort_source="EXPLICIT",
     )
     adapter = CodexAdapter(execution_profile=profile)
-    cmd = adapter.command_for("PRIMARY", task=task, run=run)
-    assert cmd[cmd.index("-m") + 1] == "gpt-7-sol"
-    assert cmd[cmd.index("-c") + 1] == 'model_reasoning_effort="medium"'
+    assert adapter.execution_profile == profile
 
-    finding = Finding("F1", "CRITICAL", "scope", "finding detail")
-    remediation = Remediation("REM-1", "F1", "base_sha", "CODE_FIX", (), "remediation detail")
-    rem_exec = RemediationExecution("REV-1", finding, remediation, run, ())
-    cmd_rem = adapter.command_for("REMEDIATION", execution=rem_exec)
+    cmd_primary = adapter.command_for(
+        run,
+        RESULT_PACKAGE_SCHEMA_PATH,
+        execution_profile=profile,
+    )
+    assert cmd_primary[cmd_primary.index("-m") + 1] == "gpt-7-sol"
+    assert cmd_primary[cmd_primary.index("-c") + 1] == 'model_reasoning_effort="medium"'
+
+    cmd_rem = adapter.command_for(
+        run,
+        REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
+        execution_profile=profile,
+    )
     assert cmd_rem[cmd_rem.index("-m") + 1] == "gpt-7-sol"
     assert cmd_rem[cmd_rem.index("-c") + 1] == 'model_reasoning_effort="medium"'
 
-    repair_exec = {"task": asdict(task), "run": asdict(run), "action": "CODE_FIX"}
-    cmd_repair = adapter.command_for("REPAIR", execution=repair_exec)
+    cmd_repair = adapter.command_for(
+        run,
+        REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
+        execution_profile=profile,
+    )
     assert cmd_repair[cmd_repair.index("-m") + 1] == "gpt-7-sol"
     assert cmd_repair[cmd_repair.index("-c") + 1] == 'model_reasoning_effort="medium"'
+

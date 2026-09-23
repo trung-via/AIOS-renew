@@ -152,6 +152,11 @@ class AntigravityAdapter:
         )
         self._execution_profile = execution_profile
 
+    @property
+    def execution_profile(self) -> ResolvedExecutionProfile | None:
+        """Return the bound execution profile, if any."""
+        return self._execution_profile
+
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
         """Execute the unchanged TASK/RUN pair through the native transport."""
 

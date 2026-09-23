@@ -16,6 +16,9 @@ MANAGED_EXECUTORS = frozenset({"codex", "antigravity"})
 MODEL_IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$")
 POLICY_FORMAT = "AIOS_EXECUTOR_PROFILES_POLICY"
 POLICY_VERSION = 1
+EXECUTION_PROFILE_FORMAT = "AIOS_EXECUTION_PROFILE"
+EXECUTION_PROFILE_VERSION = 1
+
 
 
 class ExecutionProfileError(RuntimeError):
@@ -100,36 +103,26 @@ class ResolvedExecutionProfile:
     executor: str
     model: str
     reasoning_effort: str
-    model_source: str = "DEFAULT"
-    reasoning_effort_source: str = "DEFAULT"
-
-    @property
-    def effort(self) -> str:
-        return self.reasoning_effort
-
-    @property
-    def source(self) -> dict[str, str]:
-        return {
-            "model": self.model_source,
-            "reasoning_effort": self.reasoning_effort_source,
-        }
+    model_source: str = "REPOSITORY_DEFAULT"
+    effort_source: str = "REPOSITORY_DEFAULT"
+    format: str = EXECUTION_PROFILE_FORMAT
+    version: int = EXECUTION_PROFILE_VERSION
 
     def as_dict(self) -> dict[str, Any]:
         return {
+            "format": self.format,
+            "version": self.version,
             "run_id": self.run_id,
             "executor": self.executor,
             "model": self.model,
             "reasoning_effort": self.reasoning_effort,
             "model_source": self.model_source,
-            "reasoning_effort_source": self.reasoning_effort_source,
-            "source": {
-                "model": self.model_source,
-                "reasoning_effort": self.reasoning_effort_source,
-            },
+            "effort_source": self.effort_source,
         }
 
     def to_json(self) -> str:
         return json.dumps(self.as_dict(), indent=2, sort_keys=True) + "\n"
+
 
 
 def parse_execution_profile_policy(data: Any) -> ExecutionProfilePolicy:
@@ -180,17 +173,13 @@ def parse_execution_profile_policy(data: Any) -> ExecutionProfilePolicy:
                 f"executor {name!r} has invalid default_model: {model!r}"
             )
 
-        effort = spec_data.get("default_reasoning_effort") or spec_data.get(
-            "default_effort"
-        )
+        effort = spec_data.get("default_reasoning_effort")
         if not isinstance(effort, str) or not effort:
             raise ExecutionProfileValidationError(
                 f"executor {name!r} has invalid or missing default_reasoning_effort"
             )
 
-        efforts_raw = spec_data.get(
-            "supported_reasoning_efforts"
-        ) or spec_data.get("supported_efforts")
+        efforts_raw = spec_data.get("supported_reasoning_efforts")
         if not isinstance(efforts_raw, (list, tuple)) or not efforts_raw:
             raise ExecutionProfileValidationError(
                 f"executor {name!r} must define non-empty supported_reasoning_efforts"
@@ -278,6 +267,18 @@ def parse_execution_profile(data: Any) -> ResolvedExecutionProfile:
     if not isinstance(data, Mapping):
         raise ExecutionProfileValidationError("execution profile must be a mapping")
 
+    doc_format = data.get("format")
+    if doc_format != EXECUTION_PROFILE_FORMAT:
+        raise ExecutionProfileValidationError(
+            f"execution profile format must be {EXECUTION_PROFILE_FORMAT!r}, got {doc_format!r}"
+        )
+
+    version = data.get("version")
+    if version != EXECUTION_PROFILE_VERSION or isinstance(version, bool):
+        raise ExecutionProfileValidationError(
+            f"execution profile version must be {EXECUTION_PROFILE_VERSION}, got {version!r}"
+        )
+
     run_id = data.get("run_id")
     if not isinstance(run_id, str) or not run_id:
         raise ExecutionProfileValidationError("invalid or missing run_id in execution profile")
@@ -294,37 +295,20 @@ def parse_execution_profile(data: Any) -> ResolvedExecutionProfile:
             f"invalid model identifier in execution profile: {model!r}"
         )
 
-    effort = data.get("reasoning_effort") or data.get("effort")
+    effort = data.get("reasoning_effort")
     if not isinstance(effort, str) or not effort:
         raise ExecutionProfileValidationError(
             "invalid or missing reasoning_effort in execution profile"
         )
 
-    source_map = data.get("source")
-    if isinstance(source_map, Mapping):
-        model_source = (
-            data.get("model_source")
-            or source_map.get("model")
-            or "DEFAULT"
-        )
-        effort_source = (
-            data.get("reasoning_effort_source")
-            or data.get("effort_source")
-            or source_map.get("reasoning_effort")
-            or source_map.get("effort")
-            or "DEFAULT"
-        )
-    else:
-        model_source = data.get("model_source", "DEFAULT")
-        effort_source = data.get("reasoning_effort_source") or data.get(
-            "effort_source", "DEFAULT"
-        )
-
+    model_source = data.get("model_source")
     if not isinstance(model_source, str) or not model_source:
-        raise ExecutionProfileValidationError("invalid model_source in execution profile")
+        raise ExecutionProfileValidationError("invalid or missing model_source in execution profile")
+
+    effort_source = data.get("effort_source")
     if not isinstance(effort_source, str) or not effort_source:
         raise ExecutionProfileValidationError(
-            "invalid reasoning_effort_source in execution profile"
+            "invalid or missing effort_source in execution profile"
         )
 
     return ResolvedExecutionProfile(
@@ -333,7 +317,9 @@ def parse_execution_profile(data: Any) -> ResolvedExecutionProfile:
         model=model,
         reasoning_effort=effort,
         model_source=model_source,
-        reasoning_effort_source=effort_source,
+        effort_source=effort_source,
+        format=doc_format,
+        version=version,
     )
 
 
@@ -366,7 +352,7 @@ def resolve_execution_profile(
         model_source = "EXPLICIT"
     else:
         resolved_model = spec.default_model
-        model_source = "DEFAULT"
+        model_source = "REPOSITORY_DEFAULT"
 
     if reasoning_effort is not None:
         if not policy.is_supported_effort(executor, reasoning_effort):
@@ -377,7 +363,7 @@ def resolve_execution_profile(
         effort_source = "EXPLICIT"
     else:
         resolved_effort = spec.default_reasoning_effort
-        effort_source = "DEFAULT"
+        effort_source = "REPOSITORY_DEFAULT"
 
     return ResolvedExecutionProfile(
         run_id=run_id,
@@ -385,7 +371,7 @@ def resolve_execution_profile(
         model=resolved_model,
         reasoning_effort=resolved_effort,
         model_source=model_source,
-        reasoning_effort_source=effort_source,
+        effort_source=effort_source,
     )
 
 
@@ -396,7 +382,7 @@ def default_execution_profile(
 ) -> ResolvedExecutionProfile:
     """Resolve the repository-owned default execution profile for one executor."""
     policy = load_execution_profile_policy(repo)
-    return resolve_execution_profile(policy, run_id=run_id, executor=executor)
+    return resolve_execution_profile(policy, run_id=run_id, executor=executor, repo=repo)
 
 
 def execution_profile_path(state_root: str | Path, run_id: str) -> Path:
@@ -416,17 +402,10 @@ def persist_execution_profile(
     target = Path(path)
     if target.is_file():
         existing = parse_execution_profile(target.read_text(encoding="utf-8"))
-        if (
-            existing.run_id == profile.run_id
-            and existing.executor == profile.executor
-            and existing.model == profile.model
-            and existing.reasoning_effort == profile.reasoning_effort
-            and existing.model_source == profile.model_source
-            and existing.reasoning_effort_source == profile.reasoning_effort_source
-        ):
+        if existing == profile:
             return
         raise ExecutionProfileConflictError(
-            f"conflicting execution profile already exists for RUN {profile.run_id}: "
+            f"execution profile for RUN {profile.run_id} conflicts with existing profile: "
             f"existing={existing.as_dict()}, attempted={profile.as_dict()}"
         )
 

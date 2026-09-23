@@ -126,6 +126,11 @@ class CodexAdapter:
         self._execution_policy = execution_policy or _DefaultExecutionPolicy()
         self._execution_profile = execution_profile
 
+    @property
+    def execution_profile(self) -> ResolvedExecutionProfile | None:
+        """Return the bound execution profile, if any."""
+        return self._execution_profile
+
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
         """Execute an unchanged TASK/RUN pair through native Codex CLI."""
 

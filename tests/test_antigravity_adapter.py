@@ -3171,7 +3171,6 @@ def test_task140_r5_production_hook_denies_exact_ac8_encoded_payload():
 def test_antigravity_adapter_consumes_injected_profile_and_synthetic_future_model(tmp_path: Path) -> None:
     from aios_renew.execution_profile import ResolvedExecutionProfile
     from aios_renew.dispatcher import NativeExecutionPolicy
-    from aios_renew.review import Finding, Remediation, RemediationExecution
 
     task, run, _, _ = make_execution()
     profile = ResolvedExecutionProfile(
@@ -3191,26 +3190,35 @@ def test_antigravity_adapter_consumes_injected_profile_and_synthetic_future_mode
         execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
         execution_profile=profile,
     )
-    cmd = adapter.command_for("PRIMARY", task=task, run=run)
-    assert cmd[cmd.index("--model") + 1] == "gemini-4-flash"
-    assert cmd[cmd.index("--effort") + 1] == "medium"
+    assert adapter.execution_profile == profile
 
-    finding = Finding("F1", "CRITICAL", "scope", "finding detail")
-    remediation = Remediation("REM-1", "F1", "base_sha", "CODE_FIX", (), "remediation detail")
-    rem_exec = RemediationExecution("REV-1", finding, remediation, run, ())
-    cmd_rem = adapter.command_for("REMEDIATION", execution=rem_exec)
+    cmd_primary = adapter.command_for(
+        repo=tmp_path,
+        instruction="test instruction",
+        operation="PRIMARY",
+        execution_profile=profile,
+    )
+    assert cmd_primary[cmd_primary.index("--model") + 1] == "gemini-4-flash"
+    assert cmd_primary[cmd_primary.index("--effort") + 1] == "medium"
+    assert cmd_primary[cmd_primary.index("--json-schema") + 1] == str(RESULT_PACKAGE_SCHEMA_PATH)
+
+    cmd_rem = adapter.command_for(
+        repo=tmp_path,
+        instruction="test instruction",
+        operation="REMEDIATION",
+        execution_profile=profile,
+    )
     assert cmd_rem[cmd_rem.index("--model") + 1] == "gemini-4-flash"
     assert cmd_rem[cmd_rem.index("--effort") + 1] == "medium"
+    assert cmd_rem[cmd_rem.index("--json-schema") + 1] == str(REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH)
 
-    repair_exec = {
-        "run": run,
-        "failed_head_sha": run.base_sha,
-        "repair": {
-            "action": "CODE_FIX",
-            "instructions": ["Fix code."],
-            "modification_scope": ["src/fix.py"],
-        },
-    }
-    cmd_repair = adapter.command_for("REPAIR", execution=repair_exec)
+    cmd_repair = adapter.command_for(
+        repo=tmp_path,
+        instruction="test instruction",
+        operation="REPAIR",
+        execution_profile=profile,
+    )
     assert cmd_repair[cmd_repair.index("--model") + 1] == "gemini-4-flash"
     assert cmd_repair[cmd_repair.index("--effort") + 1] == "medium"
+    assert cmd_repair[cmd_repair.index("--json-schema") + 1] == str(REPAIR_RESULT_PACKAGE_SCHEMA_PATH)
+
