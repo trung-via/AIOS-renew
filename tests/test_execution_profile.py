@@ -29,6 +29,7 @@ from aios_renew.execution_profile import (
     parse_execution_profile_policy,
     persist_execution_profile,
     resolve_execution_profile,
+    validate_execution_profile,
     validate_model_identifier,
 )
 
@@ -537,3 +538,72 @@ def test_resolved_execution_profile_direct_validation() -> None:
             model="gpt-5.6-sol",
             reasoning_effort="high",
         )
+
+
+def test_validate_execution_profile_valid() -> None:
+    policy = load_execution_profile_policy()
+    profile = ResolvedExecutionProfile(
+        run_id="RUN-106",
+        executor="codex",
+        model="gpt-5.6-sol",
+        reasoning_effort="high",
+        model_source="REPOSITORY_DEFAULT",
+        effort_source="REPOSITORY_DEFAULT",
+    )
+    validated = validate_execution_profile(profile, policy)
+    assert validated == profile
+    assert validated.reasoning_effort == "high"
+
+
+def test_validate_execution_profile_unsupported_effort_fails() -> None:
+    policy = load_execution_profile_policy()
+    profile = ResolvedExecutionProfile(
+        run_id="RUN-107",
+        executor="codex",
+        model="gpt-5.6-sol",
+        reasoning_effort="ultra",
+        model_source="REPOSITORY_DEFAULT",
+        effort_source="EXPLICIT",
+    )
+    with pytest.raises(
+        ExecutionProfileValidationError,
+        match="unsupported reasoning effort 'ultra' for executor 'codex'",
+    ):
+        validate_execution_profile(profile, policy)
+
+
+def test_validate_execution_profile_preserves_bound_profile_despite_policy_default_changes() -> None:
+    custom_policy_yaml = """
+format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+
+executors:
+  codex:
+    default_model: gpt-6-sol
+    default_reasoning_effort: medium
+    supported_reasoning_efforts:
+      - low
+      - medium
+      - high
+  antigravity:
+    default_model: gemini-3.8-flash
+    default_reasoning_effort: medium
+    supported_reasoning_efforts:
+      - low
+      - medium
+      - high
+"""
+    custom_policy = parse_execution_profile_policy(custom_policy_yaml)
+    bound_profile = ResolvedExecutionProfile(
+        run_id="RUN-108",
+        executor="codex",
+        model="gpt-5.6-sol",
+        reasoning_effort="high",
+        model_source="REPOSITORY_DEFAULT",
+        effort_source="REPOSITORY_DEFAULT",
+    )
+    validated = validate_execution_profile(bound_profile, custom_policy)
+    assert validated == bound_profile
+    assert validated.model == "gpt-5.6-sol"
+    assert validated.reasoning_effort == "high"
+

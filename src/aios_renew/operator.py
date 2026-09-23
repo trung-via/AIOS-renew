@@ -60,6 +60,7 @@ from .execution_profile import (
     parse_execution_profile,
     persist_execution_profile,
     resolve_execution_profile,
+    validate_execution_profile,
 )
 from .dispatch_reconciliation import (
     DispatchError,
@@ -1115,6 +1116,13 @@ def _bind_and_persist_execution_profile(
                 f"persisted execution profile mismatch for RUN {run_id}: "
                 f"profile.executor={existing.executor!r}, expected {executor!r}"
             )
+        try:
+            policy = load_execution_profile_policy(repo)
+            validate_execution_profile(existing, policy, repo=repo)
+        except ExecutionProfileError as exc:
+            raise OperatorError(f"persisted execution profile is invalid: {exc}") from exc
+        except Exception as exc:
+            raise OperatorError(f"failed to validate persisted execution profile: {exc}") from exc
         return existing
 
     try:

@@ -169,6 +169,11 @@ class ExecutionProfilePolicy:
     def is_supported_effort(self, executor: str, effort: str) -> bool:
         return effort in self.spec_for(executor).supported_reasoning_efforts
 
+    def validate_profile(
+        self, profile: ResolvedExecutionProfile
+    ) -> ResolvedExecutionProfile:
+        return validate_execution_profile(profile, self)
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "format": self.format,
@@ -533,6 +538,32 @@ def resolve_execution_profile(
         model_source=model_source,
         effort_source=effort_source,
     )
+
+
+def validate_execution_profile(
+    profile: ResolvedExecutionProfile,
+    policy: ExecutionProfilePolicy | None = None,
+    *,
+    repo: str | Path | None = None,
+) -> ResolvedExecutionProfile:
+    """Validate an existing resolved execution profile against repository policy.
+
+    Deterministically validates that the profile's effort is supported by the repository-owned
+    capability policy for its executor, while preserving its exact bound model and effort values.
+    A change to repository defaults alone must not alter an already-bound profile.
+    """
+    if not isinstance(profile, ResolvedExecutionProfile):
+        raise ExecutionProfileValidationError("profile must be a ResolvedExecutionProfile")
+
+    if policy is None:
+        policy = load_execution_profile_policy(repo)
+
+    if not policy.is_supported_effort(profile.executor, profile.reasoning_effort):
+        raise ExecutionProfileValidationError(
+            f"unsupported reasoning effort {profile.reasoning_effort!r} for executor {profile.executor!r}"
+        )
+
+    return profile
 
 
 def default_execution_profile(

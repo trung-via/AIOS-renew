@@ -9587,3 +9587,66 @@ def test_operator_antigravity_minimax_creates_no_execution_profile(tmp_path: Pat
     assert runner.count == 1
     assert summary.executor == "antigravity-minimax"
     assert not sidecar.is_file()
+
+
+def test_operator_preexisting_sidecar_with_unsupported_effort_invokes_zero_native_runners(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    sidecar = paths.execution_profiles / "RUN-101-001.json"
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    # Pre-existing sidecar for same RUN and same Executor, but unsupported effort
+    sidecar.write_text(
+        json.dumps({
+            "format": "AIOS_EXECUTION_PROFILE",
+            "version": 1,
+            "run_id": "RUN-101-001",
+            "executor": "codex",
+            "model": "gpt-5.6-sol",
+            "reasoning_effort": "ultra",
+            "model_source": "REPOSITORY_DEFAULT",
+            "effort_source": "EXPLICIT",
+        }),
+        encoding="utf-8",
+    )
+
+    runner = FakeCodexRunner(repo)
+    with pytest.raises(
+        OperatorError,
+        match="persisted execution profile is invalid: unsupported reasoning effort",
+    ):
+        run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    assert runner.count == 0
+
+
+def test_operator_reusing_preexisting_sidecar_preserves_bound_profile_values(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    sidecar = paths.execution_profiles / "RUN-101-001.json"
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    # Pre-existing sidecar with supported alternate effort
+    sidecar.write_text(
+        json.dumps({
+            "format": "AIOS_EXECUTION_PROFILE",
+            "version": 1,
+            "run_id": "RUN-101-001",
+            "executor": "codex",
+            "model": "gpt-5.6-sol",
+            "reasoning_effort": "medium",
+            "model_source": "REPOSITORY_DEFAULT",
+            "effort_source": "EXPLICIT",
+        }),
+        encoding="utf-8",
+    )
+
+    runner = FakeCodexRunner(repo)
+    summary = run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    assert runner.count == 1
+    assert summary.executor == "codex"
+    command = runner.calls[0][0]
+    assert 'model_reasoning_effort="medium"' in command
+    persisted = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert persisted["reasoning_effort"] == "medium"
+    assert persisted["effort_source"] == "EXPLICIT"
+
