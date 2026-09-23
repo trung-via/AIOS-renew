@@ -236,4 +236,123 @@ def test_cli_emits_no_outputs_on_rejection_and_bounds_receipt(
     assert len(text) <= 3500
     assert "status: REJECTED" in text
     assert "a3_approval: not_observed" in text
-    assert "remediation_run_outcome: not_observed" in text
+    assert "remediation_run_outcome: not_observed"
+
+
+def test_issue_532_regression_remediation_package_relative_unavailable_succeeds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    canonical_policy = root / ".ai" / "executor-profiles.yaml"
+    assert canonical_policy.is_file()
+
+    monkeypatch.setattr(
+        carrier.load_execution_profile_policy.__globals__["canonical_policy_path"],
+        "__code__",
+        (lambda repo=None: (Path(repo) if repo else tmp_path / "site-packages") / ".ai" / "executor-profiles.yaml").__code__,
+    )
+
+    output = tmp_path / "output.txt"
+    receipt = tmp_path / "receipt.txt"
+    event = _event()
+    policy_path = _write_policy(tmp_path)
+
+    # 1. With explicit trusted canonical profile-policy, admission succeeds
+    exit_code = carrier.main(
+        [
+            "--event",
+            str(_write_event(tmp_path, event)),
+            "--policy",
+            str(policy_path),
+            "--profile-policy",
+            str(canonical_policy),
+            "--output",
+            str(output),
+            "--receipt",
+            str(receipt),
+        ]
+    )
+    assert exit_code == 0
+    assert output.exists()
+    assert "executor=codex" in output.read_text(encoding="utf-8")
+    assert "status: ADMITTED" in receipt.read_text(encoding="utf-8")
+
+    # 2. Without explicit trusted policy in an isolated directory, admission fails closed
+    output.unlink()
+    receipt.unlink()
+    isolated_policy = tmp_path / "isolated" / "policy.yaml"
+    isolated_policy.parent.mkdir(parents=True, exist_ok=True)
+    isolated_policy.write_text(policy_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    exit_code_isolated = carrier.main(
+        [
+            "--event",
+            str(_write_event(tmp_path, event)),
+            "--policy",
+            str(isolated_policy),
+            "--output",
+            str(output),
+            "--receipt",
+            str(receipt),
+        ]
+    )
+    assert exit_code_isolated == 1
+    assert not output.exists()
+    receipt_text = receipt.read_text(encoding="utf-8")
+    assert "status: REJECTED" in receipt_text
+    assert "dispatch_accepted: false" in receipt_text
+
+
+def test_missing_or_malformed_profile_policy_fails_remediation(tmp_path: Path) -> None:
+    output = tmp_path / "output.txt"
+    receipt = tmp_path / "receipt.txt"
+    event = _event()
+
+    # Missing profile policy file
+    exit_code = carrier.main(
+        [
+            "--event",
+            str(_write_event(tmp_path, event)),
+            "--policy",
+            str(_write_policy(tmp_path)),
+            "--profile-policy",
+            str(tmp_path / "missing-executor-profiles.yaml"),
+            "--output",
+            str(output),
+            "--receipt",
+            str(receipt),
+        ]
+    )
+    assert exit_code == 1
+    assert not output.exists()
+    assert "status: REJECTED" in receipt.read_text(encoding="utf-8")
+    assert "not found" in receipt.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("model", "effort", "expected_model_source", "expected_effort_source"),
+    [
+        (None, None, "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT"),
+        ("provider/custom-v1", None, "EXPLICIT", "REPOSITORY_DEFAULT"),
+        (None, "high", "REPOSITORY_DEFAULT", "EXPLICIT"),
+        ("provider/custom-v2", "low", "EXPLICIT", "EXPLICIT"),
+    ],
+)
+def test_remediation_explicit_vs_default_source_attribution(
+    model: str | None,
+    effort: str | None,
+    expected_model_source: str,
+    expected_effort_source: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    canonical_policy = root / ".ai" / "executor-profiles.yaml"
+    request = carrier.parse_request(
+        _body(model=model, reasoning_effort=effort),
+        profile_policy=canonical_policy,
+    )
+    assert request.model_source == expected_model_source
+    assert request.effort_source == expected_effort_source
+    if model is not None:
+        assert request.model == model
+    if effort is not None:
+        assert request.reasoning_effort == effort

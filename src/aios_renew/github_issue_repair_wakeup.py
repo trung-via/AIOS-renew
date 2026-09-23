@@ -20,7 +20,12 @@ from .repair_dispatch import (
     REPAIR_SHA_PATTERN,
     SUPPORTED_EXECUTORS,
 )
-from .execution_profile import ExecutionProfileError, bind_execution_profile
+from .execution_profile import (
+    ExecutionProfileError,
+    ExecutionProfilePolicy,
+    bind_execution_profile,
+    load_execution_profile_policy,
+)
 
 
 class GitHubIssueRepairWakeupError(ValueError):
@@ -55,6 +60,17 @@ class GitHubIssueRepairWakeupPolicy:
     authorized_actors: tuple[str, ...]
     title_marker: str
     max_body_bytes: int
+    profile_policy: ExecutionProfilePolicy | Path | str | None = None
+
+
+def _resolve_profile_policy(
+    profile_policy: ExecutionProfilePolicy | Path | str | None = None,
+) -> ExecutionProfilePolicy:
+    if isinstance(profile_policy, ExecutionProfilePolicy):
+        return profile_policy
+    if profile_policy is not None:
+        return load_execution_profile_policy(profile_policy)
+    return load_execution_profile_policy()
 
 
 @dataclass(frozen=True)
@@ -143,7 +159,11 @@ def _load_yaml(raw: bytes, kind: str) -> Any:
         ) from exc
 
 
-def load_policy(path: str | Path) -> GitHubIssueRepairWakeupPolicy:
+def load_policy(
+    path: str | Path,
+    *,
+    profile_policy: ExecutionProfilePolicy | Path | str | None = None,
+) -> GitHubIssueRepairWakeupPolicy:
     raw = _read_bounded_file(Path(path), maximum=65_536, kind="policy")
     root = _mapping(_load_yaml(raw, "carrier policy"), "carrier policy")
     if set(root) != _POLICY_KEYS:
@@ -197,7 +217,21 @@ def load_policy(path: str | Path) -> GitHubIssueRepairWakeupPolicy:
         raise GitHubIssueRepairWakeupError(
             "max_body_bytes is outside the carrier bound"
         )
-    return GitHubIssueRepairWakeupPolicy(repository, tuple(actors), title, maximum)
+    return GitHubIssueRepairWakeupPolicy(
+        repository,
+        tuple(actors),
+        title,
+        maximum,
+        profile_policy=(
+            profile_policy
+            if profile_policy is not None
+            else (
+                Path(path).resolve().parent / "executor-profiles.yaml"
+                if (Path(path).resolve().parent / "executor-profiles.yaml").is_file()
+                else None
+            )
+        ),
+    )
 
 
 def _json_no_duplicates(raw: bytes) -> Mapping[str, Any]:
@@ -221,7 +255,10 @@ def _json_no_duplicates(raw: bytes) -> Mapping[str, Any]:
 
 
 def admit_event(
-    path: str | Path, policy: GitHubIssueRepairWakeupPolicy
+    path: str | Path,
+    policy: GitHubIssueRepairWakeupPolicy,
+    *,
+    profile_policy: ExecutionProfilePolicy | Path | str | None = None,
 ) -> RepairWakeupRequest:
     raw = _read_bounded_file(Path(path), maximum=_MAX_EVENT_FILE_BYTES, kind="event")
     event = _json_no_duplicates(raw)
@@ -263,7 +300,10 @@ def admit_event(
         raise GitHubIssueRepairWakeupError(
             "event Issue body exceeds the configured bound"
         )
-    request = parse_request(body_bytes)
+    effective_profile = (
+        profile_policy if profile_policy is not None else policy.profile_policy
+    )
+    request = parse_request(body_bytes, profile_policy=effective_profile)
     return RepairWakeupRequest(
         request.repair_dispatch_id,
         request.failed_run_id,
@@ -277,7 +317,11 @@ def admit_event(
     )
 
 
-def parse_request(raw: bytes | str) -> RepairWakeupRequest:
+def parse_request(
+    raw: bytes | str,
+    *,
+    profile_policy: ExecutionProfilePolicy | Path | str | None = None,
+) -> RepairWakeupRequest:
     source = raw.encode("utf-8", errors="strict") if isinstance(raw, str) else raw
     request = _mapping(
         _load_yaml(source, "REPAIR wakeup request"), "REPAIR wakeup request"
@@ -329,11 +373,13 @@ def parse_request(raw: bytes | str) -> RepairWakeupRequest:
     profile = None
     if executor is not None:
         try:
+            resolved_policy = _resolve_profile_policy(profile_policy)
             profile = bind_execution_profile(
                 run_id=repair_dispatch_id,
                 executor=executor,
                 model=requested_model,
                 reasoning_effort=requested_effort,
+                policy=resolved_policy,
             )
         except ExecutionProfileError as exc:
             raise GitHubIssueRepairWakeupError(str(exc)) from exc
@@ -406,6 +452,13 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Admit one GitHub Issue REPAIR wakeup")
     parser.add_argument("--event", default=os.environ.get("GITHUB_EVENT_PATH"))
     parser.add_argument("--policy", default=".ai/brain-repair-wakeup-carriers.yaml")
+    parser.add_argument(
+        "--profile-policy",
+        "--execution-profile-policy",
+        dest="profile_policy",
+        default=None,
+        help="Path to repository-owned execution-profile policy file",
+    )
     parser.add_argument("--output", default=os.environ.get("GITHUB_OUTPUT"))
     parser.add_argument("--receipt", required=True)
     return parser
@@ -418,8 +471,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise GitHubIssueRepairWakeupError("GITHUB_EVENT_PATH is required")
         if not args.output:
             raise GitHubIssueRepairWakeupError("GITHUB_OUTPUT is required")
-        policy = load_policy(args.policy)
-        request = admit_event(args.event, policy)
+        policy = load_policy(args.policy, profile_policy=args.profile_policy)
+        request = admit_event(
+            args.event, policy, profile_policy=args.profile_policy
+        )
         _write_text(args.output, request.github_outputs())
         _write_text(args.receipt, render_admitted(request))
     except GitHubIssueRepairWakeupError as exc:

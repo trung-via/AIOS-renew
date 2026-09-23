@@ -18,7 +18,12 @@ from .correction_dispatch import (
     CORRECTION_DISPATCH_ID_PATTERN,
     SUPPORTED_EXECUTORS,
 )
-from .execution_profile import ExecutionProfileError, bind_execution_profile
+from .execution_profile import (
+    ExecutionProfileError,
+    ExecutionProfilePolicy,
+    bind_execution_profile,
+    load_execution_profile_policy,
+)
 
 
 class GitHubIssueRemediationIntentError(ValueError):
@@ -67,6 +72,17 @@ class GitHubIssueRemediationIntentPolicy:
     authorized_actors: tuple[str, ...]
     title_marker: str
     max_body_bytes: int
+    profile_policy: ExecutionProfilePolicy | Path | str | None = None
+
+
+def _resolve_profile_policy(
+    profile_policy: ExecutionProfilePolicy | Path | str | None = None,
+) -> ExecutionProfilePolicy:
+    if isinstance(profile_policy, ExecutionProfilePolicy):
+        return profile_policy
+    if profile_policy is not None:
+        return load_execution_profile_policy(profile_policy)
+    return load_execution_profile_policy()
 
 
 @dataclass(frozen=True)
@@ -164,7 +180,11 @@ def _load_yaml(raw: bytes, kind: str) -> Any:
         ) from exc
 
 
-def load_policy(path: str | Path) -> GitHubIssueRemediationIntentPolicy:
+def load_policy(
+    path: str | Path,
+    *,
+    profile_policy: ExecutionProfilePolicy | Path | str | None = None,
+) -> GitHubIssueRemediationIntentPolicy:
     """Load and strictly validate the repository-owned carrier policy."""
 
     raw = _read_bounded_file(Path(path), maximum=65_536, kind="policy")
@@ -234,6 +254,15 @@ def load_policy(path: str | Path) -> GitHubIssueRemediationIntentPolicy:
         authorized_actors=tuple(actors),
         title_marker=title_marker,
         max_body_bytes=maximum,
+        profile_policy=(
+            profile_policy
+            if profile_policy is not None
+            else (
+                Path(path).resolve().parent / "executor-profiles.yaml"
+                if (Path(path).resolve().parent / "executor-profiles.yaml").is_file()
+                else None
+            )
+        ),
     )
 
 
@@ -262,7 +291,10 @@ def _json_no_duplicates(raw: bytes) -> Mapping[str, Any]:
 
 
 def admit_event(
-    path: str | Path, policy: GitHubIssueRemediationIntentPolicy
+    path: str | Path,
+    policy: GitHubIssueRemediationIntentPolicy,
+    *,
+    profile_policy: ExecutionProfilePolicy | Path | str | None = None,
 ) -> RemediationIntentRequest:
     """Authenticate one opened Issue and parse its inert request body."""
 
@@ -318,7 +350,10 @@ def admit_event(
         raise GitHubIssueRemediationIntentError(
             "event Issue body exceeds the configured bound"
         )
-    parsed = parse_request(body_bytes)
+    effective_profile = (
+        profile_policy if profile_policy is not None else policy.profile_policy
+    )
+    parsed = parse_request(body_bytes, profile_policy=effective_profile)
     return RemediationIntentRequest(
         correction_dispatch_id=parsed.correction_dispatch_id,
         source_run_id=parsed.source_run_id,
@@ -332,7 +367,11 @@ def admit_event(
     )
 
 
-def parse_request(raw: bytes | str) -> RemediationIntentRequest:
+def parse_request(
+    raw: bytes | str,
+    *,
+    profile_policy: ExecutionProfilePolicy | Path | str | None = None,
+) -> RemediationIntentRequest:
     """Parse and resolve only the version-2 remediation intent."""
 
     source = raw.encode("utf-8", errors="strict") if isinstance(raw, str) else raw
@@ -384,11 +423,13 @@ def parse_request(raw: bytes | str) -> RemediationIntentRequest:
     if requested_effort is not None and not isinstance(requested_effort, str):
         raise GitHubIssueRemediationIntentError("invalid reasoning_effort selection")
     try:
+        resolved_policy = _resolve_profile_policy(profile_policy)
         profile = bind_execution_profile(
             run_id=correction_dispatch_id,
             executor=executor,
             model=requested_model,
             reasoning_effort=requested_effort,
+            policy=resolved_policy,
         )
     except ExecutionProfileError as exc:
         raise GitHubIssueRemediationIntentError(str(exc)) from exc
@@ -460,6 +501,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--policy", default=".ai/brain-remediation-intent-carriers.yaml"
     )
+    parser.add_argument(
+        "--profile-policy",
+        "--execution-profile-policy",
+        dest="profile_policy",
+        default=None,
+        help="Path to repository-owned execution-profile policy file",
+    )
     parser.add_argument("--output", default=os.environ.get("GITHUB_OUTPUT"))
     parser.add_argument("--receipt", required=True)
     return parser
@@ -474,8 +522,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if not args.output:
             raise GitHubIssueRemediationIntentError("GITHUB_OUTPUT is required")
-        policy = load_policy(args.policy)
-        request = admit_event(args.event, policy)
+        policy = load_policy(args.policy, profile_policy=args.profile_policy)
+        request = admit_event(
+            args.event, policy, profile_policy=args.profile_policy
+        )
         _write_text(args.output, request.github_outputs())
         _write_text(args.receipt, render_admitted(request))
     except GitHubIssueRemediationIntentError as exc:

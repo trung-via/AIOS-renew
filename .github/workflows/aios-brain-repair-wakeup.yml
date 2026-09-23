@@ -50,6 +50,7 @@ jobs:
           python -m aios_renew.github_issue_repair_wakeup
           --event "$GITHUB_EVENT_PATH"
           --policy .ai/brain-repair-wakeup-carriers.yaml
+          --profile-policy .ai/executor-profiles.yaml
           --output "$GITHUB_OUTPUT"
           --receipt "$AIOS_RECEIPT_PATH"
 

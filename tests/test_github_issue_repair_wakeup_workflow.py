@@ -383,3 +383,10 @@ def test_policy_is_dedicated_and_exact() -> None:
             "max_body_bytes": 4096,
         },
     }
+
+
+def test_admission_step_binds_explicit_trusted_profile_policy() -> None:
+    _, text = _workflow(CARRIER)
+    assert "--policy .ai/brain-repair-wakeup-carriers.yaml" in text
+    assert "--profile-policy .ai/executor-profiles.yaml" in text
+    assert (ROOT / ".ai" / "executor-profiles.yaml").is_file()

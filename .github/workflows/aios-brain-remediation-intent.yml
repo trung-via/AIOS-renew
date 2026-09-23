@@ -50,6 +50,7 @@ jobs:
           python -m aios_renew.github_issue_remediation_intent
           --event "$GITHUB_EVENT_PATH"
           --policy .ai/brain-remediation-intent-carriers.yaml
+          --profile-policy .ai/executor-profiles.yaml
           --output "$GITHUB_OUTPUT"
           --receipt "$AIOS_RECEIPT_PATH"
 

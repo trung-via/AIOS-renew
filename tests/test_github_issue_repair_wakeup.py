@@ -261,3 +261,184 @@ def test_non_target_brain_ingress_event_rejection_remains_bounded_to_transport(
     assert "semantic_review: not_observed" in text
     assert "publication: not_observed" in text
     assert "reason: event Issue title marker is invalid" in text
+
+
+def test_issue_532_regression_repair_package_relative_unavailable_explicit_trusted_succeeds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    canonical_policy = root / ".ai" / "executor-profiles.yaml"
+    assert canonical_policy.is_file()
+
+    # Simulate Issue #532: pip-installed package environment where package-relative
+    # discovery points to site-packages where .ai/executor-profiles.yaml does not exist
+    monkeypatch.setattr(
+        carrier.load_execution_profile_policy.__globals__["canonical_policy_path"],
+        "__code__",
+        (lambda repo=None: (Path(repo) if repo else tmp_path / "site-packages") / ".ai" / "executor-profiles.yaml").__code__,
+    )
+
+    output = tmp_path / "output.txt"
+    receipt = tmp_path / "receipt.txt"
+    event = _event()
+    policy_path = _write(tmp_path, "policy.yaml", POLICY)
+
+    # 1. With explicit trusted canonical profile-policy, admission succeeds
+    exit_code = carrier.main(
+        [
+            "--event",
+            str(_write(tmp_path, "event.json", event)),
+            "--policy",
+            str(policy_path),
+            "--profile-policy",
+            str(canonical_policy),
+            "--output",
+            str(output),
+            "--receipt",
+            str(receipt),
+        ]
+    )
+    assert exit_code == 0
+    assert output.exists()
+    assert "executor=codex" in output.read_text(encoding="utf-8")
+    assert "status: ADMITTED" in receipt.read_text(encoding="utf-8")
+
+    # 2. Without explicit trusted policy in an isolated directory, admission fails closed
+    output.unlink()
+    receipt.unlink()
+    isolated_policy = tmp_path / "isolated" / "policy.yaml"
+    isolated_policy.parent.mkdir(parents=True, exist_ok=True)
+    isolated_policy.write_text(policy_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    exit_code_isolated = carrier.main(
+        [
+            "--event",
+            str(_write(tmp_path, "event2.json", event)),
+            "--policy",
+            str(isolated_policy),
+            "--output",
+            str(output),
+            "--receipt",
+            str(receipt),
+        ]
+    )
+    assert exit_code_isolated == 1
+    assert not output.exists()
+    assert "status: REJECTED" in receipt.read_text(encoding="utf-8")
+
+
+def test_executor_less_repair_profile_free_when_policy_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Simulate package-relative policy unavailable and non-existent explicit policy
+    monkeypatch.setattr(
+        carrier.load_execution_profile_policy.__globals__["canonical_policy_path"],
+        "__code__",
+        (lambda repo=None: tmp_path / "nonexistent" / "executor-profiles.yaml").__code__,
+    )
+
+    output = tmp_path / "output.txt"
+    receipt = tmp_path / "receipt.txt"
+    # Executor-less repair request
+    event = _event(_body(executor=None))
+    policy_path = _write(tmp_path, "policy.yaml", POLICY)
+
+    # Admission must succeed because executor-less repair is profile-free (AC4)
+    exit_code = carrier.main(
+        [
+            "--event",
+            str(_write(tmp_path, "event_no_exec.json", event)),
+            "--policy",
+            str(policy_path),
+            "--profile-policy",
+            str(tmp_path / "also_nonexistent.yaml"),
+            "--output",
+            str(output),
+            "--receipt",
+            str(receipt),
+        ]
+    )
+    assert exit_code == 0
+    assert output.exists()
+    outputs_text = output.read_text(encoding="utf-8")
+    assert "executor=" in outputs_text
+    assert "status: ADMITTED" in receipt.read_text(encoding="utf-8")
+
+
+def test_missing_or_malformed_profile_policy_fails_coding_repair(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "output.txt"
+    receipt = tmp_path / "receipt.txt"
+    event = _event()
+    policy_path = _write(tmp_path, "policy.yaml", POLICY)
+
+    # Missing profile policy
+    missing_policy = tmp_path / "does_not_exist.yaml"
+    exit_code = carrier.main(
+        [
+            "--event",
+            str(_write(tmp_path, "event_missing.json", event)),
+            "--policy",
+            str(policy_path),
+            "--profile-policy",
+            str(missing_policy),
+            "--output",
+            str(output),
+            "--receipt",
+            str(receipt),
+        ]
+    )
+    assert exit_code == 1
+    assert not output.exists()
+    assert "status: REJECTED" in receipt.read_text(encoding="utf-8")
+
+    # Malformed profile policy
+    malformed_policy = tmp_path / "malformed.yaml"
+    malformed_policy.write_text("invalid: yaml: [", encoding="utf-8")
+    exit_code = carrier.main(
+        [
+            "--event",
+            str(_write(tmp_path, "event_malformed.json", event)),
+            "--policy",
+            str(policy_path),
+            "--profile-policy",
+            str(malformed_policy),
+            "--output",
+            str(output),
+            "--receipt",
+            str(receipt),
+        ]
+    )
+    assert exit_code == 1
+    assert not output.exists()
+    assert "status: REJECTED" in receipt.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("model", "effort", "expected_model_source", "expected_effort_source"),
+    [
+        (None, None, "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT"),
+        ("gpt-6-sol", None, "EXPLICIT", "REPOSITORY_DEFAULT"),
+        (None, "high", "REPOSITORY_DEFAULT", "EXPLICIT"),
+        ("gpt-6-sol", "high", "EXPLICIT", "EXPLICIT"),
+    ],
+)
+def test_coding_repair_explicit_vs_default_source_attribution(
+    model: str | None,
+    effort: str | None,
+    expected_model_source: str,
+    expected_effort_source: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    canonical_policy = root / ".ai" / "executor-profiles.yaml"
+    request = carrier.parse_request(
+        _body(model=model, reasoning_effort=effort),
+        profile_policy=canonical_policy,
+    )
+    assert request.model_source == expected_model_source
+    assert request.effort_source == expected_effort_source
+    if model is not None:
+        assert request.model == model
+    if effort is not None:
+        assert request.reasoning_effort == effort
