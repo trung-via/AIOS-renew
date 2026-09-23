@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-v4-parallel-verification-performance-guard
+  - maintenance-bp-v4-current-suite-compatibility
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -325,8 +325,21 @@ sequence:
       REMEDIATION, and REPAIR delivery/dispatch contracts, activate Codex GPT-6 Sol
       medium and Antigravity Gemini 3.8 Flash medium defaults, and prove fail-closed
       end-to-end native invocation with no automatic routing or fallback.
-  - id: bp-v4-parallel-verification-performance-guard
+  - id: maintenance-bp-v4-current-suite-compatibility
     status: NEXT
+    task_id: TASK-164
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Restore the stale remote-surface regression to the already-published trusted
+      transient Control Source contract before spending another canonical BP-V4
+      serial/parallel measurement, without changing production behavior or claiming
+      BP-V4 conformance.
+  - id: bp-v4-parallel-verification-performance-guard
+    status: BLOCKED
+    blocked_by:
+      task_id: TASK-164
+      task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
@@ -401,9 +414,9 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item. The execution-profile side-track is
-    reviewed, published, and closed through TASK-163; generic Brain Portability
-    continuation now resumes at BP-V4. PLANNED and parallel work do not compete with NEXT.
+    Continue only the unique canonical NEXT item. Before another BP-V4 current-main
+    measurement, complete the bounded TASK-164 remote-surface compatibility prerequisite;
+    then explicitly resume BP-V4. PLANNED and parallel work do not compete with NEXT.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
