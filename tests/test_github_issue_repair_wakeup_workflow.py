@@ -390,3 +390,17 @@ def test_admission_step_binds_explicit_trusted_profile_policy() -> None:
     assert "--policy .ai/brain-repair-wakeup-carriers.yaml" in text
     assert "--profile-policy .ai/executor-profiles.yaml" in text
     assert (ROOT / ".ai" / "executor-profiles.yaml").is_file()
+
+def test_hosted_policy_is_from_exact_checked_out_invocation() -> None:
+    workflow, text = _workflow(CARRIER)
+    steps = workflow["jobs"]["admit"]["steps"]
+    checkout = steps[0]
+    assert checkout["uses"] == "actions/checkout@v4"
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+    assert "python -m pip install --disable-pip-version-check ." in text
+    admission = next(step for step in steps if step.get("id") == "admission")
+    assert admission["env"]["AIOS_PROFILE_POLICY"] == (
+        "${{ github.workspace }}/.ai/executor-profiles.yaml"
+    )
+    assert '--profile-policy "$AIOS_PROFILE_POLICY"' in admission["run"]
+    assert "--profile-policy .ai/executor-profiles.yaml" not in text

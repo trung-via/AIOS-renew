@@ -19,10 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Check out fixed canonical main
+      - name: Check out exact carrier invocation commit
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -38,12 +38,13 @@ jobs:
         id: admission
         continue-on-error: true
         env:
+          AIOS_PROFILE_POLICY: ${{ github.workspace }}/.ai/executor-profiles.yaml
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-brain-wakeup-receipt.txt
         run: >-
           python -m aios_renew.github_issue_wakeup
           --event "$GITHUB_EVENT_PATH"
           --policy .ai/brain-wakeup-carriers.yaml
-          --profile-policy .ai/executor-profiles.yaml
+          --profile-policy "$AIOS_PROFILE_POLICY"
           --output "$GITHUB_OUTPUT"
           --receipt "$AIOS_RECEIPT_PATH"
 

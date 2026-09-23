@@ -27,10 +27,10 @@ jobs:
       model_source: ${{ steps.admission.outputs.model_source }}
       effort_source: ${{ steps.admission.outputs.effort_source }}
     steps:
-      - name: Check out fixed canonical main
+      - name: Check out exact carrier invocation commit
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -45,12 +45,13 @@ jobs:
       - name: Admit and sanitize one REPAIR wakeup
         id: admission
         env:
+          AIOS_PROFILE_POLICY: ${{ github.workspace }}/.ai/executor-profiles.yaml
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-repair-wakeup-receipt.txt
         run: >-
           python -m aios_renew.github_issue_repair_wakeup
           --event "$GITHUB_EVENT_PATH"
           --policy .ai/brain-repair-wakeup-carriers.yaml
-          --profile-policy .ai/executor-profiles.yaml
+          --profile-policy "$AIOS_PROFILE_POLICY"
           --output "$GITHUB_OUTPUT"
           --receipt "$AIOS_RECEIPT_PATH"
 

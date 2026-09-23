@@ -272,11 +272,17 @@ def test_issue_532_regression_repair_package_relative_unavailable_explicit_trust
 
     # Simulate Issue #532: pip-installed package environment where package-relative
     # discovery points to site-packages where .ai/executor-profiles.yaml does not exist
-    monkeypatch.setattr(
-        carrier.load_execution_profile_policy.__globals__["canonical_policy_path"],
-        "__code__",
-        (lambda repo=None: (Path(repo) if repo else tmp_path / "site-packages") / ".ai" / "executor-profiles.yaml").__code__,
-    )
+    original_loader = carrier.load_execution_profile_policy
+
+    def explicit_only(source=None):
+        if source is None:
+            raise carrier.ExecutionProfileError("implicit profile policy unavailable")
+        return original_loader(source)
+
+    monkeypatch.setattr(carrier, "load_execution_profile_policy", explicit_only)
+    unrelated_cwd = tmp_path / "unrelated-cwd"
+    unrelated_cwd.mkdir()
+    monkeypatch.chdir(unrelated_cwd)
 
     output = tmp_path / "output.txt"
     receipt = tmp_path / "receipt.txt"
@@ -303,12 +309,15 @@ def test_issue_532_regression_repair_package_relative_unavailable_explicit_trust
     assert "executor=codex" in output.read_text(encoding="utf-8")
     assert "status: ADMITTED" in receipt.read_text(encoding="utf-8")
 
-    # 2. Without explicit trusted policy in an isolated directory, admission fails closed
+    # 2. A sibling policy cannot replace the omitted trusted source
     output.unlink()
     receipt.unlink()
     isolated_policy = tmp_path / "isolated" / "policy.yaml"
     isolated_policy.parent.mkdir(parents=True, exist_ok=True)
     isolated_policy.write_text(policy_path.read_text(encoding="utf-8"), encoding="utf-8")
+    (isolated_policy.parent / "executor-profiles.yaml").write_bytes(
+        canonical_policy.read_bytes()
+    )
 
     exit_code_isolated = carrier.main(
         [
@@ -330,12 +339,10 @@ def test_issue_532_regression_repair_package_relative_unavailable_explicit_trust
 def test_executor_less_repair_profile_free_when_policy_unavailable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # Simulate package-relative policy unavailable and non-existent explicit policy
-    monkeypatch.setattr(
-        carrier.load_execution_profile_policy.__globals__["canonical_policy_path"],
-        "__code__",
-        (lambda repo=None: tmp_path / "nonexistent" / "executor-profiles.yaml").__code__,
-    )
+    def forbidden_loader(*args, **kwargs):
+        raise AssertionError("executor-less repair must not load profile policy")
+
+    monkeypatch.setattr(carrier, "load_execution_profile_policy", forbidden_loader)
 
     output = tmp_path / "output.txt"
     receipt = tmp_path / "receipt.txt"

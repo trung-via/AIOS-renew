@@ -236,7 +236,7 @@ def test_cli_emits_no_outputs_on_rejection_and_bounds_receipt(
     assert len(text) <= 3500
     assert "status: REJECTED" in text
     assert "a3_approval: not_observed" in text
-    assert "remediation_run_outcome: not_observed"
+    assert "remediation_run_outcome: not_observed" in text
 
 
 def test_issue_532_regression_remediation_package_relative_unavailable_succeeds(
@@ -246,11 +246,17 @@ def test_issue_532_regression_remediation_package_relative_unavailable_succeeds(
     canonical_policy = root / ".ai" / "executor-profiles.yaml"
     assert canonical_policy.is_file()
 
-    monkeypatch.setattr(
-        carrier.load_execution_profile_policy.__globals__["canonical_policy_path"],
-        "__code__",
-        (lambda repo=None: (Path(repo) if repo else tmp_path / "site-packages") / ".ai" / "executor-profiles.yaml").__code__,
-    )
+    original_loader = carrier.load_execution_profile_policy
+
+    def explicit_only(source=None):
+        if source is None:
+            raise carrier.ExecutionProfileError("implicit profile policy unavailable")
+        return original_loader(source)
+
+    monkeypatch.setattr(carrier, "load_execution_profile_policy", explicit_only)
+    unrelated_cwd = tmp_path / "unrelated-cwd"
+    unrelated_cwd.mkdir()
+    monkeypatch.chdir(unrelated_cwd)
 
     output = tmp_path / "output.txt"
     receipt = tmp_path / "receipt.txt"
@@ -277,12 +283,15 @@ def test_issue_532_regression_remediation_package_relative_unavailable_succeeds(
     assert "executor=codex" in output.read_text(encoding="utf-8")
     assert "status: ADMITTED" in receipt.read_text(encoding="utf-8")
 
-    # 2. Without explicit trusted policy in an isolated directory, admission fails closed
+    # 2. A sibling policy cannot replace the omitted trusted source
     output.unlink()
     receipt.unlink()
     isolated_policy = tmp_path / "isolated" / "policy.yaml"
     isolated_policy.parent.mkdir(parents=True, exist_ok=True)
     isolated_policy.write_text(policy_path.read_text(encoding="utf-8"), encoding="utf-8")
+    (isolated_policy.parent / "executor-profiles.yaml").write_bytes(
+        canonical_policy.read_bytes()
+    )
 
     exit_code_isolated = carrier.main(
         [
@@ -300,7 +309,7 @@ def test_issue_532_regression_remediation_package_relative_unavailable_succeeds(
     assert not output.exists()
     receipt_text = receipt.read_text(encoding="utf-8")
     assert "status: REJECTED" in receipt_text
-    assert "dispatch_accepted: false" in receipt_text
+    assert "remediation_run_outcome: not_observed" in receipt_text
 
 
 def test_missing_or_malformed_profile_policy_fails_remediation(tmp_path: Path) -> None:

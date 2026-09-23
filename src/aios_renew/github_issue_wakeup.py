@@ -73,7 +73,6 @@ class GitHubIssueWakeupPolicy:
     authorized_actors: tuple[str, ...]
     title_marker: str
     max_body_bytes: int
-    profile_policy: ExecutionProfilePolicy | Path | str | None = None
 
 
 def _resolve_profile_policy(
@@ -172,11 +171,7 @@ def _load_yaml(raw: bytes, kind: str) -> Any:
         raise GitHubIssueWakeupError(f"{kind} is not valid UTF-8 YAML/JSON") from exc
 
 
-def load_policy(
-    path: str | Path,
-    *,
-    profile_policy: ExecutionProfilePolicy | Path | str | None = None,
-) -> GitHubIssueWakeupPolicy:
+def load_policy(path: str | Path) -> GitHubIssueWakeupPolicy:
     """Load the versioned repository-owned carrier policy."""
 
     raw = _read_bounded_file(Path(path), maximum=65_536, kind="policy")
@@ -237,15 +232,6 @@ def load_policy(
         authorized_actors=tuple(actors),
         title_marker=title_marker,
         max_body_bytes=maximum,
-        profile_policy=(
-            profile_policy
-            if profile_policy is not None
-            else (
-                Path(path).resolve().parent / "executor-profiles.yaml"
-                if (Path(path).resolve().parent / "executor-profiles.yaml").is_file()
-                else None
-            )
-        ),
     )
 
 
@@ -326,10 +312,7 @@ def admit_event(
         raise GitHubIssueWakeupError(
             "event Issue body exceeds the configured bound"
         )
-    effective_profile = (
-        profile_policy if profile_policy is not None else policy.profile_policy
-    )
-    return parse_request(body_bytes, profile_policy=effective_profile)
+    return parse_request(body_bytes, profile_policy=profile_policy)
 
 
 def parse_request(
@@ -485,7 +468,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise GitHubIssueWakeupError("GITHUB_EVENT_PATH is required")
         if not args.output:
             raise GitHubIssueWakeupError("GITHUB_OUTPUT is required")
-        policy = load_policy(args.policy, profile_policy=args.profile_policy)
+        policy = load_policy(args.policy)
         request = admit_event(
             args.event, policy, profile_policy=args.profile_policy
         )

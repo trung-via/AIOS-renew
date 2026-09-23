@@ -60,7 +60,6 @@ class GitHubIssueRepairWakeupPolicy:
     authorized_actors: tuple[str, ...]
     title_marker: str
     max_body_bytes: int
-    profile_policy: ExecutionProfilePolicy | Path | str | None = None
 
 
 def _resolve_profile_policy(
@@ -159,11 +158,7 @@ def _load_yaml(raw: bytes, kind: str) -> Any:
         ) from exc
 
 
-def load_policy(
-    path: str | Path,
-    *,
-    profile_policy: ExecutionProfilePolicy | Path | str | None = None,
-) -> GitHubIssueRepairWakeupPolicy:
+def load_policy(path: str | Path) -> GitHubIssueRepairWakeupPolicy:
     raw = _read_bounded_file(Path(path), maximum=65_536, kind="policy")
     root = _mapping(_load_yaml(raw, "carrier policy"), "carrier policy")
     if set(root) != _POLICY_KEYS:
@@ -222,15 +217,6 @@ def load_policy(
         tuple(actors),
         title,
         maximum,
-        profile_policy=(
-            profile_policy
-            if profile_policy is not None
-            else (
-                Path(path).resolve().parent / "executor-profiles.yaml"
-                if (Path(path).resolve().parent / "executor-profiles.yaml").is_file()
-                else None
-            )
-        ),
     )
 
 
@@ -300,10 +286,7 @@ def admit_event(
         raise GitHubIssueRepairWakeupError(
             "event Issue body exceeds the configured bound"
         )
-    effective_profile = (
-        profile_policy if profile_policy is not None else policy.profile_policy
-    )
-    request = parse_request(body_bytes, profile_policy=effective_profile)
+    request = parse_request(body_bytes, profile_policy=profile_policy)
     return RepairWakeupRequest(
         request.repair_dispatch_id,
         request.failed_run_id,
@@ -471,7 +454,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise GitHubIssueRepairWakeupError("GITHUB_EVENT_PATH is required")
         if not args.output:
             raise GitHubIssueRepairWakeupError("GITHUB_OUTPUT is required")
-        policy = load_policy(args.policy, profile_policy=args.profile_policy)
+        policy = load_policy(args.policy)
         request = admit_event(
             args.event, policy, profile_policy=args.profile_policy
         )

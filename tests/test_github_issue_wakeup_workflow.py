@@ -35,7 +35,7 @@ def test_issue_trigger_and_job_are_fixed_to_github_hosted_admission() -> None:
     assert "github.event.issue.body" not in text
 
 
-def test_permissions_are_the_exact_minimum_and_checkout_is_fixed_main() -> None:
+def test_permissions_and_checkout_are_bound_to_invocation_sha() -> None:
     workflow, _ = _workflow()
     assert workflow["permissions"] == {
         "contents": "read",
@@ -45,7 +45,7 @@ def test_permissions_are_the_exact_minimum_and_checkout_is_fixed_main() -> None:
     checkout = workflow["jobs"]["admit-and-dispatch"]["steps"][0]
     assert checkout["uses"] == "actions/checkout@v4"
     assert checkout["with"] == {
-        "ref": "main",
+        "ref": "${{ github.sha }}",
         "fetch-depth": "1",
         "persist-credentials": "false",
     }
@@ -182,3 +182,17 @@ def test_admission_step_binds_explicit_trusted_profile_policy() -> None:
     assert "--policy .ai/brain-wakeup-carriers.yaml" in text
     assert "--profile-policy .ai/executor-profiles.yaml" in text
     assert (ROOT / ".ai" / "executor-profiles.yaml").is_file()
+
+def test_hosted_policy_is_from_exact_checked_out_invocation() -> None:
+    workflow, text = _workflow()
+    steps = workflow["jobs"]["admit-and-dispatch"]["steps"]
+    checkout = steps[0]
+    assert checkout["uses"] == "actions/checkout@v4"
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+    assert "python -m pip install --disable-pip-version-check ." in text
+    admission = next(step for step in steps if step.get("id") == "admission")
+    assert admission["env"]["AIOS_PROFILE_POLICY"] == (
+        "${{ github.workspace }}/.ai/executor-profiles.yaml"
+    )
+    assert '--profile-policy "$AIOS_PROFILE_POLICY"' in admission["run"]
+    assert "--profile-policy .ai/executor-profiles.yaml" not in text
