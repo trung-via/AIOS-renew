@@ -379,14 +379,26 @@ def test_wakeup_sync_restart_continues_the_same_durable_dispatch(
         primary_calls += 1
         assert task_id == "TASK-073"
         assert kwargs["dispatch_id"] == "delivery-073"
-        execution_profile = kwargs["execution_profile"]
-        assert isinstance(execution_profile, ResolvedExecutionProfile)
+        bound_values = {
+            "model": remote_profile.model,
+            "reasoning_effort": remote_profile.reasoning_effort,
+            "model_source": remote_profile.model_source,
+            "effort_source": remote_profile.effort_source,
+        }
+        for bound_key, expected in bound_values.items():
+            actual = kwargs.get(bound_key)
+            assert actual == expected, (
+                f"expected bound {bound_key}={expected!r} from the durable profile, "
+                f"got {actual!r}"
+            )
         run_id = "RUN-073-001"
         run_profile = ResolvedExecutionProfile(
-            **{
-                **execution_profile.as_dict(),
-                "run_id": run_id,
-            }
+            run_id=run_id,
+            executor=kwargs["executor"],
+            model=kwargs["model"],
+            reasoning_effort=kwargs["reasoning_effort"],
+            model_source=kwargs["model_source"],
+            effort_source=kwargs["effort_source"],
         )
         write_run(
             state_root,

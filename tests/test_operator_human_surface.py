@@ -155,6 +155,133 @@ def test_human_surface_profile_options_require_managed_executor_without_delegati
         )
 
 
+def test_human_surface_delegates_primary_with_exact_profile_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    observation = _human_observation(
+        "EXECUTE_PRIMARY",
+        run_id="RUN-101-001",
+    )
+    monkeypatch.setattr(
+        operator_module, "observe_unified_state", lambda *_args, **_kwargs: observation
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "_preflight_primary_admission",
+        lambda *_args, **_kwargs: operator_module.PreflightResult(preflight_sha="a" * 40),
+    )
+    calls = []
+
+    def primary(*args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(run_id="RUN-101-002", head_sha="b" * 40)
+
+    monkeypatch.setattr(operator_module, "run_task", primary)
+
+    outcome_partial, exit_partial = operator_module.continue_task(
+        "TASK-101",
+        executor="codex",
+        model="provider/future-v9",
+        repo=repo,
+    )
+    assert exit_partial == 0
+    assert len(calls) == 1
+    assert calls[0][0] == ("TASK-101",)
+    assert calls[0][1]["executor"] == "codex"
+    assert calls[0][1]["model"] == "provider/future-v9"
+    assert calls[0][1]["reasoning_effort"] is None
+    assert outcome_partial is not None
+    assert outcome_partial.delegated_operation == "PRIMARY"
+    assert outcome_partial.resulting_run_id == "RUN-101-002"
+
+    calls.clear()
+    outcome_full, exit_full = operator_module.continue_task(
+        "TASK-101",
+        executor="antigravity",
+        model="provider/future-v10",
+        reasoning_effort="high",
+        repo=repo,
+    )
+    assert exit_full == 0
+    assert len(calls) == 1
+    assert calls[0][1]["executor"] == "antigravity"
+    assert calls[0][1]["model"] == "provider/future-v10"
+    assert calls[0][1]["reasoning_effort"] == "high"
+    assert outcome_full is not None
+    assert outcome_full.delegated_operation == "PRIMARY"
+    assert outcome_full.resulting_run_id == "RUN-101-002"
+
+
+def test_human_surface_delegates_coding_repair_with_exact_profile_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    repair_sha = "c" * 40
+    repair = {
+        "repair_id": "REPAIR-101-PROFILE",
+        "failed_run_id": "RUN-101-001",
+        "failed_head_sha": "d" * 40,
+        "task": {"id": "TASK-101", "revision": 1},
+        "action": "CODE_FIX",
+        "modification_scope": ["src/foo.py"],
+        "instructions": ["Apply the profile-aware repair."],
+        "constraints": [],
+    }
+    observation = _human_observation(
+        "EXECUTE_REPAIR",
+        run_id="RUN-101-001",
+        failed_run_id="RUN-101-001",
+        correction_sha=repair_sha,
+        correction={"action": "CODE_FIX", "executor_required": True},
+        correction_document=repair,
+    )
+    monkeypatch.setattr(
+        operator_module, "observe_unified_state", lambda *_args, **_kwargs: observation
+    )
+    calls = []
+
+    def execute_repair(*args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(run_id="RUN-101-002", head_sha="e" * 40)
+
+    monkeypatch.setattr(operator_module, "run_repair", execute_repair)
+
+    outcome_partial, exit_partial = operator_module.continue_task(
+        "TASK-101",
+        executor="codex",
+        model="provider/future-v9",
+        repo=repo,
+    )
+    assert exit_partial == 0
+    assert len(calls) == 1
+    assert calls[0][0] == ("RUN-101-001",)
+    assert calls[0][1]["executor"] == "codex"
+    assert calls[0][1]["model"] == "provider/future-v9"
+    assert calls[0][1]["reasoning_effort"] is None
+    assert calls[0][1]["repair"] == repair
+    assert calls[0][1]["required_repair_sha"] == repair_sha
+    assert outcome_partial is not None
+    assert outcome_partial.delegated_operation == "REPAIR"
+
+    calls.clear()
+    outcome_full, exit_full = operator_module.continue_task(
+        "TASK-101",
+        executor="antigravity",
+        model="provider/future-v10",
+        reasoning_effort="high",
+        repo=repo,
+    )
+    assert exit_full == 0
+    assert len(calls) == 1
+    assert calls[0][1]["executor"] == "antigravity"
+    assert calls[0][1]["model"] == "provider/future-v10"
+    assert calls[0][1]["reasoning_effort"] == "high"
+    assert calls[0][1]["repair"] == repair
+    assert outcome_full is not None
+    assert outcome_full.delegated_operation == "REPAIR"
+
+
 def test_human_surface_delegates_exact_remediation_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

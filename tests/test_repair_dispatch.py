@@ -141,7 +141,7 @@ def test_conflicting_dispatch_id_reuse_fails_without_invocation(tmp_path: Path) 
         model_source="EXPLICIT",
         effort_source="EXPLICIT",
     )
-    with pytest.raises(RepairDispatchError, match="profile binding differs"):
+    with pytest.raises(RepairDispatchError, match="binding differs"):
         execute_repair_dispatch(
             state_root=state,
             repair_dispatch_id="repair-111",
