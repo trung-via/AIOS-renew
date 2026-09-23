@@ -49,6 +49,11 @@ from aios_renew.remote_surface import (
     record_remote_approval,
     require_current_approval,
 )
+from aios_renew.execution_profile import (
+    ResolvedExecutionProfile,
+    load_execution_profile_policy,
+    persist_execution_profile,
+)
 
 
 def hold_repository_lock(lock_path: str, ready, release) -> None:
@@ -9403,10 +9408,23 @@ def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
             ),
             encoding="utf-8",
         )
+        profile = ResolvedExecutionProfile(
+            run_id="RUN-111-002",
+            executor="codex",
+            model=kwargs["model"],
+            reasoning_effort=kwargs["reasoning_effort"],
+            model_source=kwargs["model_source"],
+            effort_source=kwargs["effort_source"],
+        )
+        persist_execution_profile(
+            state / "execution-profiles/RUN-111-002.json",
+            profile,
+        )
         bind_repair_run(
             state_root=state,
             repair_dispatch_id=kwargs["repair_dispatch_id"],
             run_id="RUN-111-002",
+            execution_profile=profile,
         )
         (state / "results").mkdir(parents=True, exist_ok=True)
         (state / "results/RUN-111-002.json").write_text("{}", encoding="utf-8")
@@ -9543,10 +9561,40 @@ def test_operator_persists_execution_profile_before_native_runner(tmp_path: Path
     assert profile_data["version"] == 1
     assert profile_data["run_id"] == "RUN-101-001"
     assert profile_data["executor"] == "codex"
-    assert profile_data["model"] == "gpt-5.6-sol"
-    assert profile_data["reasoning_effort"] == "high"
+    assert profile_data["model"] == "gpt-6-sol"
+    assert profile_data["reasoning_effort"] == "medium"
     assert profile_data["model_source"] == "REPOSITORY_DEFAULT"
     assert profile_data["effort_source"] == "REPOSITORY_DEFAULT"
+
+
+def test_operator_partial_explicit_profile_reaches_native_command_exactly(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+    run_task(
+        "TASK-101",
+        executor="codex",
+        model="provider/future-v9",
+        repo=repo,
+        native_runner=runner,
+    )
+
+    profile_data = json.loads(
+        (runtime_paths(repo).execution_profiles / "RUN-101-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    policy = load_execution_profile_policy(repo)
+    assert profile_data["model"] == "provider/future-v9"
+    assert profile_data["model_source"] == "EXPLICIT"
+    assert profile_data["reasoning_effort"] == policy.default_reasoning_effort("codex")
+    assert profile_data["effort_source"] == "REPOSITORY_DEFAULT"
+    command = runner.calls[0][0]
+    assert command[command.index("-m") + 1] == "provider/future-v9"
+    assert command[command.index("-c") + 1] == (
+        f'model_reasoning_effort="{policy.default_reasoning_effort("codex")}"'
+    )
 
 
 def test_operator_conflicting_preexisting_sidecar_invokes_zero_native_runners(tmp_path: Path) -> None:
@@ -9587,6 +9635,24 @@ def test_operator_antigravity_minimax_creates_no_execution_profile(tmp_path: Pat
     assert runner.count == 1
     assert summary.executor == "antigravity-minimax"
     assert not sidecar.is_file()
+
+
+def test_operator_antigravity_minimax_profile_options_invoke_zero_native(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeAntigravityMinimaxRunner(repo)
+
+    with pytest.raises(OperatorError, match="profile-managed Executor"):
+        run_task(
+            "TASK-101",
+            executor="antigravity-minimax",
+            model="provider/future-v9",
+            repo=repo,
+            native_runner=runner,
+        )
+
+    assert runner.count == 0
 
 
 def test_operator_preexisting_sidecar_with_unsupported_effort_invokes_zero_native_runners(tmp_path: Path) -> None:

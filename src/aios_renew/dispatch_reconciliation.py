@@ -11,6 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
 
+from .execution_profile import (
+    PROFILE_IDENTITY_FIELDS,
+    ResolvedExecutionProfile,
+    execution_profile_identity,
+    parse_execution_profile,
+    validate_profile_identity,
+)
+
 
 DISPATCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 TASK_ID_PATTERN = re.compile(r"^TASK-[A-Za-z0-9_-]+$")
@@ -38,6 +46,7 @@ _V1_RECORD_KEYS = frozenset(
 _V2_RECORD_KEYS = _V1_RECORD_KEYS | frozenset(
     {"task_revision", "task_blob_sha", "task_commit_sha"}
 )
+_V3_RECORD_KEYS = _V2_RECORD_KEYS | frozenset(PROFILE_IDENTITY_FIELDS[1:])
 _RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9_-]+-\d{3,}$")
 
 
@@ -89,6 +98,30 @@ class DispatchStatus:
     stored_status: str
     run_id: str | None
     observed_run_state: str
+
+
+def existing_dispatch_profile(
+    *, state_root: Path, dispatch_id: str
+) -> tuple[bool, ResolvedExecutionProfile | None]:
+    """Return an existing dispatch's exact bound profile without resolving defaults."""
+
+    _validate_dispatch_id(dispatch_id)
+    path = state_root / "dispatches" / f"{_dispatch_key(dispatch_id)}.json"
+    if not path.is_file():
+        return False, None
+    record = _read_record(path)
+    if record["dispatch_id"] != dispatch_id:
+        raise DispatchError("dispatch journal hash collision")
+    if record["version"] in (1, 2):
+        return True, None
+    return True, ResolvedExecutionProfile(
+        run_id=dispatch_id,
+        executor=record["executor"],
+        model=record["model"],
+        reasoning_effort=record["reasoning_effort"],
+        model_source=record["model_source"],
+        effort_source=record["effort_source"],
+    )
 
 
 def inspect_dispatch(*, state_root: Path, dispatch_id: str) -> DispatchStatus:
@@ -149,12 +182,29 @@ def _validate_attributed_run(path: Path, record: Mapping[str, Any]) -> None:
         or not isinstance(task, Mapping)
         or task.get("id") != record["task_id"]
         or (
-            record["version"] == 2
+            record["version"] in (2, 3)
             and task.get("revision") != record["task_revision"]
         )
         or data.get("executor") != record["executor"]
     ):
         raise DispatchError("attributed RUN record does not match dispatch")
+    if record["version"] == 3:
+        _validate_bound_profile(path.parent.parent, record["run_id"], record)
+
+
+def _validate_bound_profile(
+    state_root: Path, run_id: str, record: Mapping[str, Any]
+) -> None:
+    path = state_root / "execution-profiles" / f"{run_id}.json"
+    try:
+        profile = parse_execution_profile(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise DispatchError("admitted PRIMARY execution profile is invalid") from exc
+    identity = execution_profile_identity(profile)
+    if profile.run_id != run_id or any(
+        identity[field] != record[field] for field in PROFILE_IDENTITY_FIELDS
+    ):
+        raise DispatchError("admitted PRIMARY execution profile does not match dispatch")
 
 
 def execute_dispatch(
@@ -167,6 +217,7 @@ def execute_dispatch(
     task_revision: int | None = None,
     task_blob_sha: str | None = None,
     task_commit_sha: str | None = None,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> DispatchOutcome:
     """Invoke PRIMARY once for a new dispatch or reconcile an existing one."""
 
@@ -174,6 +225,13 @@ def execute_dispatch(
     authorization = _authorization_tuple(
         task_revision, task_blob_sha, task_commit_sha, required=False
     )
+    profile = (
+        execution_profile_identity(execution_profile)
+        if execution_profile is not None
+        else None
+    )
+    if profile is not None and profile["executor"] != executor:
+        raise DispatchError("execution profile executor does not match dispatch")
     dispatches = state_root / "dispatches"
     dispatch_key = _dispatch_key(dispatch_id)
     record_path = dispatches / f"{dispatch_key}.json"
@@ -185,7 +243,7 @@ def execute_dispatch(
         if record_path.exists():
             record = _read_record(record_path)
             _require_same_request(
-                record, dispatch_id, task_id, executor, *authorization
+                record, dispatch_id, task_id, executor, *authorization, profile
             )
             if record["status"] in _TERMINAL:
                 return _outcome(record, replayed=True)
@@ -204,15 +262,18 @@ def execute_dispatch(
         authorization = _authorization_tuple(
             task_revision, task_blob_sha, task_commit_sha, required=True
         )
+        if profile is None:
+            raise DispatchError("complete resolved execution profile is required")
         pre_run_ids = _primary_run_ids(state_root / "runs", task_id)
         record: dict[str, Any] = {
-            "version": 2,
+            "version": 3,
             "dispatch_id": dispatch_id,
             "task_id": task_id,
             "executor": executor,
             "task_revision": authorization[0],
             "task_blob_sha": authorization[1],
             "task_commit_sha": authorization[2],
+            **{key: profile[key] for key in PROFILE_IDENTITY_FIELDS[1:]},
             "status": "STARTED",
             "pre_run_ids": list(pre_run_ids),
             "run_id": None,
@@ -229,7 +290,7 @@ def execute_dispatch(
         with _DispatchLock(lock_path):
             current = _read_record(record_path)
             _require_same_request(
-                current, dispatch_id, task_id, executor, *authorization
+                current, dispatch_id, task_id, executor, *authorization, profile
             )
             finalized = _finalize_invocation(state_root, current, invocation)
             _write_record(record_path, finalized)
@@ -249,6 +310,7 @@ def bind_dispatch_run(
     task_revision: int | None = None,
     task_blob_sha: str | None = None,
     task_commit_sha: str | None = None,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> None:
     """Durably bind a dispatch at the canonical PRIMARY admission boundary."""
 
@@ -271,6 +333,11 @@ def bind_dispatch_run(
             task_revision,
             task_blob_sha,
             task_commit_sha,
+            (
+                execution_profile_identity(execution_profile)
+                if execution_profile is not None
+                else None
+            ),
         )
         if record["status"] != "STARTED":
             raise DispatchError("dispatch is not awaiting PRIMARY admission")
@@ -289,12 +356,14 @@ def bind_dispatch_run(
             or not isinstance(run_task, Mapping)
             or run_task.get("id") != task_id
             or (
-                record["version"] == 2
+                record["version"] in (2, 3)
                 and run_task.get("revision") != record["task_revision"]
             )
             or run_data.get("executor") != executor
         ):
             raise DispatchError("admitted PRIMARY RUN does not match dispatch")
+        if record["version"] == 3:
+            _validate_bound_profile(state_root, run_id, record)
         _write_record(
             record_path,
             {
@@ -335,6 +404,7 @@ def _require_same_request(
     task_revision: int | None,
     task_blob_sha: str | None,
     task_commit_sha: str | None,
+    profile: Mapping[str, str] | None,
 ) -> None:
     if record["dispatch_id"] != dispatch_id:
         raise DispatchError("dispatch journal hash collision")
@@ -343,13 +413,20 @@ def _require_same_request(
         identity_matches = identity_matches and all(
             value is None
             for value in (task_revision, task_blob_sha, task_commit_sha)
-        )
+        ) and profile is None
     else:
         identity_matches = identity_matches and (
             record["task_revision"],
             record["task_blob_sha"],
             record["task_commit_sha"],
         ) == (task_revision, task_blob_sha, task_commit_sha)
+        if record["version"] == 3:
+            identity_matches = identity_matches and profile is not None and all(
+                record[field] == profile[field]
+                for field in PROFILE_IDENTITY_FIELDS[1:]
+            )
+        else:
+            identity_matches = identity_matches and profile is None
     if not identity_matches:
         raise DispatchError(
             "dispatch_id collision: existing request binding does not match"
@@ -364,17 +441,31 @@ def _read_record(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise DispatchError("invalid dispatch record shape")
     version = data.get("version")
-    expected_keys = _V1_RECORD_KEYS if version == 1 else _V2_RECORD_KEYS
-    if isinstance(version, bool) or version not in (1, 2) or set(data) != expected_keys:
+    expected_keys = (
+        _V1_RECORD_KEYS
+        if version == 1
+        else _V2_RECORD_KEYS
+        if version == 2
+        else _V3_RECORD_KEYS
+    )
+    if isinstance(version, bool) or version not in (1, 2, 3) or set(data) != expected_keys:
         raise DispatchError("unsupported dispatch record version")
     try:
         _validate_request(data["dispatch_id"], data["task_id"], data["executor"])
-        if version == 2:
+        if version in (2, 3):
             _authorization_tuple(
                 data["task_revision"],
                 data["task_blob_sha"],
                 data["task_commit_sha"],
                 required=True,
+            )
+        if version == 3:
+            validate_profile_identity(
+                executor=data["executor"],
+                model=data["model"],
+                reasoning_effort=data["reasoning_effort"],
+                model_source=data["model_source"],
+                effort_source=data["effort_source"],
             )
     except (KeyError, DispatchError) as exc:
         raise DispatchError(f"invalid dispatch record binding: {exc}") from exc

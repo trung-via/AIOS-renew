@@ -13,6 +13,7 @@ import pytest
 import yaml
 
 from aios_renew import operator
+from aios_renew.execution_profile import default_execution_profile
 
 WORKFLOW_PATH = Path(".github/workflows/aios-self-hosted-wakeup.yml")
 README_PATH = Path("README.md")
@@ -89,6 +90,10 @@ def test_workflow_dispatch_only_and_inputs_ac1() -> None:
         "task_blob_sha",
         "task_commit_sha",
         "executor",
+        "model",
+        "reasoning_effort",
+        "model_source",
+        "effort_source",
     }
 
     dispatch_id_input = inputs["dispatch_id"]
@@ -110,17 +115,24 @@ def test_workflow_dispatch_only_and_inputs_ac1() -> None:
     assert executor_input.get("type") == "choice"
     assert sorted(executor_input.get("options", [])) == ["antigravity", "codex"]
 
-    # Verify no arbitrary command/repository/ref/model inputs exist
+    for profile_input in (
+        "model",
+        "reasoning_effort",
+        "model_source",
+        "effort_source",
+    ):
+        assert inputs[profile_input].get("required") is True
+        assert inputs[profile_input].get("type") == "string"
+
+    # Verify no arbitrary command/repository/ref inputs exist
     for forbidden_input in (
         "command",
         "cmd",
         "repo",
         "repository",
         "ref",
-        "model",
         "runner",
         "label",
-        "reasoning_effort",
     ):
         assert forbidden_input not in inputs
 
@@ -168,9 +180,14 @@ def test_workflow_authority_and_no_direct_executor_ac3() -> None:
     assert step_env.get("AIOS_TASK_BLOB_SHA") == "${{ inputs.task_blob_sha }}"
     assert step_env.get("AIOS_TASK_COMMIT_SHA") == "${{ inputs.task_commit_sha }}"
     assert step_env.get("AIOS_EXECUTOR") == "${{ inputs.executor }}"
+    job_env = workflow["jobs"]["wakeup"]["env"]
+    assert job_env.get("AIOS_MODEL") == "${{ inputs.model }}"
+    assert job_env.get("AIOS_REASONING_EFFORT") == "${{ inputs.reasoning_effort }}"
+    assert job_env.get("AIOS_MODEL_SOURCE") == "${{ inputs.model_source }}"
+    assert job_env.get("AIOS_EFFORT_SOURCE") == "${{ inputs.effort_source }}"
     assert "${{ inputs." not in step.get("run", "")
     assert (
-        "python $entry $controlSource wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --task-revision $env:AIOS_TASK_REVISION --task-blob-sha $env:AIOS_TASK_BLOB_SHA --task-commit-sha $env:AIOS_TASK_COMMIT_SHA --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT"
+        "python $entry $controlSource wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --task-revision $env:AIOS_TASK_REVISION --task-blob-sha $env:AIOS_TASK_BLOB_SHA --task-commit-sha $env:AIOS_TASK_COMMIT_SHA --executor $env:AIOS_EXECUTOR --model $env:AIOS_MODEL --reasoning-effort $env:AIOS_REASONING_EFFORT --model-source $env:AIOS_MODEL_SOURCE --effort-source $env:AIOS_EFFORT_SOURCE --repo $env:AIOS_REPO_ROOT"
         in raw_text
     )
 
@@ -329,6 +346,10 @@ def test_workflow_execution_preserves_nonzero_exit_code_ac5(tmp_path: Path) -> N
     env["AIOS_TASK_BLOB_SHA"] = "a" * 40
     env["AIOS_TASK_COMMIT_SHA"] = "b" * 40
     env["AIOS_EXECUTOR"] = "antigravity"
+    env["AIOS_MODEL"] = "test/antigravity-remote-v1"
+    env["AIOS_REASONING_EFFORT"] = "low"
+    env["AIOS_MODEL_SOURCE"] = "EXPLICIT"
+    env["AIOS_EFFORT_SOURCE"] = "EXPLICIT"
     env["AIOS_CONTROL_ROOT"] = str(tmp_path / "control")
     env["PATH"] = f"{bin_dir};{env['PATH']}"
 
@@ -365,6 +386,7 @@ def test_primary_cli_reprojects_exact_delivery_when_dispatch_fails(
         lambda root, **kwargs: projected.append((root, kwargs)),
     )
 
+    profile = default_execution_profile("codex", "AUTHORIZATION", tmp_path)
     exit_code = operator.main(
         [
             "wakeup",
@@ -396,6 +418,10 @@ def test_primary_cli_reprojects_exact_delivery_when_dispatch_fails(
                     "task_blob_sha": "a" * 40,
                     "task_commit_sha": "b" * 40,
                     "executor": "codex",
+                    "model": profile.model,
+                    "reasoning_effort": profile.reasoning_effort,
+                    "model_source": profile.model_source,
+                    "effort_source": profile.effort_source,
                 },
             },
         )
@@ -429,6 +455,10 @@ def test_workflow_execution_success_invokes_aios_wakeup_once_ac3(tmp_path: Path)
     env["AIOS_TASK_BLOB_SHA"] = "a" * 40
     env["AIOS_TASK_COMMIT_SHA"] = "b" * 40
     env["AIOS_EXECUTOR"] = "antigravity"
+    env["AIOS_MODEL"] = "test/antigravity-remote-v1"
+    env["AIOS_REASONING_EFFORT"] = "low"
+    env["AIOS_MODEL_SOURCE"] = "EXPLICIT"
+    env["AIOS_EFFORT_SOURCE"] = "EXPLICIT"
     env["AIOS_CONTROL_ROOT"] = str(tmp_path / "control")
     env["PATH"] = f"{bin_dir};{env['PATH']}"
 
@@ -440,7 +470,7 @@ def test_workflow_execution_success_invokes_aios_wakeup_once_ac3(tmp_path: Path)
     invocations = recorder_file.read_text(encoding="utf-8").strip().splitlines()
     assert len(invocations) == 1
     expected_args = (
-        f"{tmp_path / 'control' / 'scripts' / 'aios_control_entry.py'} {tmp_path / 'control'} wakeup dispatch-066-success TASK-066 --task-revision 1 --task-blob-sha {'a' * 40} --task-commit-sha {'b' * 40} --executor antigravity --repo {repo_dir}"
+        f"{tmp_path / 'control' / 'scripts' / 'aios_control_entry.py'} {tmp_path / 'control'} wakeup dispatch-066-success TASK-066 --task-revision 1 --task-blob-sha {'a' * 40} --task-commit-sha {'b' * 40} --executor antigravity --model test/antigravity-remote-v1 --reasoning-effort low --model-source EXPLICIT --effort-source EXPLICIT --repo {repo_dir}"
     )
     assert invocations[0].strip() == expected_args
 

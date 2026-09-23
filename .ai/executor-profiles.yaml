@@ -3,15 +3,15 @@ version: 1
 
 executors:
   codex:
-    default_model: gpt-5.6-sol
-    default_reasoning_effort: high
+    default_model: gpt-6-sol
+    default_reasoning_effort: medium
     supported_reasoning_efforts:
       - low
       - medium
       - high
   antigravity:
     default_model: gemini-3.8-flash
-    default_reasoning_effort: high
+    default_reasoning_effort: medium
     supported_reasoning_efforts:
       - low
       - medium

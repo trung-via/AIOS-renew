@@ -27,6 +27,7 @@ from aios_renew.codex_adapter import (
     extract_token_usage,
 )
 from aios_renew.run_observation import TokenUsage
+from aios_renew.execution_profile import ResolvedExecutionProfile
 
 
 TASK_SOURCE = """
@@ -121,11 +122,19 @@ def test_constructs_and_invokes_native_codex_command() -> None:
             stderr="",
         )
 
+    profile = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="codex",
+        model="test/codex-native-v1",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
     boundary.invoke(
         task=task,
         run=run,
         lease=lease,
-        adapter=CodexAdapter(runner=runner),
+        adapter=CodexAdapter(runner=runner, execution_profile=profile),
     )
 
     assert calls[0][0] == (
@@ -134,9 +143,9 @@ def test_constructs_and_invokes_native_codex_command() -> None:
         "--cd",
         "C:/workspace",
         "-m",
-        "gpt-5.6-sol",
+        "test/codex-native-v1",
         "-c",
-        'model_reasoning_effort="high"',
+        'model_reasoning_effort="low"',
         "--sandbox",
         "workspace-write",
         "--output-schema",
@@ -1001,25 +1010,33 @@ def test_codex_command_deterministic_model_and_reasoning_across_operations() -> 
             stderr="",
         )
 
-    adapter = CodexAdapter(runner=runner)
+    profile = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="codex",
+        model="test/codex-all-ops-v1",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
+    adapter = CodexAdapter(runner=runner, execution_profile=profile)
 
     # 1. PRIMARY
     adapter.execute(task=task, run=run)
     cmd_primary = calls[-1][0]
-    assert cmd_primary[cmd_primary.index("-m") + 1] == "gpt-5.6-sol"
-    assert cmd_primary[cmd_primary.index("-c") + 1] == 'model_reasoning_effort="high"'
+    assert cmd_primary[cmd_primary.index("-m") + 1] == profile.model
+    assert cmd_primary[cmd_primary.index("-c") + 1] == 'model_reasoning_effort="low"'
 
     # 2. REMEDIATION
     adapter.execute_remediation(execution=remediation_exec)
     cmd_remediation = calls[-1][0]
-    assert cmd_remediation[cmd_remediation.index("-m") + 1] == "gpt-5.6-sol"
-    assert cmd_remediation[cmd_remediation.index("-c") + 1] == 'model_reasoning_effort="high"'
+    assert cmd_remediation[cmd_remediation.index("-m") + 1] == profile.model
+    assert cmd_remediation[cmd_remediation.index("-c") + 1] == 'model_reasoning_effort="low"'
 
     # 3. REPAIR
     adapter.execute_repair(execution=repair_exec)
     cmd_repair = calls[-1][0]
-    assert cmd_repair[cmd_repair.index("-m") + 1] == "gpt-5.6-sol"
-    assert cmd_repair[cmd_repair.index("-c") + 1] == 'model_reasoning_effort="high"'
+    assert cmd_repair[cmd_repair.index("-m") + 1] == profile.model
+    assert cmd_repair[cmd_repair.index("-c") + 1] == 'model_reasoning_effort="low"'
 
     # Preserves sandbox, output-schema, color, cd
     assert cmd_primary[cmd_primary.index("--cd") + 1] == "C:/workspace"
@@ -1045,11 +1062,19 @@ def test_codex_unsupported_model_fails_closed_without_fallback_or_retry() -> Non
             command,
             returncode=1,
             stdout="",
-            stderr="Error: model 'gpt-5.6-sol' not found or unsupported",
+            stderr="Error: model 'provider/unavailable-v9' not found or unsupported",
         )
 
-    adapter = CodexAdapter(runner=runner)
-    with pytest.raises(CodexExecutionError, match="model 'gpt-5.6-sol' not found or unsupported") as exc_info:
+    profile = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="codex",
+        model="provider/unavailable-v9",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
+    adapter = CodexAdapter(runner=runner, execution_profile=profile)
+    with pytest.raises(CodexExecutionError, match="model 'provider/unavailable-v9' not found or unsupported") as exc_info:
         adapter.execute(task=task, run=run)
 
     assert len(calls) == 1
@@ -1302,8 +1327,6 @@ def test_codex_execute_output_error_preserves_token_usage() -> None:
 
 
 def test_codex_adapter_consumes_injected_profile_and_synthetic_future_model() -> None:
-    from aios_renew.execution_profile import ResolvedExecutionProfile
-
     task, run, _, _ = make_execution()
     profile = ResolvedExecutionProfile(
         run_id=run.run_id,

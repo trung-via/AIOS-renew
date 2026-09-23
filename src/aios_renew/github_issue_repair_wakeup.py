@@ -20,6 +20,7 @@ from .repair_dispatch import (
     REPAIR_SHA_PATTERN,
     SUPPORTED_EXECUTORS,
 )
+from .execution_profile import ExecutionProfileError, bind_execution_profile
 
 
 class GitHubIssueRepairWakeupError(ValueError):
@@ -33,7 +34,10 @@ _ISSUE_POLICY_KEYS = frozenset(
     {"enabled", "repository", "authorized_actors", "title_marker", "max_body_bytes"}
 )
 _BASE_REQUEST_KEYS = frozenset(
-    {"format", "version", "repair_dispatch_id", "failed_run_id", "repair_sha"}
+    {
+        "format", "version", "repair_dispatch_id", "failed_run_id", "repair_sha",
+        "executor", "model", "reasoning_effort",
+    }
 )
 _APPROVER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-\[\]]{0,99}$")
 _MAX_CONFIGURED_BODY_BYTES = 16_384
@@ -60,6 +64,10 @@ class RepairWakeupRequest:
     repair_sha: str
     executor: str | None
     actor: str = ""
+    model: str | None = None
+    reasoning_effort: str | None = None
+    model_source: str | None = None
+    effort_source: str | None = None
 
     def github_outputs(self) -> str:
         """Render only bounded selector values for the fixed reusable workflow."""
@@ -69,6 +77,10 @@ class RepairWakeupRequest:
             f"failed_run_id={self.failed_run_id}\n"
             f"repair_sha={self.repair_sha}\n"
             f"executor={self.executor or ''}\n"
+            f"model={self.model or ''}\n"
+            f"reasoning_effort={self.reasoning_effort or ''}\n"
+            f"model_source={self.model_source or ''}\n"
+            f"effort_source={self.effort_source or ''}\n"
         )
 
 
@@ -258,6 +270,10 @@ def admit_event(
         request.repair_sha,
         request.executor,
         actor,
+        request.model,
+        request.reasoning_effort,
+        request.model_source,
+        request.effort_source,
     )
 
 
@@ -267,7 +283,7 @@ def parse_request(raw: bytes | str) -> RepairWakeupRequest:
         _load_yaml(source, "REPAIR wakeup request"), "REPAIR wakeup request"
     )
     keys = set(request)
-    if keys not in (_BASE_REQUEST_KEYS, _BASE_REQUEST_KEYS | {"executor"}):
+    if keys != _BASE_REQUEST_KEYS:
         raise GitHubIssueRepairWakeupError(
             "REPAIR wakeup request has missing or unknown fields"
         )
@@ -276,7 +292,7 @@ def parse_request(raw: bytes | str) -> RepairWakeupRequest:
         request.get("format") != _REQUEST_FORMAT
         or isinstance(version, bool)
         or not isinstance(version, int)
-        or version != 1
+        or version != 2
     ):
         raise GitHubIssueRepairWakeupError(
             "unsupported REPAIR wakeup request format or version"
@@ -285,6 +301,8 @@ def parse_request(raw: bytes | str) -> RepairWakeupRequest:
     failed_run_id = request.get("failed_run_id")
     repair_sha = request.get("repair_sha")
     executor = request.get("executor")
+    requested_model = request.get("model")
+    requested_effort = request.get("reasoning_effort")
     if (
         not isinstance(repair_dispatch_id, str)
         or not REPAIR_DISPATCH_ID_PATTERN.fullmatch(repair_dispatch_id)
@@ -300,8 +318,34 @@ def parse_request(raw: bytes | str) -> RepairWakeupRequest:
         not isinstance(executor, str) or executor not in SUPPORTED_EXECUTORS
     ):
         raise GitHubIssueRepairWakeupError("unsupported executor")
+    if requested_model is not None and not isinstance(requested_model, str):
+        raise GitHubIssueRepairWakeupError("invalid model selection")
+    if requested_effort is not None and not isinstance(requested_effort, str):
+        raise GitHubIssueRepairWakeupError("invalid reasoning_effort selection")
+    if executor is None and (requested_model is not None or requested_effort is not None):
+        raise GitHubIssueRepairWakeupError(
+            "model/effort selection requires a coding Executor"
+        )
+    profile = None
+    if executor is not None:
+        try:
+            profile = bind_execution_profile(
+                run_id=repair_dispatch_id,
+                executor=executor,
+                model=requested_model,
+                reasoning_effort=requested_effort,
+            )
+        except ExecutionProfileError as exc:
+            raise GitHubIssueRepairWakeupError(str(exc)) from exc
     return RepairWakeupRequest(
-        repair_dispatch_id, failed_run_id, repair_sha, executor
+        repair_dispatch_id,
+        failed_run_id,
+        repair_sha,
+        executor,
+        model=profile.model if profile is not None else None,
+        reasoning_effort=profile.reasoning_effort if profile is not None else None,
+        model_source=profile.model_source if profile is not None else None,
+        effort_source=profile.effort_source if profile is not None else None,
     )
 
 
@@ -341,6 +385,10 @@ def render_admitted(request: RepairWakeupRequest) -> str:
         f"failed_run_id: {request.failed_run_id}\n"
         f"repair_sha: {request.repair_sha}\n"
         f"executor: {request.executor or 'none'}\n"
+        f"model: {request.model or 'none'}\n"
+        f"reasoning_effort: {request.reasoning_effort or 'none'}\n"
+        f"model_source: {request.model_source or 'none'}\n"
+        f"effort_source: {request.effort_source or 'none'}\n"
         f"actor: {request.actor}"
     )
 

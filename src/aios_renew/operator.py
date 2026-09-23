@@ -55,11 +55,11 @@ from .execution_profile import (
     ExecutionProfileError,
     ExecutionProfileValidationError,
     ResolvedExecutionProfile,
+    bind_execution_profile,
     is_profile_managed_executor,
     load_execution_profile_policy,
     parse_execution_profile,
     persist_execution_profile,
-    resolve_execution_profile,
     validate_execution_profile,
 )
 from .dispatch_reconciliation import (
@@ -67,6 +67,7 @@ from .dispatch_reconciliation import (
     DispatchInvocation,
     bind_dispatch_run,
     execute_dispatch,
+    existing_dispatch_profile,
 )
 from .executor import ExecutorBoundaryError
 from .performance_observation import (
@@ -1014,6 +1015,10 @@ def run_task(
     task_revision: int | None = None,
     task_blob_sha: str | None = None,
     task_commit_sha: str | None = None,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    model_source: str | None = None,
+    effort_source: str | None = None,
 ) -> RunSummary:
     """Execute a TASK and persist/transport deterministic pre-PASS failure facts."""
 
@@ -1050,6 +1055,10 @@ def run_task(
             task_revision=task_revision,
             task_blob_sha=task_blob_sha,
             task_commit_sha=task_commit_sha,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            model_source=model_source,
+            effort_source=effort_source,
             admission=admission,
         )
     except KeyboardInterrupt as original:
@@ -1099,9 +1108,20 @@ def _bind_and_persist_execution_profile(
     repo: Path,
     run_id: str,
     executor: str,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    model_source: str | None = None,
+    effort_source: str | None = None,
 ) -> ResolvedExecutionProfile | None:
     """Resolve, validate, and durably persist one execution profile sidecar."""
     if not is_profile_managed_executor(executor):
+        if any(
+            value is not None
+            for value in (model, reasoning_effort, model_source, effort_source)
+        ):
+            raise OperatorError(
+                "model/effort options require a profile-managed Executor"
+            )
         return None
 
     profiles_dir = state.execution_profiles or (state.root / "execution-profiles")
@@ -1116,6 +1136,23 @@ def _bind_and_persist_execution_profile(
                 f"persisted execution profile mismatch for RUN {run_id}: "
                 f"profile.executor={existing.executor!r}, expected {executor!r}"
             )
+        if any(
+            value is not None
+            for value in (model, reasoning_effort, model_source, effort_source)
+        ):
+            expected = bind_execution_profile(
+                run_id=run_id,
+                executor=executor,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                model_source=model_source,
+                effort_source=effort_source,
+                repo=repo,
+            )
+            if existing != expected:
+                raise OperatorError(
+                    f"persisted execution profile mismatch for RUN {run_id}"
+                )
         try:
             policy = load_execution_profile_policy(repo)
             validate_execution_profile(existing, policy, repo=repo)
@@ -1127,8 +1164,15 @@ def _bind_and_persist_execution_profile(
 
     try:
         policy = load_execution_profile_policy(repo)
-        profile = resolve_execution_profile(
-            policy, run_id=run_id, executor=executor, repo=repo
+        profile = bind_execution_profile(
+            policy=policy,
+            run_id=run_id,
+            executor=executor,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            model_source=model_source,
+            effort_source=effort_source,
+            repo=repo,
         )
         persist_execution_profile(profile_path, profile)
     except ExecutionProfileConflictError as exc:
@@ -1143,6 +1187,59 @@ def _bind_and_persist_execution_profile(
             f"execution profile sidecar missing before native runner: {profile_path}"
         )
     return profile
+
+
+def _authorization_profile(
+    *,
+    repo: Path,
+    authorization_id: str,
+    executor: str | None,
+    existing: bool,
+    bound_profile: ResolvedExecutionProfile | None,
+    model: str | None,
+    reasoning_effort: str | None,
+    model_source: str | None,
+    effort_source: str | None,
+) -> ResolvedExecutionProfile | None:
+    """Resolve a new authorization or reuse one exact durable profile."""
+
+    requested = (model, reasoning_effort, model_source, effort_source)
+    if executor is None:
+        if any(value is not None for value in requested):
+            raise OperatorError("model/effort options require a coding Executor")
+        if bound_profile is not None:
+            raise OperatorError("executor-less authorization has a profile binding")
+        return None
+    if existing:
+        if not any(value is not None for value in requested):
+            return bound_profile
+        if bound_profile is None:
+            raise OperatorError("historical authorization has no execution profile")
+        if not all(value is not None for value in requested):
+            raise OperatorError(
+                "existing authorization requires the complete bound execution profile"
+            )
+        attempted = bind_execution_profile(
+            run_id=authorization_id,
+            executor=executor,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            model_source=model_source,
+            effort_source=effort_source,
+            repo=repo,
+        )
+        if attempted != bound_profile:
+            raise OperatorError("authorization execution profile collision")
+        return bound_profile
+    return bind_execution_profile(
+        run_id=authorization_id,
+        executor=executor,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        model_source=model_source,
+        effort_source=effort_source,
+        repo=repo,
+    )
 
 
 def _run_task_impl(
@@ -1161,6 +1258,10 @@ def _run_task_impl(
     task_blob_sha: str | None = None,
     task_commit_sha: str | None = None,
     admission: dict[str, Any] | None = None,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    model_source: str | None = None,
+    effort_source: str | None = None,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
 
@@ -1252,6 +1353,10 @@ def _run_task_impl(
             repo=root,
             run_id=run_id,
             executor=executor,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            model_source=model_source,
+            effort_source=effort_source,
         )
         if dispatch_id is not None:
             bind_dispatch_run(
@@ -1263,6 +1368,7 @@ def _run_task_impl(
                 task_revision=task_revision,
                 task_blob_sha=task_blob_sha,
                 task_commit_sha=task_commit_sha,
+                execution_profile=execution_profile,
             )
         observation_tracker.admit(run)
         observed_native_runner = observation_tracker.wrap_native_runner(
@@ -1382,6 +1488,10 @@ def run_repair(
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
     monotonic_clock: MonotonicClock = time.monotonic,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    model_source: str | None = None,
+    effort_source: str | None = None,
 ) -> RepairSummary:
     """Accept and execute one GitHub-authored REPAIR as a continuation RUN."""
 
@@ -1406,6 +1516,10 @@ def run_repair(
             failed_run_id, executor=executor, repo=root, repair=repair,
             required_repair_sha=required_repair_sha,
             repair_dispatch_id=repair_dispatch_id,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            model_source=model_source,
+            effort_source=effort_source,
             native_runner=native_runner,
             verification_runner=verification_runner,
             attempt=attempt,
@@ -2430,6 +2544,10 @@ def _run_repair_impl(
     attempt: _RunAttempt,
     observation_tracker: RunObservationTracker,
     admission: dict[str, Any],
+    model: str | None,
+    reasoning_effort: str | None,
+    model_source: str | None,
+    effort_source: str | None,
 ) -> RepairSummary:
     if executor is not None and executor not in (
         "codex", "antigravity", "antigravity-minimax"
@@ -2438,6 +2556,11 @@ def _run_repair_impl(
             admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
         )
         raise OperatorError(f"unsupported executor: {executor}")
+    if any(
+        value is not None
+        for value in (model, reasoning_effort, model_source, effort_source)
+    ) and (executor is None or not is_profile_managed_executor(executor)):
+        raise OperatorError("model/effort options require a profile-managed Executor")
     state = runtime_paths(repo)
     resolved = _resolve_repair_admission(
         failed_run_id,
@@ -2533,6 +2656,19 @@ def _run_repair_impl(
         persisted_execution["run"] = asdict(run)
         _write_json(state.repairs / f"{run_id}.json", persisted_execution)
 
+        execution_profile = None
+        if reusable_package is None:
+            execution_profile = _bind_and_persist_execution_profile(
+                state=state,
+                repo=repo,
+                run_id=run_id,
+                executor=run_executor,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                model_source=model_source,
+                effort_source=effort_source,
+            )
+
         if repair_dispatch_id is not None:
             from .repair_dispatch import bind_repair_run
 
@@ -2540,6 +2676,7 @@ def _run_repair_impl(
                 state_root=state.root,
                 repair_dispatch_id=repair_dispatch_id,
                 run_id=run_id,
+                execution_profile=execution_profile,
             )
 
         if reusable_package is None:
@@ -2550,12 +2687,6 @@ def _run_repair_impl(
                 authorizes_mutation=action in (
                     "CODE_FIX", "CONTINUE_IMPLEMENTATION"
                 )
-            )
-            execution_profile = _bind_and_persist_execution_profile(
-                state=state,
-                repo=repo,
-                run_id=run_id,
-                executor=run_executor,
             )
             dispatcher = repair_dispatcher(
                 selected_executor=run_executor,
@@ -3593,6 +3724,10 @@ def run_remediation(
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
     monotonic_clock: MonotonicClock = time.monotonic,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    model_source: str | None = None,
+    effort_source: str | None = None,
 ) -> RemediationSummary:
     """Execute one remediation and persist deterministic pre-PASS failures."""
 
@@ -3648,6 +3783,10 @@ def run_remediation(
             approved_remediation_sha=approved_remediation_sha,
             correction_dispatch_id=correction_dispatch_id,
             executor=executor,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            model_source=model_source,
+            effort_source=effort_source,
             repo=root,
             native_runner=native_runner,
             verification_runner=verification_runner,
@@ -4169,6 +4308,10 @@ def _run_remediation_impl(
     admission: dict[str, Any] | None = None,
     attempt: _RunAttempt | None = None,
     observation_tracker: RunObservationTracker,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    model_source: str | None = None,
+    effort_source: str | None = None,
 ) -> RemediationSummary:
     """Execute one bound remediation without entering the TASK execution path."""
 
@@ -4200,6 +4343,11 @@ def _run_remediation_impl(
     remote_mode = resolved.remote_mode
     if executor not in ("codex", "antigravity", "antigravity-minimax"):
         raise OperatorError(f"unsupported executor: {executor}")
+    if any(
+        value is not None
+        for value in (model, reasoning_effort, model_source, effort_source)
+    ) and not is_profile_managed_executor(executor):
+        raise OperatorError("model/effort options require a profile-managed Executor")
 
     _set_admission_boundary(
         admission, "REPOSITORY_ADMISSION", "REPOSITORY_ADMISSION_REJECTED"
@@ -4293,6 +4441,16 @@ def _run_remediation_impl(
         _write_json(run_path, run_document)
         if attempt is not None:
             attempt.bind_run(run_path)
+        execution_profile = _bind_and_persist_execution_profile(
+            state=state,
+            repo=root,
+            run_id=run_id,
+            executor=executor,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            model_source=model_source,
+            effort_source=effort_source,
+        )
         if correction_dispatch_id is not None:
             from .correction_dispatch import bind_correction_run
 
@@ -4300,6 +4458,7 @@ def _run_remediation_impl(
                 state_root=state.root,
                 correction_dispatch_id=correction_dispatch_id,
                 run_id=run_id,
+                execution_profile=execution_profile,
             )
         observation_tracker.admit(run)
         observed_native_runner = observation_tracker.wrap_native_runner(
@@ -4308,12 +4467,6 @@ def _run_remediation_impl(
 
         execution_policy = resolve_native_execution_policy(
             authorizes_mutation=canonical_remediation.action == "CODE_FIX"
-        )
-        execution_profile = _bind_and_persist_execution_profile(
-            state=state,
-            repo=root,
-            run_id=run_id,
-            executor=executor,
         )
         dispatcher = remediation_dispatcher(
             selected_executor=executor,
@@ -5247,6 +5400,10 @@ def run_approved_remediation_intent(
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
     monotonic_clock: MonotonicClock = time.monotonic,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    model_source: str | None = None,
+    effort_source: str | None = None,
 ) -> tuple[Any, Any]:
     """Record/replay A3, then enter the existing durable A6 boundary."""
 
@@ -5254,6 +5411,7 @@ def run_approved_remediation_intent(
         CorrectionDispatchError,
         CorrectionInvocation,
         execute_correction_dispatch,
+        existing_correction_profile,
         reject_existing_selector_collision,
     )
     from .remote_surface import (
@@ -5265,12 +5423,28 @@ def run_approved_remediation_intent(
     try:
         repo_root = resolve_repository(repo)
         state_root = runtime_state_root(repo_root)
+        exists, remote_profile = existing_correction_profile(
+            state_root=state_root,
+            correction_dispatch_id=correction_dispatch_id,
+        )
+        remote_profile = _authorization_profile(
+            repo=repo_root,
+            authorization_id=correction_dispatch_id,
+            executor=executor,
+            existing=exists,
+            bound_profile=remote_profile,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            model_source=model_source,
+            effort_source=effort_source,
+        )
         reject_existing_selector_collision(
             state_root=state_root,
             correction_dispatch_id=correction_dispatch_id,
             source_run_id=source_run_id,
             finding_id=finding_id,
             executor=executor,
+            execution_profile=remote_profile,
         )
 
         # An existing A6 identity must still resolve through its old exact A3
@@ -5313,6 +5487,17 @@ def run_approved_remediation_intent(
                     approved_remediation_sha=approval.remediation_sha,
                     correction_dispatch_id=correction_dispatch_id,
                     executor=executor,
+                    model=remote_profile.model if remote_profile is not None else None,
+                    reasoning_effort=(
+                        remote_profile.reasoning_effort
+                        if remote_profile is not None else None
+                    ),
+                    model_source=(
+                        remote_profile.model_source if remote_profile is not None else None
+                    ),
+                    effort_source=(
+                        remote_profile.effort_source if remote_profile is not None else None
+                    ),
                     repo=repo_root,
                     native_runner=native_runner,
                     verification_runner=verification_runner,
@@ -5331,8 +5516,9 @@ def run_approved_remediation_intent(
             executor=executor,
             approval=approval,
             invoke_remediation=invoke_remediation,
+            execution_profile=remote_profile,
         )
-    except (RemoteSurfaceError, CorrectionDispatchError) as exc:
+    except (RemoteSurfaceError, CorrectionDispatchError, ExecutionProfileError) as exc:
         raise OperatorError(str(exc)) from exc
     return approval_summary, dispatch_outcome
 
@@ -5347,6 +5533,10 @@ def run_repair_wakeup(
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
     monotonic_clock: MonotonicClock = time.monotonic,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    model_source: str | None = None,
+    effort_source: str | None = None,
 ) -> Any:
     """Deliver one immutable REPAIR intent through the durable outer boundary."""
 
@@ -5354,6 +5544,7 @@ def run_repair_wakeup(
         RepairDispatchError,
         RepairInvocation,
         execute_repair_dispatch,
+        existing_repair_profile,
         reject_existing_selector_collision,
         replay_existing_repair_dispatch,
     )
@@ -5361,12 +5552,28 @@ def run_repair_wakeup(
     try:
         root = resolve_repository(repo)
         state_root = runtime_state_root(root)
+        exists, remote_profile = existing_repair_profile(
+            state_root=state_root,
+            repair_dispatch_id=repair_dispatch_id,
+        )
+        remote_profile = _authorization_profile(
+            repo=root,
+            authorization_id=repair_dispatch_id,
+            executor=executor,
+            existing=exists,
+            bound_profile=remote_profile,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            model_source=model_source,
+            effort_source=effort_source,
+        )
         reject_existing_selector_collision(
             state_root=state_root,
             repair_dispatch_id=repair_dispatch_id,
             failed_run_id=failed_run_id,
             repair_sha=repair_sha,
             executor=executor,
+            execution_profile=remote_profile,
         )
         replay = replay_existing_repair_dispatch(
             state_root=state_root,
@@ -5374,6 +5581,7 @@ def run_repair_wakeup(
             failed_run_id=failed_run_id,
             repair_sha=repair_sha,
             executor=executor,
+            execution_profile=remote_profile,
         )
         if replay is not None:
             return replay
@@ -5441,6 +5649,17 @@ def run_repair_wakeup(
                     repair=observation.correction_document,
                     required_repair_sha=repair_sha,
                     repair_dispatch_id=repair_dispatch_id,
+                    model=remote_profile.model if remote_profile is not None else None,
+                    reasoning_effort=(
+                        remote_profile.reasoning_effort
+                        if remote_profile is not None else None
+                    ),
+                    model_source=(
+                        remote_profile.model_source if remote_profile is not None else None
+                    ),
+                    effort_source=(
+                        remote_profile.effort_source if remote_profile is not None else None
+                    ),
                     native_runner=native_runner,
                     verification_runner=verification_runner,
                     monotonic_clock=monotonic_clock,
@@ -5459,8 +5678,9 @@ def run_repair_wakeup(
             task_id=observation.task_id,
             action=action,
             invoke_repair=invoke_repair,
+            execution_profile=remote_profile,
         )
-    except RepairDispatchError as exc:
+    except (RepairDispatchError, ExecutionProfileError) as exc:
         raise OperatorError(str(exc)) from exc
 
 
@@ -5513,6 +5733,8 @@ def _parser() -> argparse.ArgumentParser:
     continue_parser.add_argument(
         "--executor", choices=("codex", "antigravity", "antigravity-minimax")
     )
+    continue_parser.add_argument("--model")
+    continue_parser.add_argument("--reasoning-effort")
     continue_parser.add_argument(
         "--json",
         action="store_true",
@@ -5525,6 +5747,8 @@ def _parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
+    run_parser.add_argument("--model")
+    run_parser.add_argument("--reasoning-effort")
     run_parser.add_argument("--repo")
     wakeup_parser = commands.add_parser(
         "wakeup", help="Idempotently wake one canonical PRIMARY execution"
@@ -5536,6 +5760,16 @@ def _parser() -> argparse.ArgumentParser:
     wakeup_parser.add_argument("--task-commit-sha")
     wakeup_parser.add_argument(
         "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
+    )
+    wakeup_parser.add_argument("--model")
+    wakeup_parser.add_argument("--reasoning-effort")
+    wakeup_parser.add_argument(
+        "--model-source",
+        choices=("EXPLICIT", "REPOSITORY_DEFAULT"),
+    )
+    wakeup_parser.add_argument(
+        "--effort-source",
+        choices=("EXPLICIT", "REPOSITORY_DEFAULT"),
     )
     wakeup_parser.add_argument("--repo")
     status_parser = commands.add_parser(
@@ -5560,6 +5794,16 @@ def _parser() -> argparse.ArgumentParser:
     correction_parser.add_argument(
         "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
+    correction_parser.add_argument("--model")
+    correction_parser.add_argument("--reasoning-effort")
+    correction_parser.add_argument(
+        "--model-source",
+        choices=("EXPLICIT", "REPOSITORY_DEFAULT"),
+    )
+    correction_parser.add_argument(
+        "--effort-source",
+        choices=("EXPLICIT", "REPOSITORY_DEFAULT"),
+    )
     correction_parser.add_argument("--repo")
     intent_parser = commands.add_parser(
         "approved-remediation-intent",
@@ -5570,6 +5814,16 @@ def _parser() -> argparse.ArgumentParser:
     intent_parser.add_argument("finding_id")
     intent_parser.add_argument(
         "--executor", required=True, choices=("codex", "antigravity")
+    )
+    intent_parser.add_argument("--model")
+    intent_parser.add_argument("--reasoning-effort")
+    intent_parser.add_argument(
+        "--model-source",
+        choices=("EXPLICIT", "REPOSITORY_DEFAULT"),
+    )
+    intent_parser.add_argument(
+        "--effort-source",
+        choices=("EXPLICIT", "REPOSITORY_DEFAULT"),
     )
     intent_parser.add_argument("--approver", required=True)
     intent_parser.add_argument("--repo")
@@ -5584,6 +5838,8 @@ def _parser() -> argparse.ArgumentParser:
     remediation_parser.add_argument(
         "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
+    remediation_parser.add_argument("--model")
+    remediation_parser.add_argument("--reasoning-effort")
     remediation_parser.add_argument("--repo")
     remediation_preflight_parser = commands.add_parser(
         "preflight-remediation",
@@ -5612,6 +5868,8 @@ def _parser() -> argparse.ArgumentParser:
     repair_parser.add_argument(
         "--executor", required=True, choices=("codex", "antigravity", "antigravity-minimax")
     )
+    repair_parser.add_argument("--model")
+    repair_parser.add_argument("--reasoning-effort")
     repair_parser.add_argument("--repo")
     repair_wakeup_parser = commands.add_parser(
         "repair-wakeup",
@@ -5622,6 +5880,14 @@ def _parser() -> argparse.ArgumentParser:
     repair_wakeup_parser.add_argument("repair_sha")
     repair_wakeup_parser.add_argument(
         "--executor", choices=("codex", "antigravity")
+    )
+    repair_wakeup_parser.add_argument("--model")
+    repair_wakeup_parser.add_argument("--reasoning-effort")
+    repair_wakeup_parser.add_argument(
+        "--model-source", choices=("EXPLICIT", "REPOSITORY_DEFAULT")
+    )
+    repair_wakeup_parser.add_argument(
+        "--effort-source", choices=("EXPLICIT", "REPOSITORY_DEFAULT")
     )
     repair_wakeup_parser.add_argument("--repo")
     repair_preflight_parser = commands.add_parser(
@@ -5764,6 +6030,8 @@ def main(
             outcome, exit_code = continue_task(
                 args.task_id,
                 executor=args.executor,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
                 repo=args.repo,
                 argv=argv,
                 native_runner=native_runner,
@@ -5793,6 +6061,8 @@ def main(
             summary = run_task(
                 args.task_id,
                 executor=args.executor,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
                 repo=repo_root,
                 native_runner=native_runner,
                 verification_runner=verification_runner,
@@ -5803,6 +6073,22 @@ def main(
             print(summary.render())
         elif args.command == "wakeup":
             repo_root = resolve_repository(args.repo)
+            dispatch_state_root = runtime_paths(repo_root).root
+            exists, remote_profile = existing_dispatch_profile(
+                state_root=dispatch_state_root,
+                dispatch_id=args.dispatch_id,
+            )
+            remote_profile = _authorization_profile(
+                repo=repo_root,
+                authorization_id=args.dispatch_id,
+                executor=args.executor,
+                existing=exists,
+                bound_profile=remote_profile,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                model_source=args.model_source,
+                effort_source=args.effort_source,
+            )
             wakeup_argv = [
                 "wakeup",
                 args.dispatch_id,
@@ -5814,9 +6100,15 @@ def main(
                 wakeup_argv.extend(["--task-blob-sha", args.task_blob_sha])
             if args.task_commit_sha is not None:
                 wakeup_argv.extend(["--task-commit-sha", args.task_commit_sha])
-            wakeup_argv.extend(
-                ["--executor", args.executor, "--repo", str(repo_root)]
-            )
+            wakeup_argv.extend(["--executor", args.executor])
+            if remote_profile is not None:
+                wakeup_argv.extend([
+                    "--model", remote_profile.model,
+                    "--reasoning-effort", remote_profile.reasoning_effort,
+                    "--model-source", remote_profile.model_source,
+                    "--effort-source", remote_profile.effort_source,
+                ])
+            wakeup_argv.extend(["--repo", str(repo_root)])
 
             def invoke_primary() -> DispatchInvocation:
                 try:
@@ -5843,6 +6135,19 @@ def main(
                         task_revision=args.task_revision,
                         task_blob_sha=args.task_blob_sha,
                         task_commit_sha=args.task_commit_sha,
+                        model=remote_profile.model if remote_profile is not None else None,
+                        reasoning_effort=(
+                            remote_profile.reasoning_effort
+                            if remote_profile is not None else None
+                        ),
+                        model_source=(
+                            remote_profile.model_source
+                            if remote_profile is not None else None
+                        ),
+                        effort_source=(
+                            remote_profile.effort_source
+                            if remote_profile is not None else None
+                        ),
                     )
                     return DispatchInvocation(0, summary.run_id)
                 except OperatorError as exc:
@@ -5858,7 +6163,7 @@ def main(
 
             try:
                 outcome = execute_dispatch(
-                    state_root=runtime_paths(repo_root).root,
+                    state_root=dispatch_state_root,
                     dispatch_id=args.dispatch_id,
                     task_id=args.task_id,
                     executor=args.executor,
@@ -5866,6 +6171,7 @@ def main(
                     task_revision=args.task_revision,
                     task_blob_sha=args.task_blob_sha,
                     task_commit_sha=args.task_commit_sha,
+                    execution_profile=remote_profile,
                 )
             finally:
                 _project_operational_delivery(
@@ -5878,6 +6184,15 @@ def main(
                         "task_blob_sha": args.task_blob_sha,
                         "task_commit_sha": args.task_commit_sha,
                         "executor": args.executor,
+                        **(
+                            {
+                                "model": remote_profile.model,
+                                "reasoning_effort": remote_profile.reasoning_effort,
+                                "model_source": remote_profile.model_source,
+                                "effort_source": remote_profile.effort_source,
+                            }
+                            if remote_profile is not None else {}
+                        ),
                     },
                 )
             print(outcome.render())
@@ -5922,6 +6237,22 @@ def main(
             print(summary.render())
         elif args.command == "approved-remediation-intent":
             intent_root = resolve_repository(args.repo)
+            from .correction_dispatch import existing_correction_profile
+            exists, intent_profile = existing_correction_profile(
+                state_root=runtime_state_root(intent_root),
+                correction_dispatch_id=args.correction_dispatch_id,
+            )
+            intent_profile = _authorization_profile(
+                repo=intent_root,
+                authorization_id=args.correction_dispatch_id,
+                executor=args.executor,
+                existing=exists,
+                bound_profile=intent_profile,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                model_source=args.model_source,
+                effort_source=args.effort_source,
+            )
             try:
                 approval, outcome = run_approved_remediation_intent(
                     args.correction_dispatch_id,
@@ -5929,6 +6260,10 @@ def main(
                     args.finding_id,
                     executor=args.executor,
                     approver=args.approver,
+                    model=intent_profile.model if intent_profile is not None else None,
+                    reasoning_effort=(intent_profile.reasoning_effort if intent_profile is not None else None),
+                    model_source=(intent_profile.model_source if intent_profile is not None else None),
+                    effort_source=(intent_profile.effort_source if intent_profile is not None else None),
                     repo=intent_root,
                     native_runner=native_runner,
                     verification_runner=verification_runner,
@@ -5943,6 +6278,12 @@ def main(
                         "source_run_id": args.source_run_id,
                         "finding_id": args.finding_id,
                         "executor": args.executor,
+                        **({
+                            "model": intent_profile.model,
+                            "reasoning_effort": intent_profile.reasoning_effort,
+                            "model_source": intent_profile.model_source,
+                            "effort_source": intent_profile.effort_source,
+                        } if intent_profile is not None else {}),
                     },
                 )
             print(approval.render())
@@ -5953,20 +6294,37 @@ def main(
                 CorrectionDispatchError,
                 CorrectionInvocation,
                 execute_correction_dispatch,
+                existing_correction_profile,
                 reject_existing_selector_collision,
             )
             from .remote_surface import RemoteSurfaceError, require_current_approval
 
             repo_root = resolve_repository(args.repo)
+            state_root = runtime_state_root(repo_root)
+            exists, remote_profile = existing_correction_profile(
+                state_root=state_root,
+                correction_dispatch_id=args.correction_dispatch_id,
+            )
+            remote_profile = _authorization_profile(
+                repo=repo_root,
+                authorization_id=args.correction_dispatch_id,
+                executor=args.executor,
+                existing=exists,
+                bound_profile=remote_profile,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                model_source=args.model_source,
+                effort_source=args.effort_source,
+            )
             try:
                 try:
-                    state_root = runtime_state_root(repo_root)
                     reject_existing_selector_collision(
                         state_root=state_root,
                         correction_dispatch_id=args.correction_dispatch_id,
                         source_run_id=args.source_run_id,
                         finding_id=args.finding_id,
                         executor=args.executor,
+                        execution_profile=remote_profile,
                     )
                     approval = require_current_approval(
                         repo=repo_root,
@@ -5984,6 +6342,22 @@ def main(
                                 approved_remediation_sha=approval.remediation_sha,
                                 correction_dispatch_id=args.correction_dispatch_id,
                                 executor=args.executor,
+                                model=(
+                                    remote_profile.model
+                                    if remote_profile is not None else None
+                                ),
+                                reasoning_effort=(
+                                    remote_profile.reasoning_effort
+                                    if remote_profile is not None else None
+                                ),
+                                model_source=(
+                                    remote_profile.model_source
+                                    if remote_profile is not None else None
+                                ),
+                                effort_source=(
+                                    remote_profile.effort_source
+                                    if remote_profile is not None else None
+                                ),
                                 repo=repo_root,
                                 native_runner=native_runner,
                                 verification_runner=verification_runner,
@@ -6002,6 +6376,7 @@ def main(
                         executor=args.executor,
                         approval=approval,
                         invoke_remediation=invoke_remediation,
+                        execution_profile=remote_profile,
                     )
                 except (RemoteSurfaceError, CorrectionDispatchError) as exc:
                     raise OperatorError(str(exc)) from exc
@@ -6014,6 +6389,15 @@ def main(
                         "source_run_id": args.source_run_id,
                         "finding_id": args.finding_id,
                         "executor": args.executor,
+                        **(
+                            {
+                                "model": remote_profile.model,
+                                "reasoning_effort": remote_profile.reasoning_effort,
+                                "model_source": remote_profile.model_source,
+                                "effort_source": remote_profile.effort_source,
+                            }
+                            if remote_profile is not None else {}
+                        ),
                     },
                 )
             print(outcome.render())
@@ -6026,6 +6410,8 @@ def main(
                 prior_review=args.prior_review,
                 finding_id=args.finding,
                 executor=args.executor,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
                 repo=args.repo,
                 native_runner=native_runner,
                 verification_runner=verification_runner,
@@ -6056,6 +6442,8 @@ def main(
             summary = run_repair(
                 args.failed_run_id,
                 executor=args.executor,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
                 repo=args.repo,
                 repair=args.repair,
                 native_runner=native_runner,
@@ -6065,12 +6453,32 @@ def main(
             print(summary.render())
         elif args.command == "repair-wakeup":
             repair_root = resolve_repository(args.repo)
+            from .repair_dispatch import existing_repair_profile
+            exists, repair_profile = existing_repair_profile(
+                state_root=runtime_state_root(repair_root),
+                repair_dispatch_id=args.repair_dispatch_id,
+            )
+            repair_profile = _authorization_profile(
+                repo=repair_root,
+                authorization_id=args.repair_dispatch_id,
+                executor=args.executor,
+                existing=exists,
+                bound_profile=repair_profile,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                model_source=args.model_source,
+                effort_source=args.effort_source,
+            )
             try:
                 outcome = run_repair_wakeup(
                     args.repair_dispatch_id,
                     args.failed_run_id,
                     args.repair_sha,
                     executor=args.executor,
+                    model=repair_profile.model if repair_profile is not None else None,
+                    reasoning_effort=(repair_profile.reasoning_effort if repair_profile is not None else None),
+                    model_source=(repair_profile.model_source if repair_profile is not None else None),
+                    effort_source=(repair_profile.effort_source if repair_profile is not None else None),
                     repo=repair_root,
                     native_runner=native_runner,
                     verification_runner=verification_runner,
@@ -6085,6 +6493,12 @@ def main(
                         "failed_run_id": args.failed_run_id,
                         "repair_sha": args.repair_sha,
                         "executor": args.executor,
+                        **({
+                            "model": repair_profile.model,
+                            "reasoning_effort": repair_profile.reasoning_effort,
+                            "model_source": repair_profile.model_source,
+                            "effort_source": repair_profile.effort_source,
+                        } if repair_profile is not None else {}),
                     },
                 )
             print(outcome.render())
@@ -6140,7 +6554,7 @@ def main(
         else:
             retry_transport(args.run_id, repo=args.repo)
             print(f"AIOS TRANSPORT PASS\nrun: {args.run_id}")
-    except (OperatorError, DispatchError) as exc:
+    except (OperatorError, DispatchError, ExecutionProfileError) as exc:
         print(f"AIOS ERROR: {exc}", file=sys.stderr)
         return 1
     return 0

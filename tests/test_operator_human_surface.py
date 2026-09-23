@@ -122,6 +122,39 @@ def test_human_surface_requires_explicit_executor_before_coding_operation(
     assert outcome.executor_supplied is False
 
 
+def test_human_surface_profile_options_require_managed_executor_without_delegation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = make_repo(tmp_path)
+    monkeypatch.setattr(
+        operator_module,
+        "observe_unified_state",
+        lambda *_args, **_kwargs: _human_observation("EXECUTE_PRIMARY"),
+    )
+    monkeypatch.setattr(
+        operator_module,
+        "run_task",
+        lambda *_args, **_kwargs: pytest.fail("profile-only request delegated"),
+    )
+
+    required, exit_code = operator_module.continue_task(
+        "TASK-101", model="provider/future-v9", repo=repo
+    )
+    assert exit_code == 0
+    assert required is not None
+    assert required.disposition == "EXECUTOR_REQUIRED"
+    assert required.blocker == {"code": "PROFILE_EXECUTOR_REQUIRED"}
+
+    with pytest.raises(OperatorError, match="Codex or Antigravity"):
+        operator_module.continue_task(
+            "TASK-101",
+            executor="antigravity-minimax",
+            reasoning_effort="low",
+            repo=repo,
+        )
+
+
 def test_human_surface_delegates_exact_remediation_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -146,7 +179,10 @@ def test_human_surface_delegates_exact_remediation_once(
     monkeypatch.setattr(operator_module, "run_remediation", remediation)
 
     outcome, exit_code = operator_module.continue_task(
-        "TASK-101", executor="codex", repo=repo
+        "TASK-101",
+        executor="codex",
+        model="provider/future-v9",
+        repo=repo,
     )
 
     assert exit_code == 0
@@ -154,6 +190,8 @@ def test_human_surface_delegates_exact_remediation_once(
     assert calls[0][1]["source_run_id"] == "RUN-101-001"
     assert calls[0][1]["finding_id"] == "F1"
     assert calls[0][1]["approved_remediation_sha"] == correction_sha
+    assert calls[0][1]["model"] == "provider/future-v9"
+    assert calls[0][1]["reasoning_effort"] is None
     assert outcome is not None
     assert outcome.delegated_operation == "REMEDIATION"
     assert outcome.resulting_run_id == "RUN-101-002"

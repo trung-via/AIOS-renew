@@ -19,6 +19,11 @@ from aios_renew.dispatch_reconciliation import (
     bind_dispatch_run,
     execute_dispatch,
 )
+from aios_renew.execution_profile import (
+    ResolvedExecutionProfile,
+    default_execution_profile,
+    persist_execution_profile,
+)
 
 
 TASK_REVISION = 1
@@ -28,10 +33,27 @@ _execute_dispatch = execute_dispatch
 _bind_dispatch_run = bind_dispatch_run
 
 
+def profile_for(
+    run_id: str, executor: str = "codex"
+) -> ResolvedExecutionProfile:
+    return ResolvedExecutionProfile(
+        run_id=run_id,
+        executor=executor,
+        model=f"test/{executor}-future-v1",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
+
+
 def execute_dispatch(**kwargs: object):
     kwargs.setdefault("task_revision", TASK_REVISION)
     kwargs.setdefault("task_blob_sha", TASK_BLOB_SHA)
     kwargs.setdefault("task_commit_sha", TASK_COMMIT_SHA)
+    kwargs.setdefault(
+        "execution_profile",
+        profile_for("AUTHORIZATION", str(kwargs["executor"])),
+    )
     return _execute_dispatch(**kwargs)
 
 
@@ -39,6 +61,10 @@ def bind_dispatch_run(**kwargs: object) -> None:
     kwargs.setdefault("task_revision", TASK_REVISION)
     kwargs.setdefault("task_blob_sha", TASK_BLOB_SHA)
     kwargs.setdefault("task_commit_sha", TASK_COMMIT_SHA)
+    kwargs.setdefault(
+        "execution_profile",
+        profile_for(str(kwargs["run_id"]), str(kwargs["executor"])),
+    )
     _bind_dispatch_run(**kwargs)
 
 
@@ -48,6 +74,7 @@ def write_run(
     *,
     task_id: str = "TASK-068",
     executor: str = "codex",
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> None:
     runs = state_root / "runs"
     runs.mkdir(parents=True, exist_ok=True)
@@ -64,6 +91,10 @@ def write_run(
             }
         ),
         encoding="utf-8",
+    )
+    persist_execution_profile(
+        state_root / "execution-profiles" / f"{run_id}.json",
+        execution_profile or profile_for(run_id, executor),
     )
 
 
@@ -145,6 +176,100 @@ def test_historical_v1_record_remains_readable_without_rewrite(tmp_path: Path) -
     assert json.loads(record_path.read_text(encoding="utf-8")) == legacy
 
 
+def test_historical_v2_record_remains_readable_without_profile_or_rewrite(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / ".git" / "aios"
+    dispatch_id = "legacy-v2-existing"
+    record_path = (
+        state_root / "dispatches" / f"{dispatch._dispatch_key(dispatch_id)}.json"
+    )
+    record_path.parent.mkdir(parents=True)
+    legacy = {
+        "version": 2,
+        "dispatch_id": dispatch_id,
+        "task_id": "TASK-068",
+        "executor": "codex",
+        "task_revision": TASK_REVISION,
+        "task_blob_sha": TASK_BLOB_SHA,
+        "task_commit_sha": TASK_COMMIT_SHA,
+        "status": "FAILED",
+        "pre_run_ids": [],
+        "run_id": None,
+        "exit_code": 1,
+        "detail": "historical terminal failure",
+    }
+    record_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    outcome = _execute_dispatch(
+        state_root=state_root,
+        dispatch_id=dispatch_id,
+        task_id="TASK-068",
+        executor="codex",
+        task_revision=TASK_REVISION,
+        task_blob_sha=TASK_BLOB_SHA,
+        task_commit_sha=TASK_COMMIT_SHA,
+        invoke_primary=lambda: pytest.fail("historical replay invoked PRIMARY"),
+    )
+
+    assert outcome.replayed is True
+    assert json.loads(record_path.read_text(encoding="utf-8")) == legacy
+    assert not (state_root / "execution-profiles").exists()
+
+
+def test_operator_reconciles_historical_v2_without_resolving_current_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    state_root = repo / ".git" / "aios"
+    dispatch_id = "legacy-v2-operator"
+    record_path = (
+        state_root / "dispatches" / f"{dispatch._dispatch_key(dispatch_id)}.json"
+    )
+    record_path.parent.mkdir(parents=True)
+    record_path.write_text(
+        json.dumps({
+            "version": 2,
+            "dispatch_id": dispatch_id,
+            "task_id": "TASK-068",
+            "executor": "codex",
+            "task_revision": TASK_REVISION,
+            "task_blob_sha": TASK_BLOB_SHA,
+            "task_commit_sha": TASK_COMMIT_SHA,
+            "status": "FAILED",
+            "pre_run_ids": [],
+            "run_id": None,
+            "exit_code": 1,
+            "detail": "historical terminal failure",
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda _repo: repo)
+    monkeypatch.setattr(
+        operator_module,
+        "runtime_paths",
+        lambda _repo: SimpleNamespace(root=state_root),
+    )
+    monkeypatch.setattr(operator_module, "_project_operational_delivery", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        operator_module,
+        "bind_execution_profile",
+        lambda **_kwargs: pytest.fail("historical replay resolved current defaults"),
+    )
+
+    exit_code = operator_module.main([
+        "wakeup", dispatch_id, "TASK-068",
+        "--task-revision", str(TASK_REVISION),
+        "--task-blob-sha", TASK_BLOB_SHA,
+        "--task-commit-sha", TASK_COMMIT_SHA,
+        "--executor", "codex",
+        "--repo", str(repo),
+    ])
+
+    assert exit_code == 1
+
+
 def test_first_seen_is_durable_before_one_primary_invocation_and_replays(
     tmp_path: Path,
 ) -> None:
@@ -158,7 +283,7 @@ def test_first_seen_is_durable_before_one_primary_invocation_and_replays(
         records = list((state_root / "dispatches").glob("*.json"))
         assert len(records) == 1
         started = json.loads(records[0].read_text(encoding="utf-8"))
-        assert started["version"] == 2
+        assert started["version"] == 3
         assert started["status"] == "STARTED"
         assert started["dispatch_id"] == "delivery-068"
         assert started["task_id"] == "TASK-068"
@@ -166,6 +291,20 @@ def test_first_seen_is_durable_before_one_primary_invocation_and_replays(
         assert started["task_revision"] == TASK_REVISION
         assert started["task_blob_sha"] == TASK_BLOB_SHA
         assert started["task_commit_sha"] == TASK_COMMIT_SHA
+        assert {
+            key: started[key]
+            for key in (
+                "model",
+                "reasoning_effort",
+                "model_source",
+                "effort_source",
+            )
+        } == {
+            "model": "test/codex-future-v1",
+            "reasoning_effort": "low",
+            "model_source": "EXPLICIT",
+            "effort_source": "EXPLICIT",
+        }
         assert started["pre_run_ids"] == ["RUN-068-001"]
         admit_dispatch_run(state_root, "delivery-068", "RUN-068-002")
         write_terminal(state_root, "results", "RUN-068-002")
@@ -240,20 +379,35 @@ def test_wakeup_sync_restart_continues_the_same_durable_dispatch(
         primary_calls += 1
         assert task_id == "TASK-073"
         assert kwargs["dispatch_id"] == "delivery-073"
+        execution_profile = kwargs["execution_profile"]
+        assert isinstance(execution_profile, ResolvedExecutionProfile)
         run_id = "RUN-073-001"
-        write_run(state_root, run_id, task_id=task_id)
+        run_profile = ResolvedExecutionProfile(
+            **{
+                **execution_profile.as_dict(),
+                "run_id": run_id,
+            }
+        )
+        write_run(
+            state_root,
+            run_id,
+            task_id=task_id,
+            execution_profile=run_profile,
+        )
         bind_dispatch_run(
             state_root=state_root,
             dispatch_id="delivery-073",
             task_id=task_id,
             executor="codex",
             run_id=run_id,
+            execution_profile=run_profile,
         )
         write_terminal(state_root, "results", run_id)
         return SimpleNamespace(run_id=run_id)
 
     monkeypatch.setattr(operator_module, "run_task", run_task)
     restarted_argv: list[list[str]] = []
+    remote_profile = default_execution_profile("codex", "AUTHORIZATION", repo)
 
     def restart_runner(
         cmd: list[str], **kwargs: object
@@ -272,6 +426,14 @@ def test_wakeup_sync_restart_continues_the_same_durable_dispatch(
             TASK_COMMIT_SHA,
             "--executor",
             "codex",
+            "--model",
+            remote_profile.model,
+            "--reasoning-effort",
+            remote_profile.reasoning_effort,
+            "--model-source",
+            remote_profile.model_source,
+            "--effort-source",
+            remote_profile.effort_source,
             "--repo",
             str(repo),
         ]
@@ -457,6 +619,25 @@ def test_dispatch_binding_collision_fails_closed_without_mutation(
                 **changed_identity,
             )
         assert record_path.read_bytes() == before
+
+    changed_profile = ResolvedExecutionProfile(
+        run_id="AUTHORIZATION",
+        executor="codex",
+        model="test/codex-future-v2",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
+    with pytest.raises(DispatchError, match="binding does not match"):
+        execute_dispatch(
+            state_root=state_root,
+            dispatch_id="bound-delivery",
+            task_id="TASK-068",
+            executor="codex",
+            execution_profile=changed_profile,
+            invoke_primary=lambda: pytest.fail("profile collision invoked PRIMARY"),
+        )
+    assert record_path.read_bytes() == before
 
 
 @pytest.mark.parametrize(

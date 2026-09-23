@@ -25,11 +25,13 @@ POLICY = {
 def _body(**updates: object) -> str:
     request: dict[str, object] = {
         "format": "AIOS_REMEDIATION_INTENT_REQUEST",
-        "version": 1,
+        "version": 2,
         "correction_dispatch_id": "remediation-intent-112",
         "source_run_id": "RUN-110-001",
         "finding_id": "F1",
         "executor": "codex",
+        "model": None,
+        "reasoning_effort": None,
     }
     request.update(updates)
     return yaml.safe_dump(request, sort_keys=False)
@@ -73,12 +75,20 @@ def test_valid_issue_forwards_only_four_selectors_and_binds_event_actor(
         finding_id="F1",
         executor="codex",
         approver="trung-via",
+        model="gpt-6-sol",
+        reasoning_effort="medium",
+        model_source="REPOSITORY_DEFAULT",
+        effort_source="REPOSITORY_DEFAULT",
     )
     assert request.github_outputs().splitlines() == [
         "correction_dispatch_id=remediation-intent-112",
         "source_run_id=RUN-110-001",
         "finding_id=F1",
         "executor=codex",
+        "model=gpt-6-sol",
+        "reasoning_effort=medium",
+        "model_source=REPOSITORY_DEFAULT",
+        "effort_source=REPOSITORY_DEFAULT",
     ]
 
 
@@ -105,6 +115,10 @@ def test_downstream_policy_preserves_trusted_actor_and_sanitized_selectors(
         "source_run_id=RUN-110-001",
         "finding_id=F1",
         "executor=codex",
+        "model=gpt-6-sol",
+        "reasoning_effort=medium",
+        "model_source=REPOSITORY_DEFAULT",
+        "effort_source=REPOSITORY_DEFAULT",
     ]
     event["sender"]["login"] = "intruder"
     with pytest.raises(carrier.GitHubIssueRemediationIntentError, match="actor"):
@@ -172,6 +186,7 @@ def test_policy_is_versioned_and_fully_bound(tmp_path: Path, mutation) -> None:
         ({"finding_id": "$(whoami)"}, "finding_id"),
         ({"executor": "fallback"}, "executor"),
         ({"executor": "antigravity-minimax"}, "executor"),
+        ({"version": 1}, "version"),
     ],
 )
 def test_unknown_authority_and_malicious_values_are_inert_and_rejected(
@@ -183,10 +198,12 @@ def test_unknown_authority_and_malicious_values_are_inert_and_rejected(
 
 def test_missing_and_duplicate_fields_fail_closed() -> None:
     missing = """format: AIOS_REMEDIATION_INTENT_REQUEST
-version: 1
+version: 2
 correction_dispatch_id: remediation-intent-112
 source_run_id: RUN-110-001
 finding_id: F1
+model:
+reasoning_effort:
 """
     duplicate = _body() + "executor: antigravity\n"
     with pytest.raises(carrier.GitHubIssueRemediationIntentError, match="missing"):

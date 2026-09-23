@@ -56,6 +56,7 @@ _SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 _SELECTOR_FIELDS = frozenset({
     "task_id", "task_revision", "task_blob_sha", "task_commit_sha", "executor",
     "source_run_id", "finding_id", "failed_run_id", "repair_sha",
+    "model", "reasoning_effort", "model_source", "effort_source",
 })
 
 

@@ -39,6 +39,13 @@ EXECUTION_PROFILE_ALLOWED_FIELDS = frozenset({
 })
 ALLOWED_SOURCE_ATTRIBUTIONS = frozenset({"REPOSITORY_DEFAULT", "EXPLICIT"})
 CANONICAL_SOURCE_ATTRIBUTIONS = ALLOWED_SOURCE_ATTRIBUTIONS
+PROFILE_IDENTITY_FIELDS = (
+    "executor",
+    "model",
+    "reasoning_effort",
+    "model_source",
+    "effort_source",
+)
 
 
 class ExecutionProfileError(RuntimeError):
@@ -538,6 +545,90 @@ def resolve_execution_profile(
         model_source=model_source,
         effort_source=effort_source,
     )
+
+
+def execution_profile_identity(
+    profile: ResolvedExecutionProfile,
+) -> dict[str, str]:
+    """Return the run-independent immutable identity bound by an authorization."""
+
+    return {field: getattr(profile, field) for field in PROFILE_IDENTITY_FIELDS}
+
+
+def bind_execution_profile(
+    *,
+    run_id: str,
+    executor: str,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    model_source: str | None = None,
+    effort_source: str | None = None,
+    repo: str | Path | None = None,
+    policy: ExecutionProfilePolicy | None = None,
+) -> ResolvedExecutionProfile:
+    """Resolve a new request or rebind one exact pre-resolved authorization.
+
+    Source attribution is an all-or-nothing marker for a pre-resolved profile.  Local
+    Human requests omit both source fields and are resolved once from explicit values
+    plus repository policy.  Remote/durable requests provide both exact values and
+    both source fields, so no default is re-resolved at RUN admission.
+    """
+
+    if policy is None:
+        policy = load_execution_profile_policy(repo)
+    sources_supplied = model_source is not None or effort_source is not None
+    if not sources_supplied:
+        return resolve_execution_profile(
+            policy,
+            run_id=run_id,
+            executor=executor,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            repo=repo,
+        )
+    if (
+        model is None
+        or reasoning_effort is None
+        or model_source not in ALLOWED_SOURCE_ATTRIBUTIONS
+        or effort_source not in ALLOWED_SOURCE_ATTRIBUTIONS
+    ):
+        raise ExecutionProfileValidationError(
+            "a pre-resolved execution profile requires exact model, effort, and source attribution"
+        )
+    profile = ResolvedExecutionProfile(
+        run_id=run_id,
+        executor=executor,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        model_source=model_source,
+        effort_source=effort_source,
+    )
+    return validate_execution_profile(profile, policy, repo=repo)
+
+
+def validate_profile_identity(
+    *,
+    executor: str,
+    model: str,
+    reasoning_effort: str,
+    model_source: str,
+    effort_source: str,
+    repo: str | Path | None = None,
+    policy: ExecutionProfilePolicy | None = None,
+) -> dict[str, str]:
+    """Validate and normalize a durable run-independent profile identity."""
+
+    profile = bind_execution_profile(
+        run_id="AUTHORIZATION",
+        executor=executor,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        model_source=model_source,
+        effort_source=effort_source,
+        repo=repo,
+        policy=policy,
+    )
+    return execution_profile_identity(profile)
 
 
 def validate_execution_profile(

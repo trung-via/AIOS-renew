@@ -51,7 +51,7 @@ def test_permissions_are_the_exact_minimum_and_checkout_is_fixed_main() -> None:
     }
 
 
-def test_one_fixed_dispatch_forwards_only_six_sanitized_outputs() -> None:
+def test_one_fixed_dispatch_forwards_only_profile_bound_sanitized_outputs() -> None:
     workflow, text = _workflow()
     steps = workflow["jobs"]["admit-and-dispatch"]["steps"]
     dispatch = next(step for step in steps if step.get("id") == "dispatch")
@@ -69,6 +69,10 @@ def test_one_fixed_dispatch_forwards_only_six_sanitized_outputs() -> None:
         "AIOS_TASK_BLOB_SHA",
         "AIOS_TASK_COMMIT_SHA",
         "AIOS_EXECUTOR",
+        "AIOS_MODEL",
+        "AIOS_REASONING_EFFORT",
+        "AIOS_MODEL_SOURCE",
+        "AIOS_EFFORT_SOURCE",
     }
     assert set(
         line.split(":", 1)[0].strip()
@@ -81,6 +85,10 @@ def test_one_fixed_dispatch_forwards_only_six_sanitized_outputs() -> None:
                 "task_blob_sha:",
                 "task_commit_sha:",
                 "executor:",
+                "model:",
+                "reasoning_effort:",
+                "model_source:",
+                "effort_source:",
             )
         )
     ) == {
@@ -90,6 +98,10 @@ def test_one_fixed_dispatch_forwards_only_six_sanitized_outputs() -> None:
         "task_blob_sha",
         "task_commit_sha",
         "executor",
+        "model",
+        "reasoning_effort",
+        "model_source",
+        "effort_source",
     }
     for forbidden in (
         "github.event.issue.body",
@@ -98,7 +110,6 @@ def test_one_fixed_dispatch_forwards_only_six_sanitized_outputs() -> None:
         "ref: process.env",
         "path:",
         "command:",
-        "model:",
         "runner:",
         "credentials:",
     ):
@@ -159,4 +170,8 @@ def test_policy_and_existing_a1_contract_are_separate_and_exact() -> None:
         "task_blob_sha",
         "task_commit_sha",
         "executor",
+        "model",
+        "reasoning_effort",
+        "model_source",
+        "effort_source",
     }

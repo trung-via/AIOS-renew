@@ -37,6 +37,7 @@ from aios_renew.antigravity_adapter import (
     native_instruction,
 )
 from aios_renew.run_observation import TokenUsage
+from aios_renew.execution_profile import ResolvedExecutionProfile
 
 
 TASK_SOURCE = """
@@ -414,16 +415,25 @@ def test_native_adapter_owns_read_only_command_handoff_and_envelope(
             stderr="",
         )
 
+    profile = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="antigravity",
+        model="test/antigravity-read-v1",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
     package = AntigravityAdapter(
         runner=runner,
         execution_policy=NativeExecutionPolicy(authorizes_mutation=False),
         repo=repo,
         handoff_path=handoff_path,
+        execution_profile=profile,
     ).execute(task=task, run=run)
 
     command, kwargs = calls[0]
-    assert command[command.index("--model") + 1] == "gemini-3.8-flash"
-    assert command[command.index("--effort") + 1] == "high"
+    assert command[command.index("--model") + 1] == profile.model
+    assert command[command.index("--effort") + 1] == profile.reasoning_effort
     assert "--mode" not in command
     assert "plan" not in command
     assert "--dangerously-skip-permissions" not in command
@@ -875,29 +885,38 @@ def test_antigravity_command_deterministic_model_and_effort_across_operations(
             stderr="",
         )
 
+    profile = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="antigravity",
+        model="test/antigravity-all-ops-v1",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
     adapter = AntigravityAdapter(
         runner=runner,
         repo=repo,
         handoff_path=repo / ".git" / "aios" / "handoff.json",
+        execution_profile=profile,
     )
 
     # 1. PRIMARY
     adapter.execute(task=task, run=run)
     cmd_primary = calls[-1][0]
-    assert cmd_primary[cmd_primary.index("--model") + 1] == "gemini-3.8-flash"
-    assert cmd_primary[cmd_primary.index("--effort") + 1] == "high"
+    assert cmd_primary[cmd_primary.index("--model") + 1] == profile.model
+    assert cmd_primary[cmd_primary.index("--effort") + 1] == profile.reasoning_effort
 
     # 2. REMEDIATION
     adapter.execute_remediation(execution=remediation_exec)
     cmd_remediation = calls[-1][0]
-    assert cmd_remediation[cmd_remediation.index("--model") + 1] == "gemini-3.8-flash"
-    assert cmd_remediation[cmd_remediation.index("--effort") + 1] == "high"
+    assert cmd_remediation[cmd_remediation.index("--model") + 1] == profile.model
+    assert cmd_remediation[cmd_remediation.index("--effort") + 1] == profile.reasoning_effort
 
     # 3. REPAIR
     adapter.execute_repair(execution=repair_exec)
     cmd_repair = calls[-1][0]
-    assert cmd_repair[cmd_repair.index("--model") + 1] == "gemini-3.8-flash"
-    assert cmd_repair[cmd_repair.index("--effort") + 1] == "high"
+    assert cmd_repair[cmd_repair.index("--model") + 1] == profile.model
+    assert cmd_repair[cmd_repair.index("--effort") + 1] == profile.reasoning_effort
 
     # Preserves other flags
     assert "--disable-slash-commands" in cmd_primary
@@ -926,17 +945,26 @@ def test_antigravity_unsupported_model_fails_closed_without_fallback_or_retry(
             command,
             returncode=1,
             stdout="",
-            stderr="Error: model 'gemini-3.8-flash' not recognized or unavailable",
+            stderr="Error: model 'provider/unavailable-v9' not recognized or unavailable",
         )
 
+    profile = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="antigravity",
+        model="provider/unavailable-v9",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
     adapter = AntigravityAdapter(
         runner=runner,
         repo=repo,
         handoff_path=repo / ".git" / "aios" / "handoff.json",
+        execution_profile=profile,
     )
     with pytest.raises(
         AntigravityExecutionError,
-        match="model 'gemini-3.8-flash' not recognized or unavailable",
+        match="model 'provider/unavailable-v9' not recognized or unavailable",
     ):
         adapter.execute(task=task, run=run)
 
@@ -1206,11 +1234,20 @@ def test_zero_mutation_finalize_candidate_command_excludes_contradictory_plan_mo
             stderr="",
         )
 
+    profile = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="antigravity",
+        model="test/antigravity-finalize-v1",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
     adapter = AntigravityAdapter(
         runner=runner,
         repo=repo,
         handoff_path=handoff_path,
         execution_policy=NativeExecutionPolicy(authorizes_mutation=False),
+        execution_profile=profile,
     )
     adapter.execute_repair(
         execution={
@@ -1229,8 +1266,8 @@ def test_zero_mutation_finalize_candidate_command_excludes_contradictory_plan_mo
     # Verify non-interactive structural invocation
     assert cmd[0] == "agy"
     assert cmd[1] == "--print"
-    assert cmd[cmd.index("--model") + 1] == "gemini-3.8-flash"
-    assert cmd[cmd.index("--effort") + 1] == "high"
+    assert cmd[cmd.index("--model") + 1] == profile.model
+    assert cmd[cmd.index("--effort") + 1] == profile.reasoning_effort
     assert cmd[cmd.index("--output-format") + 1] == "json"
     assert cmd[cmd.index("--json-schema") + 1] == str(REPAIR_RESULT_PACKAGE_SCHEMA_PATH)
     assert "--disable-slash-commands" in cmd
@@ -3169,7 +3206,6 @@ def test_task140_r5_production_hook_denies_exact_ac8_encoded_payload():
 
 
 def test_antigravity_adapter_consumes_injected_profile_and_synthetic_future_model(tmp_path: Path) -> None:
-    from aios_renew.execution_profile import ResolvedExecutionProfile
     from aios_renew.dispatcher import NativeExecutionPolicy
 
     task, run, _, _ = make_execution()

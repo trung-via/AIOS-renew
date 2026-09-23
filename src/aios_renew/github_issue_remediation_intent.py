@@ -18,6 +18,7 @@ from .correction_dispatch import (
     CORRECTION_DISPATCH_ID_PATTERN,
     SUPPORTED_EXECUTORS,
 )
+from .execution_profile import ExecutionProfileError, bind_execution_profile
 
 
 class GitHubIssueRemediationIntentError(ValueError):
@@ -44,6 +45,8 @@ _REQUEST_KEYS = frozenset(
         "source_run_id",
         "finding_id",
         "executor",
+        "model",
+        "reasoning_effort",
     }
 )
 _SOURCE_RUN_PATTERN = re.compile(r"^RUN-[A-Za-z0-9_-]+-\d{3,}$")
@@ -73,15 +76,23 @@ class RemediationIntentRequest:
     finding_id: str
     executor: str
     approver: str
+    model: str = ""
+    reasoning_effort: str = ""
+    model_source: str = ""
+    effort_source: str = ""
 
     def github_outputs(self) -> str:
-        """Render only the four grammar-constrained intent selectors."""
+        """Render only the grammar-constrained profile-bound intent selectors."""
 
         return (
             f"correction_dispatch_id={self.correction_dispatch_id}\n"
             f"source_run_id={self.source_run_id}\n"
             f"finding_id={self.finding_id}\n"
             f"executor={self.executor}\n"
+            f"model={self.model}\n"
+            f"reasoning_effort={self.reasoning_effort}\n"
+            f"model_source={self.model_source}\n"
+            f"effort_source={self.effort_source}\n"
         )
 
 
@@ -314,11 +325,15 @@ def admit_event(
         finding_id=parsed.finding_id,
         executor=parsed.executor,
         approver=actor,
+        model=parsed.model,
+        reasoning_effort=parsed.reasoning_effort,
+        model_source=parsed.model_source,
+        effort_source=parsed.effort_source,
     )
 
 
 def parse_request(raw: bytes | str) -> RemediationIntentRequest:
-    """Parse only the versioned four-selector remediation intent."""
+    """Parse and resolve only the version-2 remediation intent."""
 
     source = raw.encode("utf-8", errors="strict") if isinstance(raw, str) else raw
     request = _mapping(
@@ -334,7 +349,7 @@ def parse_request(raw: bytes | str) -> RemediationIntentRequest:
         request.get("format") != _REQUEST_FORMAT
         or isinstance(version, bool)
         or not isinstance(version, int)
-        or version != 1
+        or version != 2
     ):
         raise GitHubIssueRemediationIntentError(
             "unsupported remediation intent request format or version"
@@ -343,6 +358,8 @@ def parse_request(raw: bytes | str) -> RemediationIntentRequest:
     source_run_id = request.get("source_run_id")
     finding_id = request.get("finding_id")
     executor = request.get("executor")
+    requested_model = request.get("model")
+    requested_effort = request.get("reasoning_effort")
     if (
         not isinstance(correction_dispatch_id, str)
         or not CORRECTION_DISPATCH_ID_PATTERN.fullmatch(correction_dispatch_id)
@@ -362,12 +379,29 @@ def parse_request(raw: bytes | str) -> RemediationIntentRequest:
         raise GitHubIssueRemediationIntentError("invalid finding_id")
     if not isinstance(executor, str) or executor not in SUPPORTED_EXECUTORS:
         raise GitHubIssueRemediationIntentError("unsupported executor")
+    if requested_model is not None and not isinstance(requested_model, str):
+        raise GitHubIssueRemediationIntentError("invalid model selection")
+    if requested_effort is not None and not isinstance(requested_effort, str):
+        raise GitHubIssueRemediationIntentError("invalid reasoning_effort selection")
+    try:
+        profile = bind_execution_profile(
+            run_id=correction_dispatch_id,
+            executor=executor,
+            model=requested_model,
+            reasoning_effort=requested_effort,
+        )
+    except ExecutionProfileError as exc:
+        raise GitHubIssueRemediationIntentError(str(exc)) from exc
     return RemediationIntentRequest(
         correction_dispatch_id=correction_dispatch_id,
         source_run_id=source_run_id,
         finding_id=finding_id,
         executor=executor,
         approver="",
+        model=profile.model,
+        reasoning_effort=profile.reasoning_effort,
+        model_source=profile.model_source,
+        effort_source=profile.effort_source,
     )
 
 
@@ -401,6 +435,10 @@ def render_admitted(request: RemediationIntentRequest) -> str:
         f"source_run_id: {request.source_run_id}\n"
         f"finding_id: {request.finding_id}\n"
         f"executor: {request.executor}\n"
+        f"model: {request.model}\n"
+        f"reasoning_effort: {request.reasoning_effort}\n"
+        f"model_source: {request.model_source}\n"
+        f"effort_source: {request.effort_source}\n"
         f"approver: {request.approver}"
     )
 

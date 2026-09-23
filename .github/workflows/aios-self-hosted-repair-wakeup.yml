@@ -19,6 +19,18 @@ on:
         description: "Human-selected coding Executor; leave empty for NO_CHANGE"
         required: false
         type: string
+      model:
+        required: false
+        type: string
+      reasoning_effort:
+        required: false
+        type: string
+      model_source:
+        required: false
+        type: string
+      effort_source:
+        required: false
+        type: string
   workflow_call:
     inputs:
       repair_dispatch_id:
@@ -31,6 +43,22 @@ on:
         required: true
         type: string
       executor:
+        required: false
+        type: string
+        default: ""
+      model:
+        required: false
+        type: string
+        default: ""
+      reasoning_effort:
+        required: false
+        type: string
+        default: ""
+      model_source:
+        required: false
+        type: string
+        default: ""
+      effort_source:
         required: false
         type: string
         default: ""
@@ -55,6 +83,10 @@ jobs:
       AIOS_FAILED_RUN_ID: ${{ inputs.failed_run_id }}
       AIOS_REPAIR_SHA: ${{ inputs.repair_sha }}
       AIOS_EXECUTOR: ${{ inputs.executor }}
+      AIOS_MODEL: ${{ inputs.model }}
+      AIOS_REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+      AIOS_MODEL_SOURCE: ${{ inputs.model_source }}
+      AIOS_EFFORT_SOURCE: ${{ inputs.effort_source }}
     steps:
       - name: Prepare exact transient control source
         env:
@@ -216,7 +248,13 @@ jobs:
           }
           $executorArgs = @()
           if (-not [string]::IsNullOrEmpty($env:AIOS_EXECUTOR)) {
-            $executorArgs = @('--executor', $env:AIOS_EXECUTOR)
+            $executorArgs = @(
+              '--executor', $env:AIOS_EXECUTOR,
+              '--model', $env:AIOS_MODEL,
+              '--reasoning-effort', $env:AIOS_REASONING_EFFORT,
+              '--model-source', $env:AIOS_MODEL_SOURCE,
+              '--effort-source', $env:AIOS_EFFORT_SOURCE
+            )
           }
           Write-OperationalState 'AIOS_INVOKED' ''
           $controlSource = $env:AIOS_CONTROL_ROOT

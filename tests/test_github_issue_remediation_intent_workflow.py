@@ -6,6 +6,7 @@ import pytest
 import yaml
 
 from aios_renew import operator
+from aios_renew.execution_profile import default_execution_profile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +32,7 @@ def test_issue_carrier_is_exact_opened_title_and_github_hosted_admission() -> No
     assert workflow["permissions"] == {"contents": "read", "issues": "write"}
 
 
-def test_carrier_calls_one_fixed_workflow_with_only_four_sanitized_selectors() -> None:
+def test_carrier_calls_one_fixed_workflow_with_profile_bound_selectors() -> None:
     workflow, text = _workflow(CARRIER_PATH)
     dispatch = workflow["jobs"]["dispatch"]
     assert dispatch["uses"] == (
@@ -42,6 +43,10 @@ def test_carrier_calls_one_fixed_workflow_with_only_four_sanitized_selectors() -
         "source_run_id",
         "finding_id",
         "executor",
+        "model",
+        "reasoning_effort",
+        "model_source",
+        "effort_source",
     }
     assert text.count("aios_renew.github_issue_remediation_intent") == 1
     for forbidden in (
@@ -65,6 +70,10 @@ def test_fixed_intent_workflow_preserves_self_hosted_boundary_and_a3_a6_command(
             "source_run_id",
             "finding_id",
             "executor",
+            "model",
+            "reasoning_effort",
+            "model_source",
+            "effort_source",
         }
     job = workflow["jobs"]["approve-and-wake"]
     assert job["runs-on"] == ["self-hosted", "windows", "x64", "aios-renew"]
@@ -96,6 +105,7 @@ def test_intent_cli_reprojects_exact_delivery_when_execution_fails(
         lambda root, **kwargs: projected.append((root, kwargs)),
     )
 
+    profile = default_execution_profile("codex", "AUTHORIZATION", tmp_path)
     exit_code = operator.main(
         [
             "approved-remediation-intent",
@@ -122,6 +132,10 @@ def test_intent_cli_reprojects_exact_delivery_when_execution_fails(
                     "source_run_id": "RUN-149-003",
                     "finding_id": "F3",
                     "executor": "codex",
+                    "model": profile.model,
+                    "reasoning_effort": profile.reasoning_effort,
+                    "model_source": profile.model_source,
+                    "effort_source": profile.effort_source,
                 },
             },
         )

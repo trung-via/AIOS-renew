@@ -22,6 +22,10 @@ jobs:
       source_run_id: ${{ steps.admission.outputs.source_run_id }}
       finding_id: ${{ steps.admission.outputs.finding_id }}
       executor: ${{ steps.admission.outputs.executor }}
+      model: ${{ steps.admission.outputs.model }}
+      reasoning_effort: ${{ steps.admission.outputs.reasoning_effort }}
+      model_source: ${{ steps.admission.outputs.model_source }}
+      effort_source: ${{ steps.admission.outputs.effort_source }}
     steps:
       - name: Check out fixed canonical main
         uses: actions/checkout@v4
@@ -57,6 +61,10 @@ jobs:
       source_run_id: ${{ needs.admit.outputs.source_run_id }}
       finding_id: ${{ needs.admit.outputs.finding_id }}
       executor: ${{ needs.admit.outputs.executor }}
+      model: ${{ needs.admit.outputs.model }}
+      reasoning_effort: ${{ needs.admit.outputs.reasoning_effort }}
+      model_source: ${{ needs.admit.outputs.model_source }}
+      effort_source: ${{ needs.admit.outputs.effort_source }}
 
   receipt:
     if: always()
@@ -73,6 +81,10 @@ jobs:
           AIOS_SOURCE_RUN_ID: ${{ needs.admit.outputs.source_run_id }}
           AIOS_FINDING_ID: ${{ needs.admit.outputs.finding_id }}
           AIOS_EXECUTOR: ${{ needs.admit.outputs.executor }}
+          AIOS_MODEL: ${{ needs.admit.outputs.model }}
+          AIOS_REASONING_EFFORT: ${{ needs.admit.outputs.reasoning_effort }}
+          AIOS_MODEL_SOURCE: ${{ needs.admit.outputs.model_source }}
+          AIOS_EFFORT_SOURCE: ${{ needs.admit.outputs.effort_source }}
         with:
           script: |
             const admitted = process.env.AIOS_ADMISSION_RESULT === 'success';
@@ -90,7 +102,7 @@ jobs:
                 family: 'REMEDIATION',
                 delivery: {kind: 'correction_dispatch_id', id: process.env.AIOS_CORRECTION_DISPATCH_ID},
                 boundary: dispatched ? 'SELF_HOST_COMPLETED' : 'OPERATIONAL_FAILED',
-                selectors: {source_run_id: process.env.AIOS_SOURCE_RUN_ID, finding_id: process.env.AIOS_FINDING_ID, executor: process.env.AIOS_EXECUTOR},
+                selectors: {source_run_id: process.env.AIOS_SOURCE_RUN_ID, finding_id: process.env.AIOS_FINDING_ID, executor: process.env.AIOS_EXECUTOR, model: process.env.AIOS_MODEL, reasoning_effort: process.env.AIOS_REASONING_EFFORT, model_source: process.env.AIOS_MODEL_SOURCE, effort_source: process.env.AIOS_EFFORT_SOURCE},
               };
               if (!dispatched) operationalReceipt.cause = {authority: 'CARRIER', phase: 'DOWNSTREAM_WORKFLOW', reason_code: 'DOWNSTREAM_WORKFLOW_FAILED'};
               lines.push(
@@ -98,6 +110,10 @@ jobs:
                 `source_run_id: ${process.env.AIOS_SOURCE_RUN_ID}`,
                 `finding_id: ${process.env.AIOS_FINDING_ID}`,
                 `executor: ${process.env.AIOS_EXECUTOR}`,
+                `model: ${process.env.AIOS_MODEL}`,
+                `reasoning_effort: ${process.env.AIOS_REASONING_EFFORT}`,
+                `model_source: ${process.env.AIOS_MODEL_SOURCE}`,
+                `effort_source: ${process.env.AIOS_EFFORT_SOURCE}`,
                 `detail: ${dispatched ? 'The reusable self-host workflow completed; this does not itself assert A3 approval, RUN, verification, DELTA review, or publication success.' : 'Carrier admission succeeded but the reusable self-host workflow failed; delivery is not successful.'}`,
                 `AIOS_OPERATIONAL_RECEIPT_V2=${JSON.stringify(operationalReceipt)}`,
               );

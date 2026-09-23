@@ -7,6 +7,7 @@ import pytest
 import yaml
 
 from aios_renew import operator
+from aios_renew.execution_profile import default_execution_profile
 from aios_renew.operational_receipt import WORKFLOW_REASONS
 
 
@@ -67,6 +68,10 @@ def test_carrier_calls_exactly_one_fixed_target_with_only_selectors() -> None:
         "failed_run_id",
         "repair_sha",
         "executor",
+        "model",
+        "reasoning_effort",
+        "model_source",
+        "effort_source",
     }
     assert text.count("aios_renew.github_issue_repair_wakeup") == 1
     forbidden_command = re.compile(
@@ -82,7 +87,16 @@ def test_carrier_calls_exactly_one_fixed_target_with_only_selectors() -> None:
 def test_fixed_target_has_manual_and_reusable_carriers_and_one_command_surface() -> None:
     workflow, text = _workflow(TARGET)
     assert set(workflow["on"]) == {"workflow_dispatch", "workflow_call"}
-    expected = {"repair_dispatch_id", "failed_run_id", "repair_sha", "executor"}
+    expected = {
+        "repair_dispatch_id",
+        "failed_run_id",
+        "repair_sha",
+        "executor",
+        "model",
+        "reasoning_effort",
+        "model_source",
+        "effort_source",
+    }
     assert set(workflow["on"]["workflow_dispatch"]["inputs"]) == expected
     assert set(workflow["on"]["workflow_call"]["inputs"]) == expected
     job = workflow["jobs"]["execute-repair"]
@@ -99,7 +113,16 @@ def test_fixed_target_has_manual_and_reusable_carriers_and_one_command_surface()
 
 def test_fixed_target_uses_exact_github_owned_provenance_gate() -> None:
     workflow, text = _workflow(TARGET)
-    expected_inputs = {"repair_dispatch_id", "failed_run_id", "repair_sha", "executor"}
+    expected_inputs = {
+        "repair_dispatch_id",
+        "failed_run_id",
+        "repair_sha",
+        "executor",
+        "model",
+        "reasoning_effort",
+        "model_source",
+        "effort_source",
+    }
     assert set(workflow["on"]["workflow_dispatch"]["inputs"]) == expected_inputs
     assert set(workflow["on"]["workflow_call"]["inputs"]) == expected_inputs
 
@@ -264,6 +287,7 @@ def test_repair_cli_reprojects_exact_delivery_when_execution_fails(
         lambda root, **kwargs: projected.append((root, kwargs)),
     )
 
+    profile = default_execution_profile("codex", "AUTHORIZATION", tmp_path)
     exit_code = operator.main(
         [
             "repair-wakeup",
@@ -288,6 +312,10 @@ def test_repair_cli_reprojects_exact_delivery_when_execution_fails(
                     "failed_run_id": "RUN-149-003",
                     "repair_sha": "a" * 40,
                     "executor": "codex",
+                    "model": profile.model,
+                    "reasoning_effort": profile.reasoning_effort,
+                    "model_source": profile.model_source,
+                    "effort_source": profile.effort_source,
                 },
             },
         )

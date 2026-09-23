@@ -20,6 +20,7 @@ from .dispatch_reconciliation import (
     SUPPORTED_EXECUTORS,
     TASK_ID_PATTERN,
 )
+from .execution_profile import ExecutionProfileError, bind_execution_profile
 
 
 class GitHubIssueWakeupError(ValueError):
@@ -48,6 +49,8 @@ _REQUEST_KEYS = frozenset(
         "task_blob_sha",
         "task_commit_sha",
         "executor",
+        "model",
+        "reasoning_effort",
     }
 )
 _MAX_CONFIGURED_BODY_BYTES = 16_384
@@ -75,9 +78,13 @@ class WakeupRequest:
     task_blob_sha: str
     task_commit_sha: str
     executor: str
+    model: str
+    reasoning_effort: str
+    model_source: str
+    effort_source: str
 
     def github_outputs(self) -> str:
-        """Render only the six grammar-constrained A1 inputs."""
+        """Render only the grammar-constrained profile-bound A1 inputs."""
 
         return (
             f"dispatch_id={self.dispatch_id}\n"
@@ -86,6 +93,10 @@ class WakeupRequest:
             f"task_blob_sha={self.task_blob_sha}\n"
             f"task_commit_sha={self.task_commit_sha}\n"
             f"executor={self.executor}\n"
+            f"model={self.model}\n"
+            f"reasoning_effort={self.reasoning_effort}\n"
+            f"model_source={self.model_source}\n"
+            f"effort_source={self.effort_source}\n"
         )
 
 
@@ -287,7 +298,7 @@ def admit_event(
 
 
 def parse_request(raw: bytes | str) -> WakeupRequest:
-    """Parse only the exact version-2 PRIMARY wakeup request."""
+    """Parse and resolve only the exact version-3 PRIMARY wakeup request."""
 
     source = raw.encode("utf-8", errors="strict") if isinstance(raw, str) else raw
     request = _mapping(_load_yaml(source, "wakeup request"), "wakeup request")
@@ -301,7 +312,7 @@ def parse_request(raw: bytes | str) -> WakeupRequest:
         request.get("format") != _REQUEST_FORMAT
         or isinstance(version, bool)
         or not isinstance(version, int)
-        or version != 2
+        or version != 3
     ):
         raise GitHubIssueWakeupError(
             "unsupported wakeup request format or version"
@@ -313,6 +324,8 @@ def parse_request(raw: bytes | str) -> WakeupRequest:
     task_blob_sha = request.get("task_blob_sha")
     task_commit_sha = request.get("task_commit_sha")
     executor = request.get("executor")
+    requested_model = request.get("model")
+    requested_effort = request.get("reasoning_effort")
     if not isinstance(dispatch_id, str) or not DISPATCH_ID_PATTERN.fullmatch(
         dispatch_id
     ):
@@ -335,6 +348,19 @@ def parse_request(raw: bytes | str) -> WakeupRequest:
         raise GitHubIssueWakeupError("invalid task_commit_sha")
     if not isinstance(executor, str) or executor not in SUPPORTED_EXECUTORS:
         raise GitHubIssueWakeupError("unsupported executor")
+    if requested_model is not None and not isinstance(requested_model, str):
+        raise GitHubIssueWakeupError("invalid model selection")
+    if requested_effort is not None and not isinstance(requested_effort, str):
+        raise GitHubIssueWakeupError("invalid reasoning_effort selection")
+    try:
+        profile = bind_execution_profile(
+            run_id=dispatch_id,
+            executor=executor,
+            model=requested_model,
+            reasoning_effort=requested_effort,
+        )
+    except ExecutionProfileError as exc:
+        raise GitHubIssueWakeupError(str(exc)) from exc
     return WakeupRequest(
         dispatch_id=dispatch_id,
         task_id=task_id,
@@ -342,6 +368,10 @@ def parse_request(raw: bytes | str) -> WakeupRequest:
         task_blob_sha=task_blob_sha,
         task_commit_sha=task_commit_sha,
         executor=executor,
+        model=profile.model,
+        reasoning_effort=profile.reasoning_effort,
+        model_source=profile.model_source,
+        effort_source=profile.effort_source,
     )
 
 
@@ -375,6 +405,10 @@ def render_admitted(request: WakeupRequest) -> str:
         f"task_blob_sha: {request.task_blob_sha}\n"
         f"task_commit_sha: {request.task_commit_sha}\n"
         f"executor: {request.executor}"
+        f"\nmodel: {request.model}\n"
+        f"reasoning_effort: {request.reasoning_effort}\n"
+        f"model_source: {request.model_source}\n"
+        f"effort_source: {request.effort_source}"
     )
 
 

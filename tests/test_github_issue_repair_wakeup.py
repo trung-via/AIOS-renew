@@ -25,13 +25,14 @@ POLICY = {
 def _body(*, executor: object = "codex", **updates: object) -> str:
     request: dict[str, object] = {
         "format": "AIOS_REPAIR_WAKEUP_REQUEST",
-        "version": 1,
+        "version": 2,
         "repair_dispatch_id": "repair-111",
         "failed_run_id": "RUN-111-001",
         "repair_sha": "a" * 40,
+        "executor": executor,
+        "model": None,
+        "reasoning_effort": None,
     }
-    if executor is not None:
-        request["executor"] = executor
     request.update(updates)
     return yaml.safe_dump(request, sort_keys=False)
 
@@ -63,13 +64,18 @@ def test_valid_issue_forwards_only_four_bounded_selectors(tmp_path: Path) -> Non
     policy = carrier.load_policy(_write(tmp_path, "policy.yaml", POLICY))
     request = carrier.admit_event(_write(tmp_path, "event.json", _event()), policy)
     assert request == carrier.RepairWakeupRequest(
-        "repair-111", "RUN-111-001", "a" * 40, "codex", "trung-via"
+        "repair-111", "RUN-111-001", "a" * 40, "codex", "trung-via",
+        "gpt-6-sol", "medium", "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT",
     )
     assert request.github_outputs().splitlines() == [
         "repair_dispatch_id=repair-111",
         "failed_run_id=RUN-111-001",
         f"repair_sha={'a' * 40}",
         "executor=codex",
+        "model=gpt-6-sol",
+        "reasoning_effort=medium",
+        "model_source=REPOSITORY_DEFAULT",
+        "effort_source=REPOSITORY_DEFAULT",
     ]
 
 
@@ -96,6 +102,10 @@ def test_downstream_policy_preserves_repair_family_and_actor_binding(
         "failed_run_id=RUN-111-001",
         f"repair_sha={'a' * 40}",
         "executor=codex",
+        "model=gpt-6-sol",
+        "reasoning_effort=medium",
+        "model_source=REPOSITORY_DEFAULT",
+        "effort_source=REPOSITORY_DEFAULT",
     ]
     event["repository"]["full_name"] = "trung-via/AIOS-renew"
     with pytest.raises(carrier.GitHubIssueRepairWakeupError, match="repository"):
@@ -125,7 +135,16 @@ def test_malformed_repository_and_actor_policy_fails_closed(
 def test_no_change_shape_omits_executor_authority() -> None:
     request = carrier.parse_request(_body(executor=None))
     assert request.executor is None
-    assert request.github_outputs().splitlines()[-1] == "executor="
+    assert request.github_outputs().splitlines() == [
+        "repair_dispatch_id=repair-111",
+        "failed_run_id=RUN-111-001",
+        f"repair_sha={'a' * 40}",
+        "executor=",
+        "model=",
+        "reasoning_effort=",
+        "model_source=",
+        "effort_source=",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -142,6 +161,7 @@ def test_no_change_shape_omits_executor_authority() -> None:
         ({"failed_run_id": "RUN;owned"}, "failed_run_id"),
         ({"repair_sha": "HEAD"}, "repair_sha"),
         ({"executor": "fallback"}, "executor"),
+        ({"version": 1}, "version"),
     ],
 )
 def test_untrusted_authority_and_malformed_selectors_fail_closed(

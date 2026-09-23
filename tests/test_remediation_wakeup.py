@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from aios_renew import correction_dispatch, operator, remote_surface
+from aios_renew.execution_profile import default_execution_profile
 
 
 def test_approved_remediation_workflow_is_bounded_manual_self_hosted_surface() -> None:
@@ -20,6 +21,10 @@ def test_approved_remediation_workflow_is_bounded_manual_self_hosted_surface() -
     assert "${{ inputs.source_run_id }}" in source
     assert "${{ inputs.finding_id }}" in source
     assert "${{ inputs.executor }}" in source
+    assert "${{ inputs.model }}" in source
+    assert "${{ inputs.reasoning_effort }}" in source
+    assert "${{ inputs.model_source }}" in source
+    assert "${{ inputs.effort_source }}" in source
     assert "$aiosExitCode = $LASTEXITCODE" in source
     assert "exit $aiosExitCode" in source
 
@@ -57,6 +62,7 @@ def test_remediation_wakeup_cli_reprojects_exact_delivery_when_dispatch_fails(
         lambda root, **kwargs: projected.append((root, kwargs)),
     )
 
+    profile = default_execution_profile("codex", "AUTHORIZATION", tmp_path)
     exit_code = operator.main(
         [
             "approved-remediation-wakeup",
@@ -81,6 +87,10 @@ def test_remediation_wakeup_cli_reprojects_exact_delivery_when_dispatch_fails(
                     "source_run_id": "RUN-149-003",
                     "finding_id": "F3",
                     "executor": "codex",
+                    "model": profile.model,
+                    "reasoning_effort": profile.reasoning_effort,
+                    "model_source": profile.model_source,
+                    "effort_source": profile.effort_source,
                 },
             },
         )
