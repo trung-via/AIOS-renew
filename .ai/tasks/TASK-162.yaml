@@ -1,0 +1,270 @@
+task_id: TASK-162
+revision: 1
+
+goal: >
+  Implement Execution Profile Foundation v1 as an additive, executor-neutral
+  operational layer that centralizes the current deterministic Codex and
+  Antigravity model/effort defaults in one repository-owned policy, resolves and
+  validates exact immutable execution profiles, binds and persists the exact
+  profile before every profile-managed native PRIMARY, REMEDIATION, or REPAIR
+  invocation, transports that provenance with canonical terminal artifacts, and
+  injects the exact resolved values into the selected native adapter. Preserve
+  current production defaults and Human/remote selection behavior until TASK-163,
+  while making future compatible default-model changes require policy change plus
+  focused validation/smoke rather than adapter, Dispatcher, RUN, carrier, or
+  lifecycle redesign.
+
+problem: >
+  TASK-061 made native model selection deterministic by hard-coding
+  gpt-5.6-sol/high in the Codex adapter and gemini-3.8-flash/high in the
+  Antigravity adapter. That solved ambient-machine drift but made adapters own
+  default-selection policy, left canonical RUN identity unable to attribute the
+  exact native model/effort actually requested, and would force repeated source
+  redesign as compatible model generations evolve. The Human has now authorized
+  the execution-profile-selection-v1 side-track: TASK-162 must build the
+  deterministic profile/provenance foundation without yet exposing Human
+  per-execution overrides or activating the new GPT-6 Sol Medium / Gemini 3.8
+  Flash Medium defaults. Exact profile provenance must survive terminal transport,
+  not exist only on one self-host filesystem, while frozen TASK/RUN semantics and
+  all execution, verification, review, and publication authorities remain intact.
+
+assumptions:
+  - >
+    Canonical main at TASK-162 authoring is
+    620fc014edb746bc3f394595d556242db9327bfc and the unique canonical NEXT
+    roadmap item is execution-profile-foundation-v1 bound to TASK-162 revision 1.
+  - >
+    docs/AIOS-EXECUTION-PROFILE-SELECTION.md is the Human-approved planning
+    baseline for this temporary side-track. TASK-163 owns Human-facing exact
+    model/effort selection, versioned carrier/dispatch binding, and activation of
+    Codex gpt-6-sol/medium plus Antigravity gemini-3.8-flash/medium defaults.
+  - >
+    TASK-061 historical lineage remains immutable and defines the production
+    compatibility baseline entering this TASK: Codex gpt-5.6-sol/high and
+    Antigravity gemini-3.8-flash/high, with unavailable native models failing
+    through the existing no-retry/no-fallback execution path.
+  - >
+    Canonical RUN v0.1 stores Executor identity but intentionally does not store
+    model/effort metadata. Additive subordinate operational provenance is therefore
+    required rather than changing frozen RUN, RunLease, or ExecutorBoundary schemas.
+  - >
+    Existing terminal transport already publishes immutable RUN, RESULT/FAILURE,
+    optional REPAIR lineage, and observation facts under canonical artifact refs.
+    Execution-profile provenance can remain a separate optional transport artifact
+    so historical terminals without it remain valid and readable.
+  - >
+    Antigravity MiniMax is a distinct supported Executor and is outside this
+    profile-foundation change. Its MiniMax-M3 selection semantics remain unchanged.
+  - >
+    Runtime owns canonical verification and EVIDENCE; Reviewer owns semantic
+    verdict; Publisher owns publication; Human owns explicit provider/model
+    selection authority. This TASK creates no new routing or semantic authority.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-061.yaml
+    - src/aios_renew/run.py
+    - src/aios_renew/executor.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/run_observation.py
+    - scripts/codex_smoke.py
+    - scripts/antigravity_smoke.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_dispatcher.py
+    - tests/test_operator.py
+    - tests/test_review_transport.py
+  modify:
+    - .ai/executor-profiles.yaml
+    - src/aios_renew/execution_profile.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - scripts/codex_smoke.py
+    - scripts/antigravity_smoke.py
+    - tests/test_execution_profile.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_dispatcher.py
+    - tests/test_operator.py
+    - tests/test_review_transport.py
+
+non_goals:
+  - >
+    Activate gpt-6-sol/medium or any other new production default; TASK-162 must
+    preserve the TASK-061 gpt-5.6-sol/high and gemini-3.8-flash/high defaults.
+  - >
+    Add Human-facing --model/--effort arguments, change aios run/continue/remediate/
+    repair syntax, or modify GitHub PRIMARY, REMEDIATION, REPAIR carrier/workflow
+    request schemas or dispatch journals. Those changes belong to TASK-163.
+  - >
+    Add automatic model routing, model scoring, task-difficulty classification,
+    adaptive effort selection, fallback, retry, failover, executor substitution,
+    or speculative/multi-model execution.
+  - >
+    Globally allowlist provider model identifiers or require source-code changes
+    merely because a compatible future model identifier is new.
+  - >
+    Change Antigravity MiniMax model selection, adoption, native command behavior,
+    or profile semantics.
+  - >
+    Change canonical TASK schema, frozen RUN schema, RunLease, ExecutorBoundary,
+    mutation/sandbox authority, Runtime verification, RESULT/EVIDENCE truth,
+    Reviewer verdict semantics, Publisher authority, or roadmap advancement.
+  - >
+    Reinterpret, backfill, migrate, or invalidate historical TASK/RUN/RESULT/
+    FAILURE/REVIEW/REMEDIATION/REPAIR or transport artifacts that predate execution
+    profiles.
+  - >
+    Require a real network/provider smoke or account entitlement as canonical
+    TASK-162 verification; TASK-163 owns real end-to-end activation proof.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Establish exactly one repository-owned execution-profile policy authority for
+      the managed Codex and Antigravity defaults. Adapter-owned duplicated default
+      model/effort policy is forbidden. The policy must preserve gpt-5.6-sol/high
+      for Codex and gemini-3.8-flash/high for Antigravity throughout TASK-162.
+    - >
+      Model identifiers are opaque provider-native identifiers subject only to
+      bounded deterministic syntax/size validation. Do not introduce a repository-
+      global model allowlist. A syntactically valid synthetic future model identifier
+      must be able to flow through profile validation and exact native command
+      construction without adding that identifier to source code.
+    - >
+      Reasoning/effort capability validation must be deterministic and
+      repository-owned for each managed Executor. Invalid effort values must fail
+      before native invocation. Capability validation must not score, rank, choose,
+      downgrade, or substitute a model or effort.
+    - >
+      A resolved execution profile must bind at minimum exact run_id, executor,
+      model, reasoning_effort, and deterministic source attribution for model and
+      effort. The profile must be immutable once bound to one admitted native
+      execution authorization.
+    - >
+      For canonical Operator paths using Codex or Antigravity, resolve/validate the
+      profile before native invocation, persist an immutable profile sidecar only
+      after exact RUN identity exists, and guarantee that the sidecar is durably
+      present before the native runner is entered. Failure to validate or persist
+      the profile must invoke zero native Executors.
+    - >
+      Re-persisting an identical bound profile for the same RUN may be idempotent;
+      conflicting executor/model/effort/source content for an existing RUN profile
+      must fail closed before invocation. A later repository default change must
+      never alter an already-bound RUN profile.
+    - >
+      Dispatcher selection remains exactly-one and executor-neutral. For managed
+      Executors it must require consistency among selected Executor, RUN.executor,
+      and profile.executor, then inject the exact bound profile into the native
+      adapter. It must not inspect TASK difficulty, cost, benchmark history, or
+      choose another profile.
+    - >
+      Codex and Antigravity PRIMARY, REMEDIATION, and REPAIR command construction
+      must consume the same exact bound profile values. Preserve all existing
+      schema-output, timeout, sandbox/mutation, direct-execution instruction,
+      structural ResultPackage, and no-retry/no-fallback semantics.
+    - >
+      Direct repository smoke utilities may be adjusted only as needed to consume
+      the single repository-owned default policy rather than relying on adapter-
+      owned defaults. They must remain isolated utility surfaces and must not become
+      a second profile authority or canonical TASK-162 network verification path.
+    - >
+      Profile provenance must survive both RESULT and FAILURE terminal transport as
+      a separate immutable execution-profile artifact associated with the exact RUN.
+      Existing transport idempotency/conflict checks must include the profile when
+      one is expected. Historical terminal artifacts without a profile remain valid
+      and must not be reinterpreted or rejected.
+    - >
+      Do not fabricate an execution profile for pre-RUN admission failures,
+      direct-candidate acceptance, reusable-package paths, verification-only
+      recovery, or any flow that does not actually authorize a new managed native
+      Executor invocation. If a native invocation begins and later fails, its exact
+      persisted profile provenance must remain available.
+    - >
+      Future compatible default-model evolution is a required architectural
+      invariant: when an already-supported Executor keeps the same native model/
+      effort invocation contract, changing its default model must require only
+      repository-owned profile-policy change plus focused validation/smoke, not
+      adapter, Dispatcher, frozen RUN, carrier, or lifecycle redesign.
+    - >
+      Do not modify files outside scope.modify and do not push or publish from
+      Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      One strict repository-owned execution-profile policy and one provider-neutral
+      profile contract/resolver exist for Codex and Antigravity, preserve the exact
+      TASK-061 defaults, reject malformed policy/profile data, and create no model
+      router or semantic authority.
+  - id: AC2
+    condition: >
+      Codex and Antigravity adapters no longer own duplicated default-selection
+      policy; exact injected profile model/effort values reach PRIMARY,
+      REMEDIATION, and REPAIR native command arguments while existing timeout,
+      sandbox/mutation, schema, prompt, and ResultPackage behavior remains unchanged.
+  - id: AC3
+    condition: >
+      Focused regression coverage proves a bounded synthetic future model identifier
+      and valid alternate effort can reach exact native command construction without
+      adding the model identifier to a global allowlist or changing adapter/
+      Dispatcher architecture, while invalid effort fails before native invocation.
+  - id: AC4
+    condition: >
+      Every new canonical Codex/Antigravity native invocation through PRIMARY,
+      REMEDIATION, and REPAIR has one exact immutable execution-profile sidecar
+      durably persisted before native runner entry; executor/profile mismatch or a
+      conflicting pre-existing sidecar invokes zero native Executors.
+  - id: AC5
+    condition: >
+      Identical profile persistence is deterministic/idempotent, a later default
+      policy change cannot alter an already-bound RUN profile, and native execution
+      failure leaves the exact attempted profile provenance available.
+  - id: AC6
+    condition: >
+      Successful and failed managed RUN terminal artifact refs include the exact
+      execution-profile provenance with idempotent content checks, while historical
+      terminal artifacts lacking that optional artifact remain readable and valid.
+  - id: AC7
+    condition: >
+      No-native-invocation paths create no misleading execution-profile artifact,
+      and Antigravity MiniMax behavior remains unchanged.
+  - id: AC8
+    condition: >
+      TASK-162 leaves Human-facing CLI/continue and PRIMARY/REMEDIATION/REPAIR
+      carrier/dispatch selection semantics unchanged and leaves production defaults
+      at Codex gpt-5.6-sol/high and Antigravity gemini-3.8-flash/high; TASK-163
+      remains the sole activation milestone for new defaults and explicit Human
+      overrides.
+  - id: AC9
+    condition: >
+      Frozen TASK/RUN/RunLease/ExecutorBoundary semantics, sandbox/mutation
+      authority, Runtime verification/EVIDENCE, Reviewer, Publisher, roadmap, and
+      no-retry/no-fallback boundaries remain unchanged, and a future compatible
+      default-model update can be expressed as profile-policy change plus focused
+      validation/smoke without redesigning those boundaries.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_execution_profile.py tests/test_dispatcher.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py tests/test_review_transport.py
+    - python -m pytest -q tests/test_operator.py -k execution_profile
+    - git diff --check
