@@ -30,6 +30,22 @@ on:
         options:
           - codex
           - antigravity
+      model:
+        description: "Exact resolved provider-native model"
+        required: true
+        type: string
+      reasoning_effort:
+        description: "Exact resolved reasoning effort"
+        required: true
+        type: string
+      model_source:
+        description: "Model source attribution"
+        required: true
+        type: string
+      effort_source:
+        description: "Effort source attribution"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -51,6 +67,10 @@ jobs:
       AIOS_TASK_BLOB_SHA: ${{ inputs.task_blob_sha }}
       AIOS_TASK_COMMIT_SHA: ${{ inputs.task_commit_sha }}
       AIOS_EXECUTOR: ${{ inputs.executor }}
+      AIOS_MODEL: ${{ inputs.model }}
+      AIOS_REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+      AIOS_MODEL_SOURCE: ${{ inputs.model_source }}
+      AIOS_EFFORT_SOURCE: ${{ inputs.effort_source }}
     steps:
       - name: Prepare exact transient control source
         env:
@@ -207,7 +227,7 @@ jobs:
           $controlSource = $env:AIOS_CONTROL_ROOT
           $entry = Join-Path $controlSource 'scripts/aios_control_entry.py'
           Remove-Item Env:AIOS_CONTROL_ROOT, Env:AIOS_CONTROL_REF, Env:AIOS_CONTROL_PREPARED -ErrorAction SilentlyContinue
-          python $entry $controlSource wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --task-revision $env:AIOS_TASK_REVISION --task-blob-sha $env:AIOS_TASK_BLOB_SHA --task-commit-sha $env:AIOS_TASK_COMMIT_SHA --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
+          python $entry $controlSource wakeup $env:AIOS_DISPATCH_ID $env:AIOS_TASK_ID --task-revision $env:AIOS_TASK_REVISION --task-blob-sha $env:AIOS_TASK_BLOB_SHA --task-commit-sha $env:AIOS_TASK_COMMIT_SHA --executor $env:AIOS_EXECUTOR --model $env:AIOS_MODEL --reasoning-effort $env:AIOS_REASONING_EFFORT --model-source $env:AIOS_MODEL_SOURCE --effort-source $env:AIOS_EFFORT_SOURCE --repo $env:AIOS_REPO_ROOT
           $aiosExitCode = $LASTEXITCODE
           if ($aiosExitCode -ne 0) {
             exit $aiosExitCode

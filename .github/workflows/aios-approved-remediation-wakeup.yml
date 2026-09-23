@@ -22,6 +22,18 @@ on:
         options:
           - codex
           - antigravity
+      model:
+        required: true
+        type: string
+      reasoning_effort:
+        required: true
+        type: string
+      model_source:
+        required: true
+        type: string
+      effort_source:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -41,6 +53,10 @@ jobs:
       AIOS_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
       AIOS_FINDING_ID: ${{ inputs.finding_id }}
       AIOS_EXECUTOR: ${{ inputs.executor }}
+      AIOS_MODEL: ${{ inputs.model }}
+      AIOS_REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+      AIOS_MODEL_SOURCE: ${{ inputs.model_source }}
+      AIOS_EFFORT_SOURCE: ${{ inputs.effort_source }}
     steps:
       - name: Prepare exact transient control source
         env:
@@ -147,7 +163,7 @@ jobs:
           $controlSource = $env:AIOS_CONTROL_ROOT
           $entry = Join-Path $controlSource 'scripts/aios_control_entry.py'
           Remove-Item Env:AIOS_CONTROL_ROOT, Env:AIOS_CONTROL_REF, Env:AIOS_CONTROL_PREPARED -ErrorAction SilentlyContinue
-          python $entry $controlSource approved-remediation-wakeup $env:AIOS_CORRECTION_DISPATCH_ID $env:AIOS_SOURCE_RUN_ID $env:AIOS_FINDING_ID --executor $env:AIOS_EXECUTOR --repo $env:AIOS_REPO_ROOT
+          python $entry $controlSource approved-remediation-wakeup $env:AIOS_CORRECTION_DISPATCH_ID $env:AIOS_SOURCE_RUN_ID $env:AIOS_FINDING_ID --executor $env:AIOS_EXECUTOR --model $env:AIOS_MODEL --reasoning-effort $env:AIOS_REASONING_EFFORT --model-source $env:AIOS_MODEL_SOURCE --effort-source $env:AIOS_EFFORT_SOURCE --repo $env:AIOS_REPO_ROOT
           $aiosExitCode = $LASTEXITCODE
           if ($aiosExitCode -ne 0) {
             exit $aiosExitCode

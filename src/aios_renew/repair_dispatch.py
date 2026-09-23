@@ -11,6 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
 
+from .execution_profile import (
+    PROFILE_IDENTITY_FIELDS,
+    ResolvedExecutionProfile,
+    execution_profile_identity,
+    parse_execution_profile,
+    validate_profile_identity,
+)
+
 
 REPAIR_DISPATCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 FAILED_RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9_-]+-\d{3,}$")
@@ -23,7 +31,7 @@ IN_PROGRESS_EXIT_CODE = 75
 RECONCILIATION_BLOCKED_EXIT_CODE = 76
 _TERMINAL = frozenset({"SUCCEEDED", "FAILED"})
 _NONTERMINAL = frozenset({"STARTED", "IN_PROGRESS", "RECONCILIATION_BLOCKED"})
-_RECORD_KEYS = frozenset(
+_V1_RECORD_KEYS = frozenset(
     {
         "version",
         "repair_dispatch_id",
@@ -38,6 +46,22 @@ _RECORD_KEYS = frozenset(
         "detail",
     }
 )
+_V2_RECORD_KEYS = _V1_RECORD_KEYS | frozenset(PROFILE_IDENTITY_FIELDS[1:])
+
+
+def _profile_binding(
+    executor: str | None, execution_profile: ResolvedExecutionProfile | None
+) -> dict[str, str | None]:
+    if executor is None:
+        if execution_profile is not None:
+            raise RepairDispatchError("NO_CHANGE REPAIR forbids an execution profile")
+        return {field: None for field in PROFILE_IDENTITY_FIELDS[1:]}
+    if execution_profile is None:
+        raise RepairDispatchError("coding REPAIR requires a resolved execution profile")
+    identity = execution_profile_identity(execution_profile)
+    if identity["executor"] != executor:
+        raise RepairDispatchError("execution profile executor does not match REPAIR")
+    return {field: identity[field] for field in PROFILE_IDENTITY_FIELDS[1:]}
 
 
 class RepairDispatchError(RuntimeError):
@@ -88,6 +112,7 @@ def reject_existing_selector_collision(
     failed_run_id: str,
     repair_sha: str,
     executor: str | None,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> None:
     """Reject changed carrier selectors before canonical REPAIR resolution."""
 
@@ -104,6 +129,13 @@ def reject_existing_selector_collision(
             repair_sha=repair_sha,
             executor=executor,
         )
+        if record["version"] == 2 and any(
+            record[field] != value
+            for field, value in _profile_binding(executor, execution_profile).items()
+        ):
+            raise RepairDispatchError(
+                "repair_dispatch_id collision: immutable profile binding differs"
+            )
 
 
 def replay_existing_repair_dispatch(
@@ -113,6 +145,7 @@ def replay_existing_repair_dispatch(
     failed_run_id: str,
     repair_sha: str,
     executor: str | None,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> RepairDispatchOutcome | None:
     """Return/reconcile an existing exact delivery without reacquiring authority."""
 
@@ -130,6 +163,13 @@ def replay_existing_repair_dispatch(
             repair_sha=repair_sha,
             executor=executor,
         )
+        if record["version"] == 2 and any(
+            record[field] != value
+            for field, value in _profile_binding(executor, execution_profile).items()
+        ):
+            raise RepairDispatchError(
+                "repair_dispatch_id collision: immutable profile binding differs"
+            )
         if record["status"] in _TERMINAL:
             return _outcome(record, replayed=True)
         if _lock_is_held(active_path):
@@ -157,11 +197,17 @@ def execute_repair_dispatch(
     task_id: str,
     action: str,
     invoke_repair: Callable[[], RepairInvocation],
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> RepairDispatchOutcome:
     """Invoke ``run_repair`` at most once, or reconcile its exact bound RUN."""
 
     _validate_binding(
         repair_dispatch_id, failed_run_id, repair_sha, executor, task_id, action
+    )
+    profile = (
+        _profile_binding(executor, execution_profile)
+        if execution_profile is not None or executor is None
+        else None
     )
     record_path = _record_path(state_root, repair_dispatch_id)
     active_path = record_path.with_suffix(".active.lock")
@@ -178,6 +224,7 @@ def execute_repair_dispatch(
                 executor=executor,
                 task_id=task_id,
                 action=action,
+                **(profile or {}),
             )
             if record["status"] in _TERMINAL:
                 return _outcome(record, replayed=True)
@@ -195,14 +242,17 @@ def execute_repair_dispatch(
             _write_record(record_path, reconciled)
             return _outcome(reconciled, replayed=True)
 
+        if profile is None:
+            raise RepairDispatchError("coding REPAIR requires a resolved execution profile")
         record = {
-            "version": 1,
+            "version": 2,
             "repair_dispatch_id": repair_dispatch_id,
             "failed_run_id": failed_run_id,
             "repair_sha": repair_sha,
             "executor": executor,
             "task_id": task_id,
             "action": action,
+            **profile,
             "status": "STARTED",
             "run_id": None,
             "exit_code": None,
@@ -225,7 +275,11 @@ def execute_repair_dispatch(
 
 
 def bind_repair_run(
-    *, state_root: Path, repair_dispatch_id: str, run_id: str
+    *,
+    state_root: Path,
+    repair_dispatch_id: str,
+    run_id: str,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> None:
     """Bind the exact continuation RUN before any coding Executor can run."""
 
@@ -246,6 +300,15 @@ def bind_repair_run(
             raise RepairDispatchError("repair dispatch is not awaiting a RUN")
         if not _run_matches_record(state_root, run_id, record):
             raise RepairDispatchError("admitted REPAIR RUN does not match dispatch")
+        if record["version"] == 2 and any(
+            record[field] != value
+            for field, value in _profile_binding(
+                record["executor"], execution_profile
+            ).items()
+        ):
+            raise RepairDispatchError(
+                "admitted REPAIR profile does not match durable dispatch"
+            )
         _write_record(
             record_path,
             {
@@ -306,6 +369,13 @@ def _require_same_selectors(record: Mapping[str, Any], **expected: Any) -> None:
 
 def _require_same_binding(record: Mapping[str, Any], **expected: Any) -> None:
     _require_same_selectors(record, **expected)
+    if record["version"] == 2 and any(
+        field not in expected or record[field] != expected[field]
+        for field in PROFILE_IDENTITY_FIELDS[1:]
+    ):
+        raise RepairDispatchError(
+            "repair_dispatch_id collision: immutable profile binding differs"
+        )
 
 
 def _record_path(state_root: Path, repair_dispatch_id: str) -> Path:
@@ -318,9 +388,11 @@ def _read_record(path: Path) -> dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise RepairDispatchError("invalid repair dispatch record") from exc
-    if not isinstance(data, dict) or set(data) != _RECORD_KEYS:
+    version = data.get("version") if isinstance(data, dict) else None
+    expected_keys = _V1_RECORD_KEYS if version == 1 else _V2_RECORD_KEYS
+    if not isinstance(data, dict) or set(data) != expected_keys:
         raise RepairDispatchError("invalid repair dispatch record shape")
-    if data.get("version") != 1 or data.get("status") not in _TERMINAL | _NONTERMINAL:
+    if version not in (1, 2) or data.get("status") not in _TERMINAL | _NONTERMINAL:
         raise RepairDispatchError("invalid repair dispatch record state")
     try:
         _validate_binding(
@@ -333,6 +405,21 @@ def _read_record(path: Path) -> dict[str, Any]:
         )
     except (KeyError, RepairDispatchError) as exc:
         raise RepairDispatchError("invalid repair dispatch binding") from exc
+    if version == 2:
+        if data["executor"] is None:
+            if any(data[field] is not None for field in PROFILE_IDENTITY_FIELDS[1:]):
+                raise RepairDispatchError("NO_CHANGE dispatch has a profile binding")
+        else:
+            try:
+                validate_profile_identity(
+                    executor=data["executor"],
+                    model=data["model"],
+                    reasoning_effort=data["reasoning_effort"],
+                    model_source=data["model_source"],
+                    effort_source=data["effort_source"],
+                )
+            except Exception as exc:
+                raise RepairDispatchError("invalid repair profile binding") from exc
     run_id = data.get("run_id")
     if run_id is not None and (
         not isinstance(run_id, str) or not FAILED_RUN_ID_PATTERN.fullmatch(run_id)
@@ -383,7 +470,7 @@ def _run_matches_record(
     if not isinstance(task, Mapping) or not isinstance(authorization, Mapping):
         return False
     expected_executor = record["executor"]
-    return (
+    matches = (
         run.get("run_id") == run_id
         and task.get("id") == record["task_id"]
         and execution.get("failed_run_id") == record["failed_run_id"]
@@ -391,6 +478,20 @@ def _run_matches_record(
         and authorization.get("failed_run_id") == record["failed_run_id"]
         and authorization.get("action") == record["action"]
         and (expected_executor is None or run.get("executor") == expected_executor)
+    )
+    if not matches or record["version"] == 1 or expected_executor is None:
+        return matches
+    try:
+        profile = parse_execution_profile(
+            (state_root / "execution-profiles" / f"{run_id}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except Exception:
+        return False
+    identity = execution_profile_identity(profile)
+    return profile.run_id == run_id and all(
+        identity[field] == record[field] for field in PROFILE_IDENTITY_FIELDS
     )
 
 

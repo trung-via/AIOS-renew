@@ -12,6 +12,13 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from .remote_surface import ApprovedRemediation
+from .execution_profile import (
+    PROFILE_IDENTITY_FIELDS,
+    ResolvedExecutionProfile,
+    execution_profile_identity,
+    parse_execution_profile,
+    validate_profile_identity,
+)
 
 
 CORRECTION_DISPATCH_ID_PATTERN = re.compile(
@@ -25,7 +32,7 @@ _NONTERMINAL = frozenset({"STARTED", "IN_PROGRESS", "RECONCILIATION_BLOCKED"})
 _RUN_ID_PATTERN = re.compile(r"^RUN-[A-Za-z0-9_-]+-\d{3,}$")
 _TASK_ID_PATTERN = re.compile(r"^TASK-[A-Za-z0-9_-]+$")
 _SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
-_RECORD_KEYS = frozenset(
+_V1_RECORD_KEYS = frozenset(
     {
         "version",
         "correction_dispatch_id",
@@ -47,6 +54,7 @@ _RECORD_KEYS = frozenset(
         "detail",
     }
 )
+_V2_RECORD_KEYS = _V1_RECORD_KEYS | frozenset(PROFILE_IDENTITY_FIELDS[1:])
 
 
 class CorrectionDispatchError(RuntimeError):
@@ -97,6 +105,7 @@ def reject_existing_selector_collision(
     source_run_id: str,
     finding_id: str,
     executor: str,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> None:
     """Fail a reused id with changed remote selectors before approval lookup."""
 
@@ -119,6 +128,19 @@ def reject_existing_selector_collision(
             raise CorrectionDispatchError(
                 "correction_dispatch_id collision: immutable request binding differs"
             )
+        if record["version"] == 2:
+            profile = (
+                execution_profile_identity(execution_profile)
+                if execution_profile is not None
+                else None
+            )
+            if profile is None or any(
+                record[field] != profile[field]
+                for field in PROFILE_IDENTITY_FIELDS[1:]
+            ):
+                raise CorrectionDispatchError(
+                    "correction_dispatch_id collision: immutable profile binding differs"
+                )
 
 
 def execute_correction_dispatch(
@@ -130,12 +152,20 @@ def execute_correction_dispatch(
     executor: str,
     approval: ApprovedRemediation,
     invoke_remediation: Callable[[], CorrectionInvocation],
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> CorrectionDispatchOutcome:
     """Invoke canonical REMEDIATION once or reconcile without re-execution."""
 
     _validate_request(
         correction_dispatch_id, source_run_id, finding_id, executor, approval
     )
+    profile = (
+        execution_profile_identity(execution_profile)
+        if execution_profile is not None
+        else None
+    )
+    if profile is not None and profile["executor"] != executor:
+        raise CorrectionDispatchError("execution profile executor does not match dispatch")
     records = state_root / "correction-dispatches"
     key = hashlib.sha256(correction_dispatch_id.encode("ascii")).hexdigest()
     record_path = records / f"{key}.json"
@@ -152,6 +182,7 @@ def execute_correction_dispatch(
                 finding_id=finding_id,
                 executor=executor,
                 approval=approval,
+                execution_profile=execution_profile,
             )
             if record["status"] in _TERMINAL:
                 return _outcome(record, replayed=True)
@@ -169,13 +200,16 @@ def execute_correction_dispatch(
             _write_record(record_path, reconciled)
             return _outcome(reconciled, replayed=True)
 
+        if profile is None:
+            raise CorrectionDispatchError("complete resolved execution profile is required")
         record = {
-            "version": 1,
+            "version": 2,
             "correction_dispatch_id": correction_dispatch_id,
             "source_run_id": source_run_id,
             "finding_id": finding_id,
             "executor": executor,
             **asdict(approval),
+            **{key: profile[key] for key in PROFILE_IDENTITY_FIELDS[1:]},
             "status": "STARTED",
             "pre_run_ids": list(_remediation_run_ids(state_root / "runs")),
             "run_id": None,
@@ -202,7 +236,11 @@ def execute_correction_dispatch(
 
 
 def bind_correction_run(
-    *, state_root: Path, correction_dispatch_id: str, run_id: str
+    *,
+    state_root: Path,
+    correction_dispatch_id: str,
+    run_id: str,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> None:
     """Bind the canonical REMEDIATION RUN at its existing admission boundary."""
 
@@ -229,6 +267,14 @@ def bind_correction_run(
             raise CorrectionDispatchError(
                 "admitted REMEDIATION RUN does not match correction dispatch"
             )
+        if record["version"] == 2:
+            if execution_profile is None:
+                raise CorrectionDispatchError("REMEDIATION execution profile is missing")
+            identity = execution_profile_identity(execution_profile)
+            if any(identity[field] != record[field] for field in PROFILE_IDENTITY_FIELDS):
+                raise CorrectionDispatchError(
+                    "admitted REMEDIATION profile does not match correction dispatch"
+                )
         _write_record(
             record_path,
             {
@@ -305,6 +351,7 @@ def _require_same_binding(
     finding_id: str,
     executor: str,
     approval: ApprovedRemediation,
+    execution_profile: ResolvedExecutionProfile | None,
 ) -> None:
     expected = {
         "correction_dispatch_id": correction_dispatch_id,
@@ -317,6 +364,18 @@ def _require_same_binding(
         raise CorrectionDispatchError(
             "correction_dispatch_id collision: immutable request binding differs"
         )
+    if record["version"] == 2:
+        identity = (
+            execution_profile_identity(execution_profile)
+            if execution_profile is not None
+            else None
+        )
+        if identity is None or any(
+            record[field] != identity[field] for field in PROFILE_IDENTITY_FIELDS[1:]
+        ):
+            raise CorrectionDispatchError(
+                "correction_dispatch_id collision: immutable profile binding differs"
+            )
 
 
 def _read_record(path: Path) -> dict[str, Any]:
@@ -324,10 +383,12 @@ def _read_record(path: Path) -> dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CorrectionDispatchError("invalid correction dispatch record") from exc
-    if not isinstance(data, dict) or set(data) != _RECORD_KEYS:
+    version = data.get("version") if isinstance(data, dict) else None
+    expected_keys = _V1_RECORD_KEYS if version == 1 else _V2_RECORD_KEYS
+    if not isinstance(data, dict) or set(data) != expected_keys:
         raise CorrectionDispatchError("invalid correction dispatch record shape")
     if (
-        data.get("version") != 1
+        version not in (1, 2)
         or data.get("status") not in _TERMINAL | _NONTERMINAL
     ):
         raise CorrectionDispatchError("invalid correction dispatch record state")
@@ -362,6 +423,17 @@ def _read_record(path: Path) -> dict[str, Any]:
         or not data["approver"]
     ):
         raise CorrectionDispatchError("invalid approved remediation binding")
+    if version == 2:
+        try:
+            validate_profile_identity(
+                executor=data["executor"],
+                model=data["model"],
+                reasoning_effort=data["reasoning_effort"],
+                model_source=data["model_source"],
+                effort_source=data["effort_source"],
+            )
+        except Exception as exc:
+            raise CorrectionDispatchError("invalid correction profile binding") from exc
     pre_run_ids = data.get("pre_run_ids")
     if (
         not isinstance(pre_run_ids, list)
@@ -448,7 +520,7 @@ def _run_matches_record(path: Path, record: Mapping[str, Any]) -> bool:
         for item in (data, execution, run, task, finding, remediation)
     ):
         return False
-    return (
+    matches = (
         data.get("kind") == "REMEDIATION"
         and run.get("run_id") == path.stem
         and task == {"id": record["task_id"], "revision": record["task_revision"]}
@@ -458,6 +530,20 @@ def _run_matches_record(path: Path, record: Mapping[str, Any]) -> bool:
         and remediation.get("finding_id") == record["finding_id"]
         and remediation.get("reviewed_sha") == record["reviewed_sha"]
         and remediation.get("action") == record["action"]
+    )
+    if not matches or record["version"] == 1:
+        return matches
+    try:
+        profile = parse_execution_profile(
+            (path.parent.parent / "execution-profiles" / path.name).read_text(
+                encoding="utf-8"
+            )
+        )
+    except Exception:
+        return False
+    identity = execution_profile_identity(profile)
+    return profile.run_id == path.stem and all(
+        identity[field] == record[field] for field in PROFILE_IDENTITY_FIELDS
     )
 
 

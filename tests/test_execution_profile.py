@@ -22,6 +22,7 @@ from aios_renew.execution_profile import (
     ExecutionProfileValidationError,
     ResolvedExecutionProfile,
     default_execution_profile,
+    bind_execution_profile,
     execution_profile_path,
     is_profile_managed_executor,
     load_execution_profile_policy,
@@ -55,14 +56,14 @@ executors:
 """
 
 
-def test_default_policy_loads_and_has_exact_task_061_defaults() -> None:
+def test_default_policy_loads_exact_task_163_defaults() -> None:
     policy = load_execution_profile_policy()
     assert policy.format == "AIOS_EXECUTOR_PROFILES_POLICY"
     assert policy.version == 1
-    assert policy.executors["codex"].default_model == "gpt-5.6-sol"
-    assert policy.executors["codex"].default_reasoning_effort == "high"
+    assert policy.executors["codex"].default_model == "gpt-6-sol"
+    assert policy.executors["codex"].default_reasoning_effort == "medium"
     assert policy.executors["antigravity"].default_model == "gemini-3.8-flash"
-    assert policy.executors["antigravity"].default_reasoning_effort == "high"
+    assert policy.executors["antigravity"].default_reasoning_effort == "medium"
     assert set(policy.executors["codex"].supported_reasoning_efforts) == {"low", "medium", "high"}
     assert set(policy.executors["antigravity"].supported_reasoning_efforts) == {"low", "medium", "high"}
 
@@ -96,8 +97,8 @@ def test_resolve_default_execution_profile() -> None:
     codex_prof = resolve_execution_profile(policy, run_id="RUN-100", executor="codex")
     assert codex_prof.run_id == "RUN-100"
     assert codex_prof.executor == "codex"
-    assert codex_prof.model == "gpt-5.6-sol"
-    assert codex_prof.reasoning_effort == "high"
+    assert codex_prof.model == "gpt-6-sol"
+    assert codex_prof.reasoning_effort == "medium"
     assert codex_prof.model_source == "REPOSITORY_DEFAULT"
     assert codex_prof.effort_source == "REPOSITORY_DEFAULT"
 
@@ -105,7 +106,7 @@ def test_resolve_default_execution_profile() -> None:
     assert anti_prof.run_id == "RUN-101"
     assert anti_prof.executor == "antigravity"
     assert anti_prof.model == "gemini-3.8-flash"
-    assert anti_prof.reasoning_effort == "high"
+    assert anti_prof.reasoning_effort == "medium"
     assert anti_prof.model_source == "REPOSITORY_DEFAULT"
     assert anti_prof.effort_source == "REPOSITORY_DEFAULT"
 
@@ -125,6 +126,30 @@ def test_resolve_synthetic_future_model_without_global_allowlist() -> None:
     assert future_prof.reasoning_effort == "medium"
     assert future_prof.model_source == "EXPLICIT"
     assert future_prof.effort_source == "EXPLICIT"
+
+
+def test_partial_selection_and_explicit_default_preserve_attribution() -> None:
+    policy = load_execution_profile_policy()
+    partial = bind_execution_profile(
+        run_id="RUN-103",
+        executor="codex",
+        reasoning_effort="high",
+        policy=policy,
+    )
+    assert partial.model == "gpt-6-sol"
+    assert partial.model_source == "REPOSITORY_DEFAULT"
+    assert partial.reasoning_effort == "high"
+    assert partial.effort_source == "EXPLICIT"
+
+    explicit_defaults = bind_execution_profile(
+        run_id="RUN-104",
+        executor="codex",
+        model="gpt-6-sol",
+        reasoning_effort="medium",
+        policy=policy,
+    )
+    assert explicit_defaults.model_source == "EXPLICIT"
+    assert explicit_defaults.effort_source == "EXPLICIT"
 
 
 def test_resolve_invalid_effort_fails_closed_without_fallback() -> None:

@@ -9543,8 +9543,8 @@ def test_operator_persists_execution_profile_before_native_runner(tmp_path: Path
     assert profile_data["version"] == 1
     assert profile_data["run_id"] == "RUN-101-001"
     assert profile_data["executor"] == "codex"
-    assert profile_data["model"] == "gpt-5.6-sol"
-    assert profile_data["reasoning_effort"] == "high"
+    assert profile_data["model"] == "gpt-6-sol"
+    assert profile_data["reasoning_effort"] == "medium"
     assert profile_data["model_source"] == "REPOSITORY_DEFAULT"
     assert profile_data["effort_source"] == "REPOSITORY_DEFAULT"
 

@@ -289,6 +289,8 @@ def continue_task(
     native_runner: NativeRunner = subprocess.run,
     verification_runner: VerificationRunner = subprocess.run,
     monotonic_clock: MonotonicClock = time.monotonic,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> tuple[HumanSurfaceResult | None, int]:
     """Observe once and delegate at most one already-authoritative operation."""
 
@@ -300,6 +302,23 @@ def continue_task(
     if resolution.restart_code is not None:
         return None, resolution.restart_code
     observation = op.observe_unified_state(task_id, repo=root)
+    profile_requested = model is not None or reasoning_effort is not None
+    if profile_requested and executor is None:
+        return (
+            _human_surface_result(
+                observation,
+                disposition="EXECUTOR_REQUIRED",
+                authority="HUMAN",
+                executor=None,
+                executor_required=True,
+                blocker={"code": "PROFILE_EXECUTOR_REQUIRED"},
+            ),
+            0,
+        )
+    if profile_requested and executor not in ("codex", "antigravity"):
+        raise op.OperatorError(
+            "model/effort options require Codex or Antigravity"
+        )
     action = observation.next_action
     repair_executor_required = (
         observation.correction.get("executor_required")
@@ -402,6 +421,8 @@ def continue_task(
             summary = op.run_task(
                 task_id,
                 executor=executor,
+                model=model,
+                reasoning_effort=reasoning_effort,
                 repo=root,
                 native_runner=native_runner,
                 verification_runner=verification_runner,
@@ -438,6 +459,8 @@ def continue_task(
                 source_run_id=observation.source_run_id,
                 approved_remediation_sha=observation.correction_sha,
                 executor=executor,
+                model=model,
+                reasoning_effort=reasoning_effort,
                 repo=root,
                 native_runner=native_runner,
                 verification_runner=verification_runner,
@@ -480,6 +503,8 @@ def continue_task(
             summary = op.run_repair(
                 observation.failed_run_id,
                 executor=delegated_executor,
+                model=model,
+                reasoning_effort=reasoning_effort,
                 repo=root,
                 repair=observation.correction_document,
                 required_repair_sha=observation.correction_sha,
