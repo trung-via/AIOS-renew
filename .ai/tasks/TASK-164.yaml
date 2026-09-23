@@ -1,0 +1,155 @@
+task_id: TASK-164
+revision: 1
+
+goal: >
+  Restore current remote-surface regression compatibility with the already
+  published Trusted Control Source contract by replacing stale assumptions that
+  remote status, approval, and approved-remediation workflows invoke a
+  PATH-installed `aios` command. Preserve the existing manual/self-hosted,
+  contents-read GitHub surfaces and prove that each remote surface delegates its
+  correct bounded subcommand through the repository-owned transient control
+  entry, without changing production behavior or duplicating Control Source
+  authority.
+
+problem: >
+  RUN-159-005 exposed
+  tests/test_remote_surface.py::test_remote_workflows_are_separate_manual_read_only_surfaces
+  as a serial full-suite failure. The regression still expects direct
+  `aios remote-status`, `aios remote-approve`, and
+  `aios approved-remediation-wakeup` invocations. TASK-158 remains the
+  published authority for exact transient Control Source execution, and current
+  canonical workflows correctly invoke their bounded subcommands through
+  scripts/aios_control_entry.py instead. tests/test_control_source_isolation.py
+  already owns detailed exact-SHA/materialization/isolation proof. The remaining
+  defect is therefore a stale remote-surface regression expectation, not a
+  production Control Source defect.
+
+assumptions:
+  - >
+    Canonical main at TASK-164 authoring is
+    b97295c6985ba7c24b75b2dfc8570464d6d3523b.
+  - >
+    TASK-158 remains authoritative for Trusted Control Source identity,
+    materialization, exact-SHA binding, persistent-repository isolation, and
+    control-entry mechanics.
+  - >
+    TASK-163 changed execution-profile propagation through current remediation
+    delivery but did not replace TASK-158 Control Source authority.
+  - >
+    RUN-159-005 remains immutable historical VERIFICATION failure evidence on
+    subject 6a6d8b691ff5a694c065d56fc11e51283c109cf5. TASK-164 does not repair,
+    retry, or reinterpret that RUN.
+  - >
+    Canonical roadmap has bp-v4-parallel-verification-performance-guard as the
+    unique NEXT milestone. TASK-164 is a bounded maintenance prerequisite before
+    another current-main BP-V4 measurement and does not itself complete BP-V4.
+  - >
+    If current production workflows contradict the published TASK-158 contract,
+    that is a new production defect and TASK-164 must fail rather than widening
+    mutation scope.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-158.yaml
+    - .ai/tasks/TASK-159.yaml
+    - .ai/tasks/TASK-163.yaml
+    - .github/workflows/aios-remote-status.yml
+    - .github/workflows/aios-remote-approval.yml
+    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - scripts/aios_control_entry.py
+    - tests/test_remote_surface.py
+    - tests/test_control_source_isolation.py
+    - tests/test_remediation_wakeup.py
+  modify:
+    - tests/test_remote_surface.py
+
+non_goals:
+  - Modify any GitHub workflow, scripts/aios_control_entry.py, Operator, Runtime, transport, dispatch, execution-profile policy, or other production source.
+  - Reimplement, broaden, or replace TASK-158 Trusted Control Source semantics.
+  - Duplicate the full exact-SHA/materialization/isolation contract already owned by tests/test_control_source_isolation.py.
+  - Modify TASK-159, retry RUN-159-005, or execute the BP-V4 serial/parallel measurement matrix.
+  - Select, rank, recommend, persist, or adopt a parallel worker count.
+  - Modify roadmap state from Executor execution.
+  - Skip, xfail, delete, or weaken the stale regression merely to obtain green verification.
+  - Rename unrelated tests or broaden regression cleanup beyond the identified remote-surface stale assumption.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Preserve the existing remote-surface assertions that the three workflows
+      are workflow_dispatch surfaces, are not push/pull-request triggered, use
+      the supported self-host labels, expose contents: read GitHub permission,
+      and do not use actions/checkout.
+    - >
+      Replace only the stale PATH-installed AIOS invocation assumptions with
+      assertions that each workflow delegates exactly its intended bounded
+      operation through the trusted transient control entry: remote-status,
+      remote-approve, and approved-remediation-wakeup respectively.
+    - >
+      The regression must reject an executable direct installed-CLI invocation
+      of those three operations. It must reason about executable invocation and
+      must not fail merely because equivalent text appears in a comment,
+      description, or other non-executable metadata.
+    - >
+      Preserve the existing exact Human approver-attribution assertion for the
+      approval workflow.
+    - >
+      Do not copy all TASK-158 exact-SHA checkout/materialization assertions into
+      tests/test_remote_surface.py. tests/test_control_source_isolation.py remains
+      the authoritative regression for those mechanics.
+    - >
+      Do not modify production to satisfy this test. If current workflows cannot
+      satisfy both their published TASK-158 contract and the remote-surface
+      contract, fail rather than broadening scope.
+    - >
+      Keep every repository mutation inside tests/test_remote_surface.py.
+
+acceptance:
+  - id: AC1
+    condition: >
+      tests/test_remote_surface.py no longer requires PATH-installed `aios`
+      invocation for remote-status, remote-approve, or
+      approved-remediation-wakeup and instead recognizes the current trusted
+      transient-control-entry delivery contract.
+  - id: AC2
+    condition: >
+      The remote-status workflow is proven to contain exactly one bounded
+      executable delegation of the remote-status operation through the trusted
+      control entry and no executable direct installed-CLI equivalent.
+  - id: AC3
+    condition: >
+      The remote-approval workflow is proven to contain exactly one bounded
+      executable delegation of the remote-approve operation through the trusted
+      control entry, retains exact Human approver attribution, and has no
+      executable direct installed-CLI equivalent.
+  - id: AC4
+    condition: >
+      The approved-remediation workflow is proven to contain exactly one bounded
+      executable delegation of approved-remediation-wakeup through the trusted
+      control entry and no executable direct installed-CLI equivalent, without
+      duplicating execution-profile forwarding authority already covered by its
+      dedicated regressions.
+  - id: AC5
+    condition: >
+      Existing manual/self-hosted/GitHub-read-permission/no-push/no-PR/no-checkout
+      remote-surface invariants remain covered, while detailed Control Source
+      SHA/materialization/isolation authority remains with
+      tests/test_control_source_isolation.py.
+  - id: AC6
+    condition: >
+      No production, workflow, roadmap, Runtime, lifecycle, measurement,
+      Executor-selection, Reviewer, Publisher, or worker-adoption behavior is
+      changed by TASK-164.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_remote_surface.py tests/test_control_source_isolation.py
+    - git diff --check
