@@ -537,6 +537,57 @@ class FakeAntigravityRunner:
         )
 
 
+class FakeAntigravityMinimaxRunner:
+    def __init__(
+        self,
+        repo: Path,
+        *,
+        reported_head: str | None = None,
+    ) -> None:
+        self.repo = repo
+        self.reported_head = reported_head
+        self.calls = []
+        self.count = 0
+
+    def __call__(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        self.count += 1
+        handoff_path = next(
+            (self.repo / ".git" / "aios" / "handoffs").glob("*.json")
+        )
+        handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+        run_id = handoff["run"]["run_id"]
+        base_sha = handoff["run"]["base_sha"]
+        (self.repo / "OUTPUT.txt").write_text(
+            f"minimax output {self.count}\n",
+            encoding="utf-8",
+        )
+        actual_head = commit_setup_state(
+            self.repo, "OUTPUT.txt", message=f"minimax executor {self.count}"
+        )
+        head_sha = self.reported_head or actual_head
+        payload = result_payload(run_id, head_sha)
+        envelope = {
+            "schema_version": "agym.result.v1",
+            "agym_version": "0.4.0",
+            "status": "PASS",
+            "exit_code": 0,
+            "model": "MiniMax-M3",
+            "workspace": str(self.repo.resolve()),
+            "head_before": base_sha,
+            "head_after": head_sha,
+            "state_guard": "PASS",
+            "response": json.dumps(payload),
+            "structured_response": payload,
+        }
+        return subprocess.CompletedProcess(
+            command,
+            returncode=0,
+            stdout=json.dumps(envelope),
+            stderr="",
+        )
+
+
 class StaticResultRunner:
     def __init__(self, repo: Path, result: dict) -> None:
         self.repo = repo
@@ -9530,8 +9581,9 @@ def test_operator_antigravity_minimax_creates_no_execution_profile(tmp_path: Pat
     paths = runtime_paths(repo)
     sidecar = paths.execution_profiles / "RUN-101-001.json"
 
-    runner = FakeCodexRunner(repo)
-    run_task("TASK-101", executor="antigravity-minimax", repo=repo, native_runner=runner)
+    runner = FakeAntigravityMinimaxRunner(repo)
+    summary = run_task("TASK-101", executor="antigravity-minimax", repo=repo, native_runner=runner)
 
     assert runner.count == 1
+    assert summary.executor == "antigravity-minimax"
     assert not sidecar.is_file()
