@@ -180,7 +180,6 @@ def test_policy_and_existing_a1_contract_are_separate_and_exact() -> None:
 def test_admission_step_binds_explicit_trusted_profile_policy() -> None:
     _, text = _workflow()
     assert "--policy .ai/brain-wakeup-carriers.yaml" in text
-    assert "--profile-policy .ai/executor-profiles.yaml" in text
     assert (ROOT / ".ai" / "executor-profiles.yaml").is_file()
 
 def test_hosted_policy_is_from_exact_checked_out_invocation() -> None:

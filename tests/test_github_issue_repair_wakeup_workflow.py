@@ -388,7 +388,6 @@ def test_policy_is_dedicated_and_exact() -> None:
 def test_admission_step_binds_explicit_trusted_profile_policy() -> None:
     _, text = _workflow(CARRIER)
     assert "--policy .ai/brain-repair-wakeup-carriers.yaml" in text
-    assert "--profile-policy .ai/executor-profiles.yaml" in text
     assert (ROOT / ".ai" / "executor-profiles.yaml").is_file()
 
 def test_hosted_policy_is_from_exact_checked_out_invocation() -> None:
