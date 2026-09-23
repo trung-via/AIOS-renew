@@ -1,0 +1,10 @@
+{
+  "effort_source": "REPOSITORY_DEFAULT",
+  "executor": "antigravity",
+  "format": "AIOS_EXECUTION_PROFILE",
+  "model": "gemini-3.8-flash",
+  "model_source": "REPOSITORY_DEFAULT",
+  "reasoning_effort": "high",
+  "run_id": "RUN-163-001",
+  "version": 1
+}
