@@ -1,0 +1,347 @@
+task_id: TASK-163
+revision: 1
+
+goal: >
+  Implement Execution Profile Human Selection and Default Activation v1 on top of
+  the published TASK-162 foundation. Allow the Human to select exact Codex or
+  Antigravity model and/or reasoning effort per new execution authorization through
+  local Human-facing CLI/continue and versioned PRIMARY, REMEDIATION, and REPAIR
+  remote delivery paths; resolve omitted values deterministically from the single
+  repository-owned execution-profile policy; bind the exact resolved profile into
+  new durable dispatch identity before native execution; preserve immutable per-RUN
+  profile provenance and restart/reconciliation behavior; and activate the approved
+  defaults Codex gpt-6-sol/medium and Antigravity gemini-3.8-flash/medium without
+  creating routing, fallback, sticky profile state, or a second default authority.
+
+problem: >
+  TASK-162 published a strict repository-owned execution-profile policy,
+  provider-neutral profile validation, exact adapter injection, pre-native immutable
+  sidecar persistence, terminal provenance, and future-compatible opaque model
+  identifiers. Human and remote delivery surfaces still select only an Executor,
+  current policy defaults remain gpt-5.6-sol/high for Codex and
+  gemini-3.8-flash/high for Antigravity, and existing PRIMARY/REMEDIATION/REPAIR
+  carrier and durable dispatch contracts do not bind model/effort selection.
+  Activating new defaults without strengthening those authorization boundaries
+  would permit replay under changed defaults and could make Brain memory or a
+  carrier an accidental second profile authority. TASK-163 must close that gap
+  while preserving frozen TASK/RUN semantics and all existing execution,
+  verification, review, publication, and one-active-executor authority boundaries.
+
+assumptions:
+  - >
+    Canonical main at TASK-163 authoring is
+    8c0a1509e21a8f9f6a47ec9fb42a4bb05ed63687 and the unique canonical NEXT
+    roadmap item is execution-profile-human-selection-default-activation bound to
+    TASK-163.
+  - >
+    TASK-162 revision 1 is reviewed and published at
+    783f4929a97cb33445109593e95bda34132560f7. Its execution-profile foundation,
+    strict sidecar contract, immutable persisted-profile reuse, transport
+    provenance, opaque model identifiers, and MiniMax isolation are the required
+    implementation baseline and must not be redesigned.
+  - >
+    docs/AIOS-EXECUTION-PROFILE-SELECTION.md is the Human-approved planning
+    baseline. Human explicit selection outranks repository defaults; omitted
+    values resolve from repository policy; every new PRIMARY, REMEDIATION, or
+    REPAIR authorization resolves a fresh profile; restart/reconciliation of the
+    same authorization reuses its exact already-bound profile.
+  - >
+    The current repository-owned policy still contains the TASK-162 compatibility
+    defaults gpt-5.6-sol/high for Codex and gemini-3.8-flash/high for Antigravity.
+    TASK-163 is the sole activation milestone for gpt-6-sol/medium and
+    gemini-3.8-flash/medium.
+  - >
+    Current new-request contracts are PRIMARY wakeup request v2, REMEDIATION intent
+    request v1, and REPAIR wakeup request v1. Current durable PRIMARY dispatch
+    journal is profile-unaware v2 and REMEDIATION/REPAIR dispatch journals are
+    profile-unaware v1. Historical records must remain readable and immutable.
+  - >
+    Antigravity MiniMax remains outside Execution Profile management. Existing
+    local MiniMax execution without model/effort override must remain supported,
+    while model/effort override options must not be silently applied to MiniMax.
+  - >
+    Runtime owns deterministic resolution/binding, admission, lifecycle reduction,
+    verification, and evidence; Human owns explicit Executor/model/effort choice;
+    Brain owns TASK semantics only; Executor owns implementation HOW; Reviewer and
+    Publisher authorities remain unchanged.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-162.yaml
+    - .ai/executor-profiles.yaml
+    - src/aios_renew/execution_profile.py
+    - src/aios_renew/dispatcher.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/correction_dispatch.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/operational_receipt.py
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/antigravity_minimax_adapter.py
+    - scripts/codex_smoke.py
+    - scripts/antigravity_smoke.py
+    - .github/workflows/aios-brain-wakeup.yml
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - .github/workflows/aios-brain-remediation-intent.yml
+    - .github/workflows/aios-approved-remediation-intent.yml
+    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - .github/workflows/aios-brain-repair-wakeup.yml
+    - .github/workflows/aios-self-hosted-repair-wakeup.yml
+    - tests/test_execution_profile.py
+    - tests/test_dispatcher.py
+    - tests/test_operator.py
+    - tests/test_operator_human_surface.py
+    - tests/test_dispatch_reconciliation.py
+    - tests/test_correction_dispatch.py
+    - tests/test_repair_dispatch.py
+    - tests/test_operational_receipt.py
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_wakeup_workflow.py
+    - tests/test_github_issue_remediation_intent.py
+    - tests/test_github_issue_remediation_intent_workflow.py
+    - tests/test_github_issue_repair_wakeup.py
+    - tests/test_github_issue_repair_wakeup_workflow.py
+    - tests/test_remediation_wakeup.py
+    - tests/test_self_hosted_wakeup.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+    - tests/test_codex_smoke.py
+    - tests/test_antigravity_smoke.py
+  modify:
+    - .ai/executor-profiles.yaml
+    - src/aios_renew/execution_profile.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/correction_dispatch.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/operational_receipt.py
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - .github/workflows/aios-brain-wakeup.yml
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - .github/workflows/aios-brain-remediation-intent.yml
+    - .github/workflows/aios-approved-remediation-intent.yml
+    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - .github/workflows/aios-brain-repair-wakeup.yml
+    - .github/workflows/aios-self-hosted-repair-wakeup.yml
+    - tests/test_execution_profile.py
+    - tests/test_operator.py
+    - tests/test_operator_human_surface.py
+    - tests/test_dispatch_reconciliation.py
+    - tests/test_correction_dispatch.py
+    - tests/test_repair_dispatch.py
+    - tests/test_operational_receipt.py
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_wakeup_workflow.py
+    - tests/test_github_issue_remediation_intent.py
+    - tests/test_github_issue_remediation_intent_workflow.py
+    - tests/test_github_issue_repair_wakeup.py
+    - tests/test_github_issue_repair_wakeup_workflow.py
+    - tests/test_remediation_wakeup.py
+    - tests/test_self_hosted_wakeup.py
+    - tests/test_codex_smoke.py
+    - tests/test_antigravity_smoke.py
+
+non_goals:
+  - >
+    Change canonical TASK schema, frozen RUN schema, RunLease, ExecutorBoundary,
+    Unified State lifecycle semantics, sandbox/mutation authority, Runtime
+    verification/EVIDENCE, Reviewer verdict semantics, Publisher authority, or
+    roadmap advancement.
+  - >
+    Add automatic model routing, model scoring, task-difficulty classification,
+    adaptive effort selection, fallback, retry, failover, Executor substitution,
+    speculative execution, or multi-model voting.
+  - >
+    Add a repository-global allowlist of provider model identifiers or require a
+    code branch merely because a compatible provider-native model identifier is new.
+  - >
+    Store a persistent Human preferred model/effort, create sticky inheritance
+    across new authorizations, use conversation/model memory as default authority,
+    or make Brain resolve omitted model/effort values.
+  - >
+    Change Antigravity MiniMax native model semantics or bring MiniMax into the
+    Codex/Antigravity Execution Profile policy.
+  - >
+    Rewrite, migrate, backfill, reinterpret, or invalidate historical carrier
+    requests, durable dispatch journals, RUNs, execution-profile sidecars, or
+    terminal artifacts.
+  - >
+    Require live provider availability, account entitlement, or network success as
+    canonical deterministic verification. Native provider rejection of an exact
+    requested model remains an execution failure and must not trigger fallback.
+  - >
+    Modify Codex/Antigravity adapter command architecture or Dispatcher routing
+    architecture solely to activate new defaults; TASK-162 already established
+    exact injected-profile behavior.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Activate exactly one repository-owned default authority by changing
+      .ai/executor-profiles.yaml to Codex gpt-6-sol with medium effort and
+      Antigravity gemini-3.8-flash with medium effort. Do not duplicate these
+      defaults in adapters, carrier modules, workflows, CLI code, or tests as a
+      second operational authority.
+    - >
+      Human-facing local execution surfaces must accept optional exact model and
+      effort overrides for profile-managed Codex/Antigravity execution, including
+      run, continue, REMEDIATION, and coding REPAIR paths. Human explicit values
+      override only the supplied dimension; omitted dimensions resolve from the
+      repository policy. Explicit values that equal the current default remain
+      attributed as EXPLICIT.
+    - >
+      Omitted model/effort values must be resolved by deterministic repository code,
+      never by Brain memory or carrier hard-coding. Model identifiers remain opaque
+      bounded provider-native strings; reasoning effort remains validated against
+      the selected Executor capability policy before native invocation.
+    - >
+      Resolution is per new execution authorization. A new PRIMARY, REMEDIATION, or
+      REPAIR authorization must resolve fresh defaults for omitted values and must
+      not implicitly inherit the prior RUN profile. Restart, replay, or
+      reconciliation of the same authorization must reuse the exact already-bound
+      profile and must not re-resolve changed defaults.
+    - >
+      New versioned remote requests must carry the Human-requested model and effort
+      dimensions explicitly as present values or explicit absence/default intent.
+      PRIMARY wakeup becomes request version 3, REMEDIATION intent becomes request
+      version 2, and REPAIR wakeup becomes request version 2. Newly submitted legacy
+      request versions must fail closed; historical legacy artifacts remain readable.
+    - >
+      Remote carrier admission must deterministically resolve one exact profile from
+      the Human request plus the canonical policy before self-host native execution.
+      The exact executor, model, reasoning_effort, model_source, and effort_source
+      must be propagated through the remote workflow boundary without later
+      re-resolution or silent substitution.
+    - >
+      New durable PRIMARY, REMEDIATION, and REPAIR dispatch record versions must bind
+      the exact resolved profile identity in addition to their existing selectors.
+      Reuse of one dispatch identity with any changed executor/profile value or source
+      attribution must fail closed before native invocation; exact replay must remain
+      idempotent. Existing historical journal versions must remain readable and must
+      never acquire retroactive profiles.
+    - >
+      When a RUN is created for a profile-managed execution, the persisted
+      TASK-162 execution-profile sidecar must exactly match the profile bound by the
+      local authorization or durable remote dispatch. Any mismatch, invalid effort,
+      malformed profile selection, or conflicting persisted sidecar must invoke zero
+      native Executors.
+    - >
+      Operational receipts may expose the exact bounded profile selectors needed to
+      diagnose remote delivery, but remain subordinate operational observations and
+      must never claim RUN creation, native success, Runtime verification, semantic
+      review, or publication beyond directly proven boundaries.
+    - >
+      Human-supplied model/effort options without a valid profile-managed Executor
+      must fail closed or return an executor-required Human surface without native
+      invocation. Antigravity MiniMax execution without profile overrides remains
+      unchanged; model/effort overrides must not be silently ignored or applied to
+      MiniMax.
+    - >
+      Provider-native unavailability or rejection of an exact syntactically valid
+      model must remain an ordinary native execution failure. AIOS must not
+      downgrade effort, replace the model, swap Executor, retry with another profile,
+      or convert provider failure into deterministic validation policy.
+    - >
+      Preserve TASK-162 future-evolution invariant: for an already-supported
+      Executor with unchanged native invocation contract, a later compatible default
+      model change must require only repository policy change plus focused
+      validation/smoke. It must not require another carrier schema, Dispatcher,
+      adapter, frozen RUN, or lifecycle redesign.
+    - >
+      Do not modify files outside scope.modify and do not push or publish from
+      Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Repository policy defaults are exactly Codex gpt-6-sol/medium and Antigravity
+      gemini-3.8-flash/medium, and tests prove the policy remains the sole default
+      authority with no adapter/carrier/workflow duplicate default constants.
+  - id: AC2
+    condition: >
+      Local run and continue plus canonical REMEDIATION and coding REPAIR surfaces
+      accept partial or complete Human model/effort overrides for Codex/Antigravity,
+      resolve omitted dimensions deterministically, preserve EXPLICIT versus
+      REPOSITORY_DEFAULT attribution, and deliver exact values to native command
+      construction.
+  - id: AC3
+    condition: >
+      A new authorization never implicitly inherits the previous RUN profile, while
+      replay/restart/reconciliation of the same authorization reuses its exact bound
+      profile even after repository defaults change.
+  - id: AC4
+    condition: >
+      PRIMARY remote carrier v3 validates one exact Human request, resolves one exact
+      profile from canonical policy, propagates it through self-host delivery, and
+      binds it into a new profile-aware durable PRIMARY dispatch identity before RUN
+      native execution.
+  - id: AC5
+    condition: >
+      REMEDIATION intent v2 and REPAIR wakeup v2 provide the same exact
+      request-resolution, workflow propagation, durable dispatch binding,
+      idempotent replay, and changed-profile collision rejection guarantees as
+      PRIMARY.
+  - id: AC6
+    condition: >
+      New profile-aware dispatch records and the eventual per-RUN execution-profile
+      sidecar agree exactly on executor/model/effort/source attribution; any
+      disagreement or invalid profile fails before native invocation.
+  - id: AC7
+    condition: >
+      Historical PRIMARY v1/v2, REMEDIATION v1, and REPAIR v1 durable journals
+      remain readable/reconcilable under their historical semantics, while newly
+      submitted legacy carrier request versions are rejected rather than silently
+      applying current defaults.
+  - id: AC8
+    condition: >
+      Invalid effort, malformed model identifier, missing required Executor/profile
+      context, and profile options supplied to MiniMax invoke zero native Executors;
+      MiniMax execution without profile options remains behaviorally unchanged.
+  - id: AC9
+    condition: >
+      A syntactically valid explicit alternate/future provider-native model identifier
+      can flow end-to-end through local and remote profile binding without source-code
+      registration or a global allowlist. Native provider rejection remains a
+      no-fallback execution failure.
+  - id: AC10
+    condition: >
+      Remote operational receipts can retain bounded exact profile selectors where
+      relevant without becoming lifecycle truth, and existing carrier receipts still
+      avoid asserting RUN/verification/review/publication success from workflow
+      completion alone.
+  - id: AC11
+    condition: >
+      Frozen TASK/RUN/RunLease/ExecutorBoundary semantics, Dispatcher exactly-one
+      selection, sandbox/mutation authority, Runtime verification/EVIDENCE, Reviewer,
+      Publisher, and no-retry/no-reroute boundaries remain unchanged.
+  - id: AC12
+    condition: >
+      Focused regression proves that after TASK-163 a compatible future default
+      change can be expressed by editing only repository profile policy plus focused
+      validation/smoke, with no required adapter, Dispatcher, Human carrier schema,
+      durable dispatch schema, or lifecycle redesign.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_execution_profile.py tests/test_dispatch_reconciliation.py tests/test_correction_dispatch.py tests/test_repair_dispatch.py tests/test_operational_receipt.py
+    - python -m pytest -q tests/test_github_issue_wakeup.py tests/test_github_issue_wakeup_workflow.py tests/test_github_issue_remediation_intent.py tests/test_github_issue_remediation_intent_workflow.py tests/test_github_issue_repair_wakeup.py tests/test_github_issue_repair_wakeup_workflow.py tests/test_remediation_wakeup.py tests/test_self_hosted_wakeup.py
+    - python -m pytest -q tests/test_operator_human_surface.py tests/test_operator.py
+    - python -m pytest -q tests/test_dispatcher.py tests/test_codex_adapter.py tests/test_antigravity_adapter.py tests/test_codex_smoke.py tests/test_antigravity_smoke.py
+    - git diff --check
