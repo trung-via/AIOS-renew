@@ -1,0 +1,10 @@
+{
+  "effort_source": "REPOSITORY_DEFAULT",
+  "executor": "codex",
+  "format": "AIOS_EXECUTION_PROFILE",
+  "model": "gpt-5.6-sol",
+  "model_source": "REPOSITORY_DEFAULT",
+  "reasoning_effort": "high",
+  "run_id": "RUN-163-003",
+  "version": 1
+}
