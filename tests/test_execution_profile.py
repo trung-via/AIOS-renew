@@ -8,8 +8,14 @@ from pathlib import Path
 import pytest
 
 from aios_renew.execution_profile import (
+    ALLOWED_SOURCE_ATTRIBUTIONS,
+    CANONICAL_SOURCE_ATTRIBUTIONS,
+    EXECUTION_PROFILE_ALLOWED_FIELDS,
     EXECUTION_PROFILE_FORMAT,
     EXECUTION_PROFILE_VERSION,
+    POLICY_ALLOWED_FIELDS,
+    POLICY_FORMAT,
+    POLICY_VERSION,
     ExecutionProfileConflictError,
     ExecutionProfileError,
     ExecutionProfilePolicy,
@@ -20,10 +26,32 @@ from aios_renew.execution_profile import (
     is_profile_managed_executor,
     load_execution_profile_policy,
     parse_execution_profile,
+    parse_execution_profile_policy,
     persist_execution_profile,
     resolve_execution_profile,
     validate_model_identifier,
 )
+
+VALID_POLICY_YAML = """
+format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+
+executors:
+  codex:
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts:
+      - low
+      - medium
+      - high
+  antigravity:
+    default_model: gemini-3.8-flash
+    default_reasoning_effort: high
+    supported_reasoning_efforts:
+      - low
+      - medium
+      - high
+"""
 
 
 def test_default_policy_loads_and_has_exact_task_061_defaults() -> None:
@@ -241,3 +269,271 @@ def test_parse_execution_profile_strict_validation() -> None:
     with pytest.raises(ExecutionProfileValidationError, match="invalid model identifier"):
         parse_execution_profile(dict(base, model="invalid model!"))
 
+
+def test_policy_rejection_of_unknown_top_level_fields() -> None:
+    bad_yaml = VALID_POLICY_YAML + "\nextra_top_level_field: unexpected\n"
+    with pytest.raises(ExecutionProfileValidationError, match="unknown field"):
+        parse_execution_profile_policy(bad_yaml)
+
+
+def test_policy_rejection_of_unknown_per_executor_fields() -> None:
+    bad_yaml = """
+format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+
+executors:
+  codex:
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts:
+      - low
+      - medium
+      - high
+    extra_field_in_spec: invalid
+  antigravity:
+    default_model: gemini-3.8-flash
+    default_reasoning_effort: high
+    supported_reasoning_efforts:
+      - low
+      - medium
+      - high
+"""
+    with pytest.raises(ExecutionProfileValidationError, match="unknown field"):
+        parse_execution_profile_policy(bad_yaml)
+
+
+def test_policy_rejection_of_unknown_executor() -> None:
+    bad_yaml = """
+format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+
+executors:
+  codex:
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts:
+      - low
+      - medium
+      - high
+  antigravity:
+    default_model: gemini-3.8-flash
+    default_reasoning_effort: high
+    supported_reasoning_efforts:
+      - low
+      - medium
+      - high
+  rogue_executor:
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts:
+      - low
+"""
+    with pytest.raises(ExecutionProfileValidationError, match="unknown executor"):
+        parse_execution_profile_policy(bad_yaml)
+
+
+def test_policy_rejection_of_duplicate_yaml_keys_top_level() -> None:
+    duplicate_top = """
+format: AIOS_EXECUTOR_PROFILES_POLICY
+format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+executors:
+  codex:
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, medium, high]
+  antigravity:
+    default_model: gemini-3.8-flash
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, medium, high]
+"""
+    with pytest.raises(ExecutionProfileValidationError, match="duplicate key"):
+        parse_execution_profile_policy(duplicate_top)
+
+
+def test_policy_rejection_of_duplicate_yaml_keys_in_spec() -> None:
+    duplicate_spec = """
+format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+executors:
+  codex:
+    default_model: gpt-5.6-sol
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, medium, high]
+  antigravity:
+    default_model: gemini-3.8-flash
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, medium, high]
+"""
+    with pytest.raises(ExecutionProfileValidationError, match="duplicate key"):
+        parse_execution_profile_policy(duplicate_spec)
+
+
+def test_policy_rejection_of_duplicate_yaml_keys_in_executors() -> None:
+    duplicate_exec = """
+format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+executors:
+  codex:
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, medium, high]
+  codex:
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, medium, high]
+  antigravity:
+    default_model: gemini-3.8-flash
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, medium, high]
+"""
+    with pytest.raises(ExecutionProfileValidationError, match="duplicate key"):
+        parse_execution_profile_policy(duplicate_exec)
+
+
+def test_load_policy_rejection_of_duplicate_yaml_keys_from_file(tmp_path: Path) -> None:
+    policy_path = tmp_path / ".ai" / "executor-profiles.yaml"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        """
+format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+version: 1
+executors:
+  codex:
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, medium, high]
+  antigravity:
+    default_model: gemini-3.8-flash
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, medium, high]
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ExecutionProfileValidationError, match="duplicate key"):
+        load_execution_profile_policy(tmp_path)
+
+
+def test_policy_rejection_of_duplicate_supported_reasoning_efforts() -> None:
+    dup_efforts = """
+format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+executors:
+  codex:
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, high, high]
+  antigravity:
+    default_model: gemini-3.8-flash
+    default_reasoning_effort: high
+    supported_reasoning_efforts: [low, medium, high]
+"""
+    with pytest.raises(ExecutionProfileValidationError, match="duplicate effort"):
+        parse_execution_profile_policy(dup_efforts)
+
+
+def test_profile_rejection_of_unknown_fields() -> None:
+    base = {
+        "format": "AIOS_EXECUTION_PROFILE",
+        "version": 1,
+        "run_id": "RUN-001",
+        "executor": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "high",
+        "model_source": "REPOSITORY_DEFAULT",
+        "effort_source": "REPOSITORY_DEFAULT",
+        "unexpected_extra_field": "disallowed",
+    }
+    with pytest.raises(ExecutionProfileValidationError, match="unknown field"):
+        parse_execution_profile(base)
+
+
+def test_profile_rejection_of_duplicate_json_keys() -> None:
+    raw_json = """{
+  "format": "AIOS_EXECUTION_PROFILE",
+  "version": 1,
+  "run_id": "RUN-001",
+  "executor": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "high",
+  "model_source": "REPOSITORY_DEFAULT",
+  "model_source": "EXPLICIT",
+  "effort_source": "REPOSITORY_DEFAULT"
+}"""
+    with pytest.raises(ExecutionProfileValidationError, match="duplicate key"):
+        parse_execution_profile(raw_json)
+
+
+def test_profile_source_attribution_canonical_allowed() -> None:
+    base = {
+        "format": "AIOS_EXECUTION_PROFILE",
+        "version": 1,
+        "run_id": "RUN-001",
+        "executor": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "high",
+        "model_source": "REPOSITORY_DEFAULT",
+        "effort_source": "REPOSITORY_DEFAULT",
+    }
+    p1 = parse_execution_profile(dict(base, model_source="EXPLICIT", effort_source="EXPLICIT"))
+    assert p1.model_source == "EXPLICIT"
+    assert p1.effort_source == "EXPLICIT"
+
+    p2 = parse_execution_profile(dict(base, model_source="REPOSITORY_DEFAULT", effort_source="EXPLICIT"))
+    assert p2.model_source == "REPOSITORY_DEFAULT"
+    assert p2.effort_source == "EXPLICIT"
+
+    assert ALLOWED_SOURCE_ATTRIBUTIONS == frozenset({"REPOSITORY_DEFAULT", "EXPLICIT"})
+    assert CANONICAL_SOURCE_ATTRIBUTIONS == ALLOWED_SOURCE_ATTRIBUTIONS
+
+
+def test_profile_source_attribution_invalid_labels_rejected() -> None:
+    base = {
+        "format": "AIOS_EXECUTION_PROFILE",
+        "version": 1,
+        "run_id": "RUN-001",
+        "executor": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "high",
+        "model_source": "REPOSITORY_DEFAULT",
+        "effort_source": "REPOSITORY_DEFAULT",
+    }
+    for invalid in ["CUSTOM", "USER", "INLINE", "default", "", None, 123]:
+        with pytest.raises(ExecutionProfileValidationError, match="model_source"):
+            parse_execution_profile(dict(base, model_source=invalid))
+
+        with pytest.raises(ExecutionProfileValidationError, match="effort_source"):
+            parse_execution_profile(dict(base, effort_source=invalid))
+
+
+def test_resolved_execution_profile_direct_validation() -> None:
+    # Direct construction with invalid model_source fails
+    with pytest.raises(ExecutionProfileValidationError, match="model_source"):
+        ResolvedExecutionProfile(
+            run_id="RUN-001",
+            executor="codex",
+            model="gpt-5.6-sol",
+            reasoning_effort="high",
+            model_source="INVALID_SOURCE",
+        )
+
+    # Direct construction with invalid effort_source fails
+    with pytest.raises(ExecutionProfileValidationError, match="effort_source"):
+        ResolvedExecutionProfile(
+            run_id="RUN-001",
+            executor="codex",
+            model="gpt-5.6-sol",
+            reasoning_effort="high",
+            effort_source="INVALID_SOURCE",
+        )
+
+    # Direct construction with invalid executor fails
+    with pytest.raises(ExecutionProfileValidationError, match="unsupported executor"):
+        ResolvedExecutionProfile(
+            run_id="RUN-001",
+            executor="unsupported_executor",
+            model="gpt-5.6-sol",
+            reasoning_effort="high",
+        )

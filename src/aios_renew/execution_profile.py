@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from yaml.constructor import ConstructorError
+from yaml.nodes import MappingNode, Node
 
 MANAGED_EXECUTORS = frozenset({"codex", "antigravity"})
 MODEL_IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$")
@@ -19,6 +21,24 @@ POLICY_VERSION = 1
 EXECUTION_PROFILE_FORMAT = "AIOS_EXECUTION_PROFILE"
 EXECUTION_PROFILE_VERSION = 1
 
+POLICY_ALLOWED_FIELDS = frozenset({"format", "version", "executors"})
+EXECUTOR_SPEC_ALLOWED_FIELDS = frozenset({
+    "default_model",
+    "default_reasoning_effort",
+    "supported_reasoning_efforts",
+})
+EXECUTION_PROFILE_ALLOWED_FIELDS = frozenset({
+    "format",
+    "version",
+    "run_id",
+    "executor",
+    "model",
+    "reasoning_effort",
+    "model_source",
+    "effort_source",
+})
+ALLOWED_SOURCE_ATTRIBUTIONS = frozenset({"REPOSITORY_DEFAULT", "EXPLICIT"})
+CANONICAL_SOURCE_ATTRIBUTIONS = ALLOWED_SOURCE_ATTRIBUTIONS
 
 
 class ExecutionProfileError(RuntimeError):
@@ -31,6 +51,54 @@ class ExecutionProfileValidationError(ExecutionProfileError):
 
 class ExecutionProfileConflictError(ExecutionProfileError):
     """Raised when an existing persisted execution profile conflicts with an attempted write."""
+
+
+class UniqueKeySafeLoader(yaml.SafeLoader):
+    """YAML safe loader that rejects duplicate mapping keys deterministically."""
+
+    def construct_mapping(self, node: Node, deep: bool = False) -> dict[Any, Any]:
+        if isinstance(node, MappingNode):
+            self.flatten_mapping(node)
+        if not isinstance(node, MappingNode):
+            raise ConstructorError(
+                None,
+                None,
+                f"expected a mapping node, but found {node.id}",
+                node.start_mark,
+            )
+        mapping: dict[Any, Any] = {}
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                hash(key)
+            except TypeError as exc:
+                raise ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"found unacceptable key ({exc})",
+                    key_node.start_mark,
+                ) from exc
+            if key in mapping:
+                raise ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"found duplicate key: {key!r}",
+                    key_node.start_mark,
+                )
+            value = self.construct_object(value_node, deep=deep)
+            mapping[key] = value
+        return mapping
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ExecutionProfileValidationError(
+                f"duplicate key in execution profile JSON: {key!r}"
+            )
+        result[key] = value
+    return result
 
 
 def is_profile_managed_executor(executor: str) -> bool:
@@ -69,6 +137,13 @@ class ExecutorProfileSpec:
     def default_effort(self) -> str:
         return self.default_reasoning_effort
 
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "default_model": self.default_model,
+            "default_reasoning_effort": self.default_reasoning_effort,
+            "supported_reasoning_efforts": list(self.supported_reasoning_efforts),
+        }
+
 
 @dataclass(frozen=True)
 class ExecutionProfilePolicy:
@@ -94,6 +169,13 @@ class ExecutionProfilePolicy:
     def is_supported_effort(self, executor: str, effort: str) -> bool:
         return effort in self.spec_for(executor).supported_reasoning_efforts
 
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "format": self.format,
+            "version": self.version,
+            "executors": {k: v.as_dict() for k, v in self.executors.items()},
+        }
+
 
 @dataclass(frozen=True)
 class ResolvedExecutionProfile:
@@ -107,6 +189,38 @@ class ResolvedExecutionProfile:
     effort_source: str = "REPOSITORY_DEFAULT"
     format: str = EXECUTION_PROFILE_FORMAT
     version: int = EXECUTION_PROFILE_VERSION
+
+    def __post_init__(self) -> None:
+        if self.format != EXECUTION_PROFILE_FORMAT:
+            raise ExecutionProfileValidationError(
+                f"execution profile format must be {EXECUTION_PROFILE_FORMAT!r}, got {self.format!r}"
+            )
+        if self.version != EXECUTION_PROFILE_VERSION or isinstance(self.version, bool):
+            raise ExecutionProfileValidationError(
+                f"execution profile version must be {EXECUTION_PROFILE_VERSION}, got {self.version!r}"
+            )
+        if not isinstance(self.run_id, str) or not self.run_id:
+            raise ExecutionProfileValidationError("invalid or missing run_id in execution profile")
+        if self.executor not in MANAGED_EXECUTORS:
+            raise ExecutionProfileValidationError(
+                f"unsupported executor in execution profile: {self.executor!r}"
+            )
+        if not is_valid_model_identifier(self.model):
+            raise ExecutionProfileValidationError(
+                f"invalid model identifier in execution profile: {self.model!r}"
+            )
+        if not isinstance(self.reasoning_effort, str) or not self.reasoning_effort:
+            raise ExecutionProfileValidationError(
+                "invalid or missing reasoning_effort in execution profile"
+            )
+        if self.model_source not in ALLOWED_SOURCE_ATTRIBUTIONS:
+            raise ExecutionProfileValidationError(
+                f"invalid or missing model_source in execution profile: {self.model_source!r}"
+            )
+        if self.effort_source not in ALLOWED_SOURCE_ATTRIBUTIONS:
+            raise ExecutionProfileValidationError(
+                f"invalid or missing effort_source in execution profile: {self.effort_source!r}"
+            )
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -124,12 +238,27 @@ class ResolvedExecutionProfile:
         return json.dumps(self.as_dict(), indent=2, sort_keys=True) + "\n"
 
 
-
 def parse_execution_profile_policy(data: Any) -> ExecutionProfilePolicy:
     """Parse and strictly validate execution profile policy configuration."""
+    if isinstance(data, (str, bytes)):
+        try:
+            data = yaml.load(data, Loader=UniqueKeySafeLoader)
+        except ExecutionProfileValidationError:
+            raise
+        except Exception as exc:
+            raise ExecutionProfileValidationError(
+                f"malformed execution profile policy YAML: {exc}"
+            ) from exc
+
     if not isinstance(data, Mapping):
         raise ExecutionProfileValidationError(
             "execution profile policy document must be a mapping"
+        )
+
+    unknown_top = sorted(k for k in data.keys() if k not in POLICY_ALLOWED_FIELDS)
+    if unknown_top:
+        raise ExecutionProfileValidationError(
+            f"execution profile policy contains unknown field(s): {', '.join(repr(k) for k in unknown_top)}"
         )
 
     doc_format = data.get("format")
@@ -150,6 +279,12 @@ def parse_execution_profile_policy(data: Any) -> ExecutionProfilePolicy:
             "execution profile policy 'executors' must be a mapping"
         )
 
+    unknown_executors = sorted(k for k in executors_raw.keys() if k not in MANAGED_EXECUTORS)
+    if unknown_executors:
+        raise ExecutionProfileValidationError(
+            f"execution profile policy contains unknown executor(s): {', '.join(repr(k) for k in unknown_executors)}"
+        )
+
     for required_executor in ("codex", "antigravity"):
         if required_executor not in executors_raw:
             raise ExecutionProfileValidationError(
@@ -165,6 +300,14 @@ def parse_execution_profile_policy(data: Any) -> ExecutionProfilePolicy:
         if not isinstance(spec_data, Mapping):
             raise ExecutionProfileValidationError(
                 f"executor spec for {name!r} must be a mapping"
+            )
+
+        unknown_spec_fields = sorted(
+            k for k in spec_data.keys() if k not in EXECUTOR_SPEC_ALLOWED_FIELDS
+        )
+        if unknown_spec_fields:
+            raise ExecutionProfileValidationError(
+                f"executor {name!r} spec contains unknown field(s): {', '.join(repr(k) for k in unknown_spec_fields)}"
             )
 
         model = spec_data.get("default_model")
@@ -184,12 +327,18 @@ def parse_execution_profile_policy(data: Any) -> ExecutionProfilePolicy:
             raise ExecutionProfileValidationError(
                 f"executor {name!r} must define non-empty supported_reasoning_efforts"
             )
+        seen_efforts: set[str] = set()
         supported: list[str] = []
         for item in efforts_raw:
             if not isinstance(item, str) or not item:
                 raise ExecutionProfileValidationError(
                     f"executor {name!r} has invalid supported reasoning effort: {item!r}"
                 )
+            if item in seen_efforts:
+                raise ExecutionProfileValidationError(
+                    f"executor {name!r} supported_reasoning_efforts contains duplicate effort: {item!r}"
+                )
+            seen_efforts.add(item)
             supported.append(item)
 
         if effort not in supported:
@@ -245,20 +394,21 @@ def load_execution_profile_policy(
 
     try:
         content = path.read_text(encoding="utf-8")
-        data = yaml.safe_load(content)
     except Exception as exc:
         raise ExecutionProfileValidationError(
             f"failed to load execution profile policy {path}: {exc}"
         ) from exc
 
-    return parse_execution_profile_policy(data)
+    return parse_execution_profile_policy(content)
 
 
 def parse_execution_profile(data: Any) -> ResolvedExecutionProfile:
     """Parse and validate one persisted or transmitted execution profile."""
     if isinstance(data, (str, bytes)):
         try:
-            data = json.loads(data)
+            data = json.loads(data, object_pairs_hook=_reject_duplicate_json_keys)
+        except ExecutionProfileValidationError:
+            raise
         except Exception as exc:
             raise ExecutionProfileValidationError(
                 f"malformed execution profile JSON: {exc}"
@@ -266,6 +416,14 @@ def parse_execution_profile(data: Any) -> ResolvedExecutionProfile:
 
     if not isinstance(data, Mapping):
         raise ExecutionProfileValidationError("execution profile must be a mapping")
+
+    unknown_fields = sorted(
+        k for k in data.keys() if k not in EXECUTION_PROFILE_ALLOWED_FIELDS
+    )
+    if unknown_fields:
+        raise ExecutionProfileValidationError(
+            f"execution profile contains unknown field(s): {', '.join(repr(k) for k in unknown_fields)}"
+        )
 
     doc_format = data.get("format")
     if doc_format != EXECUTION_PROFILE_FORMAT:
@@ -302,13 +460,15 @@ def parse_execution_profile(data: Any) -> ResolvedExecutionProfile:
         )
 
     model_source = data.get("model_source")
-    if not isinstance(model_source, str) or not model_source:
-        raise ExecutionProfileValidationError("invalid or missing model_source in execution profile")
+    if model_source not in ALLOWED_SOURCE_ATTRIBUTIONS:
+        raise ExecutionProfileValidationError(
+            f"invalid or missing model_source in execution profile: {model_source!r}"
+        )
 
     effort_source = data.get("effort_source")
-    if not isinstance(effort_source, str) or not effort_source:
+    if effort_source not in ALLOWED_SOURCE_ATTRIBUTIONS:
         raise ExecutionProfileValidationError(
-            "invalid or missing effort_source in execution profile"
+            f"invalid or missing effort_source in execution profile: {effort_source!r}"
         )
 
     return ResolvedExecutionProfile(
