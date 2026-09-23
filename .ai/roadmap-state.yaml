@@ -27,7 +27,7 @@ verification_foundation_audit:
     reinterpreted by this planning decision.
 human_priority_side_track:
   id: execution-profile-selection-v1
-  status: ACTIVE
+  status: COMPLETE
   approved_on: "2026-09-23"
   approved_against_main_sha: "6a6d8b691ff5a694c065d56fc11e51283c109cf5"
   authority: HUMAN_BRAIN_PLANNING
@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - execution-profile-human-selection-default-activation
+  - bp-v4-parallel-verification-performance-guard
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -300,8 +300,25 @@ sequence:
       must require policy change plus focused validation/smoke rather than adapter,
       Dispatcher, carrier, or lifecycle redesign.
   - id: execution-profile-human-selection-default-activation
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-163
+      task_revision: 2
+      run_id: RUN-163-009
+      operation: REPAIR
+      failed_run_id: RUN-163-008
+      repair_id: REPAIR-163-008
+      review_id: REVIEW-163-009
+      reviewed_sha: "bb7e8bdc7da5e65660755b44d915f6bc15990ea8"
+      published_sha: "bb7e8bdc7da5e65660755b44d915f6bc15990ea8"
+      verification_evidence:
+        - RUN-163-009-V001
+        - RUN-163-009-V002
+        - RUN-163-009-V003
+        - RUN-163-009-V004
+        - RUN-163-009-V005
     task_id: TASK-163
+    task_revision: 2
     planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
     objective: >-
       Propagate exact Human-selected model/effort through CLI and versioned PRIMARY,
@@ -309,11 +326,10 @@ sequence:
       medium and Antigravity Gemini 3.8 Flash medium defaults, and prove fail-closed
       end-to-end native invocation with no automatic routing or fallback.
   - id: bp-v4-parallel-verification-performance-guard
-    status: PAUSED_BY_HUMAN_PRIORITY
+    status: NEXT
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
-    resume_after: execution-profile-human-selection-default-activation
     objective: >-
       After serial harness acceleration is proven, establish measured bounded parallel
       full-suite conformance and verification-cost regression visibility without
@@ -385,11 +401,9 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item. The current explicit Human priority
-    now selects TASK-163 in the execution-profile side-track after reviewed/published
-    TASK-162 foundation completion; after TASK-163 is reviewed/published and the
-    side-track is closed, canonicalize BP-V4 back to NEXT before generic Brain
-    Portability continuation resumes.
+    Continue only the unique canonical NEXT item. The execution-profile side-track is
+    reviewed, published, and closed through TASK-163; generic Brain Portability
+    continuation now resumes at BP-V4. PLANNED and parallel work do not compete with NEXT.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
