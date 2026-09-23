@@ -6589,6 +6589,7 @@ def test_historical_remote_artifact_without_observation_remains_compatible(
         run_path=state.runs / f"{summary.run_id}.json",
         result_path=summary.result_path,
         run_id=summary.run_id,
+        execution_profile_path=state.execution_profiles / f"{summary.run_id}.json",
     )
     git(
         repo,
