@@ -45,6 +45,38 @@ Unsupported or unavailable explicit selections fail closed. There is no automati
 11. Runtime verification, Reviewer authority, Publisher authority, RunLease, ExecutorBoundary, mutation permissions, sandbox selection, and canonical evidence ownership do not move.
 12. Historical TASK/RUN/dispatch/carrier artifacts are never reinterpreted under new defaults.
 
+## Future model evolution invariant
+
+For an already-supported Executor whose native invocation contract remains compatible,
+changing the default model in the future must be a repository-owned profile-policy change
+plus focused validation/smoke, not an adapter, Dispatcher, RUN, carrier, or lifecycle
+contract redesign.
+
+Examples include prospective changes such as `gpt-6-sol -> gpt-7-sol` through Codex
+or `gemini-3.8-flash -> gemini-4-flash` through Antigravity when the corresponding
+native CLI continues to accept the same model-selection and effort-selection surface.
+
+The architecture must therefore satisfy all of the following:
+
+- default model/effort values have one repository-owned policy authority and are not
+  duplicated as adapter-owned constants;
+- model identifiers remain opaque provider-native identifiers subject only to bounded
+  syntax validation, not a repository-global model allowlist;
+- changing a compatible default must not require changes to frozen TASK/RUN semantics,
+  Dispatcher selection semantics, Human carrier schemas, or lifecycle authority;
+- explicit Human alternate-model selection must not require code changes merely because
+  the model identifier is new;
+- provider capability drift such as a changed effort vocabulary may require a narrow
+  adapter/capability-validation update, but must not require rebuilding the profile
+  foundation;
+- a genuinely new provider or incompatible native invocation surface may require a new
+  adapter/adoption task, but that is distinct from ordinary default-model evolution;
+- changing current defaults never reinterprets historical RUN execution identity because
+  each admitted native invocation retains its exact resolved profile provenance.
+
+TASK-162 must establish this invariant structurally. TASK-163 must prove it through the
+Human-facing selection and activation path.
+
 ## Compatibility strategy
 
 Implementation is split into two bounded milestones.
@@ -53,12 +85,13 @@ Implementation is split into two bounded milestones.
 
 Build additive profile-resolution and provenance plumbing while preserving current production execution behavior until activation. Establish:
 
-- repository-owned execution-profile policy contract;
+- repository-owned execution-profile policy contract with a single default authority designed for future compatible model changes without adapter/Dispatcher redesign;
 - `ResolvedExecutionProfile` validation/resolution;
 - exact profile injection into Codex and Antigravity adapters;
 - immutable per-RUN/profile provenance written before native invocation;
 - deterministic executor/profile consistency checks;
-- focused compatibility and failure tests.
+- focused compatibility and failure tests;
+- regression proof that a synthetic future provider-native model identifier can flow through the existing Executor profile path without a global model allowlist or adapter architecture change.
 
 EP-1 must not activate the new production defaults across Human/remote carriers and must not modify frozen TASK or RUN schemas.
 
