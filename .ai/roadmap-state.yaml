@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-bp-v4-current-suite-compatibility
+  - maintenance-hosted-carrier-profile-policy-binding
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -325,8 +325,20 @@ sequence:
       REMEDIATION, and REPAIR delivery/dispatch contracts, activate Codex GPT-6 Sol
       medium and Antigravity Gemini 3.8 Flash medium defaults, and prove fail-closed
       end-to-end native invocation with no automatic routing or fallback.
-  - id: maintenance-bp-v4-current-suite-compatibility
+  - id: maintenance-hosted-carrier-profile-policy-binding
     status: NEXT
+    task_id: TASK-165
+    task_revision: 1
+    planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    objective: >-
+      Restore deterministic zero-touch profile-aware hosted carrier admission for
+      PRIMARY, REMEDIATION, and coding REPAIR by binding execution-profile resolution
+      to the exact canonical carrier source before downstream self-host dispatch.
+  - id: maintenance-bp-v4-current-suite-compatibility
+    status: BLOCKED
+    blocked_by:
+      task_id: TASK-165
+      task_revision: 1
     task_id: TASK-164
     task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -414,9 +426,10 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item. Before another BP-V4 current-main
-    measurement, complete the bounded TASK-164 remote-surface compatibility prerequisite;
-    then explicitly resume BP-V4. PLANNED and parallel work do not compete with NEXT.
+    Continue only the unique canonical NEXT item. First complete TASK-165 hosted-carrier
+    profile-policy binding, then resume the already-authored TASK-164 remote-surface
+    compatibility prerequisite, then explicitly resume BP-V4. PLANNED and parallel work
+    do not compete with NEXT.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
