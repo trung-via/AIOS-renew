@@ -1,5 +1,5 @@
 task_id: TASK-163
-revision: 1
+revision: 2
 
 goal: >
   Implement Execution Profile Human Selection and Default Activation v1 on top of
@@ -14,25 +14,46 @@ goal: >
   creating routing, fallback, sticky profile state, or a second default authority.
 
 problem: >
-  TASK-162 published a strict repository-owned execution-profile policy,
-  provider-neutral profile validation, exact adapter injection, pre-native immutable
-  sidecar persistence, terminal provenance, and future-compatible opaque model
-  identifiers. Human and remote delivery surfaces still select only an Executor,
-  current policy defaults remain gpt-5.6-sol/high for Codex and
-  gemini-3.8-flash/high for Antigravity, and existing PRIMARY/REMEDIATION/REPAIR
-  carrier and durable dispatch contracts do not bind model/effort selection.
-  Activating new defaults without strengthening those authorization boundaries
-  would permit replay under changed defaults and could make Brain memory or a
-  carrier an accidental second profile authority. TASK-163 must close that gap
-  while preserving frozen TASK/RUN semantics and all existing execution,
-  verification, review, publication, and one-active-executor authority boundaries.
+  TASK-163 revision 1 correctly established the EP-2 target semantics, but its
+  authored mutation authority was incomplete for the verification it required.
+  RUN-163-003 reached Runtime verification with a clean, in-scope, repairable
+  candidate and the first focused verification group failed because several
+  dispatch tests still encoded pre-profile new-authorization contracts. Audit of
+  the later required verification also found tests/test_codex_adapter.py and
+  tests/test_antigravity_adapter.py still encoding the TASK-162 compatibility
+  defaults even though revision 1 required the new repository defaults while
+  leaving those two test files outside scope.modify. A correct revision-1
+  implementation therefore cannot update every required verification contract
+  without violating TASK mutation authority. Revision 2 preserves the Human-
+  approved Execution Profile activation intent, expands only the missing test
+  mutation authority, requires stale synthetic tests to migrate to the strengthened
+  profile-aware contracts rather than weakening production semantics, and tightens
+  historical-journal compatibility so old authorizations are never reinterpreted
+  through current defaults.
 
 assumptions:
   - >
-    Canonical main at TASK-163 authoring is
-    8c0a1509e21a8f9f6a47ec9fb42a4bb05ed63687 and the unique canonical NEXT
-    roadmap item is execution-profile-human-selection-default-activation bound to
+    Canonical main at TASK-163 revision-2 authoring is
+    abcbef56b55d27a63f3c11a7cde50f675cae06fb. The unique canonical NEXT roadmap
+    item remains execution-profile-human-selection-default-activation bound to
     TASK-163.
+  - >
+    TASK-163 revision 1 is canonical at
+    abcbef56b55d27a63f3c11a7cde50f675cae06fb. RUN-163-001, RUN-163-002, and
+    RUN-163-003 are immutable terminal FAILURE lineage for revision 1 and are not
+    erased, reinterpreted, or converted into revision-2 execution state.
+  - >
+    RUN-163-003 is a canonical VERIFICATION failure from base
+    abcbef56b55d27a63f3c11a7cde50f675cae06fb with failed candidate
+    638d3fbe71d11e659a3b8fa08537d84b6e76eed8. Its candidate is clean, descends
+    from base, has no outside-task-scope files, and is marked repairable and
+    transportable. That candidate remains historical evidence only; revision 2 is
+    a fresh TASK authorization and does not continue or publish that failed
+    candidate.
+  - >
+    No canonical REPAIR authorization exists for RUN-163-003 at revision-2
+    authoring. Revision 2 corrects Brain-authored TASK authority rather than using a
+    REPAIR to work around a known insufficient revision-1 mutation scope.
   - >
     TASK-162 revision 1 is reviewed and published at
     783f4929a97cb33445109593e95bda34132560f7. Its execution-profile foundation,
@@ -46,15 +67,16 @@ assumptions:
     REPAIR authorization resolves a fresh profile; restart/reconciliation of the
     same authorization reuses its exact already-bound profile.
   - >
-    The current repository-owned policy still contains the TASK-162 compatibility
-    defaults gpt-5.6-sol/high for Codex and gemini-3.8-flash/high for Antigravity.
-    TASK-163 is the sole activation milestone for gpt-6-sol/medium and
+    Canonical main still contains the TASK-162 compatibility defaults
+    gpt-5.6-sol/high for Codex and gemini-3.8-flash/high for Antigravity.
+    TASK-163 remains the sole activation milestone for gpt-6-sol/medium and
     gemini-3.8-flash/medium.
   - >
-    Current new-request contracts are PRIMARY wakeup request v2, REMEDIATION intent
-    request v1, and REPAIR wakeup request v1. Current durable PRIMARY dispatch
-    journal is profile-unaware v2 and REMEDIATION/REPAIR dispatch journals are
-    profile-unaware v1. Historical records must remain readable and immutable.
+    Current new-request contracts on canonical main are PRIMARY wakeup request v2,
+    REMEDIATION intent request v1, and REPAIR wakeup request v1. Current durable
+    PRIMARY dispatch journal is profile-unaware v2 and REMEDIATION/REPAIR dispatch
+    journals are profile-unaware v1. Historical records must remain readable and
+    immutable.
   - >
     Antigravity MiniMax remains outside Execution Profile management. Existing
     local MiniMax execution without model/effort override must remain supported,
@@ -155,6 +177,8 @@ scope:
     - tests/test_self_hosted_wakeup.py
     - tests/test_codex_smoke.py
     - tests/test_antigravity_smoke.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
 
 non_goals:
   - >
@@ -233,8 +257,12 @@ constraints:
       the exact resolved profile identity in addition to their existing selectors.
       Reuse of one dispatch identity with any changed executor/profile value or source
       attribution must fail closed before native invocation; exact replay must remain
-      idempotent. Existing historical journal versions must remain readable and must
-      never acquire retroactive profiles.
+      idempotent. Existing historical PRIMARY v1/v2, REMEDIATION v1, and REPAIR v1
+      journals must remain readable/reconcilable under their own historical binding,
+      must never acquire retroactive profiles, and must never resolve or compare
+      current repository defaults merely because a historical identity is replayed.
+      If historical state lacks authority for safe continuation, fail closed rather
+      than upgrading that authorization with a current profile.
     - >
       When a RUN is created for a profile-managed execution, the persisted
       TASK-162 execution-profile sidecar must exactly match the profile bound by the
@@ -264,6 +292,14 @@ constraints:
       validation/smoke. It must not require another carrier schema, Dispatcher,
       adapter, frozen RUN, or lifecycle redesign.
     - >
+      Tests that encode superseded pre-TASK-163 semantics for newly created
+      authorizations, carriers, dispatch records, workflow forwarding, or current
+      defaults must be migrated to the versioned profile-aware contract. Do not make
+      production profile or dispatch validation permissive merely to preserve stale
+      synthetic fixtures. Historical compatibility must be proven with explicitly
+      constructed historical records/requests rather than by allowing a first-seen
+      new authorization to omit required profile identity.
+    - >
       Do not modify files outside scope.modify and do not push or publish from
       Executor implementation.
 
@@ -275,11 +311,12 @@ acceptance:
       authority with no adapter/carrier/workflow duplicate default constants.
   - id: AC2
     condition: >
-      Local run and continue plus canonical REMEDIATION and coding REPAIR surfaces
-      accept partial or complete Human model/effort overrides for Codex/Antigravity,
-      resolve omitted dimensions deterministically, preserve EXPLICIT versus
-      REPOSITORY_DEFAULT attribution, and deliver exact values to native command
-      construction.
+      Local run and continue, including continue delegation into PRIMARY,
+      REMEDIATION, and coding REPAIR, accept partial or complete Human model/effort
+      overrides for Codex/Antigravity; direct canonical REMEDIATION and coding
+      REPAIR surfaces preserve the same semantics. Omitted dimensions resolve
+      deterministically, EXPLICIT versus REPOSITORY_DEFAULT attribution is
+      preserved, and the exact resolved values reach native command construction.
   - id: AC3
     condition: >
       A new authorization never implicitly inherits the previous RUN profile, while
@@ -305,9 +342,12 @@ acceptance:
   - id: AC7
     condition: >
       Historical PRIMARY v1/v2, REMEDIATION v1, and REPAIR v1 durable journals
-      remain readable/reconcilable under their historical semantics, while newly
-      submitted legacy carrier request versions are rejected rather than silently
-      applying current defaults.
+      remain readable/reconcilable under their exact historical semantics. Replaying
+      or reconciling one of those existing identities does not resolve, attach,
+      compare against, or persist current repository defaults, does not upgrade the
+      journal version, and does not fabricate execution-profile provenance or a new
+      native authorization. Newly submitted legacy carrier request versions are
+      rejected rather than silently applying current defaults.
   - id: AC8
     condition: >
       Invalid effort, malformed model identifier, missing required Executor/profile
@@ -335,7 +375,9 @@ acceptance:
       Focused regression proves that after TASK-163 a compatible future default
       change can be expressed by editing only repository profile policy plus focused
       validation/smoke, with no required adapter, Dispatcher, Human carrier schema,
-      durable dispatch schema, or lifecycle redesign.
+      durable dispatch schema, or lifecycle redesign. Adapter-mechanics regressions
+      exercise explicitly injected profiles rather than duplicating the current
+      repository default values as a second default authority.
 
 verification:
   policy: minimum-sufficient-v1
