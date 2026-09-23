@@ -71,8 +71,11 @@ _NATIVE_EXECUTOR_INSTRUCTION = (
 )
 
 
-ANTIGRAVITY_DEFAULT_MODEL = "gemini-3.8-flash"
-ANTIGRAVITY_DEFAULT_EFFORT = "high"
+from .execution_profile import (
+    ResolvedExecutionProfile,
+    default_execution_profile,
+)
+
 
 AIOS_ANTIGRAVITY_ACTIVE_ENV = "AIOS_ANTIGRAVITY_ACTIVE"
 AIOS_ANTIGRAVITY_ACTIVE_VALUE = "1"
@@ -135,6 +138,7 @@ class AntigravityAdapter:
         repo: str | Path | None = None,
         handoff_path: str | Path | None = None,
         structural_output: bool | None = None,
+        execution_profile: ResolvedExecutionProfile | None = None,
     ) -> None:
         self._transport = transport
         self._runner = runner
@@ -146,6 +150,7 @@ class AntigravityAdapter:
         self._structural_output = (
             transport is None if structural_output is None else structural_output
         )
+        self._execution_profile = execution_profile
 
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
         """Execute the unchanged TASK/RUN pair through the native transport."""
@@ -249,7 +254,10 @@ class AntigravityAdapter:
             operation=operation, handoff_path=self._handoff_path
         )
         command = self.command_for(
-            repo=self._repo, instruction=instruction, operation=operation
+            repo=self._repo,
+            instruction=instruction,
+            operation=operation,
+            execution_profile=self._execution_profile,
         )
         try:
             completed = self._runner(
@@ -313,7 +321,12 @@ class AntigravityAdapter:
             transport_record_fn(usage)
 
     def command_for(
-        self, *, repo: Path, instruction: str, operation: str = "PRIMARY"
+        self,
+        *,
+        repo: Path,
+        instruction: str,
+        operation: str = "PRIMARY",
+        execution_profile: ResolvedExecutionProfile | None = None,
     ) -> tuple[str, ...]:
         """Build the native AGY command from provider-neutral authorization."""
 
@@ -323,6 +336,10 @@ class AntigravityAdapter:
             "REPAIR": REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
         }.get(operation, RESULT_PACKAGE_SCHEMA_PATH)
 
+        profile = execution_profile or self._execution_profile
+        if profile is None:
+            profile = default_execution_profile(executor="antigravity", repo=repo)
+
         command = [
             "agy",
             "--print",
@@ -330,9 +347,9 @@ class AntigravityAdapter:
             "--add-dir",
             str(repo),
             "--model",
-            ANTIGRAVITY_DEFAULT_MODEL,
+            profile.model,
             "--effort",
-            ANTIGRAVITY_DEFAULT_EFFORT,
+            profile.reasoning_effort,
         ]
         if self._execution_policy.authorizes_mutation:
             command.extend(["--mode", "accept-edits"])

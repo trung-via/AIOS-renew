@@ -50,6 +50,17 @@ from .dispatcher import (
     repair_dispatcher,
     resolve_native_execution_policy,
 )
+from .execution_profile import (
+    ExecutionProfileConflictError,
+    ExecutionProfileError,
+    ExecutionProfileValidationError,
+    ResolvedExecutionProfile,
+    is_profile_managed_executor,
+    load_execution_profile_policy,
+    parse_execution_profile,
+    persist_execution_profile,
+    resolve_execution_profile,
+)
 from .dispatch_reconciliation import (
     DispatchError,
     DispatchInvocation,
@@ -234,6 +245,7 @@ class RuntimePaths:
     admission_failures: Path
     repairs: Path
     lock: Path
+    execution_profiles: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -569,6 +581,7 @@ def runtime_paths(repo: str | Path) -> RuntimePaths:
         paths.observations,
         paths.admission_failures,
         paths.repairs,
+        paths.execution_profiles,
     ):
         path.mkdir(parents=True, exist_ok=True)
     return paths
@@ -592,6 +605,7 @@ def _runtime_paths_readonly(repo: str | Path) -> RuntimePaths:
         admission_failures=state_root / "admission-failures",
         repairs=state_root / "repairs",
         lock=state_root / "operator.lock",
+        execution_profiles=state_root / "execution-profiles",
     )
 
 
@@ -1078,6 +1092,51 @@ def run_task(
         raise
 
 
+def _bind_and_persist_execution_profile(
+    *,
+    state: RuntimePaths,
+    repo: Path,
+    run_id: str,
+    executor: str,
+) -> ResolvedExecutionProfile | None:
+    """Resolve, validate, and durably persist one execution profile sidecar."""
+    if not is_profile_managed_executor(executor):
+        return None
+
+    profiles_dir = state.execution_profiles or (state.root / "execution-profiles")
+    profile_path = profiles_dir / f"{run_id}.json"
+    if profile_path.is_file():
+        try:
+            existing = parse_execution_profile(profile_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise OperatorError(f"persisted execution profile is invalid: {exc}") from exc
+        if existing.run_id != run_id or existing.executor != executor:
+            raise OperatorError(
+                f"persisted execution profile mismatch for RUN {run_id}: "
+                f"profile.executor={existing.executor!r}, expected {executor!r}"
+            )
+        return existing
+
+    try:
+        policy = load_execution_profile_policy(repo)
+        profile = resolve_execution_profile(
+            policy, run_id=run_id, executor=executor, repo=repo
+        )
+        persist_execution_profile(profile_path, profile)
+    except ExecutionProfileConflictError as exc:
+        raise OperatorError(f"execution profile conflict: {exc}") from exc
+    except ExecutionProfileError as exc:
+        raise OperatorError(f"execution profile resolution failed: {exc}") from exc
+    except Exception as exc:
+        raise OperatorError(f"failed to persist execution profile: {exc}") from exc
+
+    if not profile_path.is_file():
+        raise OperatorError(
+            f"execution profile sidecar missing before native runner: {profile_path}"
+        )
+    return profile
+
+
 def _run_task_impl(
     task_id: str,
     *,
@@ -1180,6 +1239,12 @@ def _run_task_impl(
         run_path = state.runs / f"{run_id}.json"
         _write_json(run_path, asdict(run))
         attempt.bind_run(run_path)
+        execution_profile = _bind_and_persist_execution_profile(
+            state=state,
+            repo=root,
+            run_id=run_id,
+            executor=executor,
+        )
         if dispatch_id is not None:
             bind_dispatch_run(
                 state_root=state.root,
@@ -1206,6 +1271,7 @@ def _run_task_impl(
             handoff_path=state.handoffs / f"{run_id}.json",
             execution_policy=execution_policy,
             native_runner=observed_native_runner,
+            execution_profile=execution_profile,
         )
 
         leases = RunLeaseRegistry()
@@ -1555,6 +1621,10 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
     optional_preverification = (
         preverification_path if preverification_path.is_file() else None
     )
+    profile_path = (
+        state.execution_profiles or (state.root / "execution-profiles")
+    ) / f"{run_id}.json"
+    optional_profile = profile_path if profile_path.is_file() else None
     if result_path.is_file() and failure_path.is_file():
         raise OperatorError("RUN has conflicting terminal state")
     try:
@@ -1566,6 +1636,7 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
                 lineage_path=(state.repairs / f"{run_id}.json")
                 if (state.repairs / f"{run_id}.json").is_file() else None,
                 observation_path=optional_observation,
+                execution_profile_path=optional_profile,
             )
         elif failure_path.is_file():
             payload = json.loads(failure_path.read_text(encoding="utf-8"))
@@ -1622,6 +1693,7 @@ def retry_transport(run_id: str, *, repo: str | Path | None = None) -> None:
                 if (state.repairs / f"{run_id}.json").is_file() else None,
                 observation_path=optional_observation,
                 preverification_path=failure_preverification,
+                execution_profile_path=optional_profile,
             )
         else:
             raise OperatorError(f"persisted terminal state not found: {run_id}")
@@ -2471,12 +2543,19 @@ def _run_repair_impl(
                     "CODE_FIX", "CONTINUE_IMPLEMENTATION"
                 )
             )
+            execution_profile = _bind_and_persist_execution_profile(
+                state=state,
+                repo=repo,
+                run_id=run_id,
+                executor=run_executor,
+            )
             dispatcher = repair_dispatcher(
                 selected_executor=run_executor,
                 repo=subject_repo,
                 handoff_path=state.handoffs / f"{run_id}.json",
                 execution_policy=execution_policy,
                 native_runner=observed_native_runner,
+                execution_profile=execution_profile,
             )
             try:
                 package = dispatcher.dispatch_repair(execution=execution)
@@ -4222,12 +4301,19 @@ def _run_remediation_impl(
         execution_policy = resolve_native_execution_policy(
             authorizes_mutation=canonical_remediation.action == "CODE_FIX"
         )
+        execution_profile = _bind_and_persist_execution_profile(
+            state=state,
+            repo=root,
+            run_id=run_id,
+            executor=executor,
+        )
         dispatcher = remediation_dispatcher(
             selected_executor=executor,
             repo=subject_repo,
             handoff_path=state.handoffs / f"{run_id}.json",
             execution_policy=execution_policy,
             native_runner=observed_native_runner,
+            execution_profile=execution_profile,
         )
 
         try:

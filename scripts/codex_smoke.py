@@ -22,6 +22,7 @@ from aios_renew import (  # noqa: E402
     RunLeaseRegistry,
     parse_task,
 )
+from aios_renew.execution_profile import default_execution_profile
 
 
 SMOKE_CONTENT = b"AIOS smoke pass\n"
@@ -173,7 +174,15 @@ def run_smoke(
     )
     leases = RunLeaseRegistry()
     lease = leases.acquire(run)
-    selected_adapter = adapter if adapter is not None else CodexAdapter()
+    if adapter is not None:
+        selected_adapter = adapter
+    else:
+        profile = default_execution_profile(
+            "codex",
+            run_id=SMOKE_RUN_ID,
+            repo=Path(canonical_repo),
+        )
+        selected_adapter = CodexAdapter(execution_profile=profile)
 
     try:
         package = ExecutorBoundary(leases).invoke(

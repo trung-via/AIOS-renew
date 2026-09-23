@@ -9468,3 +9468,70 @@ def test_repair_wakeup_rejects_executor_authority_inconsistent_with_action(
             executor="codex",
             repo=root,
         )
+
+
+def test_operator_persists_execution_profile_before_native_runner(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    sidecar = paths.execution_profiles / "RUN-101-001.json"
+
+    observed_during_runner = []
+
+    class AssertingRunner(FakeCodexRunner):
+        def __call__(self, command, **kwargs):
+            observed_during_runner.append(sidecar.is_file())
+            return super().__call__(command, **kwargs)
+
+    runner = AssertingRunner(repo)
+    run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    assert observed_during_runner == [True]
+    assert sidecar.is_file()
+    profile_data = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert profile_data["format"] == "AIOS_EXECUTION_PROFILE"
+    assert profile_data["version"] == 1
+    assert profile_data["run_id"] == "RUN-101-001"
+    assert profile_data["executor"] == "codex"
+    assert profile_data["model"] == "gpt-5.6-sol"
+    assert profile_data["reasoning_effort"] == "high"
+    assert profile_data["model_source"] == "REPOSITORY_DEFAULT"
+    assert profile_data["effort_source"] == "REPOSITORY_DEFAULT"
+
+
+def test_operator_conflicting_preexisting_sidecar_invokes_zero_native_runners(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    sidecar = paths.execution_profiles / "RUN-101-001.json"
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    # Pre-existing sidecar with different executor
+    sidecar.write_text(
+        json.dumps({
+            "format": "AIOS_EXECUTION_PROFILE",
+            "version": 1,
+            "run_id": "RUN-101-001",
+            "executor": "antigravity",
+            "model": "gemini-3.8-flash",
+            "reasoning_effort": "high",
+            "model_source": "REPOSITORY_DEFAULT",
+            "effort_source": "REPOSITORY_DEFAULT",
+        }),
+        encoding="utf-8",
+    )
+
+    runner = FakeCodexRunner(repo)
+    with pytest.raises(OperatorError, match="persisted execution profile mismatch"):
+        run_task("TASK-101", executor="codex", repo=repo, native_runner=runner)
+
+    assert runner.count == 0
+
+
+def test_operator_antigravity_minimax_creates_no_execution_profile(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    paths = runtime_paths(repo)
+    sidecar = paths.execution_profiles / "RUN-101-001.json"
+
+    runner = FakeCodexRunner(repo)
+    run_task("TASK-101", executor="antigravity-minimax", repo=repo, native_runner=runner)
+
+    assert runner.count == 1
+    assert not sidecar.is_file()

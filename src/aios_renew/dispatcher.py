@@ -12,6 +12,7 @@ from .antigravity_adapter import AntigravityAdapter
 from .antigravity_minimax_adapter import AntigravityMinimaxAdapter
 from .artifacts import ResultPackage
 from .codex_adapter import CodexAdapter
+from .execution_profile import ResolvedExecutionProfile
 from .executor import ExecutorBoundary
 from .review import RemediationExecution
 from .run import Run, RunLease, RunLeaseRegistry
@@ -73,6 +74,7 @@ class Dispatcher:
         selected_executor: str,
         operation: Operation,
         adapter_factories: Mapping[str, AdapterFactory],
+        execution_profile: ResolvedExecutionProfile | None = None,
     ) -> None:
         try:
             self._adapter_factory = adapter_factories[selected_executor]
@@ -82,6 +84,7 @@ class Dispatcher:
             ) from exc
         self._selected_executor = selected_executor
         self._operation = operation
+        self._execution_profile = execution_profile
         self._invoked = False
 
     def dispatch_primary(
@@ -137,6 +140,22 @@ class Dispatcher:
                 f"selected executor {self._selected_executor!r} does not match "
                 f"RUN executor {run.executor!r}"
             )
+        if self._execution_profile is not None:
+            if self._execution_profile.executor != self._selected_executor:
+                raise DispatcherError(
+                    f"execution profile executor {self._execution_profile.executor!r} "
+                    f"does not match selected executor {self._selected_executor!r}"
+                )
+            if self._execution_profile.executor != run.executor:
+                raise DispatcherError(
+                    f"execution profile executor {self._execution_profile.executor!r} "
+                    f"does not match RUN executor {run.executor!r}"
+                )
+            if self._execution_profile.run_id != run.run_id:
+                raise DispatcherError(
+                    f"execution profile run_id {self._execution_profile.run_id!r} "
+                    f"does not match RUN {run.run_id!r}"
+                )
         if self._invoked:
             raise DispatcherError("admitted execution was already dispatched")
 
@@ -167,6 +186,7 @@ def primary_dispatcher(
     handoff_path: Path,
     execution_policy: NativeExecutionPolicy,
     native_runner: NativeRunner,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> Dispatcher:
     """Bind one provider-neutral admitted PRIMARY execution."""
 
@@ -177,6 +197,7 @@ def primary_dispatcher(
         handoff_path=handoff_path,
         execution_policy=execution_policy,
         native_runner=native_runner,
+        execution_profile=execution_profile,
     )
 
 
@@ -187,6 +208,7 @@ def remediation_dispatcher(
     handoff_path: Path,
     execution_policy: NativeExecutionPolicy,
     native_runner: NativeRunner,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> Dispatcher:
     """Bind one provider-neutral admitted REMEDIATION execution."""
 
@@ -197,6 +219,7 @@ def remediation_dispatcher(
         handoff_path=handoff_path,
         execution_policy=execution_policy,
         native_runner=native_runner,
+        execution_profile=execution_profile,
     )
 
 
@@ -207,6 +230,7 @@ def repair_dispatcher(
     handoff_path: Path,
     execution_policy: NativeExecutionPolicy,
     native_runner: NativeRunner,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> Dispatcher:
     """Bind one provider-neutral admitted REPAIR continuation."""
 
@@ -217,6 +241,7 @@ def repair_dispatcher(
         handoff_path=handoff_path,
         execution_policy=execution_policy,
         native_runner=native_runner,
+        execution_profile=execution_profile,
     )
 
 
@@ -228,20 +253,24 @@ def _native_dispatcher(
     handoff_path: Path,
     execution_policy: NativeExecutionPolicy,
     native_runner: NativeRunner,
+    execution_profile: ResolvedExecutionProfile | None = None,
 ) -> Dispatcher:
     return Dispatcher(
         selected_executor=selected_executor,
         operation=operation,
+        execution_profile=execution_profile,
         adapter_factories={
             "codex": lambda: CodexAdapter(
                 runner=native_runner,
                 execution_policy=execution_policy,
+                execution_profile=execution_profile,
             ),
             "antigravity": lambda: AntigravityAdapter(
                 runner=native_runner,
                 execution_policy=execution_policy,
                 repo=repo,
                 handoff_path=handoff_path,
+                execution_profile=execution_profile,
             ),
             "antigravity-minimax": lambda: AntigravityMinimaxAdapter(
                 runner=native_runner,

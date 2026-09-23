@@ -3166,3 +3166,51 @@ def test_task140_r5_production_hook_denies_exact_ac8_encoded_payload():
         "decision": "deny",
         "reason": "AIOS_BACKGROUND_RISK_DENIED",
     }
+
+
+def test_antigravity_adapter_consumes_injected_profile_and_synthetic_future_model(tmp_path: Path) -> None:
+    from aios_renew.execution_profile import ResolvedExecutionProfile
+    from aios_renew.dispatcher import NativeExecutionPolicy
+    from aios_renew.review import Finding, Remediation, RemediationExecution
+
+    task, run, _, _ = make_execution()
+    profile = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="antigravity",
+        model="gemini-4-flash",
+        reasoning_effort="medium",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
+    handoff_path = tmp_path / "handoff.json"
+    handoff_path.write_text("{}", encoding="utf-8")
+
+    adapter = AntigravityAdapter(
+        repo=tmp_path,
+        handoff_path=handoff_path,
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=True),
+        execution_profile=profile,
+    )
+    cmd = adapter.command_for("PRIMARY", task=task, run=run)
+    assert cmd[cmd.index("--model") + 1] == "gemini-4-flash"
+    assert cmd[cmd.index("--effort") + 1] == "medium"
+
+    finding = Finding("F1", "CRITICAL", "scope", "finding detail")
+    remediation = Remediation("REM-1", "F1", "base_sha", "CODE_FIX", (), "remediation detail")
+    rem_exec = RemediationExecution("REV-1", finding, remediation, run, ())
+    cmd_rem = adapter.command_for("REMEDIATION", execution=rem_exec)
+    assert cmd_rem[cmd_rem.index("--model") + 1] == "gemini-4-flash"
+    assert cmd_rem[cmd_rem.index("--effort") + 1] == "medium"
+
+    repair_exec = {
+        "run": run,
+        "failed_head_sha": run.base_sha,
+        "repair": {
+            "action": "CODE_FIX",
+            "instructions": ["Fix code."],
+            "modification_scope": ["src/fix.py"],
+        },
+    }
+    cmd_repair = adapter.command_for("REPAIR", execution=repair_exec)
+    assert cmd_repair[cmd_repair.index("--model") + 1] == "gemini-4-flash"
+    assert cmd_repair[cmd_repair.index("--effort") + 1] == "medium"

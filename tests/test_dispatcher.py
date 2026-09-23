@@ -310,3 +310,99 @@ def test_native_dispatcher_rejects_unrecognized_executor(
             ),
             native_runner=lambda *args, **kwargs: None,
         )
+
+
+def test_dispatcher_execution_profile_executor_mismatch_fails(tmp_path: Path) -> None:
+    from aios_renew.execution_profile import ResolvedExecutionProfile
+
+    task, run = execution("codex")
+    profile = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="antigravity",
+        model="gemini-3.8-flash",
+        reasoning_effort="high",
+        model_source="REPOSITORY_DEFAULT",
+        effort_source="REPOSITORY_DEFAULT",
+    )
+    dispatcher = primary_dispatcher(
+        selected_executor="codex",
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
+        native_runner=lambda *args, **kwargs: None,
+        execution_profile=profile,
+    )
+    with pytest.raises(DispatcherError, match="execution profile executor mismatch"):
+        dispatcher.dispatch_primary(task=task, run=run)
+
+
+def test_dispatcher_execution_profile_run_id_mismatch_fails(tmp_path: Path) -> None:
+    from aios_renew.execution_profile import ResolvedExecutionProfile
+
+    task, run = execution("codex")
+    profile = ResolvedExecutionProfile(
+        run_id="DIFFERENT-RUN-ID",
+        executor="codex",
+        model="gpt-5.6-sol",
+        reasoning_effort="high",
+        model_source="REPOSITORY_DEFAULT",
+        effort_source="REPOSITORY_DEFAULT",
+    )
+    dispatcher = primary_dispatcher(
+        selected_executor="codex",
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
+        native_runner=lambda *args, **kwargs: None,
+        execution_profile=profile,
+    )
+    with pytest.raises(DispatcherError, match="execution profile run_id mismatch"):
+        dispatcher.dispatch_primary(task=task, run=run)
+
+
+def test_dispatcher_propagates_execution_profile_to_adapter(tmp_path: Path) -> None:
+    from aios_renew.execution_profile import ResolvedExecutionProfile
+    from aios_renew.codex_adapter import CodexAdapter
+    from aios_renew.antigravity_adapter import AntigravityAdapter
+
+    task, run = execution("codex")
+    codex_prof = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="codex",
+        model="gpt-7-sol",
+        reasoning_effort="medium",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
+    disp_codex = primary_dispatcher(
+        selected_executor="codex",
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
+        native_runner=lambda *args, **kwargs: None,
+        execution_profile=codex_prof,
+    )
+    adapter_codex = disp_codex._adapter_factory()
+    assert isinstance(adapter_codex, CodexAdapter)
+    assert adapter_codex.execution_profile == codex_prof
+
+    anti_task, anti_run = execution("antigravity")
+    anti_prof = ResolvedExecutionProfile(
+        run_id=anti_run.run_id,
+        executor="antigravity",
+        model="gemini-4-flash",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
+    disp_anti = primary_dispatcher(
+        selected_executor="antigravity",
+        repo=tmp_path,
+        handoff_path=tmp_path / "handoff.json",
+        execution_policy=resolve_native_execution_policy(authorizes_mutation=True),
+        native_runner=lambda *args, **kwargs: None,
+        execution_profile=anti_prof,
+    )
+    adapter_anti = disp_anti._adapter_factory()
+    assert isinstance(adapter_anti, AntigravityAdapter)
+    assert adapter_anti.execution_profile == anti_prof

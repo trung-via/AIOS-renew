@@ -80,8 +80,11 @@ def native_execution_context(*, run: Run, operation: str) -> dict[str, Any]:
     }
 
 
-CODEX_DEFAULT_MODEL = "gpt-5.6-sol"
-CODEX_DEFAULT_REASONING_EFFORT = "high"
+from .execution_profile import (
+    ResolvedExecutionProfile,
+    default_execution_profile,
+)
+
 
 
 class CodexExecutionError(RuntimeError):
@@ -116,10 +119,12 @@ class CodexAdapter:
         runner: ProcessRunner = subprocess.run,
         schema_path: str | Path = RESULT_PACKAGE_SCHEMA_PATH,
         execution_policy: ExecutionPolicy | None = None,
+        execution_profile: ResolvedExecutionProfile | None = None,
     ) -> None:
         self._runner = runner
         self._schema_path = Path(schema_path)
         self._execution_policy = execution_policy or _DefaultExecutionPolicy()
+        self._execution_profile = execution_profile
 
     def execute(self, *, task: Task, run: Run) -> ResultPackage:
         """Execute an unchanged TASK/RUN pair through native Codex CLI."""
@@ -128,6 +133,7 @@ class CodexAdapter:
             run,
             schema_path=self._schema_path,
             authorizes_mutation=self._execution_policy.authorizes_mutation,
+            execution_profile=self._execution_profile,
         )
         prompt = self.prompt_for(task=task, run=run)
         try:
@@ -182,6 +188,7 @@ class CodexAdapter:
             execution.run,
             schema_path=REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
             authorizes_mutation=self._execution_policy.authorizes_mutation,
+            execution_profile=self._execution_profile,
         )
         try:
             completed = self._runner(
@@ -236,6 +243,7 @@ class CodexAdapter:
             run,
             schema_path=REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
             authorizes_mutation=self._execution_policy.authorizes_mutation,
+            execution_profile=self._execution_profile,
         )
         prompt = self.repair_prompt_for(execution=execution)
         try:
@@ -292,8 +300,13 @@ class CodexAdapter:
         schema_path: str | Path = RESULT_PACKAGE_SCHEMA_PATH,
         *,
         authorizes_mutation: bool | None = None,
+        execution_profile: ResolvedExecutionProfile | None = None,
     ) -> tuple[str, ...]:
         """Build the native non-interactive Codex command."""
+
+        profile = execution_profile
+        if profile is None:
+            profile = default_execution_profile(executor="codex", run_id=run.run_id)
 
         return (
             "codex",
@@ -301,9 +314,9 @@ class CodexAdapter:
             "--cd",
             run.workspace,
             "-m",
-            CODEX_DEFAULT_MODEL,
+            profile.model,
             "-c",
-            f'model_reasoning_effort="{CODEX_DEFAULT_REASONING_EFFORT}"',
+            f'model_reasoning_effort="{profile.reasoning_effort}"',
             "--sandbox",
             (
                 "danger-full-access"

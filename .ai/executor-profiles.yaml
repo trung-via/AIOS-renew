@@ -1,0 +1,18 @@
+format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+
+executors:
+  codex:
+    default_model: gpt-5.6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts:
+      - low
+      - medium
+      - high
+  antigravity:
+    default_model: gemini-3.8-flash
+    default_reasoning_effort: high
+    supported_reasoning_efforts:
+      - low
+      - medium
+      - high

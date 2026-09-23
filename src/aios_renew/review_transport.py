@@ -131,6 +131,7 @@ class RemoteFailureArtifacts:
     failure: bytes
     repair: bytes | None
     preverification: bytes | None = None
+    execution_profile: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -232,6 +233,7 @@ class RemoteTerminalArtifact:
     executor: str | None = None
     base_sha: str | None = None
     candidate_sha: str | None = None
+    execution_profile: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -456,6 +458,9 @@ def resolve_remote_performance_snapshot(
             observation = _read_lifecycle_blob(
                 repo, remote, artifact_sha, ".ai/transport/observation.json"
             )
+            execution_profile = _read_lifecycle_blob(
+                repo, remote, artifact_sha, ".ai/transport/execution-profile.json"
+            )
             terminals.append(
                 RemoteTerminalArtifact(
                     run_id=run_id,
@@ -469,6 +474,7 @@ def resolve_remote_performance_snapshot(
                     executor=executor,
                     base_sha=base_sha,
                     candidate_sha=candidate_sha,
+                    execution_profile=execution_profile,
                 )
             )
         return RemotePerformanceSnapshot(
@@ -1505,12 +1511,21 @@ def _resolve_remote_repair_recovery_from_snapshot(
             artifacts_sha,
             ".ai/transport/pre-verification-candidate.json",
         )
+        execution_profile = _read_remote_blob(
+            repo, remote, artifacts_sha, ".ai/transport/execution-profile.json"
+        )
         if run is None or failure is None:
             raise ReviewTransportError(
                 f"canonical failed RUN content missing for {run_id}"
             )
         artifact = RemoteFailureArtifacts(
-            run_id, refs[candidate_ref], run, failure, repair, preverification
+            run_id,
+            refs[candidate_ref],
+            run,
+            failure,
+            repair,
+            preverification,
+            execution_profile=execution_profile,
         )
         cache[run_id] = artifact
         return artifact
@@ -1789,6 +1804,7 @@ def _create_artifacts_commit(
     run_id: str,
     lineage_path: Path | None = None,
     observation_path: Path | None = None,
+    execution_profile_path: Path | None = None,
 ) -> str:
     """Create an isolated success artifact tree with optional operational state."""
     if not run_path.is_file():
@@ -1854,12 +1870,38 @@ def _create_artifacts_commit(
                 f"failed to hash observation.json: {exc}"
             ) from exc
 
-    tree_input = (
-        f"100644 blob {run_blob_sha}\trun.json\n"
-        f"100644 blob {result_blob_sha}\tresult.json\n"
-        f"{lineage_entry}"
-        f"{observation_entry}"
-    )
+    execution_profile_entry = ""
+    if execution_profile_path is not None:
+        if not execution_profile_path.is_file():
+            raise ReviewTransportError(
+                f"persisted execution profile JSON missing: {execution_profile_path}"
+            )
+        try:
+            proc = subprocess.run(
+                ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
+                input=execution_profile_path.read_bytes(), capture_output=True, check=True,
+            )
+            execution_profile_sha = proc.stdout.decode("utf-8", errors="strict").strip()
+            execution_profile_entry = (
+                f"100644 blob {execution_profile_sha}\texecution-profile.json\n"
+            )
+        except (OSError, UnicodeError, subprocess.CalledProcessError) as exc:
+            raise ReviewTransportError(
+                f"failed to hash execution-profile.json: {exc}"
+            ) from exc
+
+    tree_entries = [
+        f"100644 blob {run_blob_sha}\trun.json\n",
+        f"100644 blob {result_blob_sha}\tresult.json\n",
+    ]
+    if lineage_entry:
+        tree_entries.append(lineage_entry)
+    if observation_entry:
+        tree_entries.append(observation_entry)
+    if execution_profile_entry:
+        tree_entries.append(execution_profile_entry)
+    tree_entries.sort(key=lambda line: line.split("\t")[1])
+    tree_input = "".join(tree_entries)
     try:
         proc = subprocess.run(
             ("git", "-C", str(repo), "mktree"),
@@ -1919,6 +1961,7 @@ def _create_named_artifacts_commit(
     lineage_path: Path | None = None,
     observation_path: Path | None = None,
     preverification_path: Path | None = None,
+    execution_profile_path: Path | None = None,
 ) -> str:
     """Create an isolated artifacts commit without touching the worktree."""
 
@@ -1950,6 +1993,12 @@ def _create_named_artifacts_commit(
         inputs.append(
             ("pre-verification-candidate.json", preverification_path)
         )
+    if execution_profile_path is not None:
+        if not execution_profile_path.is_file():
+            raise ReviewTransportError(
+                f"persisted execution profile JSON missing: {execution_profile_path}"
+            )
+        inputs.append(("execution-profile.json", execution_profile_path))
     for name, path in inputs:
         try:
             proc = subprocess.run(
@@ -1991,6 +2040,7 @@ def transport_failure(
     lineage_path: Path | None = None,
     observation_path: Path | None = None,
     preverification_path: Path | None = None,
+    execution_profile_path: Path | None = None,
 ) -> None:
     """Publish an immutable, authority-checked failed candidate and its facts."""
 
@@ -2009,6 +2059,17 @@ def transport_failure(
     expected_preverification = (
         preverification_path.read_bytes()
         if preverification_path is not None
+        else None
+    )
+    if execution_profile_path is None:
+        default_profile_path = (
+            run_path.parent.parent / "execution-profiles" / f"{run_id}.json"
+        )
+        if default_profile_path.is_file():
+            execution_profile_path = default_profile_path
+    expected_execution_profile = (
+        execution_profile_path.read_bytes()
+        if execution_profile_path is not None and execution_profile_path.is_file()
         else None
     )
     queried_refs = (candidate_ref, artifacts_ref) if publish_candidate else (artifacts_ref,)
@@ -2053,6 +2114,16 @@ def transport_failure(
             raise ReviewTransportError(
                 f"remote failure artifacts ref {artifacts_ref} exists with different pre-verification candidate content"
             )
+        remote_execution_profile = _read_remote_blob(
+            repo, remote, refs[artifacts_ref], ".ai/transport/execution-profile.json"
+        )
+        if (
+            expected_execution_profile is not None
+            and remote_execution_profile not in (None, expected_execution_profile)
+        ):
+            raise ReviewTransportError(
+                f"remote failure artifacts ref {artifacts_ref} exists with different execution profile content"
+            )
     else:
         commit = _create_named_artifacts_commit(
             repo, run_path=run_path, artifact_path=failure_path,
@@ -2060,6 +2131,7 @@ def transport_failure(
             lineage_path=lineage_path,
             observation_path=observation_path,
             preverification_path=preverification_path,
+            execution_profile_path=execution_profile_path,
         )
         terminal_artifact_sha = commit
         specs.append(f"{commit}:{artifacts_ref}")
@@ -2346,6 +2418,7 @@ def transport_post_pass(
     result_path: Path,
     lineage_path: Path | None = None,
     observation_path: Path | None = None,
+    execution_profile_path: Path | None = None,
 ) -> None:
     """Publish aios/review/<RUN_ID> and aios/artifacts/<RUN_ID> to upstream remote."""
     remote = resolve_transport_remote(repo)
@@ -2362,6 +2435,17 @@ def transport_post_pass(
     expected_lineage_bytes = lineage_path.read_bytes() if lineage_path is not None else None
     expected_observation_bytes = (
         observation_path.read_bytes() if observation_path is not None else None
+    )
+    if execution_profile_path is None:
+        default_profile_path = (
+            run_path.parent.parent / "execution-profiles" / f"{run_id}.json"
+        )
+        if default_profile_path.is_file():
+            execution_profile_path = default_profile_path
+    expected_execution_profile_bytes = (
+        execution_profile_path.read_bytes()
+        if execution_profile_path is not None and execution_profile_path.is_file()
+        else None
     )
 
     code, ls_out, _ = _git_cmd(repo, "ls-remote", remote, review_ref, artifacts_ref, allow_fail=True)
@@ -2396,6 +2480,10 @@ def transport_post_pass(
             repo, remote, existing_artifacts_sha, ".ai/transport/observation.json"
         )
 
+        remote_execution_profile_bytes = _read_remote_blob(
+            repo, remote, existing_artifacts_sha, ".ai/transport/execution-profile.json"
+        )
+
         if (
             remote_run_bytes == expected_run_bytes
             and remote_result_bytes == expected_result_bytes
@@ -2403,6 +2491,10 @@ def transport_post_pass(
             and (
                 expected_observation_bytes is None
                 or remote_observation_bytes in (None, expected_observation_bytes)
+            )
+            and (
+                expected_execution_profile_bytes is None
+                or remote_execution_profile_bytes in (None, expected_execution_profile_bytes)
             )
         ):
             push_artifacts = False
@@ -2420,6 +2512,7 @@ def transport_post_pass(
             run_id=run_id,
             lineage_path=lineage_path,
             observation_path=observation_path,
+            execution_profile_path=execution_profile_path,
         )
 
     push_specs: list[str] = []

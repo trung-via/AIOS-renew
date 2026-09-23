@@ -25,6 +25,7 @@ from aios_renew import (  # noqa: E402
     Task,
     validate_task,
 )
+from aios_renew.execution_profile import default_execution_profile
 
 
 SMOKE_CONTENT = b"AIOS smoke pass\n"
@@ -170,8 +171,14 @@ def verify_handoff(
 
     leases = RunLeaseRegistry()
     lease = leases.acquire(run)
+    profile = default_execution_profile(
+        "antigravity",
+        run_id=run.run_id,
+        repo=Path(canonical_repo),
+    )
     adapter = AntigravityAdapter(
         transport=lambda *, task, run: output,
+        execution_profile=profile,
     )
     try:
         package = ExecutorBoundary(leases).invoke(

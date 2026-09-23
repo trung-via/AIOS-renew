@@ -1299,3 +1299,32 @@ def test_codex_execute_output_error_preserves_token_usage() -> None:
         adapter.execute(task=task, run=run)
 
     assert recorded_usages == [TokenUsage(input_tokens=900, cached_input_tokens=300, output_tokens=70)]
+
+
+def test_codex_adapter_consumes_injected_profile_and_synthetic_future_model() -> None:
+    from aios_renew.execution_profile import ResolvedExecutionProfile
+    task, run, _, _ = make_execution()
+    profile = ResolvedExecutionProfile(
+        run_id=run.run_id,
+        executor="codex",
+        model="gpt-7-sol",
+        reasoning_effort="medium",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
+    adapter = CodexAdapter(execution_profile=profile)
+    cmd = adapter.command_for("PRIMARY", task=task, run=run)
+    assert cmd[cmd.index("-m") + 1] == "gpt-7-sol"
+    assert cmd[cmd.index("-c") + 1] == 'model_reasoning_effort="medium"'
+
+    finding = Finding("F1", "CRITICAL", "scope", "finding detail")
+    remediation = Remediation("REM-1", "F1", "base_sha", "CODE_FIX", (), "remediation detail")
+    rem_exec = RemediationExecution("REV-1", finding, remediation, run, ())
+    cmd_rem = adapter.command_for("REMEDIATION", execution=rem_exec)
+    assert cmd_rem[cmd_rem.index("-m") + 1] == "gpt-7-sol"
+    assert cmd_rem[cmd_rem.index("-c") + 1] == 'model_reasoning_effort="medium"'
+
+    repair_exec = {"task": asdict(task), "run": asdict(run), "action": "CODE_FIX"}
+    cmd_repair = adapter.command_for("REPAIR", execution=repair_exec)
+    assert cmd_repair[cmd_repair.index("-m") + 1] == "gpt-7-sol"
+    assert cmd_repair[cmd_repair.index("-c") + 1] == 'model_reasoning_effort="medium"'
