@@ -276,6 +276,9 @@ def test_repair_cli_reprojects_exact_delivery_when_execution_fails(
     projected: list[tuple[Path, dict[str, object]]] = []
 
     monkeypatch.setattr(operator, "resolve_repository", lambda repo: tmp_path)
+    monkeypatch.setattr(
+        operator, "runtime_state_root", lambda repo: tmp_path / "runtime"
+    )
 
     def fail_repair(*args: object, **kwargs: object) -> object:
         raise operator.OperatorError("terminal REPAIR failure")
