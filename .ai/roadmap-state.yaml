@@ -280,9 +280,12 @@ sequence:
     task_revision: 1
     planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
     objective: >-
-      Establish additive deterministic execution-profile resolution, exact native
-      adapter injection, and immutable per-RUN profile provenance without activating
-      new Human/remote carrier defaults or changing frozen TASK/RUN semantics.
+      Establish additive deterministic execution-profile resolution, one repository-owned
+      default-profile policy authority, exact native adapter injection, and immutable
+      per-RUN profile provenance without activating new Human/remote carrier defaults
+      or changing frozen TASK/RUN semantics; future compatible model-default changes
+      must require policy change plus focused validation/smoke rather than adapter,
+      Dispatcher, carrier, or lifecycle redesign.
   - id: execution-profile-human-selection-default-activation
     status: PLANNED
     task_id: TASK-163
