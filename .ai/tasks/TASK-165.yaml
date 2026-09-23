@@ -1,0 +1,199 @@
+task_id: TASK-165
+revision: 1
+
+goal: >
+  Restore deterministic zero-touch Brain-to-self-host delivery for profile-managed
+  PRIMARY, REMEDIATION, and coding REPAIR authorizations by binding GitHub-hosted
+  carrier execution-profile resolution to the single repository-owned profile
+  policy from the exact canonical carrier source used by that invocation.
+  Resolution must be independent of installed-package location and process working
+  directory, must occur exactly once before downstream dispatch, and must preserve
+  the existing self-host, Runtime, durable-dispatch, Reviewer, Publisher, and
+  no-fallback authority boundaries.
+
+problem: >
+  A production-shaped TASK-164 PRIMARY wakeup through GitHub Issue #532 failed
+  before self-host dispatch because the hosted carrier imported aios_renew from
+  the pip-installed package and implicitly resolved .ai/executor-profiles.yaml
+  relative to that installed package rather than the canonical repository
+  checkout. Source-tree tests masked the defect because pytest imports through
+  pythonpath=src, where package-relative lookup accidentally coincides with the
+  repository root. Audit confirms the same implicit profile-policy lookup exists
+  in PRIMARY request v3, REMEDIATION intent v2, and coding REPAIR wakeup v2.
+  Executor-less REPAIR remains profile-free and is not itself affected.
+
+assumptions:
+  - >
+    Canonical main at TASK-165 authoring is
+    babfe5cb09e34435a3305bad402caef4f281b563.
+  - >
+    TASK-162 and TASK-163 remain the published authority for one repository-owned
+    execution-profile policy, per-new-authorization resolution, exact source
+    attribution, durable profile identity, and no automatic fallback or reroute.
+  - >
+    Issue #532 is a pre-AIOS operational failure: downstream self-host dispatch was
+    not accepted, no RUN was created, and no Executor was invoked. TASK-165 is
+    therefore new maintenance intent, not REPAIR of an engineering RUN.
+  - >
+    The current execution-profile core API already supports explicit repository or
+    policy binding. This task repairs hosted carrier binding and does not require a
+    new default authority or execution-profile architecture.
+  - >
+    TASK-164 r1 remains canonically authored but blocked until this hosted-carrier
+    maintenance is reviewed and published. Historical TASK-163 review and
+    publication evidence remain immutable and are not reinterpreted.
+  - >
+    GitHub-hosted carriers must derive policy authority from repository-owned
+    trusted carrier context, never from Human/Issue-controlled path data.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-162.yaml
+    - .ai/tasks/TASK-163.yaml
+    - .ai/tasks/TASK-164.yaml
+    - .ai/executor-profiles.yaml
+    - pyproject.toml
+    - src/aios_renew/execution_profile.py
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - .github/workflows/aios-brain-wakeup.yml
+    - .github/workflows/aios-brain-remediation-intent.yml
+    - .github/workflows/aios-brain-repair-wakeup.yml
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - .github/workflows/aios-approved-remediation-intent.yml
+    - .github/workflows/aios-self-hosted-repair-wakeup.yml
+    - tests/test_execution_profile.py
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_wakeup_workflow.py
+    - tests/test_github_issue_remediation_intent.py
+    - tests/test_github_issue_remediation_intent_workflow.py
+    - tests/test_github_issue_repair_wakeup.py
+    - tests/test_github_issue_repair_wakeup_workflow.py
+  modify:
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - .github/workflows/aios-brain-wakeup.yml
+    - .github/workflows/aios-brain-remediation-intent.yml
+    - .github/workflows/aios-brain-repair-wakeup.yml
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_wakeup_workflow.py
+    - tests/test_github_issue_remediation_intent.py
+    - tests/test_github_issue_remediation_intent_workflow.py
+    - tests/test_github_issue_repair_wakeup.py
+    - tests/test_github_issue_repair_wakeup_workflow.py
+
+non_goals:
+  - Modify src/aios_renew/execution_profile.py or create a new execution-profile resolver/default authority.
+  - Package .ai/executor-profiles.yaml into the Python wheel or duplicate its current model/effort defaults in carrier modules, workflows, or tests.
+  - Use process current working directory, installed-package location, persistent self-host AIOS_REPO_ROOT, Brain memory, or Issue-supplied path data as execution-profile policy authority.
+  - Change PRIMARY v3, REMEDIATION v2, or REPAIR v2 request semantics beyond the trusted hosted policy-source binding required by this maintenance.
+  - Make executor-less REPAIR depend on execution-profile policy resolution.
+  - Modify self-host workflows, durable dispatch schemas, Runtime lifecycle semantics, verification/EVIDENCE ownership, Reviewer, Publisher, or publication logic.
+  - Add fallback, model substitution, effort downgrade, retry, reroute, sticky profile inheritance, provider scoring, or alternate policy lookup.
+  - Fix unrelated carrier receipt/title-filter noise or other transport debt not required to restore exact profile-policy binding.
+  - Modify TASK-164 or execute BP-V4 measurement.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      PRIMARY v3, REMEDIATION intent v2, and coding REPAIR v2 hosted admission must
+      bind profile resolution to one explicit trusted policy source derived from
+      repository-owned carrier context. Human/Issue request data must not select
+      or override that policy location.
+    - >
+      The package/code used for carrier admission and the execution-profile policy
+      used by that admission must share one deterministic canonical source identity
+      for the invocation rather than independently following a mutable symbolic
+      location.
+    - >
+      Hosted carrier profile resolution must remain independent of installed
+      aios_renew package location and process working directory.
+    - >
+      Omitted, partially explicit, and fully explicit Human model/effort selection
+      must retain TASK-163 semantics: omitted dimensions use repository policy,
+      explicit dimensions remain EXPLICIT, and the profile is resolved exactly once
+      before downstream dispatch.
+    - >
+      The exact resolved executor, model, reasoning_effort, model_source, and
+      effort_source must be forwarded downstream without re-resolution or silent
+      substitution.
+    - >
+      Executor-less REPAIR must remain profile-free. It must not load or require
+      execution-profile policy merely because coding REPAIR supports profiles.
+    - >
+      Missing, malformed, or incompatible trusted policy must fail hosted admission
+      before any downstream/self-host dispatch. Operational receipts must remain
+      bounded and must not fabricate RUN, Executor, verification, review, or
+      publication success.
+    - >
+      No carrier module or workflow may hard-code the current Codex or Antigravity
+      default model/effort values as a second authority.
+    - >
+      Add production-shaped regression coverage that would fail under the escaped
+      Issue #532 condition: implicit package-relative policy discovery is unavailable,
+      while an explicitly trusted canonical policy source is available.
+    - >
+      Do not modify files outside scope.modify.
+
+acceptance:
+  - id: AC1
+    condition: >
+      PRIMARY v3 hosted admission resolves an exact execution profile using one
+      explicit trusted repository policy authority bound to the carrier invocation,
+      and installed-package location or cwd cannot become policy authority.
+  - id: AC2
+    condition: >
+      REMEDIATION intent v2 provides the same trusted policy binding and exact
+      profile-resolution semantics as PRIMARY.
+  - id: AC3
+    condition: >
+      Coding REPAIR v2 provides the same trusted policy binding and exact
+      profile-resolution semantics as PRIMARY and REMEDIATION.
+  - id: AC4
+    condition: >
+      Executor-less REPAIR remains profile-free and succeeds or fails under its
+      existing semantics without requiring an execution-profile policy file.
+  - id: AC5
+    condition: >
+      Omitted, partial, and complete explicit model/effort selections resolve
+      exactly once and preserve exact EXPLICIT versus REPOSITORY_DEFAULT source
+      attribution.
+  - id: AC6
+    condition: >
+      Hosted carriers forward the exact resolved executor/model/effort/source tuple
+      downstream without re-resolution, fallback, substitution, or duplicated
+      default constants.
+  - id: AC7
+    condition: >
+      Request/Issue data cannot choose the profile policy path or create another
+      policy authority; repository policy remains the sole default authority.
+  - id: AC8
+    condition: >
+      Missing, malformed, or incompatible trusted policy fails before downstream
+      self-host dispatch and carrier evidence does not claim lifecycle success that
+      was not observed.
+  - id: AC9
+    condition: >
+      A production-shaped regression proves profile-managed carrier admission still
+      resolves successfully when package-relative policy discovery is unavailable,
+      using only the explicit trusted canonical policy source.
+  - id: AC10
+    condition: >
+      Execution-profile core resolver, self-host workflows, durable dispatch
+      identity, Runtime verification/EVIDENCE, Reviewer, Publisher, and frozen
+      lifecycle semantics remain unchanged.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_github_issue_wakeup.py tests/test_github_issue_wakeup_workflow.py tests/test_github_issue_remediation_intent.py tests/test_github_issue_remediation_intent_workflow.py tests/test_github_issue_repair_wakeup.py tests/test_github_issue_repair_wakeup_workflow.py tests/test_execution_profile.py
+    - git diff --check
