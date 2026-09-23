@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - execution-profile-foundation-v1
+  - execution-profile-human-selection-default-activation
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -275,7 +275,20 @@ sequence:
       movement while preserving SHA binding, Runtime evidence ownership, clean-state
       checks, and fail-closed mutation detection inside the verification subject.
   - id: execution-profile-foundation-v1
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-162
+      task_revision: 1
+      run_id: RUN-162-005
+      operation: REMEDIATION
+      source_run_id: RUN-162-003
+      prior_review_id: REVIEW-162-003
+      remediation_findings:
+        - FINDING-162-003-A
+        - FINDING-162-003-B
+      final_review_id: REVIEW-162-005
+      reviewed_sha: "783f4929a97cb33445109593e95bda34132560f7"
+      published_sha: "783f4929a97cb33445109593e95bda34132560f7"
     task_id: TASK-162
     task_revision: 1
     planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
@@ -287,7 +300,7 @@ sequence:
       must require policy change plus focused validation/smoke rather than adapter,
       Dispatcher, carrier, or lifecycle redesign.
   - id: execution-profile-human-selection-default-activation
-    status: PLANNED
+    status: NEXT
     task_id: TASK-163
     planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
     objective: >-
@@ -373,9 +386,10 @@ parallel_work:
 sequencing_rule:
   generic_continuation: >-
     Continue only the unique canonical NEXT item. The current explicit Human priority
-    temporarily selects TASK-162 in the execution-profile side-track; after TASK-162
-    and TASK-163 are reviewed/published and the side-track is closed, canonicalize
-    BP-V4 back to NEXT before generic Brain Portability continuation resumes.
+    now selects TASK-163 in the execution-profile side-track after reviewed/published
+    TASK-162 foundation completion; after TASK-163 is reviewed/published and the
+    side-track is closed, canonicalize BP-V4 back to NEXT before generic Brain
+    Portability continuation resumes.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
