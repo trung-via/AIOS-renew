@@ -171,7 +171,7 @@ def _cause(value: object) -> dict[str, Any] | None:
         if not CAUSE_PROCESS <= set(value) or kind != "CalledProcessError" or (value["returncode"] is not None and not _integer(value["returncode"])) or value["command_kind"] not in {"git", "other"}:
             raise DiagnosticError("invalid subprocess failure detail")
     if CAUSE_GIT & set(value):
-        if not CAUSE_GIT <= set(value) or value.get("command_kind") != "git" or value["git_stderr_excerpt"] is not None or not isinstance(value["git_stderr_truncated"], bool) or not isinstance(value["git_stderr_fingerprint"], str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", value["git_stderr_fingerprint"]):
+        if not CAUSE_GIT <= set(value) or value.get("command_kind") != "git" or not isinstance(value["git_stderr_excerpt"], str) or value["git_stderr_excerpt"] not in {"repository-error", "ref-lock", "path-error", "other"} or not isinstance(value["git_stderr_truncated"], bool) or not isinstance(value["git_stderr_fingerprint"], str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", value["git_stderr_fingerprint"]):
             raise DiagnosticError("invalid Git failure detail")
     return value
 

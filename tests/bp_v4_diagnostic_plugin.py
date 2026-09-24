@@ -58,6 +58,30 @@ def _path_fact(value: object) -> dict[str, Any]:
     return {"path": path, "length": len(os.fspath(value)) if path is not None else None}
 
 
+def _normalized_cause_text(value: str) -> str:
+    """Remove recognized absolute paths before deriving a persisted identity."""
+    normalized = value.replace("\\", "/")
+    for name, root in sorted(_prefixes().items(), key=lambda pair: -len(pair[1])):
+        prefix = root.replace("\\", "/").rstrip("/")
+        normalized = re.sub(
+            re.escape(prefix) + r"(?=$|[/\s'\"`:;,()\[\]])(?:/[^\s'\"`:;,()\[\]]+)*",
+            f"<{name}>", normalized, flags=re.IGNORECASE if os.name == "nt" else 0,
+        )
+    return normalized
+
+
+def _git_diagnostic(stderr: str) -> str:
+    """Return a fixed label; never persist arbitrary Git output."""
+    lowered = stderr.lower()
+    if any(phrase in lowered for phrase in ("not a git repository", "not a git directory", "repository does not exist", "unable to read current working directory")):
+        return "repository-error"
+    if any(phrase in lowered for phrase in ("cannot lock ref", "unable to lock", "cannot lock", "ref lock", "reference is at", ".lock': file exists", ".lock\": file exists")):
+        return "ref-lock"
+    if any(phrase in lowered for phrase in ("pathspec", "no such file or directory", "does not exist", "outside repository", "not in the working tree")):
+        return "path-error"
+    return "other"
+
+
 def _cause(exc: BaseException | None) -> dict[str, Any] | None:
     if exc is None:
         return None
@@ -66,7 +90,7 @@ def _cause(exc: BaseException | None) -> dict[str, Any] | None:
         kind = "UnknownException"
     result: dict[str, Any] = {
         "exception_type": kind,
-        "message_fingerprint": "sha256:" + hashlib.sha256(str(exc).encode("utf-8", errors="replace")).hexdigest(),
+        "message_fingerprint": "sha256:" + hashlib.sha256(_normalized_cause_text(str(exc)).encode("utf-8", errors="replace")).hexdigest(),
     }
     if isinstance(exc, OSError):
         result.update({
@@ -84,12 +108,12 @@ def _cause(exc: BaseException | None) -> dict[str, Any] | None:
             "returncode": exc.returncode if isinstance(exc.returncode, int) else None,
             "command_kind": command_kind,
         })
-        # Stderr can contain credentials or arbitrary test data. The bounded
-        # fingerprint preserves identity without persisting its contents.
+        # Stderr can contain credentials or arbitrary test data. Persist only
+        # its normalized identity and a fixed, bounded diagnostic label.
         if command_kind == "git" and exc.stderr is not None:
             stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr)
-            result["git_stderr_fingerprint"] = "sha256:" + hashlib.sha256(stderr.encode("utf-8")).hexdigest()
-            result["git_stderr_excerpt"] = None
+            result["git_stderr_fingerprint"] = "sha256:" + hashlib.sha256(_normalized_cause_text(stderr).encode("utf-8")).hexdigest()
+            result["git_stderr_excerpt"] = _git_diagnostic(stderr)
             result["git_stderr_truncated"] = len(stderr) > 1024
     return result
 

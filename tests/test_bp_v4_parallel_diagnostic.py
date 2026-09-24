@@ -112,8 +112,39 @@ def test_plugin_sanitizes_path_and_keeps_only_typed_cause(monkeypatch: pytest.Mo
     assert plugin.sanitize_path(str(tmp_path / "other" / "token")) is None
     git = plugin._cause(subprocess.CalledProcessError(128, ["git", "fetch"], stderr=b"credential=secret"))
     assert git["command_kind"] == "git"
-    assert git["git_stderr_excerpt"] is None
+    assert git["git_stderr_excerpt"] == "other"
     assert "credential=secret" not in json.dumps(git)
+
+
+def test_cause_fingerprints_ignore_transient_roots_and_git_detail_is_bounded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    causes = []
+    for run in ("first", "second"):
+        root = tmp_path / run
+        roots = {"subject": str(root / "subject"), "diagnostic_temp": str(root / "diagnostic"),
+                 "pytest_basetemp": str(root / "diagnostic" / "pytest"), "user_home": str(root / "home")}
+        monkeypatch.setenv(plugin.PREFIX_ENV, json.dumps(roots))
+        path = root / "diagnostic" / "pytest" / f"fixture-{run}" / "index.lock"
+        os_cause = plugin._cause(FileNotFoundError(2, "missing", str(path)))
+        git_cause = plugin._cause(subprocess.CalledProcessError(
+            128, ["git", "update-ref", str(path)],
+            stderr=f"fatal: cannot lock ref 'refs/heads/main': Unable to create '{path}': File exists\ncredential=secret".encode(),
+        ))
+        causes.append((os_cause, git_cause))
+        assert git_cause["git_stderr_excerpt"] == "ref-lock"
+        assert git_cause["git_stderr_truncated"] is False
+        assert "secret" not in json.dumps(git_cause)
+        assert diagnostic._cause(git_cause) == git_cause
+    assert causes[0][0]["message_fingerprint"] == causes[1][0]["message_fingerprint"]
+    assert causes[0][1]["message_fingerprint"] == causes[1][1]["message_fingerprint"]
+    assert causes[0][1]["git_stderr_fingerprint"] == causes[1][1]["git_stderr_fingerprint"]
+
+    for stderr, label in (("fatal: not a git repository", "repository-error"),
+                          ("fatal: pathspec 'missing' did not match any files", "path-error")):
+        cause = plugin._cause(subprocess.CalledProcessError(128, ["git", "status"], stderr=stderr * 100))
+        assert cause["git_stderr_excerpt"] == label
+        assert cause["git_stderr_truncated"] is True
+        assert len(cause["git_stderr_excerpt"]) <= 1024
+        assert diagnostic._cause(cause) == cause
 
 
 def test_command_is_fixed_and_profile_temp_is_isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -137,5 +168,10 @@ def test_command_is_fixed_and_profile_temp_is_isolated(monkeypatch: pytest.Monke
 def test_cause_validator_rejects_raw_message_and_arbitrary_stderr() -> None:
     cause = {"exception_type": "CalledProcessError", "message_fingerprint": "sha256:" + "0" * 64,
              "returncode": 128, "command_kind": "git", "stderr": "secret"}
+    with pytest.raises(diagnostic.DiagnosticError):
+        diagnostic._cause(cause)
+    cause.pop("stderr")
+    cause.update({"git_stderr_fingerprint": "sha256:" + "0" * 64,
+                  "git_stderr_excerpt": "credential=secret", "git_stderr_truncated": False})
     with pytest.raises(diagnostic.DiagnosticError):
         diagnostic._cause(cause)
