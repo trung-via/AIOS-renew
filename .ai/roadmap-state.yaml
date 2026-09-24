@@ -350,7 +350,7 @@ sequence:
   - id: maintenance-bp-v4-current-suite-compatibility
     status: NEXT
     task_id: TASK-164
-    task_revision: 1
+    task_revision: 2
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Restore the stale remote-surface regression to the already-published trusted
@@ -361,7 +361,7 @@ sequence:
     status: BLOCKED
     blocked_by:
       task_id: TASK-164
-      task_revision: 1
+      task_revision: 2
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
