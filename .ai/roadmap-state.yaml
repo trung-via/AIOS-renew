@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-bp-v4-focused-cause-observability
+  - maintenance-bp-v4-focused-diagnostic-reexecution
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -415,7 +415,19 @@ sequence:
       canonical subject to obtain bounded serial/parallel failure-cause evidence
       before any new full BP-V4 matrix, correction selection, or worker adoption.
   - id: maintenance-bp-v4-focused-cause-observability
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-168
+      task_revision: 2
+      run_id: RUN-168-003
+      operation: REPAIR
+      failed_run_id: RUN-168-002
+      repair_id: REPAIR-168-002
+      review_id: REVIEW-168-003
+      reviewed_sha: "10d3576d6eaaffed48ce4f52ce41b1c59eafb829"
+      published_sha: "10d3576d6eaaffed48ce4f52ce41b1c59eafb829"
+      verification_evidence:
+        - RUN-168-003-V001
     task_id: TASK-168
     task_revision: 2
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -426,14 +438,29 @@ sequence:
       Strengthen only the bounded focused-diagnostic cause surface so the six
       current common serial/parallel failures can be distinguished safely before a
       fresh diagnostic execution or any production correction/full-suite matrix.
+  - id: maintenance-bp-v4-focused-diagnostic-reexecution
+    status: NEXT
+    task_id: TASK-169
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-167-004
+      - TASK-168
+      - RUN-168-003
+    objective: >-
+      Execute the reviewed enhanced focused diagnostic exactly once against the
+      exact current admitted subject to obtain fresh bounded cause observations
+      before any production correction or full BP-V4 matrix.
   - id: bp-v4-parallel-verification-performance-guard
     status: BLOCKED
     blocked_by:
-      task_id: TASK-168
-      task_revision: 2
+      task_id: TASK-169
+      task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
+      - RUN-167-004
+      - RUN-168-003
     objective: >-
       After serial harness acceleration is proven, establish measured bounded parallel
       full-suite conformance and verification-cost regression visibility without
