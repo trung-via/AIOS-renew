@@ -1,0 +1,179 @@
+task_id: TASK-172
+revision: 1
+
+goal: >
+  Restore Windows nested-path compatibility for the repository-owned
+  Terminal Attention real-Git test fixture so exact canonical terminal-attention
+  signal refs remain publishable, queryable, conflict-checkable, and replayable
+  under Runtime/BP-V4 parallel verification without changing production
+  Terminal Attention semantics, canonical ref identity, verification isolation,
+  transport authority, or worker policy.
+
+problem: >
+  RUN-159-006 produced canonical same-subject evidence in which all six
+  Terminal Attention failures were parallel-only: they failed under workers
+  2, 3, and 4 while the serial profile did not report any Terminal Attention
+  failure. Worker-process, pytest temporary-root, Git-fixture-cache-root,
+  collection, and subject-isolation conformance all passed.
+
+  The failing cases are precisely the Terminal Attention paths that materialize
+  or publish canonical signal refs shaped as
+  refs/heads/aios/terminal-attention/<RESULT|FAILURE>/<RUN>/<artifact_sha>,
+  including direct bare-remote update-ref conflict setup, publication/reuse,
+  exact-pin downstream publication, and remote admission revalidation.
+
+  Source audit shows tests/test_terminal_attention.py owns a bespoke real-Git
+  make_repo fixture that initializes its working repository and local bare
+  upstream independently of tests/git_fixture_support.py. TASK-170 already
+  established sandbox-local long-path capability for the shared real-Git
+  fixture family, but that correction does not reach this Terminal Attention
+  fixture.
+
+  TASK-172 therefore corrects only this bounded fixture family and adds direct
+  depth-amplified regression evidence. It does not alter production Terminal
+  Attention behavior or reinterpret RUN-159-006.
+
+assumptions:
+  - >
+    Canonical main at TASK-172 planning is
+    b56c88957a1475dd6074d83e11bbbf7941a5a9b6.
+  - >
+    TASK-171 is engineering-complete through RUN-171-001, REVIEW-171-001 PASS,
+    Runtime evidence RUN-171-001-V001 through V003, and publication of
+    b56c88957a1475dd6074d83e11bbbf7941a5a9b6.
+  - >
+    RUN-159-006 remains immutable verification-failure evidence. TASK-172 does
+    not retry, repair, delete, rewrite, or reinterpret that RUN.
+  - >
+    TASK-170 remains authoritative for the already-corrected shared real-Git
+    fixture path-capability boundary. TASK-172 addresses a separate bespoke
+    Terminal Attention fixture that did not inherit that correction.
+  - >
+    The parallel-only Terminal Attention pattern plus exact source locus gives
+    high-confidence Windows path-budget evidence, but fresh TASK-172
+    verification remains the authority for this correction.
+  - >
+    Runtime owns canonical verification and evidence; Reviewer owns semantic
+    verdict; Human/Brain own roadmap interpretation and later BP-V4 decisions;
+    Publisher owns publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-154.yaml
+    - .ai/tasks/TASK-156.yaml
+    - .ai/tasks/TASK-159.yaml
+    - .ai/tasks/TASK-170.yaml
+    - .ai/tasks/TASK-171.yaml
+    - src/aios_renew/terminal_attention.py
+    - src/aios_renew/verification.py
+    - tests/git_fixture_support.py
+    - tests/operator_test_support.py
+    - tests/test_git_fixture_isolation.py
+    - tests/test_terminal_attention.py
+    - scripts/bp_v4_parallel_probe.py
+
+  modify:
+    - tests/test_terminal_attention.py
+
+non_goals:
+  - Modify src/aios_renew/terminal_attention.py or any other production module.
+  - Change Terminal Attention selector, body, policy, admission, publication, or replay semantics.
+  - Shorten, truncate, hash-rewrite, alias, relocate, or otherwise change canonical signal-ref identity.
+  - Change RESULT/FAILURE terminal refs or terminal-attention signal-prefix grammar.
+  - Change GitHub workflows, carrier policy, Runtime, verification isolation, Reviewer, Publisher, or lifecycle semantics.
+  - Change tests/git_fixture_support.py or reopen TASK-170's shared-fixture correction.
+  - Replace real Git push, update-ref, ls-remote, ref locking, bare remote, ancestry, or transport behavior with mocks or in-memory substitutes.
+  - Mutate system/global Git configuration, Windows registry, runner configuration, or Human machine state.
+  - Skip, xfail, deselect, rename, weaken, timeout-inflate, retry, or conditionally suppress the six failing cases.
+  - Change BP-V4 workers, ordering, xdist scheduler, measurement schema, diagnostic schema, or worker-selection policy.
+  - Run the full TASK-159 BP-V4 serial/p2/p3/p4 matrix.
+  - Treat TASK-172 success as worker adoption or BP-V4 completion.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve exact production Terminal Attention signal refs:
+      refs/heads/aios/terminal-attention/<RESULT|FAILURE>/<RUN>/<40-hex-artifact>.
+    - >
+      Preserve real Git behavior for working repository and local bare remote,
+      including push, update-ref, ref locking, ls-remote, conflict detection,
+      publication reuse, and admission revalidation.
+    - >
+      Any path capability used by the Terminal Attention fixture must be
+      repository/sandbox-local and hermetic. No global, system, registry,
+      runner, or external setup mutation is authorized.
+    - >
+      Add deterministic depth-amplified regression coverage whose remote signal
+      ref lock path exceeds the legacy Windows 260-character regime and which
+      exercises actual canonical Terminal Attention publication and exact
+      remote-ref resolution.
+    - >
+      Depth regression must cover both RESULT and FAILURE signal-ref shapes,
+      retaining the complete artifact SHA and RUN identity.
+    - >
+      Preserve the existing reviewed-surface, exact-pinned-downstream,
+      unavailable-surface, competing-terminal, conflicting-attention,
+      replay, and remote-admission semantics of the fixture.
+    - >
+      Parallel validation must exercise the Terminal Attention fixture under
+      xdist because RUN-159-006 establishes that the observed defect is not
+      represented by serial execution alone.
+    - >
+      No file outside tests/test_terminal_attention.py may be modified.
+    - >
+      If fresh focused evidence disproves the path-budget hypothesis, preserve
+      the failure for Brain audit instead of widening scope into production code,
+      Runtime, worker policy, or unrelated test infrastructure.
+    - >
+      Executor RESULT describes implementation properties only and must not
+      claim Runtime verification, Reviewer PASS, publication, worker safety, or
+      BP-V4 completion.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The Terminal Attention bespoke real-Git sandbox supports exact canonical
+      RESULT and FAILURE signal-ref publication at representative nested Windows
+      path depth without ref shortening, Git mocking, or transport bypass.
+  - id: AC2
+    condition: >
+      Real bare-remote push/update-ref/locking and exact ls-remote resolution
+      remain active for Terminal Attention publication, conflict, replay, and
+      admission behavior.
+  - id: AC3
+    condition: >
+      Path capability is fixture-local and hermetic and causes no system/global
+      Git, registry, runner, production-repository, or Human-environment mutation.
+  - id: AC4
+    condition: >
+      Existing Terminal Attention production semantics, selector/ref grammar,
+      exact-pin provenance behavior, unavailable compatibility behavior, and
+      fail-closed competing/conflicting identity rules remain unchanged.
+  - id: AC5
+    condition: >
+      A depth-amplified regression proves actual RESULT and FAILURE canonical
+      signal refs can be published and resolved when the corresponding remote
+      ref-lock filesystem path exceeds the legacy Windows path budget.
+  - id: AC6
+    condition: >
+      The exact Terminal Attention suite is green both serially and under
+      focused xdist parallel execution, including the six RUN-159-006
+      Terminal Attention failure cases.
+  - id: AC7
+    condition: >
+      The implementation is a one-file test-harness correction with no
+      production delta, skip/xfail, retry, worker-policy change, identity
+      shortening, or new semantic authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_terminal_attention.py
+    - python -m pytest -q -n 2 tests/test_terminal_attention.py
+    - git diff --check
