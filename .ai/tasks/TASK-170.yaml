@@ -1,0 +1,198 @@
+task_id: TASK-170
+revision: 1
+
+goal: >
+  Remove the Windows filesystem path-budget artifact from the repository-owned
+  real-Git test sandbox boundary so production-shaped 64-character AIOS
+  integration and admission-failure refs can be materialized, pushed, resolved,
+  and verified under the existing Runtime/BP-V4 nested temporary environment
+  without changing production ref identity, correction semantics, transport
+  semantics, verification isolation, diagnostic semantics, or worker policy.
+
+problem: >
+  RUN-169-001 produced fresh canonical focused evidence on the exact admitted
+  subject. Five fixed targets failed in serial, parallel-2, and parallel-4 at
+  CorrectionIntegration push-ref boundaries with bounded Git category
+  path-error. The sixth target failed at tests/test_operator.py line 1936 while
+  comparing locally persisted admission diagnostics with their remote immutable
+  refs. Source audit shows the affected tests use repository-owned real-Git
+  fixtures whose origin is a local bare upstream.git beneath pytest tmp_path.
+  Under Windows Runtime verification isolation plus the nested BP-V4
+  diagnostic/pytest layout, production-shaped content-addressed refs add enough
+  filesystem depth to create a high-confidence path-budget hypothesis. Historical
+  RUN-159-005 is consistent with path depth rather than worker concurrency as the
+  principal causal variable. Raw Git stderr is intentionally not canonicalized,
+  so TASK-170 must correct only the bounded fixture/harness boundary and fail
+  closed rather than changing production semantics if fresh evidence disproves
+  the hypothesis.
+
+assumptions:
+  - >
+    Canonical main at TASK-170 r1 authoring is
+    7113a114c13332ae4bfa69bdc1d367f4bbd9a3ee, the Human/Brain roadmap commit
+    that records TASK-169 completion, selects TASK-170 as unique NEXT, and keeps
+    the full BP-V4 performance-guard milestone blocked.
+  - >
+    TASK-169 is engineering-complete through RUN-169-001,
+    REVIEW-169-001 PRIMARY PASS, publication of
+    750d7776dee737941849f50c1494cb3935027b48, and Runtime evidence
+    RUN-169-001-V001.
+  - >
+    RUN-169-001 evidence is observational: five direct push-ref/path-error
+    failures and the line-1936 assertion are canonical facts, while the shared
+    Windows path-budget explanation is a Brain hypothesis to be tested by this
+    bounded correction.
+  - >
+    TASK-154 remains authoritative for fast real-Git fixture optimization and
+    isolation boundaries: refs, remotes, ancestry, divergence, transport,
+    publication, correction integration, locking, and other Git-boundary
+    semantics continue to cross ordinary real Git.
+  - >
+    TASK-156 remains authoritative for exact Runtime verification-subject
+    isolation. TASK-170 does not alter Runtime temporary-root policy or
+    verification identity.
+  - >
+    TASK-166 and TASK-168 remain authoritative for the focused diagnostic
+    architecture and bounded cause-observability schema. TASK-170 does not
+    change their target set, profile set, or classifier.
+  - >
+    TASK-157 remains authoritative for the distinct full-suite
+    AIOS_BP_V4_MEASUREMENT contract; TASK-170 does not execute or adopt a worker
+    decision from that contract.
+  - >
+    Runtime owns canonical verification and EVIDENCE; Reviewer owns semantic
+    verdict; Human/Brain own hypothesis interpretation, follow-up correction
+    strategy, worker adoption, and roadmap planning; Publisher owns publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-154.yaml
+    - .ai/tasks/TASK-156.yaml
+    - .ai/tasks/TASK-166.yaml
+    - .ai/tasks/TASK-168.yaml
+    - .ai/tasks/TASK-169.yaml
+    - tests/git_fixture_support.py
+    - tests/test_git_fixture_isolation.py
+    - tests/operator_test_support.py
+    - tests/test_correction_integration.py
+    - tests/test_authoring_ingress.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_unified_state.py
+    - tests/test_publication.py
+    - tests/test_operator.py
+    - src/aios_renew/correction_integration.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/verification.py
+    - scripts/bp_v4_parallel_diagnostic.py
+    - scripts/bp_v4_parallel_probe.py
+  modify:
+    - tests/git_fixture_support.py
+    - tests/test_git_fixture_isolation.py
+
+non_goals:
+  - Modify production correction integration, review transport, Operator, Runtime, verification, Publisher, lifecycle, carrier, workflow, or publication semantics.
+  - Shorten, alias, hash-truncate, or otherwise change canonical integration or admission-failure ref identities.
+  - Change the Runtime Windows temporary-root selection or BP-V3 verification-subject isolation.
+  - Change BP-V4 target lists, profile ordering, worker counts, xdist scheduling, retry, fallback, rerun, grouping, or worker-selection policy.
+  - Change the focused diagnostic cause taxonomy, sanitization, source-locus contract, or outer/inner exit semantics.
+  - Mock or bypass Git push, ls-remote, update-ref, remote ref locking, ancestry, divergence, publication, or transport behavior relevant to the observed failures.
+  - Replace the local real-Git remote boundary with an in-memory or fake transport.
+  - Mutate system, global-user, machine Git configuration, Windows registry, runner configuration, or external environment as a prerequisite.
+  - Skip, xfail, deselect, rename, remove, weaken, or timeout-inflate affected tests.
+  - Treat a green focused diagnostic as authorization to select/adopt a worker or advance the full BP-V4 milestone.
+  - Execute the full AIOS_BP_V4_MEASUREMENT matrix in this TASK.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve exact production-shaped ref names including the full 64-character
+      content identities under refs/heads/aios/integration/ and
+      refs/heads/aios/admission-failure/. No shortening or alternate identity
+      format is authorized.
+    - >
+      Preserve actual Git push, remote ref creation/locking, ls-remote,
+      update-ref, ancestry, divergence, transport, and bare-remote behavior for
+      the affected fixture boundary. Relevant Git semantics must remain real.
+    - >
+      Any path capability or path-budget correction must be fixture-local,
+      sandbox-local, and repository-owned. It must not require or mutate global
+      Git config, machine config, Windows registry, runner setup, or Human local
+      state.
+    - >
+      Preserve independently writable worktree, index, local refs, remote refs,
+      repository-local config, clean/dirty state, locks, object-write paths, and
+      .git/aios Runtime state for every sandbox. Shared reuse remains limited to
+      immutable baseline/object material already permitted by TASK-154.
+    - >
+      The correction must cover both production-shaped long integration refs and
+      long admission-failure refs. A one-family workaround is incomplete.
+    - >
+      Add a regression in tests/test_git_fixture_isolation.py that exercises real
+      Git push plus exact remote ref resolution for both canonical long-ref
+      shapes under a deliberately depth-amplified sandbox representative of the
+      nested Windows Runtime/BP-V4 path regime. The regression must test behavior,
+      not merely inspect a config string.
+    - >
+      Preserve existing short-ref sandbox isolation regression behavior and
+      immutable-object reuse semantics.
+    - >
+      Do not modify src/aios_renew/correction_integration.py,
+      src/aios_renew/review_transport.py, src/aios_renew/verification.py,
+      scripts/bp_v4_parallel_diagnostic.py, scripts/bp_v4_parallel_probe.py, or
+      any file outside scope.modify.
+    - >
+      Do not convert diagnostic facts into automatic root-cause, correction,
+      concurrency, worker, or roadmap decisions. If fresh focused evidence still
+      shows push-ref/path-error or the admission transport mismatch, preserve that
+      evidence for new Brain audit rather than widening this TASK.
+    - >
+      Executor RESULT must describe implementation properties only and must not
+      claim Runtime verification completion, current focused diagnostic outcome,
+      Reviewer verdict, publication, worker safety, or BP-V4 completion.
+    - >
+      Do not push or publish from Executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Repository-owned real-Git fixture sandboxes support production-shaped
+      64-character integration and admission-failure refs at representative
+      nested path depth without shortening identities, bypassing ref locking, or
+      replacing real Git behavior.
+  - id: AC2
+    condition: >
+      The working fixture repository and local bare remote preserve independent
+      writable Git state, repository-local configuration, existing short-ref
+      behavior, and TASK-154 immutable-object reuse/isolation semantics.
+  - id: AC3
+    condition: >
+      Any introduced path capability is hermetic and fixture/sandbox-local, with
+      no system, global-user, machine, registry, runner, or Human setup mutation.
+  - id: AC4
+    condition: >
+      Production correction integration, admission-failure transport, Runtime
+      verification isolation, BP-V4 diagnostic/probe semantics, canonical ref
+      identities, and worker policy are unchanged.
+  - id: AC5
+    condition: >
+      Dedicated regression coverage exercises real push and exact remote
+      resolution for both long canonical ref families under a deliberately
+      depth-amplified sandbox while retaining sandbox-to-sandbox isolation.
+  - id: AC6
+    condition: >
+      The implementation remains a bounded two-file test-harness correction and
+      introduces no skip/xfail/deselection, Git mock/bypass, automatic retry,
+      worker selection, production semantic shortcut, or new authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_git_fixture_isolation.py
+    - python scripts/bp_v4_parallel_diagnostic.py
+    - git diff --check
