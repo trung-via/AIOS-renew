@@ -1,0 +1,186 @@
+task_id: TASK-168
+revision: 1
+
+goal: >
+  Strengthen the reviewed BP-V4 focused diagnostic's bounded cause observability so
+  the current six common serial/parallel failures from RUN-167-004 can be
+  distinguished safely without exposing raw exception text, traceback, arbitrary
+  stderr/stdout, private paths, credentials, or semantic root-cause verdicts.
+  Preserve the exact six targets and exact serial, parallel-2, parallel-4 experiment;
+  this TASK improves only the diagnostic fact surface for a later fresh execution.
+
+problem: >
+  RUN-167-004 completed the AIOS_BP_V4_PARALLEL_DIAGNOSTIC experiment faithfully on
+  canonical subject 234891513889448ab906425f92d06bdc7c5770e3. All six fixed
+  representative nodes failed in serial, worker-2, and worker-4, with no
+  parallel-only, serial-only, worker2-only, or worker4-only nodes. Five failures are
+  reported only as CorrectionIntegrationError plus normalized message fingerprints,
+  and the remaining operator failure is an AssertionError with the same fingerprint
+  across all profiles. The current bounded surface therefore proves that the
+  historical parallel-only pattern did not reproduce, but it does not provide enough
+  safe structured detail to distinguish whether the current serial failures arise
+  from Git path/repository/ref behavior, another Correction Integration boundary, or
+  a specific fixed assertion location. A new full BP-V4 matrix or corrective
+  production mutation would be premature. Extend only the existing diagnostic
+  observation contract enough for a later Human/Brain diagnosis.
+
+assumptions:
+  - >
+    Canonical main at TASK-168 authoring is
+    234891513889448ab906425f92d06bdc7c5770e3, the exact zero-delta candidate
+    reviewed PASS by REVIEW-167-004 and successfully published/replayed by the
+    repository-owned publication workflow.
+  - >
+    RUN-167-004 Runtime evidence RUN-167-004-V001 is authoritative: collection count
+    is six, all six nodes are common failures across serial/parallel-2/parallel-4,
+    isolation and subject-integrity checks passed, and outer diagnostic exit was zero.
+  - >
+    TASK-166 remains authoritative for the focused diagnostic architecture. Its
+    fixed target population, fixed profile order, fail-closed integrity semantics,
+    path sanitization, bounded cause identity, and lack of worker-selection/root-cause
+    authority must remain intact.
+  - >
+    The current plugin already normalizes registered subject, diagnostic-temp,
+    pytest-basetemp, and user-home prefixes before persisted fingerprints and exposes
+    fixed Git diagnostic labels only for direct CalledProcessError. It does not yet
+    expose equivalently discriminating bounded facts when Git/Correction Integration
+    detail is wrapped inside CorrectionIntegrationError.
+  - >
+    The current stable AssertionError fingerprint does not identify which fixed
+    repository assertion failed. A bounded repo-owned source location can improve
+    diagnosis without persisting traceback frames, locals, assertion values, or
+    arbitrary exception text.
+  - >
+    TASK-157 remains authoritative for full-suite BP-V4 measurement. TASK-168 does
+    not execute or revise the full-suite matrix and does not authorize worker adoption.
+  - >
+    Runtime owns canonical verification/EVIDENCE; Reviewer owns semantic verdict;
+    Human/Brain own later root-cause interpretation and correction strategy.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-157.yaml
+    - .ai/tasks/TASK-166.yaml
+    - .ai/tasks/TASK-167.yaml
+    - scripts/bp_v4_parallel_diagnostic.py
+    - tests/bp_v4_diagnostic_plugin.py
+    - tests/test_bp_v4_parallel_diagnostic.py
+    - src/aios_renew/correction_integration.py
+    - tests/test_correction_integration.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_unified_state.py
+    - tests/test_publication.py
+    - tests/test_authoring_ingress.py
+  modify:
+    - tests/bp_v4_diagnostic_plugin.py
+    - scripts/bp_v4_parallel_diagnostic.py
+    - tests/test_bp_v4_parallel_diagnostic.py
+
+non_goals:
+  - Modify production Correction Integration, Runtime, verification, Git fixtures, test semantics, workflows, publication, dispatch, or roadmap state.
+  - Change the six fixed diagnostic node identities or add/remove a diagnostic target.
+  - Change profile order or worker counts; add worker 3, dynamic selection, retry, fallback, rerun, grouping, or adaptive scheduling.
+  - Run the full BP-V4 measurement matrix or claim BP-V4 conformance.
+  - Fix any of the six currently failing tests inside this TASK.
+  - Persist raw exception messages, raw traceback, locals, assertion values, arbitrary repr, stdout, stderr, environment, URLs, credentials, tokens, or unrecognized private paths.
+  - Add root_cause, recommended_fix, selected_worker, best, winner, score, safe_to_enable, adopt, or equivalent semantic-decision fields.
+  - Convert diagnostic observations into correction or roadmap authority.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve FORMAT AIOS_BP_V4_PARALLEL_DIAGNOSTIC version 1, exact TARGETS,
+      exact PROFILES serial -> parallel-2 -> parallel-4, collection identity,
+      execution-completeness checks, subject-integrity checks, worker/process/root
+      isolation checks, and the rule that inner pytest exit 1 is observational while
+      diagnostic-integrity defects fail closed.
+    - >
+      Extend the cause schema only with bounded typed facts whose allowed shape is
+      explicitly validated by scripts/bp_v4_parallel_diagnostic.py. Unknown,
+      malformed, unbounded, raw-message, raw-stderr, traceback, or unsafe fields
+      must remain rejected.
+    - >
+      For CorrectionIntegrationError, expose only a small fixed taxonomy derived
+      from known repository-owned Correction Integration message boundaries and,
+      when the wrapped detail is recognizably Git-related, a fixed bounded Git
+      diagnostic label such as repository-error, ref-lock, path-error, or other.
+      A normalized SHA-256 identity may accompany the fixed labels. Do not persist
+      the raw wrapped message. Unknown text must collapse to a safe generic label,
+      not be copied through.
+    - >
+      Git/path classification must recognize materially relevant bounded Windows
+      path-error forms needed by this diagnostic, including filename/path-too-long
+      and create/open/path-not-found families, without turning arbitrary stderr into
+      persisted prose. Credential-bearing or URL-like text must never appear.
+    - >
+      For AssertionError and other fixed-target failures where a source locus is
+      useful, persist at most one bounded repo-owned failure locus consisting of a
+      sanitized <subject>/tests/... path and positive source line number derived from
+      pytest excinfo. Do not persist a traceback, function locals, assertion
+      expression/value text, or any frame outside the admitted subject.
+    - >
+      Cause fingerprints and any structured wrapped-error identity must normalize
+      the already-recognized transient path prefixes before hashing so equivalent
+      logical failures under different diagnostic/basetemp/home roots remain stable.
+    - >
+      The enhanced facts are observations only. They may distinguish bounded error
+      families and source loci but must not assert a semantic root cause, causal
+      confidence, correction choice, concurrency verdict, worker safety, or adoption.
+    - >
+      Add deterministic contract tests proving safe CorrectionIntegrationError
+      classification, path-prefix normalization, Windows path-error labeling,
+      bounded source-locus capture, secret/private-path non-leakage, validator
+      acceptance of the exact safe shape, and fail-closed rejection of raw or
+      oversized/unknown fields.
+    - >
+      Existing fixed-target/profile/no-argument/integrity/isolation behavior and the
+      TASK-166 transient-path regression coverage must remain green.
+    - >
+      Modification is limited to the three authorized diagnostic files. If useful
+      bounded facts require production exception-schema changes, fail closed for
+      fresh Brain review rather than widening scope.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The diagnostic still executes exactly the same six targets in exactly
+      serial, parallel-2, and parallel-4 order with unchanged collection, subject,
+      execution-completeness, and worker/root isolation semantics.
+  - id: AC2
+    condition: >
+      CorrectionIntegrationError failures can emit only validator-approved bounded
+      structured categories and normalized identities sufficient to distinguish
+      known Correction Integration/Git failure families without persisting raw
+      wrapped messages or arbitrary Git output.
+  - id: AC3
+    condition: >
+      Fixed-target AssertionError or equivalent failures may emit at most one
+      sanitized repo-owned source locus with line number; no traceback, locals,
+      assertion values, or external/private frame path is persisted.
+  - id: AC4
+    condition: >
+      Equivalent failures that differ only in recognized transient path roots keep
+      stable persisted identities, while materially different safe bounded
+      categories remain distinguishable.
+  - id: AC5
+    condition: >
+      Diagnostic validation rejects raw messages/stderr, credentials or secret
+      sentinels, unrecognized absolute paths, malformed loci, unknown cause fields,
+      and unbounded payloads; no semantic root-cause or worker-selection field is
+      introduced.
+  - id: AC6
+    condition: >
+      Only the three authorized diagnostic files change and the focused deterministic
+      diagnostic contract suite passes with zero unresolved items.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_bp_v4_parallel_diagnostic.py
