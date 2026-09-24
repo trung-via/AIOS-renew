@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-bp-v4-windows-git-fixture-path-budget
+  - bp-v4-parallel-verification-performance-guard
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -462,7 +462,19 @@ sequence:
       exact current admitted subject to obtain fresh bounded cause observations
       before any production correction or full BP-V4 matrix.
   - id: maintenance-bp-v4-windows-git-fixture-path-budget
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-170
+      task_revision: 1
+      run_id: RUN-170-001
+      operation: PRIMARY
+      review_id: REVIEW-170-001
+      reviewed_sha: "aea452d0dd57b2052812ec069c8609576d9648d5"
+      published_sha: "aea452d0dd57b2052812ec069c8609576d9648d5"
+      verification_evidence:
+        - RUN-170-001-V001
+        - RUN-170-001-V002
+        - RUN-170-001-V003
     task_id: TASK-170
     task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -479,16 +491,17 @@ sequence:
       environments without changing production ref identities, transport
       semantics, verification isolation, diagnostic semantics, or worker policy.
   - id: bp-v4-parallel-verification-performance-guard
-    status: BLOCKED
-    blocked_by:
-      task_id: TASK-170
-      task_revision: 1
+    status: NEXT
+    task_id: TASK-159
+    task_revision: 6
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
-      - RUN-167-004
-      - RUN-168-003
+      - RUN-159-005
+      - RUN-163-009
+      - RUN-164-002
       - RUN-169-001
+      - RUN-170-001
     objective: >-
       After serial harness acceleration is proven and the focused Windows
       path-budget artifact is corrected, establish measured bounded parallel
