@@ -1,106 +1,82 @@
 task_id: TASK-167
-revision: 2
+revision: 3
 
 goal: >
   Execute the reviewed and published BP-V4 focused parallel diagnostic primitive
-  once as Runtime-owned canonical verification on the exact admitted current
-  subject, while keeping Executor work strictly zero-delta and pre-verification.
-  Produce trustworthy focused diagnostic evidence for later Human/Brain
-  interpretation without changing repository state, selecting a worker, choosing a
-  correction, running the full BP-V4 matrix, or advancing roadmap semantics.
+  exactly once as Runtime-owned canonical verification on the admitted current
+  subject. Keep the native Executor as a zero-delta structural handoff only, with
+  no repository command, inspection, test, search, or mutation required from the
+  Executor before Runtime verification.
 
 problem: >
-  TASK-167 revision 1 encoded a self-contradictory completion contract. Runtime
-  deterministically requires every TASK acceptance criterion to be covered by the
-  Executor structural ResultPackage before canonical verification begins, then
-  mechanically attaches Runtime verification evidence afterward. Revision 1 AC4
-  instead required already-produced canonical Runtime diagnostic evidence while its
-  hard constraints correctly forbade the Executor from executing the diagnostic or
-  claiming Runtime-only outcomes. RUN-167-001 therefore failed at COMPLETION_GATE
-  with unresolved pre-verification inspection, and RUN-167-002 failed again at
-  COMPLETION_GATE because the structural ResultPackage did not cover AC1, AC2, AC4,
-  AC5, and AC6. Neither RUN entered VERIFICATION, so neither produced BP-V4
-  diagnostic evidence. Revision 2 preserves the same Human intent and exact
-  verification command but rewrites acceptance criteria as truthful
-  pre-verification structural claims that Runtime can deterministically gate before
-  it alone executes the diagnostic. No Runtime or diagnostic implementation change
-  is warranted.
+  TASK-167 revision 2 corrected the earlier acceptance/evidence ordering defect,
+  but it still unnecessarily required the native Executor to perform bounded
+  repository inspection before returning its structural ResultPackage. RUN-167-003
+  reproduced the same executor-internal local command-runner timeout previously
+  observed in RUN-167-001: read-only workspace commands timed out before starting,
+  so the Executor truthfully returned unresolved items and Runtime stopped at
+  COMPLETION_GATE. The self-host workflow and AIOS admission path were healthy, the
+  RUN was admitted, the candidate remained zero-delta and clean, and Runtime
+  verification was never invoked. For this evidence-only experiment the repository
+  inspection requirement is redundant: canonical TASK identity is SHA-bound,
+  TASK-166's diagnostic primitive is already reviewed and published, and Runtime
+  independently checks actual HEAD, worktree cleanliness, changed-files truth, and
+  then executes the exact canonical verification command. Revision 3 therefore
+  removes the unnecessary Executor-shell dependency while preserving every
+  authority boundary and the exact diagnostic experiment.
 
 assumptions:
   - >
-    Canonical main at TASK-167 revision-2 authoring is
-    8b7d066d4d13f6d0aa834959af4ceb967ead7f40.
+    Canonical main at TASK-167 revision-3 authoring is
+    11bb012c0ebc8bf7691cb0ae83b4ca5cfcd93a8f.
   - >
     TASK-166 r1 is engineering-complete through RUN-166-003,
     REVIEW-166-003 DELTA PASS, and publication of source candidate
     94a16a9e67f494d71960e6a45032ba73912be61c. The published diagnostic
-    primitive remains unchanged and is the only diagnostic mechanism authorized.
+    primitive remains the only diagnostic mechanism authorized here.
   - >
     RUN-167-001 and RUN-167-002 are immutable revision-1 COMPLETION_GATE
-    failures. Both are zero-delta, clean, repairable and transportable; neither
-    invoked canonical verification and neither is BP-V4 diagnostic evidence.
+    failures. RUN-167-003 is an immutable revision-2 COMPLETION_GATE failure whose
+    candidate is zero-delta, clean, repairable, and transportable.
   - >
-    RUN-167-002 failure artifact
-    6c05a8b32a9dc202986b45afa65ada1ecac16867 records that revision-1
-    acceptance coverage was missing for AC1, AC2, AC4, AC5, and AC6.
+    RUN-167-003 failure artifact
+    b3049f992f827dea575e94871e42b11b5f5a825b records executor-internal
+    read-only command-runner timeouts before repository inspection; canonical
+    verification was not invoked.
   - >
-    RuntimeCompletion is authoritative for deterministic completion ordering:
-    structural Executor output and complete TASK acceptance coverage are checked
-    before Runtime verification, and Runtime evidence is attached only after
-    successful verification.
+    Runtime deterministically validates RESULT.head_sha against actual Git HEAD,
+    rejects a dirty worktree, canonicalizes/validates changed-files truth, enforces
+    TASK scope, requires complete structural acceptance coverage, materializes the
+    exact verification subject, executes canonical verification, and attaches
+    Runtime-owned evidence.
+  - >
+    Because this TASK authorizes no mutation and its implementation work is only a
+    structural handoff, no native Executor repository command is necessary to
+    establish a safe Runtime verification subject.
   - >
     TASK-157 remains authoritative for the separate full-suite
     AIOS_BP_V4_MEASUREMENT contract. This TASK does not execute or revise that
-    measurement contract and does not authorize TASK-159 revision 6.
+    contract and does not authorize TASK-159 revision 6.
   - >
     Canonical roadmap planning keeps focused diagnostic execution as the unique
-    NEXT prerequisite while BP-V4 remains blocked pending Human/Brain
-    interpretation of the resulting canonical evidence.
+    NEXT prerequisite while BP-V4 remains blocked pending later Human/Brain
+    interpretation of canonical evidence.
   - >
-    Runtime owns canonical verification and EVIDENCE; Reviewer owns semantic
-    review; Human/Brain own root-cause interpretation, correction strategy,
-    worker-adoption decisions, and roadmap planning; Publisher owns publication.
+    Runtime owns canonical verification/EVIDENCE; Reviewer owns semantic review;
+    Human/Brain own root-cause interpretation, correction strategy, worker
+    adoption, and roadmap planning; Publisher owns publication.
 
 scope:
-  inspect:
-    - docs/AIOS-MANIFESTO.md
-    - docs/AIOS-CONSTITUTION.md
-    - docs/CHATGPT_PROJECT_CONTRACT.md
-    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
-    - docs/AIOS-BRAIN-PORTABILITY.md
-    - .ai/roadmap-state.yaml
-    - .ai/tasks/TASK-156.yaml
-    - .ai/tasks/TASK-157.yaml
-    - .ai/tasks/TASK-159.yaml
-    - .ai/tasks/TASK-161.yaml
-    - .ai/tasks/TASK-164.yaml
-    - .ai/tasks/TASK-166.yaml
-    - scripts/bp_v4_parallel_probe.py
-    - scripts/bp_v4_parallel_diagnostic.py
-    - tests/bp_v4_probe_plugin.py
-    - tests/bp_v4_diagnostic_plugin.py
-    - tests/test_bp_v4_parallel_diagnostic.py
-    - tests/test_correction_integration.py
-    - tests/test_operator.py
-    - tests/test_operator_correction_preflight.py
-    - tests/test_operator_unified_state.py
-    - tests/test_publication.py
-    - tests/test_authoring_ingress.py
-    - tests/git_fixture_support.py
-    - tests/operator_test_support.py
-    - tests/conftest.py
-    - src/aios_renew/runtime.py
-    - src/aios_renew/verification.py
-    - src/aios_renew/artifacts.py
+  inspect: []
   modify: []
 
 non_goals:
+  - Execute any repository, shell, Git, file-read, search, pytest, xdist, or diagnostic command in the native Executor.
   - Modify any repository file or create a commit.
-  - Repair or replay RUN-167-001 or RUN-167-002.
-  - Modify Runtime completion ordering, ResultPackage semantics, or evidence ownership.
+  - Repair or replay RUN-167-001, RUN-167-002, or RUN-167-003.
+  - Modify Runtime completion ordering, ResultPackage semantics, verification ownership, or evidence attachment.
   - Modify scripts/bp_v4_parallel_diagnostic.py or any TASK-166 diagnostic behavior.
   - Execute the full BP-V4 measurement probe or author/execute TASK-159 revision 6.
-  - Let the Executor execute the diagnostic or equivalent pytest/xdist commands.
   - Fix any target-test failure observed later by Runtime inside this TASK.
   - Add worker 3, dynamic node/worker selection, retry, fallback, rerun, or adaptive scheduling.
   - Select, rank, recommend, persist, or adopt a worker count or performance threshold.
@@ -112,78 +88,67 @@ non_goals:
 constraints:
   hard:
     - >
-      TASK-167 r2 is a zero-delta read-only PRIMARY with empty scope.modify.
-      Executor final HEAD must equal the admitted RUN base, worktree must remain
-      clean, RESULT.changed_files must be empty, and no commit may be created.
+      TASK-167 r3 is a zero-delta read-only PRIMARY with empty scope.inspect and
+      scope.modify. The native Executor must not invoke shell, Git, repository
+      file-read, search, test, diagnostic, or other workspace commands/tools.
     - >
-      Executor structural output must contain no evidence and must cover every
-      acceptance criterion using only truthful pre-verification facts obtainable
-      by bounded read-only inspection. It must not claim that Runtime verification
-      already ran or that any diagnostic target passed, failed, reproduced a
-      historical failure, established a root cause, or demonstrated parallel safety.
+      The Executor must construct the structural ResultPackage solely from the
+      immutable canonical TASK/RUN context supplied by the admitted native adapter.
+      result.head_sha must be the admitted RUN base SHA, changed_files must be empty,
+      unresolved must be empty, root evidence must be empty, and every
+      claim.evidence list must be empty.
     - >
-      Executor must not run python scripts/bp_v4_parallel_diagnostic.py or any
-      equivalent pytest/xdist diagnostic command. Canonical verification contains
-      exactly one Runtime-owned command: python scripts/bp_v4_parallel_diagnostic.py.
+      Executor claims may cover only this pre-verification structural handoff and
+      authority boundary. They must not claim that Runtime verification ran, that
+      any target passed or failed, that historical failure reproduced, that a root
+      cause was established, or that any worker is safe or preferred.
     - >
-      The admitted candidate must contain the exact reviewed and published TASK-166
-      diagnostic primitive. No replacement, wrapper, copied implementation, or
-      Executor-generated evidence path is authorized.
+      Runtime independently owns and checks actual repository HEAD, cleanliness,
+      changed-files truth, TASK scope, verification-subject materialization, command
+      execution, post-verification repository state, canonical evidence attachment,
+      terminal persistence, and transport.
     - >
-      The reviewed primitive remains fixed to exactly six representative nodes and
-      exactly serial, parallel-2, and parallel-4 profiles. No target/profile
-      expansion, retry, fallback, or dynamic selection is authorized.
+      Canonical verification contains exactly one Runtime-owned command:
+      python scripts/bp_v4_parallel_diagnostic.py.
+    - >
+      The exact reviewed TASK-166 diagnostic primitive remains fixed to six
+      representative nodes and serial, parallel-2, and parallel-4 profiles. This
+      TASK neither replaces nor modifies that primitive.
     - >
       Runtime may treat inner pytest nonzero outcomes as observations when the
       diagnostic outer process completes its validated experiment successfully.
       Missing tooling, malformed collection, worker/root isolation defects, subject
       mutation, malformed structured output, sanitization failure, or diagnostic
-      internal failure must remain fail-closed through a nonzero outer outcome.
+      internal failure remain fail-closed through a nonzero outer outcome.
     - >
-      Runtime verification evidence is authoritative only after the structural
-      completion gate succeeds. Reviewer and Human/Brain must interpret that
-      evidence afterward; neither Executor structural claims nor a zero outer exit
-      alone may become semantic root-cause, worker-selection, or BP-V4 completion
-      authority.
-    - >
-      A clean focused diagnostic across all profiles is not full-suite parallel
-      conformance and does not authorize any worker count or production default.
+      Focused diagnostic evidence, even if clean, is not full-suite BP-V4
+      conformance and does not itself authorize a worker, correction, production
+      default, or roadmap advancement.
     - >
       Do not modify any repository file and do not push or publish from Executor execution.
 
 acceptance:
   - id: AC1
     condition: >
-      Pre-verification repository state is structurally zero-delta: final HEAD equals
-      the admitted RUN base, the worktree is clean, RESULT.changed_files is empty,
-      and no repository mutation was created.
+      The Executor returns a complete zero-delta structural ResultPackage from the
+      supplied admitted context only: result.head_sha equals the admitted RUN base
+      SHA, changed_files is empty, unresolved is empty, root evidence is empty, and
+      every claim evidence list is empty.
   - id: AC2
     condition: >
-      Bounded read-only inspection confirms the admitted candidate contains the exact
-      published TASK-166 diagnostic primitive with its fixed six-node target set,
-      fixed serial/parallel-2/parallel-4 profile order, and existing fail-closed
-      diagnostic integrity checks.
+      The Executor performs no repository or shell command/tool invocation and makes
+      no claim about a Runtime verification or diagnostic outcome.
   - id: AC3
     condition: >
-      Executor structural output contains no evidence, does not execute or claim an
-      outcome from the diagnostic, and leaves the canonical verification contract as
-      exactly one Runtime-owned command: python scripts/bp_v4_parallel_diagnostic.py.
+      The structural ResultPackage preserves the exact canonical verification
+      contract as Runtime-owned work only, with no Executor-created substitute
+      verification or evidence path.
   - id: AC4
     condition: >
-      The inspected diagnostic primitive's source contract remains observational:
-      successful outer completion emits AIOS_BP_V4_PARALLEL_DIAGNOSTIC version 1
-      facts for the fixed experiment, while diagnostic-integrity defects fail closed;
-      it contains no root-cause, correction, worker-selection, ranking, or adoption authority.
-  - id: AC5
-    condition: >
-      The TASK completion contract preserves the semantic limit that focused
-      diagnostic execution, including a clean result, is not full-suite BP-V4
-      conformance and does not itself authorize a worker, correction, or roadmap advancement.
-  - id: AC6
-    condition: >
-      Existing authority boundaries remain unchanged: Runtime owns canonical
-      verification/EVIDENCE, Reviewer owns semantic verdict, Human/Brain own later
-      interpretation/correction/worker/roadmap decisions, and Publisher owns publication.
+      The structural handoff preserves existing authority limits: later focused
+      diagnostic evidence is observational only; Runtime owns verification/EVIDENCE,
+      Reviewer owns semantic verdict, Human/Brain own interpretation, correction,
+      worker and roadmap decisions, and Publisher owns publication.
 
 verification:
   policy: minimum-sufficient-v1
