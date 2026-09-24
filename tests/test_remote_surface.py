@@ -1,15 +1,54 @@
 import json
 from pathlib import Path
+import re
 
 import pytest
+import yaml
 
 from aios_renew.dispatch_reconciliation import DispatchInvocation, execute_dispatch
+from aios_renew.execution_profile import ResolvedExecutionProfile, persist_execution_profile
 from aios_renew.remote_surface import RemoteSurfaceError, remote_status
 
 
 TASK_REVISION = 1
 TASK_BLOB_SHA = "a" * 40
 TASK_COMMIT_SHA = "b" * 40
+
+
+def _workflow_run_statements(source: str) -> list[str]:
+    """Inspect PowerShell run blocks without YAML metadata or comments."""
+    workflow = yaml.load(source, Loader=yaml.BaseLoader)
+    statements = []
+    for job in workflow["jobs"].values():
+        for step in job["steps"]:
+            for line in step.get("run", "").splitlines():
+                quote = None
+                start = 0
+                for index, char in enumerate(line):
+                    if char in ("'", '"'):
+                        if quote == char:
+                            quote = None
+                        elif quote is None:
+                            quote = char
+                    elif quote is None and char == "#":
+                        line = line[:index]
+                        break
+                    elif quote is None and char in ";|{}":
+                        statements.append(line[start:index].strip())
+                        start = index + 1
+                statements.append(line[start:].strip())
+    return [statement for statement in statements if statement]
+
+
+def _synthetic_profile(run_id: str) -> ResolvedExecutionProfile:
+    return ResolvedExecutionProfile(
+        run_id=run_id,
+        executor="codex",
+        model="test/remote-status-fixture-v1",
+        reasoning_effort="low",
+        model_source="EXPLICIT",
+        effort_source="EXPLICIT",
+    )
 
 
 def _write_run(state_root: Path, run_id: str = "RUN-074-001") -> None:
@@ -40,6 +79,10 @@ def test_status_reports_allowlisted_dispatch_and_run_facts_without_mutation(
         from aios_renew.dispatch_reconciliation import bind_dispatch_run
 
         _write_run(state_root)
+        run_profile = _synthetic_profile("RUN-074-001")
+        persist_execution_profile(
+            state_root / "execution-profiles" / "RUN-074-001.json", run_profile
+        )
         bind_dispatch_run(
             state_root=state_root,
             dispatch_id="delivery-074",
@@ -49,6 +92,7 @@ def test_status_reports_allowlisted_dispatch_and_run_facts_without_mutation(
             task_revision=TASK_REVISION,
             task_blob_sha=TASK_BLOB_SHA,
             task_commit_sha=TASK_COMMIT_SHA,
+            execution_profile=run_profile,
         )
         results = state_root / "results"
         results.mkdir(parents=True)
@@ -64,6 +108,7 @@ def test_status_reports_allowlisted_dispatch_and_run_facts_without_mutation(
         task_revision=TASK_REVISION,
         task_blob_sha=TASK_BLOB_SHA,
         task_commit_sha=TASK_COMMIT_SHA,
+        execution_profile=_synthetic_profile("AUTHORIZATION"),
     )
     before = {
         path.relative_to(state_root): path.read_bytes()
@@ -81,12 +126,25 @@ def test_status_reports_allowlisted_dispatch_and_run_facts_without_mutation(
     assert "ignored-by-status" not in summary.render()
     dispatch_record = next((state_root / "dispatches").glob("*.json"))
     dispatch_data = json.loads(dispatch_record.read_text(encoding="utf-8"))
-    assert dispatch_data["version"] == 2
+    assert dispatch_data["version"] == 3
     assert (
         dispatch_data["task_revision"],
         dispatch_data["task_blob_sha"],
         dispatch_data["task_commit_sha"],
     ) == (TASK_REVISION, TASK_BLOB_SHA, TASK_COMMIT_SHA)
+    assert (
+        dispatch_data["executor"],
+        dispatch_data["model"],
+        dispatch_data["reasoning_effort"],
+        dispatch_data["model_source"],
+        dispatch_data["effort_source"],
+    ) == (
+        "codex",
+        "test/remote-status-fixture-v1",
+        "low",
+        "EXPLICIT",
+        "EXPLICIT",
+    )
     after = {
         path.relative_to(state_root): path.read_bytes()
         for path in state_root.rglob("*")
@@ -134,7 +192,50 @@ def test_remote_workflows_are_separate_manual_read_only_surfaces() -> None:
         assert "actions/checkout" not in source
         assert "runs-on: [self-hosted, windows, x64, aios-renew]" in source
         assert "contents: read" in source
-    assert status.count("aios remote-status ") == 1
-    assert approval.count("aios remote-approve ") == 1
-    assert correction.count("aios approved-remediation-wakeup ") == 1
+    expected_invocations = (
+        (
+            status,
+            "remote-status",
+            r"python\s+\$entry\s+\$controlSource\s+remote-status\s+"
+            r"\$env:AIOS_DISPATCH_ID\s+--repo\s+\$env:AIOS_REPO_ROOT",
+        ),
+        (
+            approval,
+            "remote-approve",
+            r"python\s+\$entry\s+\$controlSource\s+remote-approve\s+"
+            r"\$env:AIOS_SOURCE_RUN_ID\s+\$env:AIOS_FINDING_ID\s+"
+            r"--approver\s+\$env:AIOS_APPROVER\s+--repo\s+\$env:AIOS_REPO_ROOT",
+        ),
+        (
+            correction,
+            "approved-remediation-wakeup",
+            r"python\s+\$entry\s+\$controlSource\s+approved-remediation-wakeup\s+"
+            r"\$env:AIOS_CORRECTION_DISPATCH_ID\s+\$env:AIOS_SOURCE_RUN_ID\s+"
+            r"\$env:AIOS_FINDING_ID\b.*\s+--repo\s+\$env:AIOS_REPO_ROOT",
+        ),
+    )
+    bounded_operations = r"remote-status|remote-approve|approved-remediation-wakeup"
+    for source, operation, invocation in expected_invocations:
+        statements = _workflow_run_statements(source)
+        assert "$controlSource = $env:AIOS_CONTROL_ROOT" in statements
+        assert "$entry = Join-Path $controlSource 'scripts/aios_control_entry.py'" in statements
+        delegated = [
+            statement
+            for statement in statements
+            if re.match(
+                rf"^python\s+\$entry\s+\$controlSource\s+(?:{bounded_operations})\b",
+                statement,
+                flags=re.IGNORECASE,
+            )
+        ]
+        assert len(delegated) == 1
+        assert re.fullmatch(invocation, delegated[0]) is not None, operation
+        assert not any(
+            re.match(
+                rf"^(?:&\s*)?aios(?:\.exe)?\s+(?:{bounded_operations})\b",
+                statement,
+                flags=re.IGNORECASE,
+            )
+            for statement in statements
+        ), operation
     assert "AIOS_APPROVER: ${{ github.actor }}" in approval
