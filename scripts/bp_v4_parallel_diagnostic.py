@@ -35,6 +35,11 @@ CAUSE_BASE = {"exception_type", "message_fingerprint"}
 CAUSE_OS = {"errno", "winerror", "filename", "filename_length"}
 CAUSE_PROCESS = {"returncode", "command_kind"}
 CAUSE_GIT = {"git_stderr_fingerprint", "git_stderr_excerpt", "git_stderr_truncated"}
+CAUSE_INTEGRATION = {"integration_boundary", "integration_git_diagnostic", "integration_detail_fingerprint"}
+CAUSE_LOCUS = {"source_locus"}
+INTEGRATION_BOUNDARIES = {"git-command", "commit-tree", "push-ref", "merge-conflict", "remote-lifecycle", "task-document", "selector", "ref-collision", "remote-ref", "merge-base", "lineage", "input", "other"}
+INTEGRATION_GIT_BOUNDARIES = {"git-command", "commit-tree", "push-ref", "merge-conflict"}
+GIT_LABELS = {"repository-error", "ref-lock", "path-error", "other"}
 
 
 class DiagnosticError(RuntimeError):
@@ -152,7 +157,7 @@ def _path_fact(value: object, *, required: bool = True) -> dict[str, Any]:
 def _cause(value: object) -> dict[str, Any] | None:
     if value is None:
         return None
-    if not isinstance(value, dict) or not CAUSE_BASE <= set(value) or set(value) - (CAUSE_BASE | CAUSE_OS | CAUSE_PROCESS | CAUSE_GIT):
+    if not isinstance(value, dict) or not CAUSE_BASE <= set(value) or set(value) - (CAUSE_BASE | CAUSE_OS | CAUSE_PROCESS | CAUSE_GIT | CAUSE_INTEGRATION | CAUSE_LOCUS):
         raise DiagnosticError("malformed failure cause")
     kind, digest = value["exception_type"], value["message_fingerprint"]
     if not isinstance(kind, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", kind) or not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
@@ -171,8 +176,24 @@ def _cause(value: object) -> dict[str, Any] | None:
         if not CAUSE_PROCESS <= set(value) or kind != "CalledProcessError" or (value["returncode"] is not None and not _integer(value["returncode"])) or value["command_kind"] not in {"git", "other"}:
             raise DiagnosticError("invalid subprocess failure detail")
     if CAUSE_GIT & set(value):
-        if not CAUSE_GIT <= set(value) or value.get("command_kind") != "git" or not isinstance(value["git_stderr_excerpt"], str) or value["git_stderr_excerpt"] not in {"repository-error", "ref-lock", "path-error", "other"} or not isinstance(value["git_stderr_truncated"], bool) or not isinstance(value["git_stderr_fingerprint"], str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", value["git_stderr_fingerprint"]):
+        if not CAUSE_GIT <= set(value) or value.get("command_kind") != "git" or not isinstance(value["git_stderr_excerpt"], str) or value["git_stderr_excerpt"] not in GIT_LABELS or not isinstance(value["git_stderr_truncated"], bool) or not isinstance(value["git_stderr_fingerprint"], str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", value["git_stderr_fingerprint"]):
             raise DiagnosticError("invalid Git failure detail")
+    if CAUSE_INTEGRATION & set(value):
+        boundary = value.get("integration_boundary")
+        if kind != "CorrectionIntegrationError" or not isinstance(boundary, str) or boundary not in INTEGRATION_BOUNDARIES:
+            raise DiagnosticError("invalid integration boundary")
+        git_fields = {"integration_git_diagnostic", "integration_detail_fingerprint"}
+        if boundary in INTEGRATION_GIT_BOUNDARIES:
+            if not git_fields <= set(value) or not isinstance(value["integration_git_diagnostic"], str) or value["integration_git_diagnostic"] not in GIT_LABELS or not isinstance(value["integration_detail_fingerprint"], str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", value["integration_detail_fingerprint"]):
+                raise DiagnosticError("invalid wrapped Git detail")
+        elif git_fields & set(value):
+            raise DiagnosticError("unexpected wrapped Git detail")
+    if kind == "CorrectionIntegrationError" and "integration_boundary" not in value:
+        raise DiagnosticError("missing integration boundary")
+    if "source_locus" in value:
+        locus = value["source_locus"]
+        if not isinstance(locus, dict) or set(locus) != {"path", "line"} or not isinstance(locus["path"], str) or not re.fullmatch(r"<subject>/tests/[A-Za-z0-9_./-]+\.py", locus["path"]) or any(part in {".", ".."} for part in locus["path"].split("/")) or not _integer(locus["line"]) or not 0 < locus["line"] <= 1_000_000:
+            raise DiagnosticError("invalid source locus")
     return value
 
 
@@ -188,7 +209,10 @@ def _failures(value: object) -> list[dict[str, Any]]:
         if key in seen:
             raise DiagnosticError("duplicate failure identity")
         seen.add(key)
-        facts.append({**fact, "cause": _cause(fact["cause"])})
+        cause = _cause(fact["cause"])
+        if cause is not None and "source_locus" in cause and cause["source_locus"]["path"] != "<subject>/" + fact["nodeid"].split("::", 1)[0]:
+            raise DiagnosticError("source locus is outside fixed target")
+        facts.append({**fact, "cause": cause})
     return sorted(facts, key=lambda x: (x["nodeid"], ("setup", "call", "teardown").index(x["phase"])))
 
 
