@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-v4-parallel-verification-performance-guard
+  - maintenance-bp-v4-focused-diagnostic-primitive
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -367,8 +367,24 @@ sequence:
       transient Control Source contract before spending another canonical BP-V4
       serial/parallel measurement, without changing production behavior or claiming
       BP-V4 conformance.
-  - id: bp-v4-parallel-verification-performance-guard
+  - id: maintenance-bp-v4-focused-diagnostic-primitive
     status: NEXT
+    task_id: TASK-166
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-1
+      - RUN-159-005
+    objective: >-
+      Establish and review one bounded repository-owned focused parallel diagnostic
+      primitive before spending another canonical BP-V4 full serial/parallel matrix,
+      without changing production behavior, existing measurement authority, worker
+      policy, or correction authority.
+  - id: bp-v4-parallel-verification-performance-guard
+    status: BLOCKED
+    blocked_by:
+      task_id: TASK-166
+      task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
@@ -443,9 +459,10 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item. BP-V4 is explicitly resumed after
-    reviewed publication of TASK-164 r2; PLANNED and parallel work do not compete with
-    the BP-V4 NEXT milestone.
+    Continue only the unique canonical NEXT item. Complete the reviewed/published
+    TASK-166 focused diagnostic primitive prerequisite before authoring or executing
+    current-main BP-V4 diagnostic work; BP-V4 itself remains blocked until explicit
+    Human/Brain planning advances it from canonical evidence.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
