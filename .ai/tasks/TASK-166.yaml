@@ -1,0 +1,243 @@
+task_id: TASK-166
+revision: 1
+
+goal: >
+  Establish a repository-owned BP-V4 focused parallel diagnostic primitive that
+  can later observe a fixed representative set of historical parallel-only
+  failure families under one serial control and fixed parallel profiles without
+  changing production behavior, the canonical BP-V4 measurement primitive, Git
+  fixture semantics, worker policy, lifecycle authority, or roadmap semantics.
+  The primitive must produce bounded deterministic diagnostic facts suitable for
+  later Runtime-owned execution and Human/Brain root-cause reasoning, while
+  remaining observational rather than selecting a correction or worker count.
+
+problem: >
+  RUN-159-005 is immutable canonical evidence that the then-current BP-V4
+  measurement subject preserved collection identity, exact subject identity,
+  distinct worker processes, isolated pytest temporary roots, and isolated
+  process-local Git fixture cache roots, yet serial reported 3 failing tests,
+  workers 2 and 3 reported 33 failing tests, and worker 4 reported 38 failing
+  tests. TASK-161 deliberately bounded measurement failure diagnostics to test
+  node identity and pytest phase, so that evidence identifies affected families
+  but not the underlying filesystem, Git subprocess, OS, assertion, or other
+  failure cause. Subsequent maintenance, including TASK-164 r2, changed current
+  canonical main and removed known stale surface assumptions, so another costly
+  full BP-V4 matrix before focused diagnosis would provide poor information
+  value. A separate reviewed diagnostic primitive is needed before any current
+  diagnostic execution or TASK-159 revision-6 measurement.
+
+assumptions:
+  - >
+    Canonical main at TASK-166 revision-1 authoring is
+    ca3f304559274280434716c2c40c5411ef603aac.
+  - >
+    The Human has explicitly resumed BP-V4 after reviewed publication of
+    TASK-164 r2 and approved a focused diagnostic prerequisite before another
+    full serial/parallel measurement.
+  - >
+    RUN-159-005 remains immutable historical FAILURE for TASK-159 r5 at subject
+    6a6d8b691ff5a694c065d56fc11e51283c109cf5. TASK-166 does not retry,
+    repair, remediate, supersede, or reinterpret that RUN.
+  - >
+    TASK-157 remains authoritative for AIOS_BP_V4_MEASUREMENT version 1,
+    fixed bounded worker authorization, collection identity, same-subject
+    conformance, and timing-neutral correctness semantics. TASK-166 creates a
+    separate diagnostic contract and does not modify or replace that authority.
+  - >
+    TASK-161 remains authoritative for bounded failure identities inside the
+    canonical measurement envelope. TASK-166 does not widen that envelope.
+  - >
+    TASK-156 remains authoritative for exact transient Runtime verification
+    subjects. A later diagnostic execution must run against the exact admitted
+    verification subject and must not depend on mutable control-checkout state.
+  - >
+    Historical evidence already argues against the simple explanation that
+    xdist workers shared pytest temporary roots, Git fixture cache roots, or
+    worker processes. Windows path depth, Git subprocess/ref behavior, resource
+    concurrency, stale functional assumptions, and other causes remain
+    hypotheses only until new canonical diagnostic evidence exists.
+  - >
+    TASK-166 establishes and tests only the diagnostic primitive. A separate
+    future TASK will execute the reviewed primitive against current canonical
+    state. TASK-166 itself does not claim a present root cause or BP-V4
+    conformance result.
+  - >
+    Runtime owns canonical verification and EVIDENCE; Reviewer owns semantic
+    review; Human/Brain own root-cause interpretation and any correction or
+    worker-adoption authorization; Publisher owns publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-156.yaml
+    - .ai/tasks/TASK-157.yaml
+    - .ai/tasks/TASK-159.yaml
+    - .ai/tasks/TASK-161.yaml
+    - .ai/tasks/TASK-164.yaml
+    - scripts/bp_v4_parallel_probe.py
+    - tests/bp_v4_probe_plugin.py
+    - tests/test_bp_v4_parallel_probe.py
+    - tests/conftest.py
+    - tests/git_fixture_support.py
+    - tests/operator_test_support.py
+    - tests/test_correction_integration.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_unified_state.py
+    - tests/test_publication.py
+    - tests/test_authoring_ingress.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/verification_contract.py
+    - src/aios_renew/runtime.py
+  modify:
+    - scripts/bp_v4_parallel_diagnostic.py
+    - tests/bp_v4_diagnostic_plugin.py
+    - tests/test_bp_v4_parallel_diagnostic.py
+
+non_goals:
+  - Execute the focused current-main diagnostic or claim any current diagnostic result in TASK-166.
+  - Run another full-suite BP-V4 serial/parallel matrix or author TASK-159 revision 6.
+  - Modify scripts/bp_v4_parallel_probe.py, tests/bp_v4_probe_plugin.py, or the AIOS_BP_V4_MEASUREMENT contract.
+  - Modify production code, Runtime, verification ownership, lifecycle state, Reviewer, Publisher, workflows, execution-profile policy, or frozen governance.
+  - Modify existing functional tests, tests/conftest.py, tests/git_fixture_support.py, tests/operator_test_support.py, or their Git semantics.
+  - Enable core.longpaths, shorten or relocate existing fixture roots, add locks, serialize Git-heavy tests, group xdist tests, mock real Git boundaries, skip, xfail, or weaken tests.
+  - Install or update pytest, pytest-xdist, optional dependencies, Git, Python, or any host capability during execution or verification.
+  - Provide generic node selection, generic worker selection, glob discovery, CPU-derived worker counts, adaptive scheduling, retries, fallback, reruns, benchmark routing, or automatic correction.
+  - Select, rank, recommend, score, persist, or adopt a worker count or performance threshold.
+  - Capture full environment data, credentials, tokens, unbounded traceback, arbitrary repr, or unbounded stdout/stderr.
+  - Advance BP-V4, choose a correction strategy, or mutate roadmap state from Executor execution.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      The new diagnostic contract is AIOS_BP_V4_PARALLEL_DIAGNOSTIC version 1
+      and is semantically distinct from AIOS_BP_V4_MEASUREMENT. It must not emit
+      or impersonate the measurement envelope.
+    - >
+      Diagnostic target population is statically fixed to exactly these six
+      existing node identities and no others:
+      tests/test_correction_integration.py::test_clean_divergence_integration_success;
+      tests/test_operator.py::test_admission_diagnostic_is_content_addressed_idempotent_and_immutable;
+      tests/test_operator_correction_preflight.py::test_correction_preflight_remediation_fails_closed_on_invalid_cumulative_state_ac5;
+      tests/test_operator_unified_state.py::test_unified_state_integrated_remediation_chronology_advancement_reduces_to_repair_ac2;
+      tests/test_publication.py::test_integrated_remediation_publication_advances_main_ac7;
+      tests/test_authoring_ingress.py::test_submit_review_reconstructs_exact_integrated_remediation_repair_delta.
+      There is no dynamic node argument, glob, discovery, or post-observation
+      target expansion.
+    - >
+      Diagnostic execution profiles are statically fixed and ordered as one
+      serial control, parallel workers 2, and parallel workers 4, each executed
+      exactly once. There is no worker argument, worker 3 profile, auto/cpu
+      heuristic, retry, fallback, rerun, or adaptive profile selection.
+    - >
+      The diagnostic entry surface is purpose-built and accepts no user-selected
+      target or worker parameters. Unsupported arguments must fail before any
+      test execution.
+    - >
+      The diagnostic environment must preserve the relevant BP-V4 isolation
+      conditions: explicit pytest/xdist loading, disabled plugin autoload,
+      disabled cache/bytecode side effects, load distribution, zero worker
+      restart, isolated profile basetemps, exact collection checks, distinct
+      worker/process facts, exact subject checks, and no in-run package
+      installation or fallback.
+    - >
+      A failing inner pytest target is an observation about the system under
+      diagnosis, not by itself a failure of the diagnostic mechanism. The
+      diagnostic outer outcome may succeed only after all fixed profiles execute
+      exactly once and the complete bounded observation contract is valid.
+      Missing tooling, malformed or mismatched collection, missing or unexpected
+      workers, duplicate execution, subject mutation, malformed structured data,
+      sanitization failure, or diagnostic-internal failure must fail closed.
+    - >
+      The diagnostic envelope must expose exact subject identity, bounded
+      toolchain identity, the fixed target identities, per-profile pytest exit
+      status, failed node identity and pytest phase, worker/process and isolated
+      temporary/cache-root facts, deterministic profile comparison sets, and
+      bounded path-length facts when those paths are directly observable.
+      Unavailable path facts must remain null rather than inferred or fabricated.
+    - >
+      Per-failure cause data is allowlisted and bounded. It may identify the
+      exception type and a stable message fingerprint; OSError-family failures
+      may additionally expose errno, winerror, sanitized filename and filename
+      length; subprocess failures may expose return code and bounded command
+      kind; a Git subprocess failure may additionally expose a sanitized bounded
+      stderr excerpt of at most 1024 UTF-8 characters with explicit truncation.
+      Generic full exception messages, arbitrary repr, full traceback, generic
+      process stdout/stderr, environment dumps, secrets, credentials, tokens,
+      or authenticated URLs are forbidden.
+    - >
+      Diagnostic path text must replace recognized verification-subject,
+      diagnostic-temp, pytest-basetemp, and user-home prefixes with stable
+      placeholders before persistence. Path length is observational only and
+      must not be converted by the tool into a MAX_PATH, Windows, Git, or other
+      semantic root-cause verdict.
+    - >
+      Deterministic comparison output may contain only factual set relationships
+      such as common_failed_nodes, serial_only_nodes, parallel_only_nodes,
+      worker2_only_nodes, and worker4_only_nodes. It must not contain root_cause,
+      recommended_fix, selected_worker, best, winner, score, adopt,
+      safe_to_enable, or equivalent semantic-decision fields.
+    - >
+      TASK-166 changes only the three authorized diagnostic files. It introduces
+      no lifecycle authority, second evidence authority, Planner, generic test
+      router, retry/failover authority, correction selector, Reviewer, Publisher,
+      or roadmap automation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A purpose-built AIOS_BP_V4_PARALLEL_DIAGNOSTIC version-1 primitive exists
+      entirely outside production and the canonical BP-V4 measurement authority,
+      with repository mutation limited to the three authorized diagnostic files.
+  - id: AC2
+    condition: >
+      The primitive has exactly the six statically authored representative node
+      identities and exposes no generic node-selection, glob-discovery, or
+      post-observation target-expansion surface.
+  - id: AC3
+    condition: >
+      The primitive has exactly the ordered serial, parallel-2, and parallel-4
+      profiles, executes each profile at most once per diagnostic invocation,
+      rejects worker selection or unsupported invocation parameters, and has no
+      retry, fallback, rerun, CPU heuristic, or adaptive routing.
+  - id: AC4
+    condition: >
+      Inner pytest nonzero outcomes are preserved as bounded observations while
+      diagnostic-integrity failures fail closed; a successful diagnostic outcome
+      therefore means the complete fixed experiment was observed correctly, not
+      that all target tests passed or that parallel execution is conformant.
+  - id: AC5
+    condition: >
+      The primitive fail-closed checks exact subject and collection identity,
+      expected worker/process reporting, isolated pytest temporary and Git
+      fixture-cache roots, and subject immutability without changing the existing
+      fixture or BP-V4 measurement mechanisms.
+  - id: AC6
+    condition: >
+      Failure cause facts are typed, allowlisted, bounded, path-sanitized, and
+      non-secret: permitted OS/subprocess/Git details remain sufficient for later
+      diagnosis while generic unbounded messages, tracebacks, environment data,
+      arbitrary output, and fabricated path facts are excluded.
+  - id: AC7
+    condition: >
+      The diagnostic envelope deterministically reports factual serial/parallel
+      failure-set relationships and directly observable path-length facts without
+      classifying semantic root cause, recommending a correction, or selecting,
+      ranking, scoring, or adopting any worker profile.
+  - id: AC8
+    condition: >
+      TASK-166 establishes and tests only the diagnostic primitive; it performs no
+      current-main diagnostic execution, changes no production/lifecycle/Runtime/
+      Reviewer/Publisher/roadmap authority, and creates no automatic continuation
+      or BP-V4 completion decision.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_bp_v4_parallel_diagnostic.py
