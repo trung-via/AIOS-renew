@@ -1,0 +1,167 @@
+task_id: TASK-169
+revision: 1
+
+goal: >
+  Execute the reviewed and published TASK-168-enhanced BP-V4 focused parallel
+  diagnostic exactly once as Runtime-owned canonical verification against the
+  exact admitted current canonical subject. Keep the native Executor as a
+  zero-delta structural handoff only and produce fresh bounded diagnostic
+  evidence for later Human/Brain interpretation before any production
+  correction, fresh full-suite BP-V4 matrix, worker-selection decision, or
+  roadmap advancement.
+
+problem: >
+  RUN-167-004 successfully executed the fixed six-target focused diagnostic on
+  its exact historical subject and showed the same six nodes failing in serial,
+  parallel-2, and parallel-4 with no profile-only failure set. That diagnostic
+  version did not yet expose the bounded CorrectionIntegrationError taxonomy,
+  normalized wrapped Git facts, and sanitized source-locus facts needed to
+  distinguish the observed failures safely. TASK-168 r2 subsequently strengthened
+  only that observation surface and completed through RUN-168-003,
+  REVIEW-168-003 PRIMARY PASS, and publication of source candidate
+  10d3576d6eaaffed48ce4f52ce41b1c59eafb829, with Runtime-owned focused contract
+  evidence RUN-168-003-V001. Because both the diagnostic semantics and canonical
+  repository subject have changed since RUN-167-004, its evidence remains
+  immutable historical truth but cannot establish the enhanced cause facts for
+  the current subject. A fresh focused execution is therefore the
+  minimum-sufficient next observation before choosing a correction or spending
+  another full serial/parallel BP-V4 measurement.
+
+assumptions:
+  - >
+    Canonical main at TASK-169 revision-1 authoring is
+    6e47e79266ae9e7ff7dd4200ce5fa599321edb8d, the Human/Brain planning commit
+    that records TASK-168 completion, selects this fresh focused diagnostic as the
+    unique NEXT item, and keeps the full BP-V4 measurement milestone blocked.
+  - >
+    TASK-168 r2 is engineering-complete through RUN-168-003,
+    REVIEW-168-003 PRIMARY PASS, publication of
+    10d3576d6eaaffed48ce4f52ce41b1c59eafb829, and Runtime verification evidence
+    RUN-168-003-V001. TASK-169 does not reverify the unchanged TASK-168 contract
+    suite.
+  - >
+    RUN-167-004 remains immutable historical focused-diagnostic evidence and is
+    not retried, repaired, remediated, superseded, or reinterpreted by this TASK.
+  - >
+    TASK-166 remains authoritative for the fixed six-target diagnostic
+    architecture and TASK-168 remains authoritative for the enhanced bounded
+    cause-observability schema. TASK-169 changes neither contract.
+  - >
+    TASK-157 remains authoritative for the distinct full-suite
+    AIOS_BP_V4_MEASUREMENT contract. TASK-169 does not execute, modify, or replace
+    that measurement authority and does not authorize TASK-159 revision 6.
+  - >
+    Human/Brain roadmap planning may advance canonical main before execution.
+    Runtime therefore binds the actual diagnostic subject to the exact admitted
+    RUN base SHA rather than to a hard-coded historical implementation SHA.
+  - >
+    Runtime owns canonical verification and EVIDENCE; Reviewer owns semantic
+    review; Human/Brain own interpretation, correction strategy, worker adoption,
+    and roadmap planning; Publisher owns publication.
+
+scope:
+  inspect: []
+  modify: []
+
+non_goals:
+  - Execute repository, shell, Git, file-read, search, pytest, xdist, or diagnostic commands from the native Executor.
+  - Modify any repository file or create an implementation commit.
+  - Repair, retry, remediate, supersede, delete, or reinterpret RUN-167-004 or any historical TASK-167 lineage.
+  - Modify or reverify the TASK-168 enhanced diagnostic implementation or its unchanged focused contract suite.
+  - Execute the full AIOS_BP_V4_MEASUREMENT serial/parallel matrix or author/execute TASK-159 revision 6.
+  - Fix any functional target failure observed by the fresh diagnostic inside this TASK.
+  - Add, remove, discover, or dynamically choose diagnostic targets.
+  - Change the fixed serial, parallel-2, and parallel-4 profile set or order.
+  - Add worker 3, automatic worker selection, retry, fallback, rerun, grouping, adaptive scheduling, or benchmark routing.
+  - Select, rank, recommend, persist, or adopt any worker count or performance threshold.
+  - Convert bounded diagnostic facts into an automatic semantic root-cause verdict, correction selection, concurrency verdict, or roadmap decision.
+  - Add lifecycle, Planner, Reviewer, Publisher, evidence-store, routing, retry/failover, or correction-selection authority.
+  - Advance roadmap state from Executor, Runtime, Reviewer, or Publisher execution.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      TASK-169 r1 is a zero-delta read-only PRIMARY with empty scope.inspect and
+      scope.modify. The native Executor must not invoke shell, Git, repository
+      file-read, search, test, diagnostic, or other workspace commands or tools.
+    - >
+      The Executor must construct the structural ResultPackage solely from the
+      immutable canonical TASK/RUN context supplied by the admitted native
+      adapter. result.head_sha must equal the admitted RUN base SHA,
+      changed_files must be empty, unresolved must be empty, root evidence must
+      be empty, and every claim.evidence list must be empty.
+    - >
+      Executor claims may cover only pre-verification structural facts and
+      authority boundaries. They must not claim that Runtime verification ran,
+      that any fixed target passed or failed, what any current cause category or
+      source locus is, that a semantic root cause was established, or that any
+      worker is safe, faster, preferred, selected, or adoptable.
+    - >
+      Runtime independently owns and checks actual repository HEAD, worktree
+      cleanliness, changed-files truth, TASK scope, exact verification-subject
+      materialization, command execution, post-verification repository state,
+      canonical evidence attachment, terminal persistence, and transport.
+    - >
+      Canonical verification consists of exactly the single Runtime-owned
+      operation declared in verification.required. No Executor-created substitute,
+      repeated TASK-168 contract suite, full-suite BP-V4 measurement, collection
+      probe, or additional verification command is authorized.
+    - >
+      The published diagnostic remains fixed to exactly the six statically
+      authored target nodes and exactly the ordered serial, parallel-2, and
+      parallel-4 profiles, each executed once. TASK-169 neither changes nor
+      supplements that experiment and exposes no target or worker-selection
+      surface.
+    - >
+      An inner pytest nonzero target outcome remains an observation about the
+      system under diagnosis and is not by itself a failure of the diagnostic
+      mechanism. Missing tooling, malformed or mismatched collection, missing or
+      unexpected workers, duplicate execution, mutable-root isolation defects,
+      subject mutation, malformed bounded cause data, sanitization failure, or
+      diagnostic-internal failure remain fail-closed through a nonzero outer
+      diagnostic outcome.
+    - >
+      Fresh diagnostic evidence remains observational only. Bounded integration
+      categories, Git labels, normalized fingerprints, source loci, OS/subprocess
+      facts, and serial/parallel set relationships do not themselves constitute a
+      semantic root-cause verdict, correction authorization, concurrency verdict,
+      worker recommendation, worker adoption, or roadmap advancement.
+    - >
+      Existing evidence is reused until invalidated. TASK-169 must not repeat the
+      unchanged TASK-168 focused contract verification merely for ceremony; the
+      only new evidence need is observation of the enhanced diagnostic against the
+      exact newly admitted current subject.
+    - >
+      Do not modify any repository file and do not push or publish from Executor
+      execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The Executor returns a complete zero-delta structural ResultPackage solely
+      from admitted TASK/RUN context: result.head_sha equals the admitted RUN base
+      SHA, changed_files is empty, unresolved is empty, root evidence is empty,
+      and every claim evidence list is empty.
+  - id: AC2
+    condition: >
+      The native Executor invokes no repository, shell, Git, file-read, search,
+      pytest, xdist, diagnostic, or other workspace command/tool and makes no
+      claim about the current diagnostic outcome.
+  - id: AC3
+    condition: >
+      The structural handoff leaves exactly one canonical Runtime-owned
+      verification operation using the already reviewed enhanced focused
+      diagnostic primitive, with no Executor-created substitute verification,
+      repeated TASK-168 contract suite, or full-suite BP-V4 measurement.
+  - id: AC4
+    condition: >
+      The TASK preserves existing authority boundaries: diagnostic output remains
+      observational; Runtime owns canonical verification/EVIDENCE, Reviewer owns
+      semantic verdict, Human/Brain own interpretation, correction and
+      worker/roadmap decisions, and Publisher owns publication.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python scripts/bp_v4_parallel_diagnostic.py
