@@ -259,7 +259,13 @@ def test_wrapped_integration_facts_are_bounded_and_normalized(monkeypatch: pytes
     ("invalid cumulative tip RUN id: secret", "input"),
     ("invalid task revision: 0", "input"),
 ])
-def test_known_correction_integration_messages_have_bounded_categories(message: str, boundary: str) -> None:
+def test_known_correction_integration_messages_have_bounded_categories(
+    message: str, boundary: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setenv(plugin.PREFIX_ENV, json.dumps({
+        "subject": str(tmp_path / "subject"), "diagnostic_temp": str(tmp_path / "diagnostic"),
+        "pytest_basetemp": str(tmp_path / "diagnostic" / "pytest"), "user_home": str(tmp_path / "home"),
+    }))
     cause = plugin._cause(CorrectionIntegrationError(message))
     assert cause["integration_boundary"] == boundary
     assert diagnostic._cause(cause) == cause
