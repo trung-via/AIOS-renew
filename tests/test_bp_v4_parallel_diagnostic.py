@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from aios_renew.correction_integration import CorrectionIntegrationError
 from scripts import bp_v4_parallel_diagnostic as diagnostic
 import bp_v4_diagnostic_plugin as plugin
 
@@ -185,5 +186,122 @@ def test_cause_validator_rejects_raw_message_and_arbitrary_stderr() -> None:
     cause.pop("stderr")
     cause.update({"git_stderr_fingerprint": "sha256:" + "0" * 64,
                   "git_stderr_excerpt": "credential=secret", "git_stderr_truncated": False})
+    with pytest.raises(diagnostic.DiagnosticError):
+        diagnostic._cause(cause)
+
+
+def test_wrapped_integration_facts_are_bounded_and_normalized(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    observed = []
+    for run in ("first", "second"):
+        root = tmp_path / run
+        monkeypatch.setenv(plugin.PREFIX_ENV, json.dumps({
+            "subject": str(root / "subject"), "diagnostic_temp": str(root / "diagnostic"),
+            "pytest_basetemp": str(root / "diagnostic" / "pytest"), "user_home": str(root / "home"),
+        }))
+        path = root / "diagnostic" / "pytest" / "fixture" / "index.lock"
+        message = f"Git command failed: fatal: cannot lock ref 'refs/heads/main': Unable to create '{path}': File exists credential=secret"
+        cause = plugin._cause(CorrectionIntegrationError(message))
+        assert cause["integration_boundary"] == "git-command"
+        assert cause["integration_git_diagnostic"] == "ref-lock"
+        assert "secret" not in json.dumps(cause)
+        assert str(root) not in json.dumps(cause)
+        assert diagnostic._cause(cause) == cause
+        observed.append(cause)
+    assert observed[0]["message_fingerprint"] == observed[1]["message_fingerprint"]
+    assert observed[0]["integration_detail_fingerprint"] == observed[1]["integration_detail_fingerprint"]
+    assert plugin._cause(CorrectionIntegrationError(
+        "Git command failed: fatal: not a git repository"))["integration_git_diagnostic"] == "repository-error"
+    assert plugin._cause(CorrectionIntegrationError(
+        "Git command failed: fatal: cannot lock ref: The filename or extension is too long"))[
+            "integration_git_diagnostic"] == "path-error"
+    for detail in ("The filename or extension is too long", "The system cannot find the path specified",
+                   "unable to open C:\\private\\secret.txt", "File name too long"):
+        cause = plugin._cause(CorrectionIntegrationError(f"failed to create commit-tree: {detail}"))
+        assert cause["integration_boundary"] == "commit-tree"
+        assert cause["integration_git_diagnostic"] == "path-error"
+        assert detail not in json.dumps(cause)
+        assert diagnostic._cause(cause) == cause
+    unknown = plugin._cause(CorrectionIntegrationError(
+        "credential=secret https://example.invalid/private C:\\private\\secret.txt"))
+    assert unknown["integration_boundary"] == "other"
+    assert set(unknown) == {"exception_type", "message_fingerprint", "integration_boundary"}
+    assert plugin._cause(CorrectionIntegrationError(
+        "authorized main SHA is required by a future rule"))["integration_boundary"] == "other"
+
+
+@pytest.mark.parametrize("message,boundary", [
+    ("Git command failed: fatal: not a git repository", "git-command"),
+    ("failed to create commit-tree: fatal: unable to create file", "commit-tree"),
+    ("failed to push integration ref refs/aios/x to remote origin: fatal: cannot lock ref", "push-ref"),
+    ("merge conflict between cumulative tip and main: fatal: conflict", "merge-conflict"),
+    ("failed to resolve canonical remote task lifecycle: secret", "remote-lifecycle"),
+    ("failed to decode canonical remote task lifecycle: secret", "remote-lifecycle"),
+    ("canonical remote task lifecycle has no main SHA", "remote-lifecycle"),
+    ("canonical remote main SHA (a) does not match authorized main SHA (b)", "remote-lifecycle"),
+    ("TASK document not found: TASK-168", "task-document"),
+    ("cannot load TASK TASK-168: secret", "task-document"),
+    ("TASK identity or revision mismatch: requested TASK-168 r2, found TASK-168 r1", "task-document"),
+    ("canonical operational tip RUN-1 is not a valid RESULT terminal (found FAILURE)", "lineage"),
+    ("cumulative correction lineage has competing continuations", "lineage"),
+    ("canonical remote task lifecycle has no operational tips", "lineage"),
+    ("canonical remote task lifecycle has competing operational tips: ['RUN-1']", "lineage"),
+    ("cumulative tip selector is stale: expected RUN-1 (a), authorized RUN-2 (b)", "selector"),
+    ("cumulative tip candidate commit a is missing or not a commit", "commit-object"),
+    ("authorized main commit a is missing or not a commit", "commit-object"),
+    ("existing integration ref refs/aios/x collides with a different or corrupted candidate commit", "ref-collision"),
+    ("canonical remote integration ref verification failed: expected a for refs/aios/x on origin", "remote-ref"),
+    ("cannot find merge base between cumulative tip and main", "merge-base"),
+    ("ambiguous or missing merge base between cumulative tip and main (found 2)", "merge-base"),
+    ("git merge-tree produced invalid tree SHA", "merge-tree"),
+    ("authorized main SHA is required", "input"),
+    ("invalid authorized main SHA: secret", "input"),
+    ("invalid cumulative tip candidate SHA: secret", "input"),
+    ("invalid cumulative tip RUN id: secret", "input"),
+    ("invalid task revision: 0", "input"),
+])
+def test_known_correction_integration_messages_have_bounded_categories(message: str, boundary: str) -> None:
+    cause = plugin._cause(CorrectionIntegrationError(message))
+    assert cause["integration_boundary"] == boundary
+    assert diagnostic._cause(cause) == cause
+    assert message not in json.dumps(cause)
+
+
+def test_source_locus_is_one_fixed_repo_test_line(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    subject = tmp_path / "subject"
+    monkeypatch.setenv(plugin.PREFIX_ENV, json.dumps({
+        "subject": str(subject), "diagnostic_temp": str(tmp_path / "diagnostic"),
+        "pytest_basetemp": str(tmp_path / "diagnostic" / "pytest"), "user_home": str(tmp_path / "home"),
+    }))
+    target = diagnostic.TARGETS[0]
+    target_path = subject / target.split("::", 1)[0]
+    frames = [SimpleNamespace(path=target_path, lineno=41),
+              SimpleNamespace(path=tmp_path / "private" / "secret.py", lineno=99)]
+    cause = plugin._cause(AssertionError("credential=secret"),
+                          excinfo=SimpleNamespace(traceback=frames), nodeid=target)
+    assert cause["source_locus"] == {"path": "<subject>/tests/test_correction_integration.py", "line": 42}
+    assert "secret" not in json.dumps(cause)
+    assert diagnostic._cause(cause) == cause
+    diagnostic._failures([{"nodeid": target, "phase": "call", "cause": cause}])
+    with pytest.raises(diagnostic.DiagnosticError):
+        diagnostic._failures([{"nodeid": diagnostic.TARGETS[1], "phase": "call", "cause": cause}])
+    assert "source_locus" not in plugin._cause(AssertionError("secret"),
+        excinfo=SimpleNamespace(traceback=frames[1:]), nodeid=target)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("message", "secret"), ("stderr", "secret"), ("root_cause", "git"),
+    ("integration_boundary", "credential=secret"),
+    ("integration_git_diagnostic", "https://example.invalid/private"),
+    ("integration_detail_fingerprint", "sha256:" + "0" * 1000),
+    ("source_locus", {"path": "C:/private/secret.py", "line": 42}),
+    ("source_locus", {"path": "<subject>/tests/../private.py", "line": 42}),
+    ("source_locus", {"path": "<subject>/tests//private.py", "line": 42}),
+    ("source_locus", {"path": "<subject>/tests/test_operator.py", "line": 0}),
+])
+def test_integration_validator_rejects_unsafe_fields(field: str, value: object) -> None:
+    cause = {"exception_type": "CorrectionIntegrationError", "message_fingerprint": "sha256:" + "0" * 64,
+             "integration_boundary": "git-command", "integration_git_diagnostic": "other",
+             "integration_detail_fingerprint": "sha256:" + "1" * 64}
+    cause[field] = value
     with pytest.raises(diagnostic.DiagnosticError):
         diagnostic._cause(cause)

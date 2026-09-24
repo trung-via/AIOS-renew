@@ -80,14 +80,87 @@ def _git_diagnostic(stderr: str) -> str:
     lowered = stderr.lower()
     if any(phrase in lowered for phrase in ("not a git repository", "not a git directory", "repository does not exist", "unable to read current working directory")):
         return "repository-error"
+    if any(phrase in lowered for phrase in ("filename too long", "file name too long", "path too long", "the filename or extension is too long", "the system cannot find", "cannot find the path", "cannot find the file")):
+        return "path-error"
     if any(phrase in lowered for phrase in ("cannot lock ref", "unable to lock", "cannot lock", "ref lock", "reference is at", ".lock': file exists", ".lock\": file exists")):
         return "ref-lock"
-    if any(phrase in lowered for phrase in ("pathspec", "no such file or directory", "does not exist", "outside repository", "not in the working tree")):
+    if any(phrase in lowered for phrase in ("pathspec", "no such file or directory", "does not exist", "outside repository", "not in the working tree", "filename too long", "file name too long", "path too long", "cannot create", "unable to create", "could not create", "failed to create", "cannot open", "unable to open", "could not open", "cannot find the path", "cannot find the file", "the system cannot find", "the filename or extension is too long")):
         return "path-error"
     return "other"
 
 
-def _cause(exc: BaseException | None) -> dict[str, Any] | None:
+_INTEGRATION_BOUNDARIES = (
+    ("Git command failed: ", "git-command", True),
+    ("failed to create commit-tree: ", "commit-tree", True),
+    ("failed to push integration ref ", "push-ref", True),
+    ("merge conflict between cumulative tip and main: ", "merge-conflict", True),
+    ("failed to resolve canonical remote task lifecycle: ", "remote-lifecycle", False),
+    ("failed to decode canonical remote task lifecycle: ", "remote-lifecycle", False),
+    ("cannot load TASK ", "task-document", False),
+    ("TASK document not found: ", "task-document", False),
+    ("TASK identity or revision mismatch: ", "task-document", False),
+    ("canonical remote task lifecycle has no main SHA", "remote-lifecycle", False),
+    ("canonical remote main SHA (", "remote-lifecycle", False),
+    ("canonical operational tip ", "lineage", False),
+    ("cumulative tip selector is stale: ", "selector", False),
+    ("cumulative tip candidate commit ", "commit-object", False),
+    ("authorized main commit ", "commit-object", False),
+    ("existing integration ref ", "ref-collision", False),
+    ("canonical remote integration ref verification failed: ", "remote-ref", False),
+    ("cannot find merge base between cumulative tip and main", "merge-base", False),
+    ("ambiguous or missing merge base between cumulative tip and main", "merge-base", False),
+    ("git merge-tree produced invalid tree SHA", "merge-tree", False),
+    ("cumulative correction lineage has competing continuations", "lineage", False),
+    ("canonical remote task lifecycle has no operational tips", "lineage", False),
+    ("canonical remote task lifecycle has competing operational tips: ", "lineage", False),
+    ("authorized main SHA is required", "input", False),
+    ("invalid authorized main SHA: ", "input", False),
+    ("invalid cumulative tip candidate SHA: ", "input", False),
+    ("invalid cumulative tip RUN id: ", "input", False),
+    ("invalid task revision: ", "input", False),
+)
+_EXACT_INTEGRATION_MESSAGES = {
+    "canonical remote task lifecycle has no main SHA",
+    "cumulative correction lineage has competing continuations",
+    "canonical remote task lifecycle has no operational tips",
+    "cannot find merge base between cumulative tip and main",
+    "git merge-tree produced invalid tree SHA",
+    "authorized main SHA is required",
+}
+
+
+def _integration_detail(message: str) -> dict[str, str]:
+    for prefix, boundary, git_related in _INTEGRATION_BOUNDARIES:
+        if message == prefix or (prefix not in _EXACT_INTEGRATION_MESSAGES and message.startswith(prefix)):
+            result = {"integration_boundary": boundary}
+            if git_related:
+                detail = message[len(prefix):]
+                # Push errors include a fixed ref/remote preamble before Git output.
+                if boundary == "push-ref":
+                    detail = detail.partition(": ")[2]
+                result["integration_git_diagnostic"] = _git_diagnostic(detail)
+                result["integration_detail_fingerprint"] = "sha256:" + hashlib.sha256(
+                    _normalized_cause_text(detail).encode("utf-8", errors="replace")
+                ).hexdigest()
+            return result
+    return {"integration_boundary": "other"}
+
+
+def _source_locus(excinfo: Any, nodeid: str | None) -> dict[str, Any] | None:
+    if excinfo is None or nodeid is None:
+        return None
+    target_file = nodeid.split("::", 1)[0]
+    if not re.fullmatch(r"tests/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.py", target_file):
+        return None
+    for entry in reversed(list(excinfo.traceback)):
+        path = sanitize_path(str(Path(entry.path).resolve()))
+        line = entry.lineno + 1
+        if path == f"<subject>/{target_file}" and isinstance(line, int) and 0 < line <= 1_000_000:
+            return {"path": path, "line": line}
+    return None
+
+
+def _cause(exc: BaseException | None, *, excinfo: Any = None, nodeid: str | None = None) -> dict[str, Any] | None:
     if exc is None:
         return None
     kind = type(exc).__name__
@@ -97,6 +170,11 @@ def _cause(exc: BaseException | None) -> dict[str, Any] | None:
         "exception_type": kind,
         "message_fingerprint": "sha256:" + hashlib.sha256(_normalized_cause_text(str(exc)).encode("utf-8", errors="replace")).hexdigest(),
     }
+    if kind == "CorrectionIntegrationError":
+        result.update(_integration_detail(str(exc)))
+    locus = _source_locus(excinfo, nodeid)
+    if locus is not None:
+        result["source_locus"] = locus
     if isinstance(exc, OSError):
         result.update({
             "errno": exc.errno if isinstance(exc.errno, int) else None,
@@ -144,7 +222,8 @@ def pytest_runtest_makereport(item: Any, call: Any):
         _local_failures.append({
             "nodeid": report.nodeid.replace("\\", "/"),
             "phase": report.when,
-            "cause": _cause(call.excinfo.value if call.excinfo is not None else None),
+            "cause": _cause(call.excinfo.value if call.excinfo is not None else None,
+                            excinfo=call.excinfo, nodeid=report.nodeid.replace("\\", "/")),
         })
 
 
