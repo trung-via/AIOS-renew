@@ -118,13 +118,24 @@ def test_plugin_sanitizes_path_and_keeps_only_typed_cause(monkeypatch: pytest.Mo
 
 def test_cause_fingerprints_ignore_transient_roots_and_git_detail_is_bounded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     causes = []
+    root_fingerprints = []
     for run in ("first", "second"):
         root = tmp_path / run
         roots = {"subject": str(root / "subject"), "diagnostic_temp": str(root / "diagnostic"),
                  "pytest_basetemp": str(root / "diagnostic" / "pytest"), "user_home": str(root / "home")}
         monkeypatch.setenv(plugin.PREFIX_ENV, json.dumps(roots))
-        path = root / "diagnostic" / "pytest" / f"fixture-{run}" / "index.lock"
+        fingerprints = {}
+        for name, registered_root in roots.items():
+            root_path = str(Path(registered_root) / "fixture" / "index.lock")
+            escaped_root_path = root_path.replace("\\", "\\\\") if os.name == "nt" else root_path.replace("/", "\\\\")
+            fingerprint = plugin._cause(FileNotFoundError(2, "missing", root_path))["message_fingerprint"]
+            assert plugin._cause(FileNotFoundError(2, "missing", escaped_root_path))["message_fingerprint"] == fingerprint
+            fingerprints[name] = fingerprint
+        root_fingerprints.append(fingerprints)
+        path = root / "diagnostic" / "pytest" / "fixture" / "index.lock"
         os_cause = plugin._cause(FileNotFoundError(2, "missing", str(path)))
+        distinct_cause = plugin._cause(FileNotFoundError(2, "different missing detail", str(path)))
+        assert distinct_cause["message_fingerprint"] != os_cause["message_fingerprint"]
         git_cause = plugin._cause(subprocess.CalledProcessError(
             128, ["git", "update-ref", str(path)],
             stderr=f"fatal: cannot lock ref 'refs/heads/main': Unable to create '{path}': File exists\ncredential=secret".encode(),
@@ -135,6 +146,7 @@ def test_cause_fingerprints_ignore_transient_roots_and_git_detail_is_bounded(mon
         assert "secret" not in json.dumps(git_cause)
         assert diagnostic._cause(git_cause) == git_cause
     assert causes[0][0]["message_fingerprint"] == causes[1][0]["message_fingerprint"]
+    assert root_fingerprints[0] == root_fingerprints[1]
     assert causes[0][1]["message_fingerprint"] == causes[1][1]["message_fingerprint"]
     assert causes[0][1]["git_stderr_fingerprint"] == causes[1][1]["git_stderr_fingerprint"]
 

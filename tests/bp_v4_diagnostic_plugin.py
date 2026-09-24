@@ -60,12 +60,17 @@ def _path_fact(value: object) -> dict[str, Any]:
 
 def _normalized_cause_text(value: str) -> str:
     """Remove recognized absolute paths before deriving a persisted identity."""
-    normalized = value.replace("\\", "/")
+    normalized = value
     for name, root in sorted(_prefixes().items(), key=lambda pair: -len(pair[1])):
-        prefix = root.replace("\\", "/").rstrip("/")
+        # Exception formatting can escape Windows separators. Match those
+        # representations only within a registered, boundary-delimited root.
+        prefix = r"[/\\]+".join(re.escape(part) for part in re.split(r"[/\\]+", root.rstrip("/\\")))
+        pattern = (r"(?<![A-Za-z0-9_./\\])" + prefix
+                   + r"(?=$|[/\\\s'\"`:;,()\[\]])(?P<suffix>(?:[/\\]+[^/\\\s'\"`:;,()\[\]]+)*)")
         normalized = re.sub(
-            re.escape(prefix) + r"(?=$|[/\s'\"`:;,()\[\]])(?:/[^\s'\"`:;,()\[\]]+)*",
-            f"<{name}>", normalized, flags=re.IGNORECASE if os.name == "nt" else 0,
+            pattern,
+            lambda match: f"<{name}>" + re.sub(r"[/\\]+", "/", match.group("suffix")),
+            normalized, flags=re.IGNORECASE if os.name == "nt" else 0,
         )
     return normalized
 
