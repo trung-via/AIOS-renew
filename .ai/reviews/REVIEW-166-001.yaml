@@ -1,0 +1,34 @@
+review_id: REVIEW-166-001
+reviewed_sha: cdc16069f9d9f50a8d6b5ba44a5ac698396b0d8e
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+  AC8: PASS
+findings:
+- id: FINDING-166-001
+  basis: AC6
+  action: CODE_FIX
+  location: tests/bp_v4_diagnostic_plugin.py::_cause and scripts/bp_v4_parallel_diagnostic.py::_cause
+  issue: The diagnostic fingerprints raw exception text and raw Git stderr before
+    path normalization, so fingerprints can vary with randomized diagnostic/basetemp/fixture
+    paths rather than remain stable for the same bounded cause. In addition, Git CalledProcessError
+    observations always persist git_stderr_excerpt as null, leaving only return code
+    plus a raw-stderr fingerprint; for Git-heavy representative failures this is insufficient
+    to distinguish bounded causes such as ref-lock, path, or repository errors that
+    TASK-166 exists to diagnose.
+  expected: Preserve the strict bounded/non-secret cause surface while making cause
+    identity deterministic across recognized transient path prefixes and retaining
+    enough sanitized bounded Git failure detail for later Human/Brain diagnosis. Normalize
+    or redact recognized subject/diagnostic/basetemp/home path prefixes before deriving
+    persisted fingerprints, and expose only a safely sanitized bounded Git diagnostic
+    excerpt or equivalently discriminating bounded structured Git facts. Keep the
+    1024-character bound, explicit truncation, no generic stdout/stderr, no environment/credential
+    leakage, no production or existing BP-V4 probe changes, and no semantic root-cause
+    or worker-selection fields.
