@@ -144,6 +144,7 @@ def _repo_config(remote: Path, user_name: str, user_email: str) -> str:
 \tbare = false
 \tlogallrefupdates = true
 \tautocrlf = true
+\tlongpaths = true
 [user]
 \tname = {user_name}
 \temail = {user_email}
@@ -200,7 +201,7 @@ def _materialize_layout(
     )
     (remote / "config").write_text(
         "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n"
-        "\tbare = true\n[gc]\n\tauto = 0\n",
+        "\tbare = true\n\tlongpaths = true\n[gc]\n\tauto = 0\n",
         encoding="utf-8",
     )
 

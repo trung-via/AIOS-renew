@@ -1,3 +1,4 @@
+import hashlib
 import os
 from pathlib import Path
 
@@ -144,3 +145,35 @@ def test_fast_materialization_supports_real_git_and_immutable_object_reuse(
     with pytest.raises(ValueError, match="corrupt Git object"):
         git_fixture_support._copy_loose_objects(source, destination)
     assert destination_path.read_bytes() == b"not a Git object"
+
+
+def test_depth_amplified_sandboxes_push_and_resolve_full_aios_refs(
+    tmp_path: Path,
+) -> None:
+    nested = tmp_path / "runtime-isolation" / "bp-v4-diagnostic" / "nested-"
+    depth = nested.with_name(
+        nested.name + "x" * max(0, 175 - len(str(nested)))
+    )
+    sandboxes = [
+        make_repo(depth / "sandbox-a"),
+        make_repo(depth / "sandbox-b"),
+    ]
+    families = ("integration", "admission-failure")
+
+    for index, repo in enumerate(sandboxes):
+        remote = repo.parent / "upstream.git"
+        other = sandboxes[1 - index]
+        head = git(repo, "rev-parse", "HEAD")
+        for family in families:
+            identity = hashlib.sha256(f"{family}-{index}".encode()).hexdigest()
+            ref = f"refs/heads/aios/{family}/{identity}"
+            assert len(identity) == 64
+            assert len(str(remote / f"{ref}.lock")) > 260
+
+            git(repo, "update-ref", ref, head)
+            git(repo, "push", "--quiet", "origin", f"{ref}:{ref}")
+            assert git(remote, "show-ref", "--verify", ref) == f"{head} {ref}"
+            assert git(repo, "ls-remote", "--refs", "origin", ref) == (
+                f"{head}\t{ref}"
+            )
+            assert git(other, "ls-remote", "--refs", "origin", ref) == ""
