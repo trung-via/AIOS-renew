@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-v4-parallel-verification-performance-guard
+  - maintenance-bp-v4-detached-observation-compatibility
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -490,21 +490,38 @@ sequence:
       admission-failure refs remain testable under Runtime/BP-V4 nested temporary
       environments without changing production ref identities, transport
       semantics, verification isolation, diagnostic semantics, or worker policy.
-  - id: bp-v4-parallel-verification-performance-guard
+  - id: maintenance-bp-v4-detached-observation-compatibility
     status: NEXT
+    task_id: TASK-171
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-159-006
+      - TASK-121
+      - TASK-156
+      - TASK-159
+    objective: >-
+      Restore deterministic read-only canonical-main and Unified State observation
+      from TASK-156 exact detached verification subjects without widening
+      mutation-capable transport remote selection, changing lifecycle semantics,
+      or weakening fail-closed canonical identity.
+  - id: bp-v4-parallel-verification-performance-guard
+    status: PLANNED
     task_id: TASK-159
     task_revision: 6
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
       - RUN-159-005
+      - RUN-159-006
       - RUN-163-009
       - RUN-164-002
       - RUN-169-001
       - RUN-170-001
     objective: >-
       After serial harness acceleration is proven and the focused Windows
-      path-budget artifact is corrected, establish measured bounded parallel
+      path-budget artifact plus newly observed detached read-only observation
+      compatibility defects are corrected, establish measured bounded parallel
       full-suite conformance and verification-cost regression visibility without
       heuristic worker selection or new semantic authority.
   - id: bp-3-brain-context-foundation
