@@ -394,6 +394,8 @@ sequence:
       policy, or correction authority.
   - id: maintenance-bp-v4-focused-diagnostic-execution
     status: NEXT
+    task_id: TASK-167
+    task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
@@ -406,7 +408,8 @@ sequence:
   - id: bp-v4-parallel-verification-performance-guard
     status: BLOCKED
     blocked_by:
-      planning_item: maintenance-bp-v4-focused-diagnostic-execution
+      task_id: TASK-167
+      task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
