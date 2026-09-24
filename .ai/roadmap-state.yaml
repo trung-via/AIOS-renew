@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-bp-v4-focused-diagnostic-primitive
+  - maintenance-bp-v4-focused-diagnostic-execution
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -368,7 +368,19 @@ sequence:
       serial/parallel measurement, without changing production behavior or claiming
       BP-V4 conformance.
   - id: maintenance-bp-v4-focused-diagnostic-primitive
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-166
+      task_revision: 1
+      run_id: RUN-166-003
+      operation: REPAIR
+      failed_run_id: RUN-166-002
+      repair_id: REPAIR-166-002
+      review_id: REVIEW-166-003
+      reviewed_sha: "94a16a9e67f494d71960e6a45032ba73912be61c"
+      published_sha: "94a16a9e67f494d71960e6a45032ba73912be61c"
+      verification_evidence:
+        - RUN-166-003-V001
     task_id: TASK-166
     task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -380,11 +392,21 @@ sequence:
       primitive before spending another canonical BP-V4 full serial/parallel matrix,
       without changing production behavior, existing measurement authority, worker
       policy, or correction authority.
+  - id: maintenance-bp-v4-focused-diagnostic-execution
+    status: NEXT
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-1
+      - RUN-159-005
+      - TASK-166
+    objective: >-
+      Execute the reviewed focused diagnostic primitive against one exact current
+      canonical subject to obtain bounded serial/parallel failure-cause evidence
+      before any new full BP-V4 matrix, correction selection, or worker adoption.
   - id: bp-v4-parallel-verification-performance-guard
     status: BLOCKED
     blocked_by:
-      task_id: TASK-166
-      task_revision: 1
+      planning_item: maintenance-bp-v4-focused-diagnostic-execution
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
@@ -459,10 +481,11 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item. Complete the reviewed/published
-    TASK-166 focused diagnostic primitive prerequisite before authoring or executing
-    current-main BP-V4 diagnostic work; BP-V4 itself remains blocked until explicit
-    Human/Brain planning advances it from canonical evidence.
+    Continue only the unique canonical NEXT item. Design and canonically author the
+    focused current-main diagnostic execution prerequisite, then use only its canonical
+    Runtime evidence to decide whether BP-V4 needs bounded correction work or can proceed
+    to a new full measurement revision; BP-V4 itself remains blocked until that explicit
+    Human/Brain planning decision.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
