@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-bp-v4-detached-observation-compatibility
+  - maintenance-bp-v4-terminal-attention-path-budget
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -491,7 +491,18 @@ sequence:
       environments without changing production ref identities, transport
       semantics, verification isolation, diagnostic semantics, or worker policy.
   - id: maintenance-bp-v4-detached-observation-compatibility
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-171
+      task_revision: 1
+      run_id: RUN-171-001
+      review_id: REVIEW-171-001
+      reviewed_sha: "b56c88957a1475dd6074d83e11bbbf7941a5a9b6"
+      published_sha: "b56c88957a1475dd6074d83e11bbbf7941a5a9b6"
+      verification_evidence:
+        - RUN-171-001-V001
+        - RUN-171-001-V002
+        - RUN-171-001-V003
     task_id: TASK-171
     task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -505,6 +516,20 @@ sequence:
       from TASK-156 exact detached verification subjects without widening
       mutation-capable transport remote selection, changing lifecycle semantics,
       or weakening fail-closed canonical identity.
+  - id: maintenance-bp-v4-terminal-attention-path-budget
+    status: NEXT
+    task_id: TASK-172
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-159-006
+      - TASK-170
+      - RUN-171-001
+    objective: >-
+      Restore Windows nested-path compatibility for the bespoke Terminal Attention
+      real-Git fixture so exact canonical signal refs remain testable under focused
+      serial and xdist execution without changing production Terminal Attention
+      semantics, canonical ref identity, transport authority, or worker policy.
   - id: bp-v4-parallel-verification-performance-guard
     status: PLANNED
     task_id: TASK-159
