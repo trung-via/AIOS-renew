@@ -1,0 +1,221 @@
+task_id: TASK-167
+revision: 1
+
+goal: >
+  Execute the reviewed and published BP-V4 focused parallel diagnostic primitive
+  as one fresh, bounded, Runtime-owned observation experiment on the exact admitted
+  current canonical subject. The Executor performs read-only pre-verification
+  inspection only; Runtime alone executes the repository-owned diagnostic primitive
+  against the fixed six historical representative node identities using its exact
+  serial, parallel-2, and parallel-4 profiles. Produce canonical
+  AIOS_BP_V4_PARALLEL_DIAGNOSTIC version-1 EVIDENCE for later Reviewer and
+  Human/Brain interpretation without repository mutation, retry semantics,
+  correction selection, worker selection, full-suite measurement, or roadmap
+  advancement.
+
+problem: >
+  RUN-159-005 established historical BP-V4 evidence in which the then-current
+  full-suite serial profile reported 3 failures while parallel workers 2, 3, and 4
+  reported 33, 33, and 38 failures respectively. That measurement proved collection
+  consistency, unchanged subject identity, distinct worker processes, isolated
+  pytest temporary roots, and isolated Git fixture cache roots, but its bounded
+  failure diagnostics did not reveal sufficient cause facts for the parallel-only
+  families. TASK-166 therefore established, reviewed, repaired, and published a
+  separate purpose-built diagnostic primitive that observes exactly six
+  representative Git-heavy historical failure families under one serial control
+  and fixed parallel workers 2 and 4 while preserving bounded cause facts and
+  authority separation. The primitive is now reviewed source on canonical main.
+  TASK-167 uses that reviewed primitive once against current canonical state before
+  any new TASK-159 full-suite revision or correction decision.
+
+assumptions:
+  - >
+    Canonical main at TASK-167 revision-1 authoring is
+    efa9610fc74c6f96bb22ae46d6c0b329dc622639.
+  - >
+    TASK-166 r1 is engineering-complete through RUN-166-003,
+    REVIEW-166-003 DELTA PASS, and publication of source candidate
+    94a16a9e67f494d71960e6a45032ba73912be61c. Its published diagnostic
+    primitive is the only diagnostic mechanism TASK-167 may execute.
+  - >
+    Canonical roadmap planning has completed the TASK-166 diagnostic-primitive
+    prerequisite and marks maintenance-bp-v4-focused-diagnostic-execution as the
+    unique NEXT planning item. BP-V4 remains blocked until Human/Brain interprets
+    the resulting canonical evidence and explicitly chooses the next planning step.
+  - >
+    Historical RUN-159-005 remains immutable evidence only. TASK-167 does not
+    retry, repair, remediate, supersede, or reinterpret that RUN.
+  - >
+    Five of the six representative target files and the shared Git fixture/support
+    harnesses remain byte-identical to RUN-159-005 historical subject; the sixth
+    representative function retains the same body. Current-main diagnosis is
+    therefore materially relevant while still being a fresh observation on a
+    different canonical subject.
+  - >
+    TASK-157 remains authoritative for the separate AIOS_BP_V4_MEASUREMENT
+    full-suite measurement contract. TASK-167 does not execute or modify that
+    contract and does not authorize TASK-159 revision 6.
+  - >
+    TASK-156 remains authoritative for exact transient Runtime verification
+    subjects. Runtime must execute TASK-167 verification inside the exact isolated
+    admitted candidate subject and retain canonical EVIDENCE ownership.
+  - >
+    PRIMARY native Executor adapters intentionally omit TASK.verification from the
+    Executor prompt, require empty executor-supplied evidence, and instruct the
+    Executor not to run canonical verification. Runtime verifies only after the
+    structural ResultPackage passes pre-verification completion gates.
+  - >
+    Existing reviewed evidence for current Brain Sync, remediation-wakeup, and
+    remote-surface compatibility remains reusable because TASK-166 did not modify
+    those surfaces; TASK-167 therefore does not repeat ceremonial readiness tests.
+  - >
+    Runtime owns canonical verification and EVIDENCE; Reviewer owns the semantic
+    verdict; Human/Brain own root-cause interpretation, correction strategy, and
+    any later worker-adoption authorization; Publisher owns publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-156.yaml
+    - .ai/tasks/TASK-157.yaml
+    - .ai/tasks/TASK-159.yaml
+    - .ai/tasks/TASK-161.yaml
+    - .ai/tasks/TASK-164.yaml
+    - .ai/tasks/TASK-166.yaml
+    - scripts/bp_v4_parallel_probe.py
+    - scripts/bp_v4_parallel_diagnostic.py
+    - tests/bp_v4_probe_plugin.py
+    - tests/bp_v4_diagnostic_plugin.py
+    - tests/test_bp_v4_parallel_diagnostic.py
+    - tests/test_correction_integration.py
+    - tests/test_operator.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_operator_unified_state.py
+    - tests/test_publication.py
+    - tests/test_authoring_ingress.py
+    - tests/git_fixture_support.py
+    - tests/operator_test_support.py
+    - tests/conftest.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/verification_contract.py
+    - src/aios_renew/runtime.py
+    - src/aios_renew/artifacts.py
+  modify: []
+
+non_goals:
+  - Modify any repository file, including the diagnostic primitive, the six target tests, Git fixtures, production code, Runtime, workflows, governance, or roadmap state.
+  - Execute the full BP-V4 measurement probe or author/execute TASK-159 revision 6.
+  - Add worker 3 to the focused diagnostic, change target population, add dynamic node or worker selection, or bypass the reviewed TASK-166 primitive.
+  - Run a separate readiness pytest, collection-only command, manual xdist command, git diff command, or duplicated diagnostic command.
+  - Let the Executor execute the diagnostic, synthesize diagnostic output, construct canonical EVIDENCE, or claim any Runtime-only outcome.
+  - Fix any failure observed by the diagnostic inside TASK-167.
+  - Enable core.longpaths, shorten fixture roots, add locks, xdist grouping, serialization, skip/xfail, broad mocking, retry, fallback, rerun, or adaptive scheduling.
+  - Select, rank, recommend, persist, or adopt a worker count or performance threshold.
+  - Treat focused diagnostic success as full-suite parallel conformance or BP-V4 completion.
+  - Let the diagnostic tool classify semantic root cause, choose a correction, or advance roadmap semantics.
+  - Add a new evidence store, database, lifecycle state, planner, router, reviewer, publisher, or verification authority.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      TASK-167 r1 is a zero-delta read-only PRIMARY with empty scope.modify. The
+      Executor must leave final Git HEAD equal to the admitted RUN base, leave the
+      worktree clean, return changed_files as empty, and create no commit merely
+      to complete diagnostic preparation.
+    - >
+      Executor structural claims are restricted to pre-verification facts. Executor
+      evidence must remain empty. The Executor must not run
+      python scripts/bp_v4_parallel_diagnostic.py, must not run equivalent pytest/
+      xdist commands, and must not claim whether any target passes, fails, reproduces
+      a historical failure, identifies a cause, or demonstrates parallel safety.
+    - >
+      Canonical verification contains exactly one command:
+      python scripts/bp_v4_parallel_diagnostic.py.
+      No additional pytest, collection, Git-integrity, readiness, full-suite,
+      measurement, or duplicated diagnostic command is authorized.
+    - >
+      Runtime must execute the diagnostic on the exact TASK-156 isolated verification
+      subject bound to the admitted TASK-167 candidate SHA. The reviewed TASK-166
+      primitive owns exact six-target collection checks, exact ordered serial /
+      parallel-2 / parallel-4 execution, worker/process/root observations, bounded
+      typed cause facts, deterministic comparison sets, and subject-mutation checks.
+    - >
+      Inner pytest nonzero status is observational data rather than diagnostic
+      mechanism failure. Runtime verification may PASS when the diagnostic outer
+      process returns zero after faithfully completing all fixed profiles even if
+      one or more inner serial or parallel profiles report failed target tests.
+      Such PASS means only that the diagnostic experiment completed faithfully.
+    - >
+      Missing/incompatible tooling, malformed fixed collection, missing or unexpected
+      workers, duplicate execution, shared or malformed mutable-root observations,
+      subject mutation, malformed structured observations, sanitization failure, or
+      diagnostic-internal failure must remain fail-closed through a nonzero outer
+      diagnostic outcome.
+    - >
+      Successful Runtime evidence must remain the reviewed
+      AIOS_BP_V4_PARALLEL_DIAGNOSTIC version-1 envelope with the exact current
+      subject identity, fixed six target identities, exact serial/2/4 profiles,
+      bounded failure/cause facts, and deterministic comparison sets. Do not add
+      root_cause, recommended_fix, selected_worker, best, winner, score, adopt,
+      safe_to_enable, threshold verdicts, or equivalent semantic-decision fields.
+    - >
+      A clean focused diagnostic across all three profiles does not establish
+      full-suite parallel conformance. A clean worker-2 profile does not authorize
+      worker 2. A worker-4-only failure may strengthen a concurrency-pressure
+      hypothesis but does not itself establish a semantic root cause.
+    - >
+      TASK-167 success establishes only trustworthy focused current-main diagnostic
+      evidence. Human/Brain must explicitly interpret canonical evidence after
+      review before authoring any correction or deciding whether a fresh TASK-159
+      revision is warranted. Execution, Runtime, Reviewer, or Publisher must not
+      advance roadmap semantics automatically.
+    - >
+      Do not modify any repository file and do not push or publish from Executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The admitted TASK-167 PRIMARY remains a zero-delta read-only candidate: final
+      Git HEAD equals the admitted RUN base, the worktree is clean,
+      RESULT.changed_files is empty, and no repository mutation is created for
+      diagnostic preparation.
+  - id: AC2
+    condition: >
+      Bounded inspection confirms the admitted candidate contains the exact reviewed
+      and published TASK-166 diagnostic primitive with its fixed six-node target
+      population, fixed serial/parallel-2/parallel-4 profile order, fail-closed
+      integrity checks, and no Executor-created replacement mechanism.
+  - id: AC3
+    condition: >
+      Executor does not execute or claim outcomes from the diagnostic. Runtime alone
+      executes the one canonical diagnostic command and owns resulting EVIDENCE.
+  - id: AC4
+    condition: >
+      Canonical Runtime evidence is one AIOS_BP_V4_PARALLEL_DIAGNOSTIC version-1
+      observation bound to the exact TASK-167 subject and containing the exact six
+      targets, exact fixed profiles, bounded typed failure/cause facts, and
+      deterministic comparison sets. Inner pytest failures remain valid observations
+      when diagnostic integrity succeeds.
+  - id: AC5
+    condition: >
+      TASK-167 completion semantics are limited to faithful diagnostic observation:
+      no Runtime, Executor, Reviewer, or diagnostic-tool result is treated as
+      full-suite BP-V4 conformance, parallel-default safety, worker selection,
+      semantic root-cause verdict, or automatic correction authorization.
+  - id: AC6
+    condition: >
+      Existing authority boundaries remain unchanged: Runtime owns canonical
+      verification/EVIDENCE, Reviewer owns semantic verdict, Human/Brain own later
+      root-cause/correction/worker decisions, Publisher owns publication, and
+      execution/review/publication do not advance roadmap semantics automatically.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python scripts/bp_v4_parallel_diagnostic.py
