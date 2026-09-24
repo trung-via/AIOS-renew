@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-bp-v4-focused-diagnostic-reexecution
+  - maintenance-bp-v4-windows-git-fixture-path-budget
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -439,7 +439,17 @@ sequence:
       current common serial/parallel failures can be distinguished safely before a
       fresh diagnostic execution or any production correction/full-suite matrix.
   - id: maintenance-bp-v4-focused-diagnostic-reexecution
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-169
+      task_revision: 1
+      run_id: RUN-169-001
+      operation: PRIMARY
+      review_id: REVIEW-169-001
+      reviewed_sha: "750d7776dee737941849f50c1494cb3935027b48"
+      published_sha: "750d7776dee737941849f50c1494cb3935027b48"
+      verification_evidence:
+        - RUN-169-001-V001
     task_id: TASK-169
     task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -451,18 +461,37 @@ sequence:
       Execute the reviewed enhanced focused diagnostic exactly once against the
       exact current admitted subject to obtain fresh bounded cause observations
       before any production correction or full BP-V4 matrix.
+  - id: maintenance-bp-v4-windows-git-fixture-path-budget
+    status: NEXT
+    task_id: TASK-170
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-159-005
+      - RUN-169-001
+      - TASK-154
+      - TASK-156
+      - TASK-168
+    objective: >-
+      Remove the Windows filesystem path-budget artifact from repository-owned
+      real-Git test sandboxes so canonical 64-character AIOS integration and
+      admission-failure refs remain testable under Runtime/BP-V4 nested temporary
+      environments without changing production ref identities, transport
+      semantics, verification isolation, diagnostic semantics, or worker policy.
   - id: bp-v4-parallel-verification-performance-guard
     status: BLOCKED
     blocked_by:
-      task_id: TASK-169
+      task_id: TASK-170
       task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
       - RUN-167-004
       - RUN-168-003
+      - RUN-169-001
     objective: >-
-      After serial harness acceleration is proven, establish measured bounded parallel
+      After serial harness acceleration is proven and the focused Windows
+      path-budget artifact is corrected, establish measured bounded parallel
       full-suite conformance and verification-cost regression visibility without
       heuristic worker selection or new semantic authority.
   - id: bp-3-brain-context-foundation
