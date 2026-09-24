@@ -6,12 +6,14 @@ import pytest
 import yaml
 
 from aios_renew.brain_sync import (
+    BrainSyncError,
     BrainSyncSnapshot,
     observe_brain_sync,
 )
 from aios_renew.operator import (
     runtime_state_root,
 )
+from aios_renew.verification import materialize_verification_subject
 from tests.operator_test_support import (
     TASK_SOURCE,
     git,
@@ -300,6 +302,90 @@ def test_brain_sync_observation_is_strictly_read_only(tmp_path: Path) -> None:
     assert git(repo, "rev-parse", "HEAD") == before_head
     assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
     assert not state_root.exists()
+
+
+def test_brain_sync_exact_detached_candidate_observes_published_main(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
+    roadmap_path.write_text(yaml.safe_dump({
+        "version": 1,
+        "active_track": "control-plane-closure",
+        "active_track_status": "ACTIVE",
+        "sequence": [{
+            "id": "task-101-execution", "status": "NEXT",
+            "task_id": "TASK-101", "task_revision": 1,
+        }],
+    }), encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "publish roadmap")
+    git(repo, "push", "origin", "main")
+    published = git(repo, "rev-parse", "HEAD")
+    (repo / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "candidate")
+    candidate = git(repo, "rev-parse", "HEAD")
+    assert candidate != published
+
+    with materialize_verification_subject(
+        repo, run_id="RUN-101-001", subject_sha=candidate
+    ) as subject:
+        remote = Path(git(subject, "remote", "get-url", "origin"))
+        before = (
+            git(subject, "rev-parse", "HEAD"),
+            git(subject, "branch", "--show-current"),
+            git(subject, "status", "--porcelain=v1"),
+            git(subject, "for-each-ref", "--format=%(refname) %(objectname)"),
+            git(remote, "for-each-ref", "--format=%(refname) %(objectname)"),
+            (subject / ".git" / "config").read_bytes(),
+            (subject / ".git" / "index").read_bytes(),
+        )
+        assert not runtime_state_root(subject).exists()
+
+
+        snapshot = observe_brain_sync(repo=subject)
+
+        assert snapshot.main_sha == published
+        assert snapshot.repository["main_sha"] == published
+        assert snapshot.repository["remote"] == "origin"
+        assert snapshot.selected_task == {"id": "TASK-101", "revision": 1}
+        assert snapshot.selection_status == "SELECTED"
+        assert snapshot.unified_state is not None
+        assert snapshot.lifecycle_state == snapshot.unified_state["lifecycle_state"]
+        assert snapshot.next_action == snapshot.unified_state["next_action"]
+        assert snapshot.authority == snapshot.unified_state["authority"]
+        assert snapshot.next_action == "EXECUTE_PRIMARY"
+        assert snapshot.authority == "HUMAN_RUNTIME"
+        assert not any((snapshot.run_created, snapshot.executor_invoked,
+                        snapshot.verification_invoked, snapshot.state_mutated))
+        assert (
+            git(subject, "rev-parse", "HEAD"),
+            git(subject, "branch", "--show-current"),
+            git(subject, "status", "--porcelain=v1"),
+            git(subject, "for-each-ref", "--format=%(refname) %(objectname)"),
+            git(remote, "for-each-ref", "--format=%(refname) %(objectname)"),
+            (subject / ".git" / "config").read_bytes(),
+            (subject / ".git" / "index").read_bytes(),
+        ) == before
+        assert before[1] == ""
+        assert not runtime_state_root(subject).exists()
+
+
+@pytest.mark.parametrize("topology", ["missing", "ambiguous"])
+def test_brain_sync_detached_remote_identity_fails_closed(
+    tmp_path: Path, topology: str
+) -> None:
+    repo = make_repo(tmp_path)
+    git(repo, "checkout", "--detach")
+    if topology == "missing":
+        git(repo, "config", "--unset", "branch.main.remote")
+    else:
+        git(repo, "remote", "add", "other", git(repo, "remote", "get-url", "origin"))
+        git(repo, "config", "branch.other.remote", "other")
+    assert git(repo, "rev-parse", "refs/heads/main") == git(repo, "rev-parse", "HEAD")
+    with pytest.raises(BrainSyncError, match="detached canonical remote main"):
+        observe_brain_sync(repo=repo)
 
 
 def test_brain_sync_live_repository_smoke() -> None:

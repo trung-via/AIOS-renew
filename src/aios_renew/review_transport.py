@@ -278,6 +278,35 @@ def resolve_transport_remote(repo: Path) -> str:
     raise ReviewTransportError("no configured upstream Git remote for current branch")
 
 
+def resolve_detached_observation_remote(repo: Path) -> str:
+    """Resolve a detached reader from unanimous configured branch upstreams.
+
+    A remote's mere presence (including origin) does not establish canonical
+    authority. This is only for read-only observation, never transport writes.
+    """
+    code, _, _ = _git_cmd(repo, "symbolic-ref", "--quiet", "HEAD", allow_fail=True)
+    if code == 0:
+        raise ReviewTransportError("detached observation requires detached HEAD")
+    code, bindings, _ = _git_cmd(
+        repo, "config", "--get-regexp", r"^branch\..*\.remote$", allow_fail=True
+    )
+    if code not in (0, 1):
+        raise ReviewTransportError("cannot read detached observation upstreams")
+    remotes = set()
+    for line in bindings.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) != 2 or not parts[1].strip():
+            raise ReviewTransportError("invalid detached observation upstream")
+        remotes.add(parts[1].strip())
+    if len(remotes) != 1 or "." in remotes:
+        raise ReviewTransportError("missing or ambiguous detached observation remote")
+    remote = remotes.pop()
+    code, url, _ = _git_cmd(repo, "config", "--get", f"remote.{remote}.url", allow_fail=True)
+    if code != 0 or not url:
+        raise ReviewTransportError("detached observation remote URL is missing")
+    return remote
+
+
 def _read_remote_blob(repo: Path, remote: str, commit_sha: str, rel_path: str) -> bytes | None:
     """Read a blob's content at commit_sha:rel_path from remote or local object DB."""
     _git_cmd(repo, "fetch", "--no-tags", remote, commit_sha, allow_fail=True)

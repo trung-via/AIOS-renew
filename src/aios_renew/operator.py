@@ -90,6 +90,7 @@ from .review_transport import (
     resolve_remote_remediation_lineages,
     resolve_remote_run_namespace,
     resolve_remote_task_lifecycle,
+    resolve_detached_observation_remote,
     task_run_prefix,
     transport_admission_failure,
     transport_failure,
@@ -620,7 +621,13 @@ def _remote_observation_repository(control_repo: Path) -> Iterator[Path]:
     if not common_dir.is_absolute():
         common_dir = control_repo / common_dir
     control_objects = (common_dir.resolve() / "objects").as_posix()
-    remote = _git(control_repo, "config", "--get", f"branch.{branch}.remote")
+    if branch == "HEAD":
+        remote = resolve_detached_observation_remote(control_repo)
+        # This branch exists only in the disposable observer's config. The
+        # control subject remains detached and none of its refs are changed.
+        branch = "aios-observation"
+    else:
+        remote = _git(control_repo, "config", "--get", f"branch.{branch}.remote")
     remote_name = "origin" if remote == "." else remote
     remote_url = (
         str(control_repo)

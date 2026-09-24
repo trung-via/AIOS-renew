@@ -27,6 +27,7 @@ from aios_renew.review_transport import (
     ReviewTransportError,
     _exact_remote_refs,
     _git_cmd,
+    resolve_detached_observation_remote,
     resolve_transport_remote,
 )
 from aios_renew.unified_state import (
@@ -112,6 +113,14 @@ class BrainSyncSnapshot:
 
 def _resolve_main_sha(repo: Path) -> str:
     """Resolve the canonical main commit SHA using remote refs when available."""
+    code, _, _ = _git_cmd(repo, "symbolic-ref", "--quiet", "HEAD", allow_fail=True)
+    if code != 0:
+        try:
+            remote = resolve_detached_observation_remote(repo)
+            refs = _exact_remote_refs(repo, remote, "refs/heads/main")
+            return refs["refs/heads/main"]
+        except (ReviewTransportError, RemoteQueryError, KeyError) as exc:
+            raise BrainSyncError("cannot resolve detached canonical remote main") from exc
     try:
         remote = resolve_transport_remote(repo)
     except ReviewTransportError:
@@ -200,10 +209,14 @@ def observe_brain_sync(
     main_sha = _resolve_main_sha(root)
     repo_name = _resolve_repository_name(root)
 
-    try:
-        remote_name = resolve_transport_remote(root)
-    except ReviewTransportError:
-        remote_name = None
+    code, _, _ = _git_cmd(root, "symbolic-ref", "--quiet", "HEAD", allow_fail=True)
+    if code == 0:
+        try:
+            remote_name = resolve_transport_remote(root)
+        except ReviewTransportError:
+            remote_name = None
+    else:
+        remote_name = resolve_detached_observation_remote(root)
 
     code, remote_url, _ = _git_cmd(root, "config", "--get", f"remote.{remote_name}.url", allow_fail=True)
     repo_info: dict[str, Any] = {

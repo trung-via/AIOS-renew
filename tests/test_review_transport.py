@@ -18,6 +18,8 @@ from aios_renew.review_transport import (
     resolve_remote_remediation_lineages,
     resolve_remote_run_namespace,
     resolve_remote_task_lifecycle,
+    resolve_detached_observation_remote,
+    resolve_transport_remote,
     task_run_prefix,
     transport_failure,
     transport_post_pass,
@@ -106,6 +108,29 @@ def make_repo(
         commit_message="root",
     )
     return repo, remote
+
+
+def test_detached_observation_remote_does_not_widen_transport_resolution(
+    tmp_path: Path,
+) -> None:
+    repo, remote = make_repo(tmp_path)
+    assert resolve_transport_remote(repo) == "origin"
+    git(repo, "checkout", "--detach")
+    assert resolve_detached_observation_remote(repo) == "origin"
+    with pytest.raises(ReviewTransportError, match="current branch"):
+        resolve_transport_remote(repo)
+
+    git(repo, "remote", "add", "other", str(remote))
+    git(repo, "config", "branch.other.remote", "other")
+    with pytest.raises(ReviewTransportError, match="ambiguous"):
+        resolve_detached_observation_remote(repo)
+    with pytest.raises(ReviewTransportError, match="current branch"):
+        resolve_transport_remote(repo)
+
+    git(repo, "config", "--unset", "branch.other.remote")
+    git(repo, "config", "--unset", "branch.main.remote")
+    with pytest.raises(ReviewTransportError, match="missing or ambiguous"):
+        resolve_detached_observation_remote(repo)
 
 
 def test_performance_snapshot_rejects_competing_terminal_refs_before_reads(

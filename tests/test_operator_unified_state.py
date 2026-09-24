@@ -97,6 +97,27 @@ def test_unified_state_remote_observation_leaves_control_git_unchanged(
     assert not runtime_state_root(repo).exists()
 
 
+def test_unified_state_detached_ambiguous_remote_fails_closed(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path)
+    git(repo, "checkout", "--detach")
+    git(repo, "remote", "add", "other", git(repo, "remote", "get-url", "origin"))
+    git(repo, "config", "branch.other.remote", "other")
+    before_head = git(repo, "rev-parse", "HEAD")
+    before_refs = git(repo, "for-each-ref", "--format=%(refname) %(objectname)")
+
+    observation = observe_unified_state("TASK-101", repo=repo).as_dict()
+
+    assert observation["lifecycle_state"] == "BLOCKED"
+    assert observation["next_action"] == "NONE"
+    assert observation["blocker"]["code"] == "MALFORMED_CANONICAL_STATE"
+    assert git(repo, "branch", "--show-current") == ""
+    assert git(repo, "rev-parse", "HEAD") == before_head
+    assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == before_refs
+    assert not runtime_state_root(repo).exists()
+
+
 def test_unified_state_local_active_wait_and_untransported_result_retry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
