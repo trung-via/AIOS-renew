@@ -48,6 +48,7 @@ def make_repo(
     remote = tmp_path / "upstream.git"
     repo.mkdir()
     git(repo, "init", "--quiet")
+    git(repo, "config", "core.longpaths", "true")
     git(repo, "config", "user.name", "Attention Test")
     git(repo, "config", "user.email", "attention@example.invalid")
     git(repo, "branch", "-M", "main")
@@ -85,6 +86,7 @@ def make_repo(
     git(repo, "commit", "--quiet", "-m", "published main")
     main_sha = git(repo, "rev-parse", "HEAD")
     subprocess.run(("git", "init", "--bare", "--quiet", str(remote)), check=True)
+    git(remote, "config", "core.longpaths", "true")
     git(repo, "remote", "add", "origin", str(remote))
     git(repo, "push", "--quiet", "--set-upstream", "origin", "main")
     return repo, remote, main_sha
@@ -158,6 +160,40 @@ def test_publish_creates_one_main_pointing_ref_and_exact_replay_is_inert(
     assert git(repo, "ls-remote", "--refs", "origin", item.terminal_ref).startswith(
         item.artifact_sha
     )
+
+
+@pytest.mark.parametrize("terminal_kind", ["RESULT", "FAILURE"])
+def test_nested_sandbox_publishes_and_resolves_full_signal_ref(
+    tmp_path: Path, terminal_kind: str
+) -> None:
+    nested = tmp_path / "runtime-isolation" / "bp-v4-diagnostic" / "nested-"
+    depth = nested.with_name(nested.name + "x" * max(0, 175 - len(str(nested))))
+    depth.mkdir(parents=True)
+    repo, remote, main_sha = make_repo(depth)
+    item = artifact_selector(repo, kind=terminal_kind)
+    publish_terminal(repo, item)
+
+    assert len(str(remote / f"{item.signal_ref}.lock")) > 260
+    assert item.signal_ref == (
+        f"{SIGNAL_PREFIX}/{terminal_kind}/{item.run_id}/{item.artifact_sha}"
+    )
+    assert publish_terminal_attention(
+        repo,
+        remote="origin",
+        run_id=item.run_id,
+        terminal_kind=item.terminal_kind,
+        artifact_sha=item.artifact_sha,
+    ) == "PUBLISHED"
+    assert git(repo, "ls-remote", "--refs", "origin", item.signal_ref) == (
+        f"{main_sha}\t{item.signal_ref}"
+    )
+    assert publish_terminal_attention(
+        repo,
+        remote="origin",
+        run_id=item.run_id,
+        terminal_kind=item.terminal_kind,
+        artifact_sha=item.artifact_sha,
+    ) == "REUSED"
 
 
 def test_publish_fails_closed_for_competing_terminal_or_attention(
