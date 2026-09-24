@@ -1,0 +1,12 @@
+finding_id: FINDING-166-001
+action: CODE_FIX
+reviewed_sha: cdc16069f9d9f50a8d6b5ba44a5ac698396b0d8e
+modification_scope:
+- scripts/bp_v4_parallel_diagnostic.py
+- tests/bp_v4_diagnostic_plugin.py
+- tests/test_bp_v4_parallel_diagnostic.py
+verification:
+  policy: minimum-sufficient-v1
+  affected:
+  - python -m pytest -q tests/test_bp_v4_parallel_diagnostic.py
+constraints: []
