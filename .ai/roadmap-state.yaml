@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-bp-v4-focused-diagnostic-execution
+  - maintenance-bp-v4-focused-cause-observability
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -393,7 +393,16 @@ sequence:
       without changing production behavior, existing measurement authority, worker
       policy, or correction authority.
   - id: maintenance-bp-v4-focused-diagnostic-execution
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-167
+      task_revision: 3
+      run_id: RUN-167-004
+      review_id: REVIEW-167-004
+      reviewed_sha: "234891513889448ab906425f92d06bdc7c5770e3"
+      published_sha: "234891513889448ab906425f92d06bdc7c5770e3"
+      verification_evidence:
+        - RUN-167-004-V001
     task_id: TASK-167
     task_revision: 3
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -405,10 +414,22 @@ sequence:
       Execute the reviewed focused diagnostic primitive against one exact current
       canonical subject to obtain bounded serial/parallel failure-cause evidence
       before any new full BP-V4 matrix, correction selection, or worker adoption.
+  - id: maintenance-bp-v4-focused-cause-observability
+    status: NEXT
+    task_id: TASK-168
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-167-004
+      - TASK-166
+    objective: >-
+      Strengthen only the bounded focused-diagnostic cause surface so the six
+      current common serial/parallel failures can be distinguished safely before a
+      fresh diagnostic execution or any production correction/full-suite matrix.
   - id: bp-v4-parallel-verification-performance-guard
     status: BLOCKED
     blocked_by:
-      task_id: TASK-167
+      task_id: TASK-168
       task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
