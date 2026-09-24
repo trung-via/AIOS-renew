@@ -1,0 +1,231 @@
+task_id: TASK-171
+revision: 1
+
+goal: >
+  Restore deterministic read-only canonical observation from exact detached
+  verification subjects so Brain Sync and the shared Unified State observation
+  path can resolve canonical main and canonical remote lifecycle without
+  requiring the verification subject to be attached to a local branch.
+  Preserve TASK-156 exact verification-subject isolation, TASK-121 Brain Sync
+  semantics, existing mutation-capable transport remote selection, fail-closed
+  ambiguity handling, and all Runtime/Reviewer/Publisher authority boundaries.
+
+problem: >
+  RUN-159-006 is an immutable VERIFICATION FAILURE on exact subject
+  9711dd8ee4a4478ca28bb2407987aac982794df7. Its serial profile failed only
+  tests/test_brain_sync.py::test_brain_sync_live_repository_smoke, and that same
+  node also failed under workers 2, 3, and 4 while canonical collection,
+  subject identity, process isolation, temporary-root isolation, and Git-fixture
+  cache isolation remained conformant.
+
+  Source audit shows that TASK-156 intentionally materializes canonical
+  verification as a clean independently mutable Git checkout with detached HEAD.
+  Brain Sync canonical-main observation and the shared read-only remote
+  observation substrate still depend on transport-remote resolution derived
+  from the currently attached branch. In a detached verification subject that
+  branch-specific binding is unavailable.
+
+  The defect has two consequences. Unified State observation can fail before
+  lifecycle reduction because its isolated remote observer cannot derive the
+  configured transport remote. Separately, Brain Sync canonical-main resolution
+  may fall back to a local refs/heads/main or HEAD value after detached remote
+  resolution fails; for an implementation candidate ahead of published main,
+  that fallback can confuse candidate identity with canonical published-main
+  identity.
+
+  TASK-171 therefore hardens only the read-only observation boundary. It must
+  not attach or rewrite the verification subject, broaden mutation-capable
+  transport remote selection, change lifecycle semantics, or weaken fail-closed
+  canonical identity requirements.
+
+assumptions:
+  - >
+    Canonical main at TASK-171 planning is
+    9711dd8ee4a4478ca28bb2407987aac982794df7.
+  - >
+    RUN-159-006 remains immutable TASK-159 revision-6 VERIFICATION FAILURE and
+    is not retried, repaired, rewritten, deleted, or reinterpreted by TASK-171.
+  - >
+    TASK-121 remains authoritative for AIOS_BRAIN_SYNC_SNAPSHOT version 1,
+    deterministic canonical rehydration, planning-versus-engineering-state
+    separation, Unified State reuse, and observation-only behavior.
+  - >
+    TASK-156 remains authoritative for one clean independently mutable exact
+    verification subject whose HEAD may intentionally be detached from every
+    branch while remaining bound to the admitted candidate SHA.
+  - >
+    Existing resolve_transport_remote semantics are used by surfaces beyond
+    Brain Sync observation, including mutation-capable transport and authoring
+    paths. TASK-171 does not authorize widening those paths merely to support a
+    detached read-only observer.
+  - >
+    RUN-159-006 provides no evidence that this Brain Sync failure is caused by
+    xdist worker isolation or worker count. The failure exists in the serial
+    profile and must be corrected independently of BP-V4 worker policy.
+  - >
+    Runtime owns canonical verification and evidence; Unified State remains the
+    lifecycle reducer; Brain Sync only composes read-only facts; Brain/Human own
+    roadmap reasoning; Reviewer owns semantic verdict; Publisher owns
+    publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-121.yaml
+    - .ai/tasks/TASK-156.yaml
+    - .ai/tasks/TASK-159.yaml
+    - src/aios_renew/brain_sync.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/performance_observation.py
+    - src/aios_renew/verification.py
+    - tests/test_brain_sync.py
+    - tests/test_review_transport.py
+    - tests/test_operator_unified_state.py
+    - tests/test_operator_correction_preflight.py
+    - tests/test_performance_observation.py
+    - tests/test_verification.py
+
+  modify:
+    - src/aios_renew/brain_sync.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - tests/test_brain_sync.py
+    - tests/test_review_transport.py
+    - tests/test_operator_unified_state.py
+
+non_goals:
+  - Change TASK-121 Brain Sync snapshot schema, roadmap semantics, or lifecycle semantics.
+  - Change TASK-156 verification-subject materialization, detached-HEAD policy, temporary-root policy, cleanup policy, or verification identity.
+  - Attach the verification subject to main or another branch merely to make observation work.
+  - Treat local candidate HEAD, local refs/heads/main, or stale remote-tracking refs as canonical published main when an authoritative configured remote main is required and available.
+  - Broaden mutation-capable transport, authoring, publication, review transport, carrier, or correction execution authority for detached repositories.
+  - Make ambiguous or missing detached remote topology resolve by guessing origin, first remote, lexical order, environment state, or historical memory.
+  - Add GitHub API lookup, Issue lookup, workflow lookup, model reasoning, persistent cache, database, Planner, router, retry, fallback, or autonomous correction selection.
+  - Change Unified State reduction or duplicate it inside Brain Sync.
+  - Modify TASK-159, its RUN/FAILURE artifacts, BP-V4 measurement primitive, worker set, profile order, timing policy, or worker-selection policy.
+  - Skip, xfail, deselect, weaken, or special-case the live Brain Sync smoke test.
+  - Mutate roadmap state automatically from Runtime or the Executor.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Read-only canonical observation must work when the supplied repository is
+      an exact clean detached Git subject created by the existing TASK-156
+      verification-isolation boundary. Detached HEAD itself is valid and must
+      not be treated as a repository defect.
+    - >
+      Canonical-main identity must remain distinct from candidate identity.
+      When the detached verification subject HEAD is an implementation candidate
+      ahead of published main, Brain Sync must report the authoritative remote
+      refs/heads/main identity rather than silently substituting local HEAD,
+      local candidate branch state, or a stale local main ref.
+    - >
+      Detached observation may resolve a remote only from deterministic
+      repository-owned Git configuration sufficient to establish one canonical
+      observation remote. Missing or genuinely ambiguous identity fails closed;
+      do not guess by remote name, ordering, environment, or model judgment.
+    - >
+      Existing attached-branch upstream resolution must retain its current
+      semantics. TASK-171 is compatibility hardening for observation, not a
+      general redefinition of transport remote selection.
+    - >
+      Mutation-capable resolve_transport_remote behavior and all publication,
+      authoring-ingress, repair/remediation dispatch, terminal transport, and
+      canonical mutation paths must not acquire a new detached fallback or
+      enlarged remote-selection authority from this change.
+    - >
+      The shared read-only observation repository must remain isolated from the
+      control/verification subject's mutable refs, index, worktree, config, and
+      Runtime state. Observation must neither update the control repository nor
+      push/fetch into canonical refs as a mutation mechanism.
+    - >
+      Brain Sync continues to reuse Unified State for lifecycle truth. Detached
+      compatibility must not replace Unified State with a synthetic READY,
+      EXECUTE_PRIMARY, DONE, review, repair, or publication decision.
+    - >
+      Preserve AIOS_BRAIN_SYNC_SNAPSHOT version 1 and its existing authority
+      separation. No new lifecycle state store, roadmap authority, transport
+      completion claim, semantic verdict, or publication authority may be added.
+    - >
+      Add deterministic regression coverage using the existing exact
+      verification-subject isolation behavior with candidate HEAD distinct from
+      remote main. The regression must prove both canonical-main correctness
+      and successful Unified State composition while the subject remains
+      detached and immutable from the observer's perspective.
+    - >
+      Add negative coverage showing detached ambiguous/unresolvable observation
+      topology fails closed without silently choosing a remote or substituting
+      candidate HEAD for canonical main.
+    - >
+      Add compatibility coverage proving existing mutation-capable transport
+      remote resolution has not been widened by the observation-only detached
+      behavior.
+    - >
+      Do not modify files outside scope.modify and do not push or publish from
+      Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A deterministic TASK-156-shaped verification subject with detached HEAD at
+      candidate C and authoritative remote main M, where C differs from M,
+      produces Brain Sync canonical main identity M rather than C or a local
+      fallback identity.
+  - id: AC2
+    condition: >
+      The same detached exact subject successfully composes the selected canonical
+      TASK with existing Unified State lifecycle next_action and authority without
+      attaching HEAD to a branch, fabricating lifecycle state, or bypassing
+      canonical remote lineage.
+  - id: AC3
+    condition: >
+      Brain Sync observation leaves the detached subject's HEAD, detached state,
+      worktree/index, local refs, remote refs, and repository-local Runtime state
+      unchanged and retains run_created=false, executor_invoked=false,
+      verification_invoked=false, and state_mutated=false.
+  - id: AC4
+    condition: >
+      Missing or ambiguous detached observation-remote identity fails closed and
+      cannot silently select origin, another configured remote, local HEAD, or
+      local main as canonical published-main authority.
+  - id: AC5
+    condition: >
+      Existing attached-branch observation behavior and existing local/remote
+      canonical main resolution remain compatible for supported repositories.
+  - id: AC6
+    condition: >
+      Mutation-capable transport remote resolution remains semantically unchanged:
+      publication, authoring, correction transport, and other write-authorized
+      paths receive no new detached fallback or remote-selection authority.
+  - id: AC7
+    condition: >
+      Existing Unified State, correction-preflight, and performance-observation
+      callers of the shared isolated observation substrate remain compatible and
+      continue to fail closed on canonical remote/lifecycle errors.
+  - id: AC8
+    condition: >
+      TASK-156 exact verification isolation, verification cwd, subject SHA
+      binding, detached-head behavior, Runtime evidence ownership, and cleanup
+      semantics remain unchanged.
+  - id: AC9
+    condition: >
+      The implementation introduces no test skip/xfail/deselection, automatic
+      retry/fallback, branch attachment, canonical ref mutation, lifecycle
+      shortcut, worker selection, or new semantic authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_review_transport.py tests/test_operator_unified_state.py tests/test_brain_sync.py
+    - python -m pytest -q tests/test_operator_correction_preflight.py tests/test_performance_observation.py
+    - git diff --check
