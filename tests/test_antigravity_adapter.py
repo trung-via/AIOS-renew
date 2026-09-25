@@ -754,6 +754,8 @@ def test_native_finalize_candidate_instruction_is_read_only_and_single_shot(
     assert package.result.head_sha == run.base_sha
     assert package.result.changed_files == ()
     assert package.result.claims[0].satisfies == ("AC1",)
+    assert package.result.claims[0].evidence == ()
+    assert package.evidence == ()
 
 
 @pytest.mark.parametrize("action,expected", [
@@ -770,8 +772,6 @@ def test_repair_command_schema_requires_exact_finalize_action(tmp_path, action, 
         repo=tmp_path, instruction="Repair", operation="REPAIR", repair_action=action
     )
     assert command[command.index("--json-schema") + 1] == str(expected)
-    assert package.result.claims[0].evidence == ()
-    assert package.evidence == ()
 
 
 def test_native_antigravity_timeout_is_terminal_to_one_invocation(
