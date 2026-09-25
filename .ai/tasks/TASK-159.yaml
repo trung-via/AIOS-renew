@@ -1,85 +1,79 @@
 task_id: TASK-159
-revision: 7
+revision: 8
 
 goal: >
   Execute one fresh BP-V4 exact-current-main same-subject full-suite measurement as
-  Runtime-owned canonical verification against the exact admitted current candidate
-  after the RUN-159-006 failure families and the Executor structural-completion defect
-  have been independently corrected. Keep the native Executor as a zero-delta,
-  zero-workspace-touch structural handoff only. Produce one fresh
+  Runtime-owned canonical verification after the sole shared RUN-159-007 correctness
+  regression was corrected, reviewed, and published by TASK-175. Keep the native
+  Executor as a zero-delta structural handoff only. Produce one fresh
   AIOS_BP_V4_MEASUREMENT version-1 evidence envelope for Reviewer and Human/Brain
   interpretation without retrying historical RUN-159 lineage, repository mutation,
   worker selection, parallel-default adoption, performance-policy mutation, or
   roadmap advancement.
 
 problem: >
-  RUN-159-006 is an immutable TASK-159 r6 VERIFICATION FAILURE on subject
-  9711dd8ee4a4478ca28bb2407987aac982794df7. Its one serial plus workers 2/3/4
-  matrix preserved canonical collection identity, subject identity, process
-  separation, temporary-root isolation, and Git-fixture cache-root isolation, but
-  correctness failed. The observed families were the Brain Sync detached read-only
-  observation regression, the Terminal Attention Windows nested-path regression, and
-  the Antigravity-MiniMax remote-carrier regression. Those families were corrected
-  and focused-verified through TASK-171, TASK-172, and TASK-173 respectively.
-  TASK-174 then prospectively hardened the Brain/Executor pre-verification completion
-  contract that had caused repeated structural handoff failures elsewhere. Historical
-  RUN-159 timings and collection values cannot establish current correctness or
-  current-main performance because canonical source and test population have changed.
-  Re-running focused maintenance verification before the next full matrix would add
-  duplicate ceremony rather than new coverage: the BP-V4 probe already performs a
-  fresh canonical collection, serial control, and all three authorized parallel
-  profiles on one exact Runtime verification subject. Revision 7 therefore authorizes
-  exactly one fresh bounded matrix and no implementation work.
+  RUN-159-007 is an immutable TASK-159 r7 VERIFICATION FAILURE on subject
+  e37a8471eb2881543c70cb40f79f8dd4b98c8147. Its canonical collection contained
+  1825 tests and its serial plus workers 2/3/4 profiles all failed only the same stale
+  detached-continue regression while preserving canonical collection consistency,
+  exact subject identity, temporary-root isolation, Git-fixture cache-root isolation,
+  and distinct worker processes. Because serial failed the same node, that evidence
+  did not establish a parallelism defect and its timings are not worker-selection
+  authority.
+
+  TASK-175 then reconciled that stale regression with already-published TASK-171
+  detached read-only observation semantics. RUN-175-001 changed only
+  tests/test_operator.py, passed its focused Runtime verification, received
+  REVIEW-175-001 PASS, and was published as
+  b2560b5f8f58c7b1b9f1d322a283eb8b4840ad26. That test-only correction changes the
+  canonical test identity, so RUN-159-007 collection count/digest and timings cannot
+  be reused as current expectations. Revision 8 therefore authorizes exactly one new
+  bounded full matrix on the exact admitted current verification subject and no
+  implementation work.
 
 assumptions:
   - >
-    Canonical main at TASK-159 r7 authoring is
-    a229c44d1662732e4f1107f345e3ba007bb4526d. This SHA is the authoring baseline,
-    not the measurement subject. The exact measurement subject is the admitted RUN
-    base after TASK-159 r7 and its roadmap binding are canonicalized.
+    Canonical main at TASK-159 r8 authoring is
+    6eb7d529a59ae6449927c61fcbbf643e5e74795b. This is the authoring baseline,
+    not the future measurement subject. The exact measurement subject is the admitted
+    RUN base after TASK-159 r8 and its roadmap binding are canonicalized.
   - >
-    Canonical roadmap planning has
-    bp-v4-parallel-verification-performance-guard as the unique NEXT commitment and
-    intentionally removed the stale TASK-159 r6 binding so generic continuation
-    cannot retry RUN-159-006.
+    Canonical roadmap planning has closed TASK-175 and restored
+    bp-v4-parallel-verification-performance-guard as the unique NEXT commitment,
+    intentionally unbound from any stale TASK-159 revision until r8 is canonicalized.
   - >
-    RUN-159-001 through RUN-159-006 remain immutable historical failures. Revision 7
+    RUN-159-001 through RUN-159-007 remain immutable historical lineage. Revision 8
     is a fresh TASK revision and fresh PRIMARY measurement; it does not retry, repair,
     remediate, supersede, delete, rewrite, or reinterpret any prior RUN-159 artifact.
   - >
-    TASK-157 remains authoritative for AIOS_BP_V4_MEASUREMENT version 1, bounded
-    explicit workers 2/3/4, canonical collection identity, same-subject checks,
-    worker-isolation observations, timing-neutral correctness semantics, and the
+    TASK-157 remains authoritative for AIOS_BP_V4_MEASUREMENT version 1, the bounded
+    explicit worker set 2/3/4, canonical collection identity, same-subject checks,
+    observable worker-isolation facts, timing-neutral correctness semantics, and the
     optional bp-v4-measurement toolchain contract.
   - >
     TASK-156 remains authoritative for exact transient Runtime verification-subject
-    isolation. Runtime binds r7 verification to the exact admitted candidate SHA.
+    isolation. Runtime binds r8 verification to the exact admitted candidate SHA.
   - >
     TASK-161 remains authoritative for bounded deterministic identity-only failure
     diagnostics on nonzero profiles.
   - >
-    TASK-170 through TASK-173 remain maintenance/diagnostic lineage and do not alter
-    TASK-157 measurement authority. TASK-171 corrected the detached read-only
-    Brain Sync/Unified State observation family, TASK-172 corrected the Terminal
-    Attention nested Windows path-budget family, and TASK-173 corrected the current
-    profile-aware MiniMax remote-carrier regression.
+    TASK-171 through TASK-173 corrected the RUN-159-006 detached observation,
+    Terminal Attention Windows path-budget, and MiniMax remote-carrier families.
+    TASK-174 remains authoritative for affirmative pre-verification claims and
+    bounded result.unresolved semantics.
   - >
-    TASK-174 remains authoritative for pre-verification claimability, affirmative
-    Executor claims, bounded result.unresolved semantics, and Runtime's existing
-    missing-acceptance fail-closed gate. Revision 7 acceptance is therefore limited
-    to facts the zero-delta Executor can truthfully assert before Runtime verification.
+    TASK-175 and RUN-175-001/REVIEW-175-001 are authoritative for the exact
+    detached-continue regression exposed by RUN-159-007. TASK-175 changed test
+    coverage only and did not alter production Runtime/Unified State/Human Surface
+    semantics.
   - >
-    Historical collection counts, digests, toolchain values, failure identities, and
-    timings from RUN-159-005/RUN-159-006 are context only. The serial profile inside
-    the exact r7 measurement is the sole direct timing comparator for workers 2/3/4.
+    Historical RUN-159 collection counts, digests, toolchain values, failure identities,
+    and timings are context only. The exact r8 measurement must freshly observe current
+    collection identity, correctness, isolation, toolchain, and timing.
   - >
-    The intended supported self-host measurement class remains Windows x64. The probe
-    records actual toolchain/platform identity for later review; the Executor must not
-    predict or fabricate that identity.
-  - >
-    Optional bp-v4-measurement tooling is a host prerequisite outside the RUN. Missing
-    or incompatible capability must fail explicitly; neither Executor nor Runtime may
-    install packages or fall back to a serial-only substitute.
+    The serial profile produced inside the exact r8 measurement is the sole direct
+    timing comparator for workers 2, 3, and 4. Timing from failed historical profiles
+    cannot authorize a worker selection or default.
   - >
     Runtime owns canonical verification and EVIDENCE; Reviewer owns semantic verdict;
     Human/Brain own timing interpretation and any later worker/adoption/performance-
@@ -93,13 +87,14 @@ non_goals:
   - Inspect repository files, Git state, source, tests, documentation, workflows, dependencies, or host configuration from the native Executor.
   - Execute shell, Git, pytest, xdist, benchmark, diagnostic, package, collection, measurement, or file-read/search operations from the native Executor.
   - Modify repository files, create an implementation commit, install packages, mutate host configuration, or push/publish from Executor execution.
-  - Retry, repair, remediate, supersede, delete, rewrite, or reinterpret RUN-159-001 through RUN-159-006.
-  - Re-run TASK-171, TASK-172, TASK-173, TASK-174, focused diagnostics, fixture checks, or any preflight suite before the canonical matrix.
+  - Retry, repair, remediate, supersede, delete, rewrite, or reinterpret RUN-159-001 through RUN-159-007.
+  - Re-run TASK-171, TASK-172, TASK-173, TASK-174, TASK-175, focused diagnostics, fixture checks, or any preflight suite before the canonical matrix.
   - Change the BP-V4 probe, plugin, measurement schema, verification contract, Runtime, verification-subject isolation, Reviewer, Publisher, transport, or lifecycle semantics.
   - Add, remove, reorder, duplicate, short-circuit, dynamically discover, or adapt worker profiles.
   - Use CPU count, auto workers, benchmark cache, historical-fastest routing, retry, fallback, rerun, scheduler, or automatic optimizer.
   - Select, rank, recommend, persist, or adopt a worker count, timing threshold, or parallel verification default.
   - Treat faster or slower timing by itself as TASK success/failure, semantic correctness, worker authorization, publication, or roadmap completion.
+  - Hard-code RUN-159-007 collection count, digest, toolchain values, timings, or failure identities as current expected measurement values.
   - Weaken, skip, xfail, deselect, rename, broadly mock, or timeout-inflate the canonical test population.
   - Advance roadmap state from Executor, Runtime, Reviewer, Publisher, or measurement output.
   - Claim BP-V4 exit-gate completion solely because this measurement RUN succeeds.
@@ -107,10 +102,10 @@ non_goals:
 constraints:
   hard:
     - >
-      TASK-159 r7 is a zero-delta read-only PRIMARY with empty scope.inspect and
-      scope.modify. The native Executor must not invoke repository, shell, Git,
-      file-read/search, pytest, xdist, benchmark, diagnostic, package, collection,
-      measurement, or other workspace operations.
+      TASK-159 r8 is a zero-delta PRIMARY with empty scope.inspect and scope.modify.
+      The native Executor must not invoke repository, shell, Git, file-read/search,
+      pytest, xdist, benchmark, diagnostic, package, collection, measurement, or
+      other workspace operations.
     - >
       The Executor constructs its structural ResultPackage solely from immutable
       admitted TASK/RUN context. result.head_sha must equal the admitted RUN base SHA;
@@ -118,14 +113,14 @@ constraints:
       empty; and no repository mutation or implementation commit may be created.
     - >
       result.unresolved may contain only concrete remaining Executor-owned
-      implementation work or a material supplied TASK-contract conflict. Merely
-      pending Runtime verification/EVIDENCE, Reviewer judgment, publication, timing
+      implementation work or a material supplied TASK-contract conflict. Pending
+      Runtime verification/EVIDENCE, Reviewer judgment, publication, timing
       interpretation, worker decision, roadmap continuation, or lack of confirmation
-      is not unresolved. If the authorized zero-delta handoff is complete and no
-      material contract conflict exists, result.unresolved must be empty.
+      is not unresolved. If the zero-delta handoff is complete and no material
+      contract conflict exists, result.unresolved must be empty.
     - >
       Executor claims must be affirmative pre-verification structural or authority
-      assertions actually established from admitted context. They must not synthesize,
+      assertions established from admitted context. They must not synthesize,
       predict, infer, or claim current collection count/digest, toolchain/platform
       identity, profile outcomes, failure identities, correctness, conformance,
       elapsed timing, measurement success, relative performance, worker safety,
@@ -141,25 +136,25 @@ constraints:
       post-verification subject validation, canonical EVIDENCE attachment, terminal
       persistence, and transport.
     - >
-      Canonical verification consists of exactly the single Runtime-owned operation
+      Canonical verification consists of exactly the single Runtime-owned command
       declared in verification.required. No Executor-created substitute, collection
-      preflight, focused diagnostic rerun, separate serial run, second full-suite
+      preflight, focused maintenance rerun, separate serial run, second full-suite
       command, fixture-only proof, or duplicate verification is authorized.
     - >
-      One valid probe invocation must remain one bounded experiment: one canonical
+      One valid probe invocation remains one bounded experiment: one canonical
       collection, one serial control, then explicit workers 2, 3, and 4 exactly once
       each in authored ascending order. No retry, rerun, fallback, short-circuit,
       result-dependent scheduling, hidden profile, auto/CPU worker, randomization, or
       historical-fastest selection is authorized.
     - >
-      The exact admitted r7 verification subject is the only authority for current
+      The exact admitted r8 verification subject is the only authority for current
       collection identity, correctness, worker isolation, and timing. Historical
-      counts, digests, toolchain values, failure identities, and durations must not be
-      hard-coded as current expected values.
+      RUN-159 values must not be treated as current expected values even if a count or
+      duration happens to match.
     - >
-      The serial profile produced inside this exact r7 measurement is the sole direct
-      timing comparator for workers 2, 3, and 4. Historical serial timing may be
-      discussed only as context and must not substitute for same-run comparison.
+      The serial profile produced inside this exact r8 measurement is the sole direct
+      timing comparator for workers 2, 3, and 4. Timing from failed profiles remains
+      observational context only and cannot authorize a worker decision.
     - >
       Probe semantics remain fail-closed for missing/incompatible optional tooling,
       collection failure or mismatch, malformed or missing worker data, shared mutable
@@ -181,6 +176,11 @@ constraints:
       inspection; it does not itself select a worker, establish a parallel default,
       mutate performance policy, or advance the BP-V4 roadmap.
     - >
+      If r8 verification fails, the terminal is a fresh canonical RUN-159 r8 failure
+      to be audited from exact evidence. This TASK does not authorize automatic retry,
+      worker substitution, REPAIR, REMEDIATION, package installation, test suppression,
+      or any other correction selection.
+    - >
       Do not mutate repository files, install packages, alter host configuration,
       push, publish, change canonical verification defaults, select a worker, or
       advance roadmap state from Executor execution or measurement output.
@@ -194,38 +194,39 @@ acceptance:
       authorizes no repository mutation or implementation commit.
   - id: AC2
     condition: >
-      The native Executor contract authorizes no repository/workspace inspection or
-      command execution and prohibits Executor claims about current collection,
-      toolchain/platform identity, correctness, conformance, timing, measurement
-      outcome, failure identities, or worker preference.
+      Executor claims are limited to affirmative immutable TASK/RUN/authority facts
+      and do not claim current collection identity, toolchain/platform identity,
+      correctness, conformance, timing, measurement outcome, failure identities,
+      worker safety, or worker preference.
   - id: AC3
     condition: >
-      TASK-159 r7 authorizes exactly one Runtime-owned bounded same-subject experiment
+      TASK-159 r8 authorizes exactly one Runtime-owned bounded same-subject experiment
       consisting of one canonical collection, one serial control, and explicit
       parallel profiles 2, 3, and 4 exactly once in authored order, with no retry,
-      fallback, adaptation, hidden profile, automatic worker discovery,
-      installation, preflight matrix, or result-dependent scheduling.
+      fallback, adaptation, hidden profile, automatic worker discovery, installation,
+      preflight matrix, or result-dependent scheduling.
   - id: AC4
     condition: >
-      TASK-159 r7 is explicitly a fresh revision bound to the exact admitted current
+      TASK-159 r8 is explicitly a fresh revision bound to the exact admitted current
       candidate and grants no authority to retry, repair, remediate, rewrite, or
-      reinterpret RUN-159-001 through RUN-159-006 or to hard-code their historical
+      reinterpret RUN-159-001 through RUN-159-007 or to hard-code their historical
       measurement values as current expectations.
   - id: AC5
     condition: >
       Existing authority remains separated: Runtime owns canonical verification and
       EVIDENCE, Reviewer owns semantic verdict, Human/Brain own same-run timing
       interpretation and any later worker/adoption/performance-policy/roadmap
-      decision, Publisher owns publication, and r7 creates no parallel default,
+      decision, Publisher owns publication, and r8 creates no parallel default,
       automatic worker selector, or BP-V4 completion authority.
 
 verification:
   policy: minimum-sufficient-v1
   full_suite_reason: >
-    RUN-159-006 exposed three concrete correctness families that were independently
-    corrected and focused-verified by TASK-171 through TASK-173. Current source and
-    test population have since changed, so one fresh same-subject serial plus workers
-    2/3/4 matrix is the minimum-sufficient evidence for current BP-V4 conformance and
-    timing observation; repeating focused maintenance suites would duplicate evidence.
+    RUN-159-007 showed one shared stale detached-continue failure across serial and
+    workers 2/3/4 while conformance remained green. TASK-175 corrected and reviewed
+    that exact regression, changing canonical test identity. One fresh exact-subject
+    serial plus workers 2/3/4 matrix is therefore minimum-sufficient current
+    correctness, conformance, and timing evidence; repeating focused suites would
+    duplicate valid evidence.
   required:
     - python scripts/bp_v4_parallel_probe.py --workers 2 3 4
