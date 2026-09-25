@@ -26,9 +26,16 @@ surface. Provision it once on the designated measurement/test host with:
 pip install -e ".[bp-v4-measurement]"
 ```
 
-This extra is only for the one-time BP-V4 measurement experiment. It is not a
-core AIOS runtime dependency, a canonical parallel default, Runtime authority,
-or a per-RUN installation step. The probe never installs packages. If this
+The measurement extra remains available for the historical BP-V4 experiment.
+For ongoing selected parallel verification, provision the optional
+`parallel-verification` extra once on the supported self-host:
+
+```powershell
+pip install -e ".[parallel-verification]"
+```
+
+Neither extra is a core AIOS runtime dependency or a per-RUN installation step.
+The commands never install packages. If this
 compatible optional toolchain is absent, the probe fails explicitly instead of
 falling back to serial execution. A later Runtime-owned measurement may invoke
 an explicitly bounded experiment such as:
@@ -40,6 +47,20 @@ python scripts/bp_v4_parallel_probe.py --workers 2 3 4
 Worker candidates must be an explicit unique ascending subset of `2`, `3`, and
 `4`; the probe adds only its fixed serial control and does not choose or
 recommend a worker profile.
+
+The Human/Brain-selected ordinary full-suite command is explicit in newly
+authored TASK verification lists:
+
+```powershell
+python scripts/aios_parallel_full_suite.py
+```
+
+It runs one canonical collection and one four-worker suite, then emits one
+structured correctness/conformance and soft performance observation. The
+repository policy in `.ai/verification-profiles.yaml` binds the selection and
+attention threshold to RUN-159-008 evidence. `ATTENTION` and `NOT_COMPARABLE`
+are informational statuses; correctness and conformance determine command
+success. Runtime does not rewrite historical TASK verification commands.
 
 Store canonical engineering tasks in the target repository:
 

@@ -1,0 +1,27 @@
+format: AIOS_VERIFICATION_PROFILE_POLICY
+version: 1
+ordinary_canonical_full_suite:
+  profile: bounded-parallel-full-suite-v1
+  command: python scripts/aios_parallel_full_suite.py
+  workers: 4
+  distribution: load
+  max_worker_restart: 0
+  selection_provenance:
+    run_id: RUN-159-008
+    evidence_id: RUN-159-008-V001
+    subject_sha: 2ed725df2a965d4f1def4750678672bcef4f0b4f
+  baseline:
+    canonical_collection:
+      rule: sorted-posix-nodeid-lf-sha256-v1
+      count: 1825
+      digest: 2e40a04acedcf9869e3961718337744761ee0a29f55258d2313b0a50d5fd66bb
+    platform_system: Windows
+    platform_machine: AMD64
+    python_implementation: CPython
+    python_version: 3.14.7
+    pytest_version: 8.4.2
+    pytest_xdist_version: 3.8.0
+    serial_seconds: 1594.934653
+    selected_parallel_seconds: 1097.184058
+    attention_threshold_seconds: 1346.059356
+    rule: HALF_MEASURED_GAIN_LOST

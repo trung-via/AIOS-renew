@@ -1,6 +1,6 @@
-"""Structured pytest observations for the bounded BP-V4 measurement probe.
+"""Structured pytest observations for bounded parallel verification.
 
-This plugin is loaded only by ``scripts/bp_v4_parallel_probe.py``.  Workers
+This plugin is loaded by the BP-V4 probe and selected full-suite wrapper. Workers
 return data through xdist's structured ``workeroutput`` channel; they never
 write the controller's observation file.
 """

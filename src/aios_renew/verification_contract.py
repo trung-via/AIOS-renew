@@ -17,6 +17,8 @@ MINIMUM_SUFFICIENT_V1 = "minimum-sufficient-v1"
 FULL_SUITE_REASON_LIMIT = 512
 BP_V4_PROBE_PATH = "scripts/bp_v4_parallel_probe.py"
 BP_V4_WORKERS = (2, 3, 4)
+SELECTED_FULL_SUITE_PATH = "scripts/aios_parallel_full_suite.py"
+SELECTED_FULL_SUITE_COMMAND = "python scripts/aios_parallel_full_suite.py"
 
 
 class VerificationContractError(ValueError):
@@ -31,6 +33,7 @@ class PytestCoverage:
     paths: tuple[str, ...]
     filter_expression: str | None
     measurement: bool = False
+    selected_parallel: bool = False
 
     @property
     def is_full_suite(self) -> bool:
@@ -40,6 +43,11 @@ class PytestCoverage:
 def parse_pytest_coverage(command: str) -> PytestCoverage | None:
     """Return proven coverage for a supported command, otherwise ``None``."""
 
+    if command == SELECTED_FULL_SUITE_COMMAND:
+        return PytestCoverage(
+            launcher="python -m pytest", paths=(), filter_expression=None,
+            selected_parallel=True,
+        )
     probe_workers = parse_bp_v4_probe_workers(command)
     if probe_workers is not None:
         return PytestCoverage(
@@ -149,6 +157,24 @@ def _is_bp_v4_probe_family(command: str) -> bool:
     return probe_path == BP_V4_PROBE_PATH.casefold()
 
 
+def _is_selected_full_suite_family(command: str) -> bool:
+    """Catch malformed invocations of the exact selected wrapper family."""
+
+    try:
+        tokens = shlex.split(command, posix=False)
+    except ValueError:
+        return re.match(
+            r'^\s*["\']?(?:python|py)["\']?\s+["\']?(?:\.[\\/])?scripts[\\/]aios_parallel_full_suite\.py(?=["\']|\s|$)',
+            command, flags=re.IGNORECASE,
+        ) is not None
+    if len(tokens) < 2 or tokens[0].casefold() not in {"python", "py"}:
+        return False
+    path = tokens[1].strip('"\'').replace("\\", "/").casefold()
+    if path.startswith("./"):
+        path = path[2:]
+    return path == SELECTED_FULL_SUITE_PATH.casefold()
+
+
 def validate_v1_verification(
     commands: Sequence[str],
     *,
@@ -172,6 +198,10 @@ def validate_v1_verification(
             )
 
     for command in commands:
+        if _is_selected_full_suite_family(command) and command != SELECTED_FULL_SUITE_COMMAND:
+            raise VerificationContractError(
+                f"{path} contains malformed selected full-suite command: {command!r}"
+            )
         if (
             _is_bp_v4_probe_family(command)
             and parse_bp_v4_probe_workers(command) is None
@@ -225,6 +255,10 @@ def normalize_verification(commands: Sequence[str]) -> tuple[str, ...]:
     """
 
     for command in commands:
+        if _is_selected_full_suite_family(command) and command != SELECTED_FULL_SUITE_COMMAND:
+            raise VerificationContractError(
+                f"verification contains malformed selected full-suite command: {command!r}"
+            )
         if (
             _is_bp_v4_probe_family(command)
             and parse_bp_v4_probe_workers(command) is None
@@ -284,6 +318,12 @@ def _subsumes(broader: PytestCoverage, narrower: PytestCoverage) -> bool:
     # A probe contains the ordinary module-launched full-suite proof as well as
     # its measurement profiles.  The ordinary proof cannot replace the probe.
     if narrower.measurement and not broader.measurement:
+        return False
+    if narrower.selected_parallel and not broader.selected_parallel:
+        return False
+    if broader.measurement and narrower.selected_parallel:
+        return False
+    if broader.selected_parallel and narrower.measurement:
         return False
     if broader.filter_expression is not None:
         if broader.filter_expression != narrower.filter_expression:

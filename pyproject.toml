@@ -15,6 +15,10 @@ bp-v4-measurement = [
     "pytest>=8.2,<9",
     "pytest-xdist>=3.6,<4",
 ]
+parallel-verification = [
+    "pytest>=8.2,<9",
+    "pytest-xdist>=3.6,<4",
+]
 
 [project.scripts]
 aios = "aios_renew.operator:main"

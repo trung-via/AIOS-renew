@@ -11,6 +11,27 @@ from aios_renew.verification_contract import (
 )
 
 
+def test_selected_wrapper_grammar_and_subsumption() -> None:
+    selected = "python scripts/aios_parallel_full_suite.py"
+    ordinary = "python -m pytest -q"
+    probe = "python scripts/bp_v4_parallel_probe.py --workers 4"
+    coverage = parse_pytest_coverage(selected)
+    assert coverage is not None and coverage.is_full_suite and coverage.selected_parallel
+    assert normalize_verification((ordinary, selected)) == (selected,)
+    assert normalize_verification((selected, ordinary)) == (selected,)
+    assert normalize_verification((probe, selected)) == (probe, selected)
+    with pytest.raises(VerificationContractError, match="full_suite_reason"):
+        validate_v1_verification((selected,), full_suite_reason=None, path="verification.required")
+    for malformed in (
+        selected + " --workers 4", selected + " && echo done",
+        "py scripts/aios_parallel_full_suite.py",
+        "python .\\scripts\\aios_parallel_full_suite.py",
+        "python scripts/AIOS_PARALLEL_FULL_SUITE.py",
+    ):
+        with pytest.raises(VerificationContractError, match="malformed selected"):
+            validate_v1_verification((malformed,), full_suite_reason=None, path="verification.required")
+
+
 def test_supported_grammar_keeps_launcher_families_separate() -> None:
     direct = parse_pytest_coverage("pytest -q tests/test_task.py -k contract")
     module = parse_pytest_coverage(

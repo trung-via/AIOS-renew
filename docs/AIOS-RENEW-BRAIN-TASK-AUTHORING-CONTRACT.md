@@ -38,4 +38,6 @@ A recognized full-suite pytest command (one with no path and no `-k` filter) req
 
 Prefer focused checks that establish the acceptance criteria. Do not add Git cleanliness, HEAD, changed-files, or similar repository-integrity checks by default: Runtime already owns those gates. REPAIR may deterministically normalize only overlap created when it combines already-authorized v1 TASK and origin REMEDIATION lists. Runtime still executes the resulting canonical list and constructs EVIDENCE; no evidence authority moves to authoring or repair policy.
 
+For ordinary newly authored AIOS-renew full-suite proof on the supported Windows AMD64 self-host class, author the exact command `python scripts/aios_parallel_full_suite.py` in `verification.required` with `full_suite_reason`. This explicit selected profile uses four workers and emits a soft performance observation under `.ai/verification-profiles.yaml`. Brain may author a serial or other full-suite command when the TASK semantics require it, with a reason. Runtime executes the authored command exactly; it does not substitute profiles. Historical TASK commands remain immutable.
+
 Do not instruct the Executor to push. Executor implementation ends at the permitted final local commit; synchronization and publication remain outside Brain-authored implementation instructions.
