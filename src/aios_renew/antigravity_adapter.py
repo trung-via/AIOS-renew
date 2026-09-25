@@ -34,6 +34,9 @@ REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH = (
 REPAIR_RESULT_PACKAGE_SCHEMA_PATH = (
     Path(__file__).parent / "schemas" / "repair_result_package.json"
 ).resolve()
+FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH = (
+    Path(__file__).parent / "schemas" / "finalize_candidate_result_package.json"
+).resolve()
 
 
 class ExecutionPolicy(Protocol):
@@ -262,6 +265,11 @@ class AntigravityAdapter:
             repo=self._repo,
             instruction=instruction,
             operation=operation,
+            repair_action=(
+                handoff.get("repair", {}).get("action")
+                if operation == "REPAIR" and isinstance(handoff.get("repair"), Mapping)
+                else None
+            ),
             execution_profile=self._execution_profile,
         )
         try:
@@ -331,6 +339,7 @@ class AntigravityAdapter:
         repo: Path,
         instruction: str,
         operation: str = "PRIMARY",
+        repair_action: str | None = None,
         execution_profile: ResolvedExecutionProfile | None = None,
     ) -> tuple[str, ...]:
         """Build the native AGY command from provider-neutral authorization."""
@@ -340,6 +349,8 @@ class AntigravityAdapter:
             "REMEDIATION": REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
             "REPAIR": REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
         }.get(operation, RESULT_PACKAGE_SCHEMA_PATH)
+        if operation == "REPAIR" and repair_action == "FINALIZE_CANDIDATE":
+            schema_path = FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH
 
         profile = execution_profile or self._execution_profile
         if profile is None:
@@ -470,7 +481,16 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
             "evidence_id, run_id, subject_sha, type, source.command, result.exit_code, "
             "result.summary, and raw.path when present. Root evidence and every claim.evidence "
             "must be empty; Runtime constructs canonical EVIDENCE. Every claim.satisfies "
-            "entry must be a known TASK acceptance ID."
+            "entry must be a known TASK acceptance ID. Claims must affirm concrete "
+            "implementation properties actually observed or established. Omit any "
+            "acceptance ID that cannot be truthfully affirmed from claim.satisfies; "
+            "lack of confirmation alone is not unresolved and Runtime's existing "
+            "missing-acceptance gate handles uncovered IDs. result.unresolved may contain "
+            "only concrete remaining Executor-owned implementation work or a material "
+            "supplied TASK-contract conflict. Pending Runtime verification or EVIDENCE, "
+            "Reviewer judgment, publication, roadmap advancement, and later lifecycle "
+            "work are not unresolved. Return result.unresolved=[] when implementation "
+            "is complete with no such conflict, without claiming Runtime verification success."
         )
     if operation == "REMEDIATION":
         return (
@@ -523,7 +543,17 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
         "Do not edit files, commit, push, or resume or repeat implementation; "
         "bind result.head_sha to the unchanged failed_head_sha. If the candidate is "
         "incomplete, report truthful unresolved work instead of changing it or fabricating "
-        "completion. Follow repair.instructions and limit every mutation to "
+        "completion. For every REPAIR action, claims must affirm concrete implementation "
+        "properties actually observed or established. Omit an acceptance ID from "
+        "claim.satisfies when it cannot be truthfully affirmed; lack of confirmation alone "
+        "is not unresolved and Runtime's missing-acceptance gate handles uncovered IDs. "
+        "result.unresolved is only for concrete remaining Executor-owned implementation "
+        "work or a material supplied TASK-contract conflict, never pending downstream "
+        "authority work. For FINALIZE_CANDIDATE, return affirmative complete claims "
+        "and result.unresolved=[] when supportable without claiming Runtime verification "
+        "success; otherwise return truthful partial or zero claims and bounded unresolved "
+        "only for actual incompleteness or conflict. Follow repair.instructions and "
+        "limit every mutation to "
         "repair.modification_scope. Successful "
         "CONTINUE_IMPLEMENTATION work must commit the final permitted repository state and "
         "bind result.head_sha to final committed Git HEAD. Do not create or restart a fresh "

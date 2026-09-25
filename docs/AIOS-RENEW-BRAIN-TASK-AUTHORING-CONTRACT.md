@@ -18,11 +18,13 @@ New Human intent is not a FIX. It requires a new TASK or TASK revision. REVIEW f
 
 The Brain owns **WHAT and WHY**: the goal, problem, assumptions, non-goals, constraints, scope, and acceptance criteria. The Executor owns **HOW**. Do not prescribe an implementation plan except where a true architectural constraint makes a choice part of the required outcome.
 
-A TASK is executor-neutral: the same contract must be executable by either Codex or Antigravity, with no executor identity, model-specific directions, or adapter-specific workflow embedded in it.
+A TASK is executor-neutral: the same contract must be executable by any admitted Executor, with no executor identity, model-specific directions, or adapter-specific workflow embedded in it.
 
 Use `scope.inspect` only as minimum-context guidance. Use `scope.modify` as the hard mutation authority: list only the exact, minimal, repo-relative file paths required by the outcome. Do not use directories, absolute paths, traversal, backslashes, or glob patterns.
 
 Acceptance criteria must be atomic, observable, and collectively complete. Each criterion should describe one independently reviewable outcome, avoid implementation steps, and leave no required behavior merely implied.
+
+For every newly authored TASK, each acceptance criterion must be truthfully claimable by an admitted Executor as a concrete implementation property before Runtime verification. Author the criterion around what the completed implementation establishes, not a future verification outcome or lifecycle event. Runtime verification timing and results, canonical EVIDENCE, Reviewer judgment, publication, roadmap advancement, and other later lifecycle facts remain with their existing authorities. Brain and Human own this semantic authoring judgment; structural validation does not classify acceptance prose.
 
 ## Specify verification once
 

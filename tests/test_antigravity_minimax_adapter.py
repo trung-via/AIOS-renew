@@ -24,6 +24,7 @@ from aios_renew import (
     parse_task,
 )
 from aios_renew.antigravity_minimax_adapter import (
+    FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH,
     ANTIGRAVITY_MINIMAX_DEFAULT_MODEL,
     REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
     REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
@@ -289,6 +290,53 @@ def test_command_contract_repair_schema_path(tmp_path: Path) -> None:
     assert cmd[cmd.index("--response-schema") + 1] == str(
         REPAIR_RESULT_PACKAGE_SCHEMA_PATH
     )
+
+
+@pytest.mark.parametrize("action,expected", [
+    ("FINALIZE_CANDIDATE", FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH),
+    ("CODE_FIX", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    ("CONTINUE_IMPLEMENTATION", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    ("NO_CHANGE", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    ("UNKNOWN", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    (None, REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+])
+def test_repair_command_schema_requires_exact_finalize_action(tmp_path, action, expected) -> None:
+    adapter = AntigravityMinimaxAdapter(repo=tmp_path, handoff_path=tmp_path / "handoff.json")
+    command = adapter.command_for(
+        repo=tmp_path, instruction="Repair", operation="REPAIR", repair_action=action
+    )
+    assert command[command.index("--response-schema") + 1] == str(expected)
+
+
+def test_native_finalize_invocation_uses_dedicated_schema_and_bounded_instruction(tmp_path) -> None:
+    repo = tmp_path.resolve()
+    _, run, _, _ = make_execution(workspace=str(repo))
+    payload = successful_structural_payload(head_sha=run.base_sha, changed_files=[])
+    payload["result"]["changed_files"] = []
+    envelope = make_agym_envelope(
+        result_package=payload, workspace=str(repo), head_before=run.base_sha,
+        head_after=run.base_sha,
+    )
+    calls = []
+    def runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps(envelope), "")
+    adapter = AntigravityMinimaxAdapter(
+        runner=runner, repo=repo, handoff_path=repo / "handoff.json",
+        execution_policy=NativeExecutionPolicy(authorizes_mutation=False),
+    )
+    adapter.execute_repair(execution={
+        "run": run, "failed_head_sha": run.base_sha,
+        "repair": {"action": "FINALIZE_CANDIDATE", "instructions": [], "modification_scope": []},
+    })
+    assert len(calls) == 1
+    command = calls[0]
+    assert command[command.index("--response-schema") + 1] == str(FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH)
+    instruction = command[command.index("--prompt") + 1]
+    assert "The four REPAIR actions are distinct" in instruction
+    assert "unchanged failed_head_sha" in instruction
+    assert "partial or zero claims" in instruction
+    assert "lack of confirmation alone is not unresolved" in instruction
 
 
 def test_native_invocation_writes_handoff_excluding_verification(
@@ -1178,7 +1226,7 @@ def _assert_valid_terminal_contract(instruction: str, operation: str) -> None:
     elif operation == "REPAIR":
         assert "Complete all authorized repair work and required commit completion first" in instruction
         assert "For CODE_FIX and CONTINUE_IMPLEMENTATION, commit the final permitted repository state" in instruction
-        assert "for NO_CHANGE, do not create a code commit" in instruction
+        assert "for NO_CHANGE and FINALIZE_CANDIDATE, do not create a code commit" in instruction
         assert "Zero-mutation actions must not create a commit merely to satisfy terminal mechanics" in instruction
         assert "Root evidence and every claim.evidence must be empty" in instruction
         assert "Do not create or restart a fresh PRIMARY lineage" in instruction

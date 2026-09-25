@@ -32,6 +32,9 @@ REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH = (
 REPAIR_RESULT_PACKAGE_SCHEMA_PATH = (
     Path(__file__).parent / "schemas" / "repair_result_package.json"
 ).resolve()
+FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH = (
+    Path(__file__).parent / "schemas" / "finalize_candidate_result_package.json"
+).resolve()
 
 ANTIGRAVITY_MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
 AGYM_WINDOWS_LAUNCHER = "agym.cmd"
@@ -255,6 +258,11 @@ class AntigravityMinimaxAdapter:
             repo=self._repo,
             instruction=instruction,
             operation=operation,
+            repair_action=(
+                handoff.get("repair", {}).get("action")
+                if operation == "REPAIR" and isinstance(handoff.get("repair"), Mapping)
+                else None
+            ),
             expected_head=expected_head,
         )
         try:
@@ -304,6 +312,7 @@ class AntigravityMinimaxAdapter:
         repo: Path,
         instruction: str,
         operation: str = "PRIMARY",
+        repair_action: str | None = None,
         expected_head: str | None = None,
         launcher: str | None = None,
         platform: str | None = None,
@@ -314,6 +323,8 @@ class AntigravityMinimaxAdapter:
             "REMEDIATION": REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
             "REPAIR": REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
         }.get(operation, RESULT_PACKAGE_SCHEMA_PATH)
+        if operation == "REPAIR" and repair_action == "FINALIZE_CANDIDATE":
+            schema_path = FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH
 
         selected_launcher = (
             launcher
@@ -601,7 +612,16 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
             "run_id, subject_sha, type, source.command, result.exit_code, result.summary, "
             "and raw.path when present. Root evidence and every claim.evidence must be empty; "
             "Runtime constructs canonical EVIDENCE. Every claim.satisfies entry must be a "
-            "known TASK acceptance ID."
+            "known TASK acceptance ID. Claims must affirm concrete implementation "
+            "properties actually observed or established. Omit any acceptance ID that "
+            "cannot be truthfully affirmed from claim.satisfies; lack of confirmation "
+            "alone is not unresolved and Runtime's missing-acceptance gate handles "
+            "uncovered IDs. result.unresolved may contain only concrete remaining "
+            "Executor-owned implementation work or a material supplied TASK-contract "
+            "conflict. Pending Runtime verification or EVIDENCE, Reviewer judgment, "
+            "publication, roadmap advancement, and later lifecycle work are not "
+            "unresolved. Return result.unresolved=[] when implementation is complete "
+            "with no such conflict, without claiming Runtime verification success."
         )
     if operation == "REMEDIATION":
         return (
@@ -629,7 +649,7 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
         _NATIVE_EXECUTOR_INSTRUCTION
         + f"Read the AIOS REPAIR handoff JSON at {handoff_path}. Execute exactly its single "
         "continuation bound to the supplied exact failed RUN and failed-lineage context. "
-        "The three REPAIR actions are distinct. CODE_FIX authorizes mutation only to "
+        "The four REPAIR actions are distinct. CODE_FIX authorizes mutation only to "
         "correct an established defect and requires committing the final permitted state. "
         "NO_CHANGE authorizes no repository mutation and does not permit resuming unfinished "
         "original TASK implementation. CONTINUE_IMPLEMENTATION authorizes mutation to "
@@ -640,7 +660,24 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
         "during PRIMARY; necessary bounded repository inspection, discovery, or live "
         "capture required by the original TASK is permitted as part of that unfinished "
         "implementation. This permission does not authorize repository-wide rediscovery, "
-        "new intent, or work outside the TASK and REPAIR scope. Follow repair.instructions "
+        "new intent, or work outside the TASK and REPAIR scope. "
+        "FINALIZE_CANDIDATE authorizes no repository mutation. For that action, inspect "
+        "only the supplied exact clean failed candidate and bounded TASK/REPAIR context "
+        "far enough to return the missing structural ResultPackage. Do not edit files, "
+        "commit, push, or resume or repeat implementation; bind result.head_sha to the "
+        "unchanged failed_head_sha. Do not launch background work or a second "
+        "Executor invocation. If the candidate is incomplete, report truthful "
+        "unresolved work instead of changing it or fabricating completion. For every "
+        "REPAIR action, claims must affirm concrete implementation properties actually "
+        "observed or established. Omit an acceptance ID from claim.satisfies when it "
+        "cannot be truthfully affirmed; lack of confirmation alone is not unresolved, "
+        "and Runtime's missing-acceptance gate handles uncovered IDs. result.unresolved "
+        "is only for concrete remaining Executor-owned implementation work or a material "
+        "supplied TASK-contract conflict, never pending downstream authority work. For "
+        "FINALIZE_CANDIDATE, return affirmative complete claims and result.unresolved=[] "
+        "when supportable without claiming Runtime verification success; otherwise "
+        "return truthful partial or zero claims and bounded unresolved only for actual "
+        "incompleteness or conflict. Follow repair.instructions "
         "and limit every mutation to repair.modification_scope. Successful "
         "CONTINUE_IMPLEMENTATION work must commit the final permitted repository state and "
         "bind result.head_sha to final committed Git HEAD. Do not create or restart a fresh "
@@ -656,13 +693,15 @@ def _native_instruction(*, operation: str, handoff_path: Path) -> str:
         "do not reconstruct or enumerate that historical file set. Complete all authorized "
         "repair work and required commit completion first. For CODE_FIX and "
         "CONTINUE_IMPLEMENTATION, commit the final permitted repository state; for "
-        "NO_CHANGE, do not create a code commit. Zero-mutation actions must not create a "
+        "NO_CHANGE and FINALIZE_CANDIDATE, do not create a code commit. "
+        "Zero-mutation actions must not create a "
         "commit merely to satisfy terminal mechanics. Obtain final Git HEAD, then invoke "
         "the builtin `finish` tool exactly once satisfying the supplied response schema "
         "with the structural ResultPackage for the complete original TASK contract as the "
         "only successful terminal action. Do not emit conversational terminal prose, "
         "markdown, summaries, or a second terminal response before or after `finish`. "
-        "Bind result.head_sha to actual final Git HEAD. Root evidence and every "
+        "Bind result.head_sha to actual final Git HEAD (for FINALIZE_CANDIDATE, the "
+        "unchanged failed_head_sha). Root evidence and every "
         "claim.evidence must be empty. Structural result.changed_files may contain only "
         "the narrow repair delta or be empty. Runtime captures and persists the response; "
         "do not write Runtime-owned operational state."

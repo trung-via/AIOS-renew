@@ -24,6 +24,7 @@ from aios_renew import (
 from aios_renew.review import RemediationExecution
 from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.antigravity_adapter import (
+    FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH,
     AIOS_ANTIGRAVITY_ACTIVE_ENV,
     AIOS_ANTIGRAVITY_ACTIVE_VALUE,
     AIOS_PRETOOL_GUARD_FILENAME,
@@ -721,7 +722,7 @@ def test_native_finalize_candidate_instruction_is_read_only_and_single_shot(
         assert "--dangerously-skip-permissions" not in command
         assert "--disable-slash-commands" in command
         assert command[command.index("--output-format") + 1] == "json"
-        assert command[command.index("--json-schema") + 1] == str(REPAIR_RESULT_PACKAGE_SCHEMA_PATH)
+        assert command[command.index("--json-schema") + 1] == str(FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH)
         return subprocess.CompletedProcess(
             command,
             returncode=0,
@@ -753,6 +754,22 @@ def test_native_finalize_candidate_instruction_is_read_only_and_single_shot(
     assert package.result.head_sha == run.base_sha
     assert package.result.changed_files == ()
     assert package.result.claims[0].satisfies == ("AC1",)
+
+
+@pytest.mark.parametrize("action,expected", [
+    ("FINALIZE_CANDIDATE", FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH),
+    ("CODE_FIX", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    ("CONTINUE_IMPLEMENTATION", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    ("NO_CHANGE", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    ("UNKNOWN", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    (None, REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+])
+def test_repair_command_schema_requires_exact_finalize_action(tmp_path, action, expected) -> None:
+    adapter = AntigravityAdapter(repo=tmp_path, handoff_path=tmp_path / "handoff.json")
+    command = adapter.command_for(
+        repo=tmp_path, instruction="Repair", operation="REPAIR", repair_action=action
+    )
+    assert command[command.index("--json-schema") + 1] == str(expected)
     assert package.result.claims[0].evidence == ()
     assert package.evidence == ()
 
@@ -1269,7 +1286,7 @@ def test_zero_mutation_finalize_candidate_command_excludes_contradictory_plan_mo
     assert cmd[cmd.index("--model") + 1] == profile.model
     assert cmd[cmd.index("--effort") + 1] == profile.reasoning_effort
     assert cmd[cmd.index("--output-format") + 1] == "json"
-    assert cmd[cmd.index("--json-schema") + 1] == str(REPAIR_RESULT_PACKAGE_SCHEMA_PATH)
+    assert cmd[cmd.index("--json-schema") + 1] == str(FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH)
     assert "--disable-slash-commands" in cmd
 
     # AC1: no contradictory plan-mode/disabled-slash-command combination

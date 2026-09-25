@@ -1,4 +1,5 @@
 import json
+import copy
 import subprocess
 import sys
 from dataclasses import asdict
@@ -22,6 +23,7 @@ from aios_renew import (
 from aios_renew.dispatcher import NativeExecutionPolicy
 from aios_renew.review import RemediationExecution
 from aios_renew.codex_adapter import (
+    FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH,
     REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH,
     REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
     extract_token_usage,
@@ -414,6 +416,77 @@ def test_repair_prompt_marks_direct_already_admitted_executor_role() -> None:
         run, authorizes_mutation=False
     )
     assert command[command.index("--sandbox") + 1] == "read-only"
+
+
+def test_finalize_schema_represents_complete_and_incomplete_without_coverage_rewrite() -> None:
+    schema = json.loads(FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["result"]["additionalProperties"] is False
+    assert schema["properties"]["result"]["properties"]["claims"]["items"]["additionalProperties"] is False
+    complete = {
+        "result": {"head_sha": "abc123", "claims": [{"id": "C1", "satisfies": ["AC1"],
+                    "claim": "The adapter selects the finalization schema.", "evidence": []}],
+                   "changed_files": [], "unresolved": []}, "evidence": []
+    }
+    incomplete = copy.deepcopy(complete)
+    incomplete["result"]["claims"] = []
+    incomplete["result"]["unresolved"] = ["The authorized implementation is incomplete."]
+    partial = copy.deepcopy(complete)
+    partial["result"]["unresolved"] = ["An implementation step remains."]
+    for payload in (complete, incomplete, partial):
+        jsonschema.validate(payload, schema)
+    for path in (("unexpected",), ("result", "unexpected"),
+                 ("result", "claims", 0, "unexpected")):
+        invalid = copy.deepcopy(complete)
+        cursor = invalid
+        for part in path[:-1]:
+            cursor = cursor[part]
+        cursor[path[-1]] = True
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(invalid, schema)
+
+    generic = json.loads(RESULT_PACKAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
+    jsonschema.validate(incomplete, generic)
+    assert "Executor-owned" in generic["properties"]["result"]["properties"]["unresolved"]["description"]
+    for path, value in (("evidence", ["fabricated"]),
+                        ("claim_evidence", ["fabricated"]),
+                        ("satisfies", [])):
+        invalid = copy.deepcopy(complete)
+        if path == "evidence":
+            invalid["evidence"] = value
+        elif path == "claim_evidence":
+            invalid["result"]["claims"][0]["evidence"] = value
+        else:
+            invalid["result"]["claims"][0]["satisfies"] = value
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(invalid, schema)
+
+
+@pytest.mark.parametrize("action,expected", [
+    ("FINALIZE_CANDIDATE", FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH),
+    ("CODE_FIX", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    ("CONTINUE_IMPLEMENTATION", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    ("NO_CHANGE", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    ("UNKNOWN", REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+    (None, REPAIR_RESULT_PACKAGE_SCHEMA_PATH),
+])
+def test_repair_native_invocation_selects_schema_only_for_exact_finalize(action, expected) -> None:
+    _, run, _, _ = make_execution()
+    calls = []
+    def runner(command, **kwargs):
+        calls.append((command, kwargs))
+        payload = json.loads(successful_output(run.run_id))
+        payload["result"]["claims"][0]["evidence"] = []
+        payload["evidence"] = []
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+    repair = {"instructions": [], "modification_scope": []}
+    if action is not None:
+        repair["action"] = action
+    CodexAdapter(runner=runner).execute_repair(execution={"run": run, "repair": repair})
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert command[command.index("--output-schema") + 1] == str(expected)
+    assert "affirm" in kwargs["input"].decode("utf-8")
 
 
 def test_continue_implementation_repair_uses_real_prompt_path_for_bounded_capture_and_commit(

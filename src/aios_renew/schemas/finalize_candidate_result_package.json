@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "ResultPackage",
+  "title": "FinalizeCandidateResultPackage",
   "type": "object",
   "required": [
     "result",
@@ -24,7 +24,6 @@
         },
         "claims": {
           "type": "array",
-          "description": "Each claim is an affirmative assertion of a concrete implementation property actually observed or established by the Executor. List an acceptance ID in satisfies only when that assertion truthfully supports it; leave an unconfirmable criterion uncovered for Runtime's existing coverage gate.",
           "items": {
             "type": "object",
             "required": [
@@ -41,27 +40,29 @@
               },
               "satisfies": {
                 "type": "array",
-                "description": "Known TASK acceptance IDs truthfully supported by this affirmative implementation claim; uncertainty or pending verification does not satisfy an ID.",
                 "minItems": 1,
                 "items": {
                   "type": "string",
                   "minLength": 1
-                }
+                },
+                "description": "Only TASK acceptance IDs truthfully supported by this claim; dynamic acceptance coverage belongs to Runtime."
               },
               "claim": {
                 "type": "string",
-                "description": "Affirmative observed or established implementation property, not a prediction of downstream verification or an inability-to-confirm statement.",
-                "minLength": 1
+                "minLength": 1,
+                "description": "Affirmative observed or established implementation property; do not claim uncertain or pending verification outcomes."
               },
               "evidence": {
                 "type": "array",
+                "maxItems": 0,
                 "items": {
                   "type": "string",
                   "minLength": 1
                 }
               }
             }
-          }
+          },
+          "description": "Zero or more affirmative observed or established implementation claims; leave unconfirmable acceptance IDs uncovered for Runtime."
         },
         "changed_files": {
           "type": "array",
@@ -72,16 +73,17 @@
         },
         "unresolved": {
           "type": "array",
-          "description": "Only concrete remaining Executor-owned implementation work or a material supplied TASK-contract conflict preventing truthful structural completion. Pending Runtime verification or EVIDENCE, Reviewer judgment, publication, roadmap advancement, and lack of confirmation alone are not unresolved. Use [] when implementation is complete without claiming Runtime verification success.",
           "items": {
             "type": "string",
             "minLength": 1
-          }
+          },
+          "description": "Only concrete remaining Executor-owned implementation work or a material supplied TASK-contract conflict; not lack of confirmation or pending downstream authority work."
         }
       }
     },
     "evidence": {
       "type": "array",
+      "maxItems": 0,
       "items": {
         "type": "object",
         "required": [

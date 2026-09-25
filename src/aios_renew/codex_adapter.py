@@ -50,6 +50,9 @@ REMEDIATION_RESULT_PACKAGE_SCHEMA_PATH = (
 REPAIR_RESULT_PACKAGE_SCHEMA_PATH = (
     Path(__file__).parent / "schemas" / "repair_result_package.json"
 ).resolve()
+FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH = (
+    Path(__file__).parent / "schemas" / "finalize_candidate_result_package.json"
+).resolve()
 
 _NATIVE_EXECUTOR_INSTRUCTION = (
     "You are the already-selected native Executor inside an admitted AIOS execution. "
@@ -244,9 +247,15 @@ class CodexAdapter:
         run = execution.get("run")
         if not isinstance(run, Run):
             raise CodexExecutionError("REPAIR execution has no bound RUN", exit_code=None)
+        repair = execution.get("repair")
+        action = repair.get("action") if isinstance(repair, Mapping) else None
         command = self.command_for(
             run,
-            schema_path=REPAIR_RESULT_PACKAGE_SCHEMA_PATH,
+            schema_path=(
+                FINALIZE_CANDIDATE_RESULT_PACKAGE_SCHEMA_PATH
+                if action == "FINALIZE_CANDIDATE"
+                else REPAIR_RESULT_PACKAGE_SCHEMA_PATH
+            ),
             authorizes_mutation=self._execution_policy.authorizes_mutation,
             execution_profile=self._execution_profile,
         )
@@ -367,6 +376,16 @@ class CodexAdapter:
             "to that final committed Git HEAD. Return only one structural JSON object "
             "with keys 'result' and 'evidence'. Set root evidence to [] and every "
             "claim.evidence to []; Runtime will construct canonical EVIDENCE.\n"
+            "Claims must affirm concrete implementation properties actually observed or "
+            "established. Omit an acceptance ID from claim.satisfies if it cannot be "
+            "truthfully affirmed; lack of confirmation alone is not unresolved and leaves "
+            "that ID for Runtime's missing-acceptance gate. result.unresolved may contain "
+            "only concrete remaining Executor-owned implementation work or a material "
+            "supplied TASK-contract conflict. Pending Runtime verification or EVIDENCE, "
+            "Reviewer judgment, publication, roadmap advancement, and later lifecycle "
+            "work are not unresolved. When implementation is complete with no such "
+            "conflict, return result.unresolved=[] without claiming Runtime verification "
+            "success.\n"
             f"CANONICAL_INPUT:\n{canonical_input}"
         )
 
@@ -433,8 +452,18 @@ class CodexAdapter:
             "original TASK. Do not edit files, commit, push, or resume or repeat "
             "implementation; bind result.head_sha to the unchanged failed_head_sha. If the "
             "candidate is incomplete, report truthful unresolved work instead of changing "
-            "it or fabricating completion. Follow repair.instructions and limit every "
-            "mutation to repair.modification_scope. "
+            "it or fabricating completion. Claims for every REPAIR action must affirm "
+            "concrete implementation properties actually observed or established. If an "
+            "acceptance criterion cannot be truthfully affirmed, omit it from "
+            "claim.satisfies; lack of confirmation alone is not unresolved, and Runtime's "
+            "missing-acceptance gate will handle uncovered IDs. result.unresolved is only "
+            "for concrete remaining Executor-owned implementation work or a material "
+            "supplied TASK-contract conflict, never pending downstream authority work. "
+            "For FINALIZE_CANDIDATE, return affirmative complete claims and "
+            "result.unresolved=[] when supportable without claiming Runtime verification "
+            "success; otherwise return truthful partial or zero claims and bounded "
+            "unresolved only for actual incompleteness or conflict. Follow "
+            "repair.instructions and limit every mutation to repair.modification_scope. "
             "Successful CONTINUE_IMPLEMENTATION work must commit the final permitted "
             "repository state and bind result.head_sha to final committed Git HEAD. Do not "
             "create or restart a fresh PRIMARY lineage, allocate a new TASK or RUN, "
