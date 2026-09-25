@@ -575,7 +575,7 @@ sequence:
   - id: maintenance-executor-structural-completion-contract
     status: NEXT
     task_id: TASK-174
-    task_revision: 1
+    task_revision: 2
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TASK-154
