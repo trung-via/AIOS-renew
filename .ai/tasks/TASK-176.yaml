@@ -1,0 +1,245 @@
+task_id: TASK-176
+revision: 1
+
+goal: >
+  Activate the Human/Brain-selected BP-V4 four-worker canonical full-suite verification
+  profile for AIOS-renew on the supported self-host class, using the same bounded
+  collection, worker-isolation, exact-subject, and deterministic failure-observation
+  semantics proven by RUN-159-008. Add a repository-owned soft performance-regression
+  attention surface bound to the approved RUN-159-008 baseline without making timing a
+  correctness gate, creating automatic worker selection, rewriting Runtime commands,
+  adding retry/fallback, or changing lifecycle/Reviewer/Publisher authority.
+
+problem: >
+  RUN-159-008 / REVIEW-159-008 established the first green exact-subject BP-V4 matrix:
+  canonical collection 1825 with digest
+  2e40a04acedcf9869e3961718337744761ee0a29f55258d2313b0a50d5fd66bb,
+  serial 1594.934653 seconds, workers 2 at 1393.273135 seconds, workers 3 at
+  1218.304415 seconds, and workers 4 at 1097.184058 seconds. All parallel profiles
+  preserved canonical collection identity, exact subject identity, temporary-root
+  isolation, process-local Git fixture cache-root isolation, distinct worker processes,
+  and correctness. Human/Brain planning has therefore selected workers=4 and a soft
+  attention threshold of 1346.059356 seconds, representing loss of more than one half
+  of the measured p4 gain over the same-run serial baseline.
+
+  The current repository intentionally has no canonical parallel full-suite default:
+  the BP-V4 probe is a bounded measurement primitive, pytest-xdist is still documented
+  as a one-time measurement extra, ordinary Runtime executes exact TASK-authored
+  commands without rewriting, and RUN_OBSERVATION soft budgets apply to Executor time
+  rather than verification time. The selected profile must therefore be activated as
+  an explicit repository-owned verification capability and exact authorable command,
+  not as global pytest addopts, Runtime inference, CPU-count heuristics, or a reuse of
+  Executor soft-budget semantics.
+
+assumptions:
+  - >
+    Canonical main at TASK-176 authoring is
+    8e6e9b8f603f574dce48f7f147349c2d24edeeea. The canonical roadmap records
+    RUN-159-008 / REVIEW-159-008 as the measurement basis and the explicit Human/Brain
+    selection of workers=4 with soft attention threshold 1346.059356 seconds.
+  - >
+    RUN-159-008-V001 is authoritative measurement evidence for the supported
+    self-host class observed as Windows AMD64, CPython 3.14.7, pytest 8.4.2, and
+    pytest-xdist 3.8.0. Historical measurement evidence remains immutable.
+  - >
+    TASK-157 remains authoritative for the bounded BP-V4 measurement primitive and
+    collection/parallel conformance semantics. TASK-161 remains authoritative for
+    bounded deterministic identity-only failure diagnostics.
+  - >
+    TASK-150 remains authoritative for minimum-sufficient verification and
+    full-suite-reason semantics. TASK-156 remains authoritative for exact Runtime
+    verification-subject isolation.
+  - >
+    Runtime already executes the exact verification command list authored by the TASK
+    and owns canonical EVIDENCE. TASK-176 does not authorize Runtime to choose, rewrite,
+    inject, or substitute verification commands.
+  - >
+    RUN_OBSERVATION soft_budget currently classifies native Executor elapsed time by
+    operation. It is not a verification performance budget and must remain unchanged.
+  - >
+    Performance attention is operational/planning information only. Runtime correctness
+    still derives from the authored verification command exit status and conformance
+    gates; Reviewer owns semantic verdict; Human/Brain own worker/policy/rebaseline/
+    roadmap decisions; Publisher owns publication.
+  - >
+    Exact baseline comparability for the initial soft guard requires the selected
+    profile plus the baseline canonical collection identity and toolchain/platform
+    identity. A changed collection or toolchain is not automatically a regression.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-PERFORMANCE-CLOSURE.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-150.yaml
+    - .ai/tasks/TASK-156.yaml
+    - .ai/tasks/TASK-157.yaml
+    - .ai/tasks/TASK-159.yaml
+    - .ai/tasks/TASK-161.yaml
+    - scripts/bp_v4_parallel_probe.py
+    - tests/bp_v4_probe_plugin.py
+    - tests/test_bp_v4_parallel_probe.py
+    - src/aios_renew/verification_contract.py
+    - tests/test_verification_contract.py
+    - src/aios_renew/verification.py
+    - src/aios_renew/run_observation.py
+    - src/aios_renew/performance_observation.py
+    - pyproject.toml
+    - README.md
+  modify:
+    - .ai/verification-profiles.yaml
+    - src/aios_renew/verification_profile.py
+    - src/aios_renew/parallel_verification.py
+    - scripts/aios_parallel_full_suite.py
+    - scripts/bp_v4_parallel_probe.py
+    - tests/bp_v4_probe_plugin.py
+    - tests/test_verification_profile.py
+    - tests/test_parallel_verification.py
+    - tests/test_bp_v4_parallel_probe.py
+    - src/aios_renew/verification_contract.py
+    - tests/test_verification_contract.py
+    - pyproject.toml
+    - README.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+
+non_goals:
+  - Modify Runtime completion, verification execution, Operator, Unified State, Reviewer, Publisher, RUN_OBSERVATION, performance-observation aggregation, transport, lifecycle reduction, or frozen Kernel semantics.
+  - Add global pytest addopts, PYTEST_ADDOPTS policy, implicit -n injection, Runtime command rewriting, CPU-count worker selection, auto workers, adaptive scheduling, model-selected workers, or a generic verification router.
+  - Run serial plus workers 2/3/4 on every ordinary full-suite verification after adoption.
+  - Re-run or reinterpret RUN-159-008, change its evidence, or require a second BP-V4 matrix solely to activate the already-approved selection.
+  - Make elapsed time, speedup, soft attention, or baseline comparability a semantic correctness criterion, Runtime RESULT gate, Reviewer verdict, publication gate, retry trigger, fallback trigger, or roadmap transition.
+  - Automatically fall back from workers 4 to workers 3/2/serial after any failure, incompatibility, missing dependency, worker crash, collection mismatch, isolation defect, or attention condition.
+  - Automatically rebaseline after source/test/toolchain/platform changes.
+  - Select a different worker count or extend the supported worker range.
+  - Install packages during a RUN or selected full-suite invocation.
+  - Remove the historical bp-v4-measurement optional capability or break the existing measurement probe contract.
+  - Turn the repository-owned verification profile into a generic policy engine, Planner, lifecycle authority, or persistent performance database.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Establish one repository-owned AIOS_VERIFICATION_PROFILE_POLICY version 1 whose
+      ordinary canonical full-suite selected profile fixes workers=4, xdist
+      distribution=load, max_worker_restart=0, and binds selection provenance to
+      RUN-159-008 / RUN-159-008-V001 / subject
+      2ed725df2a965d4f1def4750678672bcef4f0b4f.
+    - >
+      The policy must encode baseline serial_seconds=1594.934653,
+      selected_parallel_seconds=1097.184058, and soft
+      attention_threshold_seconds=1346.059356 with rule HALF_MEASURED_GAIN_LOST.
+      The threshold is observational configuration, not a correctness threshold.
+    - >
+      Initial baseline comparability must require the exact baseline canonical
+      collection count/digest plus platform system/machine, Python implementation/
+      version, pytest version, pytest-xdist version, and the selected four-worker
+      profile. Python executable path and current Git subject SHA must not be required
+      to equal the historical baseline. Any required comparison identity mismatch
+      yields NOT_COMPARABLE rather than REGRESSION or verification failure.
+    - >
+      Provide one exact no-argument authorable command
+      "python scripts/aios_parallel_full_suite.py". Any argument-bearing or lookalike
+      invocation in that command family must fail closed under verification-contract
+      grammar rather than becoming opaque.
+    - >
+      The selected full-suite command must perform exactly one canonical collect-only
+      pass and exactly one workers=4 full-suite pass. It must not run a serial control,
+      workers 2/3, retries, fallback profiles, hidden profiles, or result-dependent
+      scheduling.
+    - >
+      The selected command must preserve the same repository-owned collection identity,
+      exact clean Git subject checks, worker collection agreement, all-workers-reported
+      requirement, isolated pytest temporary roots, isolated process-local Git fixture
+      cache roots, distinct worker processes, no worker restart, bounded identity-only
+      failure diagnostics, disabled plugin autoload, ignored ambient PYTEST_ADDOPTS, and
+      fixed xdist distribution semantics proven by the BP-V4 probe.
+    - >
+      The selected command and the historical BP-V4 probe must reuse one shared
+      repository-owned implementation of their common collection/toolchain/pytest
+      invocation/conformance primitives rather than independently drifting duplicate
+      worker-isolation semantics. Refactoring must preserve the probe's existing public
+      CLI, AIOS_BP_V4_MEASUREMENT version 1 envelope, supported workers 2/3/4, and
+      existing focused regression behavior.
+    - >
+      Emit one bounded structured selected-full-suite observation containing exact
+      subject identity, current toolchain/platform identity, canonical collection
+      identity, selected profile identity, correctness/conformance result, elapsed
+      seconds, and performance_guard status. Performance status must be exactly a small
+      closed set including WITHIN, ATTENTION, and NOT_COMPARABLE.
+    - >
+      A comparable successful workers=4 run is ATTENTION only when elapsed_seconds is
+      strictly greater than 1346.059356; otherwise it is WITHIN. ATTENTION must retain
+      process exit 0 when correctness/conformance pass. NOT_COMPARABLE must also retain
+      process exit 0 when correctness/conformance pass.
+    - >
+      Test failure, collection mismatch, missing/incompatible selected verification
+      capability, malformed observation, subject mutation, missing worker facts, shared
+      mutable roots, non-distinct worker processes, or other conformance failure remains
+      fail-closed/nonzero regardless of any performance status.
+    - >
+      Extend minimum-sufficient verification grammar so the exact selected wrapper is a
+      recognized python-module-family full-suite proof requiring full_suite_reason and
+      capable of subsuming an ordinary "python -m pytest" full-suite proof on unchanged
+      state. An ordinary pytest command must not erase the selected wrapper's additional
+      conformance/performance-observation semantics, and the BP-V4 measurement probe must
+      remain a distinct measurement primitive.
+    - >
+      Preserve pytest/pytest-xdist outside core AIOS runtime dependencies. Introduce a
+      supported parallel-verification optional capability while retaining
+      bp-v4-measurement compatibility; neither capability installs itself at runtime.
+    - >
+      Update prospective Brain authoring guidance so ordinary newly authored AIOS-renew
+      full-suite proof on the supported self-host class uses the explicit selected
+      wrapper by default. Historical TASK verification commands remain immutable, and a
+      semantically required serial or other full-suite form remains a Brain-authored
+      exception rather than a Runtime rewrite.
+    - >
+      Do not modify files outside scope.modify and do not push from Executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository contains one bounded verification-profile policy selecting exactly
+      four workers for ordinary canonical full-suite verification and binding that
+      selection plus the approved soft-attention baseline to RUN-159-008 evidence.
+  - id: AC2
+    condition: >
+      The exact selected full-suite command performs one canonical collection and one
+      four-worker full-suite execution while preserving the already-proven collection,
+      exact-subject, worker/process, temporary-root, Git-fixture-cache, no-restart, and
+      bounded-failure-observation semantics, with no serial/2/3 profile or fallback.
+  - id: AC3
+    condition: >
+      The selected wrapper emits a bounded structured observation whose correctness and
+      conformance determine process success independently from a soft performance guard;
+      comparable timing above 1346.059356 yields ATTENTION, comparable timing at or below
+      it yields WITHIN, and baseline identity mismatch yields NOT_COMPARABLE without
+      turning an otherwise correct run into failure.
+  - id: AC4
+    condition: >
+      Minimum-sufficient verification policy recognizes the exact selected wrapper as
+      full-suite coverage requiring full_suite_reason, rejects malformed selected-wrapper
+      family invocations, preserves BP-V4 measurement grammar, and prevents an ordinary
+      module full-suite proof from replacing the selected wrapper's additional semantics.
+  - id: AC5
+    condition: >
+      The optional dependency/documentation surface supports ongoing selected parallel
+      verification without making pytest-xdist a core runtime dependency or per-RUN
+      installation, preserves bp-v4-measurement compatibility, and documents prospective
+      explicit Brain authoring of the selected wrapper without rewriting historical TASKs.
+  - id: AC6
+    condition: >
+      The implementation introduces no global pytest parallel default, Runtime command
+      rewrite, automatic worker selection/rebaseline, retry/fallback/reroute, timing-based
+      semantic gate, or new lifecycle/planning/review/publication authority, and files
+      outside the authorized modification scope remain unchanged.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_verification_profile.py tests/test_parallel_verification.py tests/test_bp_v4_parallel_probe.py tests/test_verification_contract.py
+    - git diff --check
