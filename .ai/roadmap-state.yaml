@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-v4-parallel-verification-performance-guard
+  - maintenance-continue-detached-admission-regression
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -605,15 +605,31 @@ sequence:
       work, successful claims are affirmative implementation assertions, and
       FINALIZE_CANDIDATE can truthfully report an incomplete candidate without weakening
       existing Runtime completion or other REPAIR action semantics.
-  - id: bp-v4-parallel-verification-performance-guard
+  - id: maintenance-continue-detached-admission-regression
     status: NEXT
-    task_id: TASK-159
-    task_revision: 7
+    task_id: TASK-175
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-159-007
+      - TASK-102
+      - TASK-156
+      - TASK-171
+      - TASK-174
+    objective: >-
+      Reconcile the stale continue pre-observation regression with the already-published
+      detached read-only observation contract: detached exact subjects may be observed
+      without mutation, while mutation-capable PRIMARY admission still fails closed
+      before RUN creation or Executor invocation. Preserve current production semantics
+      and correct test coverage only.
+  - id: bp-v4-parallel-verification-performance-guard
+    status: PLANNED
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
       - RUN-159-005
       - RUN-159-006
+      - RUN-159-007
       - RUN-163-009
       - RUN-164-002
       - RUN-169-001
@@ -624,11 +640,10 @@ sequence:
       - RUN-174-002
     objective: >-
       After serial harness acceleration is proven and the focused Windows
-      path-budget artifact plus newly observed detached read-only observation
-      compatibility defects are corrected, establish one fresh exact-current-main
-      bounded parallel full-suite conformance and verification-cost measurement
-      without retrying historical TASK-159 r6, heuristic worker selection, or new
-      semantic authority.
+      path-budget artifact plus detached observation compatibility regressions are
+      corrected, establish one fresh exact-current-main bounded parallel full-suite
+      conformance and verification-cost measurement without retrying historical
+      RUN-159 lineage, heuristic worker selection, or new semantic authority.
   - id: bp-3-brain-context-foundation
     status: PLANNED
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
