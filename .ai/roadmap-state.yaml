@@ -634,6 +634,8 @@ sequence:
       and correct test coverage only.
   - id: bp-v4-parallel-verification-performance-guard
     status: NEXT
+    task_id: TASK-176
+    task_revision: 1
     measurement_completed_by:
       task_id: TASK-159
       task_revision: 8
