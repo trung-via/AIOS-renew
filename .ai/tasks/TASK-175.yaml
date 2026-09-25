@@ -1,0 +1,200 @@
+task_id: TASK-175
+revision: 1
+
+goal: >
+  Reconcile the stale Unified Human continue regression exposed by RUN-159-007 with
+  already-published TASK-171 detached read-only observation semantics, without changing
+  production behavior. Split detached-subject observation compatibility from
+  mutation-capable PRIMARY admission so the regression proves that a clean detached
+  exact subject may be observed read-only, yet PRIMARY synchronization/admission still
+  fails closed before RUN creation or Executor invocation. Preserve non-main behavior,
+  repository integrity, TASK-102 safe-refresh semantics, TASK-171 observation-only
+  authority, and all Runtime/Reviewer/Publisher boundaries.
+
+problem: >
+  RUN-159-007 is an immutable TASK-159 r7 VERIFICATION FAILURE on exact subject
+  e37a8471eb2881543c70cb40f79f8dd4b98c8147. Serial and workers 2/3/4 each failed
+  only tests/test_operator.py::test_continue_pre_observation_preserves_unconfigured_branch_failure[detached]
+  while canonical collection, subject identity, and xdist isolation remained conformant.
+  The failing test predates TASK-171 and parametrizes detached and non-main repositories
+  under one expectation that continue_task(... executor="codex") raises OperatorError.
+  Published TASK-171 intentionally changed only the read-only observation boundary:
+  exact clean detached verification subjects are valid for canonical-main and Unified
+  State observation, while mutation-capable transport/admission authority remains
+  unchanged and fail-closed.
+
+  Current source correctly reflects that separation. _preflight_continue_sync uses
+  only_if_behind=True and leaves detached/non-main repositories unchanged so observation
+  can proceed. For a detached repository whose Unified State selects EXECUTE_PRIMARY,
+  Human Surface then enters the existing strict PRIMARY admission preflight;
+  _synchronize_primary_branch rejects detached HEAD, the bounded admission-failure
+  path records PRIMARY_SYNCHRONIZATION_REJECTED with executor_invoked=false, and
+  continue_task returns one delegated Runtime failure result rather than propagating
+  the old raw exception. No RUN is created and run_task is not invoked. The stale
+  regression therefore conflates read-only observation semantics with mutation-capable
+  PRIMARY admission semantics.
+
+  TASK-175 must correct only this stale test contract. It must not change production
+  code merely to preserve the obsolete pre-TASK-171 exception behavior.
+
+assumptions:
+  - >
+    Canonical main at TASK-175 authoring is
+    e37a8471eb2881543c70cb40f79f8dd4b98c8147.
+  - >
+    RUN-159-007 remains immutable TASK-159 r7 VERIFICATION FAILURE and is not retried,
+    repaired, remediated, rewritten, deleted, or reinterpreted by this TASK.
+  - >
+    TASK-102 remains authoritative for continue pre-observation safe-refresh semantics:
+    only a clean attached main proven strictly behind its unique configured upstream
+    may fast-forward before TASK observation; ahead/diverged/dirty/detached/non-main
+    states are not destructively integrated merely to refresh control state.
+  - >
+    TASK-121 and TASK-171 remain authoritative for read-only Brain Sync/Unified State
+    observation. TASK-171 specifically allows exact clean detached verification
+    subjects to resolve canonical remote/main observation without attaching HEAD or
+    widening mutation-capable transport authority.
+  - >
+    TASK-156 remains authoritative for exact detached verification-subject isolation.
+  - >
+    Human Surface currently catches strict PRIMARY admission failure after successful
+    observation and returns a bounded delegated Runtime outcome. The exact admission
+    diagnostic is AIOS_ADMISSION_FAILURE v2 with phase PRIMARY_SYNCHRONIZATION and
+    reason_code PRIMARY_SYNCHRONIZATION_REJECTED; this diagnostic is pre-RUN truth,
+    not RUN FAILURE or lifecycle completion.
+  - >
+    Current production code is the intended semantic subject of this maintenance task.
+    If focused Executor inspection finds that satisfying this TASK would require a
+    production behavior change, the Executor must report the conflict truthfully rather
+    than widening scope.
+  - >
+    TASK-174 remains authoritative for affirmative pre-verification claims and bounded
+    result.unresolved semantics.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-102.yaml
+    - .ai/tasks/TASK-121.yaml
+    - .ai/tasks/TASK-156.yaml
+    - .ai/tasks/TASK-159.yaml
+    - .ai/tasks/TASK-171.yaml
+    - src/aios_renew/human_surface.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operational_receipt.py
+    - tests/test_operator.py
+  modify:
+    - tests/test_operator.py
+
+non_goals:
+  - Modify production source, schemas, docs, workflows, Runtime, Unified State, Human Surface, review transport, operational receipts, or frozen Kernel artifacts.
+  - Re-open or change TASK-171 detached read-only observation semantics.
+  - Permit detached HEAD to pass mutation-capable PRIMARY synchronization/admission.
+  - Make _synchronize_primary_branch accept detached or non-main repositories.
+  - Attach a detached subject to main, checkout/reset/merge/rebase/stash/clean/pull/push/update-ref to make it admissible, or broaden mutation-capable remote selection.
+  - Suppress, reinterpret, or convert bounded AIOS_ADMISSION_FAILURE diagnostics into RUN, RESULT, FAILURE, review, or lifecycle truth.
+  - Change Unified State next_action, authority mapping, Executor selection, execution profile behavior, retry/fallback/reroute behavior, or publication semantics.
+  - Retry or repair RUN-159-007, rerun the BP-V4 full matrix, modify TASK-159, select a worker, or advance BP-V4.
+  - Delete, skip, xfail, deselect, broadly weaken, or duplicate the failing regression.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Modify only tests/test_operator.py. Production behavior is presumed correct from
+      current canonical source and TASK-171 lineage; if a production change appears
+      necessary, stop and report a material supplied-contract conflict rather than
+      changing production files.
+    - >
+      Split the stale combined detached/non-main expectation so detached and non-main
+      repository states may assert their distinct canonical outcomes without changing
+      underlying implementation behavior.
+    - >
+      The detached regression must prove two separate authority stages: read-only
+      pre-observation/Unified State resolution is allowed for the exact detached
+      repository, then mutation-capable PRIMARY synchronization/admission fails closed
+      before run_task or any coding Executor invocation.
+    - >
+      The detached PRIMARY admission outcome must be asserted through the bounded Human
+      Surface result rather than the obsolete raw exception contract. It must identify
+      next_action EXECUTE_PRIMARY, disposition DELEGATED, authority RUNTIME,
+      delegated_operation PRIMARY, exit_code 1, no resulting RUN/head, and the exact
+      bounded admission blocker PRIMARY_SYNCHRONIZATION_REJECTED from
+      PRIMARY_SYNCHRONIZATION / AIOS_ADMISSION_FAILURE.
+    - >
+      The detached regression must keep run_task replaced with a failing sentinel so any
+      coding execution attempt fails the test. No canonical RUN file may be created.
+      A bounded pre-RUN admission-failure record is permitted and must not be treated as
+      lifecycle RUN FAILURE.
+    - >
+      The detached regression must preserve HEAD SHA, detached state, and worktree
+      cleanliness/status across the boundary under test. After test setup, the continue
+      path must not perform destructive or authority-widening Git operations such as
+      read-tree, update-ref, rebase, reset, checkout, stash, clean, pull, or push.
+    - >
+      Non-main attached-branch coverage must remain fail-closed under its current
+      canonical semantics and must not inherit TASK-171 detached-only observation
+      compatibility merely because the stale test is split.
+    - >
+      Existing equal/ahead/diverged/dirty continue pre-observation regressions and the
+      bounded Human Surface delegated-failure projection remain unchanged except for
+      directly necessary test refactoring.
+    - >
+      Do not broaden assertions into a claim that the entire continue invocation is
+      Runtime-state mutation-free. TASK-171 observation is read-only, but an explicitly
+      attempted PRIMARY delegation may persist one bounded pre-RUN admission diagnostic.
+    - >
+      Tests must distinguish admission failure from engineering RUN failure: no RUN,
+      RESULT, FAILURE, verification, review, or publication may be fabricated by the
+      corrected regression.
+    - >
+      Do not delete, skip, xfail, deselect, weaken, duplicate, or rename away the
+      detached/non-main semantic coverage. Do not modify files outside scope.modify and
+      do not push from Executor implementation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      tests/test_operator.py no longer forces detached and non-main continue
+      pre-observation states through one shared raw-exception expectation; the two states
+      have explicit regression coverage matching their distinct published semantics.
+  - id: AC2
+    condition: >
+      The detached regression asserts successful read-only continuation observation up to
+      an EXECUTE_PRIMARY decision followed by fail-closed PRIMARY synchronization/admission
+      represented as a bounded Human Surface delegated Runtime failure with
+      PRIMARY_SYNCHRONIZATION_REJECTED, without invoking run_task.
+  - id: AC3
+    condition: >
+      The detached regression asserts no resulting_run_id or resulting_head_sha, no
+      canonical RUN file, and preserves the distinction that a bounded
+      AIOS_ADMISSION_FAILURE diagnostic is permitted pre-RUN evidence rather than
+      engineering RUN FAILURE.
+  - id: AC4
+    condition: >
+      Detached and non-main regression coverage preserves repository HEAD, branch/detached
+      state, and worktree status and proves the continue path under test performs no
+      destructive or authority-widening Git operation.
+  - id: AC5
+    condition: >
+      Non-main attached-branch behavior remains fail-closed under the existing canonical
+      contract and does not gain detached-only observation or mutation authority from the
+      test reconciliation.
+  - id: AC6
+    condition: >
+      The candidate changes only tests/test_operator.py, preserves existing production
+      source and authority semantics, introduces no skip/xfail/deselection or retry/
+      fallback behavior, and retains the existing bounded Human Surface delegated-failure
+      projection contract.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_operator.py -k "continue_pre_observation or continue_human_outcomes_report_only_bounded_result_fields"
+    - git diff --check
