@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-bp-v4-minimax-carrier-regression
+  - maintenance-executor-structural-completion-contract
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -542,7 +542,21 @@ sequence:
       serial and xdist execution without changing production Terminal Attention
       semantics, canonical ref identity, transport authority, or worker policy.
   - id: maintenance-bp-v4-minimax-carrier-regression
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-173
+      task_revision: 1
+      run_id: RUN-173-002
+      operation: REPAIR
+      failed_run_id: RUN-173-001
+      repair_id: REPAIR-173-001
+      review_id: REVIEW-173-002
+      reviewed_sha: "34b662d199d7a1a0bdfd332b2fb9c738b1201158"
+      published_sha: "34b662d199d7a1a0bdfd332b2fb9c738b1201158"
+      verification_evidence:
+        - RUN-173-002-V001
+        - RUN-173-002-V002
+        - RUN-173-002-V003
     task_id: TASK-173
     task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -558,6 +572,25 @@ sequence:
       policy binding, proving the intended codex/antigravity-only remote authorization
       boundary under serial and focused xdist without changing production carrier
       semantics, direct MiniMax execution support, or worker policy.
+  - id: maintenance-executor-structural-completion-contract
+    status: NEXT
+    task_id: TASK-174
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TASK-154
+      - RUN-172-001
+      - RUN-173-001
+      - RUN-173-002
+      - TASK-079
+      - TASK-080
+    objective: >-
+      Harden the Brain-to-Executor pre-verification structural-completion contract so
+      acceptance criteria remain truthfully claimable before Runtime verification,
+      Executor unresolved semantics exclude merely pending Runtime/Reviewer/Publisher
+      work, successful claims are affirmative implementation assertions, and
+      FINALIZE_CANDIDATE can truthfully report an incomplete candidate without weakening
+      existing Runtime completion or other REPAIR action semantics.
   - id: bp-v4-parallel-verification-performance-guard
     status: PLANNED
     task_id: TASK-159
