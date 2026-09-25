@@ -1,0 +1,192 @@
+task_id: TASK-173
+revision: 1
+
+goal: >
+  Restore the TASK-139 Antigravity-MiniMax remote-carrier exclusion regression
+  against the exact current profile-aware PRIMARY v3, REMEDIATION v2, and REPAIR
+  v2 request contracts, with explicit hermetic execution-profile policy binding,
+  so the regression proves the intended remote executor-authorization boundary
+  identically under serial and xdist without changing production carrier
+  semantics, direct MiniMax execution support, Execution Profile authority,
+  lifecycle semantics, or worker policy.
+
+problem: >
+  RUN-159-006 is an immutable TASK-159 revision-6 VERIFICATION failure on
+  subject 9711dd8ee4a4478ca28bb2407987aac982794df7. Its serial profile did not
+  report the Antigravity-MiniMax carrier regression, while parallel profiles
+  2, 3, and 4 all reported
+  tests/test_antigravity_minimax_adapter.py::test_github_issue_remote_carriers_reject_antigravity_minimax.
+  Source audit shows the regression still constructs stale synthetic remote
+  requests using PRIMARY v2, REMEDIATION v1, and REPAIR v1, while current
+  production request contracts are PRIMARY v3, REMEDIATION v2, and REPAIR v2
+  with profile-aware model/effort fields. The regression also calls carrier
+  parse_request paths without explicitly binding a test-owned execution-profile
+  policy, leaving positive controls dependent on implicit policy discovery.
+  TASK-139's intended authority remains unchanged: antigravity-minimax is a
+  deterministic canonical RUN executor for direct execution, while remote
+  PRIMARY, REMEDIATION, and REPAIR carrier authorization remains narrower at
+  codex/antigravity. TASK-173 must correct only the stale/non-hermetic regression
+  contract and must not infer that request staleness alone explains the historical
+  serial/xdist asymmetry. Fresh focused verification is authoritative.
+
+assumptions:
+  - >
+    Canonical main at TASK-173 authoring is
+    1427ebb1bac76832f09a63d77692cb304f187c11, the exact reviewed and published
+    TASK-172 source candidate.
+  - >
+    TASK-172 is engineering-complete through RUN-172-002,
+    REVIEW-172-002 PRIMARY PASS, publication of
+    1427ebb1bac76832f09a63d77692cb304f187c11, and Runtime evidence
+    RUN-172-002-V001 through RUN-172-002-V003. Roadmap planning may still lag
+    this engineering truth until Human/Brain canonicalizes the planning update.
+  - >
+    RUN-159-006 remains immutable historical VERIFICATION FAILURE. TASK-173 does
+    not retry, repair, remediate, rewrite, delete, or reinterpret that RUN.
+  - >
+    TASK-139 remains authoritative for deterministic canonical RUN support of
+    antigravity-minimax and for preserving narrower remote carrier executor
+    allowlists unless separately authorized.
+  - >
+    TASK-163 remains authoritative for profile-aware PRIMARY v3, REMEDIATION v2,
+    and REPAIR v2 request semantics. TASK-165 remains authoritative for explicit
+    trusted execution-profile policy binding in hosted carrier topology.
+  - >
+    Current production remote dispatch/correction/repair executor allowlists are
+    codex and antigravity only. Direct canonical RUN support additionally includes
+    antigravity-minimax.
+  - >
+    Historical RUN-159-006 evidence proves only the observed serial/parallel
+    outcomes on its exact subject. It does not establish the complete root cause
+    of the asymmetry. If the corrected hermetic regression still differs under
+    serial and xdist, that fresh failure must be preserved for Brain audit rather
+    than widened into production changes.
+  - >
+    Runtime owns canonical verification and EVIDENCE; Reviewer owns semantic
+    verdict; Human/Brain own roadmap interpretation; Publisher owns publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-139.yaml
+    - .ai/tasks/TASK-163.yaml
+    - .ai/tasks/TASK-165.yaml
+    - .ai/executor-profiles.yaml
+    - src/aios_renew/run.py
+    - src/aios_renew/execution_profile.py
+    - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/correction_dispatch.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - tests/test_antigravity_minimax_adapter.py
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_remediation_intent.py
+    - tests/test_github_issue_repair_wakeup.py
+  modify:
+    - tests/test_antigravity_minimax_adapter.py
+
+non_goals:
+  - Modify any production source, workflow, policy, dispatch journal, or lifecycle artifact.
+  - Add antigravity-minimax to any remote PRIMARY, REMEDIATION, REPAIR, dispatch, correction, or repair executor allowlist.
+  - Bring Antigravity-MiniMax into the Codex/Antigravity Execution Profile policy or change MiniMax native model semantics.
+  - Change PRIMARY v3, REMEDIATION v2, or REPAIR v2 request schemas or hosted trusted-policy binding semantics.
+  - Change canonical RUN executor grammar, Dispatcher selection, Runtime verification, Reviewer, Publisher, or publication semantics.
+  - Explain or fix the historical serial/xdist asymmetry by modifying production code without fresh focused evidence.
+  - Monkey-patch production executor allowlists, rely on import-order side effects, or introduce global mutable registration.
+  - Depend on current working directory, installed-package location, ambient repository discovery, test order, or state left by another test as policy authority.
+  - Skip, xfail, deselect, rename, retry, or suppress the target regression.
+  - Change pytest-xdist, BP-V4 probe behavior, worker count policy, scheduler policy, or parallel defaults.
+  - Execute the full TASK-159 BP-V4 matrix.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      Mutation authority is exactly tests/test_antigravity_minimax_adapter.py.
+      No production, workflow, policy, roadmap, or other test file may be changed.
+    - >
+      Preserve TASK-139's executor boundary exactly: canonical direct RUN support
+      continues to admit codex, antigravity, and antigravity-minimax, while remote
+      PRIMARY, REMEDIATION, and REPAIR carrier executor authorization remains
+      codex/antigravity only.
+    - >
+      The corrected regression must use the exact current profile-aware request
+      versions and complete required request fields: PRIMARY v3, REMEDIATION v2,
+      and REPAIR v2. It must not obtain the expected failure merely from a stale
+      version, missing field, malformed request, model-validation error, or another
+      earlier gate.
+    - >
+      Positive-control Codex requests must reach normal current parser/profile
+      binding with one explicit bounded test-owned ExecutionProfilePolicy rather
+      than implicit policy-file discovery. Test-only profile values must not become
+      or duplicate a production default authority.
+    - >
+      For each carrier family, an otherwise-equivalent antigravity-minimax request
+      must fail specifically at the unsupported remote executor boundary. The test
+      must preserve the distinction between direct canonical MiniMax support and
+      remote carrier authorization.
+    - >
+      The regression must be hermetic with respect to cwd, installed-package
+      location, repository-relative implicit profile discovery, test ordering,
+      import ordering, and mutable state from another test or worker.
+    - >
+      Do not monkey-patch or mutate production SUPPORTED_EXECUTORS values, Execution
+      Profile authority, or carrier schemas to make the test pass.
+    - >
+      Do not weaken rejection semantics with broad exception matching where a
+      boundary-specific unsupported-executor assertion is available.
+    - >
+      Serial and focused xdist verification are both required because RUN-159-006
+      observed this node only in parallel profiles. If the corrected regression or
+      surrounding MiniMax adapter suite still differs under xdist, preserve the
+      failure for Brain audit and do not widen scope.
+    - >
+      Executor RESULT may claim only implementation properties. Runtime owns
+      canonical verification/EVIDENCE and no Executor claim may assert that serial
+      or xdist verification passed before Runtime executes it.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Current PRIMARY v3, REMEDIATION v2, and REPAIR v2 Codex positive controls
+      are structurally valid and reach normal parser/profile binding using one
+      explicit bounded test-owned execution-profile policy.
+  - id: AC2
+    condition: >
+      The otherwise-equivalent antigravity-minimax PRIMARY v3 request fails
+      specifically with unsupported-executor semantics rather than stale-version,
+      missing-field, policy-discovery, model-validation, or another earlier error.
+  - id: AC3
+    condition: >
+      The same boundary-specific antigravity-minimax rejection is proven for
+      current REMEDIATION v2 and REPAIR v2 requests.
+  - id: AC4
+    condition: >
+      The regression has no ambient execution-profile authority or ordering
+      dependency: cwd, installed-package location, implicit policy discovery,
+      test/import ordering, and another worker's state are not required for either
+      the positive controls or the MiniMax rejection checks.
+  - id: AC5
+    condition: >
+      Canonical direct RUN support for antigravity-minimax remains unchanged while
+      remote PRIMARY, REMEDIATION, and REPAIR executor allowlists remain exactly
+      codex/antigravity.
+  - id: AC6
+    condition: >
+      The correction is test-only in exactly one file and the MiniMax adapter suite
+      is green under both serial and focused xdist without skip, xfail, retry,
+      worker-policy, production, lifecycle, Reviewer, Publisher, or transport
+      semantic changes.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_antigravity_minimax_adapter.py
+    - python -m pytest -q -n 2 tests/test_antigravity_minimax_adapter.py
+    - git diff --check
