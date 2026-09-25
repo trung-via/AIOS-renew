@@ -1,91 +1,67 @@
 task_id: TASK-174
-revision: 1
+revision: 2
 
 goal: >
   Harden the provider-neutral pre-verification structural-completion contract so
   Brain-authored TASK acceptance remains truthfully claimable before Runtime
-  verification, all admitted native Executors distinguish actual Executor-owned
-  incompleteness from merely pending Runtime/Reviewer/Publisher work, successful
-  structural claims are affirmative implementation assertions rather than
-  non-confirmation statements, and FINALIZE_CANDIDATE can truthfully report an
-  incomplete exact candidate without weakening existing Runtime completion or the
-  established structural semantics of other REPAIR actions.
+  verification, admitted native Executors distinguish actual Executor-owned
+  incompleteness from merely pending downstream authority work, successful claims
+  are affirmative implementation assertions, inability to confirm an acceptance
+  criterion remains uncovered rather than being misrepresented as satisfaction or
+  generic unresolved work, and FINALIZE_CANDIDATE has the same truthful zero-mutation
+  completion semantics across Codex, Antigravity, and Antigravity-MiniMax.
 
 problem: >
-  Two independent current-lineage Codex PRIMARY executions exposed the same
-  completion-contract defect. RUN-172-001 and RUN-173-001 both reached clean,
-  transportable, in-scope candidates but stopped at COMPLETION_GATE because Codex
-  placed pending Runtime verification into result.unresolved. In both TASKs the
-  Brain contract simultaneously prohibited the Executor from claiming Runtime
-  verification before it ran while at least one acceptance criterion described a
-  post-verification outcome such as a suite being green. Runtime correctly requires
-  result.unresolved to be empty and complete TASK acceptance coverage before it
-  begins canonical verification, so the authored acceptance boundary and Executor
-  handoff were semantically misaligned. TASK-154 r3 previously corrected the same
-  class of acceptance-boundary mistake locally, but the Brain TASK Authoring
-  Contract never made pre-verification claimability a prospective global authoring
-  rule. The native PRIMARY instructions also do not define the semantic domain of
-  result.unresolved, leaving an Executor free to treat pending Runtime work as
-  implementation incompleteness. A further inconsistency exists for
-  FINALIZE_CANDIDATE: its native instruction says an incomplete candidate must
-  report truthful unresolved work, while the TASK-080 repair_result_package schema
-  globally constrains REPAIR result.unresolved to an empty array and requires at
-  least one claim. RUN-173-002 then exposed a related claim-quality gap: its
-  FINALIZE_CANDIDATE structural ResultPackage used claims such as "could not be
-  confirmed" while mapping those claims to acceptance IDs; Runtime structural
-  coverage is intentionally identifier-based and later verification passed, so the
-  task was reviewable and was correctly reviewed PASS, but successful structural
-  completion should not represent uncertainty or non-confirmation as an affirmative
-  implementation claim. TASK-174 must align Brain authoring, native instructions,
-  and action-specific structured-output mechanics without moving semantic judgment
-  into Runtime, weakening fail-closed completion, or reopening TASK-079/TASK-080
-  schemas for unrelated correction actions.
+  TASK-174 r1 correctly identified the repeated completion-contract defect exposed by
+  RUN-172-001 and RUN-173-001, but pre-execution audit found four bounded ambiguities
+  that must be closed before any RUN-174 is admitted. First, r1 prohibited uncertainty
+  or non-confirmation from satisfying acceptance IDs but did not define the fail-closed
+  behavior when an Executor simply lacks a truthful basis to affirm an acceptance
+  criterion. Second, Antigravity-MiniMax currently describes only three REPAIR actions
+  in its native instruction and omits FINALIZE_CANDIDATE semantics even though its
+  adapter executes REPAIR. Third, the new FINALIZE_CANDIDATE schema contract should
+  explicitly preserve the repository's strict additionalProperties=false structural
+  envelope. Fourth, exact action-specific schema routing must preserve existing generic
+  REPAIR command behavior and must not accidentally select the finalization schema for
+  missing, unknown, or non-finalization actions. r2 preserves the r1 architecture and
+  scope while removing those ambiguities before execution.
 
 assumptions:
   - >
-    Canonical main at TASK-174 authoring is
-    24886d99ddc29984348f296192675be164c7bd9c, whose parent engineering source
-    includes reviewed/published TASK-173 candidate
-    34b662d199d7a1a0bdfd332b2fb9c738b1201158 and whose only later change is the
-    Human/Brain roadmap advancement selecting TASK-174.
+    Canonical main at TASK-174 r2 authoring is
+    c2949f9e99d83c94faa0b426d1ff2c94ea5a5b50 and contains TASK-174 r1 as
+    canonical planning intent only; no RUN-174 RESULT, FAILURE, REVIEW, REMEDIATION,
+    or REPAIR lineage exists.
   - >
-    TASK-173 is engineering-complete through RUN-173-002, REVIEW-173-002 PRIMARY
-    PASS, publication of 34b662d199d7a1a0bdfd332b2fb9c738b1201158, and Runtime
-    evidence RUN-173-002-V001 through RUN-173-002-V003.
+    TASK-173 remains engineering-complete through RUN-173-002, REVIEW-173-002 PASS,
+    publication of 34b662d199d7a1a0bdfd332b2fb9c738b1201158, and Runtime evidence
+    RUN-173-002-V001 through RUN-173-002-V003.
   - >
     RUN-172-001 and RUN-173-001 remain immutable COMPLETION_GATE failures whose
-    exact Executor diagnostics identified pending Runtime verification as
-    result.unresolved; neither failure is rewritten or reclassified by this TASK.
+    Executor diagnostics placed pending Runtime verification in result.unresolved.
   - >
-    TASK-154 r3 is the canonical precedent that rewrote verification-dependent
-    acceptance into pre-verification implementation properties while keeping
-    Runtime verification and Reviewer judgment in their existing authorities.
+    RUN-173-002 remains a valid reviewed/published result; its non-affirmative claim
+    wording is prospective hardening evidence only and is not reinterpreted.
   - >
-    TASK-079 remains authoritative for the remediation-specific native structural
-    schema, including empty result.claims, result.unresolved, and root evidence.
+    TASK-154 r3 is the canonical precedent for rewriting post-verification acceptance
+    into pre-verification implementation properties while keeping Runtime verification
+    and Reviewer judgment in their existing authorities.
   - >
-    TASK-080 remains authoritative for the general REPAIR structural schema:
+    TASK-079 remains authoritative for remediation-specific structural output and
+    TASK-080 remains authoritative for ordinary REPAIR structural output:
     non-empty claims, empty result.unresolved, empty root evidence, and empty
-    claim.evidence. TASK-174 must not relax that schema for CODE_FIX,
-    CONTINUE_IMPLEMENTATION, or other existing ordinary REPAIR paths.
+    claim.evidence for existing non-FINALIZE_CANDIDATE REPAIR paths.
   - >
-    FINALIZE_CANDIDATE was added after TASK-080 as a distinct read-only,
-    Executor-backed REPAIR action. Its current instruction already requires truthful
-    unresolved reporting when the exact candidate is incomplete, but all REPAIR
-    actions still select repair_result_package.json.
+    Runtime's existing _require_complete_result behavior remains authoritative:
+    non-empty unresolved fails before verification and missing acceptance coverage
+    separately fails before verification. Runtime is not a natural-language claim
+    semantic classifier.
   - >
-    Runtime's current completion behavior is authoritative: structural unresolved
-    items fail before verification; complete acceptance coverage is required before
-    verification; Runtime then owns canonical verification and EVIDENCE. Runtime is
-    not a semantic natural-language judge of whether a claim is affirmative.
+    Generic PRIMARY structural output must remain capable of representing truthful
+    Executor-owned incompleteness or a material supplied-contract conflict.
   - >
-    RUN-173-002's Runtime verification and Reviewer PASS establish TASK-173
-    correctness. Its non-affirmative structural claim wording is evidence for
-    prospective contract hardening only and must not be used to reinterpret that
-    completed review.
-  - >
-    The existing schemas/*.json package-data rule includes a new schema file under
-    src/aios_renew/schemas/ without a pyproject.toml mutation.
+    The existing schemas/*.json package-data rule packages a new schema under
+    src/aios_renew/schemas/ without pyproject.toml mutation.
 
 scope:
   inspect:
@@ -101,6 +77,7 @@ scope:
     - .ai/tasks/TASK-154.yaml
     - .ai/tasks/TASK-172.yaml
     - .ai/tasks/TASK-173.yaml
+    - .ai/tasks/TASK-174.yaml
     - src/aios_renew/artifacts.py
     - src/aios_renew/runtime.py
     - src/aios_renew/operator.py
@@ -127,163 +104,189 @@ scope:
     - tests/test_antigravity_minimax_adapter.py
 
 non_goals:
-  - Modify Runtime completion gates, acceptance-ID coverage semantics, verification execution, EVIDENCE construction, failure taxonomy, Reviewer, Publisher, Unified State, Operator admission, or correction eligibility.
-  - Add natural-language claim scoring, negation detection, semantic claim validation, model-based validation, or a second Reviewer inside Runtime or adapters.
-  - Automatically strip, rewrite, normalize, or ignore Executor result.unresolved items after native output is produced.
-  - Automatically synthesize affirmative claims, acceptance coverage, evidence, or successful completion from repository state.
-  - Constrain generic PRIMARY result.unresolved to an always-empty array; PRIMARY must retain a truthful representation for real Executor-owned incompleteness or material supplied-contract conflict.
-  - Modify or relax src/aios_renew/schemas/remediation_result_package.json.
-  - Modify or relax src/aios_renew/schemas/repair_result_package.json for CODE_FIX, CONTINUE_IMPLEMENTATION, NO_CHANGE, or any existing non-FINALIZE_CANDIDATE REPAIR path.
-  - Change REPAIR action admission, mutation authority, exact failed-lineage binding, changed-files authority, verification policy, or FINALIZE_CANDIDATE zero-mutation requirements.
-  - Change model defaults, Executor selection, execution-profile semantics, timeouts, retries, fallback, rerouting, second native invocation, output-repair model calls, or worker policy.
-  - Convert Brain TASK authoring into a deterministic keyword classifier for acceptance semantics; pre-verification claimability remains Brain semantic responsibility.
+  - Modify Runtime completion gates, acceptance-ID coverage, verification execution,
+    EVIDENCE construction, failure taxonomy, Reviewer, Publisher, Unified State,
+    Operator admission, correction eligibility, or lifecycle reduction.
+  - Add natural-language claim scoring, negation detection, semantic claim validation,
+    a model-based validator, or a second Reviewer to Runtime or adapters.
+  - Automatically strip, rewrite, normalize, ignore, or synthesize Executor claims or
+    result.unresolved after native output.
+  - Treat lack of confirmation as generic result.unresolved.
+  - Constrain generic PRIMARY result.unresolved to always empty.
+  - Modify or relax remediation_result_package.json.
+  - Modify or relax repair_result_package.json for CODE_FIX,
+    CONTINUE_IMPLEMENTATION, NO_CHANGE, or any non-FINALIZE_CANDIDATE REPAIR path.
+  - Change REPAIR admission, mutation authority, failed-lineage binding,
+    changed-files authority, verification policy, or correction selection.
+  - Change model defaults, execution profiles, timeouts, retries, fallback, rerouting,
+    second native invocation, output-repair model calls, or worker policy.
+  - Add deterministic keyword classification to TASK authoring or claim semantics.
   - Modify frozen Kernel v0.1 artifacts.
-  - Repair, rerun, rewrite, or reinterpret RUN-172-001, RUN-173-001, or RUN-173-002.
-  - Resume or revise TASK-159 as part of this TASK.
+  - Repair, rerun, rewrite, or reinterpret historical RUN-172/RUN-173 lineage.
+  - Resume or revise TASK-159.
   - Push or publish from Executor implementation execution.
 
 constraints:
   hard:
     - >
-      The Brain TASK Authoring Contract must prospectively require each acceptance
-      criterion of a newly authored TASK to be truthfully claimable as a
+      The Brain TASK Authoring Contract must prospectively require every newly
+      authored TASK acceptance criterion to be truthfully claimable as a
       pre-verification implementation property. Runtime verification outcome or
-      timing, canonical EVIDENCE existence, Reviewer judgment, publication, roadmap
-      advancement, and later lifecycle facts must be expressed through their
-      existing verification/review/planning authorities rather than as facts the
-      Executor must assert before verification begins.
+      timing, canonical EVIDENCE, Reviewer judgment, publication, roadmap
+      advancement, and later lifecycle facts stay in their existing authorities.
     - >
-      The authoring rule is semantic guidance owned by Human/Brain. Do not add a
-      parser heuristic, keyword blacklist, LLM call, or deterministic semantic
-      classifier that attempts to decide whether arbitrary acceptance prose is
-      pre-verification claimable.
+      Durable TASK authoring prose must be Executor-neutral for any admitted Executor
+      rather than enumerating only Codex or Antigravity; provider/model-specific
+      behavior must not redefine TASK semantics.
+    - >
+      The authoring rule remains Human/Brain semantic responsibility. Do not add a
+      parser heuristic, keyword blacklist, LLM call, or deterministic classifier that
+      attempts to decide whether arbitrary acceptance prose is pre-verification
+      claimable.
     - >
       Codex, Antigravity, and Antigravity-MiniMax PRIMARY native instructions must
       define result.unresolved equivalently. It may contain only concrete remaining
       Executor-owned implementation work or a material conflict in the supplied TASK
       contract that prevents truthful structural completion. Merely pending Runtime
-      verification/EVIDENCE, semantic review, publication, roadmap advancement, or
-      later lifecycle work is not result.unresolved.
+      verification/EVIDENCE, Reviewer judgment, publication, roadmap advancement, or
+      later lifecycle work is not unresolved.
     - >
       When all authorized implementation work is complete and no material supplied
-      TASK-contract conflict remains, each PRIMARY instruction must require
-      result.unresolved=[] even though Runtime verification has not yet run. The
-      Executor must not claim or fabricate Runtime verification success in order to
-      return an empty unresolved list.
+      TASK-contract conflict remains, PRIMARY must return result.unresolved=[] even
+      though Runtime verification has not yet run, without asserting or fabricating
+      Runtime verification success.
     - >
       Structural claims emitted by PRIMARY or Executor-backed REPAIR must be truthful
-      affirmative assertions of concrete implementation properties the Executor
-      actually observed or established. A sentence whose substance is uncertainty,
-      inability to inspect, inability to confirm, pending future verification, or
-      lack of knowledge must not be represented as satisfying an acceptance ID.
-      When an Executor cannot truthfully support an acceptance criterion, it must
-      not manufacture affirmative coverage merely to pass the Completion Gate.
+      affirmative assertions of concrete implementation properties actually observed
+      or established. Uncertainty, inability to inspect, inability to confirm, pending
+      future verification, or lack of knowledge must not be represented as satisfying
+      an acceptance ID.
     - >
-      Generic result_package.json must continue to permit non-empty result.unresolved
-      and empty claims where structurally valid, but its schema descriptions for
-      result.unresolved and claim text must state the same bounded semantic contract:
-      unresolved is Executor-owned implementation incompleteness or material supplied
-      contract conflict, and a claim is an affirmative implementation assertion
-      rather than an uncertainty statement. Schema description text is guidance for
-      native structured generation and must not be treated as Runtime semantic proof.
+      If an Executor cannot truthfully affirm an acceptance criterion, it must omit
+      that criterion from claim.satisfies. Lack of confirmation alone is not
+      result.unresolved. result.unresolved may be used only for actual remaining
+      Executor-owned implementation work or a material supplied-contract conflict.
+      An uncovered acceptance criterion must remain uncovered so Runtime's existing
+      missing-acceptance gate fails closed without semantic output rewriting.
     - >
-      Add one packaged finalize_candidate_result_package.json structural schema for
-      the exact FINALIZE_CANDIDATE REPAIR action. It must retain the ResultPackage
-      field shape, require non-empty head_sha, require changed_files and unresolved
-      arrays, allow claims to be empty, allow truthful non-empty unresolved items,
-      require every present claim to have non-empty id/claim/satisfies fields with
-      non-empty satisfies entries, constrain every claim.evidence to an empty array,
-      and constrain root evidence to an empty array.
+      Generic result_package.json must continue to permit truthful non-empty
+      result.unresolved and empty claims where structurally valid. Its schema
+      description text for claim and unresolved must document the bounded affirmative
+      claim and unresolved semantics without becoming Runtime semantic proof.
     - >
-      The FINALIZE_CANDIDATE schema is structural only. It must not enumerate TASK
-      acceptance IDs, synthesize allOf/contains coverage, infer implementation
-      completeness, or duplicate Runtime's complete acceptance-coverage authority.
-      If FINALIZE_CANDIDATE returns unresolved items, Runtime must continue to reject
-      completion before verification. If unresolved is empty but acceptance coverage
-      is incomplete, Runtime must continue to reject completion through its existing
-      gate.
+      Add one packaged finalize_candidate_result_package.json for exact
+      FINALIZE_CANDIDATE. The top-level object, result object, and every claim object
+      must each set additionalProperties=false. The schema must require non-empty
+      head_sha; required claims, changed_files, and unresolved arrays; allow claims=[];
+      allow truthful non-empty unresolved; require every present claim to have
+      non-empty id, claim, and satisfies with non-empty satisfies entries; constrain
+      every claim.evidence to an empty array; and constrain root evidence to an empty
+      array.
+    - >
+      The FINALIZE_CANDIDATE schema is structural only. It must not enumerate dynamic
+      TASK acceptance IDs, synthesize allOf/contains coverage, infer completion, or
+      duplicate Runtime's complete acceptance-coverage authority.
     - >
       Codex, Antigravity, and Antigravity-MiniMax must select
-      finalize_candidate_result_package.json only when the exact bound REPAIR action
-      is FINALIZE_CANDIDATE. PRIMARY must continue using result_package.json;
-      REMEDIATION must continue using remediation_result_package.json; CODE_FIX,
-      CONTINUE_IMPLEMENTATION, and existing non-finalization REPAIR execution must
-      continue using the unchanged repair_result_package.json.
+      finalize_candidate_result_package.json only when the exact bound
+      repair.action is FINALIZE_CANDIDATE. PRIMARY remains on result_package.json;
+      REMEDIATION remains on remediation_result_package.json; CODE_FIX,
+      CONTINUE_IMPLEMENTATION, and any Executor-invoked NO_CHANGE remain on the
+      unchanged repair_result_package.json.
+    - >
+      Missing, unknown, generic, or non-FINALIZE REPAIR action context must never
+      accidentally select the finalization schema. Existing generic command
+      construction for operation=REPAIR without exact FINALIZE_CANDIDATE context must
+      preserve the ordinary repair_result_package.json behavior.
     - >
       Action-specific schema selection remains provider-native adapter mechanics.
-      Do not move schema-path policy into Dispatcher, Operator, Runtime, or another
-      generic lifecycle layer and do not introduce a second semantic authority.
+      Do not move it into Dispatcher, Operator, Runtime, or a generic lifecycle router.
     - >
-      FINALIZE_CANDIDATE native instructions for all supported native adapter paths
-      must align with the new schema: an implementation-complete candidate returns
-      affirmative complete original-TASK claims and unresolved=[]; an actually
-      incomplete candidate may return zero or partial affirmative claims plus
-      truthful unresolved work without mutation or fabricated completion.
+      Codex, Antigravity, and Antigravity-MiniMax REPAIR instructions must all
+      describe the same four distinct actions. Antigravity-MiniMax must gain exact
+      FINALIZE_CANDIDATE semantics: zero mutation, bounded inspection of the supplied
+      exact clean failed candidate, unchanged failed_head_sha binding, no repeated
+      implementation, affirmative complete claims when supportable, and truthful
+      partial/zero claims plus unresolved only for actual implementation
+      incompleteness or material contract conflict.
+    - >
+      For FINALIZE_CANDIDATE, inability to confirm an AC without evidence of actual
+      implementation incompleteness or contract conflict must leave that AC uncovered
+      rather than create a non-affirmative satisfying claim or generic unresolved item.
     - >
       Existing zero-mutation, unchanged failed-head, read-only inspection,
       exactly-one Executor invocation, no-push, no-retry, no-fallback, no-reroute,
-      no-recursive-continuation, and Runtime-owned verification/EVIDENCE semantics
-      for FINALIZE_CANDIDATE remain unchanged.
+      no-recursive-continuation, State Guard where applicable, and Runtime-owned
+      verification/EVIDENCE semantics remain unchanged.
     - >
-      Tests must exercise real adapter instruction/schema-selection paths for Codex,
-      Antigravity, and Antigravity-MiniMax; prove ordinary REPAIR still uses the
-      TASK-080 schema; prove FINALIZE_CANDIDATE can structurally represent truthful
-      incompleteness; and fail if successful claim guidance again permits
-      non-confirmation statements to masquerade as affirmative acceptance claims.
+      Tests must exercise real native instruction and schema-selection paths for all
+      three adapters; prove ordinary REPAIR remains on the TASK-080 schema; prove
+      exact FINALIZE_CANDIDATE selects the dedicated schema; prove generic/missing
+      FINALIZE context cannot select it; prove strict schema rejection of unexpected
+      properties; and prove complete and truthful incomplete finalization payloads
+      are structurally representable without semantic coverage duplication.
     - >
-      Do not modify files outside scope.modify and do not push from Executor implementation.
+      Do not modify files outside scope.modify and do not push from Executor execution.
 
 acceptance:
   - id: AC1
     condition: >
       The Brain TASK Authoring Contract prospectively requires every newly authored
       TASK acceptance criterion to be truthfully claimable as a pre-verification
-      implementation property and explicitly keeps Runtime verification/timing,
-      canonical EVIDENCE, Reviewer judgment, publication, roadmap advancement, and
-      later lifecycle facts in their existing authorities rather than Executor
-      pre-verification claims.
+      implementation property, keeps post-verification/review/publication/planning
+      facts in their existing authorities, and states the durable contract in terms
+      of any admitted Executor rather than a fixed provider list.
   - id: AC2
     condition: >
       Codex, Antigravity, and Antigravity-MiniMax PRIMARY instruction paths define
       result.unresolved consistently as concrete Executor-owned implementation
       incompleteness or a material supplied-contract conflict, explicitly exclude
-      merely pending Runtime/Reviewer/Publisher/lifecycle work, and require
-      unresolved=[] for an implementation-complete candidate without claiming
-      Runtime verification success.
+      merely pending downstream authority work, and require unresolved=[] for an
+      implementation-complete candidate without claiming Runtime verification success.
   - id: AC3
     condition: >
-      Native PRIMARY and Executor-backed REPAIR instructions across the three
-      adapters require successful acceptance claims to be affirmative observed or
-      established implementation assertions and prohibit uncertainty,
-      non-confirmation, or pending-future-work statements from being presented as
-      satisfying acceptance IDs.
+      PRIMARY and Executor-backed REPAIR instructions across all three adapters require
+      affirmative observed or established implementation claims; an unconfirmable
+      acceptance criterion is omitted from claim.satisfies, is not converted to generic
+      unresolved solely because it is unconfirmed, and remains available for the
+      existing Runtime missing-acceptance fail-closed gate.
   - id: AC4
     condition: >
       The generic PRIMARY ResultPackage schema retains truthful non-empty unresolved
-      capability and existing structural compatibility while documenting the bounded
-      unresolved and affirmative-claim semantics; no Runtime semantic claim parser or
-      automatic output rewriting is introduced.
+      capability and existing structural compatibility while documenting bounded
+      unresolved and affirmative-claim semantics; no Runtime semantic claim parser,
+      natural-language classifier, or automatic output rewriting is introduced.
   - id: AC5
     condition: >
-      The packaged finalize_candidate_result_package.json can represent both a
-      complete finalization package and a truthful incomplete finalization package
-      with zero or partial affirmative claims and non-empty unresolved, while root
-      evidence and every claim.evidence remain structurally empty and dynamic TASK
-      acceptance coverage remains outside the schema.
+      The packaged finalize_candidate_result_package.json is a strict
+      additionalProperties=false ResultPackage-shaped schema that represents both
+      complete finalization and truthful incomplete finalization with zero or partial
+      affirmative claims and non-empty unresolved, while root evidence and all
+      claim.evidence remain structurally empty and dynamic TASK acceptance coverage
+      remains outside the schema.
   - id: AC6
     condition: >
       Codex, Antigravity, and Antigravity-MiniMax select the finalization-specific
-      schema only for exact FINALIZE_CANDIDATE REPAIR execution; PRIMARY,
-      REMEDIATION, CODE_FIX, CONTINUE_IMPLEMENTATION, and existing non-finalization
-      REPAIR schema bindings remain unchanged, including TASK-079 and TASK-080
-      constraints.
+      schema only for exact FINALIZE_CANDIDATE execution; PRIMARY, REMEDIATION,
+      CODE_FIX, CONTINUE_IMPLEMENTATION, Executor-invoked NO_CHANGE, and generic REPAIR
+      construction retain their current schema bindings, including TASK-079/TASK-080
+      constraints and backward-compatible non-finalization behavior.
   - id: AC7
     condition: >
-      The existing Runtime regression for an incomplete FINALIZE_CANDIDATE still
-      terminalizes before canonical verification when truthful unresolved work is
-      returned, while adapter regressions preserve exact zero-mutation,
-      exactly-one-invocation, no-retry/no-fallback/no-reroute, and Runtime-owned
-      verification/EVIDENCE boundaries.
+      Antigravity-MiniMax REPAIR instruction reaches parity with Codex and
+      Antigravity by describing all four REPAIR actions and exact
+      FINALIZE_CANDIDATE zero-mutation, unchanged-head, bounded-inspection, truthful
+      completion/incompletion semantics without changing MiniMax transport, model,
+      State Guard, invocation count, or fallback behavior.
+  - id: AC8
+    condition: >
+      The implementation leaves Runtime's existing fail-closed completion behavior
+      unchanged and supplies FINALIZE_CANDIDATE structural packages compatible with
+      that path: truthful unresolved remains representable for Runtime rejection
+      before verification, uncovered acceptance remains representable for the existing
+      missing-coverage gate, and zero-mutation, exactly-one-invocation,
+      no-retry/no-fallback/no-reroute, and Runtime-owned verification/EVIDENCE
+      boundaries remain unchanged.
 
 verification:
   policy: minimum-sufficient-v1
