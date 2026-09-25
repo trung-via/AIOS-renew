@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-bp-v4-terminal-attention-path-budget
+  - maintenance-bp-v4-minimax-carrier-regression
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -517,7 +517,18 @@ sequence:
       mutation-capable transport remote selection, changing lifecycle semantics,
       or weakening fail-closed canonical identity.
   - id: maintenance-bp-v4-terminal-attention-path-budget
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-172
+      task_revision: 1
+      run_id: RUN-172-002
+      review_id: REVIEW-172-002
+      reviewed_sha: "1427ebb1bac76832f09a63d77692cb304f187c11"
+      published_sha: "1427ebb1bac76832f09a63d77692cb304f187c11"
+      verification_evidence:
+        - RUN-172-002-V001
+        - RUN-172-002-V002
+        - RUN-172-002-V003
     task_id: TASK-172
     task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -530,6 +541,23 @@ sequence:
       real-Git fixture so exact canonical signal refs remain testable under focused
       serial and xdist execution without changing production Terminal Attention
       semantics, canonical ref identity, transport authority, or worker policy.
+  - id: maintenance-bp-v4-minimax-carrier-regression
+    status: NEXT
+    task_id: TASK-173
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-159-006
+      - TASK-139
+      - TASK-163
+      - TASK-165
+      - RUN-172-002
+    objective: >-
+      Restore the Antigravity-MiniMax remote-carrier exclusion regression against
+      the exact current profile-aware request contracts with hermetic execution-profile
+      policy binding, proving the intended codex/antigravity-only remote authorization
+      boundary under serial and focused xdist without changing production carrier
+      semantics, direct MiniMax execution support, or worker policy.
   - id: bp-v4-parallel-verification-performance-guard
     status: PLANNED
     task_id: TASK-159
