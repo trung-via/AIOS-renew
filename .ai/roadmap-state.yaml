@@ -607,6 +607,8 @@ sequence:
       existing Runtime completion or other REPAIR action semantics.
   - id: bp-v4-parallel-verification-performance-guard
     status: NEXT
+    task_id: TASK-159
+    task_revision: 7
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
