@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-executor-structural-completion-contract
+  - bp-v4-parallel-verification-performance-guard
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -573,7 +573,21 @@ sequence:
       boundary under serial and focused xdist without changing production carrier
       semantics, direct MiniMax execution support, or worker policy.
   - id: maintenance-executor-structural-completion-contract
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-174
+      task_revision: 2
+      run_id: RUN-174-002
+      operation: REPAIR
+      failed_run_id: RUN-174-001
+      repair_id: REPAIR-174-001
+      review_id: REVIEW-174-002
+      reviewed_sha: "f9310c7234163756216968405391d8d5dbc5d380"
+      published_sha: "f9310c7234163756216968405391d8d5dbc5d380"
+      verification_evidence:
+        - RUN-174-002-V001
+        - RUN-174-002-V002
+        - RUN-174-002-V003
     task_id: TASK-174
     task_revision: 2
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -592,9 +606,7 @@ sequence:
       FINALIZE_CANDIDATE can truthfully report an incomplete candidate without weakening
       existing Runtime completion or other REPAIR action semantics.
   - id: bp-v4-parallel-verification-performance-guard
-    status: PLANNED
-    task_id: TASK-159
-    task_revision: 6
+    status: NEXT
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
@@ -604,12 +616,17 @@ sequence:
       - RUN-164-002
       - RUN-169-001
       - RUN-170-001
+      - RUN-171-001
+      - RUN-172-002
+      - RUN-173-002
+      - RUN-174-002
     objective: >-
       After serial harness acceleration is proven and the focused Windows
       path-budget artifact plus newly observed detached read-only observation
-      compatibility defects are corrected, establish measured bounded parallel
-      full-suite conformance and verification-cost regression visibility without
-      heuristic worker selection or new semantic authority.
+      compatibility defects are corrected, establish one fresh exact-current-main
+      bounded parallel full-suite conformance and verification-cost measurement
+      without retrying historical TASK-159 r6, heuristic worker selection, or new
+      semantic authority.
   - id: bp-3-brain-context-foundation
     status: PLANNED
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
