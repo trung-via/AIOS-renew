@@ -634,14 +634,49 @@ sequence:
       and correct test coverage only.
   - id: bp-v4-parallel-verification-performance-guard
     status: NEXT
-    task_id: TASK-159
-    task_revision: 8
+    measurement_completed_by:
+      task_id: TASK-159
+      task_revision: 8
+      run_id: RUN-159-008
+      review_id: REVIEW-159-008
+      reviewed_sha: "2ed725df2a965d4f1def4750678672bcef4f0b4f"
+      published_sha: "2ed725df2a965d4f1def4750678672bcef4f0b4f"
+      verification_evidence:
+        - RUN-159-008-V001
+      canonical_collection_count: 1825
+      canonical_collection_digest: "2e40a04acedcf9869e3961718337744761ee0a29f55258d2313b0a50d5fd66bb"
+      serial_seconds: 1594.934653
+      parallel_2_seconds: 1393.273135
+      parallel_3_seconds: 1218.304415
+      parallel_4_seconds: 1097.184058
+    selection_decision:
+      authority: HUMAN_BRAIN_PLANNING
+      approved_on: "2026-09-25"
+      selected_workers: 4
+      selected_profile: bounded-parallel-full-suite-v1
+      selection_basis:
+        run_id: RUN-159-008
+        evidence_id: RUN-159-008-V001
+        subject_sha: "2ed725df2a965d4f1def4750678672bcef4f0b4f"
+      performance_guard:
+        mode: SOFT_ATTENTION
+        selected_baseline_seconds: 1097.184058
+        serial_baseline_seconds: 1594.934653
+        attention_threshold_seconds: 1346.059356
+        rule: HALF_MEASURED_GAIN_LOST
+      note: >-
+        Worker 4 is selected from the first green same-subject serial/2/3/4 matrix.
+        The selection is explicit Human/Brain planning state, not Runtime inference.
+        Performance attention is observational only and cannot change correctness,
+        review, retry, fallback, publication, or roadmap authority.
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
       - TA-1
       - RUN-159-005
       - RUN-159-006
       - RUN-159-007
+      - RUN-159-008
+      - REVIEW-159-008
       - RUN-163-009
       - RUN-164-002
       - RUN-169-001
@@ -652,11 +687,11 @@ sequence:
       - RUN-174-002
       - RUN-175-001
     objective: >-
-      After serial harness acceleration is proven and the focused Windows
-      path-budget artifact plus detached observation compatibility regressions are
-      corrected, establish one fresh exact-current-main bounded parallel full-suite
-      conformance and verification-cost measurement without retrying historical
-      RUN-159 lineage, heuristic worker selection, or new semantic authority.
+      Activate the explicitly selected four-worker canonical full-suite profile on the
+      supported self-host class, preserve the measured collection/isolation/evidence
+      semantics, and surface bounded soft performance-regression attention without
+      global pytest parallelization, automatic worker selection, retry/fallback, or
+      new lifecycle/semantic authority.
   - id: bp-3-brain-context-foundation
     status: PLANNED
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
