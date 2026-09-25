@@ -707,7 +707,7 @@ sequence:
   - id: bp-3-brain-context-foundation
     status: NEXT
     task_id: TASK-177
-    task_revision: 1
+    task_revision: 2
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Add transient Work Context composition, thin Flow Resolver, and repository-owned
