@@ -1521,6 +1521,7 @@ def test_remote_carrier_allowlists_remain_codex_and_antigravity_only() -> None:
 
 def test_github_issue_remote_carriers_reject_antigravity_minimax() -> None:
     import yaml
+    from aios_renew.execution_profile import parse_execution_profile_policy
     from aios_renew.github_issue_wakeup import (
         GitHubIssueWakeupError,
         parse_request as parse_primary_request,
@@ -1534,57 +1535,97 @@ def test_github_issue_remote_carriers_reject_antigravity_minimax() -> None:
         parse_request as parse_repair_request,
     )
 
-    primary_body = yaml.safe_dump(
+    # Keep profile authority inside this test; no repository or package discovery.
+    profile_policy = parse_execution_profile_policy(
         {
-            "format": "AIOS_PRIMARY_WAKEUP_REQUEST",
-            "version": 2,
-            "dispatch_id": "brain-wakeup-139",
-            "task_id": "TASK-139",
-            "task_revision": 1,
-            "task_blob_sha": "a" * 40,
-            "task_commit_sha": "b" * 40,
-            "executor": "antigravity-minimax",
-        }
-    )
-    primary_request = yaml.safe_load(primary_body)
-    primary_request["executor"] = "codex"
-    assert parse_primary_request(yaml.safe_dump(primary_request)).executor == "codex"
-    with pytest.raises(GitHubIssueWakeupError, match="unsupported executor"):
-        parse_primary_request(primary_body)
-
-    remediation_body = yaml.safe_dump(
-        {
-            "format": "AIOS_REMEDIATION_INTENT_REQUEST",
+            "format": "AIOS_EXECUTOR_PROFILES_POLICY",
             "version": 1,
-            "correction_dispatch_id": "rem-139",
-            "source_run_id": "RUN-139-001",
-            "finding_id": "F1",
-            "executor": "antigravity-minimax",
+            "executors": {
+                executor: {
+                    "default_model": f"test-{executor}-model",
+                    "default_reasoning_effort": "test-effort",
+                    "supported_reasoning_efforts": ["test-effort"],
+                }
+                for executor in ("codex", "antigravity")
+            },
         }
     )
-    remediation_request = yaml.safe_load(remediation_body)
-    remediation_request["executor"] = "codex"
-    assert (
-        parse_remediation_request(yaml.safe_dump(remediation_request)).executor
-        == "codex"
+
+    primary_request = {
+        "format": "AIOS_PRIMARY_WAKEUP_REQUEST",
+        "version": 3,
+        "dispatch_id": "brain-wakeup-139",
+        "task_id": "TASK-139",
+        "task_revision": 1,
+        "task_blob_sha": "a" * 40,
+        "task_commit_sha": "b" * 40,
+        "executor": "codex",
+        "model": None,
+        "reasoning_effort": None,
+    }
+    primary = parse_primary_request(
+        yaml.safe_dump(primary_request), profile_policy=profile_policy
+    )
+    assert (primary.executor, primary.model, primary.reasoning_effort) == (
+        "codex", "test-codex-model", "test-effort"
+    )
+    assert (primary.model_source, primary.effort_source) == (
+        "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT"
+    )
+    with pytest.raises(GitHubIssueWakeupError, match="^unsupported executor$"):
+        parse_primary_request(
+            yaml.safe_dump({**primary_request, "executor": "antigravity-minimax"}),
+            profile_policy=profile_policy,
+        )
+
+    remediation_request = {
+        "format": "AIOS_REMEDIATION_INTENT_REQUEST",
+        "version": 2,
+        "correction_dispatch_id": "rem-139",
+        "source_run_id": "RUN-139-001",
+        "finding_id": "F1",
+        "executor": "codex",
+        "model": None,
+        "reasoning_effort": None,
+    }
+    remediation = parse_remediation_request(
+        yaml.safe_dump(remediation_request), profile_policy=profile_policy
+    )
+    assert (remediation.executor, remediation.model, remediation.reasoning_effort) == (
+        "codex", "test-codex-model", "test-effort"
+    )
+    assert (remediation.model_source, remediation.effort_source) == (
+        "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT"
     )
     with pytest.raises(
-        GitHubIssueRemediationIntentError, match="unsupported executor"
+        GitHubIssueRemediationIntentError, match="^unsupported executor$"
     ):
-        parse_remediation_request(remediation_body)
+        parse_remediation_request(
+            yaml.safe_dump({**remediation_request, "executor": "antigravity-minimax"}),
+            profile_policy=profile_policy,
+        )
 
-    repair_body = yaml.safe_dump(
-        {
-            "format": "AIOS_REPAIR_WAKEUP_REQUEST",
-            "version": 1,
-            "repair_dispatch_id": "rep-139",
-            "failed_run_id": "RUN-139-001",
-            "repair_sha": "a" * 40,
-            "executor": "antigravity-minimax",
-        }
+    repair_request = {
+        "format": "AIOS_REPAIR_WAKEUP_REQUEST",
+        "version": 2,
+        "repair_dispatch_id": "rep-139",
+        "failed_run_id": "RUN-139-001",
+        "repair_sha": "a" * 40,
+        "executor": "codex",
+        "model": None,
+        "reasoning_effort": None,
+    }
+    repair = parse_repair_request(
+        yaml.safe_dump(repair_request), profile_policy=profile_policy
     )
-    repair_request = yaml.safe_load(repair_body)
-    repair_request["executor"] = "codex"
-    assert parse_repair_request(yaml.safe_dump(repair_request)).executor == "codex"
-    with pytest.raises(GitHubIssueRepairWakeupError, match="unsupported executor"):
-        parse_repair_request(repair_body)
+    assert (repair.executor, repair.model, repair.reasoning_effort) == (
+        "codex", "test-codex-model", "test-effort"
+    )
+    assert (repair.model_source, repair.effort_source) == (
+        "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT"
+    )
+    with pytest.raises(GitHubIssueRepairWakeupError, match="^unsupported executor$"):
+        parse_repair_request(
+            yaml.safe_dump({**repair_request, "executor": "antigravity-minimax"}),
+            profile_policy=profile_policy,
+        )
