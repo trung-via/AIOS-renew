@@ -8957,22 +8957,98 @@ def test_continue_pre_observation_preserves_non_behind_valid_task_state(
     assert not any(args and args[0] in prohibited for args in git_calls)
 
 
-@pytest.mark.parametrize("state", ["detached", "non-main"])
-def test_continue_pre_observation_preserves_unconfigured_branch_failure(
+def test_continue_detached_observes_then_rejects_primary_admission(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    state: str,
 ) -> None:
     monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
     repo = make_repo(tmp_path)
-    if state == "detached":
-        git(repo, "checkout", "--quiet", "--detach")
-    else:
-        git(repo, "checkout", "--quiet", "-b", "feature")
+    git(repo, "checkout", "--quiet", "--detach")
 
     before_head = git(repo, "rev-parse", "HEAD")
     before_branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
     before_status = git(repo, "status", "--porcelain")
+    assert before_branch == "HEAD"
+    assert before_status == ""
+    git_calls = []
+    observations = []
+    real_git = operator_module._git
+    real_observe = operator_module.observe_unified_state
+
+    def recording_git(root, *args, **kwargs):
+        git_calls.append(args)
+        return real_git(root, *args, **kwargs)
+
+    def observe(task_id, *, repo=None):
+        observation = real_observe(task_id, repo=repo)
+        observations.append(observation)
+        return observation
+
+    monkeypatch.setattr(operator_module, "_git", recording_git)
+    monkeypatch.setattr(operator_module, "observe_unified_state", observe)
+    monkeypatch.setattr(
+        operator_module,
+        "run_task",
+        lambda *args, **kwargs: pytest.fail("Executor must not be invoked"),
+    )
+
+    outcome, exit_code = operator_module.continue_task(
+        "TASK-101", executor="codex", repo=repo
+    )
+
+    assert len(observations) == 1
+    assert observations[0].next_action == "EXECUTE_PRIMARY"
+    assert exit_code == 1
+    assert outcome is not None
+    assert outcome.next_action == "EXECUTE_PRIMARY"
+    assert outcome.disposition == "DELEGATED"
+    assert outcome.authority == "RUNTIME"
+    assert outcome.delegated_operation == "PRIMARY"
+    assert outcome.resulting_run_id is None
+    assert outcome.resulting_head_sha is None
+    assert outcome.blocker == {
+        "code": "PRIMARY_SYNCHRONIZATION_REJECTED",
+        "phase": "PRIMARY_SYNCHRONIZATION",
+        "reason_code": "PRIMARY_SYNCHRONIZATION_REJECTED",
+        "source": "AIOS_ADMISSION_FAILURE",
+    }
+
+    assert git(repo, "rev-parse", "HEAD") == before_head
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == before_branch
+    assert git(repo, "status", "--porcelain") == before_status
+    state = runtime_paths(repo)
+    for directory in (state.runs, state.results, state.failures, state.verification):
+        assert not list(directory.glob("*.json"))
+    diagnostics = admission_failure_records(repo)
+    assert len(diagnostics) == 1
+    assert diagnostics[0]["format"] == "AIOS_ADMISSION_FAILURE"
+    assert diagnostics[0]["version"] == 2
+    assert diagnostics[0]["kind"] == "ADMISSION_FAILURE"
+    assert diagnostics[0]["operation"] == "PRIMARY"
+    assert diagnostics[0]["phase"] == "PRIMARY_SYNCHRONIZATION"
+    assert diagnostics[0]["reason_code"] == "PRIMARY_SYNCHRONIZATION_REJECTED"
+    assert diagnostics[0]["executor_invoked"] is False
+    assert not any(args[:2] == ("merge", "--ff-only") for args in git_calls)
+    prohibited = {
+        "read-tree", "update-ref", "rebase", "reset", "checkout", "stash",
+        "clean", "pull", "push",
+    }
+    assert not any(args and args[0] in prohibited for args in git_calls)
+
+
+def test_continue_pre_observation_preserves_non_main_branch_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo = make_repo(tmp_path)
+    git(repo, "checkout", "--quiet", "-b", "feature")
+
+    before_head = git(repo, "rev-parse", "HEAD")
+    before_branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    before_status = git(repo, "status", "--porcelain")
+    assert before_branch == "feature"
+    assert before_status == ""
     git_calls = []
     real_git = operator_module._git
 
@@ -8994,6 +9070,7 @@ def test_continue_pre_observation_preserves_unconfigured_branch_failure(
     assert git(repo, "rev-parse", "--abbrev-ref", "HEAD") == before_branch
     assert git(repo, "status", "--porcelain") == before_status
     assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not admission_failure_records(repo)
     assert not any(args[:2] == ("merge", "--ff-only") for args in git_calls)
     prohibited = {
         "read-tree", "update-ref", "rebase", "reset", "checkout", "stash",
