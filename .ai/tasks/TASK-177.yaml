@@ -1,52 +1,57 @@
 task_id: TASK-177
-revision: 1
+revision: 2
 
 goal: >
   Establish the BP-3 Brain Context Foundation as a deterministic, read-only cognitive-support
   layer above the existing Brain Sync and Unified State contracts. Provide one transient
   AIOS_BRAIN_WORK_CONTEXT projection, one thin semantic Flow Resolver, and repository-owned
   Flow Cards so a fresh Brain or Reviewer can identify the applicable semantic reasoning flow
-  and the bounded context contract it needs without chat memory, while preserving all existing
-  Human/Brain/Reviewer/Runtime/Publisher authority boundaries and without creating a second
-  lifecycle truth, Planner, router, memory store, or Decision Packet compiler.
+  and bounded context contract without chat memory, while preserving Human current-priority
+  authority, existing Brain/Reviewer/Runtime/Publisher boundaries, and the frozen Kernel. The
+  foundation must not create a second lifecycle truth, Planner, generic router, memory store,
+  or Decision Packet compiler.
 
 problem: >
-  TASK-121 provides a deterministic AIOS_BRAIN_SYNC_SNAPSHOT and existing Unified State owns
+  TASK-121 provides deterministic AIOS_BRAIN_SYNC_SNAPSHOT rehydration and Unified State owns
   exact lifecycle reduction, but a fresh semantic provider still has to remember how to compose
   those facts into a bounded current-work view and which semantic reasoning contract applies.
-  The Human-approved Brain Portability architecture defines Work Context v1, a thin Flow
-  Resolver, and repository-owned Flow Cards as the next layer, but no repository implementation
-  currently exists for those three BP-3 capabilities. Without this layer, provider continuity
-  still depends on remembered procedure; over-expanding it would instead create the Planner,
-  generic lifecycle router, duplicated next_action authority, or persistent memory explicitly
-  prohibited by the architecture.
+  TASK-177 r1 captured the BP-3 direction but left material ambiguity around current Human
+  side-flow precedence, blocked-state diagnostics, separation of Human input from canonical
+  engineering facts, canonical decision-family ownership, and minimum-sufficient verification.
+  Those ambiguities could let Flow Resolver or Flow Cards become a second Planner/lifecycle
+  authority or drift-copy REVIEW/REMEDIATION/REPAIR semantics. Revision 2 closes those gaps
+  before any PRIMARY execution.
 
 assumptions:
   - >
-    Canonical main at TASK-177 authoring is
-    f892d056fb4840551d1f8a22ae65987d084f3b21. That planning commit closes BP-V4 using
-    RUN-176-001 / REVIEW-176-001 and makes bp-3-brain-context-foundation the unique roadmap NEXT.
+    Canonical main at TASK-177 r2 authoring is
+    3cd62341ac64b3d8f9bef9b3970cd0d1f8dfc57e. The roadmap has BP-V4 DONE and
+    bp-3-brain-context-foundation as the unique NEXT bound to TASK-177 r1; no RUN-177,
+    REVIEW-177, REMEDIATION-177, or REPAIR-177 lineage exists, so this is a pre-execution TASK
+    revision rather than a correction.
   - >
     TASK-121 revision 2 remains authoritative for AIOS_BRAIN_SYNC_SNAPSHOT semantics:
     deterministic observation, fail-closed roadmap selection, reuse of Unified State, and zero
     RUN/Executor/verification/state mutation.
   - >
-    Unified State remains the sole deterministic lifecycle reducer and its current closed
-    next_action set is EXECUTE_PRIMARY, WAIT, SEMANTIC_REVIEW, AUTHOR_REMEDIATION,
-    EXECUTE_REMEDIATION, AUTHOR_REPAIR, EXECUTE_REPAIR, RETRY_TRANSPORT, RECOVER_PRIMARY,
-    PUBLICATION, DONE, and NONE.
+    Unified State remains the sole deterministic lifecycle reducer. Its semantic reasoning
+    obligations are SEMANTIC_REVIEW, AUTHOR_REMEDIATION, and AUTHOR_REPAIR; operational actions
+    such as EXECUTE_PRIMARY, EXECUTE_REMEDIATION, EXECUTE_REPAIR, RETRY_TRANSPORT,
+    RECOVER_PRIMARY, PUBLICATION, WAIT, DONE, and NONE remain outside Brain reasoning-flow
+    routing.
   - >
     The Human-approved BP-0 architecture remains authoritative for Work Context, Flow Resolver,
     and Flow Card boundaries. BP-4 Decision Packet compilation and BP-5/BP-6 provider protocols
-    are later milestones and are not part of this TASK.
+    remain later milestones.
   - >
-    A unique roadmap NEXT that is not yet canonically authored is planning state requiring
-    TASK_AUTHORING semantic work; it is not a Runtime lifecycle action and must not fabricate a
-    TASK, RUN, or engineering completion state.
+    Current explicit Human intent can request a bounded semantic side-flow without changing
+    engineering lifecycle truth. Such request-scoped work does not erase a pending canonical
+    semantic obligation and does not become a future generic continuation bookmark unless
+    separately canonicalized through the existing Human/Brain planning authority.
   - >
-    Existing operational next actions remain owned by their current authorities. The Flow
-    Resolver may explain that no semantic reasoning flow applies, but must not execute, dispatch,
-    retry, publish, select an Executor, or otherwise route those operations.
+    Canonical REVIEW verdicts, REMEDIATION actions, and REPAIR authorization semantics already
+    belong to their existing repository contracts and must be referenced rather than duplicated
+    inside Flow Cards.
 
 scope:
   inspect:
@@ -58,11 +63,15 @@ scope:
     - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
     - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
     - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-111.yaml
     - .ai/tasks/TASK-121.yaml
+    - src/aios_renew/authoring_ingress.py
     - src/aios_renew/brain_sync.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/review.py
+    - src/aios_renew/task.py
     - src/aios_renew/unified_state.py
     - tests/test_brain_sync.py
-    - tests/test_operator_unified_state.py
   modify:
     - .ai/flow-cards.yaml
     - src/aios_renew/brain_context.py
@@ -74,16 +83,18 @@ non_goals:
     publication authority, or Executor selection authority.
   - Add a memory database, conversation store, chat-history reader, persistent learning store,
     orchestration database, broker, daemon, watcher, scheduler, polling loop, or background state.
-  - Persist Work Context or Flow Resolution as an independent source of truth, or copy canonical
-    RUN, RESULT, FAILURE, REVIEW, REMEDIATION, REPAIR, EVIDENCE, or roadmap truth into a second
+  - Persist Work Context or Flow Resolution as independent truth, or copy canonical RUN, RESULT,
+    FAILURE, REVIEW, REMEDIATION, REPAIR, EVIDENCE, roadmap, or next_action state into a second
     durable lifecycle store.
+  - Re-declare or locally own canonical REVIEW verdict enums, REMEDIATION action enums, REPAIR
+    action enums, TASK schema semantics, or publication/lifecycle decisions inside Flow Cards.
   - Infer lifecycle progression, semantic verdicts, correction strategy, Executor choice,
     publication action, roadmap advancement, or Human priority from a Flow Card.
   - Implement BP-4 Decision Packet compilation, AIOS_BRAIN_REQUEST/DECISION,
     AIOS_REVIEW_REQUEST/DECISION, provider adapters, provider hot-swap execution, or downstream
     adoption.
-  - Parse free-form Human text to guess a lifecycle action, correction, Executor, or semantic
-    verdict.
+  - Parse free-form Human text to guess a lifecycle action, correction, Executor, semantic
+    verdict, or implicit flow selector.
   - Dispatch PRIMARY/REMEDIATION/REPAIR, invoke an Executor, run canonical verification, create a
     RUN, author a review/correction artifact, publish, mutate roadmap state, or change refs as a
     side effect of context composition or flow resolution.
@@ -94,112 +105,149 @@ constraints:
   hard:
     - >
       Define one versioned AIOS_BRAIN_WORK_CONTEXT v1 that is transient and request-scoped. It
-      must be derived from the current AIOS_BRAIN_SYNC_SNAPSHOT plus only bounded caller-supplied
-      current Human input when present, and must preserve canonical repository/main identity,
-      roadmap planning facts, exact semantic subject identity when available, selected lifecycle
-      projection, blockers, and bounded provenance/invalidation facts without reimplementing
-      Unified State.
+      must be composed from the current AIOS_BRAIN_SYNC_SNAPSHOT plus an optional structured
+      current_request supplied by the caller. Canonical observation and Human request data must
+      occupy distinct top-level domains so Human intent cannot be mistaken for RESULT/FAILURE/
+      REVIEW/EVIDENCE truth.
     - >
-      Work Context must not contain chat transcripts, chain-of-thought, model memory, raw logs,
-      secrets, credentials, unbounded repository content, duplicated durable lifecycle records,
-      or a second authoritative next_action. Caller-supplied Human input is current request
-      context only; it is not persisted or recovered from previous conversations. Oversized or
-      malformed caller input must fail closed rather than be silently truncated into different
-      intent.
+      current_request, when present, must be a strict mapping with only flow_selector and
+      human_input. flow_selector is optional but, when present, is exactly one of ARCHITECTURE,
+      TASK_AUTHORING, or DIAGNOSTIC. human_input is optional UTF-8 text whose encoded length is at
+      most 16384 bytes. At least one field must be present. Unknown fields, invalid selector,
+      non-string input, invalid Unicode, or over-bound input fail closed; implementation must not
+      truncate input into different intent.
     - >
-      Define one versioned deterministic read-only Flow Resolution surface with a closed semantic
-      flow set: ARCHITECTURE, TASK_AUTHORING, SEMANTIC_REVIEW, REMEDIATION_AUTHORING,
-      REPAIR_AUTHORING, and DIAGNOSTIC, plus an explicit no-semantic-flow outcome for states whose
-      next step belongs to an existing operational authority.
+      Work Context must preserve canonical repository/main identity, roadmap planning facts,
+      selected exact TASK/semantic subject when available, the existing Unified State projection,
+      blockers, and bounded provenance/invalidation identity without reimplementing lifecycle
+      reduction. It must not load chat history, model memory, environment credentials, raw logs,
+      repository secrets, or unbounded repository content.
     - >
-      Resolver decisions grounded in lifecycle must reuse Brain Sync / Unified State facts:
-      SEMANTIC_REVIEW maps only from next_action SEMANTIC_REVIEW; REMEDIATION_AUTHORING only from
-      AUTHOR_REMEDIATION; REPAIR_AUTHORING only from AUTHOR_REPAIR. A unique canonical roadmap
-      NEXT blocked only because its TASK is unauthored maps to TASK_AUTHORING. Existing operational
-      next actions EXECUTE_PRIMARY, EXECUTE_REMEDIATION, EXECUTE_REPAIR, RETRY_TRANSPORT,
-      RECOVER_PRIMARY, PUBLICATION, WAIT, DONE, and NONE must not be converted into Brain or
-      Reviewer reasoning flows.
+      Define one versioned deterministic read-only Flow Resolution surface with the closed
+      semantic flow set ARCHITECTURE, TASK_AUTHORING, SEMANTIC_REVIEW, REMEDIATION_AUTHORING,
+      REPAIR_AUTHORING, and DIAGNOSTIC, plus an explicit NONE outcome meaning no semantic
+      reasoning flow is selected. NONE is classification only and is not a lifecycle action.
     - >
-      ARCHITECTURE and DIAGNOSTIC may be selected only from an explicit structured current-request
-      selector supplied by the caller and validated against the closed flow set. The resolver must
-      not infer those flows from free-form text, and an explicit selector must not override an
-      authoritative lifecycle semantic obligation such as SEMANTIC_REVIEW, AUTHOR_REMEDIATION, or
-      AUTHOR_REPAIR.
+      Resolver precedence must be deterministic. First preserve any canonical blocker and derive,
+      without changing it, any canonical semantic obligation from Unified State:
+      SEMANTIC_REVIEW only from next_action SEMANTIC_REVIEW, REMEDIATION_AUTHORING only from
+      AUTHOR_REMEDIATION, and REPAIR_AUTHORING only from AUTHOR_REPAIR. Second, an explicit
+      current_request flow_selector may select ARCHITECTURE, TASK_AUTHORING, or DIAGNOSTIC as the
+      current request-scoped side-flow; the resolution must also expose any pending canonical
+      semantic obligation separately and require fresh composition before later continuation.
+      Third, with no explicit selector, the canonical semantic obligation is selected. Fourth, a
+      unique roadmap NEXT blocked only because its TASK is unauthored selects TASK_AUTHORING.
+      Otherwise resolution is NONE.
+    - >
+      A canonical blocker remains authoritative regardless of selected side-flow. Explicit
+      DIAGNOSTIC is allowed on blocked/ambiguous canonical state precisely to reason about the
+      blocker, but it must preserve the exact blocker and cannot clear, reclassify, satisfy, or
+      advance it. ARCHITECTURE or TASK_AUTHORING side-work may be selected only as read-only
+      request-scoped reasoning and likewise cannot claim the blocker or pending lifecycle
+      obligation is resolved.
+    - >
+      Existing operational next actions EXECUTE_PRIMARY, EXECUTE_REMEDIATION, EXECUTE_REPAIR,
+      RETRY_TRANSPORT, RECOVER_PRIMARY, PUBLICATION, WAIT, DONE, and NONE must never be converted
+      into Brain/Reviewer reasoning flows. The Resolver may expose them only as canonical
+      observation facts already present in Work Context.
     - >
       Provide one repository-owned, versioned Flow Card registry containing exactly the six BP-3
       semantic flow identities. Every card must declare bounded entry conditions, required
-      context, optional context, forbidden context, allowed decision types, handoff target,
-      expected return shape, and invalidation rules. Unknown, duplicate, malformed, missing, or
-      authority-inconsistent cards fail closed.
+      context, optional context, forbidden context, authority owner, canonical decision-family
+      reference, handoff target, expected return shape, and invalidation rules. Unknown,
+      duplicate, malformed, missing, or authority-inconsistent cards fail closed.
     - >
-      Flow Cards are procedural policy only. They must not contain a predetermined semantic
-      verdict, automatic correction choice, automatic Executor choice, model/provider-specific
+      Flow Card decision-family references must point to existing canonical semantic families
+      rather than duplicate their value enums: TASK_AUTHORING references the existing TASK
+      contract/authoring ingress; SEMANTIC_REVIEW references the existing REVIEW contract;
+      REMEDIATION_AUTHORING references the existing REMEDIATION contract; REPAIR_AUTHORING
+      references the existing REPAIR authorization contract. ARCHITECTURE and DIAGNOSTIC may use
+      bounded Human/Brain semantic families but must not invent lifecycle verdicts. Validation
+      must reject cards that locally enumerate canonical REVIEW verdicts, REMEDIATION/REPAIR
+      actions, execution commands, or automatic lifecycle transitions as card-owned decisions.
+    - >
+      Flow Cards are procedural policy only. They must not contain predetermined semantic
+      verdicts, automatic correction choices, automatic Executor choices, provider/model-specific
       reasoning instructions, hidden lifecycle progression, executable dispatch commands, or a
       generic execute-anything handoff.
     - >
-      The resolved flow must preserve authority identity: semantic review belongs to REVIEWER;
-      remediation/repair authoring and TASK/architecture/diagnostic reasoning belong only to the
-      applicable Human/Brain boundary. Provider co-location must not merge these authorities.
+      Authority identity must remain explicit and unmerged: SEMANTIC_REVIEW belongs to REVIEWER;
+      TASK_AUTHORING, REMEDIATION_AUTHORING, REPAIR_AUTHORING, ARCHITECTURE, and DIAGNOSTIC belong
+      to the applicable Human/Brain semantic boundary. Provider co-location does not merge
+      authorities.
+    - >
+      Work Context and Flow Resolution must carry a deterministic invalidation fingerprint or
+      equivalent bounded identity derived only from canonical main identity, roadmap selection,
+      exact semantic subject/lifecycle basis, blocker identity, and current_request content when
+      present. Any change to one of those inputs invalidates reuse; the fingerprint is not
+      lifecycle truth and must not persist as an authority record.
     - >
       Context composition, card loading/validation, and flow resolution are observation-only:
       run_created=false, executor_invoked=false, verification_invoked=false, state_mutated=false,
       and no repository/ref/roadmap mutation occurs.
     - >
-      Output must be compact, stable, deterministic, JSON-serializable, and carry sufficient
-      provenance/invalidation identity to force fresh composition when the canonical main,
-      semantic subject, roadmap selection, or relevant lifecycle basis changes.
+      Output must be compact, stable, deterministic, JSON-serializable, and expose enough
+      provenance for a fresh provider to distinguish canonical facts, current Human request,
+      selected flow, pending canonical semantic obligation, authority owner, and invalidation
+      basis without chat memory.
     - >
       Do not modify files outside scope.modify and do not change existing Brain Sync, Unified
-      State, Runtime, Human Surface, correction, transport, review, publication, or Executor
-      behavior.
+      State, Runtime, Human Surface, authoring ingress, correction, transport, review, publication,
+      Executor, execution-profile, or frozen Kernel behavior.
 
 acceptance:
   - id: AC1
     condition: >
-      A versioned AIOS_BRAIN_WORK_CONTEXT deterministically composes current repository/main,
-      roadmap, exact semantic subject/lifecycle projection, blockers, bounded current Human input,
-      and provenance/invalidation identity from existing canonical observation surfaces without
-      chat memory, persistence, or duplicated lifecycle inference.
+      AIOS_BRAIN_WORK_CONTEXT v1 deterministically composes separate canonical_observation and
+      current_request domains, preserves exact existing Brain Sync/Unified State facts and
+      blockers without lifecycle reimplementation, applies the strict 16384-byte current Human
+      input bound, and carries deterministic provenance/invalidation identity without persistence
+      or chat memory.
   - id: AC2
     condition: >
-      The thin Flow Resolver deterministically returns TASK_AUTHORING for the unique unauthored
-      roadmap NEXT case; returns SEMANTIC_REVIEW, REMEDIATION_AUTHORING, and REPAIR_AUTHORING only
-      for their exact authoritative Unified State actions; and returns an explicit
-      no-semantic-flow outcome for operational execution/publication/wait/done/recovery actions
+      Flow Resolution deterministically selects lifecycle-derived SEMANTIC_REVIEW,
+      REMEDIATION_AUTHORING, and REPAIR_AUTHORING only from their exact Unified State actions;
+      selects TASK_AUTHORING for the unique unauthored roadmap NEXT when no explicit side-flow is
+      requested; and returns NONE for ordinary execution/publication/wait/done/recovery states
       instead of routing them.
   - id: AC3
     condition: >
-      Explicit structured ARCHITECTURE or DIAGNOSTIC requests are supported without free-text
-      inference and cannot override a current authoritative lifecycle semantic obligation or a
-      canonical blocker that must fail closed.
+      Explicit structured ARCHITECTURE, TASK_AUTHORING, and DIAGNOSTIC current requests are
+      supported without free-text inference. They preserve any pending canonical semantic
+      obligation separately, require fresh context before later continuation, and never claim a
+      canonical blocker or lifecycle obligation has been resolved; DIAGNOSTIC remains usable on
+      blocked/ambiguous state.
   - id: AC4
     condition: >
-      The repository-owned Flow Card registry contains and validates exactly the six BP-3 cards
-      with bounded context/decision/handoff/return/invalidation fields, and rejects malformed,
-      missing, duplicate, unknown, or authority-inconsistent card definitions without embedding
-      semantic verdicts or execution commands.
+      The repository-owned Flow Card registry contains exactly six validated cards with bounded
+      entry/context/authority/decision-family/handoff/return/invalidation metadata, references
+      existing TASK/REVIEW/REMEDIATION/REPAIR semantics instead of copying their enums, and rejects
+      malformed, missing, duplicate, unknown, authority-inconsistent, executable, or
+      semantic-enum-duplicating card definitions.
   - id: AC5
     condition: >
-      A fresh Brain/Reviewer can use only Work Context plus Flow Resolution/Card metadata to know
-      whether semantic reasoning is required, which authority owns it, and what bounded context
-      contract applies, while canonical lifecycle next_action and engineering truth remain solely
-      with Brain Sync/Unified State and existing lineage.
+      A fresh Brain or Reviewer can use only Work Context plus Flow Resolution/Card metadata to
+      identify the current request-scoped flow, any pending canonical semantic obligation, its
+      authority owner, and the bounded context contract required for reasoning, while engineering
+      lifecycle truth and next_action remain solely with Brain Sync/Unified State and canonical
+      lineage.
   - id: AC6
     condition: >
       BP-3 introduces no persistent memory, second lifecycle/planning truth, Planner, generic
       lifecycle router, automatic correction/Executor/publication/roadmap authority, Decision
-      Packet compiler, provider protocol, or change to frozen Kernel/history; all three new
-      surfaces are observably read-only.
+      Packet compiler, provider protocol, canonical semantic-enum copy, or frozen-Kernel change;
+      all three new surfaces are observably read-only.
   - id: AC7
     condition: >
-      Deterministic offline regression tests cover ready operational state, unique unauthored NEXT,
-      semantic review, remediation authoring, repair authoring, explicit architecture/diagnostic,
-      blocked/ambiguous state, malformed Flow Cards, invalidation identity, and proof of zero
-      RUN/Executor/verification/state mutation with existing Brain Sync and Unified State behavior
-      unchanged.
+      Deterministic offline regressions cover ready operational state, unique unauthored NEXT,
+      semantic review, remediation authoring, repair authoring, explicit architecture/task-
+      authoring/diagnostic side-flows, blocked/ambiguous diagnostics, pending-obligation
+      preservation, malformed/authority-invalid Flow Cards, current_request bounds, invalidation
+      changes, and proof of zero RUN/Executor/verification/state mutation with existing Brain Sync
+      behavior unchanged.
 
 verification:
   policy: minimum-sufficient-v1
   required:
-    - python -m pytest -q tests/test_brain_context.py tests/test_brain_sync.py tests/test_operator_unified_state.py
+    - python -m pytest -q tests/test_brain_context.py tests/test_brain_sync.py
     - git diff --check
