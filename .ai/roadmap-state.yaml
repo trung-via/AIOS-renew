@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-v4-parallel-verification-performance-guard
+  - bp-3-brain-context-foundation
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -633,7 +633,17 @@ sequence:
       before RUN creation or Executor invocation. Preserve current production semantics
       and correct test coverage only.
   - id: bp-v4-parallel-verification-performance-guard
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-176
+      task_revision: 1
+      run_id: RUN-176-001
+      review_id: REVIEW-176-001
+      reviewed_sha: "aba2ea2df72fadc7b474eaf9ed20c12d17a5c92d"
+      published_sha: "aba2ea2df72fadc7b474eaf9ed20c12d17a5c92d"
+      verification_evidence:
+        - RUN-176-001-V001
+        - RUN-176-001-V002
     task_id: TASK-176
     task_revision: 1
     measurement_completed_by:
@@ -695,7 +705,7 @@ sequence:
       global pytest parallelization, automatic worker selection, retry/fallback, or
       new lifecycle/semantic authority.
   - id: bp-3-brain-context-foundation
-    status: PLANNED
+    status: NEXT
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Add transient Work Context composition, thin Flow Resolver, and repository-owned
