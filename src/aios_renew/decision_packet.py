@@ -23,6 +23,7 @@ from .review import (
 )
 from .task import TaskValidationError, validate_task
 from .run import Run, RunTaskReference, RunValidationError
+from .review_transport import validate_runtime_failure_binding
 
 
 class DecisionPacketError(ValueError):
@@ -374,18 +375,23 @@ def _repair_authoring(material: dict[str, Any], observed: Mapping[str, Any]) -> 
         raise DecisionPacketError("canonical state is not REPAIR authoring")
     failed = _run(material["failed_run"], task, expected_id=unified.get("failed_run_id"))
     failure = material["failure"]
-    if not isinstance(failure, dict) or failure.get("run_id") != failed["run_id"] or failure.get("failed_head_sha") != unified.get("failed_head_sha") or failure.get("task") != {"id": task.task_id, "revision": task.revision} or (
-        failed.get("head_sha") is not None and failed["head_sha"] != failure.get("failed_head_sha")
+    failed_head = _sha(unified.get("failed_head_sha"), "failed head SHA")
+    if not isinstance(failure, dict) or (
+        failed.get("head_sha") is not None and failed["head_sha"] != failed_head
     ):
         raise DecisionPacketError("FAILURE is not bound to failed RUN")
-    subject = {"failed_run_id": failed["run_id"], "failed_head_sha": _sha(unified.get("failed_head_sha"), "failed head SHA")}
-    candidate = failure.get("candidate")
-    if not isinstance(candidate, dict) or not isinstance(candidate.get("changed_files"), list) or not all(
-        isinstance(path, str) and path for path in candidate["changed_files"]
-    ):
-        raise DecisionPacketError("failed candidate changed-file set is invalid")
+    validate_runtime_failure_binding(
+        failure,
+        run_id=failed["run_id"], task_id=task.task_id, task_revision=task.revision,
+        executor=failed["executor"], base_sha=failed["base_sha"],
+        candidate_sha=failed_head, modification_scope=task.scope.modify,
+    )
+    subject = {"failed_run_id": failed["run_id"], "failed_head_sha": failed_head}
+    candidate = failure["candidate"]
     subject["failed_changed_files"] = sorted(candidate["changed_files"])
     observation = {}
+    if failure.get("phase") not in {"VERIFICATION", "EXECUTION", "COMPLETION_GATE"}:
+        raise DecisionPacketError("FAILURE phase is invalid")
     for key in ("phase", "reason_code"):
         if key in failure:
             value = _bounded_text(failure[key], f"FAILURE {key}")
@@ -397,21 +403,11 @@ def _repair_authoring(material: dict[str, Any], observed: Mapping[str, Any]) -> 
         raise DecisionPacketError("FAILURE error is not a structured Runtime error")
     error_type = _bounded_text(error["type"], "FAILURE error type")
     message = _bounded_text(error["message"], "FAILURE error message")
-    if not error_type or not message or re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", error_type) is None:
+    if not error_type or len(error_type) > 256 or not message or re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", error_type) is None:
         raise DecisionPacketError("FAILURE error type or message is invalid")
-    # Runtime may attach raw native streams and verification details here. Only
-    # these two bounded facts are needed to author a repair.
-    repository = observed.get("repository")
-    local_values = [failed.get("workspace")]
-    if isinstance(repository, dict):
-        local_values.extend((repository.get("root"), repository.get("remote_url")))
-    if any(isinstance(value, str) and value and value.casefold() in message.casefold()
-           for value in local_values) or re.search(
-        r"(?i)(?:[a-z]:[\\/]|\\\\|https?://|(?:^|[\s(])/(?!/)|(?:token|password|secret|api[_-]?key)\s*[:=])",
-        message,
-    ):
-        raise DecisionPacketError("FAILURE error message contains nonportable or private material")
-    observation["error"] = {"type": error_type, "message": message}
+    # Runtime diagnostic messages and structured details can contain local
+    # paths, streams, and secrets. Project only the bounded error class.
+    observation["error"] = {"type": error_type}
     return subject, asdict(task), None, observation
 
 

@@ -50,6 +50,21 @@ def evidence(run_id, head=A, evidence_id="E1"):
             "raw": {"path": "C:/private/runtime/log.txt"}}
 
 
+def runtime_failure(*, phase="VERIFICATION", message="required check failed"):
+    return {"kind": "FAILURE", "run_id": "RUN-002-001", "failed_head_sha": A,
+            "task": {"id": "TASK-002", "revision": 1},
+            "executor": "codex", "base_sha": B, "phase": phase,
+            "error": {"type": "RuntimeVerificationError", "message": message,
+                      "verification": [{"command": "pytest tests/test_task.py",
+                                        "exit_code": 1, "summary": "failed at C:/private/log.txt"}],
+                      "native_diagnostics": {"stdout": "private native stream"},
+                      "executor_diagnostics": {"unresolved": ["private raw log"]}},
+            "candidate": {"transportable": True, "repairable": True, "dirty": False,
+                          "descends_from_base": True,
+                          "changed_files": ["src/aios_renew/decision_packet.py"],
+                          "outside_task_scope": []}}
+
+
 def review(review_id, head, finding_id):
     return {"review_id": review_id, "reviewed_sha": head, "mode": "PRIMARY",
             "verdict": "CHANGES_REQUIRED", "acceptance": {"AC1": "FAIL", "AC2": "PASS"},
@@ -195,18 +210,7 @@ def test_side_flow_preserves_pending_obligation_and_blocks_nested_packet():
 
 def test_repair_authoring_and_exact_repair_provenance():
     failed_run = run("RUN-002-001", A, B)
-    failure = {"kind": "FAILURE", "run_id": "RUN-002-001", "failed_head_sha": A,
-               "task": {"id": "TASK-002", "revision": 1},
-               "executor": "codex", "base_sha": B,
-               "phase": "VERIFICATION",
-               "error": {"type": "RuntimeVerificationError", "message": "required check failed",
-                         "verification": [{"command": "pytest tests/test_task.py",
-                                           "exit_code": 1, "summary": "failed at C:/private/log.txt"}],
-                         "executor_diagnostics": {"unresolved": ["private raw log"]}},
-               "candidate": {"transportable": True, "repairable": True, "dirty": False,
-                             "descends_from_base": True,
-                             "changed_files": ["src/aios_renew/decision_packet.py"],
-                             "outside_task_scope": []}}
+    failure = runtime_failure()
     work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
                                            "failed_run_id": "RUN-002-001", "failed_head_sha": A})
     packet = compile_decision_packet(work, flow, {"kind": "REPAIR_AUTHORING",
@@ -218,10 +222,11 @@ def test_repair_authoring_and_exact_repair_provenance():
     }
     assert packet.as_dict()["bounded_observations"] == {
         "phase": "VERIFICATION",
-        "error": {"type": "RuntimeVerificationError", "message": "required check failed"},
+        "error": {"type": "RuntimeVerificationError"},
     }
     assert "C:/private/log.txt" not in packet.render()
     assert "private raw log" not in packet.render()
+    assert "private native stream" not in packet.render()
 
     repair_run = run("RUN-002-003", C, A)
     authorization = {"repair_id": "REPAIR-002-001", "failed_run_id": "RUN-002-001",
@@ -253,19 +258,34 @@ def test_repair_authoring_and_exact_repair_provenance():
         compile_decision_packet(work, flow, altered)
 
 
+@pytest.mark.parametrize("phase", ["VERIFICATION", "EXECUTION", "COMPLETION_GATE"])
+def test_repair_authoring_projects_runtime_failure_without_diagnostics(phase):
+    work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
+                                           "failed_run_id": "RUN-002-001", "failed_head_sha": A})
+    failure = runtime_failure(phase=phase, message="failed at C:/private/log.txt token=private")
+    failure["error"]["type"] = {
+        "VERIFICATION": "RuntimeVerificationError",
+        "EXECUTION": "CodexExecutionError",
+        "COMPLETION_GATE": "RuntimeError",
+    }[phase]
+    packet = compile_decision_packet(work, flow, {"kind": "REPAIR_AUTHORING",
+                                                  "task": task(), "failed_run": run("RUN-002-001", A, B),
+                                                  "failure": failure})
+    assert packet.as_dict()["bounded_observations"] == {
+        "phase": phase, "error": {"type": failure["error"]["type"]},
+    }
+    for private in ("C:/private", "token=private", "private native stream", "private raw log"):
+        assert private not in packet.render()
+
+
 def test_repair_authoring_rejects_malformed_or_unbounded_failure_observations():
-    failure = {"kind": "FAILURE", "run_id": "RUN-002-001", "failed_head_sha": A,
-               "task": {"id": "TASK-002", "revision": 1},
-               "candidate": {"changed_files": ["src/aios_renew/decision_packet.py"]},
-               "phase": "VERIFICATION",
-               "error": {"type": "RuntimeVerificationError", "message": "required check failed"}}
+    failure = runtime_failure()
     work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
                                            "failed_run_id": "RUN-002-001", "failed_head_sha": A})
     for bad_error in ("unstructured", {"type": "RuntimeVerificationError"},
                       {"type": 42, "message": "failed"},
                       {"type": "RuntimeVerificationError", "message": ["failed"]},
-                      {"type": "RuntimeVerificationError", "message": "x" * 65537},
-                      {"type": "RuntimeVerificationError", "message": "failed at C:/private/log.txt"}):
+                      {"type": "RuntimeVerificationError", "message": "x" * 65537}):
         altered = copy.deepcopy(failure)
         altered["error"] = bad_error
         with pytest.raises(DecisionPacketError):
@@ -278,6 +298,47 @@ def test_repair_authoring_rejects_malformed_or_unbounded_failure_observations():
         compile_decision_packet(work, flow, {"kind": "REPAIR_AUTHORING",
                                               "task": task(), "failed_run": run("RUN-002-001", A, B),
                                               "failure": altered})
+
+
+def test_repair_authoring_binds_complete_runtime_failure_contract():
+    work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
+                                           "failed_run_id": "RUN-002-001", "failed_head_sha": A})
+    material = {"kind": "REPAIR_AUTHORING", "task": task(),
+                "failed_run": run("RUN-002-001", A, B), "failure": runtime_failure()}
+    mutations = [
+        lambda m: m["failure"].pop("kind"),
+        lambda m: m["failure"].__setitem__("kind", "RESULT"),
+        lambda m: m["failure"].__setitem__("run_id", "RUN-002-999"),
+        lambda m: m["failure"]["task"].__setitem__("id", "TASK-999"),
+        lambda m: m["failure"]["task"].__setitem__("revision", 2),
+        lambda m: m["failure"].__setitem__("executor", "other"),
+        lambda m: m["failure"].pop("executor"),
+        lambda m: m["failure"].__setitem__("base_sha", C),
+        lambda m: m["failure"].__setitem__("failed_head_sha", C),
+        lambda m: m["failure"].pop("phase"),
+        lambda m: m["failed_run"].__setitem__("run_id", "RUN-002-999"),
+        lambda m: m["failed_run"]["task"].__setitem__("id", "TASK-999"),
+        lambda m: m["failed_run"].__setitem__("head_sha", C),
+        lambda m: m["failed_run"].__setitem__("base_sha", C),
+        lambda m: m["failed_run"].__setitem__("executor", "other"),
+        lambda m: m["failure"]["candidate"].pop("transportable"),
+        lambda m: m["failure"]["candidate"].pop("repairable"),
+        lambda m: m["failure"]["candidate"].pop("dirty"),
+        lambda m: m["failure"]["candidate"].pop("descends_from_base"),
+        lambda m: m["failure"]["candidate"].__setitem__("repairable", False),
+        lambda m: m["failure"]["candidate"].__setitem__("transportable", False),
+        lambda m: m["failure"]["candidate"].__setitem__("dirty", "false"),
+        lambda m: m["failure"]["candidate"].pop("changed_files"),
+        lambda m: m["failure"]["candidate"].__setitem__("changed_files", ["outside.txt"]),
+        lambda m: m["failure"]["candidate"].__setitem__("changed_files", ["outside.txt", "outside.txt"]),
+        lambda m: m["failure"]["candidate"].pop("outside_task_scope"),
+        lambda m: m["failure"]["candidate"].__setitem__("outside_task_scope", ["outside.txt"]),
+    ]
+    for mutate in mutations:
+        altered = copy.deepcopy(material)
+        mutate(altered)
+        with pytest.raises(DecisionPacketError):
+            compile_decision_packet(work, flow, altered)
 
 
 def test_none_and_non_json_fail_closed():
