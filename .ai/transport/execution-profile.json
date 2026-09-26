@@ -1,0 +1,10 @@
+{
+  "effort_source": "EXPLICIT",
+  "executor": "codex",
+  "format": "AIOS_EXECUTION_PROFILE",
+  "model": "gpt-6-sol",
+  "model_source": "EXPLICIT",
+  "reasoning_effort": "high",
+  "run_id": "RUN-178-009",
+  "version": 1
+}
