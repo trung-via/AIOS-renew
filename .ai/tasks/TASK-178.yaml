@@ -1,0 +1,260 @@
+task_id: TASK-178
+revision: 1
+
+goal: >
+  Establish BP-4 Decision Packet Compiler as one deterministic, bounded, read-only cognitive-
+  support surface above the reviewed BP-3 Work Context and Flow Resolution contracts. Define
+  AIOS_DECISION_PACKET v1 as a provider-neutral typed projection for exactly one selected semantic
+  decision so a fresh Brain or Reviewer can receive minimum-sufficient, provenance-bound context
+  without chat memory, direct repository discovery, or provider-specific access, while preserving
+  Human/Brain/Reviewer/Runtime/Publisher authority boundaries and frozen Kernel semantics.
+
+problem: >
+  BP-3 now deterministically identifies the applicable semantic flow and its bounded context
+  contract, but a fresh semantic provider still lacks one stable self-contained input package for
+  the actual decision. If BP-5/BP-6 provider adapters assemble context independently, each provider
+  can select different lineage, mix assertions with facts, leak machine-local state, or silently
+  reconstruct lifecycle/context-selection semantics. A generic materials bag would create the same
+  ambiguity. BP-4 therefore needs a closed typed compiler that packages already-selected bounded
+  canonical decision material, validates exact cross-material identity/provenance, separates
+  information classes, and emits no semantic judgment of its own.
+
+assumptions:
+  - >
+    Canonical main at TASK-178 r1 authoring is
+    76a4f5db0d8df20c076a1422a162617d206d3390. BP-3 is DONE through TASK-177 r2,
+    RUN-177-002, REVIEW-177-002 PASS and published source
+    bc4026a3886081ecc20248f2956ae65264c527ca. bp-4-decision-packet-compiler is the
+    unique canonical NEXT and TASK-178 has no prior TASK/RUN/REVIEW/REMEDIATION/REPAIR lineage.
+  - >
+    TASK-177 r2 and its published BP-3 implementation remain authoritative for
+    AIOS_BRAIN_WORK_CONTEXT v1, the six-flow Flow Resolution surface, authority ownership,
+    pending-obligation preservation, blocker preservation, repository-owned Flow Cards, and
+    request-scoped invalidation semantics.
+  - >
+    Unified State remains the sole deterministic lifecycle reducer. The Decision Packet Compiler
+    consumes an already-composed Work Context and already-resolved semantic flow; it does not
+    discover lifecycle state, choose the next lifecycle action, or select a different semantic
+    flow.
+  - >
+    Canonical TASK, RUN, RESULT, EVIDENCE, REVIEW, REMEDIATION, REPAIR and FAILURE semantics remain
+    owned by their existing contracts. BP-4 may validate and project already-selected material but
+    must not redefine their semantic enums or reinterpret their authority.
+  - >
+    BP-5/BP-6 provider request/decision protocols, provider adapters, provider identity and model
+    metadata remain later milestones. BP-4 output must be usable by those milestones without
+    depending on GitHub access, local checkout paths, provider memory, or provider-specific fields.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-121.yaml
+    - .ai/tasks/TASK-177.yaml
+    - .ai/flow-cards.yaml
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/brain_sync.py
+    - src/aios_renew/correction_frontier.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/review.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/run.py
+    - src/aios_renew/task.py
+    - src/aios_renew/unified_state.py
+    - tests/test_brain_context.py
+  modify:
+    - src/aios_renew/decision_packet.py
+    - tests/test_decision_packet.py
+
+non_goals:
+  - >
+    Add or modify Brain Sync, Unified State, Flow Resolver, Flow Cards, Runtime, Reviewer,
+    Publisher, correction frontier, authoring ingress, transport, execution profiles, Executor
+    selection, provider adapters, or frozen Kernel behavior.
+  - >
+    Add a Planner, generic context-selection agent, generic lifecycle/correction router, model
+    router/scoring system, memory database, conversation store, persistent learning store,
+    orchestration database, broker, daemon, watcher, scheduler, polling loop, or background state.
+  - >
+    Discover the latest TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR from Git, GitHub, refs,
+    filesystem state, or repository scans inside the compiler; callers must supply already-selected
+    bounded decision material with provenance.
+  - >
+    Implement AIOS_BRAIN_REQUEST/AIOS_BRAIN_DECISION, AIOS_REVIEW_REQUEST/AIOS_REVIEW_DECISION,
+    provider invocation, provider/model/session metadata, hot-swap execution, or downstream
+    adoption.
+  - >
+    Generate a semantic verdict, hypothesis, recommendation, correction choice, Executor choice,
+    lifecycle action, publication action, roadmap advancement, or Human priority inside the
+    compiler.
+  - >
+    Re-declare locally owned REVIEW verdict enums, REMEDIATION/REPAIR action enums, TASK schema
+    semantics, FAILURE semantics, or publication/lifecycle decisions.
+  - >
+    Embed chat history, chain-of-thought, raw evidence logs, environment/credentials/secrets,
+    repository dumps, machine-local paths, provider prompts, or full governance documents into
+    Decision Packets.
+  - >
+    Persist Decision Packets as independent lifecycle/planning truth, use a packet as input
+    material for another packet, dispatch execution, invoke an Executor, run canonical
+    verification, create a RUN, author semantic artifacts, publish, mutate refs, or mutate roadmap
+    state.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Define exactly one versioned AIOS_DECISION_PACKET v1 envelope for exactly one selected
+      semantic decision. The closed semantic flow set is ARCHITECTURE, TASK_AUTHORING,
+      SEMANTIC_REVIEW, REMEDIATION_AUTHORING, REPAIR_AUTHORING, and DIAGNOSTIC. Flow Resolution
+      outcome NONE, unknown flows, packet nesting, and unknown payload kinds fail closed.
+    - >
+      The compiler must accept an already-valid AIOS_BRAIN_WORK_CONTEXT v1 and matching
+      AIOS_FLOW_RESOLUTION v1 and must reject stale, altered, or mutually inconsistent inputs.
+      selected_flow, authority_owner, pending canonical obligation, blocker, canonical next-action
+      observations, and work-context invalidation fingerprint must be preserved rather than
+      recomputed as new lifecycle authority.
+    - >
+      Use one closed discriminated payload contract per semantic flow rather than a generic free-
+      form materials bag. Each flow has a typed subject appropriate to its semantic decision:
+      architecture binds a planning subject; task authoring binds the exact roadmap NEXT/planning
+      subject without fabricating a future TASK identity; semantic review binds exact TASK, RUN
+      and candidate identity; remediation authoring binds exact REVIEW, finding and reviewed
+      candidate; repair authoring binds exact FAILURE/failed RUN and failed head; diagnostic binds
+      the exact blocker or selected semantic subject being inspected.
+    - >
+      Inputs beyond BP-3 context are already-selected bounded decision materials supplied by the
+      caller. The compiler may structurally validate, cross-bind, normalize and project them, but
+      must not search Git/GitHub, scan the repository, infer which historical artifact is latest,
+      choose which evidence is semantically important, or retrieve unbounded source context.
+    - >
+      Decision Packet information classes must remain explicitly separated so authority cannot be
+      laundered across fields: deterministic canonical facts, bounded observations, Executor
+      claims, prior canonical semantic decisions, and current Human input are distinct domains.
+      RESULT claims remain Executor assertions even when their package/evidence binding is valid;
+      prior REVIEW/REMEDIATION/REPAIR values remain prior semantic decisions rather than current
+      compiler judgment; Human text never becomes canonical engineering fact merely by its
+      contents.
+    - >
+      Reuse existing canonical parsers/validators and exact artifact semantics where applicable
+      instead of copying semantic enums or creating alternate validators. Cross-material
+      invariants must fail closed on mismatched task id/revision, RUN identity, candidate/head SHA,
+      evidence run/subject SHA, reviewed SHA, finding identity, failed RUN/head, correction
+      identity, or bounded delta base/head identity applicable to the selected flow.
+    - >
+      Packet provenance must bind the semantic repository/main identity, exact Work Context
+      invalidation fingerprint, selected flow contract, typed subject and every projected material
+      identity/content digest. packet_fingerprint must be deterministically derived from normalized
+      semantic packet content excluding the fingerprint itself. Any material semantic change must
+      change packet identity, while different local checkout roots, remote aliases, hostnames or
+      equivalent machine-local representation must not.
+    - >
+      Equivalent canonical inputs must produce stable normalized JSON and the same packet
+      fingerprint across supported hosts. Semantic identity must not depend on mutable worktree
+      line endings, current time, random UUIDs, hostname, PID, provider/model/session identity,
+      local workspace, remote alias, remote URL, or raw evidence path.
+    - >
+      Project only portability-safe minimum-sufficient content. Repository identity exposed to a
+      provider is limited to canonical repository name and main SHA; machine-local root/remote
+      fields from Work Context are not projected. Evidence projection may expose exact evidence
+      identity, RUN/subject identity, type, command, exit code and bounded summary, but not
+      Evidence.raw.path or raw stdout/stderr/log content.
+    - >
+      Preserve explicit side-flow semantics from BP-3. ARCHITECTURE, TASK_AUTHORING or DIAGNOSTIC
+      packets must keep any pending SEMANTIC_REVIEW/REMEDIATION_AUTHORING/REPAIR_AUTHORING
+      obligation and its authority owner separately, preserve any canonical blocker unchanged,
+      and preserve requires_fresh_context_for_continuation; packet compilation cannot claim that
+      either obligation or blocker has been resolved.
+    - >
+      AIOS_DECISION_PACKET v1 has a hard maximum rendered size of 131072 UTF-8 bytes. Current
+      Human input retains the BP-3 maximum of 16384 UTF-8 bytes. Any caller-supplied free-text
+      excerpt or bounded implementation-delta text included in a packet is limited to 65536 UTF-8
+      bytes per field. Invalid Unicode, NaN/non-JSON values, or any over-bound input/output fails
+      closed; the compiler must never silently truncate semantic material.
+    - >
+      Architecture and TASK_AUTHORING packets must use bounded decision-specific planning
+      material and references, not copy the full Manifesto, Constitution, Project Contract,
+      Kernel specification, roadmap history, or repository tree. Governance remains canonical in
+      its existing sources and is not duplicated as packet-owned truth.
+    - >
+      SEMANTIC_REVIEW packets must preserve the frozen Kernel review input boundary: exact TASK
+      contract, RESULT/Executor claims, bounded implementation delta, deterministic EVIDENCE
+      summaries, and relevant prior correction lineage only when applicable. REMEDIATION_AUTHORING
+      and REPAIR_AUTHORING remain separate payload families and must not collapse into a generic
+      correction packet/router.
+    - >
+      Compilation and rendering are pure observation/cognitive-support operations:
+      run_created=false, executor_invoked=false, verification_invoked=false, state_mutated=false.
+      The compiler has no Git/GitHub/network discovery path, no persistence path, no dispatch path,
+      no lifecycle reduction path and no mutation authority.
+    - >
+      Do not modify files outside scope.modify. If satisfying this contract requires changing
+      BP-3, Flow Cards, Unified State, canonical artifact contracts, Runtime, Reviewer, Publisher,
+      transport, authoring ingress or frozen Kernel semantics, fail closed back to Brain rather
+      than widening scope.
+
+acceptance:
+  - id: AC1
+    condition: >
+      AIOS_DECISION_PACKET v1 is a compact, deterministic, JSON-serializable, provider-neutral
+      envelope compiled from an exact valid Work Context, matching Flow Resolution and bounded
+      caller-supplied decision material; equivalent semantic inputs render stably and produce the
+      same deterministic packet fingerprint.
+  - id: AC2
+    condition: >
+      Exactly the six BP-3 semantic flows are supported through closed discriminated payload
+      contracts with flow-appropriate required material, while NONE, unknown flow/payload,
+      missing required material, duplicate semantic material, packet nesting and unrelated
+      free-form material fail closed.
+  - id: AC3
+    condition: >
+      Each flow exposes a typed semantic subject without fabricating future identities:
+      TASK_AUTHORING can represent an unauthored roadmap NEXT without inventing a TASK id, while
+      review/correction flows bind their exact TASK/RUN/candidate/review/finding/failure identities
+      as applicable.
+  - id: AC4
+    condition: >
+      Cross-material validation rejects mixed or stale lineage and proves exact provenance binding
+      among applicable TASK revision, RUN id/base, candidate/head SHA, RESULT, EVIDENCE,
+      REVIEW/finding, FAILURE/failed head, correction identity and bounded delta endpoints before a
+      packet can be emitted.
+  - id: AC5
+    condition: >
+      The packet keeps canonical facts, observations, Executor claims, prior canonical semantic
+      decisions and current Human input in distinct domains, reuses existing semantic validators,
+      and introduces no compiler-generated verdict, hypothesis, correction, Executor choice,
+      lifecycle/publication action or roadmap decision.
+  - id: AC6
+    condition: >
+      Packet identity binds Work Context invalidation, selected flow, typed subject and all
+      semantic material/provenance, changes whenever one of those semantic inputs changes, and
+      remains unchanged for equivalent canonical input represented from different checkout paths,
+      remote aliases or machine-local hosts.
+  - id: AC7
+    condition: >
+      Decision Packets are portability-safe and strictly bounded: rendered output is at most
+      131072 UTF-8 bytes, Human input remains at most 16384 bytes, included free-text
+      excerpt/delta fields are at most 65536 bytes each, over-bound/invalid data fails without
+      truncation, and packets exclude machine-local root/workspace/remote details, raw evidence
+      paths/logs, secrets, chat history, chain-of-thought, timestamps, random/provider/session
+      metadata and unbounded repository/governance content.
+  - id: AC8
+    condition: >
+      Compilation preserves BP-3 blocker, pending canonical semantic obligation, authority owner
+      and fresh-context requirement without resolving or advancing them, is observably read-only
+      with all mutation/execution/verification flags false, performs no repository/network
+      discovery or persistence, and leaves existing BP-3, lifecycle, artifact, review, correction,
+      publication, Runtime and frozen-Kernel behavior unchanged.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_decision_packet.py tests/test_brain_context.py
+    - git diff --check
