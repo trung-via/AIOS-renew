@@ -44,8 +44,9 @@ def test_registry_selection_and_closed_order(registry):
 
 
 def test_equivalent_serialization_has_same_ref(raw, registry):
-    expected = select_reviewer_procedure(raw, "PRIMARY")["reviewer_procedure_ref"]
-    crlf = raw.replace(b"\n", b"\r\n")
+    lf = raw.replace(b"\r\n", b"\n")
+    expected = select_reviewer_procedure(lf, "PRIMARY")["reviewer_procedure_ref"]
+    crlf = lf.replace(b"\n", b"\r\n")
     assert select_reviewer_procedure(crlf, "PRIMARY")["reviewer_procedure_ref"] == expected
     reordered = {
         "profiles": registry["profiles"], "bounds": registry["bounds"],
