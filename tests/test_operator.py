@@ -7599,6 +7599,7 @@ def test_direct_candidate_and_approved_remediation_persist_predecessor_identity_
         finding_id="R1",
         approver="human-reviewer",
     )
+    assert direct_run_data["remediation_authorization_sha"] == approval.remediation_sha
     git(repo, "reset", "--hard", "--quiet", baseline)
     runner = RemediationRunner(repo)
     approved_summary = run_remediation(
@@ -7612,6 +7613,7 @@ def test_direct_candidate_and_approved_remediation_persist_predecessor_identity_
     )
     approved_run_file = runtime_paths(repo).runs / f"{approved_summary.run_id}.json"
     approved_run_data = json.loads(approved_run_file.read_text(encoding="utf-8"))
+    assert approved_run_data["remediation_authorization_sha"] == approval.remediation_sha
 
     assert approved_run_data["predecessor"] == {
         "source_run_id": "RUN-101-000",

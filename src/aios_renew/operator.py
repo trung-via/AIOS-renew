@@ -4348,6 +4348,11 @@ def _run_remediation_impl(
     canonical_remediation = resolved.remediation
     task = resolved.task
     remote_mode = resolved.remote_mode
+    remediation_authorization_sha = admission.get("remediation_authorization_sha")
+    if not isinstance(remediation_authorization_sha, str) or re.fullmatch(
+        r"[0-9a-f]{40}|[0-9a-f]{64}", remediation_authorization_sha
+    ) is None:
+        raise OperatorError("exact canonical REMEDIATION authorization SHA is required")
     if executor not in ("codex", "antigravity", "antigravity-minimax"):
         raise OperatorError(f"unsupported executor: {executor}")
     if any(
@@ -4440,6 +4445,7 @@ def _run_remediation_impl(
         run_path = state.runs / f"{run_id}.json"
         run_document = {
             "kind": "REMEDIATION",
+            "remediation_authorization_sha": remediation_authorization_sha,
             "predecessor": predecessor_record,
             "execution": asdict(execution),
         }
@@ -4663,6 +4669,11 @@ def _accept_candidate_impl(
             finding_id=finding_id,
             admission=admission,
         )
+        remediation_authorization_sha = admission.get("remediation_authorization_sha")
+        if not isinstance(remediation_authorization_sha, str) or re.fullmatch(
+            r"[0-9a-f]{40}|[0-9a-f]{64}", remediation_authorization_sha
+        ) is None:
+            raise OperatorError("exact canonical REMEDIATION authorization SHA is required")
         _set_admission_boundary(
             admission, "CANONICAL_CONTRACT_ADMISSION", "TASK_CONTRACT_REJECTED"
         )
@@ -4790,6 +4801,7 @@ def _accept_candidate_impl(
         run_path = state.runs / f"{run_id}.json"
         run_document = {
             "kind": "REMEDIATION",
+            "remediation_authorization_sha": remediation_authorization_sha,
             "acceptance": {
                 "mode": "DIRECT_CANDIDATE",
                 "candidate_head": candidate_head,
@@ -4948,10 +4960,7 @@ def _resolve_remote_remediation_lineage_impl(
         )
 
     matches: list[
-        tuple[
-            str,
-            tuple[Review, Remediation, Result, Review | None, Task],
-        ]
+        tuple[str, tuple[Review, Remediation, Result, Review | None, Task], str]
     ] = []
     for remote in remote_lineages:
         if admission is not None:
@@ -4975,7 +4984,7 @@ def _resolve_remote_remediation_lineage_impl(
                     f"contract-invalid canonical lineage at {remote.ref}: "
                     "REMEDIATION finding does not match requested finding"
                 )
-            matches.append((remote.source_run_id, parsed))
+            matches.append((remote.source_run_id, parsed, remote.commit_sha))
     if not matches:
         if admission is not None:
             _set_admission_boundary(
@@ -4994,6 +5003,7 @@ def _resolve_remote_remediation_lineage_impl(
         raise OperatorError(f"canonical {context} lineage is ambiguous")
     if admission is not None:
         admission["source_run_id"] = matches[0][0]
+        admission["remediation_authorization_sha"] = matches[0][2]
     return matches[0][1]
 
 
