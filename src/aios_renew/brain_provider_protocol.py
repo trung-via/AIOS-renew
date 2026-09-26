@@ -411,20 +411,24 @@ def revalidate_decision(value: Mapping[str, Any] | None, request: Mapping[str, A
                 _enforce_bindings(semantic["handoff_candidate"], req["external_bindings"])
                 if _digest(semantic["handoff_candidate"]) != semantic["reconciled_candidate_fingerprint"]:
                     raise BrainProviderProtocolError("Stage-2 candidate fingerprint mismatch")
-                material = {
-                    "packet_fingerprint": first["packet_fingerprint"],
-                    "audit_profile_ref": first["audit_profile_ref"],
-                    "selected_flow": first["selected_flow"],
-                    "construct_candidate": first["construct_candidate"],
-                    "construct_fingerprint": first["construct_fingerprint"],
-                    "construct_audit": semantic["construct_audit"],
-                    "reconciled_candidate": semantic["handoff_candidate"],
-                    "closure": semantic["closure"], "outcome": semantic["outcome"],
-                }
-                if validate_stage2(req["decision_packet"], profile, first, material) != semantic:
-                    raise BrainProviderProtocolError("Stage-2 result does not match BP-4A semantics")
             elif semantic["outcome"] != "NO_DECISION" or semantic["handoff_candidate"] is not None:
                 raise BrainProviderProtocolError("invalid Stage-2 handoff exposure")
+            material = {
+                "packet_fingerprint": first["packet_fingerprint"],
+                "audit_profile_ref": first["audit_profile_ref"],
+                "selected_flow": first["selected_flow"],
+                "construct_candidate": first["construct_candidate"],
+                "construct_fingerprint": first["construct_fingerprint"],
+                "construct_audit": semantic["construct_audit"],
+                # NO_DECISION hides the reconciled candidate. Only the original
+                # construct can be recovered from the serialized request; BP-4A
+                # rejects it if the audit claims a different reconciliation.
+                "reconciled_candidate": (semantic["handoff_candidate"] if semantic["outcome"] == "CANDIDATE"
+                                         else first["construct_candidate"]),
+                "closure": semantic["closure"], "outcome": semantic["outcome"],
+            }
+            if validate_stage2(req["decision_packet"], profile, first, material) != semantic:
+                raise BrainProviderProtocolError("Stage-2 result does not match BP-4A semantics")
             validated = semantic
         expected = _decision(req, validated)
         if decision != expected or decision["decision_fingerprint"] != _digest({k: v for k, v in decision.items() if k != "decision_fingerprint"}):

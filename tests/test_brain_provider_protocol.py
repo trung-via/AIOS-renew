@@ -117,6 +117,59 @@ def test_audited_round_trip_and_stale_stage2(registry, profile_package):
         validate_response(second, bad)
 
 
+@pytest.mark.parametrize("tamper", (
+    "stage2_fingerprint", "reconciled_candidate_fingerprint", "closure", "construct_audit",
+))
+def test_no_decision_serialized_stage2_tampering(registry, profile_package, tamper):
+    first = request(registry, profile_package)
+    candidate = {"task_id": "TASK-999", "revision": 1}
+    stage1 = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]),
+                               first["return_contract_package"], first["external_bindings"],
+                               first["audit_profile_package"], request_mode="AUDIT_RECONCILE",
+                               stage1_decision=stage1)
+    final = validate_response(second, stage2_response(second, candidate, blocker=True))
+    assert revalidate_decision(final, second) == final
+
+    altered = deepcopy(final)
+    semantic = altered["semantic_value"]
+    if tamper in {"stage2_fingerprint", "reconciled_candidate_fingerprint"}:
+        semantic[tamper] = "0" * 64
+    elif tamper == "closure":
+        semantic["closure"][-1]["blocker_summary"] = "Different open risk"
+    else:
+        semantic["construct_audit"][0] = {
+            "lens": semantic["construct_audit"][0]["lens"], "outcome": "RISK_FOUND",
+            "risks": [{"risk_summary": "Change needed", "counterexample": "Current candidate fails",
+                       "candidate_anchor": "task_id", "disposition": "ADDRESSED_BY_RECONCILIATION"}],
+        }
+    altered["decision_fingerprint"] = digest({k: v for k, v in altered.items()
+                                               if k != "decision_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_decision(altered, second)
+
+
+def test_no_decision_changed_candidate_cannot_be_revalidated(registry, profile_package):
+    first = request(registry, profile_package)
+    candidate = {"task_id": "TASK-999", "revision": 1}
+    stage1 = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]),
+                               first["return_contract_package"], first["external_bindings"],
+                               first["audit_profile_package"], request_mode="AUDIT_RECONCILE",
+                               stage1_decision=stage1)
+    reconciled = {**candidate, "goal": "Addressed risk"}
+    material = stage2_response(second, reconciled, blocker=True)
+    material["construct_audit"][0] = {
+        "lens": material["construct_audit"][0]["lens"], "outcome": "RISK_FOUND",
+        "risks": [{"risk_summary": "Change needed", "counterexample": "Current candidate fails",
+                   "candidate_anchor": "task_id", "disposition": "ADDRESSED_BY_RECONCILIATION"}],
+    }
+    final = validate_response(second, material)
+    assert final["semantic_value"]["handoff_candidate"] is None
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_decision(final, second)
+
+
 def test_identity_package_binding_and_replay(registry, profile_package):
     first = request(registry, profile_package)
     same = request(registry, profile_package)
