@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-5-brain-provider-protocol
+  - bp-6-reviewer-provider-protocol
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -772,8 +772,7 @@ sequence:
       without chat memory, persistent reasoning state, multi-agent voting, provider-specific
       behavior, lifecycle routing, or any new semantic authority.
   - id: bp-5-brain-provider-protocol
-    status: NEXT
-    current_phase: BP5-P3
+    status: DONE
     completed_phases:
       - id: BP5-P1
         task_id: TASK-180
@@ -792,6 +791,14 @@ sequence:
         review_id: REVIEW-182-002
         prior_finding_id: FINDING-182-001
         published_sha: "09b2d099dd90abae12083d6b0f7f5f4abbdd377d"
+      - id: BP5-P3
+        task_id: TASK-183
+        failed_run_id: RUN-183-001
+        repair_id: REPAIR-183-001
+        repair_run_id: RUN-183-002
+        review_id: REVIEW-183-002
+        published_sha: "7077d8c1c8e14f9c61240783fe049b63617443d6"
+    exit_gate: SATISFIED
     planning_document: docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
     objective: >-
       Establish provider-neutral Brain request/decision contracts over complete bounded
@@ -799,7 +806,7 @@ sequence:
       adapter boundaries, fresh Stage-2 packet binding, and no dependency on provider-specific
       GitHub access, chat memory, provider identity, or new semantic/lifecycle authority.
   - id: bp-6-reviewer-provider-protocol
-    status: PLANNED
+    status: NEXT
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Establish a separate provider-neutral Reviewer protocol without merging Brain and
@@ -847,17 +854,16 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol is the
-    current Human/Brain planning commitment. BP5-P1, BP5-P2A and BP5-P2B are
-    reviewed/published complete. The next implementation obligation is BP5-P3 thin
-    provider adapter plus bounded orchestration conformance. P3 uses one explicitly
-    selected provider per audited attempt, a caller-owned zero-argument fresh-packet
-    supplier between Stage 1 and Stage 2, typed fail-closed pre-handoff outcomes, and
-    at least two independent non-network conformance adapters. Each production mutation
-    requires a separately audited, executor-neutral canonical TASK. Do not reinterpret
-    provider cognitive-support contracts as downstream validator authority, repository
-    discovery, cross-stage hot-swap proof, real second-provider proof, Reviewer authority,
-    provider/model routing, or automatic lifecycle authority.
+    Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol is
+    reviewed/published complete through BP5-P3 and its exit gate is satisfied. The
+    current Human/Brain planning commitment is BP-6 Reviewer Provider Protocol.
+    Before authoring its first implementation TASK, fresh-sync and audit Reviewer-specific
+    evidence/context, request/decision semantics, authority separation from Brain,
+    deterministic validation boundaries, and overlap with existing REVIEW contracts.
+    Do not reuse Brain-provider semantics as Reviewer authority, do not consume BP-7
+    cross-provider hot-swap proof or BP-8 real-provider proof early, and do not create
+    a generic provider/model router, lifecycle router, automatic Reviewer, or new
+    canonical mutation authority.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
