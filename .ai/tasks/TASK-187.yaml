@@ -1,0 +1,269 @@
+task_id: TASK-187
+revision: 1
+
+goal: >
+  Implement BP6-P2B Reviewer Return Contract as one repository-owned, bounded,
+  content-addressed provider-facing semantic-body grammar for PRIMARY and DELTA
+  Reviewer output, while keeping canonical REVIEW identity, finding identity,
+  lifecycle binding, REVIEW materialization and review.validate_review outside
+  provider authority.
+
+problem: >
+  BP6-P1A now supplies exact semantic review scope, BP6-P1B supplies complete
+  bounded implementation material, and BP6-P2A supplies the self-sufficient
+  Reviewer judgment procedure. A repository-blind Reviewer provider still lacks
+  one strict provider-neutral contract defining only the semantic body it may
+  return. Without a separate P2B contract, BP6-P3 or provider adapters would need
+  to invent return grammar, canonical REVIEW identities or consistency policy,
+  creating duplicate Reviewer/validator authority. P2B must therefore define and
+  validate only bounded provider-authored verdict/acceptance/finding semantic
+  material, leaving deterministic canonical identity binding and the existing
+  review.validate_review gate to P3 and existing ingress.
+
+assumptions:
+  - >
+    Canonical main f7796caf4a18c19fd4ce6c5b66e6611a21c7f99d records BP-6
+    Reviewer Provider Protocol as current, BP6-P1A/P1B/P2A reviewed and
+    published complete through TASK-184/TASK-185/TASK-186, and BP6-P2B as the
+    unique NEXT implementation obligation.
+  - >
+    TASK-186 r1 completed through failed RUN-186-001, exact REPAIR-186-001,
+    RUN-186-002 verification, REVIEW-186-002 PRIMARY PASS and publication of
+    4333e5644b997ce2980fd4f56d8df5d92fbd2f03. The reviewed
+    reviewer-semantic-v1 procedure profile remains authoritative for how the
+    Reviewer performs semantic judgment.
+  - >
+    Existing Flow Card SEMANTIC_REVIEW metadata remains authoritative:
+    authority_owner REVIEWER, decision_family_ref review.validate_review,
+    handoff_target AUTHORING_INGRESS and expected_return_shape
+    REVIEW_CONTRACT_PROPOSAL.
+  - >
+    Existing Task parsing/validation and review.validate_review remain the
+    canonical TASK and REVIEW validation authorities. P2B may consume an
+    already-validated Task plus caller-supplied review-mode/prior-finding basis
+    context, but must not rediscover lifecycle state or reconstruct a canonical
+    Review.
+  - >
+    BP6-P3 owns AIOS_REVIEW_REQUEST/AIOS_REVIEW_DECISION, external review_id and
+    finding-id binding, canonical identity materialization and the call to
+    review.validate_review. BP6-P4 owns provider invocation/conformance.
+    TASK-187 must not consume those phases.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md
+    - .ai/roadmap-state.yaml
+    - .ai/flow-cards.yaml
+    - .ai/reviewer-procedure-profiles.yaml
+    - .ai/brain-return-contracts.yaml
+    - .ai/tasks/TASK-186.yaml
+    - src/aios_renew/task.py
+    - src/aios_renew/review.py
+    - src/aios_renew/reviewer_procedure.py
+    - src/aios_renew/brain_return_contract.py
+    - tests/test_reviewer_procedure.py
+    - tests/test_brain_return_contract.py
+  modify:
+    - .ai/reviewer-return-contracts.yaml
+    - src/aios_renew/reviewer_return_contract.py
+    - tests/test_reviewer_return_contract.py
+
+non_goals:
+  - >
+    Define AIOS_REVIEW_REQUEST, AIOS_REVIEW_DECISION, provider adapters,
+    provider/model selection, provider invocation, transport parsing,
+    retry/fallback/voting, hot-swap or real-provider behavior; these belong to
+    BP6-P3/P4/BP-7/BP-8.
+  - >
+    Create, parse into, validate as, canonicalize or submit a REVIEW artifact;
+    allocate review_id or finding ids; bind reviewed_sha, mode or
+    prior_finding_id into a canonical REVIEW; call review.validate_review or
+    authoring ingress.
+  - >
+    Change review.py, REVIEW schema, Task schema, Unified State, semantic review
+    scope, review material, Reviewer procedure profile, Flow Cards, Decision
+    Packet, Runtime evidence/verification, ingress, publication, Brain provider
+    protocol or any lifecycle contract.
+  - >
+    Deterministically decide whether a DELTA correction directly invalidates an
+    additional prior acceptance conclusion. That is Reviewer semantic judgment
+    governed by the P2A procedure, not a P2B parser/validator decision.
+  - >
+    Interpret malformed body, invalid material, transport/provider failure or
+    contract incompatibility as semantic BLOCKED, CHANGES_REQUIRED, FAILURE,
+    REMEDIATION, REPAIR or publication state.
+  - >
+    Create a second Reviewer, second semantic-review validator, Planner,
+    lifecycle router, remediation selector, generic provider/model router,
+    persistent chain-of-thought/session store or hidden chat-memory dependency.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Production mutation is limited to scope.modify. If satisfying this
+      contract requires changing review.py, task.py, P1A/P1B/P2A, provider
+      protocol, ingress, Runtime, lifecycle or another production owner, fail
+      closed back to Brain rather than widening scope.
+    - >
+      Add exactly one canonical registry format AIOS_REVIEWER_RETURN_CONTRACTS
+      version 1 containing exactly one contract id reviewer-semantic-return-v1
+      version 1. Its metadata must exactly bind selected_flow SEMANTIC_REVIEW,
+      authority_owner REVIEWER, decision_family_ref review.validate_review,
+      handoff_target AUTHORING_INGRESS and expected_return_shape
+      REVIEW_CONTRACT_PROPOSAL.
+    - >
+      The selected contract declares representation STRICT_JSON_MAPPING and one
+      provider-authored semantic body closed to exactly verdict, acceptance and
+      findings. verdict is PASS, CHANGES_REQUIRED or BLOCKED. acceptance is a
+      list of closed records {id, outcome}, where outcome is PASS or FAIL.
+      findings is a list of closed records {basis, action, location, issue,
+      expected}, where action is CODE_FIX or EVIDENCE_ONLY. Canonical identity
+      fields review_id, reviewed_sha, mode, prior_finding_id and finding.id are
+      absent and any extra body/subrecord field is rejected.
+    - >
+      Effective v1 bounds are exactly raw_registry_bytes=65536,
+      selected_contract_bytes=32768, semantic_body_bytes=131072,
+      acceptance_entries=256, findings=32, location_bytes=2048,
+      issue_bytes=8192, expected_bytes=8192 and max_depth=32. Bounds are
+      fail-closed ceilings; no registry/body text or structure may be truncated,
+      replaced or silently omitted to fit.
+    - >
+      Expose a pure parser/normalizer for caller-supplied UTF-8 YAML registry
+      bytes/text that rejects duplicate mapping keys, YAML aliases,
+      unknown/missing/reordered contract identity, invalid Unicode, non-JSON
+      semantic values, substituted effective bounds, over-depth and over-bound
+      material. Equivalent YAML mapping order and LF/CRLF representation must
+      normalize to the same selected contract identity.
+    - >
+      Expose one pure selection operation returning the exact normalized full
+      contract, exact effective bounds and one content-addressed
+      reviewer_return_contract_ref. The ref binds reviewer-semantic-return-v1
+      version 1 and lowercase SHA-256 over canonical deterministic JSON of the
+      complete normalized selected contract plus effective v1 bounds. Provider,
+      model, session, review_id, reviewed_sha, prior_finding_id and finding ids
+      are excluded.
+    - >
+      Expose pure provider-body parsing/normalization for caller-supplied strict
+      UTF-8 JSON bytes/text or an equivalent decoded mapping. Raw JSON must reject
+      duplicate keys, NaN/Infinity and other non-JSON values, non-string mapping
+      keys, invalid Unicode, unknown/missing fields, over-depth and raw or
+      normalized semantic-body overflow. No YAML fallback, coercion, trimming or
+      lossy Unicode/newline rewriting is allowed for provider semantic text.
+    - >
+      Provider-body validation consumes only caller-supplied already-authoritative
+      review_mode PRIMARY or DELTA, an already-validated canonical Task object,
+      and for DELTA the exact caller-supplied prior_finding_basis acceptance id.
+      It must not derive mode, prior finding, TASK identity or lifecycle truth
+      from Git/repository state. PRIMARY requires no prior_finding_basis; DELTA
+      requires exactly one non-empty prior_finding_basis that exists in the Task.
+    - >
+      Every acceptance id in provider output must be an exact acceptance id from
+      the supplied Task and appear at most once. PRIMARY must cover every Task
+      acceptance id exactly once. DELTA must include the exact
+      prior_finding_basis exactly once; additional supplied acceptance ids may
+      only be existing Task acceptance ids. The validator must not itself decide
+      whether any additional DELTA id was semantically directly invalidated by
+      the correction; that obligation remains in reviewer-semantic-v1.
+    - >
+      Normalized acceptance entries are deterministically ordered by the supplied
+      Task acceptance order after uniqueness and membership validation, so
+      provider list reordering alone does not create a different normalized
+      semantic body. Finding order remains the provider-authored semantic order
+      because later deterministic finding-id materialization must bind that exact
+      ordered finding sequence.
+    - >
+      PASS requires findings to be empty and every supplied acceptance outcome
+      PASS. CHANGES_REQUIRED requires at least one acceptance FAIL and at least
+      one finding; every finding basis must identify a supplied acceptance marked
+      FAIL, and every supplied FAIL must have at least one finding. These are
+      provider-facing consistency checks and do not replace review.validate_review.
+    - >
+      BLOCKED remains the existing semantic Reviewer verdict and P2B must not
+      invent stronger lifecycle semantics for it. Beyond the common closed
+      grammar, TASK-id membership and bounds, do not require fabricated protocol
+      findings or reinterpret protocol/material/transport failures as BLOCKED.
+    - >
+      Each finding basis must be an exact Task acceptance id. location, issue and
+      expected are non-empty strict UTF-8 semantic text within their exact bounds;
+      location is a bounded semantic/source locus and must not be narrowed to a
+      filesystem-path grammar. Provider output cannot emit REPAIR, retry, route,
+      publish or provider-selection instructions as finding actions.
+    - >
+      The normalized semantic body contains no generated canonical identities and
+      P2B allocates none. It may return only validated semantic material plus the
+      selected return-contract package/reference needed by future P3. P2B must
+      not construct a Review dataclass, call parse_review/validate_review, invoke
+      ingress or mutate canonical state.
+    - >
+      The registry selector and semantic-body parser/validator perform no
+      filesystem, repository, Git, GitHub, network, environment, credential,
+      provider, clock/random, verification or lifecycle access and keep no
+      persistent cache/session/reasoning state.
+    - >
+      Tests must prove provider cannot smuggle canonical identity fields or
+      operational provider/model/session metadata into semantic body, and that
+      malformed/protocol/material failures are typed contract errors rather than
+      semantic verdicts. Tests must also prove P2B does not implement P3/P4
+      request/decision/provider behavior.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository contains exactly one AIOS_REVIEWER_RETURN_CONTRACTS v1
+      registry with one reviewer-semantic-return-v1 contract whose metadata
+      exactly matches SEMANTIC_REVIEW and whose exact effective bounds match
+      TASK-187.
+  - id: AC2
+    condition: >
+      The selected contract is content-addressed deterministically across
+      equivalent registry serialization, changes when any contract grammar,
+      metadata or bound changes, and excludes provider/model/session and
+      canonical REVIEW/finding identity from its reference.
+  - id: AC3
+    condition: >
+      Pure strict-JSON semantic-body parsing enforces the exact closed
+      verdict/acceptance/findings grammar, duplicate-key/Unicode/JSON/depth/byte
+      bounds and complete exclusion of review_id, reviewed_sha, mode,
+      prior_finding_id, finding.id and operational metadata.
+  - id: AC4
+    condition: >
+      PRIMARY validation requires every exact Task acceptance id once and only
+      once; DELTA requires the exact supplied prior-finding basis once while
+      permitting only existing Task ids for any additional entries, with
+      deterministic Task-order normalization and no deterministic attempt to
+      decide semantic direct-invalidation.
+  - id: AC5
+    condition: >
+      PASS and CHANGES_REQUIRED provider-facing consistency rules exactly match
+      TASK-187, finding actions remain CODE_FIX or EVIDENCE_ONLY, finding text is
+      bounded without path-only narrowing, and BLOCKED is not repurposed for
+      contract/material/transport failure or given new lifecycle semantics.
+  - id: AC6
+    condition: >
+      Provider semantic findings remain ordered and identity-free; P2B allocates
+      no finding/review identity, constructs no canonical Review, and leaves final
+      identity binding plus review.validate_review to BP6-P3/existing authority.
+  - id: AC7
+    condition: >
+      Registry/body processing is pure caller-supplied deterministic support with
+      no filesystem/Git/GitHub/network/provider/lifecycle access, persistence,
+      verification, canonical mutation, retry/fallback/voting/router behavior or
+      hidden session/chat dependency.
+  - id: AC8
+    condition: >
+      Focused tests cover PRIMARY and DELTA valid bodies, acceptance reordering,
+      duplicate/unknown/missing acceptance ids, exact DELTA prior basis,
+      PASS/CHANGES_REQUIRED consistency, BLOCKED boundary, all exact bounds,
+      duplicate JSON/YAML keys, aliases, invalid Unicode/non-JSON values,
+      content-address sensitivity and identity/operational-field smuggling,
+      without implementing BP6-P3/P4.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_reviewer_return_contract.py
