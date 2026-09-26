@@ -350,9 +350,11 @@ Exit gate: self-sufficient repository-owned audit-profile and return-contract ma
 
 ### BP-6 — Reviewer Provider Protocol
 
-Introduce separate provider-neutral review request/decision contracts while preserving Reviewer independence from Brain authority.
+Introduce separate provider-neutral review request/decision contracts while preserving Reviewer independence from Brain authority. The detailed architecture, review-scope foundation, bounded Reviewer material package, provider-visible procedure/return-contract boundary, one-call Reviewer protocol and BP-7/BP-8 separation are recorded in `docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md`.
 
-Exit gate: semantic review can be performed through the same bounded canonical evidence regardless of provider implementation.
+BP-6 proceeds as BP6-P1A Semantic Review Scope Identity, BP6-P1B Bounded Reviewer Material Package, BP6-P2 Reviewer Procedure + Return Contract, BP6-P3 Pure Reviewer Request / Decision Protocol, and BP6-P4 Thin Reviewer Provider Conformance. Do not collapse these into one mega-TASK.
+
+Exit gate: semantic review can be performed through exact bounded canonical/cognitive-support material regardless of provider implementation, while existing `review.validate_review`, authoring ingress, Runtime and Publisher authorities remain unchanged.
 
 ### BP-7 — Cross-context / Hot-swap Conformance
 
