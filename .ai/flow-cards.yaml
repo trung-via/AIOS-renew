@@ -6,7 +6,7 @@ cards:
     required_context: [canonical_observation.repository, canonical_observation.main_sha, current_request.flow_selector]
     optional_context: [canonical_observation.roadmap, canonical_observation.blocker, current_request.human_input]
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
-    authority_owner: HUMAN_BRAIN
+    authority_owner: BRAIN
     decision_family_ref: HUMAN_BRAIN_ARCHITECTURE_PLANNING
     handoff_target: HUMAN_BRAIN_PLANNING
     expected_return_shape: BOUNDED_SEMANTIC_PROPOSAL
@@ -16,7 +16,7 @@ cards:
     required_context: [canonical_observation.repository, canonical_observation.main_sha, canonical_observation.roadmap, canonical_observation.blocker]
     optional_context: [canonical_observation.selected_task, current_request.human_input]
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
-    authority_owner: HUMAN_BRAIN
+    authority_owner: BRAIN
     decision_family_ref: task.validate_task+authoring_ingress
     handoff_target: AUTHORING_INGRESS
     expected_return_shape: TASK_AUTHORING_PROPOSAL
@@ -36,7 +36,7 @@ cards:
     required_context: [canonical_observation.repository, canonical_observation.main_sha, canonical_observation.selected_task, canonical_observation.unified_state]
     optional_context: [canonical_observation.blocker, current_request.human_input]
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
-    authority_owner: HUMAN_BRAIN
+    authority_owner: BRAIN
     decision_family_ref: review.validate_remediation
     handoff_target: AUTHORING_INGRESS
     expected_return_shape: REMEDIATION_CONTRACT_PROPOSAL
@@ -46,7 +46,7 @@ cards:
     required_context: [canonical_observation.repository, canonical_observation.main_sha, canonical_observation.selected_task, canonical_observation.unified_state]
     optional_context: [canonical_observation.blocker, current_request.human_input]
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
-    authority_owner: HUMAN_BRAIN
+    authority_owner: BRAIN
     decision_family_ref: publication._validate_repair_authorization
     handoff_target: AUTHORING_INGRESS
     expected_return_shape: REPAIR_AUTHORIZATION_PROPOSAL
@@ -56,7 +56,7 @@ cards:
     required_context: [canonical_observation.repository, canonical_observation.main_sha, canonical_observation.blocker, current_request.flow_selector]
     optional_context: [canonical_observation.roadmap, canonical_observation.unified_state, current_request.human_input]
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
-    authority_owner: HUMAN_BRAIN
+    authority_owner: BRAIN
     decision_family_ref: HUMAN_BRAIN_DIAGNOSTIC
     handoff_target: HUMAN_BRAIN_PLANNING
     expected_return_shape: BOUNDED_DIAGNOSTIC_PROPOSAL

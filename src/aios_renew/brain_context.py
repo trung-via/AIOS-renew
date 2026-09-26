@@ -31,7 +31,7 @@ _OBLIGATIONS = {
     "AUTHOR_REMEDIATION": "REMEDIATION_AUTHORING",
     "AUTHOR_REPAIR": "REPAIR_AUTHORING",
 }
-_OWNERS = {flow: "HUMAN_BRAIN" for flow in _FLOWS}
+_OWNERS = {flow: "BRAIN" for flow in _FLOWS}
 _OWNERS["SEMANTIC_REVIEW"] = "REVIEWER"
 _FAMILIES = {
     "ARCHITECTURE": "HUMAN_BRAIN_ARCHITECTURE_PLANNING",
@@ -91,7 +91,6 @@ _CARD_FIELDS = frozenset({
     "forbidden_context", "authority_owner", "decision_family_ref",
     "handoff_target", "expected_return_shape", "invalidation_rules",
 })
-_DEFAULT_CARDS = Path(__file__).resolve().parents[2] / ".ai" / "flow-cards.yaml"
 
 
 def _stable_copy(value: Any) -> Any:
@@ -135,7 +134,9 @@ def _request(value: Mapping[str, Any] | None) -> dict[str, str] | None:
 
 def _invalidation_basis(observed: Mapping[str, Any], request: Mapping[str, str] | None) -> dict[str, str]:
     return {
-        "repository_identity_sha256": _digest(observed["repository"]),
+        # Root and remote are operational observations. Brain Sync's name is
+        # the canonical repository identity and remains stable across checkouts.
+        "repository_identity_sha256": _digest(observed["repository"]["name"]),
         "main_sha": observed["main_sha"],
         "roadmap_selection_sha256": _digest({
             "roadmap": observed["roadmap"],
@@ -158,6 +159,7 @@ class BrainWorkContext:
     current_request: Mapping[str, str] | None
     invalidation_basis: Mapping[str, Any]
     invalidation_fingerprint: str
+    operational_repository_root: str
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -199,7 +201,7 @@ def compose_brain_work_context(
         raise BrainContextError("unsupported Brain Sync snapshot")
     basis = _invalidation_basis(observed, request)
     fingerprint = _digest(basis)
-    return BrainWorkContext(observed, request, basis, fingerprint)
+    return BrainWorkContext(observed, request, basis, fingerprint, observed["repository"]["root"])
 
 
 def _tokens(value: Any, *, allowed: frozenset[str], nonempty: bool = True) -> list[str]:
@@ -227,9 +229,12 @@ def _unique_mapping(loader: _UniqueKeyLoader, node: yaml.MappingNode) -> dict[st
 _UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping)
 
 
-def load_flow_cards(path: str | Path | None = None) -> dict[str, dict[str, Any]]:
+def load_flow_cards(path: str | Path | None = None, *, repo: str | Path | None = None) -> dict[str, dict[str, Any]]:
     """Load a closed, non-executable repository-owned procedural registry."""
-    card_path = Path(path) if path is not None else _DEFAULT_CARDS
+    if path is not None and repo is not None:
+        raise BrainContextError("supply either registry path or repository")
+    card_path = (Path(path) if path is not None else
+                 Path(repo if repo is not None else Path.cwd()) / ".ai" / "flow-cards.yaml")
     try:
         raw = yaml.load(card_path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
     except (OSError, UnicodeError, yaml.YAMLError) as exc:
@@ -310,8 +315,14 @@ def resolve_flow(context: BrainWorkContext, *, cards_path: str | Path | None = N
             context.invalidation_basis or _digest(context.invalidation_basis) != \
             context.invalidation_fingerprint:
         raise BrainContextError("stale or altered Brain Work Context")
-    cards = load_flow_cards(cards_path)
     observed = context.canonical_observation
+    root = observed["repository"]["root"]
+    if not isinstance(root, str) or not root or root != context.operational_repository_root:
+        raise BrainContextError("Brain Sync repository root is missing or altered")
+    canonical_path = Path(root) / ".ai" / "flow-cards.yaml"
+    if cards_path is not None and Path(cards_path).resolve() != canonical_path.resolve():
+        raise BrainContextError("Flow Card override is unrelated to observed repository")
+    cards = load_flow_cards(canonical_path)
     unified = observed["unified_state"]
     next_action = observed["next_action"]
     # Brain Sync can correctly override its outer action to NONE for a roadmap

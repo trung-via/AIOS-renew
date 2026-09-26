@@ -24,7 +24,8 @@ def snapshot(action="EXECUTE_PRIMARY", *, blocker=None, status="SELECTED", roadm
         "finding_id": "FINDING-177-001", "blocker": blocker,
     }
     return BrainSyncSnapshot(
-        repository={"root": "/repo", "name": "AIOS-renew", "main_sha": "a" * 40,
+        repository={"root": str(Path(__file__).resolve().parents[1]),
+                    "name": "AIOS-renew", "main_sha": "a" * 40,
                     "remote": "origin", "remote_url": "https://secret@example.test/repo"},
         main_sha="a" * 40,
         roadmap=roadmap or {"present": True, "next_items": ["bp-3"]},
@@ -88,7 +89,8 @@ def test_explicit_side_flow_preserves_pending_obligation(selector):
     context = compose_brain_work_context(source, {"flow_selector": selector, "human_input": "current priority"})
     result = resolve_flow(context)
     assert result.selected_flow == selector
-    assert result.authority_owner == "HUMAN_BRAIN"
+    assert result.authority_owner == "BRAIN"
+    assert result.card["authority_owner"] == "BRAIN"
     assert result.pending_canonical_obligation == "SEMANTIC_REVIEW"
     assert result.pending_canonical_authority_owner == "REVIEWER"
     assert result.canonical_blocker == blocker
@@ -120,14 +122,14 @@ def test_diagnostic_preserves_brain_sync_conflict_and_unified_projection():
     assert result.unified_state_next_action == "DONE"
 
 
-@pytest.mark.parametrize("request", [
+@pytest.mark.parametrize("invalid_request", [
     {}, {"flow_selector": "SEMANTIC_REVIEW"}, {"flow_selector": ""},
     {"flow_selector": None}, {"human_input": 1}, {"human_input": "x", "extra": 1},
     {"human_input": "\ud800"}, {"human_input": "🙂" * 4097},
 ])
-def test_current_request_fails_closed(request):
+def test_current_request_fails_closed(invalid_request):
     with pytest.raises(BrainContextError):
-        compose_brain_work_context(snapshot(), request)
+        compose_brain_work_context(snapshot(), invalid_request)
 
 
 def test_utf8_bound_and_invalidation():
@@ -152,6 +154,44 @@ def test_altered_context_fails_closed():
     context = compose_brain_work_context(snapshot())
     context.canonical_observation["roadmap"]["next_items"].append("another")
     with pytest.raises(BrainContextError):
+        resolve_flow(context)
+
+
+def test_checkout_root_and_remote_alias_are_not_semantic_identity():
+    source = snapshot("AUTHOR_REPAIR")
+    human_request = {"flow_selector": "DIAGNOSTIC", "human_input": "inspect"}
+    first = compose_brain_work_context(source, human_request)
+    other = replace(source, repository={**source.repository, "root": "/other/checkout",
+                                        "remote": "upstream", "remote_url": "https://other.example/repo"})
+    second = compose_brain_work_context(other, human_request)
+    assert first.invalidation_basis == second.invalidation_basis
+    assert first.invalidation_fingerprint == second.invalidation_fingerprint
+    assert first.canonical_observation["repository"] != second.canonical_observation["repository"]
+
+
+def test_resolver_uses_observed_repository_registry(tmp_path: Path):
+    source = snapshot("SEMANTIC_REVIEW")
+    repo = tmp_path / "checkout"
+    registry = repo / ".ai" / "flow-cards.yaml"
+    registry.parent.mkdir(parents=True)
+    source_cards = Path(__file__).resolve().parents[1] / ".ai" / "flow-cards.yaml"
+    registry.write_text(source_cards.read_text(encoding="utf-8"), encoding="utf-8")
+    context = compose_brain_work_context(replace(source, repository={**source.repository, "root": str(repo)}))
+    assert resolve_flow(context).selected_flow == "SEMANTIC_REVIEW"
+    assert resolve_flow(context, cards_path=registry).selected_flow == "SEMANTIC_REVIEW"
+    unrelated = tmp_path / "unrelated.yaml"
+    unrelated.write_text(registry.read_text(encoding="utf-8"), encoding="utf-8")
+    with pytest.raises(BrainContextError, match="unrelated"):
+        resolve_flow(context, cards_path=unrelated)
+    registry.unlink()
+    with pytest.raises(BrainContextError, match="cannot load"):
+        resolve_flow(context)
+
+
+def test_altered_operational_root_cannot_redirect_registry(tmp_path: Path):
+    context = compose_brain_work_context(snapshot())
+    context.canonical_observation["repository"]["root"] = str(tmp_path)
+    with pytest.raises(BrainContextError, match="altered"):
         resolve_flow(context)
 
 
