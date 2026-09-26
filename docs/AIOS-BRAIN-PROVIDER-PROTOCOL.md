@@ -455,6 +455,10 @@ The injected `fresh_packet_supplier` is a zero-argument caller-owned freshness b
 
 For BP5-P3 conformance, one audited attempt uses the same explicitly selected provider implementation for both admitted invocations. Cross-stage/provider substitution is intentionally deferred to BP-7 hot-swap conformance. DIAGNOSTIC DIRECT performs exactly one provider invocation and no freshness callback.
 
+The selected BrainProvider instance exposes immutable configured provider/model identity. Every invocation's bounded operational attribution must match that configured provider/model identity exactly; provider or model drift is fail-closed and must not be interpreted as fallback. Per-invocation/session identifiers may differ, but remain attribution only. P3 does not import or reuse Executor execution-profile selection to establish this identity.
+
+Semantic correctness must not depend on hidden adapter conversation/session state. Each invocation is self-sufficient from its exact `AIOS_BRAIN_REQUEST`; Stage 2 receives the reviewed Stage-1 lineage through P2B request material rather than adapter memory. A conforming adapter may maintain bounded operational counters or transport handles, but no prior prompt/response/session content becomes semantic input to the next invocation.
+
 The thin adapter contract may return only:
 - one extracted semantic-response mapping to the P2B validator; and
 - one separate bounded operational-attribution mapping.
