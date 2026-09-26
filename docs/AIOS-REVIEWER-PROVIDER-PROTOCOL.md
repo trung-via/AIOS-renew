@@ -538,7 +538,7 @@ P3 AIOS_REVIEW_REQUEST / AIOS_REVIEW_DECISION
 
 This preserves one semantic Reviewer authority while separating "how the Reviewer must judge" from "what bounded semantic body it may return". It also prevents BP6-P3 from embedding a second prose policy corpus or ad-hoc return grammar.
 
-### BP6-P3 — Pure Reviewer Request / Decision Protocol — NEXT
+### BP6-P3 — Pure Reviewer Request / Decision Protocol — DONE
 
 Introduce exact provider-neutral `AIOS_REVIEW_REQUEST v1` and `AIOS_REVIEW_DECISION v1`.
 
@@ -602,7 +602,9 @@ tests/test_reviewer_provider_protocol.py
 
 Focused verification is sufficient. P3 must not modify Decision Packet, P1A/P1B/P2A/P2B, canonical REVIEW schema, authoring ingress or provider adapters merely to simplify composition.
 
-### BP6-P4 — Thin Reviewer Provider Conformance
+Engineering closure: TASK-188 r1 completed through RUN-188-001, Runtime verification `16 passed in 1.18s` with evidence `RUN-188-001-V001`, REVIEW-188-001 PRIMARY PASS, and exact publication of `71047cd526366130d5f49f2c30418aec940d5791` to `main`. The implementation remained limited to the pure Reviewer request/decision protocol and focused tests; it introduced no provider invocation, ingress mutation, retry/fallback/router authority, or provider-authored canonical REVIEW identity.
+
+### BP6-P4 — Thin Reviewer Provider Conformance — NEXT
 
 Add a Reviewer-specific thin invocation shell over P3.
 
@@ -752,6 +754,8 @@ BP6-P2A is reviewed/published complete through TASK-186 / RUN-186-001 verificati
 
 BP6-P2B is reviewed/published complete through TASK-187 / RUN-187-001 / REVIEW-187-001 PRIMARY PASS at `860e8d86a4fef08671a487e8e670804b8dc41ed9`.
 
-The unique next implementation obligation is BP6-P3 Pure Reviewer Request / Decision Protocol. BP6-P4 Reviewer Provider Conformance follows only after P3 review/publication. A separately authored executor-neutral TASK is required before production implementation.
+BP6-P3 is reviewed/published complete through TASK-188 / RUN-188-001 / REVIEW-188-001 PRIMARY PASS at `71047cd526366130d5f49f2c30418aec940d5791`.
+
+The unique next implementation obligation is BP6-P4 Thin Reviewer Provider Conformance. A separately authored executor-neutral TASK is required before production implementation.
 
 No production mutation is authorized by this planning document.
