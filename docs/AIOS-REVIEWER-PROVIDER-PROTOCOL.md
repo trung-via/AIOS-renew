@@ -106,7 +106,7 @@ P1A does not read or package source file contents and does not invoke any provid
 
 Engineering closure: TASK-184 r1 completed through RUN-184-001, Runtime verification `43 passed in 44.74s`, REVIEW-184-001 PRIMARY PASS (AC1–AC8), and exact publication of candidate `070964600f4ae6e4282cfd3b92d7411c4abcab4f` to `main`. The implementation added the read-only `observe_semantic_review_scope` projection while keeping `AIOS_UNIFIED_STATE v1` serialization unchanged.
 
-### BP6-P1B — Bounded Reviewer Material Package — NEXT
+### BP6-P1B — Bounded Reviewer Material Package — DONE
 
 Introduce `AIOS_REVIEW_MATERIAL_PACKAGE v1` as cognitive-support material, not lifecycle truth or a second EVIDENCE artifact family.
 
@@ -382,40 +382,157 @@ Its acceptance criteria should cover the constructor/revalidator pair, one-view 
 
 No full-suite verification is justified for TASK-185. Minimum-sufficient verification should be the focused new test module only.
 
+Engineering closure: TASK-185 r1 completed through RUN-185-001 / REVIEW-185-001 CHANGES_REQUIRED, FINDING-185-001 remediation, RUN-185-002 Runtime verification `5 passed in 6.14s`, REVIEW-185-002 DELTA PASS and exact publication of `4023500e7a2a02aea59076581ab3b21ea5986fc8` to `main`. The remediation fixed recursive nested-path leaf enumeration and added focused nested MODIFY/ADD/DELETE/rename regressions without widening P1B authority.
+
 ### BP6-P2 — Reviewer Procedure + Return Contract
 
-Create repository-owned, bounded, content-addressed Reviewer procedure material and REVIEW return-contract material.
+P2 is refined into two separately reviewable obligations. Procedure semantics and provider return grammar are related but are not the same artifact and should not be coupled into one mega-TASK.
 
-Do not reuse the BP-4A Brain audit profile as Reviewer authority. Brain construction/reconciliation and Reviewer judgment are distinct semantic roles even if the same physical model may later occupy both roles at different checkpoints.
+#### BP6-P2A — Reviewer Procedure Profile — NEXT
 
-The provider-visible Reviewer procedure must encode the frozen semantics:
+Create one repository-owned, bounded, content-addressed Reviewer procedure profile for `SEMANTIC_REVIEW`.
 
-PRIMARY:
-- assess every TASK acceptance criterion;
-- inspect the full semantic implementation delta;
-- cross-check Executor claims against source and evidence;
-- detect TASK violations and material delta-introduced defects;
-- do not audit the entire repository by default.
+Preferred production surface:
 
-DELTA:
-- determine whether the exact prior finding is resolved;
-- determine whether the correction directly introduced a material defect;
-- do not re-review the entire original TASK unless the correction invalidates prior conclusions.
+```text
+.ai/reviewer-procedure-profiles.yaml
+src/aios_renew/reviewer_procedure.py
+tests/test_reviewer_procedure.py
+```
 
-The procedure may require an internal closure sweep in one invocation but must not require persisted chain-of-thought or a second semantic Reviewer call.
+The profile is Reviewer cognitive-support policy only. It must not become a second REVIEW validator, lifecycle reducer, provider router or persistent reasoning store.
 
-The provider semantic output owns only the semantic REVIEW body:
-- verdict;
-- acceptance assessments;
-- findings.
+The canonical profile identity should be `reviewer-semantic-v1` and bind:
 
-Deterministic request bindings own:
-- review_id;
-- reviewed_sha;
-- mode;
-- prior_finding_id where applicable.
+```text
+selected_flow: SEMANTIC_REVIEW
+authority_owner: REVIEWER
+decision_family_ref: review.validate_review
+handoff_target: AUTHORING_INGRESS
+expected_return_shape: REVIEW_CONTRACT_PROPOSAL
+```
 
-The existing `review.validate_review` remains authoritative after deterministic materialization.
+The profile must have distinct ordered PRIMARY and DELTA procedures.
+
+PRIMARY procedure:
+
+1. **CONTRACT_COVERAGE** — assess every TASK acceptance criterion and relevant hard constraint/non-goal against the exact reviewed candidate.
+2. **SEMANTIC_DELTA_INSPECTION** — inspect the complete P1B semantic view rather than changed-file names or Executor claims alone.
+3. **CLAIM_EVIDENCE_CROSSCHECK** — compare RESULT claims to source material and Runtime-owned bounded evidence summaries; Executor claims never become proof by themselves.
+4. **MATERIAL_DEFECT_SWEEP** — search for material defects introduced by the authorized implementation delta, bounded to the review subject rather than rediscovering the repository.
+5. **VERDICT_CLOSURE** — ensure the verdict, acceptance outcomes and findings are mutually consistent before returning one semantic body.
+
+DELTA procedure:
+
+1. **PRIOR_FINDING_RESOLUTION** — judge the exact prior finding/expected outcome against the cumulative semantic view.
+2. **LATEST_CORRECTION_INSPECTION** — inspect `latest_delta_view` when present to detect a material defect introduced by the latest correction.
+3. **PRIOR_CONCLUSION_INVALIDATION** — revisit an additional acceptance criterion only when the correction directly invalidates that prior conclusion; do not automatically re-review the original TASK.
+4. **VERDICT_CLOSURE** — ensure the prior finding basis and any directly affected acceptance outcomes are represented consistently.
+
+The profile must explicitly distinguish semantic verdicts from protocol/material failures. Invalid Decision Packet, invalid P1A scope, invalid P1B material, provider transport failure or malformed provider output are never semantic `BLOCKED` verdicts.
+
+`BLOCKED` remains the existing Reviewer semantic verdict only when the exact valid supplied semantic subject itself prevents a bounded PASS/CHANGES_REQUIRED judgment. P2A does not change the REVIEW schema or invent a new blocker artifact.
+
+The procedure is one-call semantics. It may instruct the selected Reviewer to perform an internal closure sweep before returning, but it must not require a second Reviewer invocation, multi-reviewer voting, persisted chain-of-thought or hidden session state.
+
+The normalized selected profile plus effective bounds must be content-addressed. Equivalent YAML mapping order / LF-CRLF representation preserves identity; changing any procedure step, mode rule, verdict rule or bound changes the profile digest.
+
+Recommended v1 ceilings:
+
+```text
+raw registry:               65536 UTF-8 bytes
+selected profile:           32768 UTF-8 bytes
+procedure step text:         4096 UTF-8 bytes
+steps per mode:                 8
+max structural depth:          32
+```
+
+The module should be pure over caller-supplied decoded/serialized profile material: no filesystem/Git/GitHub/provider access, no REVIEW creation and no canonical mutation.
+
+#### BP6-P2B — Reviewer Return Contract — PLANNED
+
+After P2A is reviewed/published, define a separate bounded provider-facing REVIEW semantic-body contract.
+
+Preferred production surface:
+
+```text
+.ai/reviewer-return-contracts.yaml
+src/aios_renew/reviewer_return_contract.py
+tests/test_reviewer_return_contract.py
+```
+
+The provider-authored body should be one strict JSON mapping:
+
+```text
+{
+  verdict: PASS | CHANGES_REQUIRED | BLOCKED,
+  acceptance: [
+    {id: <existing TASK acceptance id>, outcome: PASS | FAIL},
+    ...
+  ],
+  findings: [
+    {
+      basis: <existing TASK acceptance id>,
+      action: CODE_FIX | EVIDENCE_ONLY,
+      location: <bounded semantic/source locus>,
+      issue: <bounded text>,
+      expected: <bounded text>
+    },
+    ...
+  ]
+}
+```
+
+Provider output must **not** author canonical identity fields:
+
+```text
+review_id
+reviewed_sha
+mode
+prior_finding_id
+finding.id
+```
+
+`reviewed_sha`, `mode` and DELTA `prior_finding_id` are already deterministic/canonical bindings from P1A lineage. `review_id` and finding identities must be supplied/materialized by the later P3 deterministic request/decision layer; P2B must not allocate them or let a provider invent them.
+
+Provider-facing consistency rules should be stricter than merely accepting arbitrary structurally valid mappings while leaving the existing canonical validator authoritative:
+
+- PRIMARY acceptance entries cover every TASK acceptance id exactly once.
+- DELTA includes the prior finding's basis acceptance exactly once; additional acceptance ids are allowed only for conclusions directly invalidated by the correction.
+- PASS has no findings and every supplied acceptance outcome is PASS.
+- CHANGES_REQUIRED has at least one FAIL, at least one finding, every finding basis is FAIL, and every FAIL has at least one finding.
+- Finding actions remain exactly `CODE_FIX | EVIDENCE_ONLY`; provider output cannot emit REPAIR/retry/routing instructions.
+- BLOCKED is semantic only; material/protocol/transport errors are rejected before this contract. P2B does not widen or reinterpret the canonical BLOCKED lifecycle semantics.
+- All acceptance ids must come from the exact TASK; no provider-created criterion ids are allowed.
+- Findings are ordered semantic entries only. Canonical finding ids are bound later, outside provider authorship.
+
+Representative recent REVIEW artifacts are small (the largest inspected TASK-180..185 review was under 2 KiB with one finding), but v1 should retain conservative bounded headroom:
+
+```text
+semantic body:              131072 UTF-8 bytes
+acceptance entries:            256
+findings:                        32
+location:                      2048 UTF-8 bytes
+issue:                         8192 UTF-8 bytes
+expected:                      8192 UTF-8 bytes
+max structural depth:            32
+```
+
+The normalized selected return contract plus effective bounds must be content-addressed. A pure parser/normalizer may validate this provider-facing semantic body, but P2B must not reconstruct/canonicalize REVIEW, call ingress or replace `review.validate_review`; exact REVIEW materialization belongs P3.
+
+#### P2 audit conclusion
+
+The correct sequencing is therefore:
+
+```text
+P2A Reviewer Procedure Profile
+    ↓ reviewed/published
+P2B Reviewer Return Contract
+    ↓ reviewed/published
+P3 AIOS_REVIEW_REQUEST / AIOS_REVIEW_DECISION
+```
+
+This preserves one semantic Reviewer authority while separating "how the Reviewer must judge" from "what bounded semantic body it may return". It also prevents BP6-P3 from embedding a second prose policy corpus or ad-hoc return grammar.
 
 ### BP6-P3 — Pure Reviewer Request / Decision Protocol
 
@@ -588,6 +705,8 @@ BP-6 is the unique current Human/Brain planning milestone.
 
 BP6-P1A is reviewed/published complete through TASK-184 / RUN-184-001 / REVIEW-184-001 at `070964600f4ae6e4282cfd3b92d7411c4abcab4f`.
 
-The next implementation obligation is BP6-P1B Bounded Reviewer Material Package under the task-design audit above. A separately authored executor-neutral TASK is required before production implementation. Do not jump to Reviewer procedure/provider request/provider invocation before P1B is reviewed and published.
+BP6-P1B is reviewed/published complete through TASK-185 / RUN-185-001 / REVIEW-185-001 CHANGES_REQUIRED / FINDING-185-001 remediation / RUN-185-002 / REVIEW-185-002 DELTA PASS at `4023500e7a2a02aea59076581ab3b21ea5986fc8`.
+
+The next implementation obligation is BP6-P2A Reviewer Procedure Profile under the audit above. P2B Reviewer Return Contract follows only after P2A review/publication. A separately authored executor-neutral TASK is required before either production implementation.
 
 No production mutation is authorized by this planning document.
