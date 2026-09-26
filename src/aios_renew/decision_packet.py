@@ -385,9 +385,33 @@ def _repair_authoring(material: dict[str, Any], observed: Mapping[str, Any]) -> 
     ):
         raise DecisionPacketError("failed candidate changed-file set is invalid")
     subject["failed_changed_files"] = sorted(candidate["changed_files"])
-    observation = {key: failure[key] for key in ("phase", "reason_code", "error") if key in failure}
-    for value in observation.values():
-        _bounded_text(value, "failure observation")
+    observation = {}
+    for key in ("phase", "reason_code"):
+        if key in failure:
+            value = _bounded_text(failure[key], f"FAILURE {key}")
+            if len(value) > 256 or re.fullmatch(r"[A-Z][A-Z_0-9]*", value) is None:
+                raise DecisionPacketError(f"FAILURE {key} is invalid")
+            observation[key] = value
+    error = failure.get("error")
+    if not isinstance(error, dict) or not {"type", "message"} <= set(error):
+        raise DecisionPacketError("FAILURE error is not a structured Runtime error")
+    error_type = _bounded_text(error["type"], "FAILURE error type")
+    message = _bounded_text(error["message"], "FAILURE error message")
+    if not error_type or not message or re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", error_type) is None:
+        raise DecisionPacketError("FAILURE error type or message is invalid")
+    # Runtime may attach raw native streams and verification details here. Only
+    # these two bounded facts are needed to author a repair.
+    repository = observed.get("repository")
+    local_values = [failed.get("workspace")]
+    if isinstance(repository, dict):
+        local_values.extend((repository.get("root"), repository.get("remote_url")))
+    if any(isinstance(value, str) and value and value.casefold() in message.casefold()
+           for value in local_values) or re.search(
+        r"(?i)(?:[a-z]:[\\/]|\\\\|https?://|(?:^|[\s(])/(?!/)|(?:token|password|secret|api[_-]?key)\s*[:=])",
+        message,
+    ):
+        raise DecisionPacketError("FAILURE error message contains nonportable or private material")
+    observation["error"] = {"type": error_type, "message": message}
     return subject, asdict(task), None, observation
 
 

@@ -195,9 +195,18 @@ def test_side_flow_preserves_pending_obligation_and_blocks_nested_packet():
 
 def test_repair_authoring_and_exact_repair_provenance():
     failed_run = run("RUN-002-001", A, B)
-    failure = {"run_id": "RUN-002-001", "failed_head_sha": A,
+    failure = {"kind": "FAILURE", "run_id": "RUN-002-001", "failed_head_sha": A,
                "task": {"id": "TASK-002", "revision": 1},
-               "candidate": {"changed_files": ["src/aios_renew/decision_packet.py"]}}
+               "executor": "codex", "base_sha": B,
+               "phase": "VERIFICATION",
+               "error": {"type": "RuntimeVerificationError", "message": "required check failed",
+                         "verification": [{"command": "pytest tests/test_task.py",
+                                           "exit_code": 1, "summary": "failed at C:/private/log.txt"}],
+                         "executor_diagnostics": {"unresolved": ["private raw log"]}},
+               "candidate": {"transportable": True, "repairable": True, "dirty": False,
+                             "descends_from_base": True,
+                             "changed_files": ["src/aios_renew/decision_packet.py"],
+                             "outside_task_scope": []}}
     work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
                                            "failed_run_id": "RUN-002-001", "failed_head_sha": A})
     packet = compile_decision_packet(work, flow, {"kind": "REPAIR_AUTHORING",
@@ -207,6 +216,12 @@ def test_repair_authoring_and_exact_repair_provenance():
         "failed_run_id": "RUN-002-001", "failed_head_sha": A,
         "failed_changed_files": ["src/aios_renew/decision_packet.py"],
     }
+    assert packet.as_dict()["bounded_observations"] == {
+        "phase": "VERIFICATION",
+        "error": {"type": "RuntimeVerificationError", "message": "required check failed"},
+    }
+    assert "C:/private/log.txt" not in packet.render()
+    assert "private raw log" not in packet.render()
 
     repair_run = run("RUN-002-003", C, A)
     authorization = {"repair_id": "REPAIR-002-001", "failed_run_id": "RUN-002-001",
@@ -236,6 +251,33 @@ def test_repair_authoring_and_exact_repair_provenance():
     altered["prior_correction"]["authorization"]["instructions"] = ["Different valid correction"]
     with pytest.raises(DecisionPacketError):
         compile_decision_packet(work, flow, altered)
+
+
+def test_repair_authoring_rejects_malformed_or_unbounded_failure_observations():
+    failure = {"kind": "FAILURE", "run_id": "RUN-002-001", "failed_head_sha": A,
+               "task": {"id": "TASK-002", "revision": 1},
+               "candidate": {"changed_files": ["src/aios_renew/decision_packet.py"]},
+               "phase": "VERIFICATION",
+               "error": {"type": "RuntimeVerificationError", "message": "required check failed"}}
+    work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
+                                           "failed_run_id": "RUN-002-001", "failed_head_sha": A})
+    for bad_error in ("unstructured", {"type": "RuntimeVerificationError"},
+                      {"type": 42, "message": "failed"},
+                      {"type": "RuntimeVerificationError", "message": ["failed"]},
+                      {"type": "RuntimeVerificationError", "message": "x" * 65537},
+                      {"type": "RuntimeVerificationError", "message": "failed at C:/private/log.txt"}):
+        altered = copy.deepcopy(failure)
+        altered["error"] = bad_error
+        with pytest.raises(DecisionPacketError):
+            compile_decision_packet(work, flow, {"kind": "REPAIR_AUTHORING",
+                                                  "task": task(), "failed_run": run("RUN-002-001", A, B),
+                                                  "failure": altered})
+    altered = copy.deepcopy(failure)
+    altered["phase"] = "x" * 65537
+    with pytest.raises(DecisionPacketError):
+        compile_decision_packet(work, flow, {"kind": "REPAIR_AUTHORING",
+                                              "task": task(), "failed_run": run("RUN-002-001", A, B),
+                                              "failure": altered})
 
 
 def test_none_and_non_json_fail_closed():
