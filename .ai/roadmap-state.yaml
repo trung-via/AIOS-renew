@@ -727,6 +727,8 @@ sequence:
       Flow Cards by reusing Brain Sync, Unified State, roadmap and canonical lineage.
   - id: bp-4-decision-packet-compiler
     status: NEXT
+    task_id: TASK-178
+    task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Compile bounded deterministic decision packets that separate facts and observations
