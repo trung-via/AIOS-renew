@@ -1,0 +1,28 @@
+finding_id: FINDING-178-005
+action: CODE_FIX
+reviewed_sha: 20f4eda5fcccfc8d47b06eb23f399d2169271523
+modification_scope:
+- src/aios_renew/decision_packet.py
+- tests/test_decision_packet.py
+verification:
+  policy: minimum-sufficient-v1
+  affected:
+  - python -m pytest -q tests/test_decision_packet.py tests/test_brain_context.py
+  - git diff --check
+constraints:
+  hard:
+  - 'AIOS_DECISION_PACKET v1 remains one deterministic, read-only, provider-neutral
+    envelope for exactly one selected semantic decision and supports exactly the existing
+    six BP-3 flows: ARCHITECTURE, TASK_AUTHORING, SEMANTIC_REVIEW, REMEDIATION_AUTHORING,
+    REPAIR_AUTHORING and DIAGNOSTIC. NONE, unknown flows, unknown payload kinds and
+    packet nesting fail closed.'
+  - 'Preserve Decision Packet v1 boundedness and portability: rendered packet at most
+    131072 UTF-8 bytes; Human input at most 16384 bytes; any included free-text excerpt/delta
+    field at most 65536 bytes; invalid Unicode, NaN/non-JSON values and over-bound
+    input/output fail closed without truncation. Exclude machine-local root/workspace/remote
+    details, raw evidence paths/logs, secrets, chat history, chain-of-thought, timestamps
+    and provider/session metadata.'
+  - Do not modify files outside scope.modify. If satisfying this contract requires
+    changing Unified State, Correction Frontier, Flow Resolver, transport/publication
+    contracts, correction dispatch/approval authority, provider surfaces or frozen
+    Kernel semantics, fail closed back to Brain rather than widening scope.
