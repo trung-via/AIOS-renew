@@ -1,0 +1,367 @@
+task_id: TASK-188
+revision: 1
+
+goal: >
+  Implement BP6-P3 as one pure, bounded, provider-neutral
+  AIOS_REVIEW_REQUEST v1 / AIOS_REVIEW_DECISION v1 protocol that binds the
+  exact SEMANTIC_REVIEW Decision Packet plus the reviewed P1A/P1B/P2A/P2B
+  packages, keeps REVIEW and finding identities outside provider authorship,
+  deterministically reconstructs one transient canonical REVIEW candidate,
+  validates it through existing review.validate_review, and leaves provider
+  invocation and canonicalization to BP6-P4 and existing SUBMIT_REVIEW ingress.
+
+problem: >
+  BP6-P1A supplies exact semantic review scope, BP6-P1B supplies complete
+  bounded implementation material, BP6-P2A supplies the Reviewer judgment
+  procedure and BP6-P2B supplies the identity-free provider semantic return
+  grammar. AIOS still lacks one deterministic semantic envelope that binds
+  those exact inputs into a self-sufficient repository-blind Reviewer request
+  and transforms one bounded provider semantic response into a validated
+  transient REVIEW decision. Without P3, each Reviewer adapter would need to
+  invent request identity, DELTA prior-review context, canonical review/finding
+  identity binding, REVIEW reconstruction or validation handoff. P3 must
+  centralize only those deterministic protocol mechanics without becoming a
+  second Reviewer, lifecycle reducer, provider router, ingress or Publisher.
+
+assumptions:
+  - >
+    Canonical main 06b019b2e03a01dadeb5522383c5340c154ac199 records BP-6
+    Reviewer Provider Protocol as current, BP6-P1A/P1B/P2A/P2B
+    reviewed/published complete through TASK-184/TASK-185/TASK-186/TASK-187,
+    and BP6-P3 as the unique NEXT implementation obligation.
+  - >
+    TASK-187 r1 completed through RUN-187-001, Runtime evidence
+    RUN-187-001-V001 with 54 focused tests passing, REVIEW-187-001 PRIMARY
+    PASS and exact publication of
+    860e8d86a4fef08671a487e8e670804b8dc41ed9.
+  - >
+    Existing Decision Packet SEMANTIC_REVIEW projection remains authoritative
+    for the current bounded review subject and already contains the canonical
+    Task contract, current RESULT projection, Executor claims and bounded
+    Runtime evidence summaries.
+  - >
+    Existing observe_semantic_review_scope is authoritative for P1A lifecycle
+    scope identity; validate_review_material_package is authoritative for P1B
+    material package integrity; select_reviewer_procedure is authoritative for
+    P2A procedure/profile selection; parse_reviewer_semantic_body is
+    authoritative for P2B provider semantic-body grammar.
+  - >
+    Existing Task/Result/Review contracts and review.validate_review remain
+    canonical validators. Existing SUBMIT_REVIEW ingress alone may
+    canonicalize the transient REVIEW candidate produced by P3.
+  - >
+    BP6-P4 owns Reviewer provider invocation, operational attribution and
+    non-network adapter conformance. BP-7 owns hot-swap proof and BP-8 owns a
+    controlled real non-default provider proof.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md
+    - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+    - .ai/roadmap-state.yaml
+    - .ai/flow-cards.yaml
+    - .ai/reviewer-procedure-profiles.yaml
+    - .ai/reviewer-return-contracts.yaml
+    - .ai/tasks/TASK-184.yaml
+    - .ai/tasks/TASK-185.yaml
+    - .ai/tasks/TASK-186.yaml
+    - .ai/tasks/TASK-187.yaml
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/review_material.py
+    - src/aios_renew/reviewer_procedure.py
+    - src/aios_renew/reviewer_return_contract.py
+    - src/aios_renew/task.py
+    - src/aios_renew/artifacts.py
+    - src/aios_renew/review.py
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/brain_provider_protocol.py
+    - tests/test_decision_packet.py
+    - tests/test_review_material.py
+    - tests/test_reviewer_procedure.py
+    - tests/test_reviewer_return_contract.py
+    - tests/test_review.py
+  modify:
+    - src/aios_renew/reviewer_provider_protocol.py
+    - tests/test_reviewer_provider_protocol.py
+
+non_goals:
+  - >
+    Invoke a Reviewer provider; add provider/model/network adapters, endpoint or
+    credential configuration, provider-native transport parsing, operational
+    attribution, retry, fallback, voting, failover, provider/model selection,
+    generic routing or one-call orchestration. Those belong to BP6-P4.
+  - >
+    Modify or replace Decision Packet, P1A scope derivation, P1B review-material
+    construction/validation, P2A procedure/profile, P2B return grammar,
+    canonical TASK/RESULT/REVIEW schemas, Unified State, authoring ingress,
+    Runtime, Reviewer procedure semantics, publication or frozen Kernel
+    semantics.
+  - >
+    Rediscover lifecycle, Task, RESULT, prior REVIEW, source material or
+    canonical identity from filesystem, Git, GitHub, branches, environment or
+    hidden chat/session state. P3 consumes exact caller-supplied reviewed
+    material only.
+  - >
+    Reuse or import Brain provider protocol, Brain audit, Brain return-contract
+    or Brain provider orchestration as Reviewer semantic authority merely
+    because their envelope/fingerprint patterns are structurally similar.
+  - >
+    Let the provider author review_id, reviewed_sha, mode, prior_finding_id or
+    finding.id; derive or reserve those identities from repository state; or
+    make identity allocation depend on provider/model/session identity.
+  - >
+    Call SUBMIT_REVIEW, create a canonical REVIEW/ref, author REMEDIATION or
+    REPAIR, invoke Runtime/Publisher, or interpret a transient decision as
+    lifecycle truth or publication permission.
+  - >
+    Interpret invalid request/package/material/provider response as semantic
+    BLOCKED or CHANGES_REQUIRED, RUN FAILURE, remediation/repair state or any
+    other canonical lifecycle artifact.
+  - >
+    Claim BP6-P4 provider conformance, BP-7 hot-swap conformance or BP-8 real
+    second-provider proof.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Production mutation is limited to scope.modify. If satisfying this
+      contract requires another production file or a change to P1A/P1B/P2A/P2B,
+      Decision Packet, REVIEW schema or ingress, fail closed back to Brain rather
+      than widening scope.
+    - >
+      reviewer_provider_protocol.py is pure caller-supplied deterministic
+      support. It performs no filesystem, repository, Git/GitHub, environment,
+      network, credential, provider, clock/random, verification or lifecycle
+      discovery, keeps no persistent/session state, and performs no canonical
+      mutation.
+    - >
+      The request constructor requires an actual freshly compiled DecisionPacket
+      object supplied by the caller. It must not synthesize a Decision Packet
+      from partial fields. The packet must be an exact AIOS_DECISION_PACKET v1
+      with selected_flow SEMANTIC_REVIEW, authority_owner REVIEWER,
+      decision_family_ref review.validate_review, handoff_target
+      AUTHORING_INGRESS, expected_return_shape REVIEW_CONTRACT_PROPOSAL, all four
+      side-effect flags false, and a valid packet_fingerprint over its complete
+      semantic body.
+    - >
+      AIOS_REVIEW_REQUEST v1 is one closed mapping containing exactly format,
+      version, kind, decision_packet, review_scope, review_material_package,
+      reviewer_procedure_package, reviewer_return_contract_package,
+      prior_review, external_bindings and request_fingerprint. format is
+      AIOS_REVIEW_REQUEST, version is integer 1, kind is REVIEW_REQUEST.
+      request_fingerprint is lowercase SHA-256 over canonical strict JSON of
+      every semantic request field except request_fingerprint.
+    - >
+      A separate pure request revalidator may accept a complete serialized or
+      decoded request mapping, but it must revalidate the exact closed Decision
+      Packet v1 structure/fingerprint needed by SEMANTIC_REVIEW rather than
+      trusting nested packet text or constructing new lifecycle facts.
+    - >
+      review_scope is exactly one closed AIOS_SEMANTIC_REVIEW_SCOPE v1 mapping
+      with the P1A field set and valid scope_fingerprint. Its task id/revision,
+      reviewed_run_id and reviewed_head_sha must exactly match the Decision
+      Packet canonical Task/subject; its review_mode is PRIMARY or DELTA and is
+      authoritative for P2A/P2B selection. P3 must not traverse lifecycle to
+      derive or revise this scope.
+    - >
+      review_material_package must pass existing
+      validate_review_material_package and must exactly match P1A
+      scope_fingerprint, review_mode, semantic_base_sha, latest_delta_base_sha
+      and reviewed_head_sha. P3 does not construct source material or reinterpret
+      Runtime evidence.
+    - >
+      reviewer_procedure_package is the complete output shape of existing
+      select_reviewer_procedure for the exact P1A review_mode: profile,
+      procedure, bounds and reviewer_procedure_ref. P3 must verify the package
+      by the existing P2A public surface, require exact equality to the selected
+      mode projection, and require its metadata to agree with the
+      SEMANTIC_REVIEW Decision Packet. It must not copy the procedural prose into
+      P3 as a second policy corpus.
+    - >
+      reviewer_return_contract_package is the complete selected P2B package:
+      contract, bounds and reviewer_return_contract_ref. P3 must revalidate it
+      through the existing P2B public selection/normalization surface, require
+      exact equality and metadata agreement with the Decision Packet, and must
+      not copy or relax the provider semantic grammar.
+    - >
+      The exact current Task used by P2B/review.validate_review is reconstructed
+      only from decision_packet.canonical_facts.task_contract through existing
+      Task validation and must match both packet subject.task and P1A scope.task.
+      No second caller-supplied current Task witness is accepted.
+    - >
+      The exact current Result used by review.validate_review is reconstructed
+      only from the Decision Packet: head_sha, changed_files and unresolved come
+      from packet.subject; claims come from packet.executor_claims by mapping
+      evidence_ids back to canonical Claim.evidence. It must pass existing
+      Result validation and its head_sha must exactly equal P1A reviewed_head_sha.
+      No second caller-supplied current RESULT witness is accepted.
+    - >
+      prior_review is null for PRIMARY. For DELTA it is one exact complete
+      canonical REVIEW mapping, normalized size at most 196608 UTF-8 bytes, that
+      parses through existing parse_review, has review_id exactly equal P1A
+      prior_review_id, reviewed_sha exactly equal P1A semantic_base_sha, and
+      contains exactly the P1A-selected prior_finding_id among its findings.
+      The selected prior finding's basis is the only prior_finding_basis passed
+      to P2B. P3 does not discover the prior REVIEW or infer a different finding.
+    - >
+      external_bindings is closed to exactly review_id and finding_id_slots.
+      review_id is one non-empty strict UTF-8 identity of at most 256 bytes.
+      finding_id_slots is an ordered list of exactly 32 unique non-empty strict
+      UTF-8 identities, each at most 256 bytes. All identities must be canonical
+      round-trip strings with no leading/trailing whitespace. Provider/model/
+      session/invocation identity is absent from this semantic mapping.
+    - >
+      Provider semantic response is a closed strict-JSON mapping containing
+      exactly request_fingerprint and semantic_body. Normalized response size is
+      at most 196608 UTF-8 bytes and maximum structural depth is 32. It rejects
+      duplicate normalized keys, invalid Unicode, non-string mapping keys,
+      NaN/Infinity/non-JSON values, unknown fields, nested AIOS_REVIEW_REQUEST /
+      AIOS_REVIEW_DECISION envelopes and provider/model/session/transport
+      operational metadata in semantic material. No truncation, YAML fallback or
+      provider-output repair is allowed.
+    - >
+      Provider response request_fingerprint must exactly echo the admitted
+      request. semantic_body is delegated unchanged to existing
+      parse_reviewer_semantic_body with the reconstructed exact Task, the P1A
+      review_mode and, for DELTA, exactly the selected prior finding basis.
+      P3 must not deterministically decide whether extra DELTA acceptance
+      conclusions were directly invalidated; that remains P2A Reviewer semantic
+      judgment.
+    - >
+      P3 deterministically materializes one transient REVIEW candidate by binding
+      external review_id, P1A reviewed_head_sha, P1A review_mode, P1A
+      prior_finding_id for DELTA, and the first N finding_id_slots to the N
+      provider findings in exact provider order. Acceptance becomes the mapping
+      represented by the P2B-normalized Task-ordered entries. Provider output
+      never supplies or overrides these identities.
+    - >
+      Materialization must fail closed if provider findings exceed the available
+      identity slots or if any generated candidate identity/semantic string would
+      be changed by existing canonical parse_review behavior. The exact
+      materialized REVIEW mapping must round-trip through parse_review and back
+      to an equivalent Review without trimming or rewriting review_id,
+      acceptance ids/outcomes, finding id/basis/action/location/issue/expected or
+      prior_finding_id.
+    - >
+      After exact round-trip, P3 must call existing review.validate_review with
+      the reconstructed exact Task, reconstructed exact Result, materialized
+      Review and the exact prior Review for DELTA (none for PRIMARY). This call is
+      the canonical REVIEW validation authority; P3 may add only package/
+      identity/protocol consistency checks and must not implement a parallel
+      REVIEW semantic validator.
+    - >
+      AIOS_REVIEW_DECISION v1 is one closed mapping containing exactly format,
+      version, kind, authority_owner, selected_flow, decision_family_ref,
+      handoff_target, expected_return_shape, request_fingerprint,
+      packet_fingerprint, review_scope_fingerprint,
+      review_material_fingerprint, reviewer_procedure_ref,
+      reviewer_return_contract_ref, review_candidate and decision_fingerprint.
+      authority_owner is REVIEWER, selected_flow SEMANTIC_REVIEW, and the other
+      flow metadata exactly matches the request packet. decision_fingerprint is
+      lowercase SHA-256 over canonical strict JSON of every decision field except
+      itself.
+    - >
+      review_material_fingerprint is exactly the admitted P1B
+      package_fingerprint; P2A/P2B refs and scope/packet fingerprints are copied
+      only from their validated request packages. The decision contains no
+      provider/model/session/invocation identity, no retry/routing instruction
+      and no canonicalization/publication permission.
+    - >
+      A pure serialized decision revalidator must revalidate its exact request,
+      exact decision fingerprint and exact transient review_candidate against
+      the same P2B/materialization/parse_review/review.validate_review path. A
+      decision from another request/scope/material/profile/contract or identity
+      binding must fail closed. Revalidation performs no ingress or I/O.
+    - >
+      Exact ceilings are normalized AIOS_REVIEW_REQUEST <=2097152 UTF-8 bytes,
+      normalized provider semantic response <=196608 bytes, normalized
+      AIOS_REVIEW_DECISION <=262144 bytes, normalized prior REVIEW <=196608
+      bytes, each external identity <=256 bytes and maximum semantic structural
+      depth 32. Bound excess is rejection, never truncation.
+    - >
+      Equivalent mapping-key order in decoded/JSON protocol material must not
+      change canonical request/decision fingerprints. Semantic strings from
+      provider output and canonical REVIEW material must not be newline- or
+      whitespace-normalized by P3; any canonical round-trip drift is rejection.
+    - >
+      Production code must not import brain_provider_protocol, brain_audit,
+      brain_return_contract, brain_provider, provider adapters, execution-profile
+      routing, authoring_ingress, publication, Runtime operator/dispatch or
+      Git/GitHub transport modules. Structural resemblance to BP5 is not Reviewer
+      authority reuse.
+    - >
+      Focused tests must prove protocol/material errors remain typed P3 contract
+      errors and never semantic BLOCKED/CHANGES_REQUIRED or lifecycle artifacts.
+      They must also prove no successful path invokes a provider, ingress,
+      Runtime, Publisher, remediation/repair surface or repository discovery.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository contains one pure reviewer_provider_protocol module that
+      constructs and revalidates closed AIOS_REVIEW_REQUEST v1 from an actual
+      SEMANTIC_REVIEW DecisionPacket plus exact P1A/P1B/P2A/P2B packages,
+      cross-binds all packet/scope/material/profile/return-contract identities
+      and performs no I/O, provider invocation or lifecycle mutation.
+  - id: AC2
+    condition: >
+      Request identity is deterministic and provider-neutral: all semantic
+      request material including exact prior_review and external review/finding
+      identities participates in request_fingerprint; equivalent mapping order
+      preserves identity; stale/substituted packet/scope/material/profile/
+      return-contract material, unknown fields, invalid Unicode/non-JSON/depth/
+      byte overflow and provider operational metadata fail closed.
+  - id: AC3
+    condition: >
+      PRIMARY requires prior_review=null; DELTA requires the exact canonical
+      prior Review bound by P1A and exposes its exact selected prior finding
+      basis to P2B, with complete prior finding prose available to the
+      repository-blind Reviewer and no Git/GitHub/session rediscovery.
+  - id: AC4
+    condition: >
+      Provider semantic response accepts only exact request echo plus the
+      P2B semantic body, delegates body grammar and PRIMARY/DELTA consistency to
+      parse_reviewer_semantic_body, preserves finding order and semantic text,
+      rejects identity/operational smuggling and does not acquire semantic
+      direct-invalidation authority.
+  - id: AC5
+    condition: >
+      P3 deterministically binds external review_id, P1A reviewed_sha/mode/
+      prior_finding_id and the first N ordered finding-id slots to provider
+      semantics, reconstructs Task and Result solely from the Decision Packet,
+      rejects canonical parse_review round-trip drift, and calls existing
+      review.validate_review rather than duplicating its authority.
+  - id: AC6
+    condition: >
+      AIOS_REVIEW_DECISION v1 is a bounded fingerprinted transient decision
+      containing the exact validated REVIEW candidate and exact packet/scope/
+      material/P2A/P2B identities, excludes provider/model/session identity and
+      canonical mutation permission, and serialized revalidation rejects any
+      request or lineage substitution.
+  - id: AC7
+    condition: >
+      P3 remains strictly pure and authority-bounded: no Brain protocol authority
+      import, repository/lifecycle discovery, provider invocation, retry/
+      fallback/voting/router behavior, persistence, ingress, Runtime,
+      remediation/repair, Publisher or publication action exists on any success
+      or failure path; protocol errors fabricate no semantic/lifecycle verdict.
+  - id: AC8
+    condition: >
+      Focused tests cover valid PRIMARY PASS/CHANGES_REQUIRED/BLOCKED,
+      DELTA exact-prior-finding handling, P1A/P1B/P2A/P2B substitution and
+      fingerprint tampering, Task/Result reconstruction, all 32 finding-id
+      slots and ordered identity binding, request echo, provider identity
+      smuggling, canonical whitespace/text round-trip rejection, duplicate/
+      unknown/non-JSON/Unicode/depth/byte failures, deterministic request/
+      decision fingerprints and absence of BP6-P4/ingress authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_reviewer_provider_protocol.py
