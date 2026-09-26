@@ -1,0 +1,28 @@
+review_id: REVIEW-178-008
+reviewed_sha: 50b5f81be616ed9c58c77474474d01938b9f5357
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC4: PASS
+  AC7: FAIL
+prior_finding_id: FINDING-178-004
+findings:
+- id: FINDING-178-009
+  basis: AC7
+  action: CODE_FIX
+  location: src/aios_renew/decision_packet.py::_finding_entry
+  issue: The minimum finding/lineage redesign correctly removes per-item RESULT/REVIEW
+    material, but _finding_entry re-declares the canonical remediation action enum
+    locally as {"CODE_FIX", "EVIDENCE_ONLY"}. TASK-178 r2 explicitly forbids re-declaring
+    REVIEW/REMEDIATION/REPAIR semantic enums where an existing canonical contract
+    can be reused, and src/aios_renew/review.py already owns REMEDIATION_ACTIONS.
+    This creates a second semantic action contract inside the Decision Packet compiler
+    that can drift from Reviewer/Remediation authority while still passing its local
+    tests.
+  expected: Reuse the existing canonical remediation-action contract from src/aios_renew/review.py
+    when validating the bounded finding material; do not maintain a second literal
+    enum or duplicate semantic action authority in decision_packet.py. Preserve the
+    new minimum finding/lineage input shape, exact Unified State set matching, ordering
+    neutrality, substitution/cross-lineage fail-closed behavior, and the no-RESULT/no-EVIDENCE
+    property. Add regression coverage that ties accepted finding actions to the canonical
+    action contract rather than a Decision Packet-local redeclaration.
