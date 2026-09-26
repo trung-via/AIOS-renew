@@ -432,7 +432,9 @@ TASK-181 r1 / RUN-181-002 / REVIEW-181-002 DELTA PASS published `6901e29540bd98d
 
 TASK-182 r1 completed through RUN-182-001 / REVIEW-182-001 CHANGES_REQUIRED, the narrow FINDING-182-001 remediation, RUN-182-002, and REVIEW-182-002 DELTA PASS. The exact reviewed remediation candidate `09b2d099dd90abae12083d6b0f7f5f4abbdd377d` is published on `main`. The current `brain_provider_protocol.py` therefore establishes the provider-neutral `AIOS_BRAIN_REQUEST v1` / `AIOS_BRAIN_DECISION v1` semantic envelopes, exact request-owned external bindings, fresh Stage-2 lineage checks, DIRECT diagnostic grammar and fail-closed serialized Stage-2 decision revalidation without provider invocation or lifecycle authority.
 
-### BP5-P3 — Thin adapter + bounded orchestration conformance — NEXT
+### BP5-P3 — Thin adapter + bounded orchestration conformance — DONE
+
+BP5-P3 is engineering-complete through TASK-183 r1. RUN-183-001 reached canonical Runtime verification and failed on focused test-state pollution; REPAIR-183-001 authorized only `tests/test_brain_provider.py`; RUN-183-002 then verified `46 passed in 1.38s`, REVIEW-183-002 PRIMARY PASS covered AC1–AC8, and the exact reviewed candidate `7077d8c1c8e14f9c61240783fe049b63617443d6` is published on `main`. The repair changed only the test fixture alias (`deepcopy(TASK)`); `src/aios_renew/brain_provider.py` remained unchanged by the repair.
 
 P3 adds only an authority-neutral invocation shell over the already-reviewed P2B semantic protocol. The design boundary is:
 
@@ -475,25 +477,22 @@ A successor TASK must choose exact bounded native-response and operational-attri
 
 Each phase requires a separately audited executor-neutral TASK and reviewed/published evidence before the next phase is relied upon.
 
-## 19. BP-5 exit gate
+## 19. BP-5 exit gate — SATISFIED
 
-BP-5 is complete only when reviewed/published evidence proves:
+Fresh closure audit after publication of TASK-183 finds no remaining BP-5 implementation obligation. The reviewed/published evidence is sufficient without adding a ceremonial successor hardening TASK:
 
-- provider-visible audit-profile material is self-sufficient and content-addressed;
-- one exact provider-neutral `AIOS_BRAIN_REQUEST v1` contract exists;
-- one exact provider-neutral `AIOS_BRAIN_DECISION v1` contract exists;
-- provider/model/session identity is excluded from semantic request/decision fingerprints;
-- audited flows use exactly `AUDIT_CONSTRUCT` then fresh-packet gate then `AUDIT_RECONCILE`;
-- successful audited attempts have exactly two admitted provider invocations and no recursive semantic loop;
-- stale packet before Stage 2 prevents the Stage-2 invocation;
-- DIAGNOSTIC uses bounded DIRECT semantics;
-- SEMANTIC_REVIEW is rejected and remains BP-6 Reviewer authority;
-- provider failures cannot fabricate semantic/lifecycle outcomes and never auto-retry/fail over;
-- adapters do not inspect GitHub/repository state or add provider-specific semantic policy;
-- validated final candidates still pass existing canonical family validators/ingress;
-- at least two independent adapter/conformance implementations consume/produce the same semantic contract;
-- no persistent reasoning/chat store, model router, lifecycle router, Reviewer crossover, Executor selection or new semantic authority is created;
-- BP-7 hot-swap proof and BP-8 real non-default provider proof remain unconsumed future milestones.
+- TASK-180 / REVIEW-180-001 proves the provider-visible BP-4A audit profile is self-sufficient, bounded and content-addressed.
+- TASK-181 / REVIEW-181-001 + REVIEW-181-002 proves one bounded provider-visible return-contract corpus, exact Decision Packet binding and continued authority of the existing TASK / REMEDIATION / REPAIR validators.
+- TASK-182 / REVIEW-182-001 + REVIEW-182-002 proves exact provider-neutral `AIOS_BRAIN_REQUEST v1` and `AIOS_BRAIN_DECISION v1`, external request bindings, Stage-1/Stage-2 lineage, DIRECT semantics, provider-neutral fingerprints, SEMANTIC_REVIEW exclusion and fail-closed serialized decision revalidation.
+- TASK-183 / REVIEW-183-002 proves one explicitly selected immutable provider/model identity per attempt, one DIRECT call or exactly two successful audited calls, one caller-owned fresh-packet gate, stale-before-Stage-2 stop, typed bounded provider/caller failures, no retry/fallback/third call, no repository discovery or lifecycle mutation, hidden-session independence, and two independent non-network adapter extraction paths.
+- Existing family handoff compatibility remains proven compositionally rather than by moving family validation into the provider layer: TASK-181 AC5 verifies canonical TASK / REMEDIATION / REPAIR validators remain authoritative; TASK-182 AC8 and its final TASK handoff regression prove the P2B final candidate is unchanged and accepted by the existing TASK validator; TASK-183 returns the exact P2B decision without semantic transformation. Authoring ingress remains the separate existing canonical mutation authority and is intentionally not invoked by P2B/P3.
+- Provider/model/session/invocation attribution remains operational-only and cannot affect semantic request/decision identity.
+- No persistent reasoning/chat store, provider/model router, lifecycle router, Reviewer crossover, Executor-selection authority or new semantic authority was introduced.
+- BP-7 cross-provider/context hot-swap proof and BP-8 real non-default-provider proof remain explicitly unconsumed.
+
+Because P3 is a transparent invocation shell over P2B and introduces no candidate transformation, repeating every canonical family validator through P3 would add verification ceremony without new semantic coverage. Existing reviewed evidence is reused until relevant state changes.
+
+BP-5 therefore closes at published main `7077d8c1c8e14f9c61240783fe049b63617443d6`. The next architecture milestone is BP-6 Reviewer Provider Protocol.
 
 ## 20. Planning decision
 
@@ -505,6 +504,8 @@ BP5-P2A is engineering-complete through TASK-181 r1, RUN-181-002, REVIEW-181-002
 
 BP5-P2B is engineering-complete through TASK-182 r1, RUN-182-001 / REVIEW-182-001 CHANGES_REQUIRED, FINDING-182-001 remediation, RUN-182-002, REVIEW-182-002 DELTA PASS and publication of `09b2d099dd90abae12083d6b0f7f5f4abbdd377d`.
 
-The next implementation obligation is BP5-P3 thin adapter + bounded orchestration conformance under the audited boundary above. P3 is not provider selection policy, not repository discovery, not a persistent session, not canonical handoff, not a model router, not Reviewer protocol and not lifecycle state.
+BP5-P3 is engineering-complete through TASK-183 r1, RUN-183-001 Runtime verification FAILURE, REPAIR-183-001, RUN-183-002, REVIEW-183-002 PRIMARY PASS and publication of `7077d8c1c8e14f9c61240783fe049b63617443d6`.
 
-No production mutation is authorized by this document. BP5-P3 requires a fresh Brain Sync, a separately audited executor-neutral TASK, canonical admission, Runtime verification, semantic review and publication before later planning relies on it.
+The BP-5 exit gate is satisfied by the reviewed/published P1/P2A/P2B/P3 evidence above. No BP5-P4 successor hardening is justified by current canonical evidence. The next implementation milestone is BP-6 Reviewer Provider Protocol, which must remain a separate Reviewer authority and must not reuse the Brain protocol as Reviewer semantics merely because both may share transport primitives.
+
+No production mutation is authorized by this document. BP-6 requires a fresh Brain Sync and a separately audited executor-neutral TASK before implementation.
