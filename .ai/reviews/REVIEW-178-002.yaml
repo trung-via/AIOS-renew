@@ -1,0 +1,54 @@
+review_id: REVIEW-178-002
+reviewed_sha: 52d8e074d4b2d79178f16c50f671a9cc67a39135
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: FAIL
+  AC3: PASS
+  AC4: FAIL
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+findings:
+  - id: FINDING-178-003
+    basis: AC2
+    action: CODE_FIX
+    location: src/aios_renew/decision_packet.py::_repair_authoring
+    issue: >
+      REPAIR_AUTHORING does not accept the canonical FAILURE shape already produced by Runtime.
+      The implementation projects failure phase/reason/error and then applies _bounded_text to
+      every observation value; canonical FAILURE.error is a structured mapping (for example
+      {"type": "...", "message": "...", "verification": [...]}) rather than a string. A legitimate
+      failed RUN therefore raises DecisionPacketError before a REPAIR_AUTHORING packet can be
+      emitted, so one of the six required BP-3 flows is not representable for an existing
+      canonical lifecycle state. The focused test uses a reduced FAILURE fixture that omits this
+      structured error and misses the state-space counterexample.
+    expected: >
+      REPAIR_AUTHORING must accept the bounded canonical FAILURE structure used by Runtime and
+      project only the minimum safe failure observations needed by Brain (for example bounded
+      type/message and other explicitly allowed diagnostic facts), excluding raw logs and
+      machine-local material. Add a regression test using a Runtime-shaped FAILURE with structured
+      error data and prove malformed or over-bound failure observations still fail closed.
+  - id: FINDING-178-004
+    basis: AC4
+    action: CODE_FIX
+    location: src/aios_renew/decision_packet.py::_finding_entry / _authoring
+    issue: >
+      CORRECTION_FRONTIER requires a full source RESULT for every outstanding finding solely so
+      the compiler can revalidate the source REVIEW. TASK-178 r2 explicitly requires Minimum
+      Necessary Context for correction authoring and says not to replicate RESULT/EVIDENCE per
+      frontier item when the exact canonical finding contract and bounded lineage facts are
+      sufficient. The emitted packet omits RESULT, but the compiler's typed input contract still
+      makes every frontier item carry source_result, so the deterministic support surface demands
+      materially more canonical context than the r2 contract allows and scales that excess with
+      frontier size.
+    expected: >
+      Redesign the CORRECTION_FRONTIER/UNIQUE_FINDING caller material so exact bounded finding
+      semantics and lineage can be validated without requiring a full RESULT or EVIDENCE object
+      per frontier item. Preserve exact outstanding-set matching, review/finding identity binding,
+      fail-closed substitution behavior, and Brain selection authority. Add tests proving a
+      frontier compiles from the minimum finding/lineage contract without per-item RESULT/EVIDENCE
+      and still rejects missing, extra, duplicate, substituted, or cross-lineage findings.
