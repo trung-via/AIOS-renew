@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from aios_renew.brain_return_contract import (
     return_contract_ref,
     select_return_contract,
 )
+from aios_renew.decision_packet import DecisionPacket
 from aios_renew.publication import _validate_repair_authorization
 from aios_renew.review import parse_remediation, parse_review, validate_remediation
 from aios_renew.task import validate_task
@@ -30,16 +32,35 @@ def registry():
     return parse_return_contract_registry(REGISTRY.read_bytes())
 
 
-def packet(contract, **extra):
-    return {
+def fingerprint(body):
+    material = {key: value for key, value in body.items() if key != "packet_fingerprint"}
+    encoded = json.dumps(material, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=False, allow_nan=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def packet(contract):
+    body = {
         "format": "AIOS_DECISION_PACKET", "version": 1,
         "kind": "DECISION_PACKET",
+        "work_context_fingerprint": "a" * 64,
         **{key: contract[key] for key in (
             "selected_flow", "authority_owner", "decision_family_ref",
             "handoff_target", "expected_return_shape",
         )},
-        **extra,
+        "selection_basis": "EXPLICIT_SELECTOR",
+        "pending_canonical_obligation": None,
+        "pending_canonical_authority_owner": None,
+        "requires_fresh_context_for_continuation": True,
+        "canonical_facts": {}, "canonical_blocker": None,
+        "bounded_observations": [], "executor_claims": None,
+        "prior_semantic_decisions": None, "human_input": None,
+        "subject": {"kind": contract["selected_flow"]},
+        "run_created": False, "executor_invoked": False,
+        "verification_invoked": False, "state_mutated": False,
     }
+    body["packet_fingerprint"] = fingerprint(body)
+    return body
 
 
 def test_registry_matches_current_flow_cards_and_excludes_reviewer():
@@ -67,10 +88,37 @@ def test_packet_metadata_substitution_fails_closed():
     for field in ("authority_owner", "decision_family_ref", "handoff_target", "expected_return_shape"):
         supplied = packet(contract)
         supplied[field] = "SUBSTITUTED"
+        supplied["packet_fingerprint"] = fingerprint(supplied)
         with pytest.raises(BrainReturnContractError):
             select_return_contract(data, supplied)
     with pytest.raises(BrainReturnContractError):
         select_return_contract(data, {"selected_flow": "TASK_AUTHORING"})
+
+
+def test_exact_packet_mapping_and_object_select_same_contract_and_ref():
+    data = registry()
+    contract = data["contracts"][1]
+    supplied = packet(contract)
+    selected = select_return_contract(data, supplied)
+    assert selected["contract"] == contract
+    assert select_return_contract(data, DecisionPacket(supplied)) == selected
+
+
+def test_partial_extra_and_stale_fingerprint_packets_fail_closed():
+    data = registry()
+    supplied = packet(data["contracts"][1])
+    partial = {key: supplied[key] for key in (
+        "format", "version", "kind", "selected_flow", "authority_owner",
+        "decision_family_ref", "handoff_target", "expected_return_shape",
+    )}
+    partial["packet_fingerprint"] = fingerprint(partial)
+    extra = dict(supplied, extra="forbidden")
+    extra["packet_fingerprint"] = fingerprint(extra)
+    stale = dict(supplied, human_input="changed")
+    mismatch = dict(supplied, packet_fingerprint="0" * 64)
+    for invalid in (partial, extra, stale, mismatch):
+        with pytest.raises(BrainReturnContractError):
+            select_return_contract(data, invalid)
 
 
 def test_content_identity_is_semantic_and_representation_independent():

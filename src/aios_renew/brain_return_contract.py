@@ -13,6 +13,8 @@ from typing import Any, Mapping
 
 import yaml
 
+from .brain_audit import BrainAuditError, _packet
+
 
 class BrainReturnContractError(ValueError):
     """Return-contract material or its Decision Packet binding is invalid."""
@@ -202,13 +204,10 @@ def return_contract_ref(contract: Mapping[str, Any], bounds: Mapping[str, Any]) 
 def select_return_contract(registry: Mapping[str, Any], packet: Any) -> dict[str, Any]:
     """Select one contract only when its metadata exactly matches the packet."""
     root = normalize_return_contract_registry(registry)
-    supplied = packet.as_dict() if callable(getattr(packet, "as_dict", None)) else packet
     try:
-        packet_data = _normalize(supplied)
-        if type(packet_data) is not dict or packet_data.get("format") != "AIOS_DECISION_PACKET" or \
-                type(packet_data.get("version")) is not int or packet_data["version"] != 1 or \
-                packet_data.get("kind") != "DECISION_PACKET":
-            raise BrainReturnContractError("exact Decision Packet mapping required")
+        # Reuse the existing closed v1 packet and fingerprint check before
+        # binding any packet metadata to the selected provider contract.
+        packet_data = _packet(packet)
         flow = packet_data.get("selected_flow")
         if flow not in _FLOWS:
             raise BrainReturnContractError("flow has no Brain return contract")
@@ -220,7 +219,7 @@ def select_return_contract(registry: Mapping[str, Any], packet: Any) -> dict[str
         return {"contract": json.loads(_json_bytes(contract)),
                 "bounds": dict(root["bounds"]),
                 "return_contract_ref": return_contract_ref(contract, root["bounds"])}
-    except (UnicodeError, RecursionError) as exc:
+    except (BrainAuditError, UnicodeError, RecursionError) as exc:
         raise BrainReturnContractError("invalid Decision Packet material") from exc
 
 
