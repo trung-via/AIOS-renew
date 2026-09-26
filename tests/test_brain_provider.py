@@ -35,7 +35,7 @@ def wrapper(request, *, provider="mapping", model="one", semantic=None, attribut
 
 def setup(registry, flow="TASK_AUTHORING"):
     packet, package = inputs(registry, flow)
-    bindings = {} if flow == "DIAGNOSTIC" else TASK
+    bindings = {} if flow == "DIAGNOSTIC" else deepcopy(TASK)
     return packet, package, bindings
 
 
