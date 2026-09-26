@@ -1,5 +1,6 @@
 # Tests for Unified State + Next Action observation boundary.
 from contextlib import contextmanager
+import hashlib
 import json
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import aios_renew.publication as publication_module
 import aios_renew.unified_state as unified_state_module
 from aios_renew.unified_state import (
     UnifiedStateObservation as DirectUnifiedStateObservation,
+    observe_semantic_review_scope,
     observe_unified_state as direct_observe_unified_state,
 )
 from aios_renew.operator import (
@@ -678,6 +680,49 @@ def test_unified_state_runtime_pass_never_synthesizes_semantic_verdict(
     assert observation["lifecycle_state"] == "REVIEW"
     assert observation["next_action"] == "SEMANTIC_REVIEW"
     assert observation["review_id"] is None
+
+    scope = observe_semantic_review_scope("TASK-101", repo=repo)
+    assert set(scope) == {
+        "format", "version", "kind", "task", "reviewed_run_id", "review_mode",
+        "semantic_origin_run_id", "semantic_base_sha", "latest_delta_base_sha",
+        "reviewed_head_sha", "prior_review_run_id", "prior_review_id",
+        "prior_finding_id", "scope_fingerprint",
+    }
+    assert scope["format"] == "AIOS_SEMANTIC_REVIEW_SCOPE"
+    assert scope["version"] == 1
+    assert scope["kind"] == "SEMANTIC_REVIEW_SCOPE"
+    assert scope["task"] == {"id": "TASK-101", "revision": 1}
+    assert scope["reviewed_run_id"] == scope["semantic_origin_run_id"] == run_id
+    assert scope["review_mode"] == "PRIMARY"
+    assert scope["semantic_base_sha"] == scope["latest_delta_base_sha"] == head
+    assert scope["reviewed_head_sha"] == head
+    assert all(scope[key] is None for key in (
+        "prior_review_run_id", "prior_review_id", "prior_finding_id"
+    ))
+    body = {key: value for key, value in scope.items() if key != "scope_fingerprint"}
+    assert scope["scope_fingerprint"] == hashlib.sha256(
+        json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert observe_semantic_review_scope("TASK-101", repo=repo) == scope
+    assert "scope_fingerprint" not in observation
+    assert observe_unified_state("TASK-101", repo=repo).as_dict() == observation
+
+    alternative = RemoteTaskLifecycle(
+        head, (RemoteLifecycleTerminal(
+            "RUN-101-002", "RESULT", head,
+            json.dumps({**json.loads(run), "run_id": "RUN-101-002"}).encode(),
+            json.dumps(canonical_result_payload("RUN-101-002", head)).encode(),
+            None,
+        ),), (), (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, alternative)
+    assert observe_semantic_review_scope("TASK-101", repo=repo)["scope_fingerprint"] != scope["scope_fingerprint"]
+
+    _stub_unified_remote(monkeypatch, repo, RemoteTaskLifecycle(
+        head, lifecycle.terminals + alternative.terminals, (), (), (), (),
+    ))
+    with pytest.raises(ValueError, match="SEMANTIC_REVIEW"):
+        observe_semantic_review_scope("TASK-101", repo=repo)
 
 
 def test_unified_state_rejects_canonical_result_with_mismatched_evidence_subject(
@@ -2283,7 +2328,37 @@ findings:
         ),
         ((repair_2_id, "F1", selector_sha),), (), (),
     )
+    unreviewed = RemoteTaskLifecycle(
+        head, lifecycle_with_selector.terminals, (), (), (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, unreviewed)
+    repaired_scope = observe_semantic_review_scope("TASK-101", repo=repo)
+    assert repaired_scope["review_mode"] == "PRIMARY"
+    assert repaired_scope["reviewed_run_id"] == repair_2_id
+    assert repaired_scope["semantic_origin_run_id"] == primary_id
+    assert repaired_scope["semantic_base_sha"] == head
+    assert repaired_scope["latest_delta_base_sha"] == head
+    assert repaired_scope["reviewed_head_sha"] == candidate_sha
+    assert repaired_scope["prior_review_id"] is None
+
+    failed_review = f"""review_id: REVIEW-{primary_id}
+reviewed_sha: {head}
+mode: PRIMARY
+verdict: PASS
+acceptance: {{AC1: PASS}}
+findings: []
+""".encode()
+    _stub_unified_remote(monkeypatch, repo, RemoteTaskLifecycle(
+        head, unreviewed.terminals,
+        (RemoteLifecycleReview(primary_id, head, failed_review),),
+        (), (), (),
+    ))
+    with pytest.raises(ValueError, match="already has a review|repair lineage"):
+        observe_semantic_review_scope("TASK-101", repo=repo)
+
     _stub_unified_remote(monkeypatch, repo, lifecycle_with_selector)
+    with pytest.raises(ValueError, match="SEMANTIC_REVIEW"):
+        observe_semantic_review_scope("TASK-101", repo=repo)
 
     monkeypatch.setattr(
         operator_module,
@@ -3099,6 +3174,17 @@ def test_unified_state_integrated_remediation_result_and_subsequent_repair_linea
     assert obs_unreviewed["review_id"] == f"REVIEW-{topo['repair_2_id']}"
     assert obs_unreviewed["finding_id"] == "F1"
 
+    scope = observe_semantic_review_scope("TASK-101", repo=repo)
+    assert scope["review_mode"] == "DELTA"
+    assert scope["reviewed_run_id"] == scope["semantic_origin_run_id"] == remediation_id
+    assert scope["semantic_base_sha"] == topo["candidate_sha"]
+    assert scope["latest_delta_base_sha"] == int_result.integration_candidate_sha
+    assert scope["semantic_base_sha"] != scope["latest_delta_base_sha"]
+    assert scope["reviewed_head_sha"] == rem_candidate_sha
+    assert scope["prior_review_run_id"] == topo["repair_2_id"]
+    assert scope["prior_review_id"] == f"REVIEW-{topo['repair_2_id']}"
+    assert scope["prior_finding_id"] == "F1"
+
     # 2. DELTA review resolving F1 preserves frontier and transitions to AUTHOR_REMEDIATION for F2
     delta_review_yaml = f"""review_id: REVIEW-{remediation_id}
 reviewed_sha: {rem_candidate_sha}
@@ -3217,6 +3303,22 @@ prior_finding_id: F1
         (),
         (),
     )
+    unreviewed_repair = RemoteTaskLifecycle(
+        new_main, lifecycle_repaired_rem.terminals, topo["base_reviews"],
+        lifecycle_repaired_rem.remediation_selectors, (), (),
+    )
+    _stub_unified_remote(monkeypatch, repo, unreviewed_repair)
+    scope = observe_semantic_review_scope("TASK-101", repo=repo)
+    assert scope["review_mode"] == "DELTA"
+    assert scope["reviewed_run_id"] == repair_rem_id
+    assert scope["semantic_origin_run_id"] == remediation_id
+    assert scope["semantic_base_sha"] == topo["candidate_sha"]
+    assert scope["latest_delta_base_sha"] == int_result.integration_candidate_sha
+    assert scope["reviewed_head_sha"] == repair_candidate_sha
+    assert scope["prior_review_run_id"] == topo["repair_2_id"]
+    assert scope["prior_review_id"] == f"REVIEW-{topo['repair_2_id']}"
+    assert scope["prior_finding_id"] == "F1"
+
     _stub_unified_remote(monkeypatch, repo, lifecycle_repaired_rem)
 
     obs_repaired_rem = observe_unified_state("TASK-101", repo=repo).as_dict()

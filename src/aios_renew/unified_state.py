@@ -7,9 +7,10 @@ mutating runtime state, or reconciling repository state.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -118,6 +119,10 @@ class UnifiedStateObservation:
     blocker: Mapping[str, Any] | None = None
     outstanding_findings: tuple[Mapping[str, str], ...] = ()
     admission_failures: tuple[Mapping[str, Any], ...] = ()
+    # Private handoff from the one canonical reduction to the read-only scope.
+    _scope_context: _SemanticScopeContext | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def as_dict(self) -> dict[str, Any]:
         if self.next_action not in _UNIFIED_NEXT_ACTIONS:
@@ -191,6 +196,13 @@ class _LifecycleRun:
     semantic_predecessor: Any | None = None
     execution_base_run_id: str | None = None
     execution_base: Any | None = None
+
+
+@dataclass(frozen=True)
+class _SemanticScopeContext:
+    tip: _LifecycleRun
+    lifecycle: tuple[_LifecycleRun, ...]
+    reviews: Mapping[str, Review]
 
 
 def _unified_blocked(
@@ -1301,6 +1313,7 @@ def observe_unified_state(
                     ),
                     review_id=tip.review_id, finding_id=tip.finding_id,
                     admission_failures=admission_context,
+                    _scope_context=_SemanticScopeContext(tip, tuple(remote), reviews),
                 )
             prior_review = None
             if review.prior_finding_id is not None:
@@ -1511,7 +1524,101 @@ def observe_unified_state(
         )
 
 
+def observe_semantic_review_scope(
+    task_id: str, *, repo: str | Path | None = None
+) -> dict[str, Any]:
+    """Project the exact current unreviewed semantic subject from Unified State."""
+
+    observation = observe_unified_state(task_id, repo=repo)
+    context = observation._scope_context
+    if observation.next_action != "SEMANTIC_REVIEW" or context is None:
+        raise ValueError("no exact SEMANTIC_REVIEW obligation")
+
+    tip, lifecycle, reviews = context.tip, list(context.lifecycle), context.reviews
+    result = validate_result(tip.terminal["result"])
+    if (
+        tip.terminal_kind != "RESULT"
+        or tip.run_id != observation.run_id
+        or tip.candidate_sha != observation.candidate_sha
+        or result.head_sha != tip.candidate_sha
+        or tip.run_id in reviews
+    ):
+        raise ValueError("semantic review candidate identity is inconsistent")
+
+    # The reducer already selected the sole canonical tip. Its operational
+    # lineage validates parent uniqueness/cycles, including integrated bases.
+    ordered = _ordered_lineage(tip, lifecycle)
+    origin = next((item for item in reversed(ordered) if item.family != "REPAIR"), None)
+    if origin is None or origin.family not in ("PRIMARY", "REMEDIATION"):
+        raise ValueError("semantic review origin is missing or ambiguous")
+    origin_index = ordered.index(origin)
+    continuations = ordered[origin_index + 1:]
+    if any(
+        item.family != "REPAIR"
+        or item.parent_run_id != parent.run_id
+        or parent.terminal_kind != "FAILURE"
+        or parent.run_id in reviews
+        for parent, item in zip(ordered[origin_index:-1], continuations)
+    ):
+        raise ValueError("semantic review repair lineage is inconsistent")
+    if origin != tip and (origin.terminal_kind != "FAILURE" or origin.run_id in reviews):
+        raise ValueError("semantic review origin already has a review")
+
+    prior_run_id = prior_review_id = prior_finding_id = None
+    if origin.family == "PRIMARY":
+        if origin_index != 0 or tip.review_id is not None or tip.finding_id is not None:
+            raise ValueError("PRIMARY semantic review identity is inconsistent")
+        mode = "PRIMARY"
+        semantic_base = origin.run.base_sha
+    else:
+        if _semantic_origin(tip, lifecycle) != origin:
+            raise ValueError("DELTA semantic origin is ambiguous")
+        prior_review = _correction_prior_review(tip, lifecycle, reviews)
+        predecessor = origin.semantic_predecessor
+        prior_run_id = origin.parent_run_id
+        if (
+            prior_run_id is None
+            or tip.review_id is None
+            or tip.finding_id is None
+            or tip.finding_id not in {finding.id for finding in prior_review.findings}
+            or (
+                predecessor is not None
+                and (
+                    predecessor.source_run_id != prior_run_id
+                    or predecessor.review_id != prior_review.review_id
+                    or predecessor.finding_id != tip.finding_id
+                    or predecessor.reviewed_sha != prior_review.reviewed_sha
+                )
+            )
+        ):
+            raise ValueError("DELTA predecessor identity is inconsistent")
+        mode = "DELTA"
+        semantic_base = prior_review.reviewed_sha
+        prior_review_id = prior_review.review_id
+        prior_finding_id = tip.finding_id
+
+    body: dict[str, Any] = {
+        "format": "AIOS_SEMANTIC_REVIEW_SCOPE",
+        "version": 1,
+        "kind": "SEMANTIC_REVIEW_SCOPE",
+        "task": {"id": observation.task_id, "revision": observation.task_revision},
+        "reviewed_run_id": tip.run_id,
+        "review_mode": mode,
+        "semantic_origin_run_id": origin.run_id,
+        "semantic_base_sha": semantic_base,
+        "latest_delta_base_sha": tip.run.base_sha,
+        "reviewed_head_sha": tip.candidate_sha,
+        "prior_review_run_id": prior_run_id,
+        "prior_review_id": prior_review_id,
+        "prior_finding_id": prior_finding_id,
+    }
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    body["scope_fingerprint"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return body
+
+
 __all__ = [
     "UnifiedStateObservation",
     "observe_unified_state",
+    "observe_semantic_review_scope",
 ]
