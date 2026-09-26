@@ -807,7 +807,34 @@ sequence:
       GitHub access, chat memory, provider identity, or new semantic/lifecycle authority.
   - id: bp-6-reviewer-provider-protocol
     status: NEXT
-    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    current_phase: BP6-P1A
+    planning_document: docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md
+    phases:
+      - id: BP6-P1A
+        status: NEXT
+        objective: >-
+          Derive exact deterministic semantic review scope identity across direct PRIMARY,
+          repaired PRIMARY, REMEDIATION DELTA, and repair-of-remediation DELTA without
+          duplicating lifecycle authority.
+      - id: BP6-P1B
+        status: PLANNED
+        objective: >-
+          Bind the exact review scope to complete bounded implementation material for a
+          repository-blind Reviewer.
+      - id: BP6-P2
+        status: PLANNED
+        objective: >-
+          Define self-sufficient content-addressed Reviewer procedure and REVIEW
+          return-contract material while preserving existing review.validate_review authority.
+      - id: BP6-P3
+        status: PLANNED
+        objective: >-
+          Define pure provider-neutral AIOS_REVIEW_REQUEST v1 / AIOS_REVIEW_DECISION v1.
+      - id: BP6-P4
+        status: PLANNED
+        objective: >-
+          Prove one-call Reviewer provider conformance with two independent non-network
+          adapters and no retry/fallback/router authority.
     objective: >-
       Establish a separate provider-neutral Reviewer protocol without merging Brain and
       Reviewer authorities.
@@ -855,15 +882,15 @@ parallel_work:
 sequencing_rule:
   generic_continuation: >-
     Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol is
-    reviewed/published complete through BP5-P3 and its exit gate is satisfied. The
-    current Human/Brain planning commitment is BP-6 Reviewer Provider Protocol.
-    Before authoring its first implementation TASK, fresh-sync and audit Reviewer-specific
-    evidence/context, request/decision semantics, authority separation from Brain,
-    deterministic validation boundaries, and overlap with existing REVIEW contracts.
-    Do not reuse Brain-provider semantics as Reviewer authority, do not consume BP-7
-    cross-provider hot-swap proof or BP-8 real-provider proof early, and do not create
-    a generic provider/model router, lifecycle router, automatic Reviewer, or new
-    canonical mutation authority.
+    reviewed/published complete and BP-6 Reviewer Provider Protocol is current. BP-6
+    architecture is phased in docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md; the unique next
+    implementation obligation is BP6-P1A Semantic Review Scope Identity. Before TASK
+    authoring, fresh-sync and audit the minimum existing Unified State / correction-lineage
+    surface to reuse so scope derivation does not create a second lifecycle reducer.
+    Do not jump to Reviewer provider invocation before P1A/P1B/P2/P3, do not reuse
+    Brain-provider semantics as Reviewer authority, do not consume BP-7 hot-swap or
+    BP-8 real-provider proof early, and do not create a generic provider/model router,
+    automatic Reviewer, remediation selector, or new canonical mutation authority.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
