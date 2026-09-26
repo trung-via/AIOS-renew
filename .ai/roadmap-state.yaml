@@ -773,6 +773,25 @@ sequence:
       behavior, lifecycle routing, or any new semantic authority.
   - id: bp-5-brain-provider-protocol
     status: NEXT
+    current_phase: BP5-P3
+    completed_phases:
+      - id: BP5-P1
+        task_id: TASK-180
+        run_id: RUN-180-001
+        review_id: REVIEW-180-001
+        published_sha: "5e97e7b8d79d2f0e8b2d725ac4e9e7175a60fd4e"
+      - id: BP5-P2A
+        task_id: TASK-181
+        run_id: RUN-181-002
+        review_id: REVIEW-181-002
+        published_sha: "6901e29540bd98d1d5c4df0477b76594e5bcb4b7"
+      - id: BP5-P2B
+        task_id: TASK-182
+        source_run_id: RUN-182-001
+        remediation_run_id: RUN-182-002
+        review_id: REVIEW-182-002
+        prior_finding_id: FINDING-182-001
+        published_sha: "09b2d099dd90abae12083d6b0f7f5f4abbdd377d"
     planning_document: docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
     objective: >-
       Establish provider-neutral Brain request/decision contracts over complete bounded
@@ -829,13 +848,16 @@ parallel_work:
 sequencing_rule:
   generic_continuation: >-
     Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol is the
-    current Human/Brain planning commitment. BP5-P1 and BP5-P2A are reviewed/published
-    complete. The next implementation obligation is BP5-P2B pure Brain request/decision
-    envelopes with exact fingerprinted external request bindings, followed by BP5-P3
-    bounded adapter orchestration/conformance. Each production mutation requires a
-    separately audited, executor-neutral canonical TASK. Do not reinterpret provider
-    cognitive-support contracts as downstream validator authority, provider invocation,
-    hot-swap proof, real second-provider proof, or automatic lifecycle authority.
+    current Human/Brain planning commitment. BP5-P1, BP5-P2A and BP5-P2B are
+    reviewed/published complete. The next implementation obligation is BP5-P3 thin
+    provider adapter plus bounded orchestration conformance. P3 uses one explicitly
+    selected provider per audited attempt, a caller-owned zero-argument fresh-packet
+    supplier between Stage 1 and Stage 2, typed fail-closed pre-handoff outcomes, and
+    at least two independent non-network conformance adapters. Each production mutation
+    requires a separately audited, executor-neutral canonical TASK. Do not reinterpret
+    provider cognitive-support contracts as downstream validator authority, repository
+    discovery, cross-stage hot-swap proof, real second-provider proof, Reviewer authority,
+    provider/model routing, or automatic lifecycle authority.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
