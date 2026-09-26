@@ -1,0 +1,43 @@
+review_id: REVIEW-178-004
+reviewed_sha: a0291a5622a027185382fccdf841724ed28d89b7
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC2: FAIL
+prior_finding_id: FINDING-178-005
+findings:
+- id: FINDING-178-006
+  basis: AC2
+  action: CODE_FIX
+  location: src/aios_renew/decision_packet.py::_run / _repair_authoring
+  issue: REPAIR_AUTHORING now reuses validate_runtime_failure_binding(), but the validator
+    is anchored to executor/base identity taken from caller-supplied failed_run material
+    that is not itself validated as a canonical Run. _run() accepts an unsupported
+    executor value and _repair_authoring passes that same value as the expected executor.
+    Therefore a malformed pair such as failed_run.executor="other" plus failure.executor="other"
+    can satisfy the complete FAILURE binding even though no canonical Runtime RUN
+    can carry that executor. The new regression only mutates failed_run.executor while
+    leaving failure.executor unchanged, so it does not cover this mirrored malformed-material
+    counterexample.
+  expected: Before Runtime FAILURE validation, bind failed_run to the existing canonical
+    Run / RunTaskReference contract (or an existing equivalent validator) so the reference
+    truth used by validate_runtime_failure_binding() is itself canonical. Add regression
+    coverage where the same unsupported or mistyped executor is mirrored into both
+    failed_run and FAILURE and prove compilation fails closed. Do not create a second
+    RUN contract.
+- id: FINDING-178-007
+  basis: AC2
+  action: CODE_FIX
+  location: src/aios_renew/decision_packet.py::_repair_authoring
+  issue: The corrected path still projects caller-supplied failure.reason_code whenever
+    present. Canonical Runtime persist_failure() does not emit reason_code, and validate_runtime_failure_binding()
+    neither binds nor rejects that field. An otherwise identical valid Runtime FAILURE
+    can therefore acquire an arbitrary reason_code that enters bounded_observations
+    and changes packet identity without any canonical Runtime source. This leaves
+    a non-canonical caller-controlled fact inside the supposedly closed REPAIR_AUTHORING
+    projection.
+  expected: Do not project unbound reason_code from Runtime FAILURE material. Project
+    only facts whose canonical Runtime provenance is validated; with the current Runtime
+    FAILURE producer this means phase and the minimum safe error projection, not caller-injected
+    reason_code. Add a regression proving an injected reason_code cannot enter the
+    packet or alter its fingerprint.
