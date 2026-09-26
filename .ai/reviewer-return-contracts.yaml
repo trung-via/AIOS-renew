@@ -1,0 +1,37 @@
+format: AIOS_REVIEWER_RETURN_CONTRACTS
+version: 1
+bounds:
+  raw_registry_bytes: 65536
+  selected_contract_bytes: 32768
+  semantic_body_bytes: 131072
+  acceptance_entries: 256
+  findings: 32
+  location_bytes: 2048
+  issue_bytes: 8192
+  expected_bytes: 8192
+  max_depth: 32
+contracts:
+  - id: reviewer-semantic-return-v1
+    version: 1
+    selected_flow: SEMANTIC_REVIEW
+    authority_owner: REVIEWER
+    decision_family_ref: review.validate_review
+    handoff_target: AUTHORING_INGRESS
+    expected_return_shape: REVIEW_CONTRACT_PROPOSAL
+    representation: STRICT_JSON_MAPPING
+    grammar:
+      body_fields: [verdict, acceptance, findings]
+      verdicts: [PASS, CHANGES_REQUIRED, BLOCKED]
+      acceptance_fields: [id, outcome]
+      acceptance_outcomes: [PASS, FAIL]
+      finding_fields: [basis, action, location, issue, expected]
+      finding_actions: [CODE_FIX, EVIDENCE_ONLY]
+    rules:
+      - PRIMARY_ALL_TASK_ACCEPTANCE_IDS_ONCE
+      - DELTA_EXACT_PRIOR_BASIS_ONCE_ADDITIONAL_TASK_IDS_ONLY
+      - ACCEPTANCE_NORMALIZED_IN_TASK_ORDER
+      - FINDINGS_RETAIN_PROVIDER_ORDER_WITHOUT_IDENTITIES
+      - PASS_REQUIRES_NO_FINDINGS_AND_ALL_SUPPLIED_PASS
+      - CHANGES_REQUIRED_REQUIRES_FAIL_AND_FINDING_PER_FAIL
+      - BLOCKED_HAS_NO_EXTRA_PROVIDER_CONSISTENCY_RULES
+      - MALFORMED_MATERIAL_IS_CONTRACT_ERROR_NOT_SEMANTIC_VERDICT
