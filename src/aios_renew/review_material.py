@@ -173,7 +173,8 @@ def _git(repo: Path, *args: str, input_data: bytes | None = None) -> bytes:
 def _tree(repo: Path, commit: str) -> dict[str, tuple[str, str, str]]:
     if _git(repo, "cat-file", "-t", commit).strip() != b"commit":
         _fail("UNSUPPORTED_MATERIAL", "bound SHA is not a commit")
-    raw = _git(repo, "ls-tree", "-rz", "-t", "--full-tree", commit)
+    # Recursive leaf entries only; directory trees are structural, not changes.
+    raw = _git(repo, "ls-tree", "-r", "-z", "--full-tree", commit)
     entries: dict[str, tuple[str, str, str]] = {}
     for row in raw.split(b"\0"):
         if not row:
@@ -225,16 +226,6 @@ def _view(repo: Path, base_sha: str, head_sha: str,
     for path in paths:
         before, after = base_tree.get(path), head_tree.get(path)
         if before == after:
-            continue
-        if before is not None and before[1] == "tree" and after is not None and after[1] != "tree":
-            _fail("UNSUPPORTED_MATERIAL", "tree/object transition")
-        if after is not None and after[1] == "tree" and before is not None and before[1] != "tree":
-            _fail("UNSUPPORTED_MATERIAL", "object/tree transition")
-        if (before is not None and before[1] == "tree") or (after is not None and after[1] == "tree"):
-            tree = before if before is not None and before[1] == "tree" else after
-            entries = base_tree if tree is before else head_tree
-            if not any(other.startswith(path + "/") for other in entries):
-                _fail("UNSUPPORTED_MATERIAL", "empty changed tree")
             continue
         if len(changes) >= MAX_CHANGES:
             _fail("MATERIAL_BOUND_EXCEEDED", "view change count")

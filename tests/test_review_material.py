@@ -9,6 +9,10 @@ from pathlib import Path
 import pytest
 
 from aios_renew.review_material import (
+    MAX_BLOB_BYTES,
+    MAX_CHANGES,
+    MAX_DIFF_BYTES,
+    MAX_PACKAGE_BYTES,
     ReviewMaterialError,
     construct_review_material_package,
     validate_review_material_package,
@@ -79,6 +83,56 @@ def test_direct_package_uses_exact_sources_and_is_worktree_independent(tmp_path:
     assert validate_review_material_package(json.dumps(package)) == package
     (repo / "edit.txt").write_text("dirty", encoding="utf-8")
     (repo / "untracked").write_text("unrelated", encoding="utf-8")
+    git(repo, "config", "diff.renames", "true")
+    assert construct_review_material_package(identity, repo=repo) == package
+
+
+def test_nested_paths_are_regular_blob_changes_with_closed_sources(tmp_path: Path):
+    repo = make_repo(tmp_path)
+    code = repo / "src" / "aios_renew"
+    tests = repo / "tests" / "unit"
+    code.mkdir(parents=True)
+    tests.mkdir(parents=True)
+    (code / "edit.py").write_bytes(b"before\n")
+    (tests / "removed.py").write_bytes(b"removed\n")
+    (tests / "renamed.py").write_bytes(b"same\n")
+    base = commit(repo)
+
+    (code / "edit.py").write_bytes(b"after\n")
+    (tests / "removed.py").unlink()
+    (code / "added.py").write_bytes(b"added\n")
+    git(repo, "mv", "tests/unit/renamed.py", "src/aios_renew/renamed.py")
+    head = commit(repo)
+
+    identity = scope(base, base, head)
+    package = construct_review_material_package(identity, repo=repo)
+    changes = package["semantic_view"]["changes"]
+    assert [(change["path"], change["status"]) for change in changes] == [
+        ("src/aios_renew/added.py", "ADD"),
+        ("src/aios_renew/edit.py", "MODIFY"),
+        ("src/aios_renew/renamed.py", "ADD"),
+        ("tests/unit/removed.py", "DELETE"),
+        ("tests/unit/renamed.py", "DELETE"),
+    ]
+    assert changes[2]["review_source_ref"] == changes[4]["review_source_ref"]
+    assert all(change["base_mode"] in (None, "100644") and
+               change["head_mode"] in (None, "100644") for change in changes)
+    assert {change["review_source_ref"] for change in changes} == {
+        source["source_ref"] for source in package["sources"]}
+    assert len(changes) <= MAX_CHANGES
+    assert sum(len(change["unified_diff"].encode()) for change in changes) <= MAX_DIFF_BYTES
+    assert all(source["byte_length"] <= MAX_BLOB_BYTES for source in package["sources"])
+    assert len(json.dumps(package, sort_keys=True, separators=(",", ":")).encode()) <= MAX_PACKAGE_BYTES
+    assert validate_review_material_package(json.dumps(package)) == package
+    missing_source = copy.deepcopy(package)
+    missing_source["sources"].pop()
+    rejection("MATERIAL_INCONSISTENT", validate_review_material_package, missing_source)
+    too_many_changes = copy.deepcopy(package)
+    too_many_changes["semantic_view"]["changes"] *= MAX_CHANGES + 1
+    rejection("MATERIAL_BOUND_EXCEEDED", validate_review_material_package, too_many_changes)
+
+    (code / "edit.py").write_bytes(b"dirty\n")
+    (tests / "untracked.py").write_bytes(b"untracked\n")
     git(repo, "config", "diff.renames", "true")
     assert construct_review_material_package(identity, repo=repo) == package
 
