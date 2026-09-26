@@ -1,0 +1,30 @@
+review_id: REVIEW-178-005
+reviewed_sha: f0562776ed9f8bdc89c6d0f06d9598c291799190
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC2: FAIL
+prior_finding_id: FINDING-178-006
+findings:
+- id: FINDING-178-008
+  basis: AC2
+  action: CODE_FIX
+  location: src/aios_renew/decision_packet.py::_run
+  issue: 'The correction now instantiates the existing Run contract, but it constructs
+    RunTaskReference from the already-validated TASK instead of from the supplied
+    failed_run.task material. The preceding raw equality check is not type-strict
+    in Python: for a revision-1 TASK, {"id":"TASK-002","revision":true} and {"id":"TASK-002","revision":1.0}
+    compare equal to {"id":"TASK-002","revision":1}. Those malformed supplied RUN
+    task identities therefore bypass RunTaskReference''s canonical positive-integer
+    validation, because the Run object is given a freshly constructed canonical task
+    reference rather than the supplied one. This leaves FINDING-178-006 incomplete
+    for malformed RUN/TASK identity even though mirrored invalid executors are now
+    correctly rejected.'
+  expected: Validate the supplied failed_run.task through the existing RunTaskReference
+    contract before using it as canonical reference truth, and bind the resulting
+    validated identity exactly to the selected TASK. Do not replace malformed caller
+    material with task.task_id/task.revision before validation. Add regression coverage
+    for boolean and floating-point revisions that are value-equal to revision 1, proving
+    they fail closed, while a genuine integer revision remains representable. Preserve
+    the existing Run and Runtime FAILURE validators rather than creating duplicate
+    RUN/TASK validation logic.
