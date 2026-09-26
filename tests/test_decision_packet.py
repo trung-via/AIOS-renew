@@ -9,7 +9,9 @@ import pytest
 
 from aios_renew.brain_context import compose_brain_work_context, resolve_flow
 from aios_renew.brain_sync import BrainSyncSnapshot
+from aios_renew import decision_packet
 from aios_renew.decision_packet import DecisionPacketError, compile_decision_packet
+from aios_renew.review import REMEDIATION_ACTIONS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -193,6 +195,16 @@ def test_unique_finding_and_unselected_frontier_fail_closed():
     changed = copy.deepcopy(material)
     changed["findings"][0]["finding"]["issue"] = "Changed issue"
     assert compile_decision_packet(work, flow, changed).packet_fingerprint != packet.packet_fingerprint
+
+
+def test_finding_actions_use_canonical_remediation_contract():
+    assert decision_packet.REMEDIATION_ACTIONS is REMEDIATION_ACTIONS
+    source = item("RUN-002-001", "REVIEW-002-001", "F1")
+    work, flow, material = authoring([source], selected=True)
+    for action in REMEDIATION_ACTIONS:
+        material["findings"][0]["finding"]["action"] = action
+        packet = compile_decision_packet(work, flow, material)
+        assert packet.as_dict()["subject"]["action"] == action
 
 
 def test_semantic_review_binds_exact_remediation_authorization_and_claim_classes():

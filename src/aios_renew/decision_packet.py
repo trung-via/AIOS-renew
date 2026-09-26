@@ -18,7 +18,7 @@ from .brain_context import (
     resolve_flow,
 )
 from .review import (
-    ReviewValidationError, parse_remediation, parse_review,
+    REMEDIATION_ACTIONS, ReviewValidationError, parse_remediation, parse_review,
     validate_remediation, validate_review,
 )
 from .task import TaskValidationError, validate_task
@@ -191,7 +191,7 @@ def _finding_entry(value: Any, task: Any) -> dict[str, Any]:
     basis = _identity(finding["basis"], "finding basis")
     if basis not in {criterion.id for criterion in task.acceptance}:
         raise DecisionPacketError("finding basis is outside TASK acceptance")
-    if finding["action"] not in {"CODE_FIX", "EVIDENCE_ONLY"}:
+    if finding["action"] not in REMEDIATION_ACTIONS:
         raise DecisionPacketError("invalid finding action")
     for name in ("location", "issue", "expected"):
         if not isinstance(finding[name], str) or not finding[name].strip() or finding[name] != finding[name].strip():
