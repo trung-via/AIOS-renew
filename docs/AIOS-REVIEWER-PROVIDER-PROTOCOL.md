@@ -282,10 +282,54 @@ BP-6 is complete only when reviewed/published evidence proves:
 - no Brain/Reviewer authority crossover, persistent reasoning/session store, model router, lifecycle router, automatic remediation, or new mutation authority is introduced;
 - BP-7 hot-swap proof and BP-8 real-provider proof remain unconsumed future milestones.
 
-## 10. Planning decision
+## 10. BP6-P1A task-design audit decision
+
+Focused overlap audit finds that the exact correction-lineage semantics already exist in `src/aios_renew/unified_state.py`: decoded lifecycle nodes, operational-parent traversal, REPAIR-to-origin traversal, DELTA predecessor resolution, cumulative lineage ordering, and fail-closed handling for competing/cyclic/missing lineage.
+
+Therefore BP6-P1A must **reuse that lifecycle graph semantics** rather than re-parse publication/ingress lineage in a second Reviewer-specific reducer.
+
+The preferred contract boundary is a separate read-only projection:
+
+```text
+AIOS_SEMANTIC_REVIEW_SCOPE v1
+```
+
+It is not a new lifecycle state and must not change the serialized `AIOS_UNIFIED_STATE v1` contract merely to carry Reviewer cognitive support.
+
+The exact closed semantic fields should bind:
+
+```text
+task: {id, revision}
+reviewed_run_id
+review_mode: PRIMARY | DELTA
+semantic_origin_run_id
+semantic_base_sha
+latest_delta_base_sha
+reviewed_head_sha
+prior_review_run_id: string | null
+prior_review_id: string | null
+prior_finding_id: string | null
+scope_fingerprint
+```
+
+Derivation rules:
+
+- direct PRIMARY: semantic origin is the current PRIMARY RUN; semantic base and latest-delta base equal that RUN base;
+- repaired PRIMARY before any semantic review: traverse only exact REPAIR parents to the PRIMARY origin; semantic base is the original PRIMARY base; latest-delta base is the current successful REPAIR RUN base;
+- direct REMEDIATION DELTA: semantic origin is the REMEDIATION RUN; semantic base is the exact predecessor REVIEW reviewed SHA; latest-delta base is the current REMEDIATION RUN base;
+- repair-of-remediation DELTA: traverse exact REPAIR parents to the REMEDIATION origin; semantic base/prior review/finding come from that remediation predecessor; latest-delta base is the current successful REPAIR RUN base;
+- integrated/cumulative remediation keeps the semantic predecessor reviewed SHA distinct from the operational execution base.
+
+The scope projection is valid only for one exact successful, unreviewed current candidate whose canonical lifecycle next action is SEMANTIC_REVIEW. Any candidate mismatch, competing tip, cycle, broken parent, missing predecessor review, inconsistent finding identity, or ambiguous semantic origin fails closed.
+
+P1A does not package source content, inspect implementation semantics, invoke a provider, produce a REVIEW verdict, run verification, author remediation, or mutate canonical state.
+
+The focused successor TASK should keep its production mutation surface inside the existing Unified State/lifecycle reduction boundary plus focused tests. It should not modify Decision Packet, REVIEW schema, authoring ingress, publication, Brain provider code, or provider adapters in P1A.
+
+## 11. Planning decision
 
 BP-6 is the unique current Human/Brain planning milestone.
 
-The first implementation obligation is BP6-P1A Semantic Review Scope Identity. It must be separately task-audited before authoring. In particular, the task audit must determine the minimum existing lifecycle surface to extend/reuse so review-scope derivation does not duplicate Unified State or publication/ingress lineage authority.
+The first implementation obligation is BP6-P1A Semantic Review Scope Identity. The focused task-design audit above establishes the authority boundary and expected projection semantics; a separately authored executor-neutral TASK is still required before production implementation.
 
 No production mutation is authorized by this planning document.
