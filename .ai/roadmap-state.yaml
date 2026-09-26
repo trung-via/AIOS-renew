@@ -829,13 +829,13 @@ parallel_work:
 sequencing_rule:
   generic_continuation: >-
     Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol is the
-    current Human/Brain planning commitment. Its implementation sequence must first make
-    repository-owned audit-profile material provider-self-sufficient, then establish the
-    provider-neutral request/decision and adapter contracts, and finally prove bounded
+    current Human/Brain planning commitment. BP5-P1 is reviewed/published complete. The
+    next implementation obligation is BP5-P2A provider-self-sufficient return contracts,
+    followed by BP5-P2B pure request/decision envelopes and BP5-P3 bounded adapter
     orchestration/conformance. Each production mutation requires a separately audited,
-    executor-neutral canonical TASK. Do not reinterpret BP-4A publication as provider
-    invocation, provider-call orchestration, hot-swap proof, real second-provider proof,
-    or automatic lifecycle authority.
+    executor-neutral canonical TASK. Do not reinterpret provider cognitive-support
+    contracts as downstream validator authority, provider invocation, hot-swap proof,
+    real second-provider proof, or automatic lifecycle authority.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.

@@ -344,9 +344,9 @@ Introduce provider-neutral `AIOS_BRAIN_REQUEST` / `AIOS_BRAIN_DECISION` validati
 
 For audited Brain-owned flows, a successful semantic attempt consists of exactly two admitted provider invocations: `AUDIT_CONSTRUCT`, then after fresh Decision Packet recomposition and exact fingerprint equality, `AUDIT_RECONCILE`. Provider/model/session identity is operational metadata and must not alter the semantic request or decision fingerprint. DIAGNOSTIC uses a bounded `DIRECT` request; SEMANTIC_REVIEW remains Reviewer-owned and belongs to BP-6.
 
-BP-5 conformance proves that at least two independent provider-adapter implementations can consume/produce the same bounded contract without changing Brain authority semantics. Cross-checkpoint hot-swap proof remains BP-7, and a controlled real non-default provider invocation remains BP-8.
+BP-5 conformance proves that at least two independent provider-adapter implementations can consume/produce the same bounded contract without changing Brain authority semantics. In addition to the self-sufficient audit profile, provider-neutrality requires bounded content-addressed return-contract material because Decision Packet decision-family/return-shape tokens are identifiers, not a complete candidate grammar for a provider with no repository access. Existing TASK/REMEDIATION/REPAIR validators remain authoritative and are not duplicated by the return-contract projection. Cross-checkpoint hot-swap proof remains BP-7, and a controlled real non-default provider invocation remains BP-8.
 
-Exit gate: self-sufficient repository-owned audit-profile material, provider-neutral request/decision identity, exact Stage-1/Stage-2 binding and fresh-packet gate, bounded typed provider failures with no automatic retry/failover, no provider-specific semantic augmentation, and at least two adapter/conformance implementations over one unchanged Brain contract.
+Exit gate: self-sufficient repository-owned audit-profile and return-contract material, provider-neutral request/decision identity, exact Stage-1/Stage-2 binding and fresh-packet gate, bounded typed provider failures with no automatic retry/failover, no provider-specific semantic augmentation, and at least two adapter/conformance implementations over one unchanged Brain contract.
 
 ### BP-6 — Reviewer Provider Protocol
 

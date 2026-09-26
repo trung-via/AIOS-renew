@@ -1,7 +1,7 @@
 # AIOS Brain Provider Protocol — Planning Baseline
 
 Status: HUMAN/BRAIN PLANNING BASELINE
-Canonical evidence cut: main dcd75f33f91438ea346c032ba13109a19c107c1a
+Canonical evidence cut: main 5e97e7b8d79d2f0e8b2d725ac4e9e7175a60fd4e
 Scope: BP-5 provider-neutral Brain request/decision architecture; no implementation authority
 
 ## 1. Purpose
@@ -75,33 +75,66 @@ These descriptions are audit procedure, not predetermined verdicts or answer key
 
 Historical BP-4A completion is not reopened by this prospective profile extension. The exact historical profile remains attributable to its published SHA.
 
-## 4. AIOS_BRAIN_REQUEST v1 identity
+## 4. Provider-self-sufficient decision-family return contract
+
+The BP5-P2 audit found a second self-sufficiency boundary after BP5-P1.
+
+An exact Decision Packet exposes `selected_flow`, `decision_family_ref`, `handoff_target` and `expected_return_shape`, but those values are identifiers rather than a complete provider-facing candidate grammar. A fresh provider with no repository access cannot safely reconstruct the exact TASK/REMEDIATION/REPAIR proposal shape from tokens such as `TASK_AUTHORING_PROPOSAL` or `review.validate_remediation`.
+
+Provider adapters must not solve this by hard-coding hidden prompt instructions or repository knowledge. Before the request/decision envelope is implemented, BP-5 therefore needs one bounded repository-owned return-contract projection.
+
+The preferred v1 shape is a content-addressed `AIOS_BRAIN_RETURN_CONTRACTS` registry with one current contract for each Brain-owned flow:
+
+```text
+ARCHITECTURE
+TASK_AUTHORING
+REMEDIATION_AUTHORING
+REPAIR_AUTHORING
+DIAGNOSTIC
+```
+
+`SEMANTIC_REVIEW` is excluded because Reviewer authority belongs to BP-6.
+
+Each return contract binds at minimum:
+
+```text
+selected_flow
+decision_family_ref
+expected_return_shape
+provider-facing candidate contract
+content digest
+```
+
+The provider-facing candidate contract must contain enough bounded procedural/shape information for a fresh provider to construct the intended proposal without reading repository code or docs. It is cognitive support only. It must not become a second canonical validator, semantic verdict, lifecycle authority, or substitute for the existing TASK/REMEDIATION/REPAIR validators.
+
+For TASK/REMEDIATION/REPAIR, the existing family validator remains authoritative after Brain output. For ARCHITECTURE and DIAGNOSTIC, the return contract defines only the bounded proposal shape owned by the Human/Brain planning or diagnostic surface.
+
+Any semantic return-contract change changes its digest. Provider/model/session/checkout representation does not.
+
+## 5. AIOS_BRAIN_REQUEST v1 identity
 
 `AIOS_BRAIN_REQUEST` is a transient, bounded, read-only semantic request. Its fingerprint is deterministic over normalized request semantic material and excludes provider/model/session/endpoint/host/time/random invocation metadata.
 
-A request binds at minimum:
+The request should be minimal rather than duplicate exact Decision Packet fields as independent authorities. It binds at minimum:
 
 ```text
 format/version/kind
 request_mode
 exact AIOS_DECISION_PACKET v1
-packet_fingerprint
-work_context_fingerprint
-selected_flow
-decision_family_ref
-handoff_target
-expected_return_shape
+exact normalized return-contract material + return_contract_ref
 mode-specific semantic material
 request_fingerprint
 ```
 
-For audited modes, mode-specific material includes the exact normalized audit profile body plus `audit_profile_ref`. For Stage 2 it additionally includes the exact validated Stage-1 construct.
+For audited modes, mode-specific material additionally includes the exact normalized audit-profile material plus `audit_profile_ref`. For Stage 2 it additionally includes the exact validated Stage-1 construct/decision material.
+
+The full Decision Packet already contains and cryptographically binds `packet_fingerprint`, `work_context_fingerprint`, `selected_flow`, `decision_family_ref`, `handoff_target` and `expected_return_shape`. Request construction cross-validates the supplied return contract/profile against those packet values rather than creating a second independently supplied copy.
 
 The provider does not calculate `request_fingerprint`; deterministic support does.
 
 Changing provider/model/session without changing semantic material must not change `request_fingerprint`.
 
-## 5. Closed request modes
+## 6. Closed request modes
 
 BP-5 v1 has exactly three Brain request modes:
 
@@ -124,17 +157,17 @@ SEMANTIC_REVIEW       -> forbidden in AIOS_BRAIN_REQUEST
 
 The provider cannot select the mode. There is no `AUTO`, `DEEP`, `FAST`, `REFLECT`, recursive audit, or semantic profile router.
 
-## 6. Stage 1 — AUDIT_CONSTRUCT
+## 7. Stage 1 — AUDIT_CONSTRUCT
 
-The Stage-1 request carries the exact Decision Packet plus self-sufficient normalized audit profile material and its content-addressed ref.
+The Stage-1 request carries the exact Decision Packet, exact return-contract material/ref and self-sufficient normalized audit-profile material/ref.
 
-The provider returns only the bounded semantic candidate required by the request schema together with the exact request fingerprint echo. It does not compute cryptographic identities.
+The provider returns only a bounded semantic response payload containing the exact request fingerprint echo plus the candidate required by the return contract. It does not compute packet/profile/construct/decision cryptographic identities.
 
 Deterministic support then calls the reviewed BP-4A construct primitive and derives the exact `construct_fingerprint`.
 
 A validated Stage-1 Brain decision is explicitly intermediate. It is not a handoff candidate and cannot mutate canonical state.
 
-## 7. Freshness gate before Stage 2
+## 8. Freshness gate before Stage 2
 
 After Stage 1, the caller must freshly compose/revalidate the Decision Packet through the existing BP-3/BP-4 path.
 
@@ -158,29 +191,30 @@ A later attempt, if Human/control flow still requires one, starts again from a f
 
 If the fingerprint is unchanged, Stage 2 may be built.
 
-## 8. Stage 2 — AUDIT_RECONCILE
+## 9. Stage 2 — AUDIT_RECONCILE
 
 The Stage-2 request carries:
 
 ```text
 fresh Decision Packet with the same packet_fingerprint
-same normalized audit profile material/ref
-exact validated Stage-1 construct
+same normalized return-contract material/ref
+same normalized audit-profile material/ref
+exact validated Stage-1 construct/decision material
 exact construct_fingerprint
 request_fingerprint
 ```
 
-The provider returns one bounded semantic Stage-2 body containing construct audit, reconciliation, closure and protocol-local outcome fields required by BP-4A.
+The provider returns only semantic Stage-2 material plus the exact request fingerprint echo: construct audit claims, reconciled candidate, closure claims and protocol-local outcome. It does not re-supply packet/profile/construct lineage fields.
 
-Deterministic support validates the response with the reviewed BP-4A Stage-2 validator. The provider does not calculate `construct_fingerprint`, reconciled-candidate fingerprint, Stage-2 fingerprint or final decision fingerprint.
+Deterministic support injects the already-known exact lineage fields, assembles the BP-4A Stage-2 input, and validates it with the reviewed BP-4A validator. The provider does not calculate `construct_fingerprint`, reconciled-candidate fingerprint, Stage-2 fingerprint or final decision fingerprint.
 
 For one successful audited semantic attempt there are exactly two admitted provider invocations: one `AUDIT_CONSTRUCT` and one `AUDIT_RECONCILE`.
 
-## 9. DIRECT diagnostic request
+## 10. DIRECT diagnostic request
 
 `DIAGNOSTIC` remains Brain-owned but is not mandatory BP-4A two-stage work.
 
-A DIRECT request carries one exact Decision Packet and returns one bounded diagnostic proposal. It may include a bounded uncertainty declaration such as:
+A DIRECT request carries one exact Decision Packet plus the exact DIAGNOSTIC return-contract material/ref and returns one bounded diagnostic text proposal. It may include a bounded uncertainty declaration such as:
 
 ```text
 NONE
@@ -191,9 +225,9 @@ with a bounded summary when MATERIAL.
 
 A DIRECT result is a Brain semantic proposal, not Runtime evidence, canonical FAILURE, lifecycle BLOCKED state, review verdict or correction authorization.
 
-## 10. AIOS_BRAIN_DECISION v1
+## 11. AIOS_BRAIN_DECISION v1
 
-Provider-native output is untrusted input. The adapter extracts only the declared bounded structured response; provider-native metadata stays operational and outside semantic validation.
+Provider-native output is untrusted input. The adapter extracts only the declared bounded semantic response payload; provider-native metadata stays operational and outside semantic validation. The provider response is not trusted to construct AIOS identity. Deterministic validation materializes `AIOS_BRAIN_DECISION v1` only after exact request-fingerprint binding and mode-specific validation.
 
 Deterministic validation materializes `AIOS_BRAIN_DECISION v1`. It binds:
 
@@ -208,6 +242,8 @@ work_context_fingerprint
 decision_family_ref
 handoff_target
 expected_return_shape
+return_contract_ref
+audit_profile_ref when applicable
 mode-specific validated semantic value
 invalidation/currentness basis copied from the request
 decision_fingerprint
@@ -223,7 +259,7 @@ Provider/model/session identity never contributes to `decision_fingerprint`.
 
 `AIOS_BRAIN_DECISION` is not canonical lifecycle state and is not itself permission to mutate a canonical artifact.
 
-## 11. Canonical handoff
+## 12. Canonical handoff
 
 A validated Brain decision is handed only to the existing authority-specific surface:
 
@@ -249,7 +285,7 @@ DIAGNOSTIC
 
 BP-5 must not duplicate these semantic validators or write their canonical artifacts directly.
 
-## 12. Thin BrainProvider adapter
+## 13. Thin BrainProvider adapter
 
 A provider adapter may only:
 
@@ -274,7 +310,7 @@ It must not:
 
 Credentials/API tokens are adapter configuration only and never enter request/decision semantic material or fingerprints.
 
-## 13. Provider selection and attribution
+## 14. Provider selection and attribution
 
 Provider implementation choice belongs to Human/configuration, not semantic inference.
 
@@ -284,7 +320,7 @@ A new audited authorization may select a different provider implementation expli
 
 The contract may permit Stage 1 and Stage 2 to use different explicit provider implementations while retaining one Brain authority, but BP-5 does not claim cross-stage or cross-checkpoint hot-swap conformance. That proof remains BP-7.
 
-## 14. Provider failure semantics
+## 15. Provider failure semantics
 
 Provider transport/API failure and semantic-contract failure are pre-handoff operational failures.
 
@@ -314,7 +350,7 @@ These are bounded provider-protocol outcomes/errors only. They do not trigger au
 
 `NO_DECISION` is reserved for a structurally valid BP-4A Stage-2 semantic result with at least one closure blocker.
 
-## 15. BP-5 vs BP-7/BP-8
+## 16. BP-5 vs BP-7/BP-8
 
 BP-5 proves contract interchangeability, not production hot-swap and not a real second-provider deployment.
 
@@ -324,7 +360,7 @@ BP-7 later proves fresh cross-context/provider continuation across real AIOS che
 
 BP-8 later performs one controlled real non-default Brain and/or Reviewer provider proof. BP-5 must not consume that milestone early merely to satisfy its adapter conformance gate.
 
-## 16. Bounds and parsing
+## 17. Bounds and parsing
 
 The successor TASKs must choose exact fail-closed bounds. Planning targets are:
 
@@ -340,17 +376,21 @@ No silent truncation. Invalid Unicode, NaN/non-JSON values, duplicate normalized
 
 Provider-native outer envelopes may contain operational metadata, but only the declared bounded semantic response is admitted into Brain decision validation.
 
-## 17. Recommended BP-5 implementation sequence
+## 18. Recommended BP-5 implementation sequence
 
 Do not collapse BP-5 into one mega-TASK.
 
-### BP5-P1 — Provider-self-sufficient audit profile
+### BP5-P1 — Provider-self-sufficient audit profile — DONE
 
-Prospectively extend the existing repository audit profile so every current lens id carries bounded normative procedural meaning in the content-addressed profile body. Update only the pure profile parser/conformance surface needed for that change. Preserve BP-4A authority and historical evidence.
+TASK-180 r1 / RUN-180-001 / REVIEW-180-001 PASS published `5e97e7b8d79d2f0e8b2d725ac4e9e7175a60fd4e`. The current `brain-high-value-v2` profile carries the eight bounded provider-visible audit-lens procedures in its content-addressed body.
 
-### BP5-P2 — Brain request/decision contracts
+### BP5-P2A — Provider-self-sufficient return contracts
 
-Add pure `AIOS_BRAIN_REQUEST` / `AIOS_BRAIN_DECISION` construction and validation over exact Decision Packet, profile and BP-4A primitives. No provider network invocation is required in this phase.
+Add a bounded repository-owned `AIOS_BRAIN_RETURN_CONTRACTS` projection for the five Brain-owned flows. Each contract binds exact flow, decision-family ref and expected-return-shape tokens to enough provider-facing candidate grammar for a fresh provider without repository/chat context. The registry is cognitive support only; existing downstream validators remain authoritative.
+
+### BP5-P2B — Pure Brain request/decision envelopes
+
+Add pure `AIOS_BRAIN_REQUEST` / `AIOS_BRAIN_DECISION` construction and validation over exact Decision Packet, exact return-contract material/ref, audit profile where applicable, and reviewed BP-4A primitives. Require actual freshly compiled `DecisionPacket` inputs rather than repository discovery. Provider responses carry semantic material plus request-fingerprint echo only; deterministic support owns cryptographic identity. No provider network invocation is required in this phase.
 
 ### BP5-P3 — Thin adapter + bounded orchestration conformance
 
@@ -358,7 +398,7 @@ Add the thin provider adapter interface, typed provider failures, exact two-invo
 
 Each phase requires a separately audited executor-neutral TASK and reviewed/published evidence before the next phase is relied upon.
 
-## 18. BP-5 exit gate
+## 19. BP-5 exit gate
 
 BP-5 is complete only when reviewed/published evidence proves:
 
@@ -378,10 +418,14 @@ BP-5 is complete only when reviewed/published evidence proves:
 - no persistent reasoning/chat store, model router, lifecycle router, Reviewer crossover, Executor selection or new semantic authority is created;
 - BP-7 hot-swap proof and BP-8 real non-default provider proof remain unconsumed future milestones.
 
-## 19. Planning decision
+## 20. Planning decision
 
 BP-5 is the unique current Human/Brain planning milestone.
 
-The first implementation obligation is provider-self-sufficient audit-profile material, because a provider with no GitHub or chat memory cannot reconstruct the intended eight audit lenses from identifiers alone. This is a prospective integration requirement discovered by BP-5 audit, not a reinterpretation of BP-4A historical completion.
+BP5-P1 is engineering-complete through TASK-180 r1, RUN-180-001, REVIEW-180-001 PASS and publication of `5e97e7b8d79d2f0e8b2d725ac4e9e7175a60fd4e`.
 
-No production mutation is authorized by this document. Each BP5-P1/P2/P3 implementation step requires fresh Brain Sync, a separately audited executor-neutral TASK, canonical admission, Runtime verification, semantic review and publication before later planning relies on it.
+The next implementation obligation is BP5-P2A provider-self-sufficient return contracts. The fresh-provider audit established that Decision Packet tokens such as `TASK_AUTHORING_PROPOSAL` and `review.validate_remediation` identify the decision family but do not themselves tell a provider with no repository access how to construct the expected proposal. Hidden adapter prompts would violate provider neutrality, while deterministic conversion from a generic answer into a TASK/REMEDIATION/REPAIR would move semantic authoring out of Brain authority.
+
+BP5-P2A therefore precedes the request/decision envelope. BP5-P2B may rely on a reviewed return-contract registry plus the reviewed audit profile, but it must not duplicate canonical downstream validators or invoke a provider.
+
+No production mutation is authorized by this document. Each remaining BP5-P2A/P2B/P3 implementation step requires fresh Brain Sync, a separately audited executor-neutral TASK, canonical admission, Runtime verification, semantic review and publication before later planning relies on it.
