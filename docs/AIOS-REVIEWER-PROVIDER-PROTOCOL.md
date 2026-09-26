@@ -128,7 +128,7 @@ Planning requirements:
 
 Exact byte ceilings require measured task-level design and are not fixed by this planning document.
 
-## 5. BP6-P1B task-design audit decision
+## 4A. BP6-P1B task-design audit decision
 
 Focused audit after TASK-184 confirms P1B should be a **separate deterministic source-material package**, not an extension of Unified State and not a second lifecycle reducer.
 
@@ -258,6 +258,129 @@ The successor TASK should prove at least:
 5. invalid UTF-8, binary/NUL, unsupported object types, missing Git objects, malformed/tampered P1A scope and all bounds fail closed;
 6. package/source fingerprints are stable under equivalent material and change under any semantic/material mutation;
 7. no lifecycle derivation, verification, provider invocation, canonical mutation, hidden repository dump or REVIEW authority is introduced.
+
+### Second-pass TASK-185 audit refinements
+
+A second focused audit against current Git/material helpers and the exact TASK-184 output closes several gaps before TASK authoring.
+
+**1. Constructor + pure revalidator are both required.** P1B should expose one Git-backed constructor from an already-produced P1A scope and one pure serialized-package revalidator. The revalidator may verify the closed schema, bounds, cross-references, source hashes and package fingerprint, but it must not rediscover lifecycle state or require Git/network access. This prevents BP6-P3 from reimplementing P1B validation.
+
+**2. P1B must not fetch.** Material construction may read only exact commit/tree/blob objects already available in the supplied repository. Missing objects fail as `GIT_MATERIAL_UNAVAILABLE`. Network fetch, GitHub access, remote-ref discovery and branch synchronization belong to outer transport/control layers and are prohibited in P1B.
+
+**3. Working-tree and repository diff configuration are non-semantic.** Dirty/untracked working-tree content, external diff drivers, textconv, color, rename heuristics and user Git config must not change the package. Construction is from exact bound commit/tree/blob objects only.
+
+**4. File mode is semantic material.** Every change record must also bind:
+
+```text
+base_mode | null
+head_mode | null
+```
+
+V1 supports regular Git blobs only (`100644` and `100755`). A pure executable-bit change is a valid MODIFY even when content hashes and textual diff are identical. Symlink (`120000`), gitlink/submodule (`160000`) and any other unsupported mode/type fail closed.
+
+The closed status matrix is:
+
+```text
+ADD:    base_mode/base_content_sha256 = null; head fields required
+DELETE: head_mode/head_content_sha256 = null; base fields required
+MODIFY: both base and head mode/content hashes required
+```
+
+`review_source_ref` is required and non-null for every admitted ADD/MODIFY/DELETE record: ADD/MODIFY reference complete head text; DELETE references complete base text. Empty files still have a valid source record using the SHA-256 of empty UTF-8 bytes.
+
+**5. No hidden source-table payload is allowed.** The `sources` table must equal exactly the set of source refs used by the admitted change records across both views. Unreferenced source records are invalid so P1B cannot smuggle unrelated repository content into a later provider request. A repeated source hash is stored once; a same-hash/different-bytes collision fails closed as `MATERIAL_INCONSISTENT`.
+
+Each source record is closed:
+
+```text
+source_ref
+content_sha256
+byte_length
+text
+```
+
+where `source_ref` deterministically identifies that SHA-256 content.
+
+**6. All examined text blobs are bounded, not only emitted sources.** Any base or head regular blob that must be decoded or diffed is limited to 262144 bytes before full content admission. This keeps MODIFY diff construction bounded even when only the head source would otherwise be emitted.
+
+**7. Exact text is preserved.** Strict UTF-8 bytes are represented without CRLF/LF normalization, Unicode rewriting or replacement decoding. Terminal-newline-only changes must remain observable in the textual delta and must alter package identity. NUL-containing content is unsupported in v1 even if it would otherwise decode.
+
+**8. Path grammar is closed.** Paths must be valid UTF-8 repository-relative Git paths using `/`, with no absolute path, backslash, empty segment, `.`/`..` segment, NUL or control character. View ordering is lexicographic by exact UTF-8 path bytes; duplicate paths in one view fail closed.
+
+**9. Exact v1 normalized package shape.** The target closed shape is:
+
+```text
+AIOS_REVIEW_MATERIAL_PACKAGE v1
+  review_scope_fingerprint
+  review_mode
+  semantic_base_sha
+  latest_delta_base_sha
+  reviewed_head_sha
+  semantic_view:
+    base_sha
+    head_sha
+    changes[]
+  latest_delta_view: null | {
+    base_sha
+    head_sha
+    changes[]
+  }
+  sources[]
+  package_fingerprint
+```
+
+Each change record is closed to:
+
+```text
+path
+status
+base_mode
+head_mode
+base_content_sha256
+head_content_sha256
+review_source_ref
+unified_diff
+```
+
+No separate per-view fingerprint is needed in v1 because the complete view structures are already covered by `package_fingerprint`.
+
+**10. View cross-binding is exact.** `semantic_view.base_sha == semantic_base_sha`, `semantic_view.head_sha == reviewed_head_sha`; a non-null `latest_delta_view` has `base_sha == latest_delta_base_sha` and the same reviewed head. It is null iff semantic and latest-delta bases are equal. Equivalent direct scopes therefore never duplicate the same source/diff material as a second view.
+
+**11. Bounds apply to canonical normalized material.** Keep the existing P1B planning ceilings:
+
+```text
+64 change records per view
+262144 bytes per examined text blob/source
+262144 aggregate UTF-8 bytes of unified_diff per view
+1048576 UTF-8 bytes for canonical normalized complete package
+```
+
+The complete-package bound is measured over the exact canonical JSON representation used for fingerprinting, including JSON escaping. Bound excess is rejection, never truncation.
+
+**12. Typed failure codes are stable pre-Reviewer outcomes.** The implementation should expose one bounded material error family carrying at least the stable reason codes already planned:
+
+```text
+REVIEW_SCOPE_INVALID
+GIT_MATERIAL_UNAVAILABLE
+UNSUPPORTED_MATERIAL
+MATERIAL_BOUND_EXCEEDED
+MATERIAL_INCONSISTENT
+```
+
+No error path may emit a REVIEW verdict or mutate canonical state.
+
+### TASK-185 design recommendation
+
+TASK-185 should remain one focused new-capability TASK with production scope only:
+
+```text
+src/aios_renew/review_material.py
+tests/test_review_material.py
+```
+
+Its acceptance criteria should cover the constructor/revalidator pair, one-view and two-view semantics, ADD/MODIFY/DELETE plus executable-bit-only MODIFY, rename-as-DELETE+ADD, exact source-table closure, local-object-only determinism, strict text/path/type handling, all four bounds, fingerprint sensitivity, and complete absence of lifecycle/provider/Reviewer/mutation authority.
+
+No full-suite verification is justified for TASK-185. Minimum-sufficient verification should be the focused new test module only.
 
 ### BP6-P2 — Reviewer Procedure + Return Contract
 
@@ -459,7 +582,7 @@ P1A does not package source content, inspect implementation semantics, invoke a 
 
 The focused successor TASK should keep its production mutation surface inside the existing Unified State/lifecycle reduction boundary plus focused tests. It should not modify Decision Packet, REVIEW schema, authoring ingress, publication, Brain provider code, or provider adapters in P1A.
 
-## 12. Planning decision
+## 11. Planning decision
 
 BP-6 is the unique current Human/Brain planning milestone.
 
