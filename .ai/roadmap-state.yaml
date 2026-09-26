@@ -773,10 +773,12 @@ sequence:
       behavior, lifecycle routing, or any new semantic authority.
   - id: bp-5-brain-provider-protocol
     status: NEXT
-    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    planning_document: docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
     objective: >-
-      Establish provider-neutral Brain request/decision contracts that do not require
-      provider-specific GitHub connector access.
+      Establish provider-neutral Brain request/decision contracts over complete bounded
+      Decision Packet and self-sufficient audit-profile material, with explicit provider
+      adapter boundaries, fresh Stage-2 packet binding, and no dependency on provider-specific
+      GitHub access, chat memory, provider identity, or new semantic/lifecycle authority.
   - id: bp-6-reviewer-provider-protocol
     status: PLANNED
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -827,10 +829,13 @@ parallel_work:
 sequencing_rule:
   generic_continuation: >-
     Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol is the
-    current Human/Brain planning commitment and remains non-executable until its exact
-    provider-neutral architecture boundary and executor-neutral successor TASK are
-    separately audited and canonically authored. Do not reinterpret BP-4A publication as
-    provider invocation, provider-call orchestration, or automatic lifecycle authority.
+    current Human/Brain planning commitment. Its implementation sequence must first make
+    repository-owned audit-profile material provider-self-sufficient, then establish the
+    provider-neutral request/decision and adapter contracts, and finally prove bounded
+    orchestration/conformance. Each production mutation requires a separately audited,
+    executor-neutral canonical TASK. Do not reinterpret BP-4A publication as provider
+    invocation, provider-call orchestration, hot-swap proof, real second-provider proof,
+    or automatic lifecycle authority.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.

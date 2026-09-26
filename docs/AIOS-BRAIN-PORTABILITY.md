@@ -340,9 +340,13 @@ Exit gate: one immutable Decision Packet fingerprint and one immutable audit-pro
 
 ### BP-5 — Brain Provider Protocol
 
-Introduce provider-neutral `AIOS_BRAIN_REQUEST` / `AIOS_BRAIN_DECISION` validation and an adapter boundary that does not require provider-specific GitHub access.
+Introduce provider-neutral `AIOS_BRAIN_REQUEST` / `AIOS_BRAIN_DECISION` validation and a thin provider adapter boundary that does not require provider-specific GitHub access or prior chat memory. The exact BP-5 architecture, self-sufficient audit-profile requirement, request modes, freshness gate, failure semantics and BP-7/BP-8 separation are recorded in `docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md`.
 
-Exit gate: at least two provider implementations can consume/produce the same Brain contract without changing Brain authority semantics.
+For audited Brain-owned flows, a successful semantic attempt consists of exactly two admitted provider invocations: `AUDIT_CONSTRUCT`, then after fresh Decision Packet recomposition and exact fingerprint equality, `AUDIT_RECONCILE`. Provider/model/session identity is operational metadata and must not alter the semantic request or decision fingerprint. DIAGNOSTIC uses a bounded `DIRECT` request; SEMANTIC_REVIEW remains Reviewer-owned and belongs to BP-6.
+
+BP-5 conformance proves that at least two independent provider-adapter implementations can consume/produce the same bounded contract without changing Brain authority semantics. Cross-checkpoint hot-swap proof remains BP-7, and a controlled real non-default provider invocation remains BP-8.
+
+Exit gate: self-sufficient repository-owned audit-profile material, provider-neutral request/decision identity, exact Stage-1/Stage-2 binding and fresh-packet gate, bounded typed provider failures with no automatic retry/failover, no provider-specific semantic augmentation, and at least two adapter/conformance implementations over one unchanged Brain contract.
 
 ### BP-6 — Reviewer Provider Protocol
 

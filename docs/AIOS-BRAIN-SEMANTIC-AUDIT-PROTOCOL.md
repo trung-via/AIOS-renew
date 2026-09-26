@@ -180,9 +180,13 @@ audit_profile_ref:
   digest: <sha256-of-normalized-profile-content>
 ```
 
-A ref alone is not enough for a provider without repository access. BP-5 should eventually carry normalized audit-profile material together with audit_profile_ref and recompute the digest before use.
+A ref alone is not enough for a provider without repository access. BP-5 must carry normalized audit-profile material together with audit_profile_ref and recompute the digest before use.
 
-Line-ending, checkout path, hostname, provider or session changes must not alter the profile digest. Any semantic profile-content change, including a required lens or procedural requirement, must change the digest.
+The BP-4A published profile is structurally sufficient for the completed BP-4A exit gate, but its current provider-facing lens material consists of stable lens identifiers rather than bounded normative lens descriptions. A fresh provider with no repository or chat context therefore cannot be expected to reconstruct the intended audit method from the identifiers alone. Before BP-5 invokes a replaceable Brain provider, the repository-owned profile must be prospectively extended so each existing lens id carries bounded self-sufficient procedural meaning. That extension changes the content digest and must be reviewed as a new implementation mutation; it does not reopen or reinterpret historical BP-4A completion.
+
+The profile remains the single semantic authority for audit-lens procedure. Provider protocol code and adapters must not hard-code a second copy of lens meanings or add provider-specific semantic instructions. The provider-visible profile should describe only bounded adversarial checks, not copy the Constitution, store reasoning, or prescribe a semantic answer.
+
+Line-ending, checkout path, hostname, provider or session changes must not alter the profile digest. Any semantic profile-content change, including a required lens, lens description or procedural requirement, must change the digest.
 
 Lens order is part of procedural profile content and therefore part of the digest. Ordered execution must not imply risk priority or ranking.
 
@@ -290,9 +294,9 @@ Do not modify Unified State, Correction Frontier, Runtime, Reviewer, Publisher, 
 
 BP-4A defines two semantic stages; it does not invoke a provider/model.
 
-Exactly-two-provider-call orchestration belongs to BP-5 AIOS_BRAIN_REQUEST/AIOS_BRAIN_DECISION work.
+Exactly-two-provider-invocation orchestration for a successful audited semantic attempt belongs to BP-5 AIOS_BRAIN_REQUEST/AIOS_BRAIN_DECISION work. A failed transport call, malformed response or stale pre-Stage-2 packet is not a completed semantic stage, does not fabricate NO_DECISION or canonical FAILURE, and must not trigger automatic retry/failover.
 
-A future provider adapter may execute Stage 1 with one provider implementation and Stage 2 with another while retaining one Brain semantic authority, provided the same packet/profile/construct bindings are honored. Such provider replacement is not voting and does not create a second semantic authority.
+A future provider adapter may execute Stage 1 with one provider implementation and Stage 2 with another while retaining one Brain semantic authority, provided the same packet/profile/construct bindings are honored. Such provider replacement is not voting and does not create a second semantic authority. BP-5 need only preserve this compatibility; cross-checkpoint hot-swap conformance remains BP-7.
 
 BP-4A conformance must therefore avoid provider/model/session identities in semantic output and fingerprints.
 
