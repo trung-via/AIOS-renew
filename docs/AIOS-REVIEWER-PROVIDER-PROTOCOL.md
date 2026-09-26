@@ -388,7 +388,7 @@ Engineering closure: TASK-185 r1 completed through RUN-185-001 / REVIEW-185-001 
 
 P2 is refined into two separately reviewable obligations. Procedure semantics and provider return grammar are related but are not the same artifact and should not be coupled into one mega-TASK.
 
-#### BP6-P2A — Reviewer Procedure Profile — NEXT
+#### BP6-P2A — Reviewer Procedure Profile — DONE
 
 Create one repository-owned, bounded, content-addressed Reviewer procedure profile for `SEMANTIC_REVIEW`.
 
@@ -449,7 +449,9 @@ max structural depth:          32
 
 The module should be pure over caller-supplied decoded/serialized profile material: no filesystem/Git/GitHub/provider access, no REVIEW creation and no canonical mutation.
 
-#### BP6-P2B — Reviewer Return Contract — PLANNED
+Engineering closure: TASK-186 r1 completed after RUN-186-001 verification failure, exact REPAIR-186-001, RUN-186-002 Runtime verification `13 passed in 0.27s`, REVIEW-186-002 PRIMARY PASS, and exact publication of `4333e5644b997ce2980fd4f56d8df5d92fbd2f03` to `main`. The repair changed only the cross-platform newline-equivalence test fixture and preserved the P2A procedure/registry authority boundary.
+
+#### BP6-P2B — Reviewer Return Contract — NEXT
 
 After P2A is reviewed/published, define a separate bounded provider-facing REVIEW semantic-body contract.
 
