@@ -728,7 +728,7 @@ sequence:
   - id: bp-4-decision-packet-compiler
     status: NEXT
     task_id: TASK-178
-    task_revision: 1
+    task_revision: 2
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Compile bounded deterministic decision packets that separate facts and observations
