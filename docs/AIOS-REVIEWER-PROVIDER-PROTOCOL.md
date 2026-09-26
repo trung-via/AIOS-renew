@@ -75,7 +75,7 @@ A provider may emit the semantic REVIEW body, but deterministic materialization 
 
 ## 4. BP-6 phase plan
 
-### BP6-P1A — Semantic Review Scope Identity — NEXT
+### BP6-P1A — Semantic Review Scope Identity — DONE
 
 Establish one deterministic, read-only review-scope projection from exact current lifecycle lineage.
 
@@ -104,7 +104,9 @@ The projection must reuse the existing canonical lifecycle graph/lineage semanti
 
 P1A does not read or package source file contents and does not invoke any provider.
 
-### BP6-P1B — Bounded Reviewer Material Package
+Engineering closure: TASK-184 r1 completed through RUN-184-001, Runtime verification `43 passed in 44.74s`, REVIEW-184-001 PRIMARY PASS (AC1–AC8), and exact publication of candidate `070964600f4ae6e4282cfd3b92d7411c4abcab4f` to `main`. The implementation added the read-only `observe_semantic_review_scope` projection while keeping `AIOS_UNIFIED_STATE v1` serialization unchanged.
+
+### BP6-P1B — Bounded Reviewer Material Package — NEXT
 
 Introduce `AIOS_REVIEW_MATERIAL_PACKAGE v1` as cognitive-support material, not lifecycle truth or a second EVIDENCE artifact family.
 
@@ -125,6 +127,137 @@ Planning requirements:
 - package oversize fails closed rather than asking the provider to guess.
 
 Exact byte ceilings require measured task-level design and are not fixed by this planning document.
+
+## 5. BP6-P1B task-design audit decision
+
+Focused audit after TASK-184 confirms P1B should be a **separate deterministic source-material package**, not an extension of Unified State and not a second lifecycle reducer.
+
+The package consumes one exact `AIOS_SEMANTIC_REVIEW_SCOPE v1` mapping as caller-supplied semantic identity. It may validate that mapping's closed field set and fingerprint, but it must not independently decide review mode, prior finding identity, semantic origin, or lifecycle next action. Those remain P1A / Unified State authority.
+
+The preferred production boundary is a new module:
+
+```text
+src/aios_renew/review_material.py
+```
+
+with focused tests in:
+
+```text
+tests/test_review_material.py
+```
+
+No P1B production change is required in `unified_state.py`, `decision_packet.py`, `review.py`, ingress, publication, Runtime verification, Brain provider code, or provider adapters unless implementation evidence proves a contract gap and Brain separately widens scope.
+
+### Package contract
+
+`AIOS_REVIEW_MATERIAL_PACKAGE v1` is cognitive-support material only. It binds:
+
+```text
+format / version / kind
+review_scope_fingerprint
+review_mode
+semantic_base_sha
+latest_delta_base_sha
+reviewed_head_sha
+semantic_view
+latest_delta_view | null
+sources
+package_fingerprint
+```
+
+`semantic_view` always describes the exact diff from `semantic_base_sha` to `reviewed_head_sha`.
+
+`latest_delta_view` is null when `latest_delta_base_sha == semantic_base_sha`; otherwise it describes the exact diff from `latest_delta_base_sha` to `reviewed_head_sha`. This preserves P1A's two-view semantics without duplicating identical direct-PRIMARY/DIRECT-DELTA material.
+
+Each view contains a deterministically ordered closed list of change records. V1 normalizes rename detection **off** so a rename is represented as one DELETE of the old path plus one ADD of the new path rather than relying on similarity heuristics.
+
+Allowed v1 change statuses are:
+
+```text
+ADD
+MODIFY
+DELETE
+```
+
+Unsupported Git object/type transitions fail closed rather than being guessed into those statuses.
+
+Each change record binds at least:
+
+```text
+path
+status
+base_content_sha256 | null
+head_content_sha256 | null
+review_source_ref | null
+unified_diff
+```
+
+The shared `sources` table carries each unique complete review text at most once. For ADD/MODIFY the review source is the complete reviewed-head text; for DELETE it is the complete base text. The exact unified diff preserves removed/changed context, while the complete relevant source lets a repository-blind Reviewer inspect surrounding implementation context without dumping unrelated repository files.
+
+Every source record is strict UTF-8 text, content-addressed with SHA-256, and referenced by change records. NUL-containing/binary data, invalid UTF-8, submodules, symlinks or other unsupported non-regular source types fail closed in v1 before provider invocation. No silent text replacement, lossy decoding, omission or truncation is allowed.
+
+### Deterministic Git/material boundary
+
+P1B may perform read-only Git object/diff access required to materialize the exact SHAs already chosen by P1A. It must not discover lifecycle truth, select a different candidate, reinterpret canonical refs, update working-tree files, create commits, run verification, or mutate AIOS state.
+
+Material extraction must be immune to repository-configured external diff/textconv behavior and must operate on exact bound commit/blob objects. Path ordering is lexicographic over exact repository-relative paths. Paths are closed to normalized repository-relative Git paths; duplicate or malformed paths fail closed.
+
+The package must cross-check that the semantic view's exact changed-path set equals the materialized change records and that every non-null source reference resolves to the exact content hash carried by that record.
+
+### Bounds
+
+Recent reviewed BP-5/P1A scopes provide the sizing baseline:
+
+- TASK-183 PRIMARY introduced 621 changed lines across two new files; final file sizes were about 13.6 KiB and 14.5 KiB.
+- TASK-184 PRIMARY changed 211 lines while the two reviewed-head files were about 71.8 KiB and 122.1 KiB.
+- Recent P2 remediation deltas were materially smaller.
+
+P1B v1 therefore uses explicit ceilings large enough for current real workloads while preventing repository dumps:
+
+```text
+max change records per view: 64
+max unique source text:       262144 UTF-8 bytes each
+max unified diff per view:    262144 UTF-8 bytes
+max complete package:        1048576 UTF-8 bytes
+```
+
+These are admission ceilings, not truncation targets. Exceeding any bound fails closed with a typed material-package error. A future Human/Brain change may revise bounds only through a new reviewed TASK if real workloads justify it.
+
+### Fingerprints
+
+`package_fingerprint` is lowercase SHA-256 over canonical deterministic JSON of the complete normalized package excluding only `package_fingerprint` itself.
+
+Each source's `content_sha256` is lowercase SHA-256 of the exact UTF-8 bytes represented in that source record.
+
+Changing scope fingerprint, base/head identity, path/status, source text/hash, diff text, view membership or ordering must change the package fingerprint. Provider/model/session/operational metadata, chat history and raw verification logs are excluded.
+
+### Failure and authority semantics
+
+P1B failures are typed cognitive-support/material failures, not semantic REVIEW verdicts and not RUN/RESULT/FAILURE artifacts. At minimum implementation must distinguish:
+
+```text
+REVIEW_SCOPE_INVALID
+GIT_MATERIAL_UNAVAILABLE
+UNSUPPORTED_MATERIAL
+MATERIAL_BOUND_EXCEEDED
+MATERIAL_INCONSISTENT
+```
+
+None may fabricate `BLOCKED`, `CHANGES_REQUIRED`, REMEDIATION, REPAIR, publication or provider fallback.
+
+P1B must not invoke any Reviewer/Brain provider and must not call `review.validate_review`; those belong later phases.
+
+### P1B acceptance shape for successor TASK
+
+The successor TASK should prove at least:
+
+1. direct PRIMARY / direct DELTA with equal semantic/latest bases emits one semantic view and no duplicate latest view;
+2. repaired PRIMARY and repair-of-remediation emit two exact bound views when bases differ;
+3. ADD/MODIFY/DELETE material is complete, deterministic, content-addressed and rename-normalized as DELETE+ADD;
+4. complete reviewed-head context is present for ADD/MODIFY and complete base context for DELETE, with exact diff text;
+5. invalid UTF-8, binary/NUL, unsupported object types, missing Git objects, malformed/tampered P1A scope and all bounds fail closed;
+6. package/source fingerprints are stable under equivalent material and change under any semantic/material mutation;
+7. no lifecycle derivation, verification, provider invocation, canonical mutation, hidden repository dump or REVIEW authority is introduced.
 
 ### BP6-P2 — Reviewer Procedure + Return Contract
 
@@ -326,10 +459,12 @@ P1A does not package source content, inspect implementation semantics, invoke a 
 
 The focused successor TASK should keep its production mutation surface inside the existing Unified State/lifecycle reduction boundary plus focused tests. It should not modify Decision Packet, REVIEW schema, authoring ingress, publication, Brain provider code, or provider adapters in P1A.
 
-## 11. Planning decision
+## 12. Planning decision
 
 BP-6 is the unique current Human/Brain planning milestone.
 
-The first implementation obligation is BP6-P1A Semantic Review Scope Identity. The focused task-design audit above establishes the authority boundary and expected projection semantics; a separately authored executor-neutral TASK is still required before production implementation.
+BP6-P1A is reviewed/published complete through TASK-184 / RUN-184-001 / REVIEW-184-001 at `070964600f4ae6e4282cfd3b92d7411c4abcab4f`.
+
+The next implementation obligation is BP6-P1B Bounded Reviewer Material Package under the task-design audit above. A separately authored executor-neutral TASK is required before production implementation. Do not jump to Reviewer procedure/provider request/provider invocation before P1B is reviewed and published.
 
 No production mutation is authorized by this planning document.
