@@ -451,7 +451,7 @@ The module should be pure over caller-supplied decoded/serialized profile materi
 
 Engineering closure: TASK-186 r1 completed after RUN-186-001 verification failure, exact REPAIR-186-001, RUN-186-002 Runtime verification `13 passed in 0.27s`, REVIEW-186-002 PRIMARY PASS, and exact publication of `4333e5644b997ce2980fd4f56d8df5d92fbd2f03` to `main`. The repair changed only the cross-platform newline-equivalence test fixture and preserved the P2A procedure/registry authority boundary.
 
-#### BP6-P2B — Reviewer Return Contract — NEXT
+#### BP6-P2B — Reviewer Return Contract — DONE
 
 After P2A is reviewed/published, define a separate bounded provider-facing REVIEW semantic-body contract.
 
@@ -522,6 +522,8 @@ max structural depth:            32
 
 The normalized selected return contract plus effective bounds must be content-addressed. A pure parser/normalizer may validate this provider-facing semantic body, but P2B must not reconstruct/canonicalize REVIEW, call ingress or replace `review.validate_review`; exact REVIEW materialization belongs P3.
 
+Engineering closure: TASK-187 r1 completed through RUN-187-001, Runtime verification `54 passed in 0.36s` with evidence `RUN-187-001-V001`, REVIEW-187-001 PRIMARY PASS, and exact publication of `860e8d86a4fef08671a487e8e670804b8dc41ed9` to `main`. The implementation remained limited to the return-contract registry, pure contract module, and focused tests; provider-authored semantic output remained identity-free and no P3/P4 lifecycle/provider authority was consumed.
+
 #### P2 audit conclusion
 
 The correct sequencing is therefore:
@@ -536,7 +538,7 @@ P3 AIOS_REVIEW_REQUEST / AIOS_REVIEW_DECISION
 
 This preserves one semantic Reviewer authority while separating "how the Reviewer must judge" from "what bounded semantic body it may return". It also prevents BP6-P3 from embedding a second prose policy corpus or ad-hoc return grammar.
 
-### BP6-P3 — Pure Reviewer Request / Decision Protocol
+### BP6-P3 — Pure Reviewer Request / Decision Protocol — NEXT
 
 Introduce exact provider-neutral `AIOS_REVIEW_REQUEST v1` and `AIOS_REVIEW_DECISION v1`.
 
@@ -709,6 +711,10 @@ BP6-P1A is reviewed/published complete through TASK-184 / RUN-184-001 / REVIEW-1
 
 BP6-P1B is reviewed/published complete through TASK-185 / RUN-185-001 / REVIEW-185-001 CHANGES_REQUIRED / FINDING-185-001 remediation / RUN-185-002 / REVIEW-185-002 DELTA PASS at `4023500e7a2a02aea59076581ab3b21ea5986fc8`.
 
-The next implementation obligation is BP6-P2A Reviewer Procedure Profile under the audit above. P2B Reviewer Return Contract follows only after P2A review/publication. A separately authored executor-neutral TASK is required before either production implementation.
+BP6-P2A is reviewed/published complete through TASK-186 / RUN-186-001 verification failure / REPAIR-186-001 / RUN-186-002 / REVIEW-186-002 PRIMARY PASS at `4333e5644b997ce2980fd4f56d8df5d92fbd2f03`.
+
+BP6-P2B is reviewed/published complete through TASK-187 / RUN-187-001 / REVIEW-187-001 PRIMARY PASS at `860e8d86a4fef08671a487e8e670804b8dc41ed9`.
+
+The unique next implementation obligation is BP6-P3 Pure Reviewer Request / Decision Protocol. BP6-P4 Reviewer Provider Conformance follows only after P3 review/publication. A separately authored executor-neutral TASK is required before production implementation.
 
 No production mutation is authorized by this planning document.
