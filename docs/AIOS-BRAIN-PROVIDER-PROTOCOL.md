@@ -428,13 +428,46 @@ TASK-180 r1 / RUN-180-001 / REVIEW-180-001 PASS published `5e97e7b8d79d2f0e8b2d7
 
 TASK-181 r1 / RUN-181-002 / REVIEW-181-002 DELTA PASS published `6901e29540bd98d1d5c4df0477b76594e5bcb4b7`. The current `AIOS_BRAIN_RETURN_CONTRACTS v1` registry carries bounded provider-facing candidate guidance for the five Brain-owned flows and remains subordinate to existing canonical family validators.
 
-### BP5-P2B — Pure Brain request/decision envelopes — NEXT
+### BP5-P2B — Pure Brain request/decision envelopes — DONE
 
-Add pure `AIOS_BRAIN_REQUEST` / `AIOS_BRAIN_DECISION` construction and validation over an actual freshly compiled Decision Packet, exact selected return-contract material/ref, exact request-owned external bindings, audit profile where applicable, and reviewed BP-4A primitives. Stage 1 admits only request-fingerprint echo plus candidate; Stage 2 admits only request-fingerprint echo plus semantic audit/reconciliation/closure material; DIRECT uses the closed diagnostic body. Deterministic support owns cryptographic identity and exact external-binding enforcement. No provider network invocation is required in this phase.
+TASK-182 r1 completed through RUN-182-001 / REVIEW-182-001 CHANGES_REQUIRED, the narrow FINDING-182-001 remediation, RUN-182-002, and REVIEW-182-002 DELTA PASS. The exact reviewed remediation candidate `09b2d099dd90abae12083d6b0f7f5f4abbdd377d` is published on `main`. The current `brain_provider_protocol.py` therefore establishes the provider-neutral `AIOS_BRAIN_REQUEST v1` / `AIOS_BRAIN_DECISION v1` semantic envelopes, exact request-owned external bindings, fresh Stage-2 lineage checks, DIRECT diagnostic grammar and fail-closed serialized Stage-2 decision revalidation without provider invocation or lifecycle authority.
 
-### BP5-P3 — Thin adapter + bounded orchestration conformance
+### BP5-P3 — Thin adapter + bounded orchestration conformance — NEXT
 
-Add the thin provider adapter interface, typed provider failures, exact two-invocation audited-attempt orchestration and at least two independent adapter/conformance implementations. Fresh packet material is caller-supplied; the provider layer itself does not discover repository state.
+P3 adds only an authority-neutral invocation shell over the already-reviewed P2B semantic protocol. The design boundary is:
+
+```text
+caller explicitly selects one BrainProvider for the attempt
+caller supplies initial DecisionPacket + exact P2B packages/bindings
+orchestrator constructs exact P2B request
+adapter invokes provider exactly once
+P2B validates semantic response
+for audited flows only:
+  caller-owned fresh_packet_supplier() recomposes current DecisionPacket
+  stale packet => STALE_BEFORE_STAGE2 and zero Stage-2 invocation
+  unchanged packet => construct exact AUDIT_RECONCILE request
+  same selected provider is invoked exactly once more
+  P2B validates final semantic response
+return transient Brain decision + separate bounded operational attribution
+```
+
+The injected `fresh_packet_supplier` is a zero-argument caller-owned freshness boundary. P3 may call it exactly once after a validated Stage-1 decision, but P3 does not implement repository/Git/GitHub discovery, does not pass Stage-1 semantic content into the supplier, and does not persist its result. Supplier failure or invalid caller material fails closed before Stage 2.
+
+For BP5-P3 conformance, one audited attempt uses the same explicitly selected provider implementation for both admitted invocations. Cross-stage/provider substitution is intentionally deferred to BP-7 hot-swap conformance. DIAGNOSTIC DIRECT performs exactly one provider invocation and no freshness callback.
+
+The thin adapter contract may return only:
+- one extracted semantic-response mapping to the P2B validator; and
+- one separate bounded operational-attribution mapping.
+
+Provider/model/session/invocation attribution never enters request/decision fingerprints. The adapter cannot choose a provider/model, alter semantic material, inspect repository state, retry, fallback, invoke another adapter, call authoring ingress, or produce lifecycle artifacts.
+
+P3 must expose typed fail-closed outcomes at least for `PROVIDER_TRANSPORT_FAILURE`, `PROVIDER_RESPONSE_INVALID`, and `STALE_BEFORE_STAGE2`. Caller/input or freshness-supplier defects must remain distinguishable from provider failures rather than being mislabeled as transport or semantic-provider failures. None of these outcomes may fabricate RUN, RESULT, FAILURE, REVIEW, BLOCKED, NO_DECISION, REMEDIATION, REPAIR or publication state.
+
+The final successful P3 surface returns transient semantic decisions only. It must not automatically hand a CANDIDATE to TASK/REMEDIATION/REPAIR validators or ingress. A valid transient NO_DECISION that intentionally omits a changed reconciled candidate is not made persistent merely to satisfy replay; P3 must not invent missing witness material or weaken the P2B fail-closed revalidation rule.
+
+P3 conformance requires at least two independent non-network adapter implementations over the same exact interface, exercised separately against the same semantic requests. They must use distinct provider-native wrapper/extraction mechanics, while proving identical validated semantic identity for equivalent provider semantics and proving that different operational attribution cannot affect request/decision fingerprints. A real non-default provider deployment remains BP-8.
+
+A successor TASK must choose exact bounded native-response and operational-attribution ceilings, must prohibit unbounded raw provider payload retention, and must prove invocation counts and stop conditions explicitly. It must not reuse Executor `codex_adapter.py` / `antigravity_adapter.py` or Executor execution-profile routing as Brain-provider authority.
 
 Each phase requires a separately audited executor-neutral TASK and reviewed/published evidence before the next phase is relied upon.
 
@@ -466,8 +499,8 @@ BP5-P1 is engineering-complete through TASK-180 r1, RUN-180-001, REVIEW-180-001 
 
 BP5-P2A is engineering-complete through TASK-181 r1, RUN-181-002, REVIEW-181-002 DELTA PASS and publication of `6901e29540bd98d1d5c4df0477b76594e5bcb4b7`.
 
-The next implementation obligation is BP5-P2B pure Brain request/decision envelopes. The P2B audit adds one required boundary that was not explicit before P2A: return-contract fields marked `EXTERNAL_REQUEST_BINDING_REQUIRED` must become exact fingerprinted request material and must be enforced on provider candidates before a Brain decision is materialized. This supplies identities such as TASK target `task_id/revision` and REPAIR `repair_id` without allowing a provider to allocate them.
+BP5-P2B is engineering-complete through TASK-182 r1, RUN-182-001 / REVIEW-182-001 CHANGES_REQUIRED, FINDING-182-001 remediation, RUN-182-002, REVIEW-182-002 DELTA PASS and publication of `09b2d099dd90abae12083d6b0f7f5f4abbdd377d`.
 
-P2B must not turn provider-facing DECISION_PACKET binding instructions into a duplicate TASK/REMEDIATION/REPAIR validator. Those family semantics remain with the reviewed BP-4A audit plus the existing canonical family validator/ingress. P2B owns only request/response grammar, exact lineage/ref binding, external request bindings, DIRECT diagnostic structural validation and deterministic request/decision identity.
+The next implementation obligation is BP5-P3 thin adapter + bounded orchestration conformance under the audited boundary above. P3 is not provider selection policy, not repository discovery, not a persistent session, not canonical handoff, not a model router, not Reviewer protocol and not lifecycle state.
 
-No production mutation is authorized by this document. BP5-P2B and BP5-P3 each require fresh Brain Sync, a separately audited executor-neutral TASK, canonical admission, Runtime verification, semantic review and publication before later planning relies on them.
+No production mutation is authorized by this document. BP5-P3 requires a fresh Brain Sync, a separately audited executor-neutral TASK, canonical admission, Runtime verification, semantic review and publication before later planning relies on it.
