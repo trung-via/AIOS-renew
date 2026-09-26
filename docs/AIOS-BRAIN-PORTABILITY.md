@@ -308,6 +308,16 @@ Compile minimum-sufficient deterministic packets for TASK authoring, review, cor
 
 Exit gate: packets are bounded, deterministic, provenance-bound, and do not duplicate semantic judgment.
 
+### BP-4A — Brain Semantic Audit Protocol
+
+Establish a bounded provider-neutral construct → adversarial audit → reconciliation protocol for high-value Brain-owned decisions. Both semantic passes bind the same Decision Packet fingerprint. A repository-owned versioned audit profile supplies fixed audit lenses; the construct candidate and risk/coverage ledger are transient request-scoped cognitive support only.
+
+The protocol must not create a second Brain, Reviewer, Planner, lifecycle router, correction selector, voting system, persistent reasoning store, chat-memory dependency, or new semantic authority. SEMANTIC_REVIEW remains Reviewer-owned and is outside BP-4A; any analogous Reviewer audit protocol requires separate BP-6 reasoning.
+
+Planning evidence and the read-only TASK-164..TASK-178 retrospective are recorded in docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md.
+
+Exit gate: the same Decision Packet is used across exactly two bounded semantic passes; the immutable repository audit-profile identity is explicit; transient candidate and risk/coverage ledger state is non-canonical and non-persistent; the adversarial pass covers authority, scope, provenance, failure modes, acceptance/verification consistency, portability/boundedness, and simplification; reconciliation yields one Brain decision with no voting or automatic lifecycle action; the protocol is provider-neutral and ready for BP-5 to bind by audit_profile_ref.
+
 ### BP-5 — Brain Provider Protocol
 
 Introduce provider-neutral `AIOS_BRAIN_REQUEST` / `AIOS_BRAIN_DECISION` validation and an adapter boundary that does not require provider-specific GitHub access.
@@ -350,6 +360,7 @@ BP-0 Architecture Baseline
   -> BP-V4 Parallel Verification and Performance Guard
   -> BP-3 Brain Context Foundation
   -> BP-4 Decision Packet Compiler
+  -> BP-4A Brain Semantic Audit Protocol
   -> BP-5 Brain Provider Protocol
   -> BP-6 Reviewer Provider Protocol
   -> BP-7 Hot-swap Conformance

@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-4-decision-packet-compiler
+  - bp-4a-brain-semantic-audit-protocol
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -726,13 +726,39 @@ sequence:
       Add transient Work Context composition, thin Flow Resolver, and repository-owned
       Flow Cards by reusing Brain Sync, Unified State, roadmap and canonical lineage.
   - id: bp-4-decision-packet-compiler
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-178
+      task_revision: 2
+      run_id: RUN-178-009
+      operation: REMEDIATION
+      source_run_id: RUN-178-008
+      prior_review_id: REVIEW-178-008
+      remediation_finding_id: FINDING-178-009
+      review_id: REVIEW-178-009
+      reviewed_sha: "157732551f0a549b9644688a48ddc9c7c730c96d"
+      published_sha: "157732551f0a549b9644688a48ddc9c7c730c96d"
     task_id: TASK-178
     task_revision: 2
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Compile bounded deterministic decision packets that separate facts and observations
       from semantic judgment.
+  - id: bp-4a-brain-semantic-audit-protocol
+    status: NEXT
+    planning_document: docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+    audit_basis:
+      - TASK-164
+      - TASK-167
+      - TASK-168
+      - TASK-174
+      - TASK-177
+      - TASK-178
+    objective: >-
+      Make high-value Brain decisions reproducibly reach bounded adversarial second-audit
+      quality from the same Decision Packet and a repository-owned audit profile, without
+      chat memory, persistent reasoning state, multi-agent voting, provider-specific
+      behavior, lifecycle routing, or any new semantic authority.
   - id: bp-5-brain-provider-protocol
     status: PLANNED
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
@@ -788,11 +814,11 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item. Design and canonically author the
-    focused current-main diagnostic execution prerequisite, then use only its canonical
-    Runtime evidence to decide whether BP-V4 needs bounded correction work or can proceed
-    to a new full measurement revision; BP-V4 itself remains blocked until that explicit
-    Human/Brain planning decision.
+    Continue only the unique canonical NEXT item. BP-4A Brain Semantic Audit Protocol is
+    the current Human/Brain planning commitment and remains non-executable until an exact
+    executor-neutral TASK is separately authored and canonically admitted. Do not skip
+    directly to BP-5, and do not reinterpret BP-4 publication as automatic roadmap
+    advancement beyond this explicit planning update.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
