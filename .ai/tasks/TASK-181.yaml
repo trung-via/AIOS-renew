@@ -1,0 +1,255 @@
+task_id: TASK-181
+revision: 1
+
+goal: >
+  Implement BP5-P2A by adding one bounded, content-addressed, provider-self-sufficient
+  Brain return-contract registry for the five Brain-owned flows so a fresh provider can
+  understand the intended semantic candidate body without repository/GitHub access or chat
+  memory, while all canonical family validation and mutation authority remain with the
+  existing AIOS surfaces.
+
+problem: >
+  The Decision Packet already binds selected_flow, authority_owner, decision_family_ref,
+  handoff_target and expected_return_shape, but those are identifiers rather than a complete
+  provider-facing candidate grammar. A fresh provider cannot safely infer the exact current
+  TASK, REMEDIATION or REPAIR proposal shape from tokens such as TASK_AUTHORING_PROPOSAL or
+  review.validate_remediation. Hiding those instructions in provider adapters would break
+  provider neutrality, while deterministically converting a generic model answer into a
+  canonical authoring artifact would move semantic authoring out of Brain authority.
+  BP5-P2A must therefore add a bounded repository-owned cognitive-support projection that
+  explains the candidate body and exact canonical/request-bound fields without becoming a
+  second validator, ingress envelope, identity allocator or lifecycle authority.
+
+assumptions:
+  - >
+    Canonical main c3bcb7657102b1e14908bd969e649f6093d02044 makes BP-5 the unique NEXT milestone. BP5-P1 is
+    engineering-complete through TASK-180 r1, RUN-180-001, REVIEW-180-001 PASS and
+    publication of 5e97e7b8d79d2f0e8b2d725ac4e9e7175a60fd4e.
+  - >
+    BP5-P2A precedes BP5-P2B. TASK-181 does not implement AIOS_BRAIN_REQUEST,
+    AIOS_BRAIN_DECISION, provider invocation, adapters or orchestration.
+  - >
+    .ai/flow-cards.yaml remains the canonical procedural owner of selected_flow,
+    authority_owner, decision_family_ref, handoff_target and expected_return_shape.
+    The return-contract registry must match those values exactly rather than creating an
+    independently divergent authority.
+  - >
+    task.validate_task, review.validate_remediation and
+    publication._validate_repair_authorization remain the canonical family validators.
+    Return-contract material only informs a Brain provider how to construct a proposal.
+  - >
+    TASK_AUTHORING target task_id/revision and any other identity not already fixed by the
+    Decision Packet require a future exact BP5-P2B request/control-plane binding. TASK-181
+    marks that dependency but does not allocate identity.
+  - >
+    REMEDIATION_AUTHORING can represent UNIQUE_FINDING or CORRECTION_FRONTIER input. The
+    return contract must never invent a frontier priority or automatic correction selector.
+    Exact remediation subject identity must be canonically bound before final provider
+    authoring when the packet does not already identify one unique finding.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/flow-cards.yaml
+    - .ai/brain-audit-profiles.yaml
+    - .ai/tasks/TASK-180.yaml
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/task.py
+    - src/aios_renew/review.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/authoring_ingress.py
+  modify:
+    - .ai/brain-return-contracts.yaml
+    - src/aios_renew/brain_return_contract.py
+    - tests/test_brain_return_contract.py
+
+non_goals:
+  - >
+    Add or modify AIOS_BRAIN_REQUEST, AIOS_BRAIN_DECISION, provider adapters, provider/model
+    invocation, model selection, retry/fallback/failover, network/Git/GitHub discovery,
+    execution-profile policy, Runtime, Reviewer, Publisher, authoring ingress or lifecycle
+    routing.
+  - >
+    Modify Flow Cards, Decision Packet, Brain Context, Brain audit profile/protocol,
+    Unified State, Correction Frontier, TASK/REMEDIATION/REPAIR validators, roadmap state,
+    frozen Kernel semantics or any canonical artifact family.
+  - >
+    Validate a provider candidate as a TASK, REMEDIATION or REPAIR inside the new
+    brain_return_contract module, or duplicate downstream canonical validator logic.
+  - >
+    Produce AIOS_INGRESS_ENVELOPE, expected_state, destination/ref, carrier metadata,
+    publication controls or any direct canonical mutation instruction as provider output.
+  - >
+    Allocate task_id/revision, repair_id, RUN/RESULT/REVIEW identity or choose one correction
+    from a multi-finding frontier by priority/ranking.
+  - >
+    Add a generic schema engine, Planner, profile/router, semantic verdict engine,
+    persistent prompt/reasoning store, telemetry database or second semantic authority.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The only production mutation surface is scope.modify. If the outcome requires another
+      production file, fail closed back to Brain rather than widening scope.
+    - >
+      Add exactly one current registry with format AIOS_BRAIN_RETURN_CONTRACTS and version 1.
+      It contains exactly five contracts in this order:
+      ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING, REPAIR_AUTHORING, DIAGNOSTIC.
+      SEMANTIC_REVIEW is absent and must fail closed because Reviewer provider work belongs
+      to BP-6.
+    - >
+      Every contract has exactly selected_flow, version, authority_owner,
+      decision_family_ref, handoff_target, expected_return_shape and candidate_contract.
+      version is 1 for all five. The first six semantic metadata values must exactly match
+      the current canonical Flow Card for that flow.
+    - >
+      candidate_contract has exactly representation, bindings, shape and requirements.
+      representation is STRICT_JSON_MAPPING. shape is bounded provider-facing procedural
+      text describing the current preferred candidate body. requirements is an ordered
+      bounded list of minimum-necessary semantic authoring requirements. bindings is an
+      ordered list of records with exactly path, source and instruction and describes
+      values the provider must copy from canonical/request material rather than invent.
+      This declarative material is cognitive support and must not be executed as a second
+      family validator.
+    - >
+      Binding source tokens are closed to DECISION_PACKET and
+      EXTERNAL_REQUEST_BINDING_REQUIRED. A DECISION_PACKET binding must name material
+      already present in the exact Decision Packet. EXTERNAL_REQUEST_BINDING_REQUIRED means
+      BP5-P2B must supply and fingerprint the exact target identity before provider
+      invocation; TASK-181 does not invent or persist that value.
+    - >
+      ARCHITECTURE uses an open bounded semantic JSON mapping shape with no canonical
+      artifact identity allocation. Its requirements state that the proposal addresses only
+      the exact Decision Packet subject, remains Human/Brain planning material, and does not
+      fabricate Runtime evidence, review verdicts or lifecycle state.
+    - >
+      TASK_AUTHORING provider shape describes only the current canonical TASK body:
+      task_id, revision, goal, problem, assumptions, scope{inspect,modify}, non_goals,
+      constraints{hard}, acceptance[{id,condition}], and
+      verification{policy,required,optional full_suite_reason}. task_id and revision are
+      EXTERNAL_REQUEST_BINDING_REQUIRED. Requirements preserve Brain WHAT/WHY ownership,
+      Executor HOW ownership, executor neutrality, exact scope.modify mutation authority,
+      observable/complete acceptance, minimum-sufficient-v1 verification, and no
+      Executor-side push/publication instruction. Do not copy the full TASK validator or
+      Project Contract into the registry.
+    - >
+      REMEDIATION_AUTHORING provider shape uses the current preferred canonical spelling:
+      finding_id, action, reviewed_sha, modification_scope,
+      verification{policy,affected,optional full_suite_reason}, and constraints{hard}.
+      finding_id, action and reviewed_sha are canonical subject bindings: for UNIQUE_FINDING
+      they must come from the exact Decision Packet subject; for CORRECTION_FRONTIER the
+      contract must state that an exact target binding is required before final authoring
+      and that no ranking/priority may be inferred. Requirements state one exact finding,
+      minimum supporting delta, scope/constraints no wider than the TASK, and
+      minimum-sufficient-v1 affected verification.
+    - >
+      REPAIR_AUTHORING provider shape describes exactly repair_id, failed_run_id,
+      failed_head_sha, task{id,revision}, action, modification_scope, instructions and
+      constraints. failed_run_id, failed_head_sha and task id/revision are DECISION_PACKET
+      bindings. repair_id is EXTERNAL_REQUEST_BINDING_REQUIRED. action remains Brain semantic
+      strategy within the canonical allowed family
+      CODE_FIX|NO_CHANGE|CONTINUE_IMPLEMENTATION|FINALIZE_CANDIDATE; the return contract does
+      not choose it automatically. Requirements preserve correction authority, scope limits
+      and no new Human intent.
+    - >
+      DIAGNOSTIC provider shape is the closed semantic body
+      {proposal: text, uncertainty: {status: NONE|MATERIAL, summary: null|text}}.
+      MATERIAL requires a bounded non-empty summary and NONE uses null summary as provider
+      guidance. The contract states that diagnostic output is not EVIDENCE, FAILURE,
+      BLOCKED, REVIEW, correction authorization or lifecycle truth.
+    - >
+      The registry owns exact provider-facing prose and shape guidance. Production Python
+      may encode only generic structural grammar, closed metadata/source tokens, safety
+      ceilings and cross-binding checks. It must not contain an independent second copy of
+      the five flow-specific shape/requirement prose.
+    - >
+      Provide pure caller-supplied parsing/normalization/content-addressing and selection
+      against an exact DecisionPacket or strict equivalent packet mapping. The new module
+      performs no filesystem, Git, GitHub, network, provider, environment discovery or
+      mutation. It cross-validates selected_flow, authority_owner, decision_family_ref,
+      handoff_target and expected_return_shape against the supplied contract and fails
+      closed on mismatch.
+    - >
+      return_contract_ref is deterministic over canonical strict JSON of the complete
+      normalized registry bounds plus selected contract body and contains selected_flow,
+      version and digest. Any semantic change to flow metadata, binding, shape, requirement
+      or bound changes the digest. Equivalent YAML mapping order, ordinary whitespace and
+      LF/CRLF representation do not. Provider/model/session/endpoint/host/time/random
+      invocation metadata is not part of return-contract identity.
+    - >
+      Exact v1 bounds are: raw registry <=65536 UTF-8 bytes; one normalized selected
+      contract including effective bounds <=16384 bytes; candidate shape text <=8192 bytes;
+      requirements <=16; one requirement <=2048 UTF-8 bytes; bindings <=16; binding path
+      <=256 UTF-8 bytes; binding instruction <=2048 UTF-8 bytes; maximum structural depth
+      32. No silent trimming or truncation.
+    - >
+      Parsing is closed and fail-closed on invalid Unicode, non-string mapping keys,
+      duplicate YAML keys, duplicate flows/binding paths, unknown fields/tokens, wrong
+      contract order, missing required contract material, invalid/non-JSON semantic values,
+      NaN/non-finite numbers and all over-bound material. Legitimate policy text may contain
+      words such as provider, model, chat, Runtime, Reviewer or Publisher and must not be
+      rejected merely for vocabulary.
+    - >
+      Tests must prove metadata conformance against the current Flow Cards and use
+      representative TASK, REMEDIATION and REPAIR candidates with the existing canonical
+      validators to demonstrate that the projection remains subordinate. Tests must not
+      treat the return-contract grammar itself as canonical candidate validation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository contains one bounded AIOS_BRAIN_RETURN_CONTRACTS v1 registry with
+      exactly the five Brain-owned contracts in canonical order, excluding SEMANTIC_REVIEW,
+      and every contract metadata tuple exactly matches its current Flow Card.
+  - id: AC2
+    condition: >
+      Each contract provides a self-sufficient STRICT_JSON_MAPPING candidate body shape,
+      bounded minimum-necessary requirements and explicit canonical/request bindings. TASK,
+      REMEDIATION, REPAIR, ARCHITECTURE and DIAGNOSTIC semantics match the exact current
+      provider-facing contract defined by this TASK without copying legacy aliases or a
+      second governance corpus.
+  - id: AC3
+    condition: >
+      Return-contract material distinguishes values a provider may semantically author from
+      values it must not invent: TASK target task_id/revision and repair_id are marked
+      EXTERNAL_REQUEST_BINDING_REQUIRED; known remediation/repair provenance is bound to
+      Decision Packet material; multi-finding remediation has no implicit priority or
+      correction selector; provider output is candidate body only and contains no ingress
+      envelope or mutation controls.
+  - id: AC4
+    condition: >
+      The complete normalized selected contract plus effective v1 bounds is
+      content-addressed. Semantic changes to metadata/bindings/shape/requirements/bounds
+      change return_contract_ref.digest, while equivalent YAML mapping order and LF/CRLF
+      representation preserve identity.
+  - id: AC5
+    condition: >
+      The pure return-contract module cross-validates an exact selected contract against the
+      supplied Decision Packet metadata and fails closed on substitution. Representative
+      TASK, REMEDIATION and REPAIR fixtures remain accepted only through the existing
+      canonical family validators; the new module does not reimplement those validators.
+  - id: AC6
+    condition: >
+      Parsing, normalization and selection enforce the exact v1 byte/count/depth and closed
+      grammar limits with no truncation, reject malformed/duplicate/unknown/non-JSON
+      material, and require no filesystem/Git/GitHub/network/provider access, persistence or
+      canonical state mutation.
+  - id: AC7
+    condition: >
+      TASK-181 introduces only cognitive-support return contracts. It does not implement
+      AIOS_BRAIN_REQUEST/DECISION, adapters, provider invocation, identity allocation,
+      ingress/publication controls, lifecycle routing, Reviewer crossover, model routing,
+      retry/failover or any new semantic/canonical authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_brain_return_contract.py
