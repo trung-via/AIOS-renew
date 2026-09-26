@@ -310,13 +310,33 @@ Exit gate: packets are bounded, deterministic, provenance-bound, and do not dupl
 
 ### BP-4A — Brain Semantic Audit Protocol
 
-Establish a bounded provider-neutral construct → adversarial audit → reconciliation protocol for high-value Brain-owned decisions. Both semantic passes bind the same Decision Packet fingerprint. A repository-owned versioned audit profile supplies fixed audit lenses; the construct candidate and risk/coverage ledger are transient request-scoped cognitive support only.
+Establish a bounded provider-neutral two-stage semantic procedure for high-value Brain-owned decisions:
 
-The protocol must not create a second Brain, Reviewer, Planner, lifecycle router, correction selector, voting system, persistent reasoning store, chat-memory dependency, or new semantic authority. SEMANTIC_REVIEW remains Reviewer-owned and is outside BP-4A; any analogous Reviewer audit protocol requires separate BP-6 reasoning.
+```text
+STAGE 1 — CONSTRUCT
+  -> bounded semantic candidate + construct_fingerprint
 
-Planning evidence and the read-only TASK-164..TASK-178 retrospective are recorded in docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md.
+STAGE 2 — ADVERSARIAL_AUDIT_AND_RECONCILE
+  -> fixed-lens audit of the construct candidate
+  -> bounded transient risk/coverage claims
+  -> reconciled candidate
+  -> mandatory final closure sweep on that reconciled candidate
+  -> CANDIDATE or NO_DECISION
+```
 
-Exit gate: the same Decision Packet is used across exactly two bounded semantic passes; the immutable repository audit-profile identity is explicit; transient candidate and risk/coverage ledger state is non-canonical and non-persistent; the adversarial pass covers authority, scope, provenance, failure modes, acceptance/verification consistency, portability/boundedness, and simplification; reconciliation yields one Brain decision with no voting or automatic lifecycle action; the protocol is provider-neutral and ready for BP-5 to bind by audit_profile_ref.
+Both stages bind the same AIOS_DECISION_PACKET fingerprint and the same immutable repository-owned audit-profile content identity. Stage 2 additionally binds the exact construct_fingerprint. A changed/stale packet, changed profile, or substituted construct invalidates the transient state and requires a fresh Stage 1 rather than merging reasoning across canonical subjects.
+
+BP-4A defines semantic stages and pure structural contracts only. Provider/model invocation belongs to BP-5, so BP-4A must not claim or implement an exactly-two-provider-call runtime. The reproducible property is the procedure, bounded inputs, required lenses, identity binding, and closure contract—not identical model reasoning or identical semantic output.
+
+The audit profile is content-addressed procedural policy, not a provider prompt or semantic answer key. V1 uses one fixed high-value profile, deterministically applicable to ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING and REPAIR_AUTHORING. DIAGNOSTIC remains outside the mandatory two-stage protocol; SEMANTIC_REVIEW remains Reviewer-owned and outside BP-4A. A future BP-5 AIOS_BRAIN_REQUEST may carry normalized audit-profile material plus an audit_profile_ref containing id, version and content digest.
+
+Risk/coverage material is transient Brain semantic claim output, not Runtime EVIDENCE, REVIEW findings, Correction Frontier state, model memory, a conversation store, or canonical lifecycle truth. It may not rank risks, vote, select corrections, choose an Executor, retry, route lifecycle work, or persist reasoning. The deterministic validator may prove only structure, bounds, exact lens coverage and identity binding; it may not prove that a Brain semantic claim is substantively correct.
+
+Stage 2 must include a final closure sweep over the reconciled candidate itself so a change made while addressing a construct risk is not emitted without adversarial closure. Any closure blocker yields protocol-local NO_DECISION and no handoff-ready candidate. NO_DECISION is not a canonical BLOCKED/FAILURE/REVIEW verdict and must not trigger retry automatically.
+
+Planning evidence and the lineage-based proxy retrospective over TASK-164..TASK-178 are recorded in docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md. That retrospective motivates the lens set but is not a causal proof that two stages reduce future REVIEW/REPAIR incidence.
+
+Exit gate: one immutable Decision Packet fingerprint and one immutable audit-profile digest are bound across exactly two semantic stages; Stage 2 binds the exact construct fingerprint, performs fixed-lens adversarial audit, reconciliation and final closure sweep, and emits only CANDIDATE or NO_DECISION; all construct/ledger/closure state is transient and non-canonical; the protocol introduces no new semantic/lifecycle/review/publication authority, persistent reasoning store, voting, correction selection, retry/fallback, Executor selection or provider-specific behavior; provider-neutral structural conformance is ready for BP-5 to bind by normalized audit_profile_ref + profile material.
 
 ### BP-5 — Brain Provider Protocol
 

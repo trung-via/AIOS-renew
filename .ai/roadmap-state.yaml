@@ -755,9 +755,10 @@ sequence:
       - TASK-177
       - TASK-178
     objective: >-
-      Make high-value Brain decisions reproducibly reach bounded adversarial second-audit
-      quality from the same Decision Packet and a repository-owned audit profile, without
-      chat memory, persistent reasoning state, multi-agent voting, provider-specific
+      Make high-value Brain decisions reproducibly execute one bounded two-stage semantic
+      audit procedure over the same Decision Packet and immutable repository-owned audit
+      profile, with construct binding, adversarial reconciliation and final closure sweep,
+      without chat memory, persistent reasoning state, multi-agent voting, provider-specific
       behavior, lifecycle routing, or any new semantic authority.
   - id: bp-5-brain-provider-protocol
     status: PLANNED
