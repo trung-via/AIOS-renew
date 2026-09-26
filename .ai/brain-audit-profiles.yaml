@@ -1,0 +1,36 @@
+format: AIOS_BRAIN_AUDIT_PROFILES
+version: 1
+profiles:
+  - id: brain-high-value-v1
+    version: 1
+    applicable_flows:
+      - ARCHITECTURE
+      - TASK_AUTHORING
+      - REMEDIATION_AUTHORING
+      - REPAIR_AUTHORING
+    lenses:
+      - AUTHORITY_BOUNDARY
+      - SCOPE_NON_GOALS
+      - PROVENANCE_LINEAGE
+      - FAILURE_MODE_COUNTEREXAMPLES
+      - AC_CONSISTENCY_COMPLETENESS
+      - VERIFICATION_OWNERSHIP_ORDERING
+      - PORTABILITY_PRIVACY_BOUNDEDNESS
+      - SIMPLIFICATION_DUPLICATE_AUTHORITY
+    procedure:
+      stages: [CONSTRUCT, ADVERSARIAL_AUDIT_AND_RECONCILE]
+      construct_outcomes: [CLEAR, RISK_FOUND]
+      risk_dispositions: [ADDRESSED_BY_RECONCILIATION, DISMISSED_WITH_BOUNDED_BASIS]
+      closure_outcomes: [CLEAR, BLOCKER]
+      final_outcomes: [CANDIDATE, NO_DECISION]
+      closure_on_reconciled_candidate: true
+    bounds:
+      candidate_bytes: 131072
+      risks_per_lens: 4
+      risk_summary_bytes: 4096
+      counterexample_bytes: 8192
+      candidate_anchor_bytes: 1024
+      dismissal_basis_bytes: 4096
+      closure_blocker_summary_bytes: 4096
+      stage2_bytes: 524288
+      max_depth: 32
