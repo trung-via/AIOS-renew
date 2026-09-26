@@ -1,0 +1,76 @@
+format: AIOS_REVIEWER_PROCEDURE_PROFILES
+version: 1
+bounds:
+  raw_registry_bytes: 65536
+  selected_profile_bytes: 32768
+  procedure_step_bytes: 4096
+  steps_per_mode: 8
+  max_depth: 32
+profiles:
+  - id: reviewer-semantic-v1
+    version: 1
+    selected_flow: SEMANTIC_REVIEW
+    authority_owner: REVIEWER
+    decision_family_ref: review.validate_review
+    handoff_target: AUTHORING_INGRESS
+    expected_return_shape: REVIEW_CONTRACT_PROPOSAL
+    one_call_semantics: true
+    semantic_verdict_boundary: >-
+      Invalid Decision Packet, invalid P1A scope, invalid P1B material,
+      provider transport failure and malformed provider output are
+      protocol/material/transport failures, never semantic BLOCKED.
+      BLOCKED remains the existing Reviewer semantic verdict only when an
+      otherwise valid exact semantic subject itself prevents a bounded
+      PASS/CHANGES_REQUIRED judgment. This procedure does not change or
+      reinterpret canonical REVIEW schema or lifecycle behavior;
+      review.validate_review remains the canonical REVIEW validator.
+    invocation_boundary: >-
+      Use one Reviewer invocation. An internal closure sweep within that same
+      invocation is allowed. Do not invoke a second Reviewer, use reviewer
+      voting, depend on persisted chain-of-thought or session state, or use
+      hidden prior-chat semantic input.
+    modes:
+      - mode: PRIMARY
+        steps:
+          - id: CONTRACT_COVERAGE
+            check: >-
+              Assess every TASK acceptance criterion and relevant hard
+              constraint and non-goal against the exact reviewed candidate.
+          - id: SEMANTIC_DELTA_INSPECTION
+            check: >-
+              Inspect the complete P1B semantic implementation view, not
+              changed-file names or Executor claims alone.
+          - id: CLAIM_EVIDENCE_CROSSCHECK
+            check: >-
+              Cross-check RESULT claims against source material and
+              Runtime-owned bounded evidence summaries. Executor claims do
+              not become proof by themselves.
+          - id: MATERIAL_DEFECT_SWEEP
+            check: >-
+              Seek material defects introduced by the authorized
+              implementation delta only within the authorized review
+              subject, without repository rediscovery.
+          - id: VERDICT_CLOSURE
+            check: >-
+              Before returning one semantic body, check that the verdict,
+              acceptance outcomes and findings are mutually consistent.
+      - mode: DELTA
+        steps:
+          - id: PRIOR_FINDING_RESOLUTION
+            check: >-
+              Judge the exact prior finding and expected outcome against the
+              cumulative semantic view.
+          - id: LATEST_CORRECTION_INSPECTION
+            check: >-
+              Inspect latest_delta_view when present for a material defect
+              introduced by the latest correction.
+          - id: PRIOR_CONCLUSION_INVALIDATION
+            check: >-
+              Revisit an additional prior acceptance conclusion only when
+              the correction directly invalidates it. Do not automatically
+              re-review the original TASK.
+          - id: VERDICT_CLOSURE
+            check: >-
+              Before returning one semantic body, check that the prior
+              finding basis and directly affected acceptance outcomes are
+              represented consistently.
