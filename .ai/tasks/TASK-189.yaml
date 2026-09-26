@@ -1,0 +1,287 @@
+task_id: TASK-189
+revision: 1
+
+goal: >
+  Implement BP6-P4 as a thin Reviewer-specific provider invocation boundary over the
+  already-reviewed BP6-P3 AIOS_REVIEW_REQUEST / AIOS_REVIEW_DECISION protocol, with
+  exactly one semantic provider invocation per admitted review attempt, bounded
+  operational attribution, fail-closed provider/model identity checks, two independent
+  non-network conformance adapters, and no retry/fallback/router, lifecycle, ingress,
+  remediation or publication authority.
+
+problem: >
+  BP6-P3 now provides the exact provider-neutral Reviewer semantic request/decision
+  contract and canonical REVIEW reconstruction/validation boundary, but no reviewed
+  layer yet owns the deliberately narrow mechanics of invoking one already-selected
+  Reviewer provider, extracting one bounded provider-native semantic response,
+  separating operational attribution from semantic identity, and stopping after the
+  exact one allowed call. If each future Reviewer integration implements these
+  mechanics independently, adapters could silently gain hidden-session semantics,
+  provider/model routing, retries/fallback, repository discovery, canonical REVIEW
+  identity authorship, or lifecycle mutation. P4 must add only a Reviewer-specific
+  one-call shell and leave real provider deployment, hot-swap and downstream adoption
+  to later milestones.
+
+assumptions:
+  - >
+    Canonical main 3f15103d83f624b0d9664bbfb0e7a18947c0c6d5 records BP6-P1A,
+    BP6-P1B, BP6-P2A, BP6-P2B and BP6-P3 reviewed/published complete and BP6-P4
+    as the unique NEXT implementation obligation.
+  - >
+    TASK-188 r1 completed through RUN-188-001, Runtime evidence RUN-188-001-V001
+    with 16 focused tests passing, REVIEW-188-001 PRIMARY PASS and exact
+    publication of 71047cd526366130d5f49f2c30418aec940d5791.
+  - >
+    src/aios_renew/reviewer_provider_protocol.py is the reviewed semantic protocol
+    authority for exact Reviewer request construction/revalidation, provider semantic
+    response validation, transient REVIEW candidate materialization, canonical
+    parse_review round-trip protection and review.validate_review invocation.
+  - >
+    Human/configuration selects one Reviewer provider implementation and exact
+    provider/model identity before an attempt begins. P4 does not infer, rank or choose
+    providers/models.
+  - >
+    BP-7 owns cross-context/provider hot-swap conformance. BP-8 owns a controlled real
+    non-default provider proof. BP6-P4 proves only non-network contract conformance.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md
+    - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-183.yaml
+    - .ai/tasks/TASK-188.yaml
+    - src/aios_renew/reviewer_provider_protocol.py
+    - src/aios_renew/brain_provider.py
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/reviewer_procedure.py
+    - src/aios_renew/reviewer_return_contract.py
+    - src/aios_renew/review_material.py
+    - src/aios_renew/review.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/execution_profile.py
+    - tests/test_reviewer_provider_protocol.py
+    - tests/test_brain_provider.py
+  modify:
+    - src/aios_renew/reviewer_provider.py
+    - tests/test_reviewer_provider.py
+
+non_goals:
+  - >
+    Add a real network/API Reviewer integration, SDK client, endpoint, credentials,
+    authentication, production deployment, GitHub carrier/workflow, CLI or downstream
+    adoption.
+  - >
+    Add provider/model registry, scoring, ranking, adaptive routing, automatic model
+    selection, retry, fallback, failover, voting, parallel Reviewer calls, provider
+    switch, recursive review, Reviewer-of-Reviewer or any second semantic invocation.
+  - >
+    Reuse/import brain_provider, Brain semantic protocol/audit orchestration,
+    Executor adapters or execution-profile routing as Reviewer authority merely to
+    reduce code duplication.
+  - >
+    Inspect repository files, Git, GitHub, Unified State, filesystem, environment,
+    credentials, clock/random state or canonical lifecycle from the Reviewer provider
+    shell. All semantic/canonical material remains caller supplied through P3 inputs.
+  - >
+    Persist prompts, raw native provider payloads, semantic responses, reasoning,
+    conversation history, sessions, requests, decisions or operational attribution;
+    add a memory/session store.
+  - >
+    Modify reviewer_provider_protocol.py, Decision Packet, P1A/P1B/P2A/P2B,
+    canonical REVIEW schema, Runtime, Unified State, Reviewer semantics, authoring
+    ingress, remediation/repair, Publisher, roadmap state or frozen Kernel semantics.
+  - >
+    Call SUBMIT_REVIEW, canonicalize the transient REVIEW candidate, author
+    remediation/repair, invoke Runtime verification, publish, or translate provider
+    errors into REVIEW/BLOCKED/RUN FAILURE/lifecycle state.
+  - >
+    Claim BP-7 hot-swap conformance, BP-8 real-provider proof or BP-9 downstream
+    adoption.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Production mutation is limited to scope.modify. If satisfying this contract
+      requires another production file or any semantic change to BP6-P3/P1/P2,
+      REVIEW, Decision Packet or ingress, fail closed back to Brain.
+    - >
+      reviewer_provider.py is transient caller-supplied invocation support only. It
+      performs no repository/Git/GitHub/filesystem/environment/credential/lifecycle
+      discovery, no verification, no persistence and no canonical mutation.
+    - >
+      Define a ReviewerProvider protocol exposing immutable configured provider and
+      model identity plus one invoke(request) operation. The attempt function receives
+      one already-selected provider instance. No provider registry, selection or
+      routing function exists.
+    - >
+      Define ReviewerProviderInvocation containing exactly two logical values:
+      semantic_response and attribution. semantic_response is the extracted mapping
+      passed unchanged to existing BP6-P3 validate_response. attribution is closed
+      operational metadata only.
+    - >
+      Operational attribution contains exactly provider, model, session_id and
+      invocation_id. provider/model are non-empty strict UTF-8 strings <=512 bytes
+      each. session_id/invocation_id are null or non-empty strict UTF-8 strings
+      <=2048 bytes each. The normalized complete attribution mapping is <=8192 UTF-8
+      bytes.
+    - >
+      Provider/model identity is fixed for one configured provider instance. Every
+      invocation attribution must exactly match that configured identity. Identity
+      drift before, during or after the call fails closed as
+      PROVIDER_ATTRIBUTION_MISMATCH and never becomes provider switching/fallback.
+    - >
+      Define one ReviewerAttemptResult success surface containing only the exact
+      transient P3 AIOS_REVIEW_DECISION and one immutable bounded attribution mapping.
+      It carries no canonical handoff/publication permission and retains no raw native
+      provider payload.
+    - >
+      Define one ReviewerAttemptError with stable bounded reason_code, phase and
+      invocation_count. Required reason codes are PROTOCOL_INPUT_INVALID,
+      PROVIDER_TRANSPORT_FAILURE, PROVIDER_RESPONSE_INVALID and
+      PROVIDER_ATTRIBUTION_MISMATCH. These are pre-REVIEW operational/protocol
+      failures only, never REVIEW/BLOCKED/RUN FAILURE/remediation/publication truth.
+    - >
+      attempt(...) receives provider plus the exact P3 constructor inputs:
+      an actual DecisionPacket, review_scope, review_material_package,
+      reviewer_procedure_package, reviewer_return_contract_package,
+      external_bindings and optional prior_review. It uses existing
+      reviewer_provider_protocol.construct_request exactly once before invocation.
+      Any caller/P3 request defect terminates as PROTOCOL_INPUT_INVALID with
+      invocation_count 0.
+    - >
+      After successful input construction, attempt captures the configured
+      provider/model identity, verifies it is bounded/valid and verifies provider.invoke
+      is callable. The semantic REVIEW phase then invokes provider.invoke exactly once
+      with a deep-copied exact P3 request. Invocation count increments to 1 before
+      entering provider code and can never exceed 1.
+    - >
+      A provider callable/transport exception before a valid ProviderInvocation is
+      PROVIDER_TRANSPORT_FAILURE unless the exact cause is provider/model attribution
+      drift. A malformed/oversized native wrapper, malformed attribution, wrong
+      invocation object, extraction failure or P3 semantic response rejection is
+      PROVIDER_RESPONSE_INVALID unless exact provider/model attribution drift applies.
+    - >
+      After the one invocation, attempt rechecks configured provider/model identity,
+      validates the returned closed attribution, then passes only semantic_response
+      to existing reviewer_provider_protocol.validate_response(request, ...). It
+      does not reconstruct REVIEW or duplicate P2B/P3 validation.
+    - >
+      A valid semantic BLOCKED response is a successful transient Reviewer decision,
+      not ReviewerAttemptError. Conversely transport/material/response/attribution
+      errors must never be converted to semantic BLOCKED or CHANGES_REQUIRED.
+    - >
+      No success or failure path may invoke provider.invoke a second time. There is
+      no freshness supplier, Stage 2, AUDIT_RECONCILE, recursive review, retry,
+      fallback, failover, voting, alternate provider or third call.
+    - >
+      Define a MappingReviewerProvider non-network adapter with frozen configured
+      provider/model/callable. It deep-copies the exact request into one injected
+      mapping-native callable, independently validates strict JSON-compatible native
+      values with maximum structural depth 32, enforces the native response ceiling,
+      requires one closed native wrapper exactly {semantic_response, attribution},
+      validates attribution, extracts a semantic-response mapping and retains no raw
+      native payload.
+    - >
+      Define a JsonReviewerProvider non-network adapter with frozen configured
+      provider/model/callable. It canonical-serializes the exact request to strict
+      UTF-8 JSON bytes, invokes one injected bytes callable, accepts only returned
+      str/bytes, enforces the raw native response ceiling before parse, rejects invalid
+      UTF-8, duplicate JSON keys, NaN/Infinity and malformed/non-mapping wrappers,
+      independently requires exactly {semantic_response, attribution}, validates
+      attribution and retains no raw response after extraction.
+    - >
+      Both adapters enforce a complete native response ceiling of 262144 bytes before
+      P3 semantic validation. They may share only small identity/size primitives; the
+      mapping-native and UTF-8 JSON native-wrapper extraction paths must not delegate
+      to one common wrapper parser.
+    - >
+      The provider receives only the exact P3 request. P4 passes no previous prompt,
+      chat history, native response, reasoning trace, continuation token, session
+      content or provider/model metadata into semantic request material. session_id
+      and invocation_id are output operational attribution only.
+    - >
+      Equivalent semantic provider output through the two independent adapters must
+      yield identical P3 request_fingerprint and decision_fingerprint even when
+      provider/model/session/invocation attribution differs. Operational attribution
+      never participates in semantic identity.
+    - >
+      Production code must not import brain_provider, brain_provider_protocol,
+      brain_audit, codex_adapter, antigravity_adapter,
+      antigravity_minimax_adapter, execution_profile, authoring_ingress,
+      Runtime operator/dispatch, publication or Git/GitHub transport modules.
+    - >
+      Tests must construct fresh mutable Task/packet/package/scope/binding/prior-review
+      fixtures per case. Mutation/adversarial tests must not share mutable semantic
+      fixture state, explicitly avoiding the test-state pollution that caused
+      RUN-183-001 before REPAIR-183-001.
+    - >
+      Verification remains Runtime-owned and minimum-sufficient. Executor must not add
+      unrelated/full-suite verification. The required focused suite must prove exact
+      one-call cardinality, stop conditions, typed failures, operational/semantic
+      identity separation, adapter independence and authority boundaries.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository contains one Reviewer-specific bounded provider module defining
+      provider invocation/result/error contracts and a one-call attempt function that
+      consumes existing BP6-P3 construct_request/validate_response surfaces without
+      modifying or duplicating P3 semantic authority.
+  - id: AC2
+    condition: >
+      Every valid PRIMARY or DELTA attempt performs exactly one provider invocation and
+      returns only one P3-validated transient AIOS_REVIEW_DECISION plus one bounded
+      immutable attribution; invalid caller/P3 input performs zero invocations and no
+      path can perform a second call.
+  - id: AC3
+    condition: >
+      Transport failure, malformed/oversized native response, P3 semantic-response
+      rejection and provider/model attribution drift each stop after the exact allowed
+      call count with the documented typed reason code, while valid semantic BLOCKED
+      remains a successful Reviewer decision and no error fabricates REVIEW/lifecycle
+      state.
+  - id: AC4
+    condition: >
+      Provider/model identity is immutable per included adapter and checked across the
+      attempt; attribution is closed/bounded and operational-only; changing only
+      provider/model/session/invocation attribution across conforming adapters cannot
+      change P3 request or decision fingerprints.
+  - id: AC5
+    condition: >
+      MappingReviewerProvider and JsonReviewerProvider independently enforce the
+      262144-byte native response ceiling, closed wrapper extraction, strict
+      mapping/UTF-8 JSON grammar as applicable, 8192-byte attribution ceiling and
+      field bounds, retain no raw native payload and add no provider-specific semantic
+      policy.
+  - id: AC6
+    condition: >
+      Semantic correctness is self-sufficient from the exact P3 request: provider input
+      contains no hidden prior session/history material, operational attribution never
+      becomes semantic input, and equivalent semantic output succeeds on independent
+      fresh adapter instances without conversation continuation.
+  - id: AC7
+    condition: >
+      P4 contains no Brain/Executor authority import, provider registry/router,
+      retry/fallback/failover/voting/second Reviewer call, repository discovery,
+      persistence, verification, ingress, remediation/repair, Runtime or Publisher
+      action on any successful or failing path.
+  - id: AC8
+    condition: >
+      Focused fresh-fixture tests cover PRIMARY PASS/CHANGES_REQUIRED/BLOCKED, DELTA,
+      exact one-call behavior, invalid input zero-call behavior, every typed failure
+      family, configured identity drift, native/attribution bounds, malformed mapping
+      and JSON wrappers including duplicate keys/UTF-8/non-finite values, independent
+      adapter semantic-identity invariance, hidden-session absence, no raw-payload
+      retention, no second-call authority and prohibited-import boundaries.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_reviewer_provider.py
