@@ -1,0 +1,279 @@
+task_id: TASK-179
+revision: 1
+
+goal: >
+  Implement the BP-4A Brain Semantic Audit Protocol as a pure, bounded,
+  provider-neutral structural contract over one exact AIOS_DECISION_PACKET v1 and one
+  content-addressed repository audit profile, so high-value Brain-owned decisions can
+  use a reproducible two-stage CONSTRUCT then ADVERSARIAL_AUDIT_AND_RECONCILE procedure
+  with exact construct binding and a mandatory final closure sweep, without relying on
+  chat memory, provider-specific repository access, persistent reasoning state, or any
+  new semantic/lifecycle authority.
+
+problem: >
+  BP-4 is complete and the canonical BP-4A planning baseline defines the required
+  two-stage semantic procedure, but the repository has no machine-checkable audit-profile
+  registry or pure protocol support that can normalize profile identity, bind a Stage-1
+  construct to an exact Decision Packet/profile, validate complete fixed-lens Stage-2
+  audit/reconciliation claims, and prevent a reconciled candidate from being handed off
+  without closure over that exact final candidate. Without these contracts, a later
+  provider protocol could drift by provider/session, omit adversarial lenses, substitute
+  packet/profile/construct material, silently rewrite a candidate without an addressed
+  risk, persist pseudo-evidence, or accidentally turn audit support into a second
+  Planner/Reviewer/router.
+
+assumptions:
+  - >
+    BP-3 AIOS_BRAIN_WORK_CONTEXT v1 and Flow Resolution remain authoritative for the
+    existing six semantic flows and their authority owners. BP-4A is a procedure layered
+    over already-selected Brain-owned flows and does not add a seventh flow.
+  - >
+    BP-4 AIOS_DECISION_PACKET v1 remains the exact bounded semantic input envelope and
+    packet_fingerprint authority. TASK-179 does not change Decision Packet compilation,
+    Work Context composition, Flow Cards, Unified State, or lifecycle reduction.
+  - >
+    Canonical planning at main 8471fb6a50c1c9a663e730e22f47c60528ed7c59 makes BP-4A the unique NEXT milestone and
+    defines exactly two semantic stages: Stage 1 CONSTRUCT and Stage 2
+    ADVERSARIAL_AUDIT_AND_RECONCILE, with the final closure sweep occurring inside Stage 2.
+  - >
+    Provider/model invocation, fresh pre-Stage-2 Decision Packet recomposition, request
+    transport, exactly-two-provider-call orchestration, and AIOS_BRAIN_REQUEST /
+    AIOS_BRAIN_DECISION contracts belong to BP-5. BP-4A supplies only pure profile,
+    normalization, fingerprinting, and structural-conformance primitives.
+  - >
+    The repository-owned audit profile is procedural policy rather than a provider prompt,
+    answer key, semantic verdict, or lifecycle truth. Its normalized content identity is
+    portable across checkout paths, line endings, provider/model/session identity, host and
+    time.
+  - >
+    Risk/Coverage Ledger and closure outputs are transient Brain semantic claims. CLEAR,
+    RISK_FOUND and BLOCKER are not Runtime EVIDENCE or Reviewer findings, and deterministic
+    validation can prove only shape, bounds, exact coverage, consistency, and identity
+    binding rather than substantive correctness.
+  - >
+    Existing TASK, REMEDIATION and REPAIR validators/authoring ingress remain the sole
+    canonical validators for final handoff candidates. BP-4A must not reimplement them.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/flow-cards.yaml
+    - .ai/tasks/TASK-177.yaml
+    - .ai/tasks/TASK-178.yaml
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/task.py
+    - src/aios_renew/review.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_brain_context.py
+    - tests/test_decision_packet.py
+  modify:
+    - .ai/brain-audit-profiles.yaml
+    - src/aios_renew/brain_audit.py
+    - tests/test_brain_audit.py
+
+non_goals:
+  - >
+    Modify Decision Packet, Work Context, Brain Sync, Flow Resolver, Flow Cards, Unified
+    State, Correction Frontier, Runtime, Reviewer, Publisher, authoring ingress,
+    correction dispatch/approval, transport, execution-profile policy, provider adapters,
+    provider protocols, roadmap state, or frozen Kernel semantics.
+  - >
+    Add a seventh semantic flow, audit lifecycle state, generic Planner/router, correction
+    selector, risk/severity scorer, audit-profile selector, model router, retry/fallback
+    controller, Executor selector, scheduler, daemon, watcher, broker, polling loop, or
+    multi-agent voting/consensus mechanism.
+  - >
+    Invoke a Brain provider/model, Executor, Runtime verification, Git, GitHub, network,
+    shell or repository discovery from the BP-4A module; create a RUN; mutate refs; publish;
+    or automatically canonicalize/advance roadmap semantics.
+  - >
+    Persist construct candidates, Risk/Coverage Ledgers, closure claims, prompts,
+    conversation/chat history, chain-of-thought, reasoning traces, audit history or
+    telemetry databases.
+  - >
+    Re-declare or duplicate canonical TASK/REMEDIATION/REPAIR semantic validators, infer
+    semantic correctness from structural conformance, or convert CLEAR/RISK_FOUND/BLOCKER
+    into canonical evidence, REVIEW findings or lifecycle state.
+  - >
+    Add an exactly-two-provider-call runtime in BP-4A. Exactly-two-provider-call
+    orchestration and fresh packet recomposition before Stage 2 are deferred to BP-5.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The only production mutation surface is scope.modify. If satisfying the contract
+      requires changes to Decision Packet, Brain Context/Flow Cards, Unified State,
+      Runtime, Reviewer/Publisher, authoring ingress, provider surfaces, roadmap state, or
+      any other file, fail closed back to Brain rather than widening scope.
+    - >
+      .ai/brain-audit-profiles.yaml is the repository-owned procedural-policy source for
+      audit-profile content. The canonical v1 registry contains exactly one profile,
+      brain-high-value-v1 version 1, applicable to exactly ARCHITECTURE, TASK_AUTHORING,
+      REMEDIATION_AUTHORING and REPAIR_AUTHORING, with the ordered lens set
+      AUTHORITY_BOUNDARY, SCOPE_NON_GOALS, PROVENANCE_LINEAGE,
+      FAILURE_MODE_COUNTEREXAMPLES, AC_CONSISTENCY_COMPLETENESS,
+      VERIFICATION_OWNERSHIP_ORDERING, PORTABILITY_PRIVACY_BOUNDEDNESS and
+      SIMPLIFICATION_DUPLICATE_AUTHORITY. The Python module must not maintain a second
+      copy of these policy values as an independent semantic authority.
+    - >
+      Profile parsing is closed and fail-closed: raw registry input is at most 32768 UTF-8
+      bytes before parsing; duplicate YAML keys, non-text mapping keys, unknown fields,
+      duplicate profile/lens ids, invalid Unicode, non-strict-JSON semantic values and
+      malformed/over-bound profile material are rejected. Normalized profile identity is
+      SHA-256 over canonical strict JSON of one parsed profile body; YAML field order,
+      whitespace, LF/CRLF and machine/provider/session representation do not affect the
+      digest, while lens order and every semantic profile-content change do.
+    - >
+      The canonical v1 profile carries the bounded policy used by the protocol: candidate
+      at most 131072 UTF-8 bytes, at most 4 risks per lens, risk_summary at most 4096
+      bytes, counterexample at most 8192 bytes, candidate_anchor at most 1024 bytes,
+      dismissal_basis at most 4096 bytes, closure blocker summary at most 4096 bytes,
+      normalized Stage-2 semantic material at most 524288 bytes, and maximum structural
+      nesting depth 32. No silent truncation is allowed.
+    - >
+      BP-4A production APIs are pure and caller-supplied: they receive an exact
+      DecisionPacket v1 object/material, parsed normalized audit-profile material, and
+      semantic candidate/output mappings. brain_audit.py must not resolve cwd/repository
+      paths, auto-load .ai/brain-audit-profiles.yaml, call Brain Sync, read Git state, or
+      discover canonical artifacts. Repository profile loading is test/caller
+      responsibility and future BP-5 orchestration responsibility.
+    - >
+      Stage 1 accepts only an applicable Brain-owned Decision Packet and one strict-JSON
+      mapping construct_candidate. Deterministic support, not a model/provider, derives
+      construct_fingerprint from packet_fingerprint, normalized profile ref
+      {id, version, digest}, packet selected_flow, packet expected_return_shape, and the
+      normalized construct candidate. Provider/model/session/time/host/random identity
+      never contributes to semantic fingerprints.
+    - >
+      Stage 2 binds the same packet_fingerprint, the same normalized profile content/ref,
+      and the exact Stage-1 construct/fingerprint. Packet, profile or construct
+      substitution, malformed fingerprint, or flow/applicability mismatch fails closed.
+      BP-4A validates exact identity only; canonical freshness discovery/recomposition is
+      deferred to BP-5.
+    - >
+      Stage-2 construct-audit coverage uses every required profile lens exactly once and
+      in profile procedural order. Each lens outcome is exactly CLEAR or RISK_FOUND.
+      CLEAR carries no risks. RISK_FOUND carries 1..4 bounded risks. Each risk has bounded
+      risk_summary, counterexample, candidate_anchor and exactly one disposition:
+      ADDRESSED_BY_RECONCILIATION or DISMISSED_WITH_BOUNDED_BASIS; dismissal requires a
+      non-empty bounded dismissal_basis. No NOT_APPLICABLE, severity, priority, rank,
+      score, vote, winner, FINDING id or correction selection is allowed.
+    - >
+      Reconciliation consistency is fail-closed: if normalized reconciled_candidate
+      differs from the Stage-1 construct candidate, at least one construct risk must be
+      ADDRESSED_BY_RECONCILIATION; if any risk is ADDRESSED_BY_RECONCILIATION, the
+      normalized candidate must differ. Stage 2 may not silently rewrite a candidate when
+      all construct risks are CLEAR or only dismissed.
+    - >
+      The mandatory final closure sweep is part of Stage 2 and covers the reconciled
+      candidate in the same closed semantic envelope. It contains every required profile
+      lens exactly once and in profile order with only CLEAR or BLOCKER. Deterministic
+      support derives the reconciled_candidate_fingerprint and an overall Stage-2
+      fingerprint over the exact normalized candidate, construct-audit ledger and closure
+      claims; it does not ask the model/provider to compute hashes and does not claim that
+      a semantic CLEAR/BLOCKER assertion is objectively true.
+    - >
+      Stage 2 has exactly two protocol-local outcomes. CANDIDATE is structurally valid
+      only when every closure lens is CLEAR and exposes the reconciled candidate as the
+      handoff candidate. Any closure BLOCKER requires NO_DECISION; a validated
+      NO_DECISION exposes no handoff-ready candidate even though the transient Stage-2
+      semantic input contained the reconciled candidate needed for closure. NO_DECISION
+      is not canonical BLOCKED/FAILURE/REVIEW state and triggers no automatic retry.
+    - >
+      Candidates and Stage-2 semantic material use strict UTF-8 JSON mappings, recursive
+      CRLF/CR to LF normalization, finite JSON values only, closed protocol-envelope
+      schemas, explicit byte/count/depth limits, and fail closed on duplicate/unknown
+      protocol fields. Recursively reject protocol metadata keys for chat history,
+      chain-of-thought, raw logs/evidence paths, credentials/secrets, local
+      root/workspace/remote/host data, timestamps, UUID/random ids and
+      provider/model/session identity from candidate and audit semantic material.
+    - >
+      BP-4A structural validation must not import semantic authority from candidate
+      content. It must not parse/revalidate a candidate as TASK/REMEDIATION/REPAIR,
+      choose a correction, produce a verdict, call canonical verification, or hand
+      CANDIDATE directly to lifecycle mutation. Existing downstream canonical
+      validators/ingress remain required after BP-4A.
+    - >
+      Exactly two semantic stages are represented with no recursive/nested audit
+      envelopes or Stage-3 contract. Stage 2 contains construct audit, reconciliation and
+      final closure internally. BP-4A conformance does not claim identical intelligence
+      or identical semantic answers across providers and does not implement provider
+      invocation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository contains one closed AIOS_BRAIN_AUDIT_PROFILES v1 registry with
+      exactly the canonical brain-high-value-v1 profile, four applicable Brain-owned
+      flows, the eight ordered audit lenses and the exact v1 bounds. Unique-key parsing,
+      closed fields, strict semantic JSON normalization and per-profile content-addressed
+      digesting are deterministic and fail closed; semantically equivalent YAML
+      representation including LF/CRLF produces the same profile digest, while any
+      semantic profile or lens-order change changes it.
+  - id: AC2
+    condition: >
+      The pure BP-4A module applies a supplied profile only when the exact Decision Packet
+      selected_flow is listed by that profile, and canonical conformance proves the v1
+      profile applies to ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING and
+      REPAIR_AUTHORING but not DIAGNOSTIC or SEMANTIC_REVIEW, without modifying Flow
+      Resolver or adding a semantic/profile router.
+  - id: AC3
+    condition: >
+      Stage-1 construction accepts one exact applicable DecisionPacket v1 plus supplied
+      profile material and one bounded strict-JSON mapping candidate, and deterministically
+      derives a construct fingerprint bound to packet fingerprint, profile identity,
+      selected flow, expected return shape and normalized candidate. Semantic changes
+      change identity while provider/model/session/host/time/formatting representation
+      does not.
+  - id: AC4
+    condition: >
+      Stage 2 accepts only the exact Stage-1 packet/profile/construct lineage. Substituted
+      packet, profile material/ref, construct candidate/fingerprint, malformed identity,
+      flow mismatch, missing/duplicate/unknown lens, wrong lens order, NOT_APPLICABLE or
+      unknown protocol fields fail closed before a validated Stage-2 result is emitted.
+  - id: AC5
+    condition: >
+      Construct-audit and reconciliation semantics are bounded and internally consistent:
+      CLEAR carries no risk entries; RISK_FOUND carries only the bounded closed risk
+      shape; dismissed risks carry bounded basis; addressed risks and candidate mutation
+      imply each other in the required directions; no ranking/voting/correction-selection
+      or canonical finding identity is created.
+  - id: AC6
+    condition: >
+      Stage 2 performs one mandatory closure sweep over the reconciled candidate in the
+      same bounded semantic envelope, derives final-candidate and overall Stage-2
+      fingerprints deterministically, requires exact complete ordered closure-lens
+      coverage, emits handoff-ready CANDIDATE only when every closure lens is CLEAR, and
+      emits NO_DECISION with no handoff candidate when any closure lens is BLOCKER.
+  - id: AC7
+    condition: >
+      Profile, candidate and Stage-2 parsing enforce the exact byte/count/depth/privacy
+      bounds without truncation and reject invalid Unicode, NaN/non-JSON values,
+      duplicate/unknown protocol fields, nested/recursive audit envelopes and prohibited
+      chat/CoT/raw-log/credential/machine-local/time/random/provider/session metadata.
+      The module performs no filesystem/repository discovery, Git/GitHub/network access,
+      provider/Executor invocation, canonical verification, persistence or mutation.
+  - id: AC8
+    condition: >
+      BP-4A remains additive cognitive support only: existing six Flow Resolver flows and
+      authority owners are unchanged; Risk/Coverage/closure values remain transient Brain
+      claims rather than evidence/review/lifecycle truth; existing
+      TASK/REMEDIATION/REPAIR validators and authoring ingress are not duplicated; there
+      is no third stage, retry/fallback, audit/profile router, Reviewer/Publisher/Runtime
+      authority or provider-specific behavior, and the resulting pure contracts are ready
+      for BP-5 to transport normalized profile material plus audit_profile_ref.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_brain_audit.py tests/test_decision_packet.py tests/test_brain_context.py
+    - git diff --check
