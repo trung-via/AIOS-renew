@@ -1,4 +1,4 @@
-"""Pure BP-4A profile identity and two-stage structural conformance.
+"""Pure BP-4A two-stage conformance with BP5-P1 profile material.
 
 All packet, profile and candidate material is supplied by the caller. Audit
 outcomes are transient Brain claims, never canonical findings or evidence.
@@ -24,7 +24,6 @@ class BrainAuditError(ValueError):
 
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 _ID = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
-_SYMBOL = re.compile(r"[A-Z][A-Z0-9_]{0,63}\Z")
 _DRIVE_PATH = re.compile(r"(?:^|[\s\"'(])(?:[A-Za-z]:[/\\]|\\\\|/home/|/Users/|/tmp/|/var/)")
 _PRIVATE_KEYS = frozenset({
     "chat", "chat_history", "conversation", "conversation_history",
@@ -51,10 +50,17 @@ _ENVELOPE_KEYS = frozenset({
 _RESERVED_SEMANTIC_KEYS = _ENVELOPE_KEYS | _PRIVATE_KEYS
 _RESERVED_COMPACT_KEYS = frozenset(key.replace("_", "") for key in _RESERVED_SEMANTIC_KEYS)
 _PROFILE_FIELDS = frozenset({"id", "version", "applicable_flows", "lenses", "procedure", "bounds"})
+_LENS_FIELDS = frozenset({"id", "check"})
+_LENS_IDS = (
+    "AUTHORITY_BOUNDARY", "SCOPE_NON_GOALS", "PROVENANCE_LINEAGE",
+    "FAILURE_MODE_COUNTEREXAMPLES", "AC_CONSISTENCY_COMPLETENESS",
+    "VERIFICATION_OWNERSHIP_ORDERING", "PORTABILITY_PRIVACY_BOUNDEDNESS",
+    "SIMPLIFICATION_DUPLICATE_AUTHORITY",
+)
 _BOUND_FIELDS = frozenset({
     "candidate_bytes", "risks_per_lens", "risk_summary_bytes",
     "counterexample_bytes", "candidate_anchor_bytes", "dismissal_basis_bytes",
-    "closure_blocker_summary_bytes", "stage2_bytes", "max_depth",
+    "closure_blocker_summary_bytes", "stage2_bytes", "max_depth", "lens_check_bytes",
 })
 _PROCEDURE_FIELDS = frozenset({
     "stages", "construct_outcomes", "risk_dispositions", "closure_outcomes",
@@ -179,15 +185,21 @@ _UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _u
 def _profile(value: Any) -> dict[str, Any]:
     profile = _fields(_normal(value, depth=0, max_depth=32), _PROFILE_FIELDS, "profile")
     if (type(profile["id"]) is not str or _ID.fullmatch(profile["id"]) is None
-            or profile["id"] != "brain-high-value-v1"
-            or type(profile["version"]) is not int or profile["version"] != 1):
-        raise BrainAuditError("invalid v1 profile identity")
-    for name in ("applicable_flows", "lenses"):
-        entries = profile[name]
-        if type(entries) is not list or not entries or len(entries) > 32 or any(
-            type(v) is not str or _SYMBOL.fullmatch(v) is None for v in entries
-        ) or len(set(entries)) != len(entries):
-            raise BrainAuditError(f"invalid or duplicate {name}")
+            or profile["id"] != "brain-high-value-v2"
+            or type(profile["version"]) is not int or profile["version"] != 2):
+        raise BrainAuditError("invalid v2 profile identity")
+    flows = profile["applicable_flows"]
+    if type(flows) is not list or flows != [
+        "ARCHITECTURE", "TASK_AUTHORING", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"
+    ]:
+        raise BrainAuditError("invalid applicable flows")
+    lenses = profile["lenses"]
+    if type(lenses) is not list or len(lenses) != len(_LENS_IDS):
+        raise BrainAuditError("incomplete lens coverage")
+    for expected_id, lens in zip(_LENS_IDS, lenses):
+        _fields(lens, _LENS_FIELDS, "lens")
+        if type(lens["id"]) is not str or lens["id"] != expected_id:
+            raise BrainAuditError("unknown, duplicate or out-of-order lens id")
     procedure = _fields(profile["procedure"], _PROCEDURE_FIELDS, "procedure")
     for name, expected in (
         ("stages", ["CONSTRUCT", "ADVERSARIAL_AUDIT_AND_RECONCILE"]),
@@ -197,13 +209,14 @@ def _profile(value: Any) -> dict[str, Any]:
         ("final_outcomes", ["CANDIDATE", "NO_DECISION"]),
     ):
         if procedure[name] != expected:
-            raise BrainAuditError(f"invalid v1 {name} procedure")
+            raise BrainAuditError(f"invalid v2 {name} procedure")
     if procedure["closure_on_reconciled_candidate"] is not True:
         raise BrainAuditError("closure must cover the reconciled candidate")
     bounds = _fields(profile["bounds"], _BOUND_FIELDS, "bounds")
     # Ceiling guards prevent caller-supplied policy from widening the bounded
-    # protocol. The repository registry supplies the actual v1 policy values.
+    # protocol. The repository registry supplies the actual v2 policy values.
     ceilings = {
+        "lens_check_bytes": 2048,
         "candidate_bytes": 131072, "risks_per_lens": 4,
         "risk_summary_bytes": 4096, "counterexample_bytes": 8192,
         "candidate_anchor_bytes": 1024, "dismissal_basis_bytes": 4096,
@@ -211,7 +224,9 @@ def _profile(value: Any) -> dict[str, Any]:
         "max_depth": 32,
     }
     if any(type(bounds[k]) is not int or not 1 <= bounds[k] <= cap for k, cap in ceilings.items()):
-        raise BrainAuditError("profile bounds exceed the v1 safety envelope")
+        raise BrainAuditError("profile bounds exceed the v2 safety envelope")
+    for lens in lenses:
+        _text(lens["check"], bounds["lens_check_bytes"], "lens check")
     _bounded(profile, 32768, "profile material")
     return profile
 
@@ -323,7 +338,7 @@ def _ordered_lenses(value: Any, policy: dict[str, Any], *, closure: bool) -> lis
     bounds = policy["bounds"]
     result = []
     for expected_lens, raw in zip(lenses, value):
-        if type(raw) is not dict or raw.get("lens") != expected_lens:
+        if type(raw) is not dict or raw.get("lens") != expected_lens["id"]:
             raise BrainAuditError("unknown, duplicate or out-of-order lens")
         outcome = raw.get("outcome")
         if closure:

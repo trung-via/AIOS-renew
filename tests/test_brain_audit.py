@@ -47,7 +47,7 @@ def packet(flow="ARCHITECTURE"):
 
 
 def stage2_input(first, profile, *, changed=False, blocker=False):
-    lenses = profile["lenses"]
+    lenses = [lens["id"] for lens in profile["lenses"]]
     audit = [{"lens": lens, "outcome": "CLEAR"} for lens in lenses]
     candidate = deepcopy(first["construct_candidate"])
     if changed:
@@ -73,13 +73,30 @@ def stage2_input(first, profile, *, changed=False, blocker=False):
 
 def test_registry_digest_and_exact_applicability(profile):
     raw = REGISTRY.read_bytes()
-    crlf = raw.replace(b"\n", b"\r\n")
+    crlf = raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
     assert profile_ref(parse_profile_registry(raw)["profiles"][0]) == profile_ref(
         parse_profile_registry(crlf)["profiles"][0])
     assert normalize_profile(profile) == profile
+    assert profile["id"] == "brain-high-value-v2" and profile["version"] == 2
+    assert profile["bounds"]["lens_check_bytes"] == 2048
+    assert len(profile["lenses"]) == 8
+    assert all(set(lens) == {"id", "check"} and lens["check"].strip()
+               for lens in profile["lenses"])
+    reordered_fields = deepcopy(profile)
+    reordered_fields["lenses"][0] = dict(reversed(list(reordered_fields["lenses"][0].items())))
+    assert profile_ref(reordered_fields) == profile_ref(profile)
+    line_endings = deepcopy(profile)
+    line_endings["lenses"][0]["check"] += "\r\nSecond line."
+    lf = deepcopy(line_endings)
+    lf["lenses"][0]["check"] = lf["lenses"][0]["check"].replace("\r\n", "\n")
+    assert profile_ref(line_endings) == profile_ref(lf)
     changed = deepcopy(profile)
-    changed["lenses"].reverse()
+    changed["lenses"][0]["check"] += " Additional bounded instruction."
     assert profile_ref(changed)["digest"] != profile_ref(profile)["digest"]
+    changed = deepcopy(profile)
+    changed["lenses"][0]["id"] = "SCOPE_NON_GOALS"
+    with pytest.raises(BrainAuditError):
+        profile_ref(changed)
     changed = deepcopy(profile)
     changed["bounds"]["risk_summary_bytes"] -= 1
     assert profile_ref(changed)["digest"] != profile_ref(profile)["digest"]
@@ -93,15 +110,53 @@ def test_registry_rejects_duplicates_unknown_and_non_json(profile):
     raw = REGISTRY.read_text(encoding="utf-8")
     for bad in (
         raw + "\nversion: 1\n",
-        raw.replace("  - id: brain-high-value-v1", "  - id: brain-high-value-v1\n    extra: nope"),
-        raw.replace("  - id: brain-high-value-v1", "  - id: brain-high-value-v1\n    id: duplicate"),
-        raw.replace("  - id: brain-high-value-v1", "  - id: brain-high-value-v1\n    tagged: !!python/object/apply:os.system [echo]"),
+        raw.replace("  - id: brain-high-value-v2", "  - id: brain-high-value-v2\n    extra: nope"),
+        raw.replace("  - id: brain-high-value-v2", "  - id: brain-high-value-v2\n    id: duplicate"),
+        raw.replace("  - id: brain-high-value-v2", "  - id: brain-high-value-v2\n    tagged: !!python/object/apply:os.system [echo]"),
         raw + " " * 32768,
     ):
         with pytest.raises(BrainAuditError):
             parse_profile_registry(bad)
     with pytest.raises(BrainAuditError):
         normalize_profile({**profile, "lenses": profile["lenses"] + [profile["lenses"][0]]})
+
+
+def test_v2_lens_records_fail_closed(profile):
+    for mutate in (
+        lambda p: p["lenses"][0].pop("check"),
+        lambda p: p["lenses"][0].update(extra="unexpected"),
+        lambda p: p["lenses"].__setitem__(0, p["lenses"][0]["id"]),
+        lambda p: p["lenses"].__setitem__(1, deepcopy(p["lenses"][0])),
+        lambda p: p["lenses"][0].update(id="UNKNOWN_LENS"),
+        lambda p: p["lenses"].reverse(),
+        lambda p: p["lenses"][0].update(check=""),
+        lambda p: p["lenses"][0].update(check=" \t "),
+        lambda p: p["lenses"][0].update(check="\ud800"),
+        lambda p: p["lenses"][0].update(check=1),
+        lambda p: p["lenses"][0].update(check="x" * 2049),
+        lambda p: p["bounds"].update(lens_check_bytes=2049),
+        lambda p: p.update(extra="unexpected"),
+    ):
+        bad = deepcopy(profile)
+        mutate(bad)
+        with pytest.raises(BrainAuditError):
+            normalize_profile(bad)
+    for bad in ("x" * 32769, "\ud800"):
+        with pytest.raises(BrainAuditError):
+            parse_profile_registry(bad)
+
+
+def test_lens_procedure_changes_bind_construct_and_stage2(profile):
+    p = packet()
+    candidate = {"proposal": "same"}
+    first = construct_stage1(p, profile, candidate)
+    changed = deepcopy(profile)
+    changed["lenses"][0]["check"] += " Verify one more case."
+    other = construct_stage1(p, changed, candidate)
+    assert other["audit_profile_ref"]["digest"] != first["audit_profile_ref"]["digest"]
+    assert other["construct_fingerprint"] != first["construct_fingerprint"]
+    with pytest.raises(BrainAuditError):
+        validate_stage2(p, changed, first, stage2_input(first, profile))
 
 
 def test_stage1_normalizes_and_binds_exact_packet_and_profile(profile):
@@ -205,7 +260,7 @@ def test_risk_and_reconciliation_fail_closed(profile):
     with pytest.raises(BrainAuditError):
         validate_stage2(p, profile, first, bad)
     dismissed = stage2_input(first, profile)
-    dismissed["construct_audit"][0] = {"lens": profile["lenses"][0], "outcome": "RISK_FOUND", "risks": [{
+    dismissed["construct_audit"][0] = {"lens": profile["lenses"][0]["id"], "outcome": "RISK_FOUND", "risks": [{
         "risk_summary": "Concern", "counterexample": "Example", "candidate_anchor": "proposal",
         "disposition": "DISMISSED_WITH_BOUNDED_BASIS", "dismissal_basis": "Bounded reason",
     }]}

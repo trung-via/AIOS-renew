@@ -1,22 +1,30 @@
 format: AIOS_BRAIN_AUDIT_PROFILES
 version: 1
 profiles:
-  - id: brain-high-value-v1
-    version: 1
+  - id: brain-high-value-v2
+    version: 2
     applicable_flows:
       - ARCHITECTURE
       - TASK_AUTHORING
       - REMEDIATION_AUTHORING
       - REPAIR_AUTHORING
     lenses:
-      - AUTHORITY_BOUNDARY
-      - SCOPE_NON_GOALS
-      - PROVENANCE_LINEAGE
-      - FAILURE_MODE_COUNTEREXAMPLES
-      - AC_CONSISTENCY_COMPLETENESS
-      - VERIFICATION_OWNERSHIP_ORDERING
-      - PORTABILITY_PRIVACY_BOUNDEDNESS
-      - SIMPLIFICATION_DUPLICATE_AUTHORITY
+      - id: AUTHORITY_BOUNDARY
+        check: test whether the candidate assigns semantic, implementation, execution, verification, review, publication and policy responsibility to the correct authority and does not silently merge authorities.
+      - id: SCOPE_NON_GOALS
+        check: test the candidate against explicit scope, constraints and non-goals and detect silent widening or hidden implementation beyond the authorized semantic subject.
+      - id: PROVENANCE_LINEAGE
+        check: test exact subject identity, immutable provenance, prior semantic decisions and correction continuity and detect substitution or lineage loss.
+      - id: FAILURE_MODE_COUNTEREXAMPLES
+        check: search bounded malformed, stale, conflicting, partial-state and substitution counterexamples that can violate the intended contract despite a happy-path success.
+      - id: AC_CONSISTENCY_COMPLETENESS
+        check: test that goal, constraints, non-goals and acceptance criteria are mutually consistent, cover identified material risks and do not require impossible or circular proof.
+      - id: VERIFICATION_OWNERSHIP_ORDERING
+        check: test that Runtime retains canonical verification authority and that the candidate does not require post-verification truth before verification or let Executor/Brain claims become evidence.
+      - id: PORTABILITY_PRIVACY_BOUNDEDNESS
+        check: test that the candidate does not depend on chat memory, provider GitHub access, hidden machine-local state, secrets, provider/session identity or unbounded context and remains portable under bounded inputs.
+      - id: SIMPLIFICATION_DUPLICATE_AUTHORITY
+        check: test for unnecessary repeated work, duplicated policy/state/semantic authority or redundant orchestration that can be removed without weakening guarantees.
     procedure:
       stages: [CONSTRUCT, ADVERSARIAL_AUDIT_AND_RECONCILE]
       construct_outcomes: [CLEAR, RISK_FOUND]
@@ -25,6 +33,7 @@ profiles:
       final_outcomes: [CANDIDATE, NO_DECISION]
       closure_on_reconciled_candidate: true
     bounds:
+      lens_check_bytes: 2048
       candidate_bytes: 131072
       risks_per_lens: 4
       risk_summary_bytes: 4096
