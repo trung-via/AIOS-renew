@@ -1,0 +1,33 @@
+review_id: REVIEW-178-003
+reviewed_sha: 20f4eda5fcccfc8d47b06eb23f399d2169271523
+mode: DELTA
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC2: FAIL
+prior_finding_id: FINDING-178-003
+findings:
+  - id: FINDING-178-005
+    basis: AC2
+    action: CODE_FIX
+    location: src/aios_renew/decision_packet.py::_repair_authoring
+    issue: >
+      The correction now accepts a structured Runtime error mapping, but REPAIR_AUTHORING still
+      does not validate the supplied FAILURE as the canonical Runtime FAILURE contract. It checks
+      only run_id, failed_head_sha, task identity and changed_files. A malformed FAILURE that omits
+      mandatory Runtime fields such as kind, executor, base_sha, candidate transportable/repairable/
+      dirty/descends_from_base/outside_task_scope can still compile when its error.type/message are
+      well formed. This is a direct fail-open counterexample to AC2 and to FINDING-178-003's
+      requirement that malformed failure material fail closed. The repository already has
+      validate_runtime_failure_binding() for the exact Runtime FAILURE identity/candidate contract,
+      but the correction does not reuse it.
+    expected: >
+      Bind REPAIR_AUTHORING to the complete existing Runtime FAILURE contract before projecting
+      diagnostics, preferably by reusing validate_runtime_failure_binding() rather than maintaining
+      a second partial validator. Preserve the closed minimum-safe diagnostic projection: structured
+      verification/native/executor diagnostic payloads and raw logs must not leak into the packet.
+      Add regression coverage proving Runtime-shaped VERIFICATION, EXECUTION and COMPLETION_GATE
+      failures are representable, while missing or inconsistent kind/executor/base/candidate flags,
+      changed-files/outside-scope bindings, or unrelated RUN/TASK/head identities fail closed.
+      Canonical failures whose diagnostic message contains machine-local material must not force
+      Brain to consume that material; project only safe bounded facts rather than passing raw
+      diagnostic content through.
