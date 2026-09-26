@@ -1,0 +1,282 @@
+task_id: TASK-183
+revision: 1
+
+goal: >
+  Implement BP5-P3 as a thin provider-neutral Brain invocation boundary and bounded
+  two-stage attempt orchestrator over the already-reviewed BP5-P2B semantic protocol,
+  with explicit provider/model identity, fresh Stage-2 packet gating, typed fail-closed
+  pre-handoff errors, exact invocation-count semantics, and two independent non-network
+  adapter/conformance implementations without creating provider selection, lifecycle,
+  Reviewer, Runtime, or canonical mutation authority.
+
+problem: >
+  BP5-P2B now provides deterministic AIOS_BRAIN_REQUEST v1 / AIOS_BRAIN_DECISION v1
+  construction and validation, but no reviewed layer yet owns the deliberately narrow
+  mechanics of invoking one explicitly selected Brain provider, extracting bounded
+  provider-native output, keeping operational attribution outside semantic identity,
+  refreshing the Decision Packet before Stage 2, or stopping an audited attempt after
+  the exact allowed one/two calls. If those mechanics are left to each future provider
+  integration, adapters could silently acquire repository discovery, provider/model
+  routing, hidden-session semantics, retry/fallback authority, or lifecycle mutation.
+  BP5-P3 must add only the bounded invocation shell required for contract conformance
+  and leave real provider deployment and cross-provider continuation to later milestones.
+
+assumptions:
+  - >
+    Canonical main 0426a9fbfcb20f8aeff30e9e4a34419d38f97cb9 records BP-5 as
+    the unique NEXT milestone, current_phase BP5-P3, with BP5-P1, BP5-P2A and
+    BP5-P2B reviewed/published complete.
+  - >
+    BP5-P2B is engineering-complete through TASK-182 r1, RUN-182-001 /
+    REVIEW-182-001 CHANGES_REQUIRED, FINDING-182-001 remediation, RUN-182-002 /
+    REVIEW-182-002 DELTA PASS and publication of
+    09b2d099dd90abae12083d6b0f7f5f4abbdd377d.
+  - >
+    src/aios_renew/brain_provider_protocol.py is the reviewed semantic authority for
+    request construction/revalidation, provider semantic-response validation and
+    transient Brain decision materialization. TASK-183 consumes it and does not
+    redefine its request/decision grammar, BP-4A audit semantics or return contracts.
+  - >
+    Human/configuration selects one BrainProvider implementation and its provider/model
+    identity before an attempt begins. P3 does not infer, rank or choose providers/models.
+  - >
+    BP-6 owns Reviewer provider protocol, BP-7 owns cross-context/provider hot-swap
+    conformance, and BP-8 owns a controlled real non-default provider proof.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-180.yaml
+    - .ai/tasks/TASK-181.yaml
+    - .ai/tasks/TASK-182.yaml
+    - src/aios_renew/brain_provider_protocol.py
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/antigravity_adapter.py
+    - src/aios_renew/execution_profile.py
+    - tests/test_brain_provider_protocol.py
+    - tests/test_codex_adapter.py
+    - tests/test_antigravity_adapter.py
+  modify:
+    - src/aios_renew/brain_provider.py
+    - tests/test_brain_provider.py
+
+non_goals:
+  - >
+    Add a real network/API provider integration, credentials, endpoints, SDK clients,
+    production deployment, provider-specific authentication, GitHub carrier, workflow,
+    CLI, self-host wakeup, or downstream adoption.
+  - >
+    Add provider/model scoring, adaptive routing, automatic model selection, retry,
+    fallback, failover, recursive reflection, multi-provider voting, parallel provider
+    calls, cross-stage provider switching, or any generic orchestration/router authority.
+  - >
+    Reuse Codex/Antigravity Executor adapters or execution-profile routing as Brain
+    provider authority. Executor selection and Brain provider selection remain distinct.
+  - >
+    Inspect Git, GitHub, repository files, Unified State, filesystem, environment,
+    clock/random state or canonical lifecycle state from the P3 provider/orchestrator
+    layer. Fresh repository-derived Decision Packet material remains caller-owned.
+  - >
+    Persist prompts, raw provider payloads, semantic responses, reasoning, conversation
+    history, sessions, Decision Packets or Brain decisions; add a memory/session store.
+  - >
+    Modify brain_provider_protocol.py, Decision Packet, BP-4A, return contracts,
+    audit profiles, Flow Resolver/Cards, TASK/REMEDIATION/REPAIR validators, Runtime,
+    Unified State, Reviewer, Publisher, authoring ingress, roadmap state or frozen
+    Kernel semantics.
+  - >
+    Automatically hand a final CANDIDATE to TASK/REMEDIATION/REPAIR validation or
+    canonical ingress, or translate provider-attempt errors into RUN, RESULT, FAILURE,
+    REVIEW, BLOCKED, NO_DECISION, REMEDIATION, REPAIR or publication state.
+  - >
+    Claim BP-7 hot-swap conformance or BP-8 real second-provider proof.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The only production mutation surface is scope.modify. If satisfying this contract
+      requires another production file or a change to BP5-P2B semantics, fail closed
+      back to Brain rather than widening scope.
+    - >
+      P3 is a transient caller-supplied invocation layer only. It performs no repository,
+      Git/GitHub, filesystem, environment, lifecycle, credential, clock or random
+      discovery and performs no persistence or canonical mutation.
+    - >
+      The provider interface exposes immutable configured provider and model identity
+      plus one invocation operation over an exact AIOS_BRAIN_REQUEST. The orchestrator
+      receives one already-selected provider instance; it has no registry, ranking,
+      routing or provider/model-selection function.
+    - >
+      Every successful provider invocation yields exactly two logically separate values:
+      one extracted semantic-response mapping for existing BP5-P2B validation and one
+      bounded operational-attribution mapping. Operational attribution has exactly
+      provider, model, session_id and invocation_id fields. provider and model are
+      non-empty UTF-8 text of at most 512 bytes each; session_id and invocation_id are
+      null or non-empty UTF-8 text of at most 2048 bytes each; the normalized complete
+      attribution mapping is at most 8192 UTF-8 bytes.
+    - >
+      The complete provider-native response admitted by either conformance adapter is
+      bounded to at most 786432 bytes before semantic validation. No adapter or attempt
+      result retains an unbounded/raw native provider payload, prompt, response dump,
+      reasoning trace, token dump, credentials or arbitrary provider metadata.
+    - >
+      The configured provider/model identity is immutable for one provider instance.
+      Each invocation attribution must exactly match that configured provider/model.
+      Provider or model drift fails closed as PROVIDER_ATTRIBUTION_MISMATCH and is never
+      interpreted as fallback, hot-swap or a new provider selection. session_id and
+      invocation_id may differ per invocation but remain operational-only.
+    - >
+      Semantic correctness is self-sufficient per exact AIOS_BRAIN_REQUEST and must not
+      depend on hidden adapter conversation/session state. Stage 2 receives Stage-1
+      lineage only through the reviewed BP5-P2B request. Adapters may hold only bounded
+      transport handles/counters needed for invocation mechanics; prior prompt/response
+      or session content must not become semantic input to a later invocation.
+    - >
+      For DIAGNOSTIC/DIRECT, one attempt constructs the exact DIRECT P2B request, invokes
+      the selected provider exactly once, validates the semantic response through
+      BP5-P2B, returns the resulting transient Brain decision plus one attribution, and
+      never calls a freshness supplier.
+    - >
+      For ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING and REPAIR_AUTHORING, one
+      attempt constructs AUDIT_CONSTRUCT, invokes the selected provider exactly once,
+      validates Stage 1 through BP5-P2B, then calls an injected zero-argument
+      fresh_packet_supplier exactly once. P3 supplies no Stage-1 semantic material or
+      repository selector to that callback and does not persist its returned packet.
+    - >
+      The fresh_packet_supplier must return an actual DecisionPacket. Supplier exception
+      is FRESH_PACKET_UNAVAILABLE; a non-DecisionPacket return is FRESH_PACKET_INVALID.
+      These are caller/freshness defects and must not be mislabeled as provider failures.
+    - >
+      Before any Stage-2 invocation, P3 compares the fresh packet fingerprint with the
+      Stage-1 request packet fingerprint. A mismatch terminates with
+      STALE_BEFORE_STAGE2, after exactly one provider invocation and zero Stage-2
+      invocations. It does not invoke Stage 2, retry Stage 1, merge candidates, switch
+      provider/model or fabricate NO_DECISION.
+    - >
+      When the fresh packet fingerprint is unchanged, P3 constructs exact
+      AUDIT_RECONCILE using the same return-contract package, audit-profile package,
+      external bindings and validated Stage-1 decision, invokes the same selected
+      provider instance exactly once more, and validates the response through BP5-P2B.
+      A successful audited attempt therefore performs exactly two provider invocations
+      and no recursive/third invocation.
+    - >
+      P3 exposes typed fail-closed attempt errors with stable reason codes at least:
+      PROTOCOL_INPUT_INVALID, PROVIDER_TRANSPORT_FAILURE, PROVIDER_RESPONSE_INVALID,
+      PROVIDER_ATTRIBUTION_MISMATCH, FRESH_PACKET_UNAVAILABLE, FRESH_PACKET_INVALID and
+      STALE_BEFORE_STAGE2. Error material is bounded operational information only and
+      must retain enough phase/invocation-count information to prove where the attempt
+      stopped without becoming lifecycle truth.
+    - >
+      Provider callable/transport exceptions before a semantic response are
+      PROVIDER_TRANSPORT_FAILURE. A malformed/oversized native wrapper, malformed
+      attribution, extraction failure, or semantic response rejected by BP5-P2B is
+      PROVIDER_RESPONSE_INVALID unless the exact cause is provider/model attribution
+      drift. Caller-supplied P2B request/package/binding defects are
+      PROTOCOL_INPUT_INVALID. These classes must not be collapsed into one generic
+      lifecycle failure.
+    - >
+      The final success surface contains only the transient validated Brain decision
+      and the ordered tuple/list of one or two bounded operational attributions. It
+      carries no canonical handoff permission and invokes no downstream validator,
+      ingress, Runtime, Reviewer or Publisher.
+    - >
+      P3 must preserve TASK-182's fail-closed serialized NO_DECISION semantics. A valid
+      transient NO_DECISION returned directly by BP5-P2B validation remains usable as
+      the attempt result even when a later standalone serialized revalidation lacks the
+      hidden reconciled candidate witness. P3 must not invent, persist or smuggle that
+      missing witness, and must not weaken revalidate_decision to make it replayable.
+    - >
+      Provide two independent non-network conformance adapters over the same provider
+      interface. One accepts a structured mapping-native provider callable and validates
+      a closed native wrapper; the other serializes the exact Brain request to strict
+      canonical UTF-8 JSON for an injected text/bytes callable and independently parses
+      a closed UTF-8 JSON native wrapper. They may share only small generic bound/identity
+      primitives; they must not implement both extraction paths by delegating to one
+      common provider-native wrapper parser.
+    - >
+      The two conformance adapters must prove that equivalent semantic provider output
+      yields the same validated request/decision identity even when provider/model/
+      session/invocation attribution differs across independent adapter instances.
+      This is contract interchangeability only; no real non-default provider is invoked.
+    - >
+      No production import from codex_adapter, antigravity_adapter,
+      antigravity_minimax_adapter, execution_profile, Runtime operator/dispatch,
+      review/publication, authoring ingress or Git/GitHub transport modules is allowed
+      in src/aios_renew/brain_provider.py.
+    - >
+      Verification remains Runtime-owned and minimum-sufficient. Executor must not add
+      or run unrelated/full-suite verification; focused tests must prove exact invocation
+      counts, stop conditions, typed failures, identity separation and authority
+      boundaries.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository contains one bounded brain_provider module defining the
+      provider-neutral invocation/result/error contracts and an attempt orchestrator
+      that consumes existing BP5-P2B public construction/validation surfaces without
+      modifying or duplicating BP5-P2B semantic authority.
+  - id: AC2
+    condition: >
+      DIRECT conformance performs exactly one provider invocation, zero freshness
+      callbacks and returns only the BP5-P2B validated transient decision plus one
+      bounded attribution; audited conformance performs exactly Stage 1, one
+      zero-argument freshness callback, then Stage 2 only when fresh packet identity is
+      unchanged, with exactly two provider invocations on success and no third call.
+  - id: AC3
+    condition: >
+      Stale packet, supplier exception, invalid supplier return, Stage-1 transport or
+      semantic failure and Stage-2 transport or semantic failure each stop at the exact
+      required boundary with the documented typed reason code and observable invocation
+      count, without retry, fallback, provider switching or fabricated semantic/lifecycle
+      outcome.
+  - id: AC4
+    condition: >
+      Provider/model identity is immutable per selected provider instance, every
+      attribution is bounded and must match that identity, provider/model drift fails
+      closed, and changing only provider/model/session/invocation operational attribution
+      across independent conforming adapters cannot change P2B request or validated
+      decision fingerprints.
+  - id: AC5
+    condition: >
+      Both independent non-network conformance adapters enforce the 786432-byte native
+      response ceiling, closed wrapper extraction, strict UTF-8/JSON or mapping grammar
+      as applicable, the 8192-byte closed attribution ceiling and field bounds, while
+      retaining no raw native payload after extraction and adding no provider-specific
+      semantic policy.
+  - id: AC6
+    condition: >
+      Semantic correctness is demonstrably independent of hidden adapter session/history:
+      Stage 2 succeeds from its exact P2B request on a fresh invocation path, prior
+      prompt/response content is not required or forwarded outside that request, and
+      the orchestrator does not pass Stage-1 semantic material into the freshness
+      supplier.
+  - id: AC7
+    condition: >
+      Final CANDIDATE and NO_DECISION outcomes remain transient BP5-P2B Brain decisions
+      only; no successful or failing path imports/calls canonical family validators,
+      authoring ingress, Runtime, Reviewer, Publisher, Git/GitHub, Executor adapters or
+      execution-profile routing, and the TASK-182 NO_DECISION fail-closed revalidation
+      boundary is not weakened or bypassed.
+  - id: AC8
+    condition: >
+      Focused conformance tests cover DIRECT one-call behavior, audited two-call
+      behavior, fresh/stale gating, callback cardinality, every typed failure family,
+      provider/model attribution drift, native/attribution byte bounds, malformed
+      wrapper/UTF-8/JSON, independent adapter extraction paths, operational identity
+      invariance, transient changed-candidate NO_DECISION behavior, and absence of
+      retry/fallback/third-call authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_brain_provider.py
