@@ -74,15 +74,15 @@ def review(review_id, head, finding_id):
 
 
 def item(run_id, review_id, finding_id, head=A):
-    return {"source_run": run(run_id, head), "result": result(head),
-            "review": review(review_id, head, finding_id), "finding_id": finding_id}
+    return {"source_run_id": run_id, "review_id": review_id, "reviewed_sha": head,
+            "finding": review(review_id, head, finding_id)["findings"][0]}
 
 
 def identity(item_value):
-    return {"source_run_id": item_value["source_run"]["run_id"],
-            "review_id": item_value["review"]["review_id"],
-            "finding_id": item_value["finding_id"],
-            "reviewed_sha": item_value["review"]["reviewed_sha"]}
+    return {"source_run_id": item_value["source_run_id"],
+            "review_id": item_value["review_id"],
+            "finding_id": item_value["finding"]["id"],
+            "reviewed_sha": item_value["reviewed_sha"]}
 
 
 def context(action, unified, *, selector=None, blocker=None, root=ROOT):
@@ -128,6 +128,8 @@ def test_frontier_exact_set_and_stable_order_without_priority():
     assert body["subject"]["execution_base"] == work.canonical_observation["unified_state"]["execution_base"]
     assert "workspace" not in packet.render() and "private-origin" not in packet.render()
     assert "raw" not in body["subject"]
+    assert all(set(entry) == {"source_run_id", "review_id", "reviewed_sha", "finding"}
+               for entry in material["findings"])
 
     for mutate in (lambda x: x["findings"].pop(),
                    lambda x: x["findings"].append(copy.deepcopy(x["findings"][0]))):
@@ -136,9 +138,47 @@ def test_frontier_exact_set_and_stable_order_without_priority():
         with pytest.raises(DecisionPacketError):
             compile_decision_packet(work, flow, changed)
     changed = copy.deepcopy(material)
-    changed["findings"][0]["source_run"]["run_id"] = "RUN-002-999"
+    changed["findings"][0]["source_run_id"] = "RUN-002-999"
     with pytest.raises(DecisionPacketError):
         compile_decision_packet(work, flow, changed)
+
+
+def test_frontier_rejects_extra_substituted_and_cross_lineage_findings():
+    first = item("RUN-002-001", "REVIEW-002-001", "F1")
+    second = item("RUN-002-002", "REVIEW-002-002", "F2", B)
+    work, flow, material = authoring([first, second])
+    mutations = [
+        lambda m: m["findings"].append(item("RUN-002-003", "REVIEW-002-003", "F3", C)),
+        lambda m: m["findings"][0]["finding"].__setitem__("id", "F3"),
+        lambda m: m["findings"][0].__setitem__("review_id", "REVIEW-002-002"),
+        lambda m: m["findings"][0].__setitem__("reviewed_sha", B),
+        lambda m: m["findings"].__setitem__(0, {
+            **m["findings"][0], "finding": copy.deepcopy(m["findings"][1]["finding"])}),
+    ]
+    for mutate in mutations:
+        changed = copy.deepcopy(material)
+        mutate(changed)
+        with pytest.raises(DecisionPacketError):
+            compile_decision_packet(work, flow, changed)
+
+
+def test_frontier_rejects_incomplete_or_expanded_finding_contract():
+    first = item("RUN-002-001", "REVIEW-002-001", "F1")
+    second = item("RUN-002-002", "REVIEW-002-002", "F2", B)
+    work, flow, material = authoring([first, second])
+    mutations = [
+        lambda m: m["findings"][0].pop("source_run_id"),
+        lambda m: m["findings"][0]["finding"].pop("issue"),
+        lambda m: m["findings"][0]["finding"].__setitem__("basis", "AC3"),
+        lambda m: m["findings"][0]["finding"].__setitem__("action", "REPAIR"),
+        lambda m: m["findings"][0].__setitem__("result", result()),
+        lambda m: m["findings"][0].__setitem__("review", review("REVIEW-002-001", A, "F1")),
+    ]
+    for mutate in mutations:
+        changed = copy.deepcopy(material)
+        mutate(changed)
+        with pytest.raises(DecisionPacketError):
+            compile_decision_packet(work, flow, changed)
 
 
 def test_unique_finding_and_unselected_frontier_fail_closed():
@@ -151,12 +191,15 @@ def test_unique_finding_and_unselected_frontier_fail_closed():
     with pytest.raises(DecisionPacketError):
         compile_decision_packet(work, flow, changed)
     changed = copy.deepcopy(material)
-    changed["findings"][0]["review"]["findings"][0]["issue"] = "Changed issue"
+    changed["findings"][0]["finding"]["issue"] = "Changed issue"
     assert compile_decision_packet(work, flow, changed).packet_fingerprint != packet.packet_fingerprint
 
 
 def test_semantic_review_binds_exact_remediation_authorization_and_claim_classes():
     source = item("RUN-002-001", "REVIEW-002-001", "F1")
+    source_run = run("RUN-002-001")
+    source_result = result()
+    source_review = review("REVIEW-002-001", A, "F1")
     correction_run = run("RUN-002-003", C, A)
     authorization = {"finding_id": "F1", "action": "CODE_FIX", "reviewed_sha": A,
                      "modification_scope": ["src/aios_renew/decision_packet.py"],
@@ -164,7 +207,7 @@ def test_semantic_review_binds_exact_remediation_authorization_and_claim_classes
     run_doc = {"kind": "REMEDIATION", "remediation_authorization_sha": D,
                "predecessor": identity(source),
                "execution": {"review_id": "REVIEW-002-001",
-                             "finding": source["review"]["findings"][0],
+                             "finding": source["finding"],
                              "remediation": authorization, "run": correction_run,
                              "original_constraints": []}}
     unified = {"next_action": "SEMANTIC_REVIEW", "run_id": "RUN-002-003", "candidate_sha": C}
@@ -173,9 +216,9 @@ def test_semantic_review_binds_exact_remediation_authorization_and_claim_classes
                 "result": result(C, "E2"), "evidence": [evidence("RUN-002-003", C, "E2")],
                 "prior_correction": {"kind": "REMEDIATION", "authorization_sha": D,
                                      "authorization": authorization,
-                                     "source_run": source["source_run"],
-                                     "source_result": source["result"],
-                                     "source_review": source["review"]}}
+                                     "source_run": source_run,
+                                     "source_result": source_result,
+                                     "source_review": source_review}}
     packet = compile_decision_packet(work, flow, material)
     body = packet.as_dict()
     assert body["prior_semantic_decisions"]["authorization_sha"] == D

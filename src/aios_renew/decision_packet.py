@@ -178,23 +178,31 @@ def _review(value: Any, task: Any, result: Any, prior: Any = None) -> Any:
 
 
 def _finding_entry(value: Any, task: Any) -> dict[str, Any]:
-    item = _mapping(value, "finding material", fields={"source_run", "review", "result", "finding_id", "prior_review"},
-                    required={"source_run", "review", "result", "finding_id"})
-    source_run = _run(item["source_run"], task)
-    result = _result(item["result"], task, source_run)
-    review = _review(item["review"], task, result, item.get("prior_review"))
-    finding_id = _identity(item["finding_id"], "finding id")
-    finding = next((f for f in review.findings if f.id == finding_id), None)
-    if finding is None or review.verdict != "CHANGES_REQUIRED" or review.acceptance.get(finding.basis) != "FAIL":
-        raise DecisionPacketError("finding is not an outstanding failed REVIEW finding")
+    # Unified State owns the outstanding identities. The caller supplies only
+    # the corresponding canonical finding contract and bounded lineage facts.
+    item = _mapping(value, "finding material",
+                    fields={"source_run_id", "review_id", "reviewed_sha", "finding"})
+    source_run_id = _identity(item["source_run_id"], "source RUN id")
+    review_id = _identity(item["review_id"], "REVIEW id")
+    reviewed_sha = _sha(item["reviewed_sha"], "REVIEW reviewed SHA")
+    finding = _mapping(item["finding"], "finding",
+                       fields={"id", "basis", "action", "location", "issue", "expected"})
+    finding_id = _identity(finding["id"], "finding id")
+    basis = _identity(finding["basis"], "finding basis")
+    if basis not in {criterion.id for criterion in task.acceptance}:
+        raise DecisionPacketError("finding basis is outside TASK acceptance")
+    if finding["action"] not in {"CODE_FIX", "EVIDENCE_ONLY"}:
+        raise DecisionPacketError("invalid finding action")
     for name in ("location", "issue", "expected"):
-        _bounded_text(getattr(finding, name), f"finding {name}")
+        if not isinstance(finding[name], str) or not finding[name].strip() or finding[name] != finding[name].strip():
+            raise DecisionPacketError(f"finding {name} is not a canonical non-empty string")
+        _bounded_text(finding[name], f"finding {name}")
     return {
-        "source_run_id": source_run["run_id"], "review_id": review.review_id,
-        "reviewed_sha": review.reviewed_sha, "finding_id": finding.id,
-        "basis": finding.basis, "action": finding.action,
-        "location": finding.location, "issue": finding.issue,
-        "expected": finding.expected,
+        "source_run_id": source_run_id, "review_id": review_id,
+        "reviewed_sha": reviewed_sha, "finding_id": finding_id,
+        "basis": basis, "action": finding["action"],
+        "location": finding["location"], "issue": finding["issue"],
+        "expected": finding["expected"],
     }
 
 
