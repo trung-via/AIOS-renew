@@ -807,7 +807,7 @@ sequence:
       GitHub access, chat memory, provider identity, or new semantic/lifecycle authority.
   - id: bp-6-reviewer-provider-protocol
     status: NEXT
-    current_phase: BP6-P2B
+    current_phase: BP6-P3
     planning_document: docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md
     phases:
       - id: BP6-P1A
@@ -850,12 +850,22 @@ sequence:
           Define one self-sufficient content-addressed Reviewer procedure profile for
           PRIMARY and DELTA judgment without creating another Reviewer or validator.
       - id: BP6-P2B
-        status: NEXT
+        status: DONE
+        task_id: TASK-187
+        completed_by:
+          task_revision: 1
+          run_id: RUN-187-001
+          operation: PRIMARY
+          review_id: REVIEW-187-001
+          reviewed_sha: "860e8d86a4fef08671a487e8e670804b8dc41ed9"
+          published_sha: "860e8d86a4fef08671a487e8e670804b8dc41ed9"
+          verification_evidence:
+            - RUN-187-001-V001
         objective: >-
           Define the bounded provider-authored REVIEW semantic-body contract while
           keeping canonical REVIEW identity and review.validate_review outside provider authority.
       - id: BP6-P3
-        status: PLANNED
+        status: NEXT
         objective: >-
           Define pure provider-neutral AIOS_REVIEW_REQUEST v1 / AIOS_REVIEW_DECISION v1.
       - id: BP6-P4
@@ -911,13 +921,15 @@ sequencing_rule:
   generic_continuation: >-
     Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol is
     reviewed/published complete and BP-6 Reviewer Provider Protocol is current. BP6-P1A,
-    BP6-P1B and BP6-P2A are reviewed/published complete through TASK-184, TASK-185 and
-    TASK-186. The unique next implementation obligation is BP6-P2B Reviewer Return
-    Contract under docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md; BP6-P3 follows only after
-    P2B review/publication. Do not jump to P3/P4, do not merge Brain audit prose with
-    Reviewer procedure authority, do not let provider output author canonical
-    REVIEW/finding identities, do not consume BP-7 hot-swap or BP-8 real-provider proof
-    early, and do not create a generic provider/model router, automatic Reviewer,
+    BP6-P1B, BP6-P2A and BP6-P2B are reviewed/published complete through TASK-184,
+    TASK-185, TASK-186 and TASK-187. The unique next implementation obligation is
+    BP6-P3 AIOS_REVIEW_REQUEST v1 / AIOS_REVIEW_DECISION v1 under
+    docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md; BP6-P4 follows only after P3
+    review/publication. Do not jump to P4, do not merge Brain audit prose with Reviewer
+    procedure authority, do not let provider output author canonical REVIEW/finding
+    identities, do not let a transient Reviewer decision become canonical without
+    existing SUBMIT_REVIEW ingress, do not consume BP-7 hot-swap or BP-8 real-provider
+    proof early, and do not create a generic provider/model router, automatic Reviewer,
     remediation selector, or new canonical mutation authority.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
