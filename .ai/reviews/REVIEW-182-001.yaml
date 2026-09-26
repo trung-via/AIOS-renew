@@ -1,0 +1,40 @@
+review_id: REVIEW-182-001
+reviewed_sha: b685abac29dcf6b8d43293efc85d88a0acb061a0
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: FAIL
+  AC8: PASS
+findings:
+  - id: FINDING-182-001
+    basis: AC7
+    action: CODE_FIX
+    location: src/aios_renew/brain_provider_protocol.py
+    issue: >
+      revalidate_decision does not fully revalidate an AUDIT_RECONCILE
+      NO_DECISION semantic_value against the reviewed BP-4A Stage-2 semantics.
+      In the NO_DECISION branch it only checks closed fields, lineage-shaped
+      values, lens grammar, closure/outcome consistency and that
+      handoff_candidate is null. A caller can alter stage2_fingerprint and/or
+      reconciled_candidate_fingerprint to arbitrary 64-hex values, recompute
+      decision_fingerprint over the altered decision, and the serialized
+      decision is accepted. The same path also cannot re-establish BP-4A
+      reconciliation consistency because the reconciled candidate is absent
+      from the exact Stage-2 result. Therefore a recomputed outer content hash
+      can make unvalidated Stage-2 material appear to be a valid serialized
+      Brain decision, contrary to AC7's requirement that mode-specific
+      semantic_value be validated on serialized revalidation.
+    expected: >
+      Make serialized AUDIT_RECONCILE decision revalidation fail closed for any
+      Stage-2 semantic_value that cannot be proven to be the exact output of the
+      reviewed BP-4A validator, including NO_DECISION. Preserve the exact
+      AIOS_BRAIN_DECISION contract and BP-4A authority boundary: do not replace
+      BP-4A with duplicated semantic logic. Add a focused adversarial regression
+      showing that tampering NO_DECISION Stage-2 fingerprints or semantic
+      material and recomputing decision_fingerprint is rejected.
