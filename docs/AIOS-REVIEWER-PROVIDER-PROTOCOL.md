@@ -565,6 +565,43 @@ A transient Reviewer decision is not a canonical REVIEW. Only existing `SUBMIT_R
 
 Provider/protocol failures must not fabricate `BLOCKED`, `CHANGES_REQUIRED`, REVIEW, REMEDIATION, REPAIR, FAILURE, or publication state.
 
+#### Second-pass BP6-P3 audit refinements
+
+A focused overlap audit against the published P1A/P1B/P2A/P2B surfaces and existing `SUBMIT_REVIEW` ingress adds the following constraints before TASK authoring.
+
+1. **Do not reuse Brain protocol authority.** P3 may reuse the generic envelope/fingerprint pattern conceptually, but Reviewer production code must not import `brain_provider_protocol`, `brain_audit`, Brain return contracts, or Brain provider orchestration as semantic authority. Reviewer request/decision grammar is separate and fixed to `SEMANTIC_REVIEW`.
+
+2. **The request must be self-sufficient for DELTA judgment.** The current SEMANTIC_REVIEW Decision Packet binds correction provenance but does not expose the complete prior finding prose required by P2A `PRIOR_FINDING_RESOLUTION`. Therefore `AIOS_REVIEW_REQUEST v1` must carry an exact caller-supplied canonical `prior_review` context for DELTA and null for PRIMARY. It is request-fingerprinted semantic material, not hidden adapter/session context.
+
+3. **Prior-review binding is exact.** DELTA prior review must parse as the existing canonical REVIEW contract, match P1A `prior_review_id` and `semantic_base_sha`, and contain exactly the P1A-selected `prior_finding_id`. PRIMARY forbids prior-review material. P3 does not rediscover the review from Git/GitHub.
+
+4. **No extra current RESULT copy is required.** The current TASK and RESULT needed by `review.validate_review` can be deterministically reconstructed from the exact SEMANTIC_REVIEW Decision Packet: TASK from `canonical_facts.task_contract`; RESULT from `subject.head_sha/changed_files/unresolved` plus `executor_claims`. P3 must verify these projections rather than accept a second mutable current-result witness.
+
+5. **P1A/P1B/P2 bindings are cross-checked, not re-derived.** Scope task/run/head/mode identity must match the Decision Packet; P1B `review_scope_fingerprint`, review mode/bases/head and package fingerprint must match P1A; selected P2A procedure mode must match P1A review mode; P2A/P2B metadata must match the packet's REVIEWER/SEMANTIC_REVIEW/`review.validate_review`/`AUTHORING_INGRESS` contract. P3 performs no lifecycle traversal, source reconstruction, or semantic procedure reinterpretation.
+
+6. **Canonical identity stays outside provider authorship.** The external request bindings are exactly one bounded `review_id` plus a bounded ordered set of 32 unique `finding_id_slots`. The provider never returns either. P3 pairs actual provider findings with the first N pre-bound slots in provider finding order. Unused slots have no canonical effect. P3 does not discover or reserve identity from repository state.
+
+7. **Provider response is minimal.** One semantic response is closed to exactly `request_fingerprint` and `semantic_body`. `semantic_body` is validated only through the reviewed P2B grammar using the exact TASK, P1A mode and the basis of the selected prior finding for DELTA.
+
+8. **Canonical REVIEW materialization is deterministic.** P3 binds `review_id`, `reviewed_sha`, `mode`, DELTA `prior_finding_id` and ordered finding IDs around the validated provider semantic body, reconstructs one transient canonical REVIEW candidate, then calls existing `review.validate_review`. It does not call ingress and does not make the candidate canonical.
+
+9. **No silent canonicalization drift.** The materialized REVIEW candidate must round-trip through existing `parse_review` without changing any identity or semantic text. In particular P3 rejects rather than trims provider `location`, `issue`, or `expected` text that would be changed by canonical REVIEW parsing.
+
+10. **The transient decision is not REVIEW truth.** `AIOS_REVIEW_DECISION v1` binds the exact request fingerprint, packet/scope/material fingerprints, P2A/P2B refs and the validated REVIEW candidate. Only existing `SUBMIT_REVIEW` ingress may canonicalize that candidate.
+
+11. **P3 remains pure.** No filesystem/Git/GitHub/network/provider invocation, environment, persistence, clock/random, retry/fallback/voting, remediation, publication or lifecycle mutation is allowed. P4 alone adds the one-call provider shell.
+
+12. **Exact v1 ceilings.** Use normalized request <= 2097152 UTF-8 bytes, provider semantic response <= 196608 bytes, transient decision <= 262144 bytes, prior REVIEW context <= 196608 bytes, each external identity <= 256 UTF-8 bytes and structural depth <= 32. Bound excess is rejection, never truncation.
+
+Recommended TASK-188 production surface remains only:
+
+```text
+src/aios_renew/reviewer_provider_protocol.py
+tests/test_reviewer_provider_protocol.py
+```
+
+Focused verification is sufficient. P3 must not modify Decision Packet, P1A/P1B/P2A/P2B, canonical REVIEW schema, authoring ingress or provider adapters merely to simplify composition.
+
 ### BP6-P4 — Thin Reviewer Provider Conformance
 
 Add a Reviewer-specific thin invocation shell over P3.
