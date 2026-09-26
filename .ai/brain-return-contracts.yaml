@@ -1,0 +1,145 @@
+format: AIOS_BRAIN_RETURN_CONTRACTS
+version: 1
+bounds:
+  raw_registry_bytes: 65536
+  selected_contract_bytes: 16384
+  shape_bytes: 8192
+  requirements_count: 16
+  requirement_bytes: 2048
+  bindings_count: 16
+  binding_path_bytes: 256
+  binding_instruction_bytes: 2048
+  max_depth: 32
+contracts:
+  - selected_flow: ARCHITECTURE
+    version: 1
+    authority_owner: BRAIN
+    decision_family_ref: HUMAN_BRAIN_ARCHITECTURE_PLANNING
+    handoff_target: HUMAN_BRAIN_PLANNING
+    expected_return_shape: BOUNDED_SEMANTIC_PROPOSAL
+    candidate_contract:
+      representation: STRICT_JSON_MAPPING
+      bindings: []
+      shape: >-
+        One bounded JSON object with semantic planning fields chosen for the exact
+        Decision Packet subject, such as proposal (text), rationale (text),
+        assumptions (array of text), and open_questions (array of text). The
+        mapping is open to other relevant, bounded planning fields. Do not emit
+        an artifact identity, ingress envelope, mutation control, or lifecycle command.
+      requirements:
+        - Address only the exact Decision Packet subject and its supplied Human intent.
+        - Keep the proposal Human/Brain planning material; do not allocate a canonical artifact identity.
+        - Do not fabricate Runtime evidence, review verdicts, or lifecycle state.
+  - selected_flow: TASK_AUTHORING
+    version: 1
+    authority_owner: BRAIN
+    decision_family_ref: task.validate_task+authoring_ingress
+    handoff_target: AUTHORING_INGRESS
+    expected_return_shape: TASK_AUTHORING_PROPOSAL
+    candidate_contract:
+      representation: STRICT_JSON_MAPPING
+      bindings:
+        - path: task_id
+          source: EXTERNAL_REQUEST_BINDING_REQUIRED
+          instruction: Copy the exact target task_id fingerprinted in the future BP5-P2B request/control plane; never allocate or infer it.
+        - path: revision
+          source: EXTERNAL_REQUEST_BINDING_REQUIRED
+          instruction: Copy the exact target revision fingerprinted in the future BP5-P2B request/control plane; never allocate or infer it.
+      shape: >-
+        One JSON object containing exactly task_id (text), revision (positive integer),
+        goal (text), problem (text), assumptions (array of text), scope {inspect:
+        array of repository path text, modify: array of repository path text},
+        non_goals (array of text), constraints {hard: array of text}, acceptance
+        (array of {id: text, condition: text}), and verification {policy:
+        "minimum-sufficient-v1", required: array of command text, optional
+        full_suite_reason: text}. This is the TASK candidate body only.
+      requirements:
+        - Brain authors WHAT and WHY, while the Executor retains HOW and implementation choices.
+        - State an executor-neutral goal and problem bound to the exact Decision Packet subject.
+        - Make scope.modify the exact authorized production mutation surface; scope.inspect conveys read access only.
+        - Give complete, observable acceptance conditions with distinct ids and no circular proof.
+        - Use minimum-sufficient-v1 verification with focused required commands; give full_suite_reason only when a full suite is necessary.
+        - Do not instruct the Executor to push or publish, or include ingress envelope or publication controls.
+  - selected_flow: REMEDIATION_AUTHORING
+    version: 1
+    authority_owner: BRAIN
+    decision_family_ref: review.validate_remediation
+    handoff_target: AUTHORING_INGRESS
+    expected_return_shape: REMEDIATION_CONTRACT_PROPOSAL
+    candidate_contract:
+      representation: STRICT_JSON_MAPPING
+      bindings:
+        - path: finding_id
+          source: DECISION_PACKET
+          instruction: For UNIQUE_FINDING copy packet.subject.finding_id; for CORRECTION_FRONTIER an exact target finding binding is required before final authoring, with no inferred ranking or priority.
+        - path: action
+          source: DECISION_PACKET
+          instruction: For UNIQUE_FINDING copy packet.subject.action; for CORRECTION_FRONTIER copy action only from the canonically bound exact target finding, never choose it by priority.
+        - path: reviewed_sha
+          source: DECISION_PACKET
+          instruction: For UNIQUE_FINDING copy packet.subject.reviewed_sha; for CORRECTION_FRONTIER copy it only from the canonically bound exact target finding.
+      shape: >-
+        One JSON object containing exactly finding_id (text), action
+        (CODE_FIX|EVIDENCE_ONLY), reviewed_sha (text), modification_scope
+        (array of repository path text), verification {policy:
+        "minimum-sufficient-v1", affected: array of command text, optional
+        full_suite_reason: text}, and constraints {hard: array of text}.
+        This is the preferred current REMEDIATION candidate body, without legacy aliases.
+      requirements:
+        - Author for one exact finding and its canonical reviewed SHA and action.
+        - UNIQUE_FINDING binds directly to the exact Decision Packet subject; CORRECTION_FRONTIER requires an exact canonical target binding before final authoring and implies no correction selector, ranking, or priority.
+        - Specify only the minimum supporting correction delta; modification_scope and constraints must be no wider than the TASK authority.
+        - Use minimum-sufficient-v1 affected verification; give full_suite_reason only when a full suite is necessary.
+  - selected_flow: REPAIR_AUTHORING
+    version: 1
+    authority_owner: BRAIN
+    decision_family_ref: publication._validate_repair_authorization
+    handoff_target: AUTHORING_INGRESS
+    expected_return_shape: REPAIR_AUTHORIZATION_PROPOSAL
+    candidate_contract:
+      representation: STRICT_JSON_MAPPING
+      bindings:
+        - path: repair_id
+          source: EXTERNAL_REQUEST_BINDING_REQUIRED
+          instruction: Copy the exact repair_id fingerprinted in the future BP5-P2B request/control plane; never allocate or infer it.
+        - path: failed_run_id
+          source: DECISION_PACKET
+          instruction: Copy packet.subject.failed_run_id exactly.
+        - path: failed_head_sha
+          source: DECISION_PACKET
+          instruction: Copy packet.subject.failed_head_sha exactly.
+        - path: task.id
+          source: DECISION_PACKET
+          instruction: Copy packet.canonical_facts.selected_task.id exactly.
+        - path: task.revision
+          source: DECISION_PACKET
+          instruction: Copy packet.canonical_facts.selected_task.revision exactly.
+      shape: >-
+        One JSON object containing exactly repair_id (text), failed_run_id
+        (text), failed_head_sha (text), task {id: text, revision: positive integer},
+        action (CODE_FIX|NO_CHANGE|CONTINUE_IMPLEMENTATION|FINALIZE_CANDIDATE),
+        modification_scope (array of repository path text), instructions
+        (non-empty array of text), and constraints (array of text).
+        This is the REPAIR authorization candidate body only.
+      requirements:
+        - Brain chooses action as a semantic correction strategy from the allowed family; do not choose automatically from failure metadata.
+        - Bind the failed RUN, failed head, and TASK identity to the exact Decision Packet provenance.
+        - Keep modification_scope within correction authority and constraints within the original TASK; introduce no new Human intent.
+        - Give only instructions needed to correct or finish the failed candidate, with no ingress or publication controls.
+  - selected_flow: DIAGNOSTIC
+    version: 1
+    authority_owner: BRAIN
+    decision_family_ref: HUMAN_BRAIN_DIAGNOSTIC
+    handoff_target: HUMAN_BRAIN_PLANNING
+    expected_return_shape: BOUNDED_DIAGNOSTIC_PROPOSAL
+    candidate_contract:
+      representation: STRICT_JSON_MAPPING
+      bindings: []
+      shape: >-
+        One closed JSON object {proposal: text, uncertainty: {status:
+        NONE|MATERIAL, summary: null|text}}. For MATERIAL, summary is bounded
+        non-empty text; for NONE, summary is null. This is only a diagnostic
+        candidate body.
+      requirements:
+        - Describe only the exact Decision Packet subject and material uncertainty.
+        - Diagnostic output is not EVIDENCE, FAILURE, BLOCKED, REVIEW, correction authorization, or lifecycle truth.
