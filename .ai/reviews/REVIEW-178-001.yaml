@@ -1,0 +1,55 @@
+review_id: REVIEW-178-001
+reviewed_sha: 533f9cedb1210a6e58de431bd9e062b94ea8e275
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: FAIL
+  AC3: FAIL
+  AC4: FAIL
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+  AC8: PASS
+findings:
+  - id: FINDING-178-001
+    basis: AC2
+    action: CODE_FIX
+    location: src/aios_renew/decision_packet.py::_project REMEDIATION_AUTHORING branch and tests/test_decision_packet.py
+    issue: >
+      The compiler cannot packetize a valid BP-3 AUTHOR_REMEDIATION state when Unified State has
+      multiple bounded outstanding findings and therefore intentionally leaves source_run_id,
+      review_id, finding_id, and reviewed_sha unset while exposing outstanding_findings. The
+      current REMEDIATION_AUTHORING branch requires one payload.finding_id to equal
+      unified_state.finding_id and _subject_task falls back to the current tip RUN, so every
+      exact-finding payload is rejected in that canonical state. This leaves a valid
+      REMEDIATION_AUTHORING flow without any Decision Packet even though AC2 requires the closed
+      flow family to be supported and the compiler must not choose a finding on Brain's behalf.
+    expected: >
+      Support the canonical multi-outstanding-finding AUTHOR_REMEDIATION shape without acquiring
+      selection authority. When Unified State has no unique finding identity, emit a bounded typed
+      REMEDIATION_AUTHORING subject that preserves the exact outstanding_findings set and current
+      tip/execution-base facts for Brain reasoning; when Unified State identifies one exact
+      finding, retain exact REVIEW/finding/reviewed-SHA binding. Add deterministic regressions for
+      both shapes and keep selection semantic authority with Brain.
+  - id: FINDING-178-002
+    basis: AC4
+    action: CODE_FIX
+    location: src/aios_renew/decision_packet.py::PriorRemediationLineage/PriorRepairLineage and _project SEMANTIC_REVIEW correction-lineage branches
+    issue: >
+      Prior correction material is validated for semantic shape but is not bound to the immutable
+      canonical correction identity that authorized the correction RUN. PriorRemediationLineage
+      carries remediation content without the approved remediation selector SHA, and
+      PriorRepairLineage carries repair authorization content without its canonical repair
+      authorization SHA. A different structurally valid remediation/repair document for the same
+      review finding or failed RUN can therefore be supplied and accepted as the prior canonical
+      decision; the packet fingerprint then faithfully binds the substituted content rather than
+      proving the exact correction lineage required by AC4/AC6.
+    expected: >
+      Require and project the immutable correction identity for prior correction lineage
+      (approved remediation selector SHA or repair authorization SHA) together with enough
+      caller-supplied persisted execution linkage to bind that exact identity/content to the
+      current correction RUN. Validate all available source RUN/review/finding/failed-head and
+      authorization bindings, include the immutable correction identity in prior decisions and
+      packet fingerprint/provenance, and add negative regressions proving a valid-but-different
+      correction document or SHA cannot be substituted. Do not add repository/GitHub discovery.
