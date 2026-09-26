@@ -1,0 +1,29 @@
+finding_id: FINDING-179-001
+action: CODE_FIX
+reviewed_sha: 75a85fec93d84767786764be7dab2648ccfedb5e
+modification_scope:
+- src/aios_renew/brain_audit.py
+- tests/test_brain_audit.py
+verification:
+  policy: minimum-sufficient-v1
+  affected:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_decision_packet.py tests/test_brain_context.py
+  - git diff --check
+constraints:
+  hard:
+  - The only production mutation surface is scope.modify. If satisfying the contract
+    requires changes to Decision Packet, Brain Context/Flow Cards, Unified State,
+    Runtime, Reviewer/Publisher, authoring ingress, provider surfaces, roadmap state,
+    or any other file, fail closed back to Brain rather than widening scope.
+  - Candidates and Stage-2 semantic material use strict UTF-8 JSON mappings, recursive
+    CRLF/CR to LF normalization, finite JSON values only, closed protocol-envelope
+    schemas, explicit byte/count/depth limits, and fail closed on duplicate/unknown
+    protocol fields. Recursively reject protocol metadata keys for chat history, chain-of-thought,
+    raw logs/evidence paths, credentials/secrets, local root/workspace/remote/host
+    data, timestamps, UUID/random ids and provider/model/session identity from candidate
+    and audit semantic material.
+  - BP-4A structural validation must not import semantic authority from candidate
+    content. It must not parse/revalidate a candidate as TASK/REMEDIATION/REPAIR,
+    choose a correction, produce a verdict, call canonical verification, or hand CANDIDATE
+    directly to lifecycle mutation. Existing downstream canonical validators/ingress
+    remain required after BP-4A.
