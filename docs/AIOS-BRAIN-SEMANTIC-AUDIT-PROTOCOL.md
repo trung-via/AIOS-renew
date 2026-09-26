@@ -398,4 +398,8 @@ BP-4A is complete only when reviewed/published evidence proves:
 
 BP-4 is engineering-complete through TASK-178 r2, RUN-178-009, REVIEW-178-009 PASS, and publication of 157732551f0a549b9644688a48ddc9c7c730c96d.
 
-BP-4A is the unique current Human/Brain planning milestone. This document does not authorize implementation. A fresh executor-neutral successor TASK must be separately designed, audited and canonically authored before production mutation.
+BP-4A is engineering-complete through TASK-179 r1. RUN-179-001 produced the initial candidate and REVIEW-179-001 identified FINDING-179-001; the exact remediation was authorized at 343e9f34cda5e08cab5ce45dec88732da664160a. RUN-179-002 corrected that finding, REVIEW-179-002 returned DELTA PASS, and the reviewed candidate 1c324165f93285e8179f9b0d87ab9f1e9049aa6a was published to canonical main.
+
+The reviewed/published implementation satisfies the BP-4A exit gate as a pure structural protocol: one content-addressed repository audit profile, Stage-1 construct binding, Stage-2 exact packet/profile/construct binding, fixed ordered lens coverage, bounded transient risk/coverage claims, reconciliation consistency, mandatory final closure, CANDIDATE/NO_DECISION outcomes, and no provider invocation, persistence, lifecycle routing, Reviewer/Publisher authority, retry/fallback, voting, or Executor selection.
+
+BP-5 Brain Provider Protocol is the next Human/Brain planning milestone. BP-4A completion does not itself authorize provider invocation or define AIOS_BRAIN_REQUEST / AIOS_BRAIN_DECISION transport; those boundaries must be separately audited and canonically authored under BP-5.
