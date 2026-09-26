@@ -341,6 +341,19 @@ def test_repair_authoring_binds_complete_runtime_failure_contract():
             compile_decision_packet(work, flow, altered)
 
 
+@pytest.mark.parametrize("executor", ["other", 42])
+def test_repair_authoring_rejects_mirrored_invalid_executor(executor):
+    work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
+                                           "failed_run_id": "RUN-002-001", "failed_head_sha": A})
+    failed_run = run("RUN-002-001", A, B)
+    failure = runtime_failure()
+    failed_run["executor"] = executor
+    failure["executor"] = executor
+    with pytest.raises(DecisionPacketError):
+        compile_decision_packet(work, flow, {"kind": "REPAIR_AUTHORING", "task": task(),
+                                                  "failed_run": failed_run, "failure": failure})
+
+
 def test_none_and_non_json_fail_closed():
     work, flow = context("EXECUTE_PRIMARY", {"next_action": "EXECUTE_PRIMARY"})
     with pytest.raises(DecisionPacketError):

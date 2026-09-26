@@ -147,6 +147,12 @@ def _run(value: Any, task: Any, *, expected_id: str | None = None) -> dict[str, 
         raise DecisionPacketError("RUN does not match canonical subject")
     if "head_sha" in run and run["head_sha"] is not None:
         _sha(run["head_sha"], "RUN head SHA")
+    Run(
+        run_id=run["run_id"], task=RunTaskReference(task.task_id, task.revision),
+        executor=run["executor"], base_sha=run["base_sha"],
+        workspace=run["workspace"], head_sha=run.get("head_sha"),
+        status=run.get("status", "ACTIVE"),
+    )
     return run
 
 
