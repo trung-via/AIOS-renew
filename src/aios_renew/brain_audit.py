@@ -26,17 +26,21 @@ _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 _ID = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
 _SYMBOL = re.compile(r"[A-Z][A-Z0-9_]{0,63}\Z")
 _DRIVE_PATH = re.compile(r"(?:^|[\s\"'(])(?:[A-Za-z]:[/\\]|\\\\|/home/|/Users/|/tmp/|/var/)")
-_PRIVATE_PARTS = (
-    "chat", "conversation", "chain_of_thought", "cot", "reasoning_trace",
-    "raw_log", "raw_evidence", "evidence_path", "log_path", "credential",
-    "secret", "password", "api_key", "access_token", "auth_token",
-    "workspace", "local_root", "repository_root", "remote_url", "hostname",
-    "host_name", "timestamp", "created_at", "updated_at", "datetime",
-    "uuid", "random", "nonce", "provider", "model", "session", "prompt",
-)
 _PRIVATE_KEYS = frozenset({
-    "root", "remote", "host", "machine", "time", "date", "clock", "seed",
-    "llm", "api_token", "bearer_token", "request_id", "host_id", "machine_id",
+    "chat", "chat_history", "conversation", "conversation_history",
+    "chain_of_thought", "cot", "reasoning_trace", "prompt", "prompt_history",
+    "raw_log", "raw_logs", "raw_evidence", "raw_evidence_path",
+    "evidence_path", "evidence_paths", "log_path", "log_paths",
+    "credential", "credentials", "secret", "secrets", "password",
+    "api_key", "access_token", "auth_token", "api_token", "bearer_token",
+    "workspace", "workspace_root", "local_root", "repository_root",
+    "remote", "remote_url", "root", "host", "hostname", "host_name",
+    "host_id", "machine", "machine_id", "time", "date", "clock",
+    "timestamp", "created_at", "updated_at", "datetime", "uuid",
+    "random", "random_id", "nonce", "seed", "request_id",
+    "provider", "provider_id", "provider_name", "provider_identity",
+    "model", "model_id", "model_name", "model_identity",
+    "session", "session_id", "session_name", "session_identity", "llm",
     "audit", "audit_profile", "risk_ledger", "coverage_ledger",
 })
 _ENVELOPE_KEYS = frozenset({
@@ -44,7 +48,8 @@ _ENVELOPE_KEYS = frozenset({
     "reconciled_candidate_fingerprint", "stage2_fingerprint", "construct_audit",
     "closure", "handoff_candidate", "stage1", "stage2", "audit_envelope",
 })
-_PRIVATE_COMPACT_KEYS = frozenset(key.replace("_", "") for key in _ENVELOPE_KEYS | _PRIVATE_KEYS)
+_RESERVED_SEMANTIC_KEYS = _ENVELOPE_KEYS | _PRIVATE_KEYS
+_RESERVED_COMPACT_KEYS = frozenset(key.replace("_", "") for key in _RESERVED_SEMANTIC_KEYS)
 _PROFILE_FIELDS = frozenset({"id", "version", "applicable_flows", "lenses", "procedure", "bounds"})
 _BOUND_FIELDS = frozenset({
     "candidate_bytes", "risks_per_lens", "risk_summary_bytes",
@@ -118,10 +123,7 @@ def _normal(value: Any, *, depth: int, max_depth: int, private: bool = False) ->
             if private:
                 folded = normalized_key.lower().replace("-", "_")
                 compact = folded.replace("_", "")
-                if (folded in _ENVELOPE_KEYS or folded in _PRIVATE_KEYS
-                        or compact in _PRIVATE_COMPACT_KEYS
-                        or any(part in folded or part.replace("_", "") in compact
-                               for part in _PRIVATE_PARTS)):
+                if folded in _RESERVED_SEMANTIC_KEYS or compact in _RESERVED_COMPACT_KEYS:
                     raise BrainAuditError("private metadata or nested audit envelope")
             result[normalized_key] = _normal(item, depth=depth + 1, max_depth=max_depth, private=private)
         return result

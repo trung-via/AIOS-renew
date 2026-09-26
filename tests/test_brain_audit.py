@@ -230,3 +230,45 @@ def test_candidate_privacy_depth_and_strict_json(profile):
         cursor = cursor["child"]
     with pytest.raises(BrainAuditError):
         construct_stage1(p, profile, nested)
+
+
+@pytest.mark.parametrize("key", [
+    "provider", "provider_identity", "MODEL-ID", "session_id", "chat_history", "chain_of_thought",
+    "raw_logs", "evidence_paths", "credentials", "workspace_root",
+    "remote_url", "host_name", "created_at", "uuid", "random_id",
+    "audit_profile_ref", "stage2fingerprint",
+])
+def test_exact_reserved_keys_fail_at_any_semantic_depth(profile, key):
+    p = packet()
+    bad = {"proposal": {"detail": {key: "private"}}}
+    with pytest.raises(BrainAuditError, match="private metadata or nested audit envelope"):
+        construct_stage1(p, profile, bad)
+
+    first = construct_stage1(p, profile, {"proposal": "initial"})
+    second = stage2_input(first, profile)
+    second["reconciled_candidate"] = bad
+    with pytest.raises(BrainAuditError, match="private metadata or nested audit envelope"):
+        validate_stage2(p, profile, first, second)
+
+
+@pytest.mark.parametrize("flow", ["ARCHITECTURE", "TASK_AUTHORING"])
+def test_semantic_vocabulary_is_accepted_and_fingerprint_bound(profile, flow):
+    p = packet(flow)
+    semantic = {
+        "provider_contract": {"model_policy": "portable"},
+        "prompt_schema": "structured", "chat_memory_dependency": False,
+    }
+    first = construct_stage1(p, profile, semantic)
+    final = validate_stage2(p, profile, first, stage2_input(first, profile))
+    assert final["handoff_candidate"] == semantic
+    assert final["reconciled_candidate_fingerprint"] == digest(semantic)
+
+    changed = deepcopy(semantic)
+    changed["provider_contract"]["model_policy"] = "revised"
+    changed_first = construct_stage1(p, profile, changed)
+    changed_final = validate_stage2(p, profile, changed_first,
+                                    stage2_input(changed_first, profile))
+    assert changed_first["construct_fingerprint"] != first["construct_fingerprint"]
+    assert changed_final["reconciled_candidate_fingerprint"] == digest(changed)
+    assert changed_final["reconciled_candidate_fingerprint"] != final["reconciled_candidate_fingerprint"]
+    assert changed_final["stage2_fingerprint"] != final["stage2_fingerprint"]
