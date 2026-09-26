@@ -354,6 +354,22 @@ def test_repair_authoring_rejects_mirrored_invalid_executor(executor):
                                                   "failed_run": failed_run, "failure": failure})
 
 
+@pytest.mark.parametrize("revision, valid", [(True, False), (1.0, False), (1, True)])
+def test_repair_authoring_validates_supplied_failed_run_task_revision(revision, valid):
+    work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
+                                           "failed_run_id": "RUN-002-001", "failed_head_sha": A})
+    failed_run = run("RUN-002-001", A, B)
+    failed_run["task"]["revision"] = revision
+    material = {"kind": "REPAIR_AUTHORING", "task": task(),
+                "failed_run": failed_run, "failure": runtime_failure()}
+    if not valid:
+        with pytest.raises(DecisionPacketError):
+            compile_decision_packet(work, flow, material)
+    else:
+        packet = compile_decision_packet(work, flow, material)
+        assert packet.as_dict()["subject"]["failed_run_id"] == failed_run["run_id"]
+
+
 def test_none_and_non_json_fail_closed():
     work, flow = context("EXECUTE_PRIMARY", {"next_action": "EXECUTE_PRIMARY"})
     with pytest.raises(DecisionPacketError):

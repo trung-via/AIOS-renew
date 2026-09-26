@@ -141,14 +141,16 @@ def _run(value: Any, task: Any, *, expected_id: str | None = None) -> dict[str, 
                    required={"run_id", "task", "executor", "base_sha"})
     _identity(run["run_id"], "RUN id")
     _sha(run["base_sha"], "RUN base SHA")
-    if run["task"] != {"id": task.task_id, "revision": task.revision} or (
+    supplied_task = _mapping(run["task"], "RUN task", fields={"id", "revision"})
+    task_reference = RunTaskReference(supplied_task["id"], supplied_task["revision"])
+    if task_reference.id != task.task_id or task_reference.revision != task.revision or (
         expected_id is not None and run["run_id"] != expected_id
     ):
         raise DecisionPacketError("RUN does not match canonical subject")
     if "head_sha" in run and run["head_sha"] is not None:
         _sha(run["head_sha"], "RUN head SHA")
     Run(
-        run_id=run["run_id"], task=RunTaskReference(task.task_id, task.revision),
+        run_id=run["run_id"], task=task_reference,
         executor=run["executor"], base_sha=run["base_sha"],
         workspace=run["workspace"], head_sha=run.get("head_sha"),
         status=run.get("status", "ACTIVE"),
