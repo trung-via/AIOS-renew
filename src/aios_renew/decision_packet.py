@@ -397,15 +397,9 @@ def _repair_authoring(material: dict[str, Any], observed: Mapping[str, Any]) -> 
     subject = {"failed_run_id": failed["run_id"], "failed_head_sha": failed_head}
     candidate = failure["candidate"]
     subject["failed_changed_files"] = sorted(candidate["changed_files"])
-    observation = {}
     if failure.get("phase") not in {"VERIFICATION", "EXECUTION", "COMPLETION_GATE"}:
         raise DecisionPacketError("FAILURE phase is invalid")
-    for key in ("phase", "reason_code"):
-        if key in failure:
-            value = _bounded_text(failure[key], f"FAILURE {key}")
-            if len(value) > 256 or re.fullmatch(r"[A-Z][A-Z_0-9]*", value) is None:
-                raise DecisionPacketError(f"FAILURE {key} is invalid")
-            observation[key] = value
+    observation = {"phase": failure["phase"]}
     error = failure.get("error")
     if not isinstance(error, dict) or not {"type", "message"} <= set(error):
         raise DecisionPacketError("FAILURE error is not a structured Runtime error")

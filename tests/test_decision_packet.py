@@ -278,6 +278,20 @@ def test_repair_authoring_projects_runtime_failure_without_diagnostics(phase):
         assert private not in packet.render()
 
 
+def test_repair_authoring_ignores_unbound_reason_code():
+    work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
+                                           "failed_run_id": "RUN-002-001", "failed_head_sha": A})
+    material = {"kind": "REPAIR_AUTHORING", "task": task(),
+                "failed_run": run("RUN-002-001", A, B), "failure": runtime_failure()}
+    baseline = compile_decision_packet(work, flow, material).as_dict()
+    injected = copy.deepcopy(material)
+    injected["failure"]["reason_code"] = "CALLER_INJECTED_REASON"
+    packet = compile_decision_packet(work, flow, injected).as_dict()
+    assert "reason_code" not in packet["bounded_observations"]
+    assert packet == baseline
+    assert packet["packet_fingerprint"] == baseline["packet_fingerprint"]
+
+
 def test_repair_authoring_rejects_malformed_or_unbounded_failure_observations():
     failure = runtime_failure()
     work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
