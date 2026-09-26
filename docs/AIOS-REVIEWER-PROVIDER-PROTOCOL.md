@@ -625,6 +625,45 @@ P4 must prove:
 
 Low-level transport primitives may be structurally similar to BP5-P3, but BP-6 must not turn them into a generic provider/model router or merge Brain and Reviewer semantic authorities merely to remove small code duplication.
 
+#### Second-pass BP6-P4 audit refinements
+
+A focused overlap audit against published BP5-P3, the reviewed BP6-P3 protocol, and TASK-183 failure/repair lineage adds the following constraints before P4 TASK authoring.
+
+1. **Reviewer-specific shell only.** P4 may copy the small transport pattern conceptually, but production Reviewer code must not import `brain_provider`, Brain semantic protocol/orchestration, Executor adapters, execution-profile routing, Runtime, ingress or Publisher. Small duplication is preferable to authority crossover.
+
+2. **Exactly one semantic call.** One admitted review attempt constructs one exact P3 `AIOS_REVIEW_REQUEST v1`, invokes one already-selected immutable Reviewer provider instance exactly once, validates exactly one extracted semantic response through P3, then returns one transient `AIOS_REVIEW_DECISION v1`. There is no freshness callback, Stage 2, reconciliation, recursive review or third-party Reviewer call.
+
+3. **Provider selection is external.** P4 receives one provider instance whose `provider` and `model` identity were selected before the attempt. It has no registry, ranking, adaptive selection, routing, retry, fallback, failover, voting or provider switch.
+
+4. **Operational attribution is separate.** Every successful native invocation yields one semantic-response mapping plus one closed attribution mapping with exactly `provider`, `model`, `session_id`, `invocation_id`. Provider/model must match the configured immutable identity. Session/invocation ids are operational-only and cannot enter P3 request/decision fingerprints.
+
+5. **Exact attribution bounds.** Provider/model are non-empty strict UTF-8 strings <=512 bytes each; session_id/invocation_id are null or non-empty strict UTF-8 strings <=2048 bytes each; normalized attribution <=8192 UTF-8 bytes.
+
+6. **Bounded native wrapper.** Both non-network adapters admit at most 262144 native response bytes before P3 validation, retain no raw native payload after extraction, and use a closed wrapper of exactly `semantic_response` plus `attribution`. Mapping-native and strict UTF-8 JSON extraction paths must remain independent rather than delegate to one shared native-wrapper parser.
+
+7. **Stable pre-REVIEW failure taxonomy.** At minimum: `PROTOCOL_INPUT_INVALID` before invocation; `PROVIDER_TRANSPORT_FAILURE`; `PROVIDER_RESPONSE_INVALID`; and `PROVIDER_ATTRIBUTION_MISMATCH`. The bounded attempt error records phase and invocation_count only as operational proof. No such error is REVIEW/BLOCKED/FAILURE/remediation/publication truth.
+
+8. **One-call stop semantics.** Invocation count is 0 for invalid caller/P3 request material. Once provider invocation begins, count is exactly 1 whether transport, attribution, native-wrapper, semantic-response or P3 validation succeeds or fails. No failure path may invoke the provider again.
+
+9. **P3 remains semantic protocol authority.** P4 calls existing `construct_request` and `validate_response`; it does not reconstruct REVIEW, duplicate P2B grammar, bind canonical identities independently, relax P3 bounds, or reimplement `review.validate_review`.
+
+10. **Hidden session cannot be semantic input.** The provider receives only a deep-copied exact P3 request (or canonical strict JSON bytes of that request). P4 passes no prior prompt, chat history, native response, reasoning trace, continuation token or session content into semantic material. `session_id` is output attribution only.
+
+11. **Two independent non-network adapters.** One mapping-native callable and one UTF-8 JSON callable must consume the same P3 request and, for equivalent semantic output, produce the same request/decision fingerprints even when provider/model/session/invocation attribution differs. This proves contract interchangeability only; BP-8 still owns a real non-default provider proof.
+
+12. **No repository discovery or downstream action.** Adapters/orchestrator perform no filesystem, Git/GitHub, environment, credentials, lifecycle discovery, verification, SUBMIT_REVIEW, remediation/repair, publication or persistence.
+
+13. **Test isolation is part of conformance hygiene.** TASK-183's initial failure came from mutable test-fixture aliasing rather than production semantics. P4 focused tests must construct fresh mutable request/package/binding fixtures per test so mutation/adversarial tests cannot pollute later cases.
+
+Recommended TASK-189 production surface is only:
+
+```text
+src/aios_renew/reviewer_provider.py
+tests/test_reviewer_provider.py
+```
+
+Focused verification is sufficient. P4 must not modify P3, P1/P2 contracts, REVIEW schema, Decision Packet, ingress, Runtime, provider routing or publication merely to simplify the shell.
+
 ## 5. REVIEW identity and semantic-body boundary
 
 The canonical REVIEW contract remains unchanged unless a later separately authorized task proves a real contract gap.
