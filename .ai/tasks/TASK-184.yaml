@@ -1,0 +1,207 @@
+task_id: TASK-184
+revision: 1
+
+goal: >
+  Implement BP6-P1A Semantic Review Scope Identity as one deterministic, read-only,
+  content-addressed projection over the existing canonical lifecycle graph so a later
+  repository-blind Reviewer can know the exact semantic review mode, semantic base,
+  latest correction base, reviewed head, and prior finding identity without creating a
+  second lifecycle reducer or changing AIOS_UNIFIED_STATE v1.
+
+problem: >
+  Current SEMANTIC_REVIEW Decision Packet material binds TASK, RUN/RESULT identity,
+  Executor claims, bounded EVIDENCE summaries and prior correction provenance, but a
+  provider-neutral Reviewer also needs the exact implementation range it is authorized
+  to judge. RUN.base_sha is not always that semantic base: after pre-review REPAIR the
+  required PRIMARY review still spans the original PRIMARY semantic base to the final
+  candidate, while a repair-of-remediation DELTA review must preserve the prior REVIEW
+  reviewed SHA as semantic base and separately retain the latest failed/correction base
+  for material-defect inspection. Existing Unified State already owns exact correction
+  lineage semantics, so BP6-P1A must project these identities from that graph rather
+  than duplicate repository/lifecycle interpretation elsewhere.
+
+assumptions:
+  - >
+    Canonical main 9d704afb0002d54f4618bfca94f5fe49e2aa6503 records BP-6
+    Reviewer Provider Protocol as the unique NEXT milestone, current_phase BP6-P1A.
+  - >
+    docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md defines BP6-P1A as a read-only
+    AIOS_SEMANTIC_REVIEW_SCOPE v1 projection and defers source packaging to BP6-P1B,
+    Reviewer procedure/return contracts to BP6-P2, provider request/decision envelopes
+    to BP6-P3 and provider invocation conformance to BP6-P4.
+  - >
+    src/aios_renew/unified_state.py already owns canonical lifecycle decoding,
+    operational-parent traversal, REPAIR origin traversal, DELTA predecessor resolution,
+    cumulative correction ordering and fail-closed ambiguity/cycle handling.
+  - >
+    Existing review.validate_review, authoring ingress, Runtime verification, Publisher,
+    Decision Packet and Brain provider contracts remain authoritative and unchanged.
+
+scope:
+  inspect:
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md
+    - .ai/roadmap-state.yaml
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/review.py
+    - tests/test_operator_unified_state.py
+    - tests/test_decision_packet.py
+  modify:
+    - src/aios_renew/unified_state.py
+    - tests/test_operator_unified_state.py
+
+non_goals:
+  - >
+    Package implementation source/diffs or define AIOS_REVIEW_MATERIAL_PACKAGE v1;
+    that is BP6-P1B.
+  - >
+    Define Reviewer procedure material, REVIEW return-contract packages,
+    AIOS_REVIEW_REQUEST v1, AIOS_REVIEW_DECISION v1, provider adapters, provider
+    invocation, provider/model selection, retry, fallback, voting or hot-swap.
+  - >
+    Change REVIEW schema, review.validate_review semantics, REMEDIATION/REPAIR
+    semantics, authoring ingress, publication, Runtime verification/evidence authority,
+    Decision Packet, Flow Cards, Brain Provider Protocol or Brain provider adapters.
+  - >
+    Change the serialized AIOS_UNIFIED_STATE v1 contract or add Reviewer cognitive
+    support fields to UnifiedStateObservation.as_dict().
+  - >
+    Inspect implementation semantics, produce a REVIEW verdict, choose finding content,
+    author remediation/repair, run verification, invoke an Executor/provider, mutate
+    lifecycle state, publish, or advance roadmap state.
+  - >
+    Introduce a second lifecycle reducer, second correction graph, generic lineage
+    parser, persistent state/cache/session, generic provider/model router, automatic
+    Reviewer or new mutation authority.
+  - >
+    Consume BP-7 cross-provider/context hot-swap proof, BP-8 real-provider proof or
+    BP-9 downstream adoption.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Production mutation is limited to scope.modify. If correct implementation requires
+      another production file or a change to existing REVIEW/Decision Packet/Runtime/
+      ingress/publication contracts, fail closed back to Brain rather than widening scope.
+    - >
+      The new projection must reuse the existing Unified State lifecycle decoding and
+      correction-lineage semantics. It must not independently rediscover canonical refs,
+      reimplement publication/ingress lineage validation, or establish a competing source
+      of lifecycle truth.
+    - >
+      Expose one closed read-only AIOS_SEMANTIC_REVIEW_SCOPE v1 semantic projection for
+      the exact current successful unreviewed candidate only when canonical lifecycle
+      reduction resolves to next_action SEMANTIC_REVIEW.
+    - >
+      The projection must contain exactly these semantic fields plus its format/version/
+      kind envelope: task {id, revision}, reviewed_run_id, review_mode,
+      semantic_origin_run_id, semantic_base_sha, latest_delta_base_sha,
+      reviewed_head_sha, prior_review_run_id, prior_review_id, prior_finding_id and
+      scope_fingerprint. PRIMARY prior-review/finding fields are null.
+    - >
+      review_mode is derived deterministically from lineage and is only PRIMARY or DELTA;
+      no model/provider/caller may choose it.
+    - >
+      Direct PRIMARY derives semantic_origin_run_id from the current PRIMARY RUN and
+      sets semantic_base_sha == latest_delta_base_sha == that RUN base_sha.
+    - >
+      PRIMARY after one or more pre-review REPAIR continuations traverses exact REPAIR
+      parents to the original PRIMARY semantic origin. semantic_base_sha is the original
+      PRIMARY RUN base_sha, while latest_delta_base_sha is the current successful REPAIR
+      RUN base_sha. No failed operational ancestor may already carry a semantic review.
+    - >
+      Direct REMEDIATION DELTA derives semantic origin from the current REMEDIATION and
+      semantic_base_sha from its exact predecessor REVIEW reviewed_sha; it must bind the
+      exact predecessor source run/review/finding identity. latest_delta_base_sha is the
+      current REMEDIATION RUN base_sha, which may differ from semantic_base_sha.
+    - >
+      REPAIR of a failed REMEDIATION remains DELTA. Traverse exact REPAIR parents to the
+      REMEDIATION semantic origin; preserve that remediation's exact predecessor source
+      run/review/finding and reviewed SHA as the semantic base, while
+      latest_delta_base_sha is the current successful REPAIR RUN base_sha.
+    - >
+      Integrated/cumulative remediation must preserve the distinction between semantic
+      predecessor reviewed SHA and operational/integration execution base. Integration
+      state must not silently replace semantic_base_sha.
+    - >
+      reviewed_head_sha must equal the exact current canonical candidate SHA and the
+      successful RESULT head for reviewed_run_id. Any mismatch fails closed.
+    - >
+      The projection is invalid outside an exact SEMANTIC_REVIEW obligation, including
+      already-reviewed candidates, active/waiting execution, correction authoring/
+      execution, Runtime FAILURE, publication, DONE or blocked/ambiguous lifecycle.
+    - >
+      Competing tips/continuations, cycles, broken/missing REPAIR parents, missing or
+      ambiguous DELTA predecessor REVIEW, inconsistent review/finding identity, malformed
+      canonical artifacts, or ambiguous semantic origin must fail closed and must not
+      synthesize a best-effort scope.
+    - >
+      scope_fingerprint is the lowercase 64-hex SHA-256 of canonical deterministic JSON
+      over the complete closed scope body excluding only scope_fingerprint itself.
+      Equivalent semantic scope yields identical fingerprint; changing any bound semantic
+      identity/base/head/prior field changes the fingerprint.
+    - >
+      The scope projection performs no mutation, provider invocation, verification,
+      semantic review, repository source packaging, retry/fallback or lifecycle action.
+    - >
+      Do not change current Unified State next_action/authority decisions or serialized
+      AIOS_UNIFIED_STATE v1 output as a side effect of adding the projection.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository exposes one read-only AIOS_SEMANTIC_REVIEW_SCOPE v1 projection with
+      the exact closed fields and deterministic SHA-256 scope_fingerprint defined by this
+      TASK, while existing AIOS_UNIFIED_STATE v1 serialization remains byte-semantically
+      unchanged for the same lifecycle inputs.
+  - id: AC2
+    condition: >
+      A direct successful unreviewed PRIMARY RESULT produces review_mode PRIMARY,
+      semantic_origin_run_id == reviewed_run_id and
+      semantic_base_sha == latest_delta_base_sha == the PRIMARY RUN base SHA, with all
+      prior-review/finding identity fields null.
+  - id: AC3
+    condition: >
+      A successful unreviewed candidate reached through one or more pre-review REPAIR
+      continuations of PRIMARY remains PRIMARY, binds the original PRIMARY RUN as
+      semantic origin/base, binds the current successful REPAIR base as
+      latest_delta_base_sha, and rejects a chain whose failed operational ancestor
+      already has an incompatible semantic review.
+  - id: AC4
+    condition: >
+      A direct successful unreviewed REMEDIATION candidate produces DELTA scope whose
+      semantic base and prior source-run/review/finding identity exactly match the
+      remediation predecessor REVIEW, while latest_delta_base_sha is the remediation
+      RUN base even when operational/integrated execution base differs from the semantic
+      predecessor reviewed SHA.
+  - id: AC5
+    condition: >
+      A successful REPAIR of failed REMEDIATION remains DELTA and preserves the exact
+      remediation-origin predecessor REVIEW/finding and reviewed SHA as semantic base
+      while binding the current successful REPAIR RUN base as latest_delta_base_sha.
+  - id: AC6
+    condition: >
+      Scope derivation fails closed for non-SEMANTIC_REVIEW lifecycle, candidate/result
+      mismatch, competing continuation/tip, cyclic or broken REPAIR parentage,
+      missing/ambiguous DELTA predecessor REVIEW, inconsistent review/finding identity,
+      malformed canonical artifacts or ambiguous semantic origin, without returning a
+      partial/best-effort scope.
+  - id: AC7
+    condition: >
+      scope_fingerprint is stable for equivalent canonical scope and changes when any
+      semantic field that defines the scope changes; provider/model/session, chat memory,
+      raw logs and unrelated repository state are absent from the fingerprinted contract.
+  - id: AC8
+    condition: >
+      The implementation adds no source/diff material packaging, REVIEW verdict logic,
+      provider invocation, verification, mutation, retry/fallback, remediation selection,
+      publication or alternate lifecycle authority, and existing Unified State behavior
+      for the covered PRIMARY/REMEDIATION/REPAIR scenarios remains regression-compatible.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_operator_unified_state.py
