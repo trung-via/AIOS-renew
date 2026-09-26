@@ -807,17 +807,21 @@ sequence:
       GitHub access, chat memory, provider identity, or new semantic/lifecycle authority.
   - id: bp-6-reviewer-provider-protocol
     status: NEXT
-    current_phase: BP6-P1A
+    current_phase: BP6-P1B
     planning_document: docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md
     phases:
       - id: BP6-P1A
-        status: NEXT
+        status: DONE
+        task_id: TASK-184
+        run_id: RUN-184-001
+        review_id: REVIEW-184-001
+        published_sha: "070964600f4ae6e4282cfd3b92d7411c4abcab4f"
         objective: >-
           Derive exact deterministic semantic review scope identity across direct PRIMARY,
           repaired PRIMARY, REMEDIATION DELTA, and repair-of-remediation DELTA without
           duplicating lifecycle authority.
       - id: BP6-P1B
-        status: PLANNED
+        status: NEXT
         objective: >-
           Bind the exact review scope to complete bounded implementation material for a
           repository-blind Reviewer.
@@ -882,15 +886,15 @@ parallel_work:
 sequencing_rule:
   generic_continuation: >-
     Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol is
-    reviewed/published complete and BP-6 Reviewer Provider Protocol is current. BP-6
-    architecture is phased in docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md; the unique next
-    implementation obligation is BP6-P1A Semantic Review Scope Identity. Before TASK
-    authoring, fresh-sync and audit the minimum existing Unified State / correction-lineage
-    surface to reuse so scope derivation does not create a second lifecycle reducer.
-    Do not jump to Reviewer provider invocation before P1A/P1B/P2/P3, do not reuse
-    Brain-provider semantics as Reviewer authority, do not consume BP-7 hot-swap or
-    BP-8 real-provider proof early, and do not create a generic provider/model router,
-    automatic Reviewer, remediation selector, or new canonical mutation authority.
+    reviewed/published complete and BP-6 Reviewer Provider Protocol is current. BP6-P1A
+    Semantic Review Scope Identity is reviewed/published complete through TASK-184.
+    The unique next implementation obligation is BP6-P1B Bounded Reviewer Material
+    Package under docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md. P1B consumes exact P1A scope
+    and packages bounded source/diff material; it must not create a second lifecycle
+    reducer or Reviewer/provider authority. Do not jump to P2/P3/P4 before P1B review
+    and publication, do not consume BP-7 hot-swap or BP-8 real-provider proof early,
+    and do not create a generic provider/model router, automatic Reviewer, remediation
+    selector, or new canonical mutation authority.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
