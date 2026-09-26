@@ -1,0 +1,232 @@
+task_id: TASK-180
+revision: 1
+
+goal: >
+  Implement BP5-P1 by making the repository-owned Brain audit profile provider-self-sufficient
+  for a fresh Brain provider with no GitHub or chat context, while preserving the reviewed
+  BP-4A two-stage audit semantics and keeping the audit profile as the single semantic
+  authority for lens procedure.
+
+problem: >
+  The published BP-4A implementation proves profile identity, ordered lens coverage,
+  boundedness, Stage-1/Stage-2 binding, reconciliation and closure behavior, but the current
+  brain-high-value-v1 profile exposes only eight stable lens identifiers. A replaceable
+  provider that receives only a bounded Decision Packet and profile material cannot reliably
+  reconstruct what each lens is required to examine. Hard-coding those meanings in future
+  provider protocol code or adapters would create a second audit-policy authority. BP5-P1
+  must therefore prospectively publish one provider-ready profile whose content-addressed
+  body contains the bounded normative procedural meaning of the same eight lenses, without
+  reopening historical BP-4A completion or adding provider invocation.
+
+assumptions:
+  - >
+    Canonical planning at main 6a3c5d0e360942b3c488d98e44b05b1b8b7b0343 makes BP-5 the unique NEXT milestone and
+    identifies BP5-P1 provider-self-sufficient audit-profile material as the first BP-5
+    implementation obligation.
+  - >
+    TASK-179 r1, RUN-179-002, REVIEW-179-002 DELTA PASS and publication of
+    1c324165f93285e8179f9b0d87ab9f1e9049aa6a remain immutable BP-4A historical evidence.
+    This TASK is prospective integration work and does not reinterpret that completion.
+  - >
+    BP-4A remains authoritative for the two-stage semantic procedure, applicability,
+    construct/profile/packet binding, risk/closure grammar, reconciliation consistency,
+    CANDIDATE/NO_DECISION behavior, boundedness and no-new-authority constraints.
+  - >
+    BP5-P2 owns AIOS_BRAIN_REQUEST / AIOS_BRAIN_DECISION contracts. BP5-P3 owns provider
+    adapters and bounded invocation/orchestration conformance. TASK-180 must not consume
+    either later phase.
+  - >
+    Historical reproducibility of brain-high-value-v1 is provided by immutable Git history
+    and the exact published SHA. The current production parser does not need to become a
+    multi-version historical profile router merely to preserve that history.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+    - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/brain-audit-profiles.yaml
+    - .ai/tasks/TASK-179.yaml
+    - src/aios_renew/brain_audit.py
+    - src/aios_renew/decision_packet.py
+    - tests/test_brain_audit.py
+  modify:
+    - .ai/brain-audit-profiles.yaml
+    - src/aios_renew/brain_audit.py
+    - tests/test_brain_audit.py
+
+non_goals:
+  - >
+    Add AIOS_BRAIN_REQUEST, AIOS_BRAIN_DECISION, provider adapters, provider/model
+    invocation, provider/model selection, retry/fallback/failover, network/Git/GitHub
+    discovery, transport, execution-profile policy, lifecycle routing or a provider router.
+  - >
+    Modify Decision Packet, Brain Context, Flow Resolver, Flow Cards, Unified State,
+    Correction Frontier, Runtime, Reviewer, Publisher, authoring ingress, roadmap state,
+    provider adapters, frozen Kernel semantics or any canonical lifecycle authority.
+  - >
+    Add a new semantic flow, third audit stage, recursive audit, semantic profile selector,
+    risk ranking/scoring/voting, correction selection, Executor selection, persistent
+    reasoning/chat store, telemetry database or second audit-policy authority.
+  - >
+    Copy the Manifesto, Constitution, Project Contract or lifecycle implementation into the
+    audit profile. Provider-self-sufficient means sufficient bounded audit procedure, not a
+    second governance corpus.
+  - >
+    Rewrite historical brain-high-value-v1 artifacts or make current production code a
+    historical multi-profile migration framework.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The only production mutation surface is scope.modify. If satisfying this contract
+      requires any additional production file, fail closed back to Brain rather than
+      widening scope.
+    - >
+      The current registry remains AIOS_BRAIN_AUDIT_PROFILES version 1 and contains exactly
+      one current profile. That provider-ready profile is brain-high-value-v2 with
+      profile version 2. The old brain-high-value-v1 remains historical only at its exact
+      published Git state and is not duplicated into the current registry.
+    - >
+      The v2 profile preserves exactly the BP-4A applicability set
+      ARCHITECTURE, TASK_AUTHORING, REMEDIATION_AUTHORING and REPAIR_AUTHORING; DIAGNOSTIC
+      and SEMANTIC_REVIEW remain excluded. It preserves the same two stages, construct
+      outcomes, risk dispositions, closure outcomes, final outcomes, closure-on-reconciled
+      behavior and all existing BP-4A numeric bounds.
+    - >
+      The v2 profile replaces the bare-string lens list with one ordered closed list of
+      exactly eight records. Each record has exactly {id, check}; this single structure owns
+      lens identity, order and provider-visible procedural meaning so code does not maintain
+      a second semantic copy.
+    - >
+      The exact ordered lens ids remain:
+      AUTHORITY_BOUNDARY, SCOPE_NON_GOALS, PROVENANCE_LINEAGE,
+      FAILURE_MODE_COUNTEREXAMPLES, AC_CONSISTENCY_COMPLETENESS,
+      VERIFICATION_OWNERSHIP_ORDERING, PORTABILITY_PRIVACY_BOUNDEDNESS,
+      SIMPLIFICATION_DUPLICATE_AUTHORITY.
+    - >
+      The exact Brain-owned procedural meaning of AUTHORITY_BOUNDARY is: test whether the
+      candidate assigns semantic, implementation, execution, verification, review,
+      publication and policy responsibility to the correct authority and does not silently
+      merge authorities.
+    - >
+      The exact Brain-owned procedural meaning of SCOPE_NON_GOALS is: test the candidate
+      against explicit scope, constraints and non-goals and detect silent widening or
+      hidden implementation beyond the authorized semantic subject.
+    - >
+      The exact Brain-owned procedural meaning of PROVENANCE_LINEAGE is: test exact subject
+      identity, immutable provenance, prior semantic decisions and correction continuity
+      and detect substitution or lineage loss.
+    - >
+      The exact Brain-owned procedural meaning of FAILURE_MODE_COUNTEREXAMPLES is: search
+      bounded malformed, stale, conflicting, partial-state and substitution counterexamples
+      that can violate the intended contract despite a happy-path success.
+    - >
+      The exact Brain-owned procedural meaning of AC_CONSISTENCY_COMPLETENESS is: test that
+      goal, constraints, non-goals and acceptance criteria are mutually consistent, cover
+      identified material risks and do not require impossible or circular proof.
+    - >
+      The exact Brain-owned procedural meaning of VERIFICATION_OWNERSHIP_ORDERING is: test
+      that Runtime retains canonical verification authority and that the candidate does not
+      require post-verification truth before verification or let Executor/Brain claims
+      become evidence.
+    - >
+      The exact Brain-owned procedural meaning of PORTABILITY_PRIVACY_BOUNDEDNESS is: test
+      that the candidate does not depend on chat memory, provider GitHub access, hidden
+      machine-local state, secrets, provider/session identity or unbounded context and
+      remains portable under bounded inputs.
+    - >
+      The exact Brain-owned procedural meaning of SIMPLIFICATION_DUPLICATE_AUTHORITY is:
+      test for unnecessary repeated work, duplicated policy/state/semantic authority or
+      redundant orchestration that can be removed without weakening guarantees.
+    - >
+      Each lens check is strict non-empty UTF-8 text, is normalized with the existing
+      representation rules, and is bounded by a new profile-owned
+      lens_check_bytes value of 2048. The existing raw registry ceiling remains 32768 UTF-8
+      bytes and maximum structural depth remains 32. No silent trimming or truncation is
+      allowed.
+    - >
+      Profile parsing remains closed and fail-closed: missing/extra lens fields, bare-string
+      legacy lens entries in the current v2 registry, duplicate ids, wrong order,
+      invalid Unicode, unknown profile fields, non-JSON semantic values and over-bound
+      material are rejected.
+    - >
+      Provider-visible lens check text is repository-owned policy material, not private
+      candidate metadata. Legitimate words such as provider, model, chat, Runtime,
+      Reviewer or Publisher in those checks must not be rejected merely because candidate
+      privacy filters reserve related metadata keys.
+    - >
+      profile_ref continues to hash canonical strict JSON of the complete normalized
+      profile body. Any semantic change to a lens id/check/order, procedure or bound changes
+      the digest; equivalent YAML representation such as mapping-field order, whitespace
+      and LF/CRLF does not.
+    - >
+      BP-4A construct identity must continue to bind the complete profile ref. Therefore,
+      with an otherwise identical Decision Packet and candidate, a semantic profile change
+      changes profile_ref.digest and construct_fingerprint, and a Stage-1 construct bound to
+      one profile fails closed when validated with a different profile.
+    - >
+      All reviewed BP-4A behavior apart from the prospective profile material/identity
+      remains unchanged: exact four-flow applicability, ordered eight-lens coverage,
+      CLEAR/RISK_FOUND grammar, ADDRESSED/DISMISSED reconciliation consistency,
+      CLEAR/BLOCKER closure, CANDIDATE/NO_DECISION semantics, candidate/privacy bounds,
+      pure caller-supplied operation and no persistence or lifecycle mutation.
+    - >
+      Python production code may encode structural grammar, safety ceilings and profile
+      version/shape validation, but must not contain an independent second copy of the
+      eight lens check prose. Tests may assert against the canonical registry material but
+      must not become an alternative policy source.
+    - >
+      TASK-180 introduces no provider invocation and no claim that deterministic validation
+      proves the substantive correctness of a lens check or Brain audit judgment.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The current repository audit-profile registry contains exactly one provider-ready
+      brain-high-value-v2 profile version 2 with the exact existing four applicable
+      Brain-owned flows, exact eight ordered lens ids, unchanged BP-4A procedure/bounds,
+      the new lens_check_bytes=2048 bound, and one exact bounded Brain-authored procedural
+      check for every lens.
+  - id: AC2
+    condition: >
+      The profile parser accepts only the closed v2 lens record shape {id, check}, requires
+      complete unique ordered coverage, strict non-empty UTF-8 check text within the
+      profile-owned bound, and fails closed on missing/extra fields, bare legacy strings,
+      duplicate/unknown/reordered ids, invalid Unicode, non-JSON values and over-bound
+      registry/profile/check material.
+  - id: AC3
+    condition: >
+      The complete normalized provider-visible lens procedure is content-addressed:
+      equivalent YAML representation including LF/CRLF and mapping-field order preserves
+      profile_ref, while changing any lens check/id/order, procedure or bound changes
+      profile_ref.digest.
+  - id: AC4
+    condition: >
+      BP-4A end-to-end identity remains exact: with the same Decision Packet and candidate,
+      a semantic profile change changes construct_fingerprint; Stage-2 validation rejects
+      a Stage-1 construct/profile substitution; no provider/model/session identity is added
+      to semantic fingerprints.
+  - id: AC5
+    condition: >
+      Existing BP-4A semantics remain behaviorally unchanged apart from the new profile
+      material/identity: exact applicability, two-stage contract, ordered coverage,
+      reconciliation consistency, closure sweep, CANDIDATE/NO_DECISION behavior,
+      candidate/privacy bounds and pure no-I/O/no-lifecycle side effects are preserved.
+  - id: AC6
+    condition: >
+      The canonical profile is the sole source of lens procedural prose. Production code
+      does not duplicate the eight check meanings, no provider/request/adapter/router or
+      new authority is introduced, and historical BP-4A artifacts remain immutable rather
+      than being rewritten or treated as if they used v2.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_brain_audit.py
