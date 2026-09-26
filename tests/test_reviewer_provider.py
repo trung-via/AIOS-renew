@@ -203,10 +203,16 @@ def test_adapters_preserve_semantic_identity_without_session_input():
     {"semantic_response": {"bad": "\ud800"}, "attribution": attribution()},
     {"semantic_response": {"bad": [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]},
      "attribution": attribution()},
-    {"semantic_response": {"large": "x" * 262144}, "attribution": attribution()},
+    "oversized-native-response",
 ])
 def test_mapping_native_rejects_malformed_and_oversized(wrapper):
-    provider = MappingReviewerProvider("map", "m", lambda request: deepcopy(wrapper))
+    def native(request):
+        if wrapper == "oversized-native-response":
+            return {"semantic_response": {"large": "x" * 262144},
+                    "attribution": attribution()}
+        return deepcopy(wrapper)
+
+    provider = MappingReviewerProvider("map", "m", native)
     with pytest.raises(ReviewerProviderResponseError):
         provider.invoke({"format": "AIOS_REVIEW_REQUEST"})
 
@@ -218,10 +224,11 @@ def test_mapping_native_rejects_malformed_and_oversized(wrapper):
     b'"session_id":null,"invocation_id":null,"model":"m"}}',
     b'{"semantic_response":{"x":Infinity},"attribution":{}}',
     b'{"semantic_response":{"x":1e999},"attribution":{}}',
-    b"x" * 262145,
+    "oversized-native-response",
 ])
 def test_json_native_rejects_malformed_duplicate_utf8_and_bounds(native):
-    provider = JsonReviewerProvider("map", "m", lambda request: native)
+    response = b"x" * 262145 if native == "oversized-native-response" else native
+    provider = JsonReviewerProvider("map", "m", lambda request: response)
     with pytest.raises(ReviewerProviderResponseError):
         provider.invoke({"format": "AIOS_REVIEW_REQUEST"})
 
