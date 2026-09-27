@@ -9486,6 +9486,229 @@ def test_source_bootstrap_stale_upstream_after_edge_has_no_run(
     assert not marker.with_suffix(".completed").exists()
 
 
+def test_migration_run_history_accepts_nested_remediation_and_rejects_unknown(
+    tmp_path: Path,
+) -> None:
+    repo, _, intent = _source_bootstrap_fixture(tmp_path)
+    state = runtime_paths(repo)
+    run = {"run_id": "RUN-999-001", "task": {"id": "TASK-999", "revision": 1},
+           "executor": "codex", "base_sha": "a" * 40,
+           "workspace": str(repo), "status": "ACTIVE"}
+    (state.runs / "RUN-999-001.json").write_text(json.dumps(run), encoding="utf-8")
+    remediation = {"kind": "REMEDIATION", "execution": {"run": {
+        **run, "run_id": "RUN-998-001"}}}
+    path = state.runs / "RUN-998-001.json"
+    path.write_text(json.dumps(remediation), encoding="utf-8")
+    assert operator_module._migration_run_terminal(repo, intent) == (None, None)
+    path.write_text(json.dumps({"kind": "UNKNOWN", "execution": {"run": run}}), encoding="utf-8")
+    with pytest.raises(OperatorError, match="invalid migration RUN"):
+        operator_module._migration_run_terminal(repo, intent)
+    path.write_text(json.dumps({"kind": "REMEDIATION", "execution": {"run": {}}}), encoding="utf-8")
+    with pytest.raises(OperatorError, match="invalid migration RUN"):
+        operator_module._migration_run_terminal(repo, intent)
+
+
+@pytest.mark.parametrize("new_revision", [2, 3])
+def test_source_bootstrap_recovery_exact_replay_and_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, new_revision: int,
+) -> None:
+    repo, target_source, old = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", old["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: old["source_generation_sha"])
+    installed = [old["target_generation_sha"]]
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: installed[0])
+    old_path = tmp_path / "old.json"
+    old_path.write_text(json.dumps(old), encoding="utf-8")
+    assert operator_module.bootstrap_source_primary(
+        old_path, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0)
+    ) == 0
+    old_marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(old))
+    old_marker.with_suffix(".consumed").write_text(old_marker.stem, encoding="utf-8")
+    old_bytes = {p: p.read_bytes() for p in (
+        old_marker, old_marker.with_suffix(".consumed"))}
+    assert (old_marker.parent.parent / "m").is_dir()
+    with pytest.raises(OperatorError, match="not completed"):
+        operator_module._require_no_active_migration(repo)
+
+    new = dict(old)
+    if new_revision > 2:
+        control_sha = publish_upstream(
+            repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE.replace("revision: 1", "revision: 3")},
+            "authorized successor revision",
+        )
+        git(repo, "fetch", "origin", "main")
+        git(repo, "merge", "--ff-only", "origin/main")
+        new.update(source_control_sha=control_sha, task_revision=3,
+                   task_blob_sha=git(repo, "rev-parse", f"{control_sha}:.ai/tasks/TASK-101.yaml"),
+                   task_commit_sha=control_sha)
+    operator_file = target_source / "src" / "aios_renew" / "operator.py"
+    operator_file.write_text("# separately activated successor target\n", encoding="utf-8")
+    git(target_source, "add", ".")
+    git(target_source, "commit", "-m", "activated replacement target")
+    new["target_generation_sha"] = git(target_source, "rev-parse", "HEAD")
+    installed[0] = new["target_generation_sha"]
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", new["target_generation_sha"])
+    new_path = tmp_path / "replacement.json"
+    new_path.write_text(json.dumps(new), encoding="utf-8")
+    with RepositoryLock(runtime_paths(repo).lock):
+        with pytest.raises(OperatorError, match="another AIOS run"):
+            operator_module.recover_source_bootstrap(old_path, new_path)
+    assert not old_marker.with_suffix(".superseded").exists()
+    assert operator_module.recover_source_bootstrap(old_path, new_path) == 0
+    assert operator_module.recover_source_bootstrap(old_path, new_path) == 0
+    assert all(p.read_bytes() == content for p, content in old_bytes.items())
+    new_marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(new))
+    link = json.loads(old_marker.with_suffix(".superseded").read_text(encoding="utf-8"))
+    assert link == json.loads(new_marker.with_suffix(".predecessor").read_text(encoding="utf-8"))
+    assert link["replacement_fingerprint"] == new_marker.stem
+    assert new_marker.is_file()
+    with pytest.raises(OperatorError, match="not completed"):
+        operator_module._require_no_active_migration(repo)
+    with pytest.raises(OperatorError, match="superseded"):
+        operator_module.bootstrap_source_primary(old_path, handoff_path=old_marker)
+    record = json.loads(new_marker.read_text(encoding="utf-8"))
+    bound, target = operator_module._migration_bundle(new_marker, record, new)
+    assert bound.is_file()
+    monkeypatch.setattr(operator_module, "__file__", str(target / "src" / "aios_renew" / "operator.py"))
+    invocations = []
+    def admitted(*args, **kwargs):
+        invocations.append(kwargs)
+        assert operator_module._require_migration_target(repo, new_marker.stem) == record
+        state = runtime_paths(repo)
+        run_id = "RUN-101-002"
+        (state.runs / f"{run_id}.json").write_text(json.dumps({
+            "run_id": run_id, "task": {"id": new["task_id"], "revision": new_revision},
+            "executor": new["executor"], "base_sha": new["source_control_sha"],
+            "workspace": str(repo), "status": "ACTIVE",
+        }), encoding="utf-8")
+        (state.results / f"{run_id}.json").write_text(json.dumps({
+            "result": {"head_sha": new["source_control_sha"], "claims": [],
+                       "changed_files": [], "unresolved": []}, "evidence": [],
+        }), encoding="utf-8")
+        return SimpleNamespace(render=lambda: "ADMITTED")
+    monkeypatch.setattr(operator_module, "run_task", admitted)
+    assert operator_module.bootstrap_source_primary(new_path, handoff_path=new_marker) == 0
+    assert operator_module.bootstrap_source_primary(new_path, handoff_path=new_marker) == 0
+    assert len(invocations) == 1
+    assert invocations[0]["synchronize"] is False
+    assert invocations[0]["task_revision"] == new_revision
+    operator_module._require_no_active_migration(repo)
+    installed[0] = old["target_generation_sha"]
+    with pytest.raises(OperatorError, match="superseded"):
+        operator_module._require_no_active_migration(repo)
+    old_marker.with_suffix(".superseded").unlink()
+    with pytest.raises(OperatorError, match="orphaned"):
+        operator_module._require_no_active_migration(repo)
+
+
+@pytest.mark.parametrize("change", [
+    "task", "executor", "pin", "control", "bound_run", "dirty", "stale",
+    "completed", "nonfastforward", "pin_change", "same_revision_blob", "new_revision_unbound",
+])
+def test_source_bootstrap_recovery_rejects_cross_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str,
+) -> None:
+    repo, target_source, old = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", old["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: old["source_generation_sha"])
+    old_path = tmp_path / "old.json"
+    old_path.write_text(json.dumps(old), encoding="utf-8")
+    operator_module.bootstrap_source_primary(
+        old_path, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0)
+    )
+    old_marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(old))
+    old_marker.with_suffix(".consumed").write_text(old_marker.stem, encoding="utf-8")
+    operator_file = target_source / "src" / "aios_renew" / "operator.py"
+    operator_file.write_text("# new target\n", encoding="utf-8")
+    git(target_source, "add", ".")
+    git(target_source, "commit", "-m", "new target")
+    new = dict(old, target_generation_sha=git(target_source, "rev-parse", "HEAD"))
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", new["target_generation_sha"])
+    if change == "task":
+        new["task_id"] = "TASK-102"
+    elif change == "executor":
+        new["executor"] = "antigravity"
+    elif change == "pin":
+        new["source_pin_blob_sha"] = "a" * 40
+    elif change == "control":
+        new["source_control_sha"] = "a" * 40
+    elif change == "dirty":
+        (repo / "untracked.txt").write_text("dirty", encoding="utf-8")
+    elif change == "stale":
+        publish_upstream(repo, {"LATER.txt": "later\n"}, "later upstream")
+    elif change == "completed":
+        old_marker.with_suffix(".completed").write_text(old_marker.stem, encoding="utf-8")
+    elif change == "nonfastforward":
+        new["source_control_sha"] = new["target_generation_sha"]
+    elif change == "pin_change":
+        changed = publish_upstream(repo, {"AIOS_PIN": f"other @ {old['source_generation_sha']}\n"},
+                                   "changed legacy pin")
+        git(repo, "fetch", "origin", "main")
+        git(repo, "merge", "--ff-only", "origin/main")
+        new["source_control_sha"] = changed
+        new["source_pin_blob_sha"] = git(repo, "rev-parse", f"{changed}:AIOS_PIN")
+    elif change == "same_revision_blob":
+        new["task_blob_sha"] = "a" * 40
+    elif change == "new_revision_unbound":
+        new["task_revision"] = 3
+    else:
+        state = runtime_paths(repo)
+        (state.runs / "RUN-101-001.json").write_text(json.dumps({
+            "run_id": "RUN-101-001", "task": {"id": "TASK-101", "revision": 2},
+            "executor": "codex", "base_sha": old["source_control_sha"],
+            "workspace": str(repo), "status": "ACTIVE",
+        }), encoding="utf-8")
+    new_path = tmp_path / "replacement.json"
+    new_path.write_text(json.dumps(new), encoding="utf-8")
+    with pytest.raises(OperatorError):
+        operator_module.recover_source_bootstrap(old_path, new_path)
+    assert not old_marker.with_suffix(".superseded").exists()
+    assert len(list(old_marker.parent.glob("*.json"))) == 1
+
+
+def test_source_bootstrap_recovery_interruption_keeps_old_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, target_source, old = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", old["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: old["source_generation_sha"])
+    old_path = tmp_path / "old.json"
+    old_path.write_text(json.dumps(old), encoding="utf-8")
+    operator_module.bootstrap_source_primary(
+        old_path, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0)
+    )
+    old_marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(old))
+    old_marker.with_suffix(".consumed").write_text(old_marker.stem, encoding="utf-8")
+    operator_file = target_source / "src" / "aios_renew" / "operator.py"
+    operator_file.write_text("# replacement target\n", encoding="utf-8")
+    git(target_source, "add", ".")
+    git(target_source, "commit", "-m", "replacement target")
+    new = dict(old, target_generation_sha=git(target_source, "rev-parse", "HEAD"))
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", new["target_generation_sha"])
+    new_path = tmp_path / "replacement.json"
+    new_path.write_text(json.dumps(new), encoding="utf-8")
+    original_write = operator_module._write_migration_atomic
+    def interrupt_commit(path, content):
+        if path == old_marker.with_suffix(".superseded"):
+            raise OSError("simulated interruption before commit")
+        return original_write(path, content)
+    monkeypatch.setattr(operator_module, "_write_migration_atomic", interrupt_commit)
+    with pytest.raises(OSError, match="simulated interruption"):
+        operator_module.recover_source_bootstrap(old_path, new_path)
+    assert old_marker.with_suffix(".consumed").read_text(encoding="utf-8") == old_marker.stem
+    assert not old_marker.with_suffix(".superseded").exists()
+    new_marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(new))
+    assert new_marker.is_file() and new_marker.with_suffix(".predecessor").is_file()
+    with pytest.raises(OperatorError, match="orphaned"):
+        operator_module._require_no_active_migration(repo)
+    with pytest.raises(OperatorError):
+        operator_module.recover_source_bootstrap(old_path, new_path)
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
 def test_bootstrap_attests_imported_legacy_install_without_control_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

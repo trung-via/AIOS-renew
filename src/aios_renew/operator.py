@@ -4005,7 +4005,24 @@ def _migration_run_terminal(root: Path, intent: Mapping[str, Any]) -> tuple[str 
     matches: list[str] = []
     for path in state.runs.glob("*.json"):
         try:
-            run = _run_from_data(json.loads(path.read_text(encoding="utf-8")))
+            document = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(document, dict) and document.get("kind") == "REMEDIATION":
+                execution = document["execution"]
+                if not isinstance(execution, dict):
+                    raise TypeError("invalid remediation execution")
+                document = execution["run"]
+            elif not isinstance(document, dict) or "kind" in document:
+                raise TypeError("unknown RUN document shape")
+            run = _run_from_data(document)
+            if (not isinstance(run.run_id, str) or not re.fullmatch(r"RUN-[0-9]+-[0-9]+", run.run_id)
+                    or path.stem != run.run_id or not isinstance(run.base_sha, str)
+                    or not re.fullmatch(r"[0-9a-f]{40}", run.base_sha)
+                    or not isinstance(run.task.id, str)
+                    or not re.fullmatch(r"TASK-[0-9]+", run.task.id)
+                    or type(run.task.revision) is not int or run.task.revision < 1
+                    or run.executor not in {"codex", "antigravity", "antigravity-minimax"}
+                    or not isinstance(run.workspace, str) or not Path(run.workspace).is_absolute()):
+                raise ValueError("invalid RUN identity")
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise OperatorError("invalid migration RUN record") from exc
         if (intent.get("version") == 2
@@ -4094,20 +4111,132 @@ def _launch_migration_target(
     return runner(command, env=env).returncode
 
 
+def _migration_history(root: Path) -> tuple[dict[str, tuple[Path, dict[str, Any], dict[str, Any]]], set[str]]:
+    """Validate durable edges and both sides of each committed supersession."""
+
+    directory = runtime_state_root(root) / "migration-handoffs"
+    edges: dict[str, tuple[Path, dict[str, Any], dict[str, Any]]] = {}
+    if not directory.is_dir():
+        return edges, set()
+    for marker in directory.glob("*.json"):
+        try:
+            record = json.loads(marker.read_text(encoding="utf-8"))
+            if (not isinstance(record, dict) or record.get("fingerprint") != marker.stem
+                    or not re.fullmatch(r"[0-9a-f]{64}", marker.stem)
+                    or record.get("repository") != str(root.resolve())
+                    or (record.get("format"), record.get("version")) not in {
+                        ("AIOS_MIGRATION_HANDOFF", 1),
+                        ("AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF", 2),
+                    }):
+                raise ValueError("invalid handoff record")
+            bundle = _migration_bundle_path(marker, marker.stem, record["bundle"])
+            parser = (_exact_source_bootstrap_intent if record["version"] == 2
+                      else _exact_migration_intent)
+            intent = parser(json.loads((bundle / "intent.json").read_text(encoding="utf-8")))
+            _migration_bundle(marker, record, intent)
+            for suffix in (".consumed", ".completed"):
+                artifact = marker.with_suffix(suffix)
+                if artifact.exists() and artifact.read_text(encoding="utf-8") != marker.stem:
+                    raise ValueError("handoff state mismatch")
+        except OperatorError:
+            raise
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise OperatorError("invalid migration handoff history") from exc
+        edges[marker.stem] = marker, record, intent
+    superseded: set[str] = set()
+    predecessors: set[str] = set()
+    successors: set[str] = set()
+    for marker, _, _ in edges.values():
+        prior = marker.with_suffix(".predecessor")
+        if prior.exists():
+            predecessors.add(marker.stem)
+        link = marker.with_suffix(".superseded")
+        if not link.exists():
+            continue
+        try:
+            payload = json.loads(link.read_text(encoding="utf-8"))
+            successor = payload["replacement_fingerprint"]
+            if (payload != {"format": "AIOS_SOURCE_BOOTSTRAP_SUPERSESSION",
+                            "old_fingerprint": marker.stem,
+                            "replacement_fingerprint": successor}
+                    or successor not in edges or successor == marker.stem
+                    or successor in successors
+                    or marker.with_suffix(".predecessor").exists()
+                    or edges[successor][0].with_suffix(".superseded").exists()
+                    or not edges[successor][0].with_suffix(".predecessor").is_file()
+                    or json.loads(edges[successor][0].with_suffix(".predecessor").read_text(encoding="utf-8")) != payload
+                    or marker.stem in superseded):
+                raise ValueError("supersession linkage mismatch")
+            old_intent = edges[marker.stem][2]
+            new_intent = edges[successor][2]
+            if (old_intent.get("version") != 2 or new_intent.get("version") != 2
+                    or not marker.with_suffix(".consumed").is_file()
+                    or marker.with_suffix(".completed").exists()
+                    or new_intent["target_generation_sha"] == old_intent["target_generation_sha"]
+                    or not _recovery_identity_matches(old_intent, new_intent)):
+                raise ValueError("supersession edge mismatch")
+            if not _git_is_ancestor(root, old_intent["source_control_sha"],
+                                    new_intent["source_control_sha"]):
+                raise ValueError("supersession control is not a fast-forward")
+            pin = new_intent["pin_path"].replace("\\", "/")
+            old_control, new_control = (old_intent["source_control_sha"],
+                                        new_intent["source_control_sha"])
+            if (_git(root, "rev-parse", f"{old_control}:{pin}") != old_intent["source_pin_blob_sha"]
+                    or _git(root, "rev-parse", f"{new_control}:{pin}") != new_intent["source_pin_blob_sha"]
+                    or _git(root, "show", f"{old_control}:{pin}") != _git(root, "show", f"{new_control}:{pin}")):
+                raise ValueError("supersession legacy pin changed")
+            task_path = f".ai/tasks/{new_intent['task_id']}.yaml"
+            if (not _git_is_ancestor(root, new_intent["task_commit_sha"], new_control)
+                    or _git(root, "rev-parse", f"{new_control}:{task_path}") != new_intent["task_blob_sha"]
+                    or _git(root, "rev-parse", f"{new_intent['task_commit_sha']}:{task_path}") != new_intent["task_blob_sha"]):
+                raise ValueError("supersession TASK authorization mismatch")
+            task = parse_task(_git(root, "show", f"{new_control}:{task_path}"))
+            if task.task_id != new_intent["task_id"] or task.revision != new_intent["task_revision"]:
+                raise ValueError("supersession TASK revision mismatch")
+            superseded.add(marker.stem)
+            successors.add(successor)
+        except (OSError, ValueError, KeyError, TypeError, OperatorError, TaskValidationError) as exc:
+            raise OperatorError("invalid migration supersession evidence") from exc
+    if predecessors != successors:
+        raise OperatorError("orphaned migration supersession evidence")
+    for artifact in (*directory.glob("*.superseded"), *directory.glob("*.predecessor"),
+                     *directory.glob("*.consumed"), *directory.glob("*.completed")):
+        if artifact.stem not in edges:
+            raise OperatorError("orphaned migration handoff evidence")
+    active_sources: set[str] = set()
+    active_targets: set[str] = set()
+    for fingerprint, (_, record, _) in edges.items():
+        if fingerprint in superseded:
+            continue
+        source = record["source_generation_sha"]
+        target = record["target_generation_sha"]
+        if source in active_sources or target in active_targets:
+            raise OperatorError("ambiguous active migration handoff history")
+        active_sources.add(source)
+        active_targets.add(target)
+    return edges, superseded
+
+
+def _recovery_identity_matches(old: Mapping[str, Any], new: Mapping[str, Any]) -> bool:
+    preserved = ("source_generation_sha", "target_url", "repository", "pin_path",
+                 "source_pin_blob_sha", "task_id", "executor")
+    if any(old[key] != new[key] for key in preserved):
+        return False
+    if new["task_revision"] == old["task_revision"]:
+        return all(new[key] == old[key] for key in ("task_blob_sha", "task_commit_sha"))
+    return new["task_revision"] > old["task_revision"]
+
+
 def _require_no_active_migration(root: Path) -> None:
-    marker_dir = runtime_state_root(root) / "migration-handoffs"
-    if not marker_dir.is_dir():
-        return
+    edges, superseded = _migration_history(root)
     links: dict[str, str] = {}
     markers: dict[str, Path] = {}
     targets: set[str] = set()
-    for marker in marker_dir.glob("*.json"):
-        try:
-            record = json.loads(marker.read_text(encoding="utf-8"))
-            source = record["source_generation_sha"]
-            target = record["target_generation_sha"]
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            raise OperatorError("invalid migration handoff marker") from exc
+    for fingerprint, (marker, record, _) in edges.items():
+        if fingerprint in superseded:
+            continue
+        source = record["source_generation_sha"]
+        target = record["target_generation_sha"]
         if (not isinstance(source, str) or not isinstance(target, str)
                 or (record.get("format"), record.get("version")) not in {
                     ("AIOS_MIGRATION_HANDOFF", 1),
@@ -4151,6 +4280,9 @@ def _require_migration_target(root: Path, fingerprint: str) -> dict[str, Any]:
     if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
         raise OperatorError("invalid migration handoff fingerprint")
     marker = _migration_marker(root, fingerprint)
+    edges, superseded = _migration_history(root)
+    if fingerprint not in edges or fingerprint in superseded:
+        raise OperatorError("migration target is not the active exact handoff")
     try:
         record = json.loads(marker.read_text(encoding="utf-8"))
         consumed = marker.with_suffix(".consumed").read_text(encoding="utf-8")
@@ -4403,6 +4535,9 @@ def bootstrap_source_primary(
     if Path(handoff_path).resolve() != marker.resolve():
         raise OperatorError("source-control bootstrap handoff marker mismatch")
     with RepositoryLock(marker.with_suffix(".lock")):
+        edges, superseded = _migration_history(root)
+        if fingerprint not in edges or fingerprint in superseded:
+            raise OperatorError("source-control bootstrap handoff was superseded")
         try:
             record = json.loads(marker.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
@@ -4447,6 +4582,89 @@ def bootstrap_source_primary(
         _complete_migration(marker, fingerprint)
         print(summary.render())
         return 0
+
+
+def recover_source_bootstrap(
+    old_intent_path: str | Path, replacement_intent_path: str | Path,
+    *, legacy_runner: NativeRunner = subprocess.run,
+) -> int:
+    """Commit one exact pre-RUN v2 supersession without launching a target."""
+
+    old = _exact_source_bootstrap_intent(json.loads(Path(old_intent_path).read_text(encoding="utf-8")))
+    new = _exact_source_bootstrap_intent(json.loads(Path(replacement_intent_path).read_text(encoding="utf-8")))
+    root = resolve_repository(old["repository"])
+    old_fp, new_fp = _migration_fingerprint(old), _migration_fingerprint(new)
+    old_marker, new_marker = _migration_marker(root, old_fp), _migration_marker(root, new_fp)
+    if (new_fp == old_fp or not _recovery_identity_matches(old, new)
+            or new["target_generation_sha"] == old["target_generation_sha"]):
+        raise OperatorError("replacement source-bootstrap identity is unauthorized")
+    with RepositoryLock(runtime_paths(root).lock):
+        edges, superseded = _migration_history(root)
+        if old_fp not in edges or edges[old_fp][2] != old:
+            raise OperatorError("selected old source-bootstrap edge is unavailable")
+        if old_fp in superseded:
+            link = json.loads(old_marker.with_suffix(".superseded").read_text(encoding="utf-8"))
+            if link["replacement_fingerprint"] == new_fp and edges[new_fp][2] == new:
+                return 0
+            raise OperatorError("source-bootstrap edge already has another successor")
+        if (_SOURCE_BOOTSTRAP_TARGET_SHA is None
+                or new["target_generation_sha"] != _SOURCE_BOOTSTRAP_TARGET_SHA):
+            raise OperatorError("replacement source-bootstrap target is not activated")
+        if (len(edges) != 1 or not old_marker.with_suffix(".consumed").is_file()
+                or old_marker.with_suffix(".completed").exists()
+                or old_marker.with_suffix(".consumed").read_text(encoding="utf-8") != old_fp):
+            raise OperatorError("source-bootstrap edge is not one consumed pre-RUN edge")
+        if _migration_run_terminal(root, old)[0] is not None:
+            raise OperatorError("source-bootstrap edge already has a bound RUN")
+        if _legacy_installed_generation_sha(runner=legacy_runner) != old["source_generation_sha"]:
+            raise OperatorError("source-bootstrap legacy generation mismatch")
+        if (not _git_is_ancestor(root, old["source_control_sha"], new["source_control_sha"])
+                or Path(new["repository"]).resolve() != root.resolve()):
+            raise OperatorError("replacement control is not a fast-forward of old control")
+        if new_marker.exists() or new_marker.with_suffix(".predecessor").exists():
+            raise OperatorError("replacement handoff already exists")
+        with tempfile.TemporaryDirectory(prefix="aios-recovery-control-") as temporary:
+            control = Path(temporary) / "control"
+            _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags", str(root), str(control))
+            _check_source_bootstrap_control(root, new, transport=control)
+            old_pin = _git(control, "show", f"{old['source_control_sha']}:{old['pin_path']}")
+            new_pin = _git(control, "show", f"{new['source_control_sha']}:{new['pin_path']}")
+            if old_pin != new_pin:
+                raise OperatorError("replacement legacy pin content changed")
+            transport = runtime_state_root(root) / "m"
+            transport.mkdir(parents=True, exist_ok=True)
+            if list(transport.glob(f"{new_fp[:12]}-*")):
+                raise OperatorError("orphaned replacement transport")
+            bundle = Path(tempfile.mkdtemp(prefix=f"{new_fp[:12]}-", dir=transport))
+            try:
+                target = bundle / "source"
+                _git(root, "clone", "--no-checkout", "--no-tags", new["target_url"], str(target))
+                _git(target, "checkout", "--detach", new["target_generation_sha"])
+                bound = bundle / "intent.json"
+                _write_migration_atomic(bound, json.dumps(new, sort_keys=True))
+                record = _source_bootstrap_record(new, new_fp, bundle.name)
+                if (_git(target, "rev-parse", "HEAD") != new["target_generation_sha"]
+                        or _git(target, "status", "--porcelain")
+                        or not (target / "src" / "aios_renew" / "operator.py").is_file()):
+                    raise OperatorError("replacement target source mismatch")
+                # Recheck every mutable authority before publishing staged evidence.
+                _check_source_bootstrap_control(root, new, transport=control)
+                if (_legacy_installed_generation_sha(runner=legacy_runner) != old["source_generation_sha"]
+                        or _migration_run_terminal(root, old)[0] is not None
+                        or old_marker.with_suffix(".completed").exists()):
+                    raise OperatorError("source-bootstrap recovery authority changed")
+                _write_migration_atomic(new_marker, json.dumps(record, sort_keys=True))
+                _migration_bundle(new_marker, record, new)
+                link = {"format": "AIOS_SOURCE_BOOTSTRAP_SUPERSESSION",
+                        "old_fingerprint": old_fp, "replacement_fingerprint": new_fp}
+                _write_migration_atomic(new_marker.with_suffix(".predecessor"), json.dumps(link, sort_keys=True))
+                # This last atomic write is the only authority transition.
+                _write_migration_atomic(old_marker.with_suffix(".superseded"), json.dumps(link, sort_keys=True))
+            except BaseException:
+                if not new_marker.exists():
+                    _remove_historical_workspace(root, bundle)
+                raise
+    return 0
 
 
 def migrate_primary(
@@ -6641,6 +6859,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     source_bootstrap_parser.add_argument("intent", help="Exact source-control bootstrap intent JSON")
     source_bootstrap_parser.add_argument("--accept-handoff", help=argparse.SUPPRESS)
+    recovery_parser = commands.add_parser(
+        "recover-source-bootstrap", help="Supersede one consumed pre-RUN source bootstrap edge"
+    )
+    recovery_parser.add_argument("old_intent", help="Exact bound old v2 intent JSON")
+    recovery_parser.add_argument("replacement_intent", help="Exact authorized replacement v2 intent JSON")
     wakeup_parser = commands.add_parser(
         "wakeup", help="Idempotently wake one canonical PRIMARY execution"
     )
@@ -6972,6 +7195,8 @@ def main(
             return bootstrap_source_primary(
                 args.intent, runner=native_runner, handoff_path=args.accept_handoff
             )
+        elif args.command == "recover-source-bootstrap":
+            return recover_source_bootstrap(args.old_intent, args.replacement_intent)
         elif args.command == "wakeup":
             repo_root = resolve_repository(args.repo)
             dispatch_state_root = runtime_paths(repo_root).root
