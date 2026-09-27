@@ -930,6 +930,9 @@ sequence:
       model memory.
   - id: bp-8-real-second-provider-proof
     status: NEXT
+    phase: BP8-P1
+    task_id: TASK-191
+    task_revision: 1
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Prove the contracts with one controlled real non-default Brain or Reviewer provider
