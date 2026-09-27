@@ -87,6 +87,15 @@ def test_managed_defaults_exist_only_in_repository_policy() -> None:
     ]
     for path in operational_sources:
         text = path.read_text(encoding="utf-8")
+        if path == root / "src" / "aios_renew" / "gemini_reviewer_transport.py":
+            # The explicit BP8 Reviewer binding is separate from Executor defaults.
+            reviewer_bindings = (
+                'Callers bind it explicitly to JsonReviewerProvider("antigravity", "gemini-3.8-flash", ...).',
+                'MODEL = "gemini-3.8-flash"',
+            )
+            for binding in reviewer_bindings:
+                assert text.count(binding) == 1
+                text = text.replace(binding, "", 1)
         for value in managed_defaults:
             assert value not in text, f"duplicate managed default in {path}"
 
