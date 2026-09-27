@@ -1,14 +1,14 @@
 task_id: TASK-202
-revision: 1
+revision: 2
 
 goal: >
   Harden the reviewed source-control legacy-bootstrap protocol so it can operate over
   repositories with canonical mixed PRIMARY/REPAIR and REMEDIATION RUN history, and add
-  one bounded Runtime-owned recovery path for an already-consumed version-2
-  source-bootstrap handoff that failed before any bound RUN was created. Preserve all
-  historical handoff/RUN evidence, exact target activation, single-Executor/single-RUN
-  authority, and the invariant that a completed bootstrap leaves the installed
-  generation at the exact handoff target.
+  one bounded, transactional Runtime-owned recovery path for an already-consumed
+  version-2 source-bootstrap handoff that failed before any bound RUN was created.
+  Preserve all historical handoff/RUN evidence, exact target activation,
+  single-Executor/single-RUN authority, and the invariant that a completed bootstrap
+  leaves the installed generation at the exact handoff target.
 
 problem: >
   TASK-199/TASK-201 source-bootstrap is production-activated for exact target
@@ -22,14 +22,16 @@ problem: >
   handoff was durably staged and consumed but before a bound TASK-255 r5 RUN existed,
   leaving an immutable consumed/uncompleted authority edge. Current code has no
   canonical primitive to supersede such a pre-RUN edge; deleting or rewriting it by
-  hand would destroy authority lineage. A later target also cannot simply be selected
-  by mutable main because TASK-199 requires separate exact activation and target-source
-  ownership.
+  hand would destroy authority lineage. Recovery must also be transactional: the old
+  consumed edge cannot become inactive before one exact replacement handoff is durably
+  complete enough to assume authority, otherwise a failed replacement staging attempt
+  could leave an authority gap or ambiguous half-superseded state.
 
 assumptions:
   - >
-    Canonical AIOS-renew main at authoring is
-    bbc8f09f38ac4d150060c6fcc851b6da2140e5a0.
+    Canonical AIOS-renew main at r2 authoring is
+    cd135f0182d7d5197a232abb31cb1fce314a4ace, whose only semantic delta from
+    bbc8f09f38ac4d150060c6fcc851b6da2140e5a0 is canonical TASK-202 r1.
   - >
     TASK-199 / RUN-199-001 / REVIEW-199-001 is reviewed/published at exact
     ff29666d50eaf9276ab62d944018f2bbeb91f073 and introduced source-control
@@ -67,6 +69,7 @@ scope:
     - .ai/roadmap-state.yaml
     - .ai/tasks/TASK-199.yaml
     - .ai/tasks/TASK-201.yaml
+    - .ai/tasks/TASK-202.yaml
     - src/aios_renew/operator.py
     - tests/test_operator.py
   modify:
@@ -84,9 +87,9 @@ non_goals:
     TASK-198 bootstrap-primary target/behavior except where shared read-only helpers must
     understand existing canonical RUN document shapes.
   - >
-    Treat a consumed handoff with an existing bound RUN, terminal RESULT/FAILURE, completed
-    marker, malformed identity, ambiguous siblings, or mismatched repository/TASK as
-    recoverable.
+    Treat a consumed handoff with an existing bound RUN, terminal RESULT/FAILURE,
+    completed marker, malformed identity, ambiguous siblings, or mismatched
+    repository/TASK as recoverable.
   - >
     Permit recovery to mutable main/latest, a caller-selected arbitrary target, a target
     not separately activated through _SOURCE_BOOTSTRAP_TARGET_SHA, or a different TASK,
@@ -136,6 +139,26 @@ constraints:
       rename-as-history, overwrite, silent marker mutation, or history compaction is
       allowed.
     - >
+      Supersession has one fail-closed commit point. The old consumed edge must remain
+      authoritative/active until the replacement target source, replacement bound intent
+      and replacement handoff marker have all been exactly validated and durably staged,
+      and the additive supersession evidence closes the old->replacement relationship.
+      Any exception/crash before that commit point must leave the old edge active and
+      must not cause _require_no_active_migration to treat it as historical.
+    - >
+      Supersession evidence is effective only when the old marker, old consumed marker,
+      old bound intent, replacement marker and exact old->replacement binding are all
+      present and mutually consistent. A lone/partial supersession sidecar, orphaned
+      replacement transport, one-sided linkage, duplicate successor, cycle, or
+      mismatched fingerprint is invalid and must fail closed rather than deactivate the
+      old edge.
+    - >
+      Recovery staging and commit must be serialized by existing repository/migration
+      locking authority so concurrent or repeated recovery requests cannot create two
+      replacement edges. Reentry with the exact same already-staged replacement identity
+      must reconcile idempotently; a different replacement request after a committed
+      supersession must fail closed.
+    - >
       A recovery replacement must preserve source_generation_sha, target_url, repository,
       source_control_sha, pin_path, source_pin_blob_sha, task_id, task_revision,
       task_blob_sha, task_commit_sha and executor exactly from the old bound v2 intent.
@@ -145,21 +168,21 @@ constraints:
     - >
       Recovery must independently recheck the same clean attached source-control,
       unchanged legacy pin/TASK authorization and installed legacy-generation witness
-      required by a fresh source bootstrap before it can stage replacement transport.
+      required by a fresh source bootstrap before it can commit replacement authority.
       A stale/dirty/detached repository, changed pin/TASK, non-legacy installed
-      generation, or unavailable exact target fails before any replacement handoff is
-      granted.
+      generation, or unavailable exact target fails before the old edge can become
+      historical.
     - >
       Superseded pre-RUN edges must remain queryable historical evidence but must not be
-      counted as active links by _require_no_active_migration once a valid exact
-      supersession exists. Incomplete, cyclic, multiply-superseded, mismatched or
-      ambiguous supersession evidence must fail closed. An edge with a bound RUN or
-      completed marker can never be superseded by this recovery path.
+      counted as active links by _require_no_active_migration only after the exact
+      transactional supersession commit above. An edge with a bound RUN or completed
+      marker can never be superseded by this recovery path.
     - >
       Recovery itself creates no RUN and invokes no Executor. It may only authorize and
-      launch the exact replacement target source; the replacement target still owns
-      consumed-handoff validation and ordinary run_task(... synchronize=False ...)
-      admission. Exactly one bound RUN/Executor invocation remains the lifecycle outcome.
+      launch the exact replacement target source after replacement authority is
+      transactionally established; the replacement target still owns consumed-handoff
+      validation and ordinary run_task(... synchronize=False ...) admission. Exactly one
+      bound RUN/Executor invocation remains the lifecycle outcome.
     - >
       Preserve the separate two-stage activation model. TASK-202 implementation may
       publish recovery/compatibility capability but must not replace
@@ -179,8 +202,10 @@ constraints:
       compatibility/recovery semantics above.
     - >
       Verification must be deterministic/offline and must model mixed historical RUN
-      namespaces and consumed-but-no-RUN recovery without network access, real downstream
-      mutation or real Executor invocation.
+      namespaces, interrupted recovery before/at/after the supersession commit point,
+      exact recovery replay, conflicting concurrent successor intent and
+      consumed-but-no-RUN recovery without network access, real downstream mutation or
+      real Executor invocation.
 
 acceptance:
   - id: AC1
@@ -202,27 +227,33 @@ acceptance:
       separately activated exact target authority may receive the replacement handoff.
   - id: AC4
     condition: >
-      Recovery rejects any prior edge with a bound RUN/completed marker, any changed
-      repository/pin/TASK/Executor/source identity, non-legacy installed generation,
-      arbitrary/unactivated target, duplicate/cyclic/ambiguous supersession, or conflicting
-      migration history before RUN/Executor creation.
+      Recovery transactionality is fail-closed: before the supersession commit point the
+      old edge remains active; after commit, old/replacement evidence is mutually bound
+      and complete. Partial/orphaned state, duplicate/different replay, concurrency,
+      cycles or one-sided linkage cannot deactivate the old edge or grant two successors.
   - id: AC5
     condition: >
-      A valid superseded edge is historical rather than active for migration gating, while
-      the replacement edge retains the existing consumed/terminal/idempotent reconciliation
-      semantics and still permits at most one matching Runtime RUN and one Executor
-      invocation.
+      Recovery rejects any prior edge with a bound RUN/completed marker, any changed
+      repository/pin/TASK/Executor/source identity, non-legacy installed generation,
+      arbitrary/unactivated target or conflicting migration history before RUN/Executor
+      creation; exact replay reconciles without another authority edge.
   - id: AC6
+    condition: >
+      A valid superseded edge is historical rather than active for migration gating, while
+      the replacement edge retains existing consumed/terminal/idempotent reconciliation
+      semantics and permits at most one matching Runtime RUN and one Executor invocation.
+  - id: AC7
     condition: >
       Completed steady state remains generation-exact: ordinary no-migration admission is
       valid only when installed generation equals the final non-superseded target.
       Documentation/tests state that downstream source-bootstrap adoption first pins to
       that exact consumer target; any later newer pin uses ordinary migrate-primary.
-  - id: AC7
+  - id: AC8
     condition: >
       Historical bootstrap-primary/TASK-198 behavior, source-bootstrap v2 identity,
-      activation separation, Runtime verification/terminal authority and roadmap state are
-      preserved, and focused tests plus git diff --check pass with zero unresolved items.
+      activation separation, Runtime verification/terminal authority and roadmap state
+      are preserved, and focused tests plus git diff --check pass with zero unresolved
+      items.
 
 verification:
   policy: minimum-sufficient-v1
