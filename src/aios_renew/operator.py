@@ -3768,9 +3768,8 @@ _MIGRATION_FIELDS = frozenset({
 # is deliberately narrower than the reusable N-to-N+1 migration protocol.
 _BOOTSTRAP_TARGET_SHA = "83115b26df85a7ad6643f317833e18b18586bdbe"
 
-# Filled only by a later reviewed activation source. This capability publication
-# cannot know (or authorize) its own eventual published commit.
-_SOURCE_BOOTSTRAP_TARGET_SHA: str | None = None
+# Exact reviewed and published TASK-199 consumer-capable generation.
+_SOURCE_BOOTSTRAP_TARGET_SHA: str | None = "ff29666d50eaf9276ab62d944018f2bbeb91f073"
 _SOURCE_BOOTSTRAP_FIELDS = (_MIGRATION_FIELDS - {"target_control_sha", "target_pin_blob_sha"}) | {"format"}
 
 
@@ -4371,7 +4370,7 @@ def bootstrap_source_primary(
     fingerprint = _migration_fingerprint(intent)
     marker = _migration_marker(root, fingerprint)
     if handoff_path is None:
-        # Only a later published activation source may fill this single slot.
+        # Only the reviewed target bound in the single activation slot is admitted.
         if (_SOURCE_BOOTSTRAP_TARGET_SHA is None
                 or intent["target_generation_sha"] != _SOURCE_BOOTSTRAP_TARGET_SHA):
             raise OperatorError("source-control bootstrap target is not activated")

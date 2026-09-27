@@ -9241,7 +9241,34 @@ def _source_bootstrap_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
     return repo, target_source, intent
 
 
-def test_source_bootstrap_closed_and_exact_staging(
+@pytest.mark.parametrize("target_kind", ["fixture", "maintenance", "current_source"])
+def test_source_bootstrap_production_allowlist_rejects_other_targets_before_edge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_kind: str
+) -> None:
+    activated = "ff29666d50eaf9276ab62d944018f2bbeb91f073"
+    assert operator_module._SOURCE_BOOTSTRAP_TARGET_SHA == activated
+    assert operator_module._BOOTSTRAP_TARGET_SHA == "83115b26df85a7ad6643f317833e18b18586bdbe"
+    repo, _, intent = _source_bootstrap_fixture(tmp_path)
+    current_source = Path(operator_module.__file__).resolve().parents[2]
+    intent["target_generation_sha"] = {
+        "fixture": intent["target_generation_sha"],
+        "maintenance": "f248416cf4ac8f41203898f530bc21d0500a5479",
+        "current_source": git(current_source, "rev-parse", "HEAD"),
+    }[target_kind]
+    assert intent["target_generation_sha"] != activated
+    path = tmp_path / "unactivated-source-intent.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: pytest.fail("legacy attestation reached"))
+    with pytest.raises(OperatorError, match="not activated"):
+        operator_module.bootstrap_source_primary(
+            path, runner=lambda *a, **k: pytest.fail("target launched")
+        )
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+
+
+def test_source_bootstrap_injected_exact_staging(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo, _, intent = _source_bootstrap_fixture(tmp_path)
@@ -9253,10 +9280,6 @@ def test_source_bootstrap_closed_and_exact_staging(
     )[1]
     monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
                         lambda **kwargs: intent["source_generation_sha"])
-    with pytest.raises(OperatorError, match="not activated"):
-        operator_module.bootstrap_source_primary(path, runner=child)
-    assert launched == []
-    assert not list(runtime_paths(repo).runs.glob("*.json"))
     monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA",
                         intent["target_generation_sha"])
     assert operator_module.bootstrap_source_primary(path, runner=child) == 0
