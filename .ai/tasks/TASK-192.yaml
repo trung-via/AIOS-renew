@@ -1,63 +1,68 @@
 task_id: TASK-192
-revision: 1
+revision: 2
 
 goal: >
-  Add one suite-wide deterministic pytest parameter-id hardening layer that prevents
-  recurrence of the Windows PYTEST_CURRENT_TEST environment-variable overflow already
-  observed independently in TASK-189 and TASK-191, while preserving ordinary pytest
-  node identity, xdist determinism, test semantics, Runtime verification authority,
-  and all production/lifecycle behavior.
+  Preserve the TASK-192 r1 pytest parameter-id hardening objective while correcting
+  only its pre-verification completion-contract boundary so an Executor claims
+  implementation properties before Runtime verification and Runtime alone establishes
+  the serial, xdist, collect-only, and PYTEST_CURRENT_TEST execution evidence.
 
 problem: >
-  Canonical RUN-189-001 and RUN-191-001 both failed during Runtime-owned focused
-  pytest verification before the intended oversized-response test body could run
-  because pytest expanded a roughly 262145-byte parametrized bytes value into the
-  collected test node id. During setup pytest copies the current node id into
-  PYTEST_CURRENT_TEST; on the Windows self-host this exceeded the 32767-character
-  environment-variable limit and raised ValueError. TASK-189 and TASK-191 each
-  repaired the local test with explicit short ids, but canonical main still has no
-  suite-wide prevention in tests/conftest.py. A future large auto-generated or explicit
-  parameter id can therefore reproduce the same infrastructure failure and may also
-  bloat Executor/repair context. This is repeated test-harness debt, not a production
-  Runtime/provider defect and not a reason to raise or bypass the Windows limit.
+  RUN-192-001 is an admitted PRIMARY FAILURE at COMPLETION_GATE on candidate
+  50d6482ab09741ee155bd827fdf9553d633ee14e. The candidate is clean, transportable,
+  repairable, descends from the admitted base, changes exactly tests/conftest.py and
+  tests/test_pytest_parameter_id_guard.py, and has no outside-scope mutation.
+  Verification did not run. The failure reason was that RESULT could not satisfy AC3
+  and AC5 because r1 expressed future Runtime-owned verification outcomes as acceptance
+  criteria: that the oversized test actually reaches its body on the Windows self-host,
+  that PYTEST_CURRENT_TEST is bounded during execution, and that serial/xdist/full
+  collect-only commands pass. The repository TASK authoring contract requires every
+  acceptance criterion to be truthfully claimable by the Executor as a concrete
+  implementation property before Runtime verification. Revision 2 therefore preserves
+  the implementation intent, scope, safety caps and exact verification commands, reuses
+  the compatible RUN-192-001 candidate rather than restarting, and rewrites only the
+  acceptance boundary so Runtime verification and Reviewer judgment retain their
+  authorities.
 
 assumptions:
   - >
-    Canonical main at authoring is
-    cfd5dd4ad04384db98365990a85eec55185e2ae2. The preceding planning mutation records
-    BP8-P1 complete and this maintenance as the unique NEXT item before BP8-P2.
+    Canonical main at r2 authoring is
+    ad64f8872e547878e2ec8cfe0a672141f02438e3 and roadmap planning binds the unique
+    NEXT maintenance item to TASK-192 revision 2.
   - >
-    RUN-189-001 is canonical evidence of the first Windows pytest node-id /
-    PYTEST_CURRENT_TEST overflow family; REPAIR-189-001 established the local
-    short-id correction strategy without changing production Reviewer-provider logic.
+    RUN-192-001 remains immutable FAILURE truth: phase COMPLETION_GATE, failed head
+    50d6482ab09741ee155bd827fdf9553d633ee14e, changed_files exactly
+    tests/conftest.py and tests/test_pytest_parameter_id_guard.py, dirty=false,
+    descends_from_base=true, outside_task_scope=[], repairable=true,
+    transportable=true, verification_seconds=null.
   - >
-    RUN-191-001 reproduced the same failure family in
-    tests/test_gemini_reviewer_transport.py; REPAIR-191-001 again corrected only the
-    local test harness. RUN-191-002 then showed a secondary cost of the oversized
-    diagnostic lineage by exceeding the Codex 1048576-character request limit before
-    mutation, reinforcing the need to bound future test identifiers and diagnostics
-    at the source.
+    Because RUN-192-001 never reached Runtime verification, no canonical claim is made
+    that its implementation is correct or that any TASK-192 verification command
+    passes. Its in-scope candidate is reusable implementation work only.
+  - >
+    RUN-189-001 and RUN-191-001 remain the canonical evidence for the repeated Windows
+    pytest node-id / PYTEST_CURRENT_TEST overflow family. Existing local explicit-id
+    fixes in TASK-189 and TASK-191 remain valid defense-in-depth and are not removed.
   - >
     Current pyproject.toml supports pytest >=8.2,<9 and pytest-xdist >=3.6,<4 for the
-    active verification profiles. pytest exposes pytest_make_parametrize_id for
-    conftest plugins and sets PYTEST_CURRENT_TEST from the current nodeid plus stage.
+    active verification profiles. tests/conftest.py remains the suite-wide pytest
+    harness surface.
   - >
-    tests/conftest.py is already the repository-owned suite-wide pytest harness surface
-    and currently contains no parameter-id or collected-nodeid hardening.
-  - >
-    The Windows 32767-character environment constraint is external platform behavior.
-    AIOS should prevent pathological node ids rather than attempt to change that OS
-    limit.
+    Runtime owns canonical verification and EVIDENCE; Reviewer owns the semantic
+    verdict; Publisher owns publication. Executor claims only pre-verification
+    implementation properties.
 
 scope:
   inspect:
     - docs/AIOS-MANIFESTO.md
     - docs/AIOS-CONSTITUTION.md
     - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
     - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
     - .ai/roadmap-state.yaml
     - .ai/tasks/TASK-189.yaml
     - .ai/tasks/TASK-191.yaml
+    - .ai/tasks/TASK-192.yaml
     - pyproject.toml
     - tests/conftest.py
     - tests/test_reviewer_provider.py
@@ -70,6 +75,8 @@ non_goals:
   - Modify any src/aios_renew production module, Runtime, Operator, verifier, Reviewer,
     Publisher, ingress, workflow, carrier, executor adapter/profile, frozen Kernel, or
     downstream repository.
+  - Repair or reinterpret RUN-192-001 under revision 1; r1 remains immutable historical
+    FAILURE and r2 is the corrected semantic contract.
   - Change, patch, raise, bypass, or emulate the Windows environment-variable limit.
   - Change pytest or pytest-xdist versions, pytest.ini configuration, plugin autoload,
     worker count policy, or canonical parallel-verification policy.
@@ -77,19 +84,23 @@ non_goals:
   - Hash, repr, serialize, traverse, or otherwise inspect arbitrary parameter objects
     merely to manufacture ids; non-string/non-bytes values remain on pytest's existing
     identity path.
-  - Rewrite existing explicit ids across the test suite or require developers to replace
-    every current parameter id manually.
-  - Skip, xfail, deselect, rename, remove, or weaken tests to avoid long ids.
+  - Rewrite existing explicit ids across the suite, skip/xfail/deselect/rename/remove
+    tests, or weaken coverage to avoid long ids.
   - Add retry, fallback, alternate test execution, automatic correction selection, or
     any lifecycle/semantic authority.
-  - Require a full test-suite execution for this collection/id hardening when focused
-    tests plus full collect-only evidence are sufficient.
+  - Require a full test-suite execution when focused tests plus full collect-only
+    evidence are sufficient.
   - Push or publish from Executor implementation execution.
 
 constraints:
   hard:
     - >
-      Mutation is limited exactly to tests/conftest.py and
+      Preserve and reuse compatible RUN-192-001 candidate work rather than redoing the
+      maintenance from scratch. HOW of reuse belongs to Executor; if current canonical
+      state makes the candidate incompatible, report unresolved rather than discarding
+      useful work silently.
+    - >
+      Mutation remains limited exactly to tests/conftest.py and
       tests/test_pytest_parameter_id_guard.py. If correct prevention requires any
       production, workflow, pyproject, Runtime, or existing-test modification, stop
       unresolved rather than widening scope.
@@ -107,8 +118,8 @@ constraints:
       Preserve ordinary ids: str/bytes values whose direct length is at most 512
       characters/bytes must not be replaced by the custom hook. Values above that
       threshold may be represented only by a compact bounded identifier containing
-      type, original length, and deterministic SHA-256 digest; the raw oversized
-      value must not appear in the generated id.
+      type, original length, and deterministic SHA-256 digest; the raw oversized value
+      must not appear in the generated id.
     - >
       Add a second fail-closed collection guard over the final collected item.nodeid.
       A nodeid longer than 8192 characters must stop collection before test setup/call
@@ -116,78 +127,83 @@ constraints:
       reorder items, deselect tests, or mutate semantic collection state.
     - >
       Overlong-nodeid diagnostics must themselves be bounded and must not echo the full
-      raw nodeid or oversized parameter value. They may report a bounded test locator
-      plus nodeid length and SHA-256 digest sufficient to diagnose the source without
+      raw nodeid or oversized parameter value. They may report a bounded locator plus
+      nodeid length and SHA-256 digest sufficient to diagnose the source without
       recreating the oversized context.
     - >
       The hook must not call repr(), str(), pickle, JSON serialization, recursive
       traversal, or user-defined methods on arbitrary non-str/non-bytes parameter
-      objects. A regression object whose representation would raise must remain
-      untouched by the custom hook.
+      objects.
     - >
       The guard must be cross-platform and always active, not conditional on Windows,
       because deterministic collection identity should be identical on Windows and
-      non-Windows workers. The safety caps are repository invariants, not runtime OS
-      detection.
+      non-Windows workers.
     - >
-      Regression coverage must include a directly parametrized >262144-byte bytes
-      value without explicit ids and prove its test body executes with a bounded
-      PYTEST_CURRENT_TEST value on the Windows self-host. Include an oversized string
-      case, repeated-call determinism, distinct same-length digest separation, normal
-      short-value pass-through, and arbitrary-object pass-through without repr/str.
+      The regression surface must include a directly parametrized >262144-byte bytes
+      value without explicit ids and assertions that, when Runtime executes it, the
+      test body observes a bounded generated nodeid and PYTEST_CURRENT_TEST value.
+      Include an oversized string case, repeated-call determinism, distinct same-length
+      digest separation, normal short-value pass-through, and arbitrary-object
+      pass-through without repr/str.
     - >
-      Regression coverage must exercise the collected-nodeid guard directly and prove
-      an over-8192 explicit/custom nodeid fails closed with bounded diagnostics while
-      a below-limit nodeid passes without mutation. Do not include an intentionally
-      overlong explicit id in the normal focused collection in a way that makes the
-      required suite un-runnable.
+      The regression surface must exercise the collected-nodeid guard directly and
+      assert that an over-8192 explicit/custom nodeid fails closed with bounded
+      diagnostics while a below-limit nodeid passes without mutation. Do not place an
+      intentionally overlong explicit id into normal collection in a way that makes
+      the required suite inherently un-runnable.
     - >
-      Preserve all current TASK-189 and TASK-191 local explicit-id corrections; this
-      maintenance is preventive defense-in-depth and must not remove those proven
-      local fixes merely because a global guard now exists.
+      Preserve all current TASK-189 and TASK-191 local explicit-id corrections.
     - >
-      Verification remains Runtime-owned and minimum-sufficient. Because conftest.py
-      is suite-wide, one full repository collect-only pass is justified to prove the
-      new hook/guard do not break current collection. A full test-suite execution is
-      not required. Focused xdist execution is required to prove deterministic worker
-      identity for the new regression surface.
+      Executor RESULT claims may cover only pre-verification implementation properties.
+      It must not claim that Runtime verification passed, that the large parameter
+      actually executed successfully on the host, that PYTEST_CURRENT_TEST was observed
+      bounded during canonical verification, that xdist/full collection passed, that
+      Reviewer will PASS, that publication occurred, or that the maintenance is
+      engineering-complete.
+    - >
+      Runtime verification remains minimum-sufficient and unchanged from r1: focused
+      serial, focused two-worker xdist, full repository collect-only, then diff check.
+      A full executable suite remains unnecessary because production/runtime semantics
+      are unchanged.
 
 acceptance:
   - id: AC1
     condition: >
-      tests/conftest.py provides a deterministic pytest_make_parametrize_id hook that
-      leaves ordinary and non-str/non-bytes values on pytest's existing path while
-      compacting only oversized str/bytes values into bounded type/length/SHA-256 ids
-      with no raw oversized content.
+      The implementation contains one deterministic pytest_make_parametrize_id hook
+      that leaves ordinary and non-str/non-bytes values on pytest's existing path and
+      compacts only oversized str/bytes values into bounded type/length/SHA-256 ids
+      without raw oversized content.
   - id: AC2
     condition: >
-      A suite-wide collection guard rejects any final nodeid longer than 8192
-      characters before test execution with bounded non-raw diagnostics and without
-      rewriting nodeids, deselecting items, reordering collection, or changing test
-      semantics.
+      The implementation contains one suite-wide fail-closed collection guard for final
+      nodeids longer than 8192 characters, with bounded non-raw diagnostics and no
+      nodeid rewriting, item reordering, deselection, or semantic collection mutation.
   - id: AC3
     condition: >
-      A regression containing a >262144-byte auto-parametrized bytes value without
-      explicit ids reaches its test body on the Windows self-host and observes a
-      bounded PYTEST_CURRENT_TEST value rather than the RUN-189-001/RUN-191-001
-      environment-variable failure family.
+      The regression implementation includes a directly auto-parametrized >262144-byte
+      bytes case with no explicit id and asserts inside the test body that the generated
+      nodeid and PYTEST_CURRENT_TEST are bounded, so Runtime can establish the original
+      RUN-189-001/RUN-191-001 failure family is prevented by executing the authored
+      focused verification.
   - id: AC4
     condition: >
-      Focused regressions prove deterministic repeated ids, distinct digests for
-      distinct same-length oversized values, oversized string handling, short-value
-      pass-through, arbitrary-object pass-through without invoking representation
-      methods, and bounded fail-closed handling of an explicit/custom overlong nodeid.
+      The regression implementation covers deterministic repeated ids, distinct
+      same-length oversized values, oversized string handling, short-value pass-through,
+      arbitrary-object pass-through without invoking representation methods, and
+      bounded fail-closed handling of an explicit/custom overlong nodeid.
   - id: AC5
     condition: >
-      Focused serial and two-worker xdist executions pass with identical deterministic
-      collection identity for the regression surface, and full repository collect-only
-      succeeds without current-nodeid violations.
+      The implementation is deterministic across serial and xdist collection by
+      construction: generated ids depend only on parameter type, direct length and
+      SHA-256 content; the collection guard is order-preserving and mutation-free for
+      valid items; no random, clock, process-local, worker-order, platform-branch, or
+      shared mutable cross-worker state participates in identity.
   - id: AC6
     condition: >
-      The change is confined to the two authorized test-harness files, preserves the
-      existing local TASK-189/TASK-191 explicit-id fixes, changes no production or
-      lifecycle authority, adds no retry/fallback/router behavior, and has zero
-      unresolved items.
+      The delta remains confined to the two authorized test-harness files, preserves
+      existing TASK-189/TASK-191 local explicit-id fixes, changes no production or
+      lifecycle authority, adds no retry/fallback/router behavior, and reports zero
+      unresolved implementation items.
 
 verification:
   policy: minimum-sufficient-v1
