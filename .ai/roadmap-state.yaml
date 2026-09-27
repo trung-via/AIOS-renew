@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-7-hot-swap-conformance
+  - bp-8-real-second-provider-proof
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -903,13 +903,33 @@ sequence:
       Establish a separate provider-neutral Reviewer protocol without merging Brain and
       Reviewer authorities.
   - id: bp-7-hot-swap-conformance
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-190
+      task_revision: 1
+      primary_run_id: RUN-190-001
+      primary_review_id: REVIEW-190-001
+      remediation_runs:
+        - run_id: RUN-190-002
+          finding_id: FINDING-190-001
+          review_id: REVIEW-190-002
+          reviewed_sha: "b2a59f30483eeb7f2da4f0812ef3025174eb8a17"
+        - run_id: RUN-190-003
+          finding_id: FINDING-190-002
+          review_id: REVIEW-190-003
+          reviewed_sha: "80b918c2cf964eea91416dd8a9c202f8a8319719"
+      final_review_id: REVIEW-190-003
+      published_sha: "80b918c2cf964eea91416dd8a9c202f8a8319719"
+      verification_evidence:
+        - RUN-190-001-V001
+        - RUN-190-002-V001
+        - RUN-190-003-V001
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Prove cross-context/provider continuation from canonical state without previous
       model memory.
   - id: bp-8-real-second-provider-proof
-    status: PLANNED
+    status: NEXT
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Prove the contracts with one controlled real non-default Brain or Reviewer provider
@@ -945,16 +965,18 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol and BP-6
-    Reviewer Provider Protocol are reviewed/published complete. BP6-P1A, BP6-P1B,
-    BP6-P2A, BP6-P2B, BP6-P3 and BP6-P4 are complete through TASK-184, TASK-185,
-    TASK-186, TASK-187, TASK-188 and TASK-189; BP6-P4 closed through RUN-189-003,
-    REVIEW-189-001 and exact publication of 0ef36225108a463efd9e54566190826125d363dc.
-    The unique next planning milestone is BP-7 Cross-context / Hot-swap Conformance under
-    docs/AIOS-BRAIN-PORTABILITY.md. BP-7 must prove deterministic continuation from
-    canonical state without previous model memory and must not consume BP-8 real-provider
-    proof, create a generic lifecycle/provider router, merge Brain and Reviewer authority,
-    or add automatic retry/failover/correction-selection semantics.
+    Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol, BP-6
+    Reviewer Provider Protocol, and BP-7 Cross-context / Hot-swap Conformance are
+    reviewed/published complete. BP-7 closed through TASK-190 r1, RUN-190-001 /
+    REVIEW-190-001 CHANGES_REQUIRED, RUN-190-002 / REVIEW-190-002 DELTA PASS for
+    FINDING-190-001, RUN-190-003 / REVIEW-190-003 DELTA PASS for FINDING-190-002,
+    and exact publication of 80b918c2cf964eea91416dd8a9c202f8a8319719.
+    The unique next planning milestone is BP-8 Real Second-provider Proof under
+    docs/AIOS-BRAIN-PORTABILITY.md. BP-8 must use one controlled real non-default
+    Brain or Reviewer provider through the existing provider-neutral contracts while
+    retaining GitHub/self-host execution semantics; it must not create a generic
+    lifecycle/provider router, merge Brain and Reviewer authority, add automatic
+    retry/failover/correction-selection semantics, or silently retarget downstreams.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
