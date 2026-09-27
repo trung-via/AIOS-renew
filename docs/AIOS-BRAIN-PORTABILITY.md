@@ -362,6 +362,50 @@ Prove deterministic continuation when Brain/Reviewer provider changes between au
 
 Exit gate: conformance scenarios require no previous model memory.
 
+#### BP7 post-BP6 architecture audit
+
+A fresh overlap audit after BP6 closure finds that BP-7 should be a **conformance-first milestone**, not a new runtime subsystem. The required continuation semantics are already distributed across the reviewed Brain Sync / Work Context / Decision Packet, exact TASK admission, Operational Attribution v2, Unified State, correction/repair lineage, PRIMARY recovery, Brain provider and Reviewer provider contracts. BP-7 should prove those boundaries compose across fresh contexts before authorizing any new production abstraction.
+
+The first BP-7 implementation TASK should therefore be test-only unless the conformance matrix exposes a concrete missing deterministic witness. If a scenario cannot be proven from existing canonical surfaces, execution must fail closed back to Brain for a separately scoped production TASK rather than widening the conformance TASK.
+
+The ten baseline scenarios map to existing authority as follows:
+
+1. **Fresh Brain after TASK authoring/result.** Canonical AUTHOR_TASK, RUN/RESULT/EVIDENCE and Brain Sync/Unified State reconstruct the current subject; the fresh context may compile the exact SEMANTIC_REVIEW Decision Packet and use the BP6 Reviewer contract without prior provider/chat state.
+2. **Fresh correction author after CHANGES_REQUIRED.** Canonical REVIEW + Unified State preserve exact source RUN/review/finding identity; AUTHOR_REMEDIATION accepts only that current canonical finding and existing validators remain authoritative.
+3. **Fresh repair continuation.** Canonical FAILURE plus current REPAIR authorization/supersession determine the exact failed RUN/head and current selector; a fresh context must not depend on the provider that authored the repair.
+4. **Human priority invalidation.** A Human priority change becomes durable only when canonicalized into the relevant planning/TASK state. That changes Work Context / Decision Packet identity and, for authoring handoff, the expected-main CAS. An older provider decision cannot be treated as current after that canonical change. Transient chat recency is not lifecycle truth.
+5. **TASK revision binding.** BP1 exact authorization binds task revision/blob/commit; later semantic revision or content drift fails before RUN/Executor rather than silently reusing old authority.
+6. **Unrelated main movement.** The same BP1 admission deliberately permits newer unrelated main when the exact authorized TASK blob remains unchanged and authorization provenance remains canonical ancestry.
+7. **Pre-AIOS operational failure.** Operational Attribution / admission failure semantics remain pre-RUN and cannot fabricate canonical RUN/FAILURE.
+8. **Useful candidate recovery.** Existing `RECOVER_PRIMARY` re-admits the exact canonical successful candidate from conflicting PRIMARY terminal evidence, verifies it in an isolated historical subject, creates fresh evidence under a new RUN, and records `executor_invoked=false`; no blind Executor re-execution or persisted Brain reasoning is required.
+9. **Brain/Reviewer provider separation.** BP5 and BP6 use separate provider-neutral contracts and role authorities; different provider/model attribution must not merge BRAIN and REVIEWER authority or alter semantic identity.
+10. **Provider without GitHub access.** BP5/BP6 provider requests are self-sufficient bounded semantic envelopes. GitHub transport, Runtime, self-host execution, ingress and publication remain outside the provider adapter and may continue unchanged.
+
+Conformance hygiene for BP-7:
+
+- each checkpoint that claims a fresh Brain/Reviewer must use a newly constructed context/provider instance with no prior chat/session/provider response injected;
+- only canonical repository artifacts, deterministic projections, and the explicit structured request/decision lineage allowed by the reviewed contracts may cross checkpoints;
+- tests must distinguish provider attribution from semantic identity and prove changing provider/model/session identifiers alone does not change the bound semantic subject;
+- no test may satisfy a scenario by monkeypatching a semantic verdict, lifecycle next action, correction selector, or publication outcome that the production authority is supposed to derive;
+- existing fake/non-network adapters are sufficient for BP-7; real second-provider invocation is reserved for BP-8;
+- no generic hot-swap manager, provider registry/router, automatic retry/fallback/failover, correction selector, persistent memory/session store, new lifecycle state, or new mutation authority is permitted.
+
+Recommended first BP-7 TASK surface:
+
+```text
+tests/test_hot_swap_conformance.py
+```
+
+The focused suite should compose existing public/canonical surfaces and prove all ten scenarios end-to-end enough to establish the cross-context invariant. It may inspect existing test support but should not modify production code, frozen Kernel semantics, existing TASK/REVIEW contracts, provider protocols, Runtime, ingress, publication, workflows or roadmap state. If a real production gap is discovered, the test-only TASK must report it rather than implement around it.
+
+Recommended minimum verification:
+
+```text
+python -m pytest -q tests/test_hot_swap_conformance.py
+```
+
+BP-7 exits only when the complete ten-scenario matrix passes without hidden prior-model state and without consuming BP-8 real-provider proof.
+
 ### BP-8 — Real Second-provider Proof
 
 Run one controlled real workflow using a non-default Brain and/or Reviewer provider through the provider-neutral contracts while keeping existing GitHub/self-host execution semantics.
