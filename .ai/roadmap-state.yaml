@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-8-real-second-provider-proof
+  - maintenance-pytest-bounded-parameter-id-hardening
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -928,11 +928,56 @@ sequence:
     objective: >-
       Prove cross-context/provider continuation from canonical state without previous
       model memory.
-  - id: bp-8-real-second-provider-proof
+  - id: maintenance-pytest-bounded-parameter-id-hardening
     status: NEXT
-    phase: BP8-P1
-    task_id: TASK-191
+    task_id: TASK-192
     task_revision: 1
+    return_to: bp-8-real-second-provider-proof
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-189-001
+      - REPAIR-189-001
+      - RUN-191-001
+      - REPAIR-191-001
+      - RUN-191-002
+      - REPAIR-191-002
+    objective: >-
+      Prevent recurrence of Windows pytest node-id / PYTEST_CURRENT_TEST overflow
+      across the suite by bounding oversized auto-generated parameter identifiers
+      deterministically and failing closed on any still-overlong collected nodeid,
+      without changing production, Runtime verification authority, test semantics,
+      or pytest/xdist identity for ordinary cases.
+  - id: bp-8-real-second-provider-proof
+    status: PLANNED
+    phase: BP8-P2
+    completed_phases:
+      - id: BP8-P1
+        status: DONE
+        task_id: TASK-191
+        task_revision: 1
+        failed_runs:
+          - RUN-191-001
+          - RUN-191-002
+        repairs:
+          - REPAIR-191-001
+          - REPAIR-191-002
+        completion_run_id: RUN-191-003
+        primary_review_id: REVIEW-191-001
+        remediation_runs:
+          - run_id: RUN-191-004
+            finding_id: FINDING-191-001
+            review_id: REVIEW-191-002
+            reviewed_sha: "3b85aee3aa40838ddf63f0cf29301d1b473181e3"
+          - run_id: RUN-191-005
+            finding_id: FINDING-191-002
+            review_id: REVIEW-191-003
+            reviewed_sha: "a967ef7f6e16c893600a7cc0731e1f0bc94f3077"
+        final_review_id: REVIEW-191-003
+        published_sha: "a967ef7f6e16c893600a7cc0731e1f0bc94f3077"
+        verification_evidence:
+          - RUN-191-003-V001
+          - RUN-191-004-V001
+          - RUN-191-005-V001
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Prove the contracts with one controlled real non-default Brain or Reviewer provider
@@ -970,16 +1015,18 @@ sequencing_rule:
   generic_continuation: >-
     Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol, BP-6
     Reviewer Provider Protocol, and BP-7 Cross-context / Hot-swap Conformance are
-    reviewed/published complete. BP-7 closed through TASK-190 r1, RUN-190-001 /
-    REVIEW-190-001 CHANGES_REQUIRED, RUN-190-002 / REVIEW-190-002 DELTA PASS for
-    FINDING-190-001, RUN-190-003 / REVIEW-190-003 DELTA PASS for FINDING-190-002,
-    and exact publication of 80b918c2cf964eea91416dd8a9c202f8a8319719.
-    The unique next planning milestone is BP-8 Real Second-provider Proof under
-    docs/AIOS-BRAIN-PORTABILITY.md. BP-8 must use one controlled real non-default
-    Brain or Reviewer provider through the existing provider-neutral contracts while
-    retaining GitHub/self-host execution semantics; it must not create a generic
-    lifecycle/provider router, merge Brain and Reviewer authority, add automatic
-    retry/failover/correction-selection semantics, or silently retarget downstreams.
+    reviewed/published complete. BP-8 P1 also completed through TASK-191 r1,
+    RUN-191-003 / REVIEW-191-001 CHANGES_REQUIRED, RUN-191-004 /
+    REVIEW-191-002 DELTA PASS for FINDING-191-001, RUN-191-005 /
+    REVIEW-191-003 DELTA PASS for FINDING-191-002, and exact publication of
+    a967ef7f6e16c893600a7cc0731e1f0bc94f3077. Current Human/Brain priority inserts
+    maintenance-pytest-bounded-parameter-id-hardening as the unique NEXT item before
+    BP8-P2 because the same Windows pytest node-id / PYTEST_CURRENT_TEST overflow
+    recurred independently in TASK-189 and TASK-191. After that maintenance is
+    reviewed/published complete, return to BP-8 P2 controlled real Gemini Reviewer
+    invocation. Neither the maintenance nor BP-8 may create a generic lifecycle/provider
+    router, merge Brain and Reviewer authority, add automatic retry/failover/correction
+    selection, or silently retarget downstreams.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
