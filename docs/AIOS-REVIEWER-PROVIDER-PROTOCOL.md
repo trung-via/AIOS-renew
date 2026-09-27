@@ -604,7 +604,7 @@ Focused verification is sufficient. P3 must not modify Decision Packet, P1A/P1B/
 
 Engineering closure: TASK-188 r1 completed through RUN-188-001, Runtime verification `16 passed in 1.18s` with evidence `RUN-188-001-V001`, REVIEW-188-001 PRIMARY PASS, and exact publication of `71047cd526366130d5f49f2c30418aec940d5791` to `main`. The implementation remained limited to the pure Reviewer request/decision protocol and focused tests; it introduced no provider invocation, ingress mutation, retry/fallback/router authority, or provider-authored canonical REVIEW identity.
 
-### BP6-P4 — Thin Reviewer Provider Conformance — NEXT
+### BP6-P4 — Thin Reviewer Provider Conformance — DONE
 
 Add a Reviewer-specific thin invocation shell over P3.
 
@@ -663,6 +663,8 @@ tests/test_reviewer_provider.py
 ```
 
 Focused verification is sufficient. P4 must not modify P3, P1/P2 contracts, REVIEW schema, Decision Packet, ingress, Runtime, provider routing or publication merely to simplify the shell.
+
+Engineering closure: TASK-189 r1 completed after two bounded failure/recovery steps. RUN-189-001 produced the intended implementation but Runtime verification exposed a Windows pytest harness defect because an oversized bytes parameter expanded into PYTEST_CURRENT_TEST; REPAIR-189-001 authorized only the focused test correction. RUN-189-002 then failed before repository mutation because the inherited failure context exceeded the Codex input ceiling; REPAIR-189-002 rebound the same test-only intent to that exact failure without replaying the oversized prior diagnostic. RUN-189-003 completed with Runtime evidence RUN-189-003-V001 (`39 passed in 1.17s`), REVIEW-189-001 PRIMARY PASS across AC1-AC8, and exact publication of `0ef36225108a463efd9e54566190826125d363dc` to `main`. The final repair changed only `tests/test_reviewer_provider.py`; the P4 production implementation remained unchanged from the original candidate and retained exactly-one-call Reviewer semantics, provider-neutral P3 validation, bounded operational attribution, independent non-network adapters, and no retry/fallback/router/lifecycle authority.
 
 ## 5. REVIEW identity and semantic-body boundary
 
@@ -783,7 +785,7 @@ The focused successor TASK should keep its production mutation surface inside th
 
 ## 11. Planning decision
 
-BP-6 is the unique current Human/Brain planning milestone.
+BP-6 Reviewer Provider Protocol is reviewed/published complete and its exit gate is satisfied.
 
 BP6-P1A is reviewed/published complete through TASK-184 / RUN-184-001 / REVIEW-184-001 at `070964600f4ae6e4282cfd3b92d7411c4abcab4f`.
 
@@ -795,6 +797,8 @@ BP6-P2B is reviewed/published complete through TASK-187 / RUN-187-001 / REVIEW-1
 
 BP6-P3 is reviewed/published complete through TASK-188 / RUN-188-001 / REVIEW-188-001 PRIMARY PASS at `71047cd526366130d5f49f2c30418aec940d5791`.
 
-The unique next implementation obligation is BP6-P4 Thin Reviewer Provider Conformance. A separately authored executor-neutral TASK is required before production implementation.
+BP6-P4 is reviewed/published complete through TASK-189 / RUN-189-001 verification failure / REPAIR-189-001 / RUN-189-002 pre-mutation execution-context failure / REPAIR-189-002 / RUN-189-003 / REVIEW-189-001 PRIMARY PASS at `0ef36225108a463efd9e54566190826125d363dc`.
+
+The unique next Human/Brain planning milestone is BP-7 Cross-context / Hot-swap Conformance in `docs/AIOS-BRAIN-PORTABILITY.md`. BP-7 must prove the canonical ten-scenario continuation matrix without previous model memory. It must reuse existing Brain Sync, Unified State, Decision Packet, Brain/Reviewer provider contracts, correction, recovery and publication authorities rather than introduce a generic lifecycle/provider router, automatic retry/failover, persistent reasoning store, or consume BP-8 real-provider proof early.
 
 No production mutation is authorized by this planning document.
