@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Gemini Reviewer semantic response transport shape",
+  "type": "object",
+  "required": ["request_fingerprint", "semantic_body"],
+  "additionalProperties": false,
+  "properties": {
+    "request_fingerprint": {"type": "string"},
+    "semantic_body": {"type": "object"}
+  }
+}
