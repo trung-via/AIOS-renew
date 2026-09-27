@@ -3768,6 +3768,63 @@ _MIGRATION_FIELDS = frozenset({
 # is deliberately narrower than the reusable N-to-N+1 migration protocol.
 _BOOTSTRAP_TARGET_SHA = "83115b26df85a7ad6643f317833e18b18586bdbe"
 
+# Filled only by a later reviewed activation source. This capability publication
+# cannot know (or authorize) its own eventual published commit.
+_SOURCE_BOOTSTRAP_TARGET_SHA: str | None = None
+_SOURCE_BOOTSTRAP_FIELDS = (_MIGRATION_FIELDS - {"target_control_sha", "target_pin_blob_sha"}) | {"format"}
+
+
+def _exact_source_bootstrap_intent(document: Any) -> dict[str, Any]:
+    """A distinct source-control bootstrap contract, never migration intent v1."""
+
+    if (not isinstance(document, dict) or set(document) != _SOURCE_BOOTSTRAP_FIELDS
+            or type(document.get("version")) is not int or document["version"] != 2
+            or document.get("format") != "AIOS_SOURCE_CONTROL_BOOTSTRAP_INTENT"):
+        raise OperatorError("source-control bootstrap intent has missing or unexpected fields")
+    translated = {key: value for key, value in document.items() if key != "format"}
+    translated.update({"version": 1,
+                       "target_control_sha": document["source_control_sha"],
+                       "target_pin_blob_sha": document["source_pin_blob_sha"]})
+    _exact_migration_intent(translated)
+    return document
+
+
+def _source_bootstrap_control(intent: Mapping[str, Any]) -> dict[str, Any]:
+    """Use the existing exact control checker with no prospective control commit."""
+
+    return {**intent, "target_control_sha": intent["source_control_sha"],
+            "target_pin_blob_sha": intent["source_pin_blob_sha"]}
+
+
+def _source_bootstrap_check_control(intent: Mapping[str, Any]) -> dict[str, Any]:
+    # The unchanged control pin still names the legacy generation. The target
+    # generation is carried by the durable record, never inferred from this pin.
+    return {**_source_bootstrap_control(intent),
+            "target_generation_sha": intent["source_generation_sha"]}
+
+
+def _check_source_bootstrap_control(
+    root: Path, intent: Mapping[str, Any], *, transport: Path | None = None
+) -> None:
+    _check_migration_control(root, _source_bootstrap_check_control(intent), transport=transport)
+    control = transport or root
+    pin_path = intent["pin_path"].replace("\\", "/")
+    content = _git(control, "show", f"{intent['source_control_sha']}:{pin_path}")
+    if intent["target_generation_sha"] in content:
+        raise OperatorError("source-control pin also names prospective target generation")
+
+
+def _source_bootstrap_record(
+    intent: Mapping[str, Any], fingerprint: str, bundle: str
+) -> dict[str, Any]:
+    record = _migration_record(_source_bootstrap_control(intent), fingerprint, bundle)
+    record.update(format="AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF", version=2)
+    return record
+
+
+def _handoff_control_sha(intent: Mapping[str, Any]) -> str:
+    return intent.get("target_control_sha", intent["source_control_sha"])
+
 
 def _exact_migration_intent(document: Any) -> dict[str, Any]:
     """Reject incomplete, floating, and ambiguous cross-generation intent."""
@@ -3917,15 +3974,19 @@ def _migration_bundle(
     if not isinstance(record, Mapping):
         raise OperatorError("migration handoff record mismatch")
     bundle_name = record.get("bundle")
-    if (not isinstance(bundle_name, str)
-            or record != _migration_record(intent, fingerprint, bundle_name)):
+    if not isinstance(bundle_name, str):
+        raise OperatorError("migration handoff record mismatch")
+    expected = (_source_bootstrap_record(intent, fingerprint, bundle_name)
+                if intent.get("version") == 2 else
+                _migration_record(intent, fingerprint, bundle_name))
+    if record != expected:
         raise OperatorError("migration handoff record mismatch")
     bundle = _migration_bundle_path(marker, fingerprint, bundle_name)
     bound_intent = bundle / "intent.json"
     try:
-        stored_intent = _exact_migration_intent(
-            json.loads(bound_intent.read_text(encoding="utf-8"))
-        )
+        parser = (_exact_source_bootstrap_intent if intent.get("version") == 2
+                  else _exact_migration_intent)
+        stored_intent = parser(json.loads(bound_intent.read_text(encoding="utf-8")))
     except (OSError, ValueError, OperatorError) as exc:
         raise OperatorError("migration bound intent is unavailable or invalid") from exc
     if stored_intent != intent:
@@ -3948,7 +4009,14 @@ def _migration_run_terminal(root: Path, intent: Mapping[str, Any]) -> tuple[str 
             run = _run_from_data(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise OperatorError("invalid migration RUN record") from exc
-        if (run.base_sha == intent["target_control_sha"]
+        if (intent.get("version") == 2
+                and run.base_sha == intent["source_control_sha"]
+                and run.task.id == intent["task_id"]
+                and Path(run.workspace).resolve() == root.resolve()
+                and (run.task.revision != intent["task_revision"]
+                     or run.executor != intent["executor"])):
+            raise OperatorError("mismatched source-control bootstrap RUN history")
+        if (run.base_sha == _handoff_control_sha(intent)
                 and run.task.id == intent["task_id"]
                 and run.task.revision == intent["task_revision"]
                 and run.executor == intent["executor"]
@@ -3977,7 +4045,7 @@ def _migration_run_terminal(root: Path, intent: Mapping[str, Any]) -> tuple[str 
             if (payload["kind"] != "FAILURE" or payload["run_id"] != run_id
                     or payload["task"] != {"id": intent["task_id"], "revision": intent["task_revision"]}
                     or payload["executor"] != intent["executor"]
-                    or payload["base_sha"] != intent["target_control_sha"]):
+                    or payload["base_sha"] != _handoff_control_sha(intent)):
                 raise ValueError("FAILURE identity mismatch")
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise OperatorError("invalid migration FAILURE artifact") from exc
@@ -4012,7 +4080,7 @@ def _write_migration_atomic(path: Path, content: str) -> None:
 
 def _launch_migration_target(
     root: Path, marker: Path, bound_intent: Path, target: Path,
-    runner: NativeRunner,
+    runner: NativeRunner, *, source_bootstrap: bool = False,
 ) -> int:
     """Transport the existing handoff; all target entry is serialized there."""
 
@@ -4021,7 +4089,8 @@ def _launch_migration_target(
     inherited = [part for part in env.get("PYTHONPATH", "").split(os.pathsep)
                  if part and str(Path(part).resolve()) != checkout_source]
     env["PYTHONPATH"] = os.pathsep.join([str(target / "src"), *inherited])
-    command = [sys.executable, "-m", "aios_renew.operator", "migrate-primary",
+    command = [sys.executable, "-m", "aios_renew.operator",
+               "bootstrap-source-primary" if source_bootstrap else "migrate-primary",
                str(bound_intent), "--accept-handoff", str(marker)]
     return runner(command, env=env).returncode
 
@@ -4041,8 +4110,10 @@ def _require_no_active_migration(root: Path) -> None:
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise OperatorError("invalid migration handoff marker") from exc
         if (not isinstance(source, str) or not isinstance(target, str)
-                or record.get("format") != "AIOS_MIGRATION_HANDOFF"
-                or record.get("version") != 1
+                or (record.get("format"), record.get("version")) not in {
+                    ("AIOS_MIGRATION_HANDOFF", 1),
+                    ("AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF", 2),
+                }
                 or record.get("fingerprint") != marker.stem
                 or not isinstance(record.get("repository"), str)
                 or Path(record.get("repository", "")).resolve() != root.resolve()
@@ -4087,8 +4158,10 @@ def _require_migration_target(root: Path, fingerprint: str) -> dict[str, Any]:
         target_sha = record["target_generation_sha"]
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise OperatorError("migration target has no consumed exact handoff") from exc
-    if (record.get("format") != "AIOS_MIGRATION_HANDOFF"
-            or record.get("version") != 1
+    if ((record.get("format"), record.get("version")) not in {
+                ("AIOS_MIGRATION_HANDOFF", 1),
+                ("AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF", 2),
+            }
             or record.get("fingerprint") != fingerprint
             or not isinstance(record.get("repository"), str)
             or Path(record.get("repository", "")).resolve() != root.resolve()
@@ -4099,9 +4172,9 @@ def _require_migration_target(root: Path, fingerprint: str) -> dict[str, Any]:
         raise OperatorError("migration target handoff mismatch")
     bundle_path = _migration_bundle_path(marker, fingerprint, bundle_name)
     try:
-        intent = _exact_migration_intent(json.loads(
-            (bundle_path / "intent.json").read_text(encoding="utf-8")
-        ))
+        parser = (_exact_source_bootstrap_intent
+                  if record.get("version") == 2 else _exact_migration_intent)
+        intent = parser(json.loads((bundle_path / "intent.json").read_text(encoding="utf-8")))
     except (OSError, ValueError, OperatorError) as exc:
         raise OperatorError("migration bound intent is unavailable or invalid") from exc
     _, target = _migration_bundle(marker, record, intent)
@@ -4170,7 +4243,7 @@ def _check_migration_control(
             raise OperatorError("migration pin artifact mismatch")
         generation = intent["source_generation_sha" if field.startswith("source") else "target_generation_sha"]
         other = intent["target_generation_sha" if field.startswith("source") else "source_generation_sha"]
-        if content.count(generation) != 1 or other in content:
+        if content.count(generation) != 1 or (other != generation and other in content):
             raise OperatorError("migration pin does not uniquely name exact generation")
     task_path = f".ai/tasks/{intent['task_id']}.yaml"
     try:
@@ -4189,16 +4262,21 @@ def _check_migration_control(
 def _stage_migration_handoff(
     root: Path, intent: Mapping[str, Any], marker: Path,
 ) -> tuple[Path, Path]:
-    """Bind TASK-197 transport before granting the exact target entry."""
+    """Bind exact transport before granting the target entry."""
 
     fingerprint = _migration_fingerprint(intent)
+    source_bootstrap = intent.get("version") == 2
+    control_intent = _source_bootstrap_check_control(intent) if source_bootstrap else intent
     _require_no_active_migration(root)
     with RepositoryLock(runtime_paths(root).lock), tempfile.TemporaryDirectory(
         prefix="aios-target-generation-"
     ) as temporary:
         control = Path(temporary) / "control"
         _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags", str(root), str(control))
-        _check_migration_control(root, intent, transport=control)
+        if source_bootstrap:
+            _check_source_bootstrap_control(root, intent, transport=control)
+        else:
+            _check_migration_control(root, control_intent, transport=control)
         marker.parent.mkdir(parents=True, exist_ok=True)
         transport_dir = runtime_state_root(root) / "m"
         transport_dir.mkdir(parents=True, exist_ok=True)
@@ -4215,14 +4293,21 @@ def _stage_migration_handoff(
                 raise OperatorError("target generation checkout mismatch")
             bound_intent = bundle / "intent.json"
             bound_intent.write_text(json.dumps(intent, sort_keys=True), encoding="utf-8")
-            _check_migration_control(root, intent, transport=control)
+            if source_bootstrap:
+                _check_source_bootstrap_control(root, intent, transport=control)
+            else:
+                _check_migration_control(root, control_intent, transport=control)
             if marker.exists():
                 raise OperatorError("migration handoff already exists")
             if any(path != marker for path in marker.parent.glob("*.json")):
                 raise OperatorError("ambiguous migration handoff history")
             _write_migration_atomic(
                 marker,
-                json.dumps(_migration_record(intent, fingerprint, bundle.name), sort_keys=True),
+                json.dumps(
+                    _source_bootstrap_record(intent, fingerprint, bundle.name)
+                    if source_bootstrap else _migration_record(intent, fingerprint, bundle.name),
+                    sort_keys=True,
+                ),
             )
             return bound_intent, target
         except BaseException:
@@ -4268,6 +4353,101 @@ def bootstrap_primary(
         if not marker.exists():
             _persist_and_transport_admission_failure(root, admission=admission, failure=exc)
         raise
+
+
+def bootstrap_source_primary(
+    intent_path: str | Path,
+    *,
+    runner: NativeRunner = subprocess.run,
+    legacy_runner: NativeRunner = subprocess.run,
+    handoff_path: str | Path | None = None,
+) -> int:
+    """Stage or consume one source-control legacy bootstrap authority edge."""
+
+    intent = _exact_source_bootstrap_intent(
+        json.loads(Path(intent_path).read_text(encoding="utf-8"))
+    )
+    root = resolve_repository(intent["repository"])
+    fingerprint = _migration_fingerprint(intent)
+    marker = _migration_marker(root, fingerprint)
+    if handoff_path is None:
+        # Only a later published activation source may fill this single slot.
+        if (_SOURCE_BOOTSTRAP_TARGET_SHA is None
+                or intent["target_generation_sha"] != _SOURCE_BOOTSTRAP_TARGET_SHA):
+            raise OperatorError("source-control bootstrap target is not activated")
+        if _legacy_installed_generation_sha(runner=legacy_runner) != intent["source_generation_sha"]:
+            raise OperatorError("source-control bootstrap legacy generation mismatch")
+        admission = _new_admission(
+            "PRIMARY", phase="MIGRATION_PRE_HANDOFF",
+            reason_code="MIGRATION_PRE_HANDOFF_REJECTED",
+            task_id=intent["task_id"], executor=intent["executor"],
+        )
+        try:
+            if marker.with_suffix(".completed").exists():
+                raise OperatorError("source-control bootstrap handoff already completed")
+            if marker.is_file():
+                siblings = list(marker.parent.glob("*.json"))
+                if siblings != [marker]:
+                    raise OperatorError("ambiguous source-control bootstrap handoff state")
+                record = json.loads(marker.read_text(encoding="utf-8"))
+                bound_intent, target = _migration_bundle(marker, record, intent)
+            else:
+                bound_intent, target = _stage_migration_handoff(root, intent, marker)
+            return _launch_migration_target(
+                root, marker, bound_intent, target, runner, source_bootstrap=True
+            )
+        except BaseException as exc:
+            if not marker.exists():
+                _persist_and_transport_admission_failure(root, admission=admission, failure=exc)
+            raise
+
+    if Path(handoff_path).resolve() != marker.resolve():
+        raise OperatorError("source-control bootstrap handoff marker mismatch")
+    with RepositoryLock(marker.with_suffix(".lock")):
+        try:
+            record = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise OperatorError("source-control bootstrap handoff is unavailable") from exc
+        _, target = _migration_bundle(marker, record, intent)
+        source_root = Path(__file__).resolve().parent.parent.parent
+        if (source_root != target.resolve()
+                or _git(source_root, "rev-parse", "HEAD") != intent["target_generation_sha"]):
+            raise OperatorError("running source differs from bound bootstrap target")
+        consumed = marker.with_suffix(".consumed")
+        if consumed.is_file():
+            if consumed.read_text(encoding="utf-8") != fingerprint:
+                raise OperatorError("source-control bootstrap consumed marker mismatch")
+        else:
+            _write_migration_atomic(consumed, fingerprint)
+        run_id, terminal = _migration_run_terminal(root, intent)
+        if run_id is not None:
+            if terminal is None:
+                raise OperatorError(f"migration RUN {run_id} is active; reconcile its persisted state")
+            _complete_migration(marker, fingerprint)
+            return 0 if terminal == "RESULT" else 1
+        if marker.with_suffix(".completed").exists():
+            raise OperatorError("bootstrap completion has no bound RUN")
+        with RepositoryLock(runtime_paths(root).lock):
+            _check_source_bootstrap_control(root, intent)
+        try:
+            summary = run_task(
+                intent["task_id"], executor=intent["executor"], repo=root,
+                synchronize=False, preflight_sha=intent["source_control_sha"],
+                task_revision=intent["task_revision"], task_blob_sha=intent["task_blob_sha"],
+                task_commit_sha=intent["task_commit_sha"],
+                _migration_handoff=fingerprint,
+            )
+        except BaseException:
+            _, terminal = _migration_run_terminal(root, intent)
+            if terminal is not None:
+                _complete_migration(marker, fingerprint)
+            raise
+        _, terminal = _migration_run_terminal(root, intent)
+        if terminal != "RESULT":
+            raise OperatorError("bootstrap execution returned without a terminal RESULT")
+        _complete_migration(marker, fingerprint)
+        print(summary.render())
+        return 0
 
 
 def migrate_primary(
@@ -6456,6 +6636,12 @@ def _parser() -> argparse.ArgumentParser:
         "bootstrap-primary", help="Bridge one exact legacy installed generation into migrate-primary"
     )
     bootstrap_parser.add_argument("intent", help="Exact reviewed migration intent JSON")
+    source_bootstrap_parser = commands.add_parser(
+        "bootstrap-source-primary",
+        help="Bridge one legacy generation through an exact source-control handoff",
+    )
+    source_bootstrap_parser.add_argument("intent", help="Exact source-control bootstrap intent JSON")
+    source_bootstrap_parser.add_argument("--accept-handoff", help=argparse.SUPPRESS)
     wakeup_parser = commands.add_parser(
         "wakeup", help="Idempotently wake one canonical PRIMARY execution"
     )
@@ -6783,6 +6969,10 @@ def main(
             )
         elif args.command == "bootstrap-primary":
             return bootstrap_primary(args.intent, runner=native_runner)
+        elif args.command == "bootstrap-source-primary":
+            return bootstrap_source_primary(
+                args.intent, runner=native_runner, handoff_path=args.accept_handoff
+            )
         elif args.command == "wakeup":
             repo_root = resolve_repository(args.repo)
             dispatch_state_root = runtime_paths(repo_root).root

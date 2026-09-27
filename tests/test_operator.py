@@ -9201,6 +9201,268 @@ def _migration_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
     return repo, target_source, intent
 
 
+def _source_bootstrap_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
+    target_source = tmp_path / "reviewed-generation"
+    target_source.mkdir()
+    git(target_source, "init", "-b", "main")
+    git(target_source, "config", "user.name", "Bootstrap Test")
+    git(target_source, "config", "user.email", "bootstrap@example.invalid")
+    operator_path = target_source / "src" / "aios_renew" / "operator.py"
+    operator_path.parent.mkdir(parents=True)
+    operator_path.write_text("# exact consumer-capable target\n", encoding="utf-8")
+    git(target_source, "add", ".")
+    git(target_source, "commit", "-m", "reviewed target generation")
+    target_generation = git(target_source, "rev-parse", "HEAD")
+
+    repo = make_repo(tmp_path / "control")
+    legacy = "1" * 40
+    source_control = publish_upstream(
+        repo,
+        {"AIOS_PIN": f"aios-renew @ {legacy}\n",
+         ".ai/tasks/TASK-101.yaml": TASK_SOURCE.replace("revision: 1", "revision: 2")},
+        "authorized source-control migration task",
+    )
+    git(repo, "fetch", "origin", "main")
+    git(repo, "merge", "--ff-only", "origin/main")
+    intent = {
+        "format": "AIOS_SOURCE_CONTROL_BOOTSTRAP_INTENT", "version": 2,
+        "source_generation_sha": legacy,
+        "target_generation_sha": target_generation,
+        "target_url": str(target_source),
+        "repository": str(repo.resolve()),
+        "source_control_sha": source_control,
+        "pin_path": "AIOS_PIN",
+        "source_pin_blob_sha": git(repo, "rev-parse", f"{source_control}:AIOS_PIN"),
+        "task_id": "TASK-101", "task_revision": 2,
+        "task_blob_sha": git(repo, "rev-parse", f"{source_control}:.ai/tasks/TASK-101.yaml"),
+        "task_commit_sha": source_control,
+        "executor": "codex",
+    }
+    return repo, target_source, intent
+
+
+def test_source_bootstrap_closed_and_exact_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, intent = _source_bootstrap_fixture(tmp_path)
+    path = tmp_path / "source-intent.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    launched = []
+    child = lambda command, **kwargs: (
+        launched.append((command, kwargs["env"])), subprocess.CompletedProcess(command, 0)
+    )[1]
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: intent["source_generation_sha"])
+    with pytest.raises(OperatorError, match="not activated"):
+        operator_module.bootstrap_source_primary(path, runner=child)
+    assert launched == []
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA",
+                        intent["target_generation_sha"])
+    assert operator_module.bootstrap_source_primary(path, runner=child) == 0
+    assert operator_module.bootstrap_source_primary(path, runner=child) == 0
+    assert len(launched) == 2 and launched[0][0] == launched[1][0]
+    assert launched[0][0][3] == "bootstrap-source-primary"
+    marker = Path(launched[0][0][-1])
+    record = json.loads(marker.read_text(encoding="utf-8"))
+    assert record["format"] == "AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF"
+    assert record["target_control_sha"] == intent["source_control_sha"]
+    assert record["source_pin_blob_sha"] == intent["source_pin_blob_sha"]
+    assert record["task_blob_sha"] == intent["task_blob_sha"]
+    assert record["executor"] == intent["executor"]
+    assert git(repo, "rev-parse", "origin/main") == intent["source_control_sha"]
+    assert intent["target_generation_sha"] not in git(
+        repo, "show", f"{intent['source_control_sha']}:AIOS_PIN"
+    )
+    assert Path(launched[0][0][-3]).parent.parent == runtime_state_root(repo) / "m"
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+@pytest.mark.parametrize("mutation", ["legacy", "source", "pin", "task", "target"])
+def test_source_bootstrap_rejects_unbound_identity_before_edge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    repo, _, intent = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA",
+                        intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: "1" * 40)
+    field = {"legacy": "source_generation_sha", "source": "source_control_sha",
+             "pin": "source_pin_blob_sha", "task": "task_blob_sha",
+             "target": "target_generation_sha"}[mutation]
+    intent[field] = "2" * 40
+    path = tmp_path / "bad-source-intent.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    with pytest.raises(OperatorError):
+        operator_module.bootstrap_source_primary(
+            path, runner=lambda *a, **k: pytest.fail("target launched")
+        )
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+
+
+@pytest.mark.parametrize("unsafe", ["dirty", "detached", "upstream"])
+def test_source_bootstrap_rejects_unsafe_control(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unsafe: str
+) -> None:
+    repo, _, intent = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA",
+                        intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: intent["source_generation_sha"])
+    if unsafe == "dirty":
+        (repo / "untracked.txt").write_text("dirty")
+    elif unsafe == "detached":
+        git(repo, "checkout", "--detach", intent["source_control_sha"])
+    else:
+        git(repo, "config", "--add", "branch.main.remote", "origin")
+    path = tmp_path / "unsafe-source-intent.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    with pytest.raises(OperatorError):
+        operator_module.bootstrap_source_primary(
+            path, runner=lambda *a, **k: pytest.fail("target launched")
+        )
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+
+
+@pytest.mark.parametrize("terminal", [None, "RESULT", "FAILURE"])
+def test_source_bootstrap_target_reconciles_one_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, terminal: str | None
+) -> None:
+    repo, _, intent = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA",
+                        intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: intent["source_generation_sha"])
+    path = tmp_path / "source-intent.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    launched = []
+    def child(command, **kwargs):
+        launched.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0)
+    assert operator_module.bootstrap_source_primary(path, runner=child) == 0
+    marker = Path(launched[0][0][-1])
+    target_package = Path(launched[0][1]["PYTHONPATH"].split(operator_module.os.pathsep)[0])
+    with pytest.raises(OperatorError, match="running source differs"):
+        operator_module.bootstrap_source_primary(path, handoff_path=marker)
+    monkeypatch.setattr(operator_module, "__file__", str(target_package / "aios_renew" / "operator.py"))
+    invocations = []
+    def admitted(*args, **kwargs):
+        invocations.append(kwargs)
+        record = operator_module._require_migration_target(repo, marker.stem)
+        assert record["format"] == "AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF"
+        with pytest.raises(OperatorError, match="differs from exact admitted TASK"):
+            operator_module._validate_migration_execution(
+                record, task_id=intent["task_id"], executor="antigravity",
+                synchronize=False, preflight_sha=intent["source_control_sha"],
+                dispatch_id=None, task_revision=intent["task_revision"],
+                task_blob_sha=intent["task_blob_sha"],
+                task_commit_sha=intent["task_commit_sha"],
+            )
+        state = runtime_paths(repo)
+        run_id = "RUN-101-001"
+        (state.runs / f"{run_id}.json").write_text(json.dumps({
+            "run_id": run_id, "task": {"id": intent["task_id"], "revision": 2},
+            "executor": intent["executor"], "base_sha": intent["source_control_sha"],
+            "workspace": str(repo), "status": "ACTIVE",
+        }))
+        if terminal is not None:
+            artifact = (
+                {"result": {"head_sha": intent["source_control_sha"], "claims": [],
+                            "changed_files": [], "unresolved": []}, "evidence": []}
+                if terminal == "RESULT" else
+                {"kind": "FAILURE", "run_id": run_id,
+                 "task": {"id": intent["task_id"], "revision": 2},
+                 "executor": intent["executor"], "base_sha": intent["source_control_sha"]}
+            )
+            destination = state.results if terminal == "RESULT" else state.failures
+            (destination / f"{run_id}.json").write_text(json.dumps(artifact), encoding="utf-8")
+        return SimpleNamespace(render=lambda: "ADMITTED")
+    monkeypatch.setattr(operator_module, "run_task", admitted)
+    if terminal is None:
+        with pytest.raises(OperatorError, match="without a terminal RESULT"):
+            operator_module.bootstrap_source_primary(path, handoff_path=marker)
+        with pytest.raises(OperatorError, match="is active"):
+            operator_module.bootstrap_source_primary(path, handoff_path=marker)
+    elif terminal == "RESULT":
+        assert operator_module.bootstrap_source_primary(path, handoff_path=marker) == 0
+        assert operator_module.bootstrap_source_primary(path, handoff_path=marker) == 0
+    else:
+        with pytest.raises(OperatorError, match="without a terminal RESULT"):
+            operator_module.bootstrap_source_primary(path, handoff_path=marker)
+        assert operator_module.bootstrap_source_primary(path, handoff_path=marker) == 1
+    assert len(invocations) == 1
+    assert invocations[0]["synchronize"] is False
+    assert invocations[0]["preflight_sha"] == intent["source_control_sha"]
+    assert invocations[0]["_migration_handoff"] == marker.stem
+
+
+def test_source_bootstrap_rejects_replayed_or_mismatched_handoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, intent = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA",
+                        intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: intent["source_generation_sha"])
+    path = tmp_path / "source-intent.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    launches = []
+    def child(command, **kwargs):
+        launches.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0)
+    assert operator_module.bootstrap_source_primary(path, runner=child) == 0
+    marker = Path(launches[0][0][-1])
+    target_package = Path(launches[0][1]["PYTHONPATH"].split(operator_module.os.pathsep)[0])
+    monkeypatch.setattr(operator_module, "__file__", str(target_package / "aios_renew" / "operator.py"))
+    run_called = lambda *a, **k: pytest.fail("second Executor invocation")
+    monkeypatch.setattr(operator_module, "run_task", run_called)
+    record = json.loads(marker.read_text(encoding="utf-8"))
+    record["executor"] = "antigravity"
+    marker.write_text(json.dumps(record), encoding="utf-8")
+    with pytest.raises(OperatorError, match="record mismatch"):
+        operator_module.bootstrap_source_primary(path, handoff_path=marker)
+    record["executor"] = intent["executor"]
+    marker.write_text(json.dumps(record), encoding="utf-8")
+    state = runtime_paths(repo)
+    (state.runs / "RUN-101-001.json").write_text(json.dumps({
+        "run_id": "RUN-101-001", "task": {"id": intent["task_id"], "revision": 2},
+        "executor": "antigravity", "base_sha": intent["source_control_sha"],
+        "workspace": str(repo), "status": "ACTIVE",
+    }), encoding="utf-8")
+    with pytest.raises(OperatorError, match="mismatched source-control bootstrap RUN"):
+        operator_module.bootstrap_source_primary(path, handoff_path=marker)
+    assert not marker.with_suffix(".completed").exists()
+
+
+def test_source_bootstrap_stale_upstream_after_edge_has_no_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, intent = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA",
+                        intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: intent["source_generation_sha"])
+    path = tmp_path / "source-intent.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    launched = []
+    def child(command, **kwargs):
+        launched.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0)
+    assert operator_module.bootstrap_source_primary(path, runner=child) == 0
+    marker = Path(launched[0][0][-1])
+    target_package = Path(launched[0][1]["PYTHONPATH"].split(operator_module.os.pathsep)[0])
+    monkeypatch.setattr(operator_module, "__file__", str(target_package / "aios_renew" / "operator.py"))
+    publish_upstream(repo, {"LATER.txt": "upstream advanced\n"}, "later upstream")
+    monkeypatch.setattr(operator_module, "run_task",
+                        lambda *a, **k: pytest.fail("Executor invoked"))
+    with pytest.raises(OperatorError, match="source control SHA is stale|target control SHA is stale"):
+        operator_module.bootstrap_source_primary(path, handoff_path=marker)
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not marker.with_suffix(".completed").exists()
+
+
 def test_bootstrap_attests_imported_legacy_install_without_control_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
