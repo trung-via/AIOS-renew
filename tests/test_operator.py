@@ -9662,6 +9662,7 @@ def test_migration_rejects_wrong_target_source_before_handoff(
     assert git(repo, "rev-parse", "HEAD") == intent["source_control_sha"]
     assert not list(runtime_paths(repo).runs.glob("*.json"))
     assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+    assert not list((runtime_state_root(repo) / "m").glob("*"))
 
 
 def test_migration_rejects_mismatched_installed_source_before_transport(

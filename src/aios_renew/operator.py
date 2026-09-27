@@ -4227,7 +4227,7 @@ def _stage_migration_handoff(
             return bound_intent, target
         except BaseException:
             if not marker.exists():
-                shutil.rmtree(bundle)
+                _remove_historical_workspace(root, bundle)
             raise
 
 
