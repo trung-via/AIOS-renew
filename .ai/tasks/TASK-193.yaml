@@ -1,0 +1,253 @@
+task_id: TASK-193
+revision: 1
+
+goal: >
+  Establish BP8-P2A as one deterministic, offline, reviewed proof harness for the
+  Human-selected Antigravity/Gemini 3.8 Flash Reviewer path with explicit reasoning
+  effort high. The harness must compose the already-reviewed BP6 one-call Reviewer
+  protocol with the BP8-P1 GeminiReviewerTransport, produce one bounded observation
+  contract suitable for later Runtime-owned real-call evidence, and preserve the
+  distinction between a provider/transport outcome and an engineering verification
+  failure. This TASK prepares the harness only; it performs no real provider call.
+
+problem: >
+  BP8-P1 / TASK-191 reviewed and published the repository-blind read-only
+  GeminiReviewerTransport, but invoking that transport directly as an ordinary Runtime
+  verification command would map any transient provider/network failure to a canonical
+  RUN VERIFICATION FAILURE. BP8 architecture explicitly forbids that semantic collapse:
+  a real Reviewer provider failure is a bounded pre-REVIEW operational outcome and must
+  not fabricate REVIEW, RUN failure, remediation, retry, or fallback. The existing
+  BP-V4 evidence pattern shows the safe decomposition: first review a bounded probe
+  harness offline, then execute the reviewed harness in a separate zero-delta
+  Runtime-owned observation TASK where target/provider outcomes are data and only probe
+  integrity defects are nonzero. TASK-193 therefore builds only that BP8-P2A harness;
+  BP8-P2B will later execute it exactly once with --effort high.
+
+assumptions:
+  - >
+    Canonical main at TASK authoring is
+    92ac7410d2bfa8b700e3e0d376ef608f2d24f4b2. Roadmap planning records BP8-P2A /
+    TASK-193 r1 as the unique NEXT item and records the Human-selected proof identity:
+    REVIEWER role, provider antigravity, model gemini-3.8-flash, reasoning effort high.
+  - >
+    TASK-191 r1 / BP8-P1 is engineering-complete after its reviewed remediation
+    lineage and exact publication of
+    a967ef7f6e16c893600a7cc0731e1f0bc94f3077. The current
+    src/aios_renew/gemini_reviewer_transport.py is the only provider-bound native
+    Reviewer transport authorized for this proof.
+  - >
+    BP6 reviewer_provider.attempt(), JsonReviewerProvider, construct_request(),
+    validate_response(), reviewer procedure selection, reviewer return-contract
+    selection, Decision Packet compilation, and review.validate_review remain the
+    reviewed semantic/provider authority surfaces. TASK-193 may compose them but must
+    not fork or weaken them.
+  - >
+    Human selected Reviewer effort high specifically for this one BP8-P2 proof. This
+    does not make high an implicit Reviewer default, does not change Antigravity
+    Executor defaults, and does not create model/provider selection policy.
+  - >
+    BP8-P2B will be a separately authored zero-delta evidence TASK after TASK-193 is
+    reviewed and published. Its intended sole Runtime verification command is:
+    python scripts/bp8_real_reviewer_probe.py --effort high
+    TASK-193 itself must never execute that real external path.
+  - >
+    Runtime owns canonical verification/EVIDENCE; Reviewer owns semantic verdict;
+    Human/Brain own interpretation of the later BP8 proof observation and roadmap
+    closure; Publisher owns publication. Provider/model attribution remains
+    operational metadata and cannot change semantic request/decision fingerprints.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/reviewer-procedure-profiles.yaml
+    - .ai/reviewer-return-contracts.yaml
+    - .ai/tasks/TASK-191.yaml
+    - .ai/tasks/TASK-192.yaml
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/reviewer_provider.py
+    - src/aios_renew/reviewer_provider_protocol.py
+    - src/aios_renew/reviewer_procedure.py
+    - src/aios_renew/reviewer_return_contract.py
+    - src/aios_renew/gemini_reviewer_transport.py
+    - tests/test_reviewer_provider.py
+    - tests/test_reviewer_provider_protocol.py
+    - tests/test_gemini_reviewer_transport.py
+    - scripts/bp_v4_parallel_diagnostic.py
+  modify:
+    - scripts/bp8_real_reviewer_probe.py
+    - tests/test_bp8_real_reviewer_probe.py
+
+non_goals:
+  - Perform a real Antigravity/Gemini invocation, require live credentials, or access
+    the external provider/network during TASK-193 verification.
+  - Modify GeminiReviewerTransport, Reviewer provider/protocol, Decision Packet,
+    review.validate_review, Runtime, verification, ingress, Publisher, workflows,
+    executor adapters/profiles, frozen Kernel, roadmap state, or downstream repositories.
+  - Create a provider registry, selector, scorer, router, retry, fallback, failover,
+    voting, consensus, automatic correction selector, persistent provider session,
+    memory store, or generic arbitrary-provider probe abstraction.
+  - Make Antigravity, Gemini 3.8 Flash, or high effort a default/preferred Reviewer.
+  - Submit or persist a canonical REVIEW, author remediation/repair, publish a
+    candidate, mutate lifecycle state, or advance roadmap state from the proof harness.
+  - Treat a provider failure observation as proof success or as an engineering code
+    failure; interpretation belongs to the later BP8-P2B evidence checkpoint.
+  - Predetermine or prefer the provider semantic verdict. PASS, CHANGES_REQUIRED, and
+    BLOCKED are all acceptable semantic outputs if the unchanged BP6 protocol validates
+    them.
+  - Author or execute BP8-P2B/TASK-194 inside this TASK.
+
+constraints:
+  hard:
+    - >
+      Mutation is limited exactly to scripts/bp8_real_reviewer_probe.py and
+      tests/test_bp8_real_reviewer_probe.py. If a correct harness requires changing
+      any existing production/provider/Runtime/workflow/configuration file, stop with
+      an unresolved item rather than widening scope.
+    - >
+      The harness is proof-specific. It must bind only provider antigravity and model
+      gemini-3.8-flash through the existing GeminiReviewerTransport and
+      JsonReviewerProvider. It must expose no provider/model selector, registry,
+      configuration discovery, environment-driven routing, retry, fallback, or second
+      provider path.
+    - >
+      Effort must be explicit and proof-bound. The CLI must require the exact syntax
+      --effort high with no default; missing, duplicated, reordered, extra, or
+      non-high effort input must fail before any native process call. Internal callable
+      APIs may receive the effort as an explicit argument but must reject any value
+      other than high for this proof harness.
+    - >
+      Build one deterministic, self-contained PRIMARY Reviewer proof subject using
+      existing production contract composers/validators only. The fixture may be
+      synthetic and non-canonical, but it must be a complete valid BP6 semantic
+      subject with a valid Task projection, Result/claim/evidence projection,
+      Decision Packet, review scope, review material package, procedure package,
+      return-contract package, external review/finding bindings, and exact
+      request_fingerprint. Do not import test modules, copy BP6 validation logic, or
+      introduce a second REVIEW grammar.
+    - >
+      The synthetic proof identity must be fixed and content-addressed by the harness
+      so repeated offline construction is byte/fingerprint deterministic. It must not
+      impersonate a canonical AIOS RUN/REVIEW, claim current lifecycle state, or be
+      submitted to authoring ingress. Any proof-only identity exposed to the provider
+      must be clearly bounded to the transient proof request.
+    - >
+      The provider path must be composed through reviewer_provider.attempt() with one
+      JsonReviewerProvider whose callable is a recording wrapper around exactly one
+      GeminiReviewerTransport instance. The wrapper may transiently retain the exact
+      request bytes long enough to bind their SHA-256 digest and request_fingerprint,
+      then must return no raw request/response in the observation. No direct second
+      native call, semantic retry, fallback, replay, or alternative adapter is allowed.
+    - >
+      The normal observation envelope must be closed, deterministic in field names,
+      strict-JSON serializable, and at most 8192 UTF-8 bytes. It must contain exactly
+      the proof format/version/kind, outcome, provider, model, effort,
+      invocation_count, request_fingerprint, request_sha256, decision_fingerprint,
+      failure_reason_code, failure_phase, and native_usage. native_usage is either
+      null or exactly input_tokens/output_tokens/cached_input_tokens.
+    - >
+      outcome may be only VALIDATED_DECISION or PROVIDER_FAILURE. A
+      VALIDATED_DECISION observation requires exactly one invocation, matching
+      Antigravity/gemini-3.8-flash/high attribution, a non-null validated BP6
+      decision_fingerprint, a request_fingerprint matching the exact bytes actually
+      delivered, and the non-null provider-native usage witness exposed by
+      GeminiReviewerTransport. The semantic verdict itself must not be copied into the
+      proof observation because BP8 needs contract/provider proof, not a parallel
+      canonical REVIEW.
+    - >
+      A ReviewerAttemptError after exactly one provider invocation with reason code
+      PROVIDER_TRANSPORT_FAILURE, PROVIDER_RESPONSE_INVALID, or
+      PROVIDER_ATTRIBUTION_MISMATCH is a normal PROVIDER_FAILURE observation. It must
+      retain only bounded reason_code/phase plus request/provider/model/effort/call
+      identity and any already-validated native usage witness; it must not retain
+      exception text, raw native stdout/stderr, request/response content, credentials,
+      environment, session/reasoning data, or fabricate a semantic decision.
+    - >
+      Provider failure is observational, not an engineering verification defect:
+      CLI main must return exit code 0 after emitting one valid bounded
+      PROVIDER_FAILURE observation. By contrast, malformed fixed proof input,
+      zero-call attribution drift, invocation count other than one, missing/ambiguous
+      exact request bytes, fingerprint inconsistency, observation-shape/bound failure,
+      unexpected exception family, or any probe invariant defect must emit no normal
+      proof observation and return nonzero as probe-integrity failure.
+    - >
+      The harness must not inspect, enumerate, serialize, log, or copy credentials or
+      environment variables. Authentication for the future P2B native CLI is inherited
+      externally exactly as allowed by BP8-P1. No secret value may enter command
+      arguments, proof fixture, observation, error text, or tests.
+    - >
+      TASK-193 verification is strictly offline. Tests must inject deterministic
+      process runners into GeminiReviewerTransport; they must not execute agy, access
+      the network, depend on live credentials, or rely on provider availability.
+    - >
+      Focused tests must prove at least: deterministic identical proof-request
+      fingerprints across fresh constructions; exact --effort high/no-default
+      admission; one native process call on success; successful composition through
+      JsonReviewerProvider + reviewer_provider.attempt + unchanged BP6 response
+      validation; exact request-byte SHA binding; non-null native usage witness on
+      VALIDATED_DECISION; typed transport/response provider failures becoming bounded
+      exit-0 observations; probe-integrity defects remaining nonzero; no raw
+      request/response/secret leakage; and observation byte bound.
+    - >
+      Static/behavioral tests must prove the harness imports no Runtime, verification,
+      authoring_ingress, publication, review_transport, codex_adapter,
+      antigravity_adapter, execution_profile, or downstream authority and contains no
+      lifecycle mutation/submission path. It may import the dedicated
+      gemini_reviewer_transport and reviewed BP6 semantic/provider composers only.
+    - >
+      TASK-193 completion means only BP8-P2A harness readiness. It must not claim that
+      a real Gemini call occurred, that provider replacement was observed, that BP8-P2
+      or BP8 is complete, that Gemini quality was established, or that downstream
+      adoption is ready.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A dedicated BP8 real-Reviewer proof harness exists only in the authorized script,
+      fixed to Antigravity/gemini-3.8-flash and explicit high effort with no default or
+      provider/model routing surface, while all existing provider/default policies
+      remain unchanged.
+  - id: AC2
+    condition: >
+      The harness deterministically constructs one complete self-contained BP6 PRIMARY
+      proof request through existing production composers/validators and invokes it
+      through exactly one JsonReviewerProvider + GeminiReviewerTransport call path,
+      with the exact delivered request bytes bound by request_fingerprint and SHA-256
+      and no raw semantic material retained in its observation.
+  - id: AC3
+    condition: >
+      The implementation defines one closed <=8192-byte observation contract that
+      distinguishes VALIDATED_DECISION from PROVIDER_FAILURE and on validated success
+      binds provider/model/high effort, exactly one invocation, request identity,
+      validated decision_fingerprint, and provider-native token/call witness without
+      copying the semantic verdict.
+  - id: AC4
+    condition: >
+      The CLI implementation makes one-call provider transport/response/attribution
+      failure an exit-0 bounded pre-REVIEW observation while keeping proof-input,
+      fingerprint, invocation-count, shape/bound, and unexpected harness-integrity
+      defects fail-closed with nonzero exit and no fabricated decision/lifecycle state.
+  - id: AC5
+    condition: >
+      The harness is repository/lifecycle authority-neutral: it performs no canonical
+      REVIEW submission, Runtime/ingress/publication mutation, credential inspection,
+      provider retry/fallback/routing, Executor reuse, or downstream action and imports
+      none of the forbidden authority modules.
+  - id: AC6
+    condition: >
+      Deterministic offline focused tests exercise the success, provider-failure, and
+      integrity-failure surfaces using injected native runners only, prove observation
+      bounds/no-raw leakage and exact one-call semantics, make no real external
+      provider invocation, and the committed delta is confined to the two authorized
+      P2A files with zero unresolved implementation items.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_bp8_real_reviewer_probe.py
+    - git diff --check
