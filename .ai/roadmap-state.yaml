@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - maintenance-pytest-bounded-parameter-id-hardening
+  - bp-8-real-second-provider-proof
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -929,7 +929,21 @@ sequence:
       Prove cross-context/provider continuation from canonical state without previous
       model memory.
   - id: maintenance-pytest-bounded-parameter-id-hardening
-    status: NEXT
+    status: DONE
+    completed_by:
+      task_id: TASK-192
+      task_revision: 2
+      failed_runs:
+        - RUN-192-001
+      run_id: RUN-192-002
+      review_id: REVIEW-192-001
+      reviewed_sha: "ba4ae3da4dcfa09466e3455e67e77d703cf86259"
+      published_sha: "ba4ae3da4dcfa09466e3455e67e77d703cf86259"
+      verification_evidence:
+        - RUN-192-002-V001
+        - RUN-192-002-V002
+        - RUN-192-002-V003
+        - RUN-192-002-V004
     task_id: TASK-192
     task_revision: 2
     return_to: bp-8-real-second-provider-proof
@@ -946,8 +960,10 @@ sequence:
       TASK-192 r1 produced reusable in-scope candidate
       50d6482ab09741ee155bd827fdf9553d633ee14e but failed at COMPLETION_GATE
       before Runtime verification because AC3 and AC5 required the Executor to
-      claim future Runtime-owned verification facts. Revision 2 corrects only
-      that authority boundary and preserves the maintenance objective.
+      claim future Runtime-owned verification facts. Revision 2 corrected that
+      authority boundary; RUN-192-002 then passed focused serial, two-worker xdist,
+      full repository collect-only and diff-check verification, REVIEW-192-001
+      returned PRIMARY PASS, and the exact reviewed candidate was published.
     objective: >-
       Prevent recurrence of Windows pytest node-id / PYTEST_CURRENT_TEST overflow
       across the suite by bounding oversized auto-generated parameter identifiers
@@ -955,7 +971,7 @@ sequence:
       without changing production, Runtime verification authority, test semantics,
       or pytest/xdist identity for ordinary cases.
   - id: bp-8-real-second-provider-proof
-    status: PLANNED
+    status: NEXT
     phase: BP8-P2
     completed_phases:
       - id: BP8-P1
@@ -1026,12 +1042,14 @@ sequencing_rule:
     RUN-191-003 / REVIEW-191-001 CHANGES_REQUIRED, RUN-191-004 /
     REVIEW-191-002 DELTA PASS for FINDING-191-001, RUN-191-005 /
     REVIEW-191-003 DELTA PASS for FINDING-191-002, and exact publication of
-    a967ef7f6e16c893600a7cc0731e1f0bc94f3077. Current Human/Brain priority inserts
-    maintenance-pytest-bounded-parameter-id-hardening as the unique NEXT item before
-    BP8-P2 because the same Windows pytest node-id / PYTEST_CURRENT_TEST overflow
-    recurred independently in TASK-189 and TASK-191. After that maintenance is
-    reviewed/published complete, return to BP-8 P2 controlled real Gemini Reviewer
-    invocation. Neither the maintenance nor BP-8 may create a generic lifecycle/provider
+    a967ef7f6e16c893600a7cc0731e1f0bc94f3077. The inserted
+    maintenance-pytest-bounded-parameter-id-hardening is now reviewed/published
+    complete through TASK-192 r2, RUN-192-002, REVIEW-192-001 and exact publication
+    of ba4ae3da4dcfa09466e3455e67e77d703cf86259. The unique NEXT item therefore
+    returns to BP-8 P2 controlled real Gemini Reviewer invocation. BP8-P2 must preserve
+    the reviewed P1 one-call repository-blind transport and must not turn a transient
+    provider/transport failure into fabricated REVIEW, RUN failure, remediation, retry
+    or fallback. Neither BP-8 nor later work may create a generic lifecycle/provider
     router, merge Brain and Reviewer authority, add automatic retry/failover/correction
     selection, or silently retarget downstreams.
   human_override: >-
