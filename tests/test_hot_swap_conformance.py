@@ -420,9 +420,12 @@ def test_scenario_7_operational_failure_is_pre_aios_and_receipt_is_not_success(t
     assert steps[0]["name"] == "Prepare exact transient control source"
     assert "$controlSource wakeup" not in steps[0]["run"]
     assert "$controlSource wakeup" in steps[1]["run"]
+    assert steps[1].get("if") is None  # A failed preparation cannot invoke AIOS.
     script = tmp_path / "preflight.ps1"
     script.write_text(steps[0]["run"], encoding="utf-8")
     receipt_path = tmp_path / "operational-receipt.json"
+    task_blob_sha = git(repo, "rev-parse", f"HEAD:.ai/tasks/{TASK_ID}.yaml")
+    task_commit_sha = git(repo, "rev-parse", "HEAD")
     env = dict(os.environ)
     env.update({
         "AIOS_REPO_ROOT": "",
@@ -430,8 +433,8 @@ def test_scenario_7_operational_failure_is_pre_aios_and_receipt_is_not_success(t
         "AIOS_DISPATCH_ID": "delivery-1",
         "AIOS_TASK_ID": TASK_ID,
         "AIOS_TASK_REVISION": "1",
-        "AIOS_TASK_BLOB_SHA": git(repo, "rev-parse", f"HEAD:.ai/tasks/{TASK_ID}.yaml"),
-        "AIOS_TASK_COMMIT_SHA": git(repo, "rev-parse", "HEAD"),
+        "AIOS_TASK_BLOB_SHA": task_blob_sha,
+        "AIOS_TASK_COMMIT_SHA": task_commit_sha,
         "AIOS_EXECUTOR": "codex",
     })
     started = subprocess.run(
@@ -448,6 +451,10 @@ def test_scenario_7_operational_failure_is_pre_aios_and_receipt_is_not_success(t
     assert receipt["kind"] == "OPERATIONAL_RECEIPT"
     assert receipt["family"] == "PRIMARY"
     assert receipt["delivery"] == {"kind": "dispatch_id", "id": "delivery-1"}
+    assert receipt["selectors"] == {
+        "task_id": TASK_ID, "task_revision": 1, "task_blob_sha": task_blob_sha,
+        "task_commit_sha": task_commit_sha, "executor": "codex",
+    }
     assert receipt["boundary"] == "OPERATIONAL_FAILED"
     assert receipt["cause"] == {
         "authority": "WORKFLOW", "phase": "PRE_AIOS",
