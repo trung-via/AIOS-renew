@@ -972,8 +972,8 @@ sequence:
       or pytest/xdist identity for ordinary cases.
   - id: bp-8-real-second-provider-proof
     status: NEXT
-    phase: BP8-P2A
-    task_id: TASK-193
+    phase: BP8-P2B
+    task_id: TASK-194
     task_revision: 1
     selected_proof:
       role: REVIEWER
@@ -988,9 +988,16 @@ sequence:
         automatic model-selection rule.
     p2_plan:
       - id: BP8-P2A
-        status: NEXT
+        status: DONE
         task_id: TASK-193
         task_revision: 1
+        run_id: RUN-193-001
+        review_id: REVIEW-193-001
+        reviewed_sha: "da21220d60b44f9e06c74b8f6d9c2e18d6d3cb30"
+        published_sha: "da21220d60b44f9e06c74b8f6d9c2e18d6d3cb30"
+        verification_evidence:
+          - RUN-193-001-V001
+          - RUN-193-001-V002
         objective: >-
           Add and review one deterministic proof harness that composes the already
           reviewed BP6 Reviewer provider protocol with the BP8-P1
@@ -998,7 +1005,9 @@ sequence:
           can later run one explicit real call without treating provider failure as
           an engineering RUN failure.
       - id: BP8-P2B
-        status: PLANNED
+        status: NEXT
+        task_id: TASK-194
+        task_revision: 1
         objective: >-
           Execute the reviewed proof harness exactly once as Runtime-owned
           verification with explicit --effort high. The observation may report
