@@ -931,7 +931,7 @@ sequence:
   - id: maintenance-pytest-bounded-parameter-id-hardening
     status: NEXT
     task_id: TASK-192
-    task_revision: 1
+    task_revision: 2
     return_to: bp-8-real-second-provider-proof
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
@@ -941,6 +941,13 @@ sequence:
       - REPAIR-191-001
       - RUN-191-002
       - REPAIR-191-002
+      - RUN-192-001
+    revision_note: >-
+      TASK-192 r1 produced reusable in-scope candidate
+      50d6482ab09741ee155bd827fdf9553d633ee14e but failed at COMPLETION_GATE
+      before Runtime verification because AC3 and AC5 required the Executor to
+      claim future Runtime-owned verification facts. Revision 2 corrects only
+      that authority boundary and preserves the maintenance objective.
     objective: >-
       Prevent recurrence of Windows pytest node-id / PYTEST_CURRENT_TEST overflow
       across the suite by bounding oversized auto-generated parameter identifiers
