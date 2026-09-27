@@ -164,7 +164,7 @@ class GeminiReviewerTransport:
             schema_path.write_bytes(SCHEMA.read_bytes())
             command = (
                 "agy", "--print", _INSTRUCTION, "--add-dir", str(workspace),
-                "--mode", "plan", "--model", MODEL, "--effort", self._effort,
+                "--model", MODEL, "--effort", self._effort,
                 "--disable-slash-commands", "--output-format", "json",
                 "--json-schema", str(schema_path), "--print-timeout",
                 f"{self._timeout_seconds}s",

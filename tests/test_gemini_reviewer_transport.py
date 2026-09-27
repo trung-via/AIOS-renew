@@ -63,7 +63,8 @@ def assert_isolated(runner, request):
     assert command[command.index("--model") + 1] == MODEL
     assert command[command.index("--effort") + 1] == "medium"
     assert command[command.index("--add-dir") + 1] == kwargs["cwd"]
-    assert command[command.index("--mode") + 1] == "plan"
+    assert "--mode" not in command
+    assert "plan" not in command
     assert command[command.index("--json-schema") + 1].startswith(kwargs["cwd"])
     assert kwargs["timeout"] == 300
     assert kwargs["capture_output"] is True and kwargs["text"] is False
