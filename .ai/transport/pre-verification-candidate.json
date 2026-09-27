@@ -1,0 +1,1 @@
+{"kind":"PRE_VERIFICATION_CANDIDATE","package":{"evidence":[],"result":{"changed_files":["src/aios_renew/operator.py","tests/test_operator.py"],"claims":[],"head_sha":"51b3822311bd5f2dfd9f3fb2ba165be15e716e44","unresolved":[]}},"run_id":"RUN-197-002","subject_sha":"51b3822311bd5f2dfd9f3fb2ba165be15e716e44","task":{"id":"TASK-197","revision":1}}
