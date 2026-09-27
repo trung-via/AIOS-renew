@@ -56,16 +56,20 @@ executors:
 """
 
 
-def test_default_policy_loads_exact_task_163_defaults() -> None:
+def test_default_policy_loads_exact_current_defaults_and_capabilities() -> None:
     policy = load_execution_profile_policy()
     assert policy.format == "AIOS_EXECUTOR_PROFILES_POLICY"
     assert policy.version == 1
     assert policy.executors["codex"].default_model == "gpt-6-sol"
-    assert policy.executors["codex"].default_reasoning_effort == "medium"
+    assert policy.executors["codex"].default_reasoning_effort == "high"
     assert policy.executors["antigravity"].default_model == "gemini-3.8-flash"
     assert policy.executors["antigravity"].default_reasoning_effort == "medium"
-    assert set(policy.executors["codex"].supported_reasoning_efforts) == {"low", "medium", "high"}
-    assert set(policy.executors["antigravity"].supported_reasoning_efforts) == {"low", "medium", "high"}
+    assert policy.executors["codex"].supported_reasoning_efforts == (
+        "none", "low", "medium", "high", "xhigh", "max"
+    )
+    assert policy.executors["antigravity"].supported_reasoning_efforts == (
+        "low", "medium", "high"
+    )
 
 
 def test_managed_defaults_exist_only_in_repository_policy() -> None:
@@ -117,7 +121,7 @@ def test_resolve_default_execution_profile() -> None:
     assert codex_prof.run_id == "RUN-100"
     assert codex_prof.executor == "codex"
     assert codex_prof.model == "gpt-6-sol"
-    assert codex_prof.reasoning_effort == "medium"
+    assert codex_prof.reasoning_effort == "high"
     assert codex_prof.model_source == "REPOSITORY_DEFAULT"
     assert codex_prof.effort_source == "REPOSITORY_DEFAULT"
 
@@ -171,15 +175,31 @@ def test_partial_selection_and_explicit_default_preserve_attribution() -> None:
     assert explicit_defaults.effort_source == "EXPLICIT"
 
 
+def test_all_canonical_codex_efforts_resolve_exactly_with_explicit_source() -> None:
+    policy = load_execution_profile_policy()
+    for effort in policy.executors["codex"].supported_reasoning_efforts:
+        profile = resolve_execution_profile(
+            policy,
+            run_id="RUN-104",
+            executor="codex",
+            reasoning_effort=effort,
+        )
+        assert profile.model == "gpt-6-sol"
+        assert profile.model_source == "REPOSITORY_DEFAULT"
+        assert profile.reasoning_effort == effort
+        assert profile.effort_source == "EXPLICIT"
+
+
 def test_resolve_invalid_effort_fails_closed_without_fallback() -> None:
     policy = load_execution_profile_policy()
-    with pytest.raises(ExecutionProfileValidationError, match="unsupported reasoning effort"):
-        resolve_execution_profile(
-            policy,
-            run_id="RUN-103",
-            executor="codex",
-            reasoning_effort="ultra",
-        )
+    for effort in ("minimal", "ultra"):
+        with pytest.raises(ExecutionProfileValidationError, match="unsupported reasoning effort"):
+            resolve_execution_profile(
+                policy,
+                run_id="RUN-103",
+                executor="codex",
+                reasoning_effort=effort,
+            )
 
     with pytest.raises(ExecutionProfileValidationError, match="unsupported reasoning effort"):
         resolve_execution_profile(
@@ -617,37 +637,17 @@ def test_validate_execution_profile_unsupported_effort_fails() -> None:
 
 
 def test_validate_execution_profile_preserves_bound_profile_despite_policy_default_changes() -> None:
-    custom_policy_yaml = """
-format: AIOS_EXECUTOR_PROFILES_POLICY
-version: 1
-
-executors:
-  codex:
-    default_model: gpt-6-sol
-    default_reasoning_effort: medium
-    supported_reasoning_efforts:
-      - low
-      - medium
-      - high
-  antigravity:
-    default_model: gemini-3.8-flash
-    default_reasoning_effort: medium
-    supported_reasoning_efforts:
-      - low
-      - medium
-      - high
-"""
-    custom_policy = parse_execution_profile_policy(custom_policy_yaml)
+    policy = load_execution_profile_policy()
     bound_profile = ResolvedExecutionProfile(
         run_id="RUN-108",
         executor="codex",
-        model="gpt-5.6-sol",
-        reasoning_effort="high",
+        model="gpt-6-sol",
+        reasoning_effort="medium",
         model_source="REPOSITORY_DEFAULT",
         effort_source="REPOSITORY_DEFAULT",
     )
-    validated = validate_execution_profile(bound_profile, custom_policy)
+    validated = validate_execution_profile(bound_profile, policy)
     assert validated == bound_profile
-    assert validated.model == "gpt-5.6-sol"
-    assert validated.reasoning_effort == "high"
+    assert validated.reasoning_effort == "medium"
+    assert resolve_execution_profile(policy, run_id="RUN-109", executor="codex").reasoning_effort == "high"
 

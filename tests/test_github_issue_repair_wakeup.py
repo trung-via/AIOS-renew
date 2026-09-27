@@ -65,7 +65,7 @@ def test_valid_issue_forwards_only_four_bounded_selectors(tmp_path: Path) -> Non
     request = carrier.admit_event(_write(tmp_path, "event.json", _event()), policy)
     assert request == carrier.RepairWakeupRequest(
         "repair-111", "RUN-111-001", "a" * 40, "codex", "trung-via",
-        "gpt-6-sol", "medium", "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT",
+        "gpt-6-sol", "high", "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT",
     )
     assert request.github_outputs().splitlines() == [
         "repair_dispatch_id=repair-111",
@@ -73,7 +73,7 @@ def test_valid_issue_forwards_only_four_bounded_selectors(tmp_path: Path) -> Non
         f"repair_sha={'a' * 40}",
         "executor=codex",
         "model=gpt-6-sol",
-        "reasoning_effort=medium",
+        "reasoning_effort=high",
         "model_source=REPOSITORY_DEFAULT",
         "effort_source=REPOSITORY_DEFAULT",
     ]
@@ -103,7 +103,7 @@ def test_downstream_policy_preserves_repair_family_and_actor_binding(
         f"repair_sha={'a' * 40}",
         "executor=codex",
         "model=gpt-6-sol",
-        "reasoning_effort=medium",
+        "reasoning_effort=high",
         "model_source=REPOSITORY_DEFAULT",
         "effort_source=REPOSITORY_DEFAULT",
     ]
@@ -427,7 +427,7 @@ def test_missing_or_malformed_profile_policy_fails_coding_repair(
     [
         (None, None, "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT"),
         ("gpt-6-sol", None, "EXPLICIT", "REPOSITORY_DEFAULT"),
-        (None, "high", "REPOSITORY_DEFAULT", "EXPLICIT"),
+        (None, "max", "REPOSITORY_DEFAULT", "EXPLICIT"),
         ("gpt-6-sol", "high", "EXPLICIT", "EXPLICIT"),
     ],
 )
@@ -445,6 +445,8 @@ def test_coding_repair_explicit_vs_default_source_attribution(
     )
     assert request.model_source == expected_model_source
     assert request.effort_source == expected_effort_source
+    if effort is None:
+        assert request.reasoning_effort == "high"
     if model is not None:
         assert request.model == model
     if effort is not None:

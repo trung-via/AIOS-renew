@@ -29,7 +29,7 @@ from aios_renew.codex_adapter import (
     extract_token_usage,
 )
 from aios_renew.run_observation import TokenUsage
-from aios_renew.execution_profile import ResolvedExecutionProfile
+from aios_renew.execution_profile import ResolvedExecutionProfile, load_execution_profile_policy
 
 
 TASK_SOURCE = """
@@ -1051,7 +1051,13 @@ def test_boundary_rejects_inactive_lease_before_process_invocation() -> None:
     assert calls == []
 
 
-def test_codex_command_deterministic_model_and_reasoning_across_operations() -> None:
+@pytest.mark.parametrize(
+    "effort",
+    load_execution_profile_policy().executors["codex"].supported_reasoning_efforts,
+)
+def test_codex_command_deterministic_model_and_reasoning_across_operations(
+    effort: str,
+) -> None:
     task, run, _, _ = make_execution()
     remediation_exec = RemediationExecution(
         review_id="REV-1",
@@ -1086,8 +1092,8 @@ def test_codex_command_deterministic_model_and_reasoning_across_operations() -> 
     profile = ResolvedExecutionProfile(
         run_id=run.run_id,
         executor="codex",
-        model="test/codex-all-ops-v1",
-        reasoning_effort="low",
+        model="gpt-6-sol",
+        reasoning_effort=effort,
         model_source="EXPLICIT",
         effort_source="EXPLICIT",
     )
@@ -1097,19 +1103,20 @@ def test_codex_command_deterministic_model_and_reasoning_across_operations() -> 
     adapter.execute(task=task, run=run)
     cmd_primary = calls[-1][0]
     assert cmd_primary[cmd_primary.index("-m") + 1] == profile.model
-    assert cmd_primary[cmd_primary.index("-c") + 1] == 'model_reasoning_effort="low"'
+    assert cmd_primary[cmd_primary.index("-c") + 1] == f'model_reasoning_effort="{effort}"'
 
     # 2. REMEDIATION
     adapter.execute_remediation(execution=remediation_exec)
     cmd_remediation = calls[-1][0]
     assert cmd_remediation[cmd_remediation.index("-m") + 1] == profile.model
-    assert cmd_remediation[cmd_remediation.index("-c") + 1] == 'model_reasoning_effort="low"'
+    assert cmd_remediation[cmd_remediation.index("-c") + 1] == f'model_reasoning_effort="{effort}"'
 
     # 3. REPAIR
     adapter.execute_repair(execution=repair_exec)
     cmd_repair = calls[-1][0]
     assert cmd_repair[cmd_repair.index("-m") + 1] == profile.model
-    assert cmd_repair[cmd_repair.index("-c") + 1] == 'model_reasoning_effort="low"'
+    assert cmd_repair[cmd_repair.index("-c") + 1] == f'model_reasoning_effort="{effort}"'
+    assert len(calls) == 3
 
     # Preserves sandbox, output-schema, color, cd
     assert cmd_primary[cmd_primary.index("--cd") + 1] == "C:/workspace"

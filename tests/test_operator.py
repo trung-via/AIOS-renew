@@ -9644,9 +9644,10 @@ def test_operator_persists_execution_profile_before_native_runner(tmp_path: Path
     assert profile_data["run_id"] == "RUN-101-001"
     assert profile_data["executor"] == "codex"
     assert profile_data["model"] == "gpt-6-sol"
-    assert profile_data["reasoning_effort"] == "medium"
+    assert profile_data["reasoning_effort"] == "high"
     assert profile_data["model_source"] == "REPOSITORY_DEFAULT"
     assert profile_data["effort_source"] == "REPOSITORY_DEFAULT"
+    assert runner.calls[0][0][runner.calls[0][0].index("-c") + 1] == 'model_reasoning_effort="high"'
 
 
 def test_operator_partial_explicit_profile_reaches_native_command_exactly(
@@ -9670,13 +9671,36 @@ def test_operator_partial_explicit_profile_reaches_native_command_exactly(
     policy = load_execution_profile_policy(repo)
     assert profile_data["model"] == "provider/future-v9"
     assert profile_data["model_source"] == "EXPLICIT"
-    assert profile_data["reasoning_effort"] == policy.default_reasoning_effort("codex")
+    assert policy.default_reasoning_effort("codex") == "high"
+    assert profile_data["reasoning_effort"] == "high"
     assert profile_data["effort_source"] == "REPOSITORY_DEFAULT"
     command = runner.calls[0][0]
     assert command[command.index("-m") + 1] == "provider/future-v9"
-    assert command[command.index("-c") + 1] == (
-        f'model_reasoning_effort="{policy.default_reasoning_effort("codex")}"'
+    assert command[command.index("-c") + 1] == 'model_reasoning_effort="high"'
+
+
+def test_operator_explicit_codex_effort_stays_exact_and_attributed(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    runner = FakeCodexRunner(repo)
+    run_task(
+        "TASK-101",
+        executor="codex",
+        reasoning_effort="xhigh",
+        repo=repo,
+        native_runner=runner,
     )
+
+    profile_data = json.loads(
+        (runtime_paths(repo).execution_profiles / "RUN-101-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert profile_data["model"] == "gpt-6-sol"
+    assert profile_data["model_source"] == "REPOSITORY_DEFAULT"
+    assert profile_data["reasoning_effort"] == "xhigh"
+    assert profile_data["effort_source"] == "EXPLICIT"
+    command = runner.calls[0][0]
+    assert command[command.index("-c") + 1] == 'model_reasoning_effort="xhigh"'
 
 
 def test_operator_conflicting_preexisting_sidecar_invokes_zero_native_runners(tmp_path: Path) -> None:
@@ -9772,7 +9796,7 @@ def test_operator_reusing_preexisting_sidecar_preserves_bound_profile_values(tmp
     paths = runtime_paths(repo)
     sidecar = paths.execution_profiles / "RUN-101-001.json"
     sidecar.parent.mkdir(parents=True, exist_ok=True)
-    # Pre-existing sidecar with supported alternate effort
+    # Pre-existing sidecar retains the medium default resolved before this policy change.
     sidecar.write_text(
         json.dumps({
             "format": "AIOS_EXECUTION_PROFILE",
@@ -9782,7 +9806,7 @@ def test_operator_reusing_preexisting_sidecar_preserves_bound_profile_values(tmp
             "model": "gpt-5.6-sol",
             "reasoning_effort": "medium",
             "model_source": "REPOSITORY_DEFAULT",
-            "effort_source": "EXPLICIT",
+            "effort_source": "REPOSITORY_DEFAULT",
         }),
         encoding="utf-8",
     )
@@ -9796,5 +9820,5 @@ def test_operator_reusing_preexisting_sidecar_preserves_bound_profile_values(tmp
     assert 'model_reasoning_effort="medium"' in command
     persisted = json.loads(sidecar.read_text(encoding="utf-8"))
     assert persisted["reasoning_effort"] == "medium"
-    assert persisted["effort_source"] == "EXPLICIT"
+    assert persisted["effort_source"] == "REPOSITORY_DEFAULT"
 

@@ -81,7 +81,7 @@ def test_valid_issue_produces_only_the_six_sanitized_a1_inputs(
         task_commit_sha="b" * 40,
         executor="codex",
         model="gpt-6-sol",
-        reasoning_effort="medium",
+        reasoning_effort="high",
         model_source="REPOSITORY_DEFAULT",
         effort_source="REPOSITORY_DEFAULT",
     )
@@ -93,7 +93,7 @@ def test_valid_issue_produces_only_the_six_sanitized_a1_inputs(
         f"task_commit_sha={'b' * 40}",
         "executor=codex",
         "model=gpt-6-sol",
-        "reasoning_effort=medium",
+        "reasoning_effort=high",
         "model_source=REPOSITORY_DEFAULT",
         "effort_source=REPOSITORY_DEFAULT",
     ]
@@ -124,7 +124,7 @@ def test_downstream_policy_admits_only_its_exact_repository_and_actor(
         f"task_commit_sha={'b' * 40}",
         "executor=codex",
         "model=gpt-6-sol",
-        "reasoning_effort=medium",
+        "reasoning_effort=high",
         "model_source=REPOSITORY_DEFAULT",
         "effort_source=REPOSITORY_DEFAULT",
     ]
@@ -245,7 +245,7 @@ def test_partial_explicit_future_model_resolves_once_with_exact_sources() -> Non
         _body(model="provider/future-v9", reasoning_effort=None)
     )
     assert request.model == "provider/future-v9"
-    assert request.reasoning_effort == "medium"
+    assert request.reasoning_effort == "high"
     assert request.model_source == "EXPLICIT"
     assert request.effort_source == "REPOSITORY_DEFAULT"
 
@@ -407,7 +407,7 @@ def test_missing_or_malformed_profile_policy_fails_closed(tmp_path: Path) -> Non
     [
         (None, None, "REPOSITORY_DEFAULT", "REPOSITORY_DEFAULT"),
         ("provider/custom-v1", None, "EXPLICIT", "REPOSITORY_DEFAULT"),
-        (None, "high", "REPOSITORY_DEFAULT", "EXPLICIT"),
+        (None, "none", "REPOSITORY_DEFAULT", "EXPLICIT"),
         ("provider/custom-v2", "low", "EXPLICIT", "EXPLICIT"),
     ],
 )
@@ -425,6 +425,8 @@ def test_explicit_vs_default_source_attribution_resolved_once(
     )
     assert request.model_source == expected_model_source
     assert request.effort_source == expected_effort_source
+    if effort is None:
+        assert request.reasoning_effort == "high"
     if model is not None:
         assert request.model == model
     if effort is not None:

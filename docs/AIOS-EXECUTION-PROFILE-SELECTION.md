@@ -4,6 +4,13 @@ Status: HUMAN-APPROVED PLANNING BASELINE
 Approved: 2026-09-23  
 Approved against canonical main: `6a6d8b691ff5a694c065d56fc11e51283c109cf5`
 
+Current Human-approved Codex policy (TASK-195): `gpt-6-sol / high` by default,
+with supported reasoning efforts `none`, `low`, `medium`, `high`, `xhigh`, `max`
+in that order. The repository policy remains the single default and capability
+authority; the selection, provenance, and lifecycle boundaries below still apply.
+Antigravity remains `gemini-3.8-flash / medium` with supported efforts `low`,
+`medium`, `high`.
+
 ## Purpose
 
 Add exact, Human-controllable execution-profile selection above the existing Codex and Antigravity native adapters without creating a model router, changing TASK semantics, or weakening deterministic execution provenance.
@@ -14,16 +21,20 @@ This planning baseline is a temporary Human-priority side-track. It does not com
 
 When the Human selects only an Executor, AIOS resolves the repository-owned default profile:
 
-- `codex` -> `gpt-6-sol` with reasoning effort `medium`;
+- `codex` -> `gpt-6-sol` with reasoning effort `high`;
 - `antigravity` -> `gemini-3.8-flash` with reasoning effort `medium`.
 
 When the Human explicitly supplies a model and/or reasoning effort, the exact explicit value overrides the corresponding default and must reach the selected native Executor unchanged after bounded validation.
 
 Examples:
 
-- `codex` -> `gpt-6-sol / medium`;
-- `codex high` -> `gpt-6-sol / high`;
+- `codex` -> `gpt-6-sol / high`;
+- `codex none` -> `gpt-6-sol / none`;
 - `codex low` -> `gpt-6-sol / low`;
+- `codex medium` -> `gpt-6-sol / medium`;
+- `codex high` -> `gpt-6-sol / high`;
+- `codex xhigh` -> `gpt-6-sol / xhigh`;
+- `codex max` -> `gpt-6-sol / max`;
 - `antigravity` -> `gemini-3.8-flash / medium`;
 - `antigravity high` -> `gemini-3.8-flash / high`;
 - an explicitly named alternate provider-native model remains allowed when the selected native Executor supports it.
