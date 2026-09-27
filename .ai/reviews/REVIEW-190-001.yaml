@@ -1,0 +1,46 @@
+review_id: REVIEW-190-001
+reviewed_sha: 4169d12db44a6e0e0cf50439e16c20e9c51f1405
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: FAIL
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: FAIL
+findings:
+  - id: FINDING-190-001
+    basis: AC4
+    action: CODE_FIX
+    location: tests/test_hot_swap_conformance.py::test_scenario_7_operational_failure_is_pre_run_and_receipt_is_not_success
+    issue: >-
+      Scenario 7 does not exercise the canonical BP-7 baseline case of a self-host
+      operational failure before AIOS invocation. The test calls run_task() and
+      then forces origin fetch to fail during PRIMARY_SYNCHRONIZATION, so AIOS has
+      already been invoked; it additionally constructs invoked_receipt(), whose
+      boundary is explicitly AIOS_INVOKED. This proves a pre-RUN AIOS admission
+      failure, not the required pre-AIOS/self-host failure boundary.
+    expected: >-
+      Keep the correction test-only and replace or extend scenario 7 so a real
+      existing production carrier/self-host operational boundary fails before
+      AIOS invocation. Assert the existing typed bounded operational receipt/failure
+      surface, zero canonical RUN/FAILURE, zero Executor invocation, and that
+      carrier acceptance or runner start does not imply lifecycle success. Do not
+      add or change production workflow/runtime semantics.
+  - id: FINDING-190-002
+    basis: AC8
+    action: CODE_FIX
+    location: tests/test_hot_swap_conformance.py
+    issue: >-
+      The suite currently claims all ten canonical BP-7 baseline scenarios, but
+      scenario 7 substitutes a post-AIOS PRIMARY_SYNCHRONIZATION admission failure
+      for the baseline self-host-before-AIOS failure. Therefore the ten-scenario
+      conformance matrix is not yet complete even though the focused suite is green.
+    expected: >-
+      After correcting FINDING-190-001, preserve the existing nine scenario proofs
+      and test-only/BP-8 boundaries, and make the focused matrix explicitly cover
+      the actual baseline scenario 7 without weakening assertions or modifying
+      existing production/test-support files.
