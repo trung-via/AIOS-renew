@@ -377,7 +377,7 @@ The ten baseline scenarios map to existing authority as follows:
 5. **TASK revision binding.** BP1 exact authorization binds task revision/blob/commit; later semantic revision or content drift fails before RUN/Executor rather than silently reusing old authority.
 6. **Unrelated main movement.** The same BP1 admission deliberately permits newer unrelated main when the exact authorized TASK blob remains unchanged and authorization provenance remains canonical ancestry.
 7. **Pre-AIOS operational failure.** Operational Attribution / admission failure semantics remain pre-RUN and cannot fabricate canonical RUN/FAILURE.
-8. **Useful candidate recovery.** Existing `RECOVER_PRIMARY` re-admits the exact canonical successful candidate from conflicting PRIMARY terminal evidence, verifies it in an isolated historical subject, creates fresh evidence under a new RUN, and records `executor_invoked=false`; no blind Executor re-execution or persisted Brain reasoning is required.
+8. **Useful candidate recovery.** This scenario applies only after useful work has become canonical candidate/terminal evidence. Existing `RECOVER_PRIMARY` re-admits the exact canonical successful candidate from conflicting PRIMARY terminal evidence, verifies it in an isolated historical subject, creates fresh evidence under a new RUN, and records `executor_invoked=false`; no blind Executor re-execution is required. By contrast, BP5/BP6 Brain/Reviewer provider transport or semantic-contract failure before handoff remains a typed non-canonical provider-protocol failure: it must not fabricate or persist a semantic candidate merely to enable retry/failover.
 9. **Brain/Reviewer provider separation.** BP5 and BP6 use separate provider-neutral contracts and role authorities; different provider/model attribution must not merge BRAIN and REVIEWER authority or alter semantic identity.
 10. **Provider without GitHub access.** BP5/BP6 provider requests are self-sufficient bounded semantic envelopes. GitHub transport, Runtime, self-host execution, ingress and publication remain outside the provider adapter and may continue unchanged.
 
@@ -388,6 +388,7 @@ Conformance hygiene for BP-7:
 - tests must distinguish provider attribution from semantic identity and prove changing provider/model/session identifiers alone does not change the bound semantic subject;
 - no test may satisfy a scenario by monkeypatching a semantic verdict, lifecycle next action, correction selector, or publication outcome that the production authority is supposed to derive;
 - existing fake/non-network adapters are sufficient for BP-7; real second-provider invocation is reserved for BP-8;
+- pre-handoff Brain/Reviewer provider failure and post-canonical candidate recovery are distinct cases: BP-7 may prove both boundaries but must not convert the former into persisted candidate state, automatic retry or fallback;
 - no generic hot-swap manager, provider registry/router, automatic retry/fallback/failover, correction selector, persistent memory/session store, new lifecycle state, or new mutation authority is permitted.
 
 Recommended first BP-7 TASK surface:
