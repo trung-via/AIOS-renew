@@ -15,6 +15,7 @@ from .execution_profile import (
     PROFILE_IDENTITY_FIELDS,
     ResolvedExecutionProfile,
     execution_profile_identity,
+    load_execution_profile_policy,
     parse_execution_profile,
     validate_profile_identity,
 )
@@ -106,7 +107,7 @@ class RepairDispatchOutcome:
 
 
 def existing_repair_profile(
-    *, state_root: Path, repair_dispatch_id: str
+    *, state_root: Path, repo_root: Path, repair_dispatch_id: str
 ) -> tuple[bool, ResolvedExecutionProfile | None]:
     """Return an existing REPAIR's exact profile without resolving defaults."""
 
@@ -118,7 +119,7 @@ def existing_repair_profile(
     path = _record_path(state_root, repair_dispatch_id)
     if not path.is_file():
         return False, None
-    record = _read_record(path)
+    record = _read_record(path, repo_root)
     if record["repair_dispatch_id"] != repair_dispatch_id:
         raise RepairDispatchError("repair dispatch journal hash collision")
     if record["version"] == 1 or record["executor"] is None:
@@ -136,6 +137,7 @@ def existing_repair_profile(
 def reject_existing_selector_collision(
     *,
     state_root: Path,
+    repo_root: Path,
     repair_dispatch_id: str,
     failed_run_id: str,
     repair_sha: str,
@@ -149,7 +151,7 @@ def reject_existing_selector_collision(
     if not record_path.is_file():
         return
     with _StateLock(state_root / "repair-dispatch.lock"):
-        record = _read_record(record_path)
+        record = _read_record(record_path, repo_root)
         _require_same_selectors(
             record,
             repair_dispatch_id=repair_dispatch_id,
@@ -169,6 +171,7 @@ def reject_existing_selector_collision(
 def replay_existing_repair_dispatch(
     *,
     state_root: Path,
+    repo_root: Path,
     repair_dispatch_id: str,
     failed_run_id: str,
     repair_sha: str,
@@ -183,7 +186,7 @@ def replay_existing_repair_dispatch(
         return None
     active_path = record_path.with_suffix(".active.lock")
     with _StateLock(state_root / "repair-dispatch.lock"):
-        record = _read_record(record_path)
+        record = _read_record(record_path, repo_root)
         _require_same_selectors(
             record,
             repair_dispatch_id=repair_dispatch_id,
@@ -218,6 +221,7 @@ def replay_existing_repair_dispatch(
 def execute_repair_dispatch(
     *,
     state_root: Path,
+    repo_root: Path,
     repair_dispatch_id: str,
     failed_run_id: str,
     repair_sha: str,
@@ -237,13 +241,15 @@ def execute_repair_dispatch(
         if execution_profile is not None or executor is None
         else None
     )
+    if executor is not None and profile is not None:
+        _validate_profile({"executor": executor, **profile}, repo_root)
     record_path = _record_path(state_root, repair_dispatch_id)
     active_path = record_path.with_suffix(".active.lock")
     invocation_guard: _StateLock | None = None
 
     with _StateLock(state_root / "repair-dispatch.lock"):
         if record_path.exists():
-            record = _read_record(record_path)
+            record = _read_record(record_path, repo_root)
             _require_same_binding(
                 record,
                 repair_dispatch_id=repair_dispatch_id,
@@ -293,7 +299,7 @@ def execute_repair_dispatch(
     try:
         invocation = invoke_repair()
         with _StateLock(state_root / "repair-dispatch.lock"):
-            current = _read_record(record_path)
+            current = _read_record(record_path, repo_root)
             finalized = _finalize_invocation(state_root, current, invocation)
             _write_record(record_path, finalized)
             return _outcome(finalized, replayed=False)
@@ -305,6 +311,7 @@ def execute_repair_dispatch(
 def bind_repair_run(
     *,
     state_root: Path,
+    repo_root: Path,
     repair_dispatch_id: str,
     run_id: str,
     execution_profile: ResolvedExecutionProfile | None = None,
@@ -321,7 +328,7 @@ def bind_repair_run(
     with _StateLock(state_root / "repair-dispatch.lock"):
         if not record_path.is_file():
             raise RepairDispatchError("repair dispatch record does not exist")
-        record = _read_record(record_path)
+        record = _read_record(record_path, repo_root)
         if record["repair_dispatch_id"] != repair_dispatch_id:
             raise RepairDispatchError("repair dispatch journal hash collision")
         if record["status"] != "STARTED" or record["run_id"] is not None:
@@ -411,7 +418,20 @@ def _record_path(state_root: Path, repair_dispatch_id: str) -> Path:
     return state_root / "repair-dispatches" / f"{key}.json"
 
 
-def _read_record(path: Path) -> dict[str, Any]:
+def _validate_profile(identity: Mapping[str, Any], repo_root: Path) -> None:
+    try:
+        policy = load_execution_profile_policy(
+            repo_root / ".ai" / "executor-profiles.yaml"
+        )
+        validate_profile_identity(
+            **{field: identity[field] for field in PROFILE_IDENTITY_FIELDS},
+            policy=policy,
+        )
+    except Exception as exc:
+        raise RepairDispatchError("invalid repair profile binding") from exc
+
+
+def _read_record(path: Path, repo_root: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -438,16 +458,7 @@ def _read_record(path: Path) -> dict[str, Any]:
             if any(data[field] is not None for field in PROFILE_IDENTITY_FIELDS[1:]):
                 raise RepairDispatchError("NO_CHANGE dispatch has a profile binding")
         else:
-            try:
-                validate_profile_identity(
-                    executor=data["executor"],
-                    model=data["model"],
-                    reasoning_effort=data["reasoning_effort"],
-                    model_source=data["model_source"],
-                    effort_source=data["effort_source"],
-                )
-            except Exception as exc:
-                raise RepairDispatchError("invalid repair profile binding") from exc
+            _validate_profile(data, repo_root)
     run_id = data.get("run_id")
     if run_id is not None and (
         not isinstance(run_id, str) or not FAILED_RUN_ID_PATTERN.fullmatch(run_id)

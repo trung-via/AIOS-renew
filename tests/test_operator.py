@@ -6937,10 +6937,33 @@ def test_remote_approval_binds_exact_source_lineage_and_is_idempotent(
     }
 
 
+def _write_external_governed_policy(repo: Path) -> None:
+    policy = repo / ".ai" / "executor-profiles.yaml"
+    policy.parent.mkdir(parents=True, exist_ok=True)
+    policy.write_text(
+        "format: AIOS_EXECUTOR_PROFILES_POLICY\n"
+        "version: 1\n"
+        "executors:\n"
+        "  codex:\n"
+        "    default_model: test/codex-external\n"
+        "    default_reasoning_effort: low\n"
+        "    supported_reasoning_efforts: [low, repo_only]\n"
+        "  antigravity:\n"
+        "    default_model: test/antigravity-external\n"
+        "    default_reasoning_effort: low\n"
+        "    supported_reasoning_efforts: [low, repo_only]\n",
+        encoding="utf-8",
+    )
+    if (repo / ".git").exists():
+        commit_setup_state(repo, ".ai/executor-profiles.yaml", message="external policy")
+
+
 def test_one_remediation_intent_records_a3_then_replays_terminal_a6_once(
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     repo = make_repo(tmp_path)
+    _write_external_governed_policy(repo)
     publish_test_remediation_lineage(
         repo,
         tmp_path,
@@ -6955,6 +6978,7 @@ def test_one_remediation_intent_records_a3_then_replays_terminal_a6_once(
         "R1",
         executor="codex",
         approver="human-reviewer",
+        reasoning_effort="repo_only",
         repo=repo,
         native_runner=runner,
     )
@@ -6975,6 +6999,25 @@ def test_one_remediation_intent_records_a3_then_replays_terminal_a6_once(
     assert second_dispatch.run_id == first_dispatch.run_id
     assert second_dispatch.remediation_sha == first_approval.remediation_sha
     assert len(runner.calls) == 1
+    record = next((runtime_state_root(repo) / "correction-dispatches").glob("*.json"))
+    assert json.loads(record.read_text(encoding="utf-8"))["reasoning_effort"] == "repo_only"
+    policy = repo / ".ai" / "executor-profiles.yaml"
+    policy.write_text(
+        policy.read_text(encoding="utf-8").replace(
+            "[low, repo_only]", "[low]"
+        ), encoding="utf-8",
+    )
+    with pytest.raises(OperatorError, match="profile binding"):
+        run_approved_remediation_intent(
+            "intent-101-r1", "RUN-101-000", "R1", executor="codex",
+            approver="human-reviewer", repo=repo, native_runner=runner,
+        )
+    assert len(runner.calls) == 1
+    assert operator_module.main([
+        "approved-remediation-intent", "intent-101-r1", "RUN-101-000", "R1",
+        "--executor", "codex", "--approver", "human-reviewer", "--repo", str(repo),
+    ]) == 1
+    assert "profile binding" in capsys.readouterr().err
 
 
 def test_remediation_intent_a3_persistence_can_be_replayed_into_a6(
@@ -6984,6 +7027,7 @@ def test_remediation_intent_a3_persistence_can_be_replayed_into_a6(
     import aios_renew.correction_dispatch as correction_module
 
     repo = make_repo(tmp_path)
+    _write_external_governed_policy(repo)
     publish_test_remediation_lineage(
         repo,
         tmp_path,
@@ -9428,12 +9472,14 @@ def test_performance_cli_rejects_duplicate_and_revision_qualified_selectors(
 
 
 def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from aios_renew.repair_dispatch import bind_repair_run
 
     root = tmp_path / "repo"
     root.mkdir()
+    _write_external_governed_policy(root)
     state = root / ".git" / "aios"
     repair_document = {
         "failed_run_id": "RUN-111-001",
@@ -9504,6 +9550,7 @@ def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
         )
         bind_repair_run(
             state_root=state,
+            repo_root=root,
             repair_dispatch_id=kwargs["repair_dispatch_id"],
             run_id="RUN-111-002",
             execution_profile=profile,
@@ -9518,6 +9565,7 @@ def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
         "RUN-111-001",
         "a" * 40,
         executor="codex",
+        reasoning_effort="repo_only",
         repo=root,
     )
     monkeypatch.setattr(
@@ -9535,6 +9583,23 @@ def test_repair_wakeup_delegates_once_then_replays_without_new_observation(
     assert calls == ["RUN-111-001"]
     assert first.status == replay.status == "SUCCEEDED"
     assert replay.replayed is True
+    record = next((state / "repair-dispatches").glob("*.json"))
+    assert json.loads(record.read_text(encoding="utf-8"))["reasoning_effort"] == "repo_only"
+    policy = root / ".ai" / "executor-profiles.yaml"
+    policy.write_text(
+        policy.read_text(encoding="utf-8").replace("[low, repo_only]", "[low]"),
+        encoding="utf-8",
+    )
+    with pytest.raises(OperatorError, match="profile binding"):
+        run_repair_wakeup(
+            "repair-111", "RUN-111-001", "a" * 40, executor="codex", repo=root
+        )
+    assert calls == ["RUN-111-001"]
+    assert operator_module.main([
+        "repair-wakeup", "repair-111", "RUN-111-001", "a" * 40,
+        "--executor", "codex", "--repo", str(root),
+    ]) == 1
+    assert "profile binding" in capsys.readouterr().err
 
 
 def test_repair_wakeup_rejects_superseded_sha_before_state_or_execution(

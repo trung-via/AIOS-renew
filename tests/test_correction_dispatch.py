@@ -14,6 +14,8 @@ from aios_renew.correction_dispatch import (
     CorrectionInvocation,
     bind_correction_run,
     execute_correction_dispatch,
+    existing_correction_profile,
+    reject_existing_selector_collision,
 )
 from aios_renew.execution_profile import (
     ResolvedExecutionProfile,
@@ -26,6 +28,27 @@ _execute_correction_dispatch = execute_correction_dispatch
 _bind_correction_run = bind_correction_run
 
 
+@pytest.fixture(autouse=True)
+def external_repository_policy(tmp_path: Path) -> None:
+    policy_path = tmp_path / ".ai" / "executor-profiles.yaml"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(
+        """format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+executors:
+  codex:
+    default_model: test/codex-future-v1
+    default_reasoning_effort: low
+    supported_reasoning_efforts: [low, repo_only]
+  antigravity:
+    default_model: test/antigravity-future-v1
+    default_reasoning_effort: low
+    supported_reasoning_efforts: [low, repo_only]
+""",
+        encoding="utf-8",
+    )
+
+
 def profile_for(run_id: str, executor: str = "codex") -> ResolvedExecutionProfile:
     return ResolvedExecutionProfile(
         run_id=run_id,
@@ -35,6 +58,70 @@ def profile_for(run_id: str, executor: str = "codex") -> ResolvedExecutionProfil
         model_source="EXPLICIT",
         effort_source="EXPLICIT",
     )
+
+
+def test_external_policy_governs_existing_correction_paths(tmp_path: Path) -> None:
+    state = tmp_path / ".git" / "aios"
+    repo = tmp_path
+    policy_path = repo / ".ai" / "executor-profiles.yaml"
+    supported = policy_path.read_text(encoding="utf-8")
+    external_only = profile_for("AUTHORIZATION")
+    external_only = replace(external_only, reasoning_effort="repo_only")
+    called: list[str] = []
+    request = dict(
+        state_root=state, repo_root=repo, correction_dispatch_id="external-correction",
+        source_run_id="RUN-082-000", finding_id="F1", executor="codex",
+        approval=approval(), execution_profile=external_only,
+    )
+    first = _execute_correction_dispatch(
+        **request, invoke_remediation=lambda: (called.append("once"), CorrectionInvocation(1))[1]
+    )
+    assert first.status == "FAILED"
+    assert called == ["once"]
+    exists, bound = existing_correction_profile(
+        state_root=state, repo_root=repo, correction_dispatch_id="external-correction"
+    )
+    assert exists and bound == replace(external_only, run_id="external-correction")
+    reject_existing_selector_collision(
+        state_root=state, repo_root=repo,
+        correction_dispatch_id="external-correction", source_run_id="RUN-082-000",
+        finding_id="F1", executor="codex", execution_profile=bound,
+    )
+    replay = _execute_correction_dispatch(
+        **request, invoke_remediation=lambda: pytest.fail("replay invoked REMEDIATION")
+    )
+    assert replay.replayed and called == ["once"]
+    record_path = next((state / "correction-dispatches").glob("*.json"))
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record.update(status="STARTED", exit_code=None, detail="interrupted")
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    reconciled = _execute_correction_dispatch(
+        **request, invoke_remediation=lambda: pytest.fail("reconcile invoked REMEDIATION")
+    )
+    assert reconciled.replayed and reconciled.status == "RECONCILIATION_BLOCKED"
+
+    # A profile accepted by the source checkout must still fail when the governed
+    # repository no longer supports it; rejection leaves the journal untouched.
+    policy_path.write_text(supported.replace("[low, repo_only]", "[repo_only]").replace(
+        "default_reasoning_effort: low", "default_reasoning_effort: repo_only"
+    ), encoding="utf-8")
+    low_request = {**request, "execution_profile": profile_for("AUTHORIZATION")}
+    before = record_path.read_bytes()
+    with pytest.raises(CorrectionDispatchError, match="profile binding"):
+        _execute_correction_dispatch(
+            **low_request, invoke_remediation=lambda: pytest.fail("unsupported profile invoked REMEDIATION")
+        )
+    assert record_path.read_bytes() == before
+    policy_path.unlink()
+    with pytest.raises(CorrectionDispatchError, match="profile binding"):
+        existing_correction_profile(
+            state_root=state, repo_root=repo, correction_dispatch_id="external-correction"
+        )
+    policy_path.write_text("not: a valid policy\n", encoding="utf-8")
+    with pytest.raises(CorrectionDispatchError, match="profile binding"):
+        existing_correction_profile(
+            state_root=state, repo_root=repo, correction_dispatch_id="external-correction"
+        )
 
 
 def execute_correction_dispatch(**kwargs: object):
@@ -107,6 +194,7 @@ def invoke_once(state: Path, calls: list[str]) -> CorrectionInvocation:
     write_run(state, "RUN-082-001", terminal="results")
     bind_correction_run(
         state_root=state,
+        repo_root=state.parents[1],
         correction_dispatch_id="correction-082",
         run_id="RUN-082-001",
     )
@@ -120,6 +208,7 @@ def test_first_delivery_persists_binding_then_invokes_once_and_terminal_replays(
     calls: list[str] = []
     first = execute_correction_dispatch(
         state_root=state,
+        repo_root=state.parents[1],
         correction_dispatch_id="correction-082",
         source_run_id="RUN-082-000",
         finding_id="F1",
@@ -129,6 +218,7 @@ def test_first_delivery_persists_binding_then_invokes_once_and_terminal_replays(
     )
     replay = execute_correction_dispatch(
         state_root=state,
+        repo_root=state.parents[1],
         correction_dispatch_id="correction-082",
         source_run_id="RUN-082-000",
         finding_id="F1",
@@ -169,6 +259,7 @@ def test_historical_v1_terminal_replay_never_acquires_current_profile(
 
     outcome = _execute_correction_dispatch(
         state_root=state,
+        repo_root=state.parents[1],
         correction_dispatch_id=dispatch_id,
         source_run_id="RUN-082-000",
         finding_id="F1",
@@ -237,6 +328,7 @@ def test_dispatch_id_collision_never_overwrites_or_invokes(tmp_path: Path) -> No
     state = tmp_path / ".git" / "aios"
     execute_correction_dispatch(
         state_root=state,
+        repo_root=state.parents[1],
         correction_dispatch_id="collision-082",
         source_run_id="RUN-082-000",
         finding_id="F1",
@@ -249,6 +341,7 @@ def test_dispatch_id_collision_never_overwrites_or_invokes(tmp_path: Path) -> No
     with pytest.raises(CorrectionDispatchError, match="collision"):
         execute_correction_dispatch(
             state_root=state,
+            repo_root=state.parents[1],
             correction_dispatch_id="collision-082",
             source_run_id="RUN-082-000",
             finding_id="F1",
@@ -269,6 +362,7 @@ def test_dispatch_id_collision_never_overwrites_or_invokes(tmp_path: Path) -> No
     with pytest.raises(CorrectionDispatchError, match="profile binding differs"):
         execute_correction_dispatch(
             state_root=state,
+            repo_root=state.parents[1],
             correction_dispatch_id="collision-082",
             source_run_id="RUN-082-000",
             finding_id="F1",
@@ -293,6 +387,7 @@ def test_restart_does_not_attribute_unbound_later_matching_run(
     with pytest.raises(RuntimeError, match="host lost"):
         execute_correction_dispatch(
             state_root=state,
+            repo_root=state.parents[1],
             correction_dispatch_id="restart-082",
             source_run_id="RUN-082-000",
             finding_id="F1",
@@ -303,6 +398,7 @@ def test_restart_does_not_attribute_unbound_later_matching_run(
     write_run(state, "RUN-082-002", terminal="failures")
     replay = execute_correction_dispatch(
         state_root=state,
+        repo_root=state.parents[1],
         correction_dispatch_id="restart-082",
         source_run_id="RUN-082-000",
         finding_id="F1",
@@ -326,6 +422,7 @@ def test_restart_reconciles_durably_bound_terminal_run_without_reexecution(
         write_run(state, "RUN-082-002", terminal="failures")
         bind_correction_run(
             state_root=state,
+            repo_root=state.parents[1],
             correction_dispatch_id="restart-bound-082",
             run_id="RUN-082-002",
         )
@@ -334,6 +431,7 @@ def test_restart_reconciles_durably_bound_terminal_run_without_reexecution(
     with pytest.raises(RuntimeError, match="host lost after binding"):
         execute_correction_dispatch(
             state_root=state,
+            repo_root=state.parents[1],
             correction_dispatch_id="restart-bound-082",
             source_run_id="RUN-082-000",
             finding_id="F1",
@@ -343,6 +441,7 @@ def test_restart_reconciles_durably_bound_terminal_run_without_reexecution(
         )
     replay = execute_correction_dispatch(
         state_root=state,
+        repo_root=state.parents[1],
         correction_dispatch_id="restart-bound-082",
         source_run_id="RUN-082-000",
         finding_id="F1",

@@ -36,6 +36,7 @@ from .codex_adapter import (
     CodexExecutionError,
     CodexOutputError,
 )
+from .correction_dispatch import CorrectionDispatchError as _CorrectionDispatchError
 from .correction_frontier import CorrectionFrontierError
 from .correction_integration import (
     CorrectionIntegrationError,
@@ -75,6 +76,7 @@ from .performance_observation import (
     PerformanceObservationError,
     observe_performance,
 )
+from .repair_dispatch import RepairDispatchError as _RepairDispatchError
 from .review_transport import (
     RemoteFailureArtifacts,
     RemoteRemediationLineage,
@@ -2681,6 +2683,7 @@ def _run_repair_impl(
 
             bind_repair_run(
                 state_root=state.root,
+                repo_root=repo,
                 repair_dispatch_id=repair_dispatch_id,
                 run_id=run_id,
                 execution_profile=execution_profile,
@@ -4469,6 +4472,7 @@ def _run_remediation_impl(
 
             bind_correction_run(
                 state_root=state.root,
+                repo_root=root,
                 correction_dispatch_id=correction_dispatch_id,
                 run_id=run_id,
                 execution_profile=execution_profile,
@@ -5442,6 +5446,7 @@ def run_approved_remediation_intent(
         state_root = runtime_state_root(repo_root)
         exists, remote_profile = existing_correction_profile(
             state_root=state_root,
+            repo_root=repo_root,
             correction_dispatch_id=correction_dispatch_id,
         )
         remote_profile = _authorization_profile(
@@ -5457,6 +5462,7 @@ def run_approved_remediation_intent(
         )
         reject_existing_selector_collision(
             state_root=state_root,
+            repo_root=repo_root,
             correction_dispatch_id=correction_dispatch_id,
             source_run_id=source_run_id,
             finding_id=finding_id,
@@ -5527,6 +5533,7 @@ def run_approved_remediation_intent(
 
         dispatch_outcome = execute_correction_dispatch(
             state_root=state_root,
+            repo_root=repo_root,
             correction_dispatch_id=correction_dispatch_id,
             source_run_id=source_run_id,
             finding_id=finding_id,
@@ -5571,6 +5578,7 @@ def run_repair_wakeup(
         state_root = runtime_state_root(root)
         exists, remote_profile = existing_repair_profile(
             state_root=state_root,
+            repo_root=root,
             repair_dispatch_id=repair_dispatch_id,
         )
         remote_profile = _authorization_profile(
@@ -5586,6 +5594,7 @@ def run_repair_wakeup(
         )
         reject_existing_selector_collision(
             state_root=state_root,
+            repo_root=root,
             repair_dispatch_id=repair_dispatch_id,
             failed_run_id=failed_run_id,
             repair_sha=repair_sha,
@@ -5594,6 +5603,7 @@ def run_repair_wakeup(
         )
         replay = replay_existing_repair_dispatch(
             state_root=state_root,
+            repo_root=root,
             repair_dispatch_id=repair_dispatch_id,
             failed_run_id=failed_run_id,
             repair_sha=repair_sha,
@@ -5688,6 +5698,7 @@ def run_repair_wakeup(
 
         return execute_repair_dispatch(
             state_root=state_root,
+            repo_root=root,
             repair_dispatch_id=repair_dispatch_id,
             failed_run_id=failed_run_id,
             repair_sha=repair_sha,
@@ -6257,6 +6268,7 @@ def main(
             from .correction_dispatch import existing_correction_profile
             exists, intent_profile = existing_correction_profile(
                 state_root=runtime_state_root(intent_root),
+                repo_root=intent_root,
                 correction_dispatch_id=args.correction_dispatch_id,
             )
             intent_profile = _authorization_profile(
@@ -6320,6 +6332,7 @@ def main(
             state_root = runtime_state_root(repo_root)
             exists, remote_profile = existing_correction_profile(
                 state_root=state_root,
+                repo_root=repo_root,
                 correction_dispatch_id=args.correction_dispatch_id,
             )
             remote_profile = _authorization_profile(
@@ -6337,6 +6350,7 @@ def main(
                 try:
                     reject_existing_selector_collision(
                         state_root=state_root,
+                        repo_root=repo_root,
                         correction_dispatch_id=args.correction_dispatch_id,
                         source_run_id=args.source_run_id,
                         finding_id=args.finding_id,
@@ -6387,6 +6401,7 @@ def main(
 
                     outcome = execute_correction_dispatch(
                         state_root=state_root,
+                        repo_root=repo_root,
                         correction_dispatch_id=args.correction_dispatch_id,
                         source_run_id=args.source_run_id,
                         finding_id=args.finding_id,
@@ -6473,6 +6488,7 @@ def main(
             from .repair_dispatch import existing_repair_profile
             exists, repair_profile = existing_repair_profile(
                 state_root=runtime_state_root(repair_root),
+                repo_root=repair_root,
                 repair_dispatch_id=args.repair_dispatch_id,
             )
             repair_profile = _authorization_profile(
@@ -6571,7 +6587,13 @@ def main(
         else:
             retry_transport(args.run_id, repo=args.repo)
             print(f"AIOS TRANSPORT PASS\nrun: {args.run_id}")
-    except (OperatorError, DispatchError, ExecutionProfileError) as exc:
+    except (
+        OperatorError,
+        DispatchError,
+        _CorrectionDispatchError,
+        _RepairDispatchError,
+        ExecutionProfileError,
+    ) as exc:
         print(f"AIOS ERROR: {exc}", file=sys.stderr)
         return 1
     return 0

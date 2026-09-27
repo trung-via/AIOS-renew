@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -12,11 +13,35 @@ from aios_renew.repair_dispatch import (
     RepairInvocation,
     bind_repair_run,
     execute_repair_dispatch,
+    existing_repair_profile,
+    reject_existing_selector_collision,
+    replay_existing_repair_dispatch,
 )
 from aios_renew.execution_profile import (
     ResolvedExecutionProfile,
     persist_execution_profile,
 )
+
+
+@pytest.fixture(autouse=True)
+def external_repository_policy(tmp_path: Path) -> None:
+    policy_path = tmp_path / ".ai" / "executor-profiles.yaml"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(
+        """format: AIOS_EXECUTOR_PROFILES_POLICY
+version: 1
+executors:
+  codex:
+    default_model: test/codex-future-v1
+    default_reasoning_effort: low
+    supported_reasoning_efforts: [low, repo_only]
+  antigravity:
+    default_model: test/antigravity-future-v1
+    default_reasoning_effort: low
+    supported_reasoning_efforts: [low, repo_only]
+""",
+        encoding="utf-8",
+    )
 
 
 def profile_for(run_id: str, executor: str = "codex") -> ResolvedExecutionProfile:
@@ -28,6 +53,70 @@ def profile_for(run_id: str, executor: str = "codex") -> ResolvedExecutionProfil
         model_source="EXPLICIT",
         effort_source="EXPLICIT",
     )
+
+
+def test_external_policy_governs_existing_repair_paths(tmp_path: Path) -> None:
+    state = tmp_path / ".git" / "aios"
+    repo = tmp_path
+    policy_path = repo / ".ai" / "executor-profiles.yaml"
+    supported = policy_path.read_text(encoding="utf-8")
+    external_only = replace(profile_for("AUTHORIZATION"), reasoning_effort="repo_only")
+    called: list[str] = []
+    request = dict(
+        state_root=state, repo_root=repo, repair_dispatch_id="external-repair",
+        failed_run_id="RUN-111-001", repair_sha="a" * 40, executor="codex",
+        task_id="TASK-111", action="CODE_FIX", execution_profile=external_only,
+    )
+    first = execute_repair_dispatch(
+        **request, invoke_repair=lambda: (called.append("once"), RepairInvocation(1))[1]
+    )
+    assert first.status == "FAILED" and called == ["once"]
+    exists, bound = existing_repair_profile(
+        state_root=state, repo_root=repo, repair_dispatch_id="external-repair"
+    )
+    assert exists and bound == replace(external_only, run_id="external-repair")
+    reject_existing_selector_collision(
+        state_root=state, repo_root=repo, repair_dispatch_id="external-repair",
+        failed_run_id="RUN-111-001", repair_sha="a" * 40, executor="codex",
+        execution_profile=bound,
+    )
+    replay = replay_existing_repair_dispatch(
+        state_root=state, repo_root=repo, repair_dispatch_id="external-repair",
+        failed_run_id="RUN-111-001", repair_sha="a" * 40, executor="codex",
+        execution_profile=bound,
+    )
+    assert replay is not None and replay.replayed and called == ["once"]
+    record_path = next((state / "repair-dispatches").glob("*.json"))
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record.update(status="STARTED", exit_code=None, detail="interrupted")
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    reconciled = replay_existing_repair_dispatch(
+        state_root=state, repo_root=repo, repair_dispatch_id="external-repair",
+        failed_run_id="RUN-111-001", repair_sha="a" * 40, executor="codex",
+        execution_profile=bound,
+    )
+    assert reconciled is not None and reconciled.status == "RECONCILIATION_BLOCKED"
+
+    policy_path.write_text(supported.replace("[low, repo_only]", "[repo_only]").replace(
+        "default_reasoning_effort: low", "default_reasoning_effort: repo_only"
+    ), encoding="utf-8")
+    low_request = {**request, "execution_profile": profile_for("AUTHORIZATION")}
+    before = record_path.read_bytes()
+    with pytest.raises(RepairDispatchError, match="profile binding"):
+        execute_repair_dispatch(
+            **low_request, invoke_repair=lambda: pytest.fail("unsupported profile invoked REPAIR")
+        )
+    assert record_path.read_bytes() == before
+    policy_path.unlink()
+    with pytest.raises(RepairDispatchError, match="profile binding"):
+        existing_repair_profile(
+            state_root=state, repo_root=repo, repair_dispatch_id="external-repair"
+        )
+    policy_path.write_text("not: a valid policy\n", encoding="utf-8")
+    with pytest.raises(RepairDispatchError, match="profile binding"):
+        existing_repair_profile(
+            state_root=state, repo_root=repo, repair_dispatch_id="external-repair"
+        )
 
 
 def _write_run(
@@ -79,6 +168,7 @@ def _execute(
 ):
     return execute_repair_dispatch(
         state_root=state,
+        repo_root=state.parents[1],
         repair_dispatch_id=dispatch_id,
         failed_run_id="RUN-111-001",
         repair_sha=repair_sha,
@@ -105,6 +195,7 @@ def test_first_delivery_binds_before_invocation_returns_and_terminal_replays(
         _write_run(state, "RUN-111-002", terminal="results")
         bind_repair_run(
             state_root=state,
+            repo_root=state.parents[1],
             repair_dispatch_id="repair-111",
             run_id="RUN-111-002",
             execution_profile=profile_for("RUN-111-002"),
@@ -144,6 +235,7 @@ def test_conflicting_dispatch_id_reuse_fails_without_invocation(tmp_path: Path) 
     with pytest.raises(RepairDispatchError, match="binding differs"):
         execute_repair_dispatch(
             state_root=state,
+            repo_root=state.parents[1],
             repair_dispatch_id="repair-111",
             failed_run_id="RUN-111-001",
             repair_sha="a" * 40,
@@ -182,6 +274,7 @@ def test_restart_reconciles_only_the_exact_bound_terminal_run(
         _write_run(state, "RUN-111-002", terminal="failures")
         bind_repair_run(
             state_root=state,
+            repo_root=state.parents[1],
             repair_dispatch_id="repair-bound-111",
             run_id="RUN-111-002",
             execution_profile=profile_for("RUN-111-002"),
@@ -215,6 +308,7 @@ def test_no_change_requires_absent_executor_and_uses_same_dispatch_family(
         )
         bind_repair_run(
             state_root=state,
+            repo_root=state.parents[1],
             repair_dispatch_id="repair-no-change-111",
             run_id="RUN-111-002",
         )
@@ -254,6 +348,7 @@ def test_finalize_candidate_requires_executor_and_remains_at_most_once(
         )
         bind_repair_run(
             state_root=state,
+            repo_root=state.parents[1],
             repair_dispatch_id="repair-finalize-111",
             run_id="RUN-111-002",
             execution_profile=profile_for("RUN-111-002"),
@@ -311,6 +406,7 @@ def test_historical_v1_terminal_replay_never_acquires_current_profile(
 
     outcome = execute_repair_dispatch(
         state_root=state,
+        repo_root=state.parents[1],
         repair_dispatch_id=dispatch_id,
         failed_run_id="RUN-111-001",
         repair_sha="a" * 40,
