@@ -450,6 +450,24 @@ Exit gate: no downstream repository is silently retargeted to mutable AIOS-renew
 
 #### Reusable N-to-N+1 PRIMARY migration invariant
 
+An installed legacy generation that predates `migrate-primary` has one bounded
+compatibility entry, `bootstrap-primary`. Its isolated interpreter imports the
+actually installed legacy distribution, matches its operator path to distribution
+metadata and its immutable VCS commit, and rejects an editable or already
+migration-capable install. Synchronized downstream source is excluded from this
+witness. The entry accepts the same exact reviewed migration intent and checks the
+downstream control, both pin blobs, TASK identity and Executor before writing the
+single TASK-197 handoff edge. It is restricted to the first reviewed capable
+generation at `83115b26df85a7ad6643f317833e18b18586bdbe`. Only that exact
+checked-out target consumes the edge using ordinary `migrate-primary`; the
+bootstrap creates no separate RUN or lifecycle path. A completed edge cannot be
+reused through the bootstrap entry. Later migrations belong to the installed
+migration-capable generation's `migrate-primary` command.
+
+This one-time compatibility path does not itself approve any downstream
+adoption. BP-9 remains the next consumer and requires its own explicit reviewed
+repository-owned migration and exact dependency pin change.
+
 A downstream remains under its exact installed generation N while the operator checks a reviewed `migrate-primary` intent. The versioned intent binds the imported installed distribution's immutable VCS commit, the exact target AIOS commit and source URL, the downstream repository path, its current and target control commits, its repository-owned pin artifact at both commits, and the downstream TASK id, revision, blob, authorization commit, and Executor. Missing, floating, stale, or conflicting identities fail before target authority. The target control commit must be the current upstream `main` and a fast-forward of the clean attached source control commit; the pin artifacts must name the corresponding exact generation. The exact TASK blob must exist at the target and match its ancestor authorization commit.
 
 The target AIOS source and fetched downstream target control are checked out in disposable transport at exact commits, without changing the persistent downstream checkout or its remote tracking ref. After all N-side checks pass, an exclusive persistent handoff record binds both generations, both control commits, the pin and TASK identity to the intent fingerprint. That record is the single authority transition: N is barred from further PRIMARY admission, and only the exact target source may consume the handoff once. The target then rechecks control identity, fast-forwards the persistent checkout, and admits the bound TASK through the existing PRIMARY Runtime and Executor boundary. Ordinary target-generation PRIMARY admission opens only after that exact handoff completes. A pre-handoff rejection invokes no Executor and creates no RUN; the operator records a typed admission failure where the repository identity is available. The disposable checkout is transport, never a second Runtime or lifecycle record.

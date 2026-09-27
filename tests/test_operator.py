@@ -2,7 +2,9 @@ import inspect
 import json
 import multiprocessing
 import subprocess
+import sys
 import tomllib
+import venv
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path, PureWindowsPath
@@ -9197,6 +9199,190 @@ def _migration_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
         "executor": "codex",
     }
     return repo, target_source, intent
+
+
+def test_bootstrap_attests_imported_legacy_install_without_control_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    environment = tmp_path / "legacy-env"
+    venv.EnvBuilder(with_pip=False).create(environment)
+    python = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    site = Path(subprocess.check_output(
+        [str(python), "-I", "-c", "import site; print(site.getsitepackages()[0])"],
+        text=True,
+    ).strip())
+    package = site / "aios_renew"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    active = package / "operator.py"
+    active.write_text("LEGACY = True\n", encoding="utf-8")
+    metadata = site / "aios_renew-0.0.dist-info"
+    metadata.mkdir()
+    (metadata / "METADATA").write_text("Metadata-Version: 2.1\nName: aios-renew\nVersion: 0.0\n")
+    (metadata / "direct_url.json").write_text(json.dumps({
+        "url": "https://example.invalid/aios-renew.git",
+        "vcs_info": {"vcs": "git", "commit_id": "a" * 40},
+    }))
+    synchronized = tmp_path / "synchronized" / "aios_renew"
+    synchronized.mkdir(parents=True)
+    (synchronized / "__init__.py").write_text("", encoding="utf-8")
+    (synchronized / "operator.py").write_text("def migrate_primary(): pass\n")
+    monkeypatch.setenv("PYTHONPATH", str(synchronized.parent))
+    monkeypatch.setattr(operator_module.sys, "executable", str(python))
+    assert operator_module._legacy_installed_generation_sha() == "a" * 40
+    active.write_text("def migrate_primary(): pass\n# migrate-primary\n", encoding="utf-8")
+    with pytest.raises(OperatorError, match="attestation failed"):
+        operator_module._legacy_installed_generation_sha()
+
+
+def test_bootstrap_exact_edge_reentry_and_target_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_BOOTSTRAP_TARGET_SHA", intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha", lambda **kwargs: intent["source_generation_sha"])
+    intent_path = tmp_path / "intent.json"
+    intent_path.write_text(json.dumps(intent), encoding="utf-8")
+    launched = []
+
+    def child(command, **kwargs):
+        launched.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0)
+
+    assert operator_module.bootstrap_primary(intent_path, runner=child) == 0
+    assert operator_module.bootstrap_primary(intent_path, runner=child) == 0
+    assert len(launched) == 2
+    assert launched[0][0] == launched[1][0]
+    marker = Path(launched[0][0][-1])
+    assert marker.is_file()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert len(list(marker.parent.glob("*.json"))) == 1
+    target_package = Path(launched[0][1]["PYTHONPATH"].split(operator_module.os.pathsep)[0])
+    monkeypatch.setattr(operator_module, "__file__", str(target_package / "aios_renew" / "operator.py"))
+    invocations = []
+
+    def admitted(*args, **kwargs):
+        invocations.append(kwargs)
+        state = runtime_paths(repo)
+        run_id = "RUN-101-001"
+        (state.runs / f"{run_id}.json").write_text(json.dumps({
+            "run_id": run_id, "task": {"id": intent["task_id"], "revision": 2},
+            "executor": intent["executor"], "base_sha": intent["target_control_sha"],
+            "workspace": str(repo), "status": "ACTIVE",
+        }))
+        (state.results / f"{run_id}.json").write_text(json.dumps({
+            "result": {"head_sha": intent["target_control_sha"], "claims": [],
+                       "changed_files": [], "unresolved": []}, "evidence": [],
+        }))
+        return SimpleNamespace(render=lambda: "ADMITTED")
+
+    monkeypatch.setattr(operator_module, "run_task", admitted)
+    assert operator_module.migrate_primary(intent_path, handoff_path=marker) == 0
+    assert operator_module.migrate_primary(intent_path, handoff_path=marker) == 0
+    assert len(invocations) == 1
+    with pytest.raises(OperatorError, match="already completed"):
+        operator_module.bootstrap_primary(intent_path, runner=child)
+
+
+@pytest.mark.parametrize("mutation", ["target", "source", "control", "pin", "task"])
+def test_bootstrap_rejects_unbound_intent_before_target_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_BOOTSTRAP_TARGET_SHA", intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha", lambda **kwargs: "1" * 40)
+    if mutation == "target":
+        intent["target_generation_sha"] = "2" * 40
+    elif mutation == "source":
+        intent["source_generation_sha"] = "2" * 40
+    elif mutation == "control":
+        intent["target_control_sha"] = "2" * 40
+    elif mutation == "pin":
+        intent["target_pin_blob_sha"] = "2" * 40
+    else:
+        intent["task_blob_sha"] = "2" * 40
+    path = tmp_path / "intent.json"
+    path.write_text(json.dumps(intent))
+    launched = []
+    with pytest.raises(OperatorError):
+        operator_module.bootstrap_primary(
+            path, runner=lambda *a, **k: launched.append(a)
+        )
+    assert launched == []
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+
+
+def test_target_cannot_self_authorize_legacy_bootstrap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    path = tmp_path / "intent.json"
+    path.write_text(json.dumps(intent))
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: intent["target_generation_sha"])
+    with pytest.raises(OperatorError, match="source generation mismatch"):
+        operator_module.migrate_primary(path)
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+@pytest.mark.parametrize("unsafe", ["dirty", "detached"])
+def test_bootstrap_rejects_unsafe_control_without_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unsafe: str
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_BOOTSTRAP_TARGET_SHA", intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha", lambda **kwargs: intent["source_generation_sha"])
+    if unsafe == "dirty":
+        (repo / "untracked.txt").write_text("dirty")
+    else:
+        git(repo, "checkout", "--detach", intent["source_control_sha"])
+    path = tmp_path / "intent.json"
+    path.write_text(json.dumps(intent))
+    with pytest.raises(OperatorError):
+        operator_module.bootstrap_primary(path, runner=lambda *a, **k: pytest.fail("target launched"))
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+
+
+def test_bootstrap_ambiguous_reentry_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_BOOTSTRAP_TARGET_SHA", intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha", lambda **kwargs: intent["source_generation_sha"])
+    path = tmp_path / "intent.json"
+    path.write_text(json.dumps(intent))
+    launches = []
+
+    def child(command, **kwargs):
+        launches.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    assert operator_module.bootstrap_primary(path, runner=child) == 0
+    marker = Path(launches[0][-1])
+    (marker.parent / ("f" * 64 + ".json")).write_text("{}")
+    with pytest.raises(OperatorError, match="ambiguous bootstrap"):
+        operator_module.bootstrap_primary(path, runner=child)
+    assert len(launches) == 1
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_bootstrap_interrupted_pre_edge_transport_stays_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_BOOTSTRAP_TARGET_SHA", intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha", lambda **kwargs: intent["source_generation_sha"])
+    path = tmp_path / "intent.json"
+    path.write_text(json.dumps(intent))
+    transport = runtime_state_root(repo) / "m"
+    transport.mkdir(parents=True)
+    orphan = transport / (operator_module._migration_fingerprint(intent)[:12] + "-orphan")
+    orphan.mkdir()
+    with pytest.raises(OperatorError, match="orphaned migration transport"):
+        operator_module.bootstrap_primary(path, runner=lambda *a, **k: pytest.fail("target launched"))
+    assert list(transport.iterdir()) == [orphan]
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
 
 
 def test_restart_keeps_active_source_when_control_moves_task_and_package(

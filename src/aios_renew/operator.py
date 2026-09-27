@@ -3764,6 +3764,10 @@ _MIGRATION_FIELDS = frozenset({
     "task_blob_sha", "task_commit_sha", "executor",
 })
 
+# The first reviewed generation with migrate-primary. This compatibility entry
+# is deliberately narrower than the reusable N-to-N+1 migration protocol.
+_BOOTSTRAP_TARGET_SHA = "83115b26df85a7ad6643f317833e18b18586bdbe"
+
 
 def _exact_migration_intent(document: Any) -> dict[str, Any]:
     """Reject incomplete, floating, and ambiguous cross-generation intent."""
@@ -3811,6 +3815,53 @@ def _installed_generation_sha() -> str:
     if (direct_url.get("dir_info") or {}).get("editable"):
         raise OperatorError("editable package cannot anchor migration authority")
     return sha
+
+
+def _legacy_installed_generation_sha(
+    *, runner: NativeRunner = subprocess.run,
+) -> str:
+    """Attest the imported *installed* legacy operator in an isolated interpreter.
+
+    The bootstrap module may be loaded from the reviewed target checkout. It
+    therefore cannot use its own __file__ or metadata as the legacy witness.
+    Isolated mode discards PYTHONPATH, including synchronized downstream source.
+    """
+
+    probe = """import importlib.metadata as metadata
+import json
+import pathlib
+import re
+import aios_renew.operator as active
+dist = metadata.distribution('aios-renew')
+origin = json.loads(dist.read_text('direct_url.json') or 'null')
+sha = origin['vcs_info']['commit_id']
+installed = pathlib.Path(dist.locate_file('aios_renew/operator.py')).resolve()
+actual = pathlib.Path(active.__file__).resolve()
+source = actual.read_text(encoding='utf-8')
+if (installed != actual or origin['vcs_info']['vcs'] != 'git'
+        or not isinstance(origin.get('url'), str) or not origin['url']
+        or (origin.get('dir_info') or {}).get('editable')
+        or not isinstance(sha, str) or not re.fullmatch('[0-9a-f]{40}', sha)
+        or 'migrate-primary' in source or hasattr(active, 'migrate_primary')):
+    raise SystemExit(2)
+print(json.dumps({'generation': sha, 'operator': str(actual)}))
+"""
+    try:
+        completed = runner(
+            [sys.executable, "-I", "-c", probe], capture_output=True,
+            text=True, check=False,
+        )
+        if completed.returncode != 0:
+            raise OperatorError("legacy installed generation attestation failed")
+        witness = json.loads(completed.stdout)
+        sha = witness["generation"]
+        operator = Path(witness["operator"])
+        if (not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha)
+                or not operator.is_absolute() or not operator.is_file()):
+            raise OperatorError("legacy installed generation attestation is invalid")
+        return sha
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise OperatorError("legacy installed generation attestation failed") from exc
 
 
 def _migration_fingerprint(intent: Mapping[str, Any]) -> str:
@@ -4135,6 +4186,90 @@ def _check_migration_control(
         raise OperatorError("migration TASK identity mismatch")
 
 
+def _stage_migration_handoff(
+    root: Path, intent: Mapping[str, Any], marker: Path,
+) -> tuple[Path, Path]:
+    """Bind TASK-197 transport before granting the exact target entry."""
+
+    fingerprint = _migration_fingerprint(intent)
+    _require_no_active_migration(root)
+    with RepositoryLock(runtime_paths(root).lock), tempfile.TemporaryDirectory(
+        prefix="aios-target-generation-"
+    ) as temporary:
+        control = Path(temporary) / "control"
+        _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags", str(root), str(control))
+        _check_migration_control(root, intent, transport=control)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        transport_dir = runtime_state_root(root) / "m"
+        transport_dir.mkdir(parents=True, exist_ok=True)
+        if list(transport_dir.glob(f"{fingerprint[:12]}-*")):
+            raise OperatorError("orphaned migration transport requires reconciliation")
+        bundle = Path(tempfile.mkdtemp(prefix=f"{fingerprint[:12]}-", dir=transport_dir))
+        try:
+            target = bundle / "source"
+            _git(root, "clone", "--no-checkout", "--no-tags", intent["target_url"], str(target))
+            _git(target, "checkout", "--detach", intent["target_generation_sha"])
+            if (_git(target, "rev-parse", "HEAD") != intent["target_generation_sha"]
+                    or _git(target, "status", "--porcelain")
+                    or not (target / "src" / "aios_renew" / "operator.py").is_file()):
+                raise OperatorError("target generation checkout mismatch")
+            bound_intent = bundle / "intent.json"
+            bound_intent.write_text(json.dumps(intent, sort_keys=True), encoding="utf-8")
+            _check_migration_control(root, intent, transport=control)
+            if marker.exists():
+                raise OperatorError("migration handoff already exists")
+            if any(path != marker for path in marker.parent.glob("*.json")):
+                raise OperatorError("ambiguous migration handoff history")
+            _write_migration_atomic(
+                marker,
+                json.dumps(_migration_record(intent, fingerprint, bundle.name), sort_keys=True),
+            )
+            return bound_intent, target
+        except BaseException:
+            if not marker.exists():
+                shutil.rmtree(bundle)
+            raise
+
+
+def bootstrap_primary(
+    intent_path: str | Path,
+    *,
+    runner: NativeRunner = subprocess.run,
+    legacy_runner: NativeRunner = subprocess.run,
+) -> int:
+    """One-time legacy admission into the existing TASK-197 target handoff."""
+
+    intent = _exact_migration_intent(json.loads(Path(intent_path).read_text(encoding="utf-8")))
+    root = resolve_repository(intent["repository"])
+    fingerprint = _migration_fingerprint(intent)
+    marker = _migration_marker(root, fingerprint)
+    admission = _new_admission(
+        "PRIMARY", phase="MIGRATION_PRE_HANDOFF", reason_code="MIGRATION_PRE_HANDOFF_REJECTED",
+        task_id=intent["task_id"], executor=intent["executor"],
+    )
+    try:
+        if intent["target_generation_sha"] != _BOOTSTRAP_TARGET_SHA:
+            raise OperatorError("bootstrap target is not the first reviewed migration-capable generation")
+        if _legacy_installed_generation_sha(runner=legacy_runner) != intent["source_generation_sha"]:
+            raise OperatorError("bootstrap legacy generation mismatch")
+        # A completed edge cannot be used as a second migration entry point.
+        if marker.with_suffix(".completed").exists():
+            raise OperatorError("bootstrap handoff already completed")
+        if marker.is_file():
+            siblings = list(marker.parent.glob("*.json"))
+            if siblings != [marker]:
+                raise OperatorError("ambiguous bootstrap handoff state")
+            record = json.loads(marker.read_text(encoding="utf-8"))
+            bound_intent, target = _migration_bundle(marker, record, intent)
+        else:
+            bound_intent, target = _stage_migration_handoff(root, intent, marker)
+        return _launch_migration_target(root, marker, bound_intent, target, runner)
+    except BaseException as exc:
+        if not marker.exists():
+            _persist_and_transport_admission_failure(root, admission=admission, failure=exc)
+        raise
+
+
 def migrate_primary(
     intent_path: str | Path,
     *,
@@ -4217,34 +4352,8 @@ def migrate_primary(
             record = json.loads(marker.read_text(encoding="utf-8"))
             bound_intent, target = _migration_bundle(marker, record, intent)
             return _launch_migration_target(root, marker, bound_intent, target, runner)
-        _require_no_active_migration(root)
-        with tempfile.TemporaryDirectory(prefix="aios-target-generation-") as temporary:
-            control = Path(temporary) / "control"
-            _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags", str(root), str(control))
-            with RepositoryLock(runtime_paths(root).lock):
-                _check_migration_control(root, intent, transport=control)
-            marker.parent.mkdir(parents=True, exist_ok=True)
-            transport_dir = runtime_state_root(root) / "m"
-            transport_dir.mkdir(parents=True, exist_ok=True)
-            bundle = Path(tempfile.mkdtemp(prefix=f"{fingerprint[:12]}-", dir=transport_dir))
-            target = bundle / "source"
-            _git(root, "clone", "--no-checkout", "--no-tags", intent["target_url"], str(target))
-            _git(target, "checkout", "--detach", intent["target_generation_sha"])
-            if _git(target, "rev-parse", "HEAD") != intent["target_generation_sha"] or _git(target, "status", "--porcelain"):
-                raise OperatorError("target generation checkout mismatch")
-            if not (target / "src" / "aios_renew" / "operator.py").is_file():
-                raise OperatorError("target generation has no operator source")
-            bound_intent = bundle / "intent.json"
-            bound_intent.write_text(json.dumps(intent, sort_keys=True), encoding="utf-8")
-            with RepositoryLock(runtime_paths(root).lock):
-                _check_migration_control(root, intent, transport=control)
-                if marker.exists():
-                    raise OperatorError("migration handoff already exists")
-                _write_migration_atomic(
-                    marker,
-                    json.dumps(_migration_record(intent, fingerprint, bundle.name), sort_keys=True),
-                )
-            return _launch_migration_target(root, marker, bound_intent, target, runner)
+        bound_intent, target = _stage_migration_handoff(root, intent, marker)
+        return _launch_migration_target(root, marker, bound_intent, target, runner)
     except BaseException as exc:
         if not marker.exists():
             _persist_and_transport_admission_failure(root, admission=admission, failure=exc)
@@ -6343,6 +6452,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     migration_parser.add_argument("intent", help="Exact reviewed migration intent JSON")
     migration_parser.add_argument("--accept-handoff", help=argparse.SUPPRESS)
+    bootstrap_parser = commands.add_parser(
+        "bootstrap-primary", help="Bridge one exact legacy installed generation into migrate-primary"
+    )
+    bootstrap_parser.add_argument("intent", help="Exact reviewed migration intent JSON")
     wakeup_parser = commands.add_parser(
         "wakeup", help="Idempotently wake one canonical PRIMARY execution"
     )
@@ -6668,6 +6781,8 @@ def main(
             return migrate_primary(
                 args.intent, runner=native_runner, handoff_path=args.accept_handoff
             )
+        elif args.command == "bootstrap-primary":
+            return bootstrap_primary(args.intent, runner=native_runner)
         elif args.command == "wakeup":
             repo_root = resolve_repository(args.repo)
             dispatch_state_root = runtime_paths(repo_root).root
