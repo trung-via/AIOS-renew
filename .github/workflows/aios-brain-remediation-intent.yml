@@ -69,7 +69,7 @@ jobs:
       effort_source: ${{ needs.admit.outputs.effort_source }}
 
   receipt:
-    if: always()
+    if: always() && github.event.issue.title == '[AIOS REMEDIATION INTENT]'
     needs: [admit, dispatch]
     runs-on: ubuntu-latest
     timeout-minutes: 5

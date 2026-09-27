@@ -22,6 +22,71 @@ POLICY = {
 }
 
 
+WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+def _jobs(workflow: str) -> dict[str, object]:
+    return yaml.safe_load((WORKFLOWS / workflow).read_text(encoding="utf-8"))["jobs"]
+
+
+def test_remediation_workflow_gates_receipt_and_retains_rejection_path() -> None:
+    jobs = _jobs("aios-brain-remediation-intent.yml")
+    title_guard = "github.event.issue.title == '[AIOS REMEDIATION INTENT]'"
+
+    assert set(jobs) == {"admit", "dispatch", "receipt"}
+    assert jobs["admit"]["if"] == title_guard
+    assert jobs["dispatch"]["needs"] == "admit"
+    assert "if" not in jobs["dispatch"]
+    assert jobs["receipt"]["needs"] == ["admit", "dispatch"]
+    assert jobs["receipt"]["if"] == f"always() && {title_guard}"
+
+    dispatch = jobs["dispatch"]
+    assert dispatch["uses"] == "./.github/workflows/aios-approved-remediation-intent.yml"
+    assert dispatch["with"] == {
+        key: f"${{{{ needs.admit.outputs.{key} }}}}"
+        for key in (
+            "correction_dispatch_id", "source_run_id", "finding_id", "executor",
+            "model", "reasoning_effort", "model_source", "effort_source",
+        )
+    }
+    receipt_steps = jobs["receipt"]["steps"]
+    assert receipt_steps[-1]["name"] == "Preserve rejected carrier outcome"
+    assert receipt_steps[-1]["if"] == (
+        "needs.admit.result != 'success' || needs.dispatch.result != 'success'"
+    )
+    assert receipt_steps[-1]["run"] == "exit 1"
+    script = receipt_steps[0]["with"]["script"]
+    assert "github.rest.issues.createComment" in script
+    assert "github.rest.issues.update" in script
+    assert "admitted && dispatched ? 'SELF_HOST_COMPLETED' : 'REJECTED'" in script
+
+
+def test_other_issue_carriers_keep_existing_non_target_isolation() -> None:
+    primary = _jobs("aios-brain-wakeup.yml")
+    assert set(primary) == {"admit-and-dispatch"}
+    assert primary["admit-and-dispatch"]["if"] == (
+        "github.event.issue.title == '[AIOS BRAIN WAKEUP]'"
+    )
+
+    ingress = _jobs("aios-brain-ingress.yml")
+    assert set(ingress) == {"deliver"}
+    assert ingress["deliver"]["if"] == (
+        "github.event.issue.title == '[AIOS BRAIN INGRESS]'"
+    )
+
+    repair = _jobs("aios-brain-repair-wakeup.yml")
+    assert set(repair) == {"admit", "dispatch", "receipt"}
+    assert repair["admit"]["if"] == (
+        "github.event.issue.title == '[AIOS REPAIR WAKEUP]'"
+    )
+    assert repair["dispatch"]["needs"] == "admit"
+    assert "if" not in repair["dispatch"]
+    assert repair["receipt"]["needs"] == ["admit", "dispatch"]
+    assert repair["receipt"]["if"] == (
+        "always() && github.event.issue.title == '[AIOS REPAIR WAKEUP]'"
+    )
+
+
 def _body(**updates: object) -> str:
     request: dict[str, object] = {
         "format": "AIOS_REMEDIATION_INTENT_REQUEST",
