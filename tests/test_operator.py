@@ -9612,6 +9612,63 @@ def test_source_bootstrap_recovery_exact_replay_and_history(
         operator_module._require_no_active_migration(repo)
 
 
+def test_source_bootstrap_recovery_preserves_completed_migration_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, target_source, old = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", old["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: old["source_generation_sha"])
+    old_path = tmp_path / "old.json"
+    old_path.write_text(json.dumps(old), encoding="utf-8")
+    assert operator_module.bootstrap_source_primary(
+        old_path, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0)
+    ) == 0
+    old_marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(old))
+    old_marker.with_suffix(".consumed").write_text(old_marker.stem, encoding="utf-8")
+
+    # A distinct v1 migration has a valid bound source and durable completion.
+    operator_file = target_source / "src" / "aios_renew" / "operator.py"
+    operator_file.write_text("# historical migration target\n", encoding="utf-8")
+    git(target_source, "add", ".")
+    git(target_source, "commit", "-m", "historical migration target")
+    historical = {key: value for key, value in old.items() if key != "format"}
+    historical.update(version=1, source_generation_sha="2" * 40,
+                      target_generation_sha=git(target_source, "rev-parse", "HEAD"),
+                      target_control_sha=old["source_control_sha"],
+                      target_pin_blob_sha=old["source_pin_blob_sha"])
+    historical_fp = operator_module._migration_fingerprint(historical)
+    historical_marker = operator_module._migration_marker(repo, historical_fp)
+    bundle = runtime_state_root(repo) / "m" / f"{historical_fp[:12]}-historical"
+    bundle.mkdir()
+    (bundle / "intent.json").write_text(json.dumps(historical), encoding="utf-8")
+    git(target_source, "clone", str(target_source), str(bundle / "source"))
+    historical_marker.write_text(json.dumps(operator_module._migration_record(
+        historical, historical_fp, bundle.name)), encoding="utf-8")
+    historical_marker.with_suffix(".consumed").write_text(historical_fp, encoding="utf-8")
+
+    new = dict(old)
+    operator_file.write_text("# activated replacement target\n", encoding="utf-8")
+    git(target_source, "add", ".")
+    git(target_source, "commit", "-m", "activated replacement target")
+    new["target_generation_sha"] = git(target_source, "rev-parse", "HEAD")
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", new["target_generation_sha"])
+    new_path = tmp_path / "replacement.json"
+    new_path.write_text(json.dumps(new), encoding="utf-8")
+
+    # An uncompleted second edge remains conflicting active authority.
+    with pytest.raises(OperatorError, match="sole active handoff"):
+        operator_module.recover_source_bootstrap(old_path, new_path)
+    historical_marker.with_suffix(".completed").write_text(historical_fp, encoding="utf-8")
+    historical_bytes = {path: path.read_bytes() for path in (
+        historical_marker, historical_marker.with_suffix(".consumed"),
+        historical_marker.with_suffix(".completed"),
+        bundle / "intent.json")}
+    assert operator_module.recover_source_bootstrap(old_path, new_path) == 0
+    assert all(path.read_bytes() == content for path, content in historical_bytes.items())
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
 @pytest.mark.parametrize("change", [
     "task", "executor", "pin", "control", "bound_run", "dirty", "stale",
     "completed", "nonfastforward", "pin_change", "same_revision_blob", "new_revision_unbound",

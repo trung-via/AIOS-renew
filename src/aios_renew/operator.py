@@ -4640,6 +4640,18 @@ def recover_source_bootstrap(
         edges, superseded, pending = _migration_history(root)
         if old_fp not in edges or edges[old_fp][2] != old:
             raise OperatorError("selected old source-bootstrap edge is unavailable")
+        if pending:
+            raise OperatorError("pending migration supersession evidence")
+        successors = {record["source_generation_sha"]: record["target_generation_sha"]
+                      for fingerprint, (_, record, _) in edges.items() if fingerprint not in superseded}
+        for source in successors:
+            seen: set[str] = set()
+            current = source
+            while current in successors:
+                if current in seen:
+                    raise OperatorError("cyclic migration handoff history")
+                seen.add(current)
+                current = successors[current]
         if old_fp in superseded:
             link = json.loads(old_marker.with_suffix(".superseded").read_text(encoding="utf-8"))
             if link["replacement_fingerprint"] == new_fp and edges[new_fp][2] == new:
@@ -4648,7 +4660,13 @@ def recover_source_bootstrap(
         if (_SOURCE_BOOTSTRAP_TARGET_SHA is None
                 or new["target_generation_sha"] != _SOURCE_BOOTSTRAP_TARGET_SHA):
             raise OperatorError("replacement source-bootstrap target is not activated")
-        if (len(edges) != 1 or pending or not old_marker.with_suffix(".consumed").is_file()
+        # Completed handoffs and committed supersessions are immutable history.
+        # The selected edge must be the sole uncompleted authority edge.
+        active = {fingerprint for fingerprint, (marker, _, _) in edges.items()
+                  if fingerprint not in superseded and not marker.with_suffix(".completed").is_file()}
+        if active != {old_fp}:
+            raise OperatorError("source-bootstrap edge is not the sole active handoff")
+        if (not old_marker.with_suffix(".consumed").is_file()
                 or old_marker.with_suffix(".completed").exists()
                 or old_marker.with_suffix(".consumed").read_text(encoding="utf-8") != old_fp):
             raise OperatorError("source-bootstrap edge is not one consumed pre-RUN edge")
