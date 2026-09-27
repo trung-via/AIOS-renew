@@ -1,0 +1,164 @@
+task_id: TASK-194
+revision: 1
+
+goal: >
+  Execute the reviewed BP8-P2A real Reviewer proof harness exactly once as
+  Runtime-owned canonical verification with the Human-selected
+  Antigravity/gemini-3.8-flash Reviewer and explicit effort high, while keeping
+  the native Executor as a zero-delta structural handoff only. Record one bounded
+  proof observation without converting a transient provider failure into a
+  fabricated engineering RUN failure or canonical REVIEW.
+
+problem: >
+  TASK-193 / BP8-P2A is reviewed and published at
+  da21220d60b44f9e06c74b8f6d9c2e18d6d3cb30. Its harness
+  scripts/bp8_real_reviewer_probe.py already enforces exact --effort high syntax,
+  one JsonReviewerProvider + GeminiReviewerTransport call, request byte/fingerprint
+  binding, bounded VALIDATED_DECISION or PROVIDER_FAILURE observations, no retry or
+  fallback, no raw request/response/credential leakage, and nonzero exit only for
+  probe-integrity defects. BP8-P2B must now exercise that exact reviewed harness once
+  on the self-host environment. The Executor must not perform the provider call or any
+  repository command because Runtime owns canonical verification and evidence.
+
+assumptions:
+  - >
+    Canonical main at TASK authoring is
+    767ebea1db75376033ddd3420386327818ea1118. Roadmap planning records BP8-P2B /
+    TASK-194 r1 as the unique NEXT item and retains the Human-selected proof identity:
+    Reviewer provider antigravity, model gemini-3.8-flash, effort high.
+  - >
+    BP8-P2A / TASK-193 r1 is engineering-complete through RUN-193-001,
+    REVIEW-193-001 PRIMARY PASS, and exact publication of
+    da21220d60b44f9e06c74b8f6d9c2e18d6d3cb30. Runtime evidence
+    RUN-193-001-V001 and RUN-193-001-V002 established the offline harness contract.
+  - >
+    The published harness is the only real-provider proof mechanism authorized here.
+    This TASK neither modifies nor substitutes it.
+  - >
+    The harness returns exit 0 for both a validated provider decision and one bounded
+    typed PROVIDER_FAILURE observation. Therefore a provider/network/response failure
+    remains observational evidence and does not by itself create a Runtime verification
+    failure. Probe-integrity defects remain nonzero and may legitimately fail Runtime
+    verification.
+  - >
+    A VALIDATED_DECISION observation may satisfy the BP8 real-provider evidence exit
+    gate after Human/Brain interpretation. A PROVIDER_FAILURE observation does not
+    satisfy that roadmap exit gate, even though this evidence-collection TASK may still
+    complete successfully.
+  - >
+    Runtime owns canonical verification/EVIDENCE; Reviewer owns semantic review of this
+    TASK; Human/Brain own interpretation of the proof observation and any later roadmap
+    decision; Publisher owns publication. No layer may automatically retry, fail over,
+    author correction, or advance the roadmap from the provider outcome.
+
+scope:
+  inspect: []
+  modify: []
+
+non_goals:
+  - Modify any repository file, create a source commit, or change the reviewed P2A harness.
+  - Have the native Executor invoke Gemini, agy, shell, Git, repository file-read,
+    search, pytest, diagnostics, or any other workspace command/tool.
+  - Make provider success an Executor claim or pre-verification acceptance requirement.
+  - Convert PROVIDER_FAILURE into FAILURE, REVIEW, remediation, repair, retry, fallback,
+    alternate-provider selection, or automatic roadmap continuation.
+  - Submit the transient Gemini semantic decision as canonical REVIEW.
+  - Change Reviewer defaults, Executor defaults, provider/model routing, execution-profile
+    policy, Runtime, verification, ingress, Publisher, workflows, frozen Kernel, or
+    downstream repositories.
+  - Re-run the real-provider probe automatically if its observation is PROVIDER_FAILURE.
+  - Treat a VALIDATED_DECISION semantic verdict as a canonical REVIEW verdict or as
+    permission to mutate lifecycle state.
+  - Advance BP8 or author BP9 from Executor, Runtime, Reviewer, or Publisher.
+
+constraints:
+  hard:
+    - >
+      TASK-194 r1 is a zero-delta read-only PRIMARY with empty scope.inspect and
+      scope.modify. The native Executor must not invoke shell, Git, repository
+      file-read, search, pytest, agy, provider, diagnostic, or other workspace
+      commands/tools.
+    - >
+      The Executor must construct the structural ResultPackage solely from the
+      immutable canonical TASK/RUN context supplied by the admitted native adapter.
+      result.head_sha must equal the admitted RUN base SHA, changed_files must be
+      empty, unresolved must be empty, root evidence must be empty, and every
+      claim.evidence list must be empty before Runtime verification.
+    - >
+      Executor claims may cover only the zero-delta structural handoff and preserved
+      authority boundary. They must not claim that Runtime verification ran, that a
+      Gemini call occurred, that the provider succeeded or failed, that a decision
+      fingerprint exists, that BP8 is complete, or that any roadmap transition is
+      authorized.
+    - >
+      Runtime independently owns actual HEAD/cleanliness checks, zero-delta truth,
+      verification-subject materialization, execution of the exact canonical command,
+      evidence attachment, post-verification state checks, and terminal persistence.
+    - >
+      Canonical verification contains exactly one command:
+      python scripts/bp8_real_reviewer_probe.py --effort high
+      Runtime must execute it exactly once through the ordinary verification engine.
+    - >
+      The reviewed harness owns the inner one-call boundary. A JSON observation with
+      outcome VALIDATED_DECISION or PROVIDER_FAILURE and outer exit code 0 is valid
+      Runtime evidence for this evidence-collection TASK. Runtime must not reinterpret
+      PROVIDER_FAILURE text as a failed verification command.
+    - >
+      A nonzero outer command result means the reviewed proof harness detected an
+      integrity failure. That remains a legitimate Runtime VERIFICATION failure and
+      must not be converted into provider failure, retry, fallback, or a synthetic
+      successful observation.
+    - >
+      No second verification command, shell wrapper, provider preflight, credential
+      check, environment dump, availability probe, retry, fallback, timeout replay, or
+      alternate model/provider invocation is authorized.
+    - >
+      The real-provider process receives authentication only through the existing
+      external environment inherited by the reviewed P1 transport. Neither Executor
+      nor TASK-194 may inspect, print, persist, transform, or validate credentials.
+    - >
+      This TASK does not require or predetermine a semantic verdict from Gemini.
+      PASS, CHANGES_REQUIRED, or BLOCKED may all produce VALIDATED_DECISION if the
+      unchanged BP6 protocol validates the response.
+    - >
+      Reviewer judgment for TASK-194 concerns whether the exact one-shot Runtime-owned
+      observation was collected through the reviewed harness and whether the zero-delta
+      authority contract was preserved. The Reviewer must not promote the transient
+      Gemini decision to canonical REVIEW and must not decide roadmap closure on behalf
+      of Human/Brain.
+    - >
+      After canonical TASK completion, Human/Brain must inspect the Runtime evidence
+      observation. Only outcome VALIDATED_DECISION with the required bound provider,
+      model, effort, invocation count, request identity, decision fingerprint, and
+      native witness may support closing the BP8 real-provider proof gate. A
+      PROVIDER_FAILURE observation leaves BP8-P2 unresolved without authorizing an
+      automatic retry.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The Executor returns a complete zero-delta structural ResultPackage from the
+      supplied admitted context only: result.head_sha equals the admitted RUN base SHA,
+      changed_files is empty, unresolved is empty, root evidence is empty, and every
+      claim evidence list is empty before Runtime verification.
+  - id: AC2
+    condition: >
+      The Executor performs no repository, shell, provider, network, test, Git, file,
+      search, or diagnostic command/tool invocation and makes no claim about the future
+      Runtime/provider observation.
+  - id: AC3
+    condition: >
+      The structural handoff preserves exactly one Runtime-owned verification command,
+      python scripts/bp8_real_reviewer_probe.py --effort high, with no substitute,
+      preflight, retry, fallback, second provider call, or additional verification path.
+  - id: AC4
+    condition: >
+      The handoff preserves the authority boundary that Runtime owns canonical evidence,
+      the reviewed harness owns provider-outcome classification, Reviewer owns TASK
+      semantic review, Human/Brain own BP8 evidence interpretation and roadmap planning,
+      and Publisher owns exact eligible publication.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python scripts/bp8_real_reviewer_probe.py --effort high
