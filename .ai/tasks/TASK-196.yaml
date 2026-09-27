@@ -1,0 +1,166 @@
+task_id: TASK-196
+revision: 1
+
+goal: >
+  Restore portable repository-owned execution-profile validation for durable
+  REMEDIATION and REPAIR dispatch records when AIOS-renew is installed as an
+  immutable dependency and operates on an external downstream repository.
+
+problem: >
+  BP-9 downstream adoption exposed a Runtime portability defect at the reviewed
+  TASK-195 source pin. Python Agent RUN-255-002 admitted a coding REPAIR and
+  durably bound gpt-6-sol/high, but Completion Gate failed before Executor
+  invocation with invalid repair profile binding. Both repair_dispatch and
+  correction_dispatch read v2 durable records by calling validate_profile_identity
+  without the governed repository/policy context. execution_profile therefore
+  falls back to canonical_policy_path relative to the AIOS package source tree.
+  This works in upstream source-checkout tests but an isolated downstream venv
+  does not package repository .ai/executor-profiles.yaml. Close the same defect
+  family for REMEDIATION and REPAIR without moving policy or lifecycle authority.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    6300267cbabe642c7e3b61f65d792b3cc060f0b5; TASK-195 is the highest
+    canonical TASK and BP-9 downstream adoption remains planning NEXT.
+  - >
+    TASK-195 published source 636cde7c55f8a843338ea407d2888ea1043875b5
+    establishes Codex gpt-6-sol/high and efforts none/low/medium/high/xhigh/max
+    while preserving Antigravity policy.
+  - >
+    Downstream RUN-255-002 is failure evidence: a durable coding-REPAIR
+    profile existed but existing-dispatch validation failed before Executor
+    invocation through the installed Runtime.
+  - >
+    Current repair_dispatch.py and correction_dispatch.py both validate v2
+    durable profile identities without repository/policy context.
+  - >
+    pyproject.toml packages aios_renew schemas but not repository-owned
+    .ai/executor-profiles.yaml.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-195.yaml
+    - pyproject.toml
+    - src/aios_renew/execution_profile.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/correction_dispatch.py
+    - src/aios_renew/repair_dispatch.py
+    - tests/test_execution_profile.py
+    - tests/test_correction_dispatch.py
+    - tests/test_repair_dispatch.py
+  modify:
+    - src/aios_renew/correction_dispatch.py
+    - src/aios_renew/repair_dispatch.py
+    - tests/test_correction_dispatch.py
+    - tests/test_repair_dispatch.py
+
+non_goals:
+  - >
+    Change execution-profile defaults, supported efforts, model selection,
+    Executor selection, provider adapters, TASK-195 semantics, or downstream
+    configuration.
+  - >
+    Package or copy .ai/executor-profiles.yaml into AIOS, use package-local
+    policy as downstream authority, or add cwd/environment/global/source-tree fallback.
+  - >
+    Change frozen Kernel semantics, lifecycle states, RUN allocation,
+    verification authority, Reviewer, Publisher, Brain, roadmap, carriers,
+    workflows, or downstream TASK-255 lineage.
+  - >
+    Add retry, fallback, failover, routing, automatic correction selection,
+    duplicate execution, or second Runtime/Planner/Reviewer/Publisher.
+  - >
+    Repair, rewrite, delete or reinterpret downstream RUN-255-001,
+    REPAIR-255-001 or RUN-255-002.
+  - >
+    Broaden this maintenance into BP-9 adoption or automatically publish a
+    downstream pin.
+
+constraints:
+  hard:
+    - >
+      Durable v2 REMEDIATION and REPAIR record validation must use the
+      execution-profile policy belonging to the exact governed repository
+      supplied by the Runtime/operator call chain; validation must not depend
+      on package location.
+    - >
+      Preserve exact immutable profile identity/source attribution already
+      bound in durable records. Repository defaults may validate support but
+      must never re-resolve or rewrite model, effort, model_source or effort_source.
+    - >
+      Preserve v1 historical compatibility and current at-most-once,
+      selector-collision, replay, active-lock, RUN-attribution and
+      reconciliation semantics.
+    - >
+      Apply the same repository-aware invariant to correction_dispatch and
+      repair_dispatch; do not fix only the observed REPAIR symptom.
+    - >
+      Repository context must be explicit through the durable dispatch API
+      boundary; do not infer it from cwd, package parents, environment or globals.
+    - >
+      Fail closed when a v2 profile is malformed or unsupported under governed
+      repository policy. Missing or invalid repository policy must not fall
+      back to package/source defaults.
+    - >
+      Keep production mutation limited to correction_dispatch.py and
+      repair_dispatch.py. If correctness requires execution_profile.py,
+      operator.py, packaging, frozen Kernel or another production module, stop
+      unresolved rather than widen scope.
+    - >
+      Regression tests must exercise public durable-dispatch behavior with an
+      external temporary repository whose .ai/executor-profiles.yaml differs
+      from AIOS source-checkout policy.
+    - >
+      Cover acceptance and rejection: a profile supported only by the external
+      repository succeeds; one unsupported by that repository fails even if
+      incidental/source-tree policy would admit it.
+    - >
+      Cover existing-record read/replay or reconciliation after durable v2
+      write, matching the RUN-255-002 failure phase.
+    - >
+      Tests must be deterministic, non-network, and must not treat AIOS
+      source-tree .ai policy as downstream authority.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Existing durable REPAIR v2 records validate against explicit
+      governed-repository execution-profile policy on read, replay and
+      reconciliation, independent of package/source-tree location.
+  - id: AC2
+    condition: >
+      Existing durable REMEDIATION v2 records satisfy the same repository-aware
+      invariant with no homologous package-layout dependency.
+  - id: AC3
+    condition: >
+      Exact durable model, effort and source attribution remain immutable;
+      supported external-repository profiles replay successfully and malformed
+      or externally unsupported profiles fail closed without Executor invocation.
+  - id: AC4
+    condition: >
+      Historical v1 dispatches and current at-most-once, collision,
+      active-delivery, RUN-attribution and reconciliation behavior remain
+      non-regressed for both correction families.
+  - id: AC5
+    condition: >
+      Deterministic non-network regressions reproduce the
+      external-repository/installed-package boundary for both REMEDIATION and
+      REPAIR existing-record paths.
+  - id: AC6
+    condition: >
+      Change is confined to the four authorized files, changes no lifecycle or
+      semantic authority, adds no fallback/router/retry behavior, and has zero
+      unresolved items.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_execution_profile.py tests/test_correction_dispatch.py tests/test_repair_dispatch.py
+    - git diff --check
