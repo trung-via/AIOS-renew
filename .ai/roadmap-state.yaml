@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-8-real-second-provider-proof
+  - bp-9-downstream-adoption
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -971,10 +971,32 @@ sequence:
       without changing production, Runtime verification authority, test semantics,
       or pytest/xdist identity for ordinary cases.
   - id: bp-8-real-second-provider-proof
-    status: NEXT
-    phase: BP8-P2B
+    status: DONE
+    phase: COMPLETE
     task_id: TASK-194
     task_revision: 1
+    completed_by:
+      task_id: TASK-194
+      task_revision: 1
+      run_id: RUN-194-001
+      review_id: REVIEW-194-001
+      reviewed_sha: "2cf7ba01222891bb5470b231fee01b7122e39cab"
+      published_sha: "2cf7ba01222891bb5470b231fee01b7122e39cab"
+      verification_evidence:
+        - RUN-194-001-V001
+      proof_observation:
+        outcome: VALIDATED_DECISION
+        provider: antigravity
+        model: gemini-3.8-flash
+        reasoning_effort: high
+        invocation_count: 1
+        request_fingerprint: "995de29f9223ff3b76d335fb5e69c6d9c63d98d0d3a01cb80c484e9be1558670"
+        request_sha256: "c108ae8f71ae008cf9de17d57f3f0500cbbc64f31038f5469a1fd20d2ead6f6b"
+        decision_fingerprint: "926d8348c655fddd33350be39db8669ca7a7842859cc09110bfda73b8e4b672f"
+        native_usage:
+          input_tokens: 37375
+          output_tokens: 5066
+          cached_input_tokens: 0
     selected_proof:
       role: REVIEWER
       provider: antigravity
@@ -983,7 +1005,7 @@ sequence:
       authority: HUMAN
       note: >-
         Human explicitly selected high effort for the one controlled BP8-P2 real
-        Reviewer proof. This is proof-specific operational input only, not a Reviewer
+        Reviewer proof. This proof-specific selection did not become a Reviewer
         default, provider preference policy, Executor default, router input, or
         automatic model-selection rule.
     p2_plan:
@@ -1005,14 +1027,20 @@ sequence:
           can later run one explicit real call without treating provider failure as
           an engineering RUN failure.
       - id: BP8-P2B
-        status: NEXT
+        status: DONE
         task_id: TASK-194
         task_revision: 1
+        run_id: RUN-194-001
+        review_id: REVIEW-194-001
+        reviewed_sha: "2cf7ba01222891bb5470b231fee01b7122e39cab"
+        published_sha: "2cf7ba01222891bb5470b231fee01b7122e39cab"
+        verification_evidence:
+          - RUN-194-001-V001
+        outcome: VALIDATED_DECISION
         objective: >-
           Execute the reviewed proof harness exactly once as Runtime-owned
-          verification with explicit --effort high. The observation may report
-          validated-decision success or a typed pre-REVIEW provider failure; only a
-          validated-decision observation closes the BP8 real-provider evidence gate.
+          verification with explicit --effort high. The validated one-call decision
+          observation satisfied the BP8 real-provider evidence gate.
     completed_phases:
       - id: BP8-P1
         status: DONE
@@ -1046,7 +1074,7 @@ sequence:
       Prove the contracts with one controlled real non-default Brain or Reviewer provider
       while retaining the existing GitHub/self-host execution path.
   - id: bp-9-downstream-adoption
-    status: PLANNED
+    status: NEXT
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Adopt the reviewed capability downstream only through an explicit exact-pin,
