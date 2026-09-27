@@ -1,0 +1,199 @@
+task_id: TASK-195
+revision: 1
+
+goal: >
+  Align AIOS-renew's repository-owned Codex execution-profile policy with the
+  current GPT-6 Sol capability contract before BP9 downstream adoption. Keep
+  default_model exactly gpt-6-sol, change Codex default_reasoning_effort from
+  medium to high, and admit exactly none, low, medium, high, xhigh and max for
+  Codex. Preserve Antigravity policy, Human explicit override precedence,
+  immutable bound execution profiles, existing carrier/dispatch schemas, native
+  adapter mechanics, no-retry/no-fallback semantics, and all lifecycle authorities.
+
+problem: >
+  Current canonical .ai/executor-profiles.yaml admits only low/medium/high for
+  Codex and defaults gpt-6-sol to medium. Current OpenAI GPT-6 Sol capability
+  documentation exposes none/low/medium/high/xhigh/max. Fresh source audit shows
+  AIOS execution_profile.py validates effort against only the repository policy,
+  while codex_adapter.py transports the exact already-resolved reasoning_effort
+  to native Codex without a hard-coded three-level enum. Therefore AIOS is
+  artificially restricting supported GPT-6 Sol effort values at policy level.
+  The Human has explicitly selected gpt-6-sol/high as the new repository default
+  and requires full supported Sol effort coverage before BP9 downstream adoption.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    9f0ccadadf4be2daef947e496332b967b7abd676 and the unique planning NEXT is
+    maintenance-codex-gpt6-sol-effort-policy-alignment-v2 / TASK-195 r1.
+  - >
+    Canonical current Codex policy is gpt-6-sol/medium with supported efforts
+    [low, medium, high]. Antigravity is gemini-3.8-flash/medium with supported
+    efforts [low, medium, high].
+  - >
+    Current GPT-6 Sol provider capability is exactly
+    [none, low, medium, high, xhigh, max]. Do not add minimal, ultra, persistent
+    or any future/custom token to the canonical Codex policy without separate
+    Human/Brain authorization.
+  - >
+    Codex protocol/client may recognize effort tokens beyond the GPT-6 Sol model
+    capability, but model-specific capability is the authority for this policy.
+  - >
+    Current execution_profile.py already treats supported efforts as
+    repository-owned data and validates exact membership. codex_adapter.py already
+    transports the exact injected effort as model_reasoning_effort without choosing,
+    ranking, downgrading or substituting it. No production Python change is expected.
+  - >
+    TASK-162/TASK-163 execution-profile foundation, request/dispatch versions and
+    immutable profile provenance remain authoritative and must not be redesigned.
+  - >
+    BP8 is complete and BP9 downstream adoption is intentionally paused until this
+    maintenance task is reviewed and published so downstream can adopt one final
+    exact reviewed pin rather than an immediately stale policy.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - .ai/roadmap-state.yaml
+    - .ai/executor-profiles.yaml
+    - .ai/tasks/TASK-162.yaml
+    - .ai/tasks/TASK-163.yaml
+    - src/aios_renew/execution_profile.py
+    - src/aios_renew/codex_adapter.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_remediation_intent.py
+    - src/aios_renew/github_issue_repair_wakeup.py
+    - tests/test_execution_profile.py
+    - tests/test_operator.py
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_remediation_intent.py
+    - tests/test_github_issue_repair_wakeup.py
+    - tests/test_codex_adapter.py
+  modify:
+    - .ai/executor-profiles.yaml
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - tests/test_execution_profile.py
+    - tests/test_operator.py
+    - tests/test_github_issue_wakeup.py
+    - tests/test_github_issue_remediation_intent.py
+    - tests/test_github_issue_repair_wakeup.py
+    - tests/test_codex_adapter.py
+
+non_goals:
+  - >
+    Change any src/aios_renew production Python, adapter architecture, Dispatcher,
+    Operator parsing, Human surface, carrier schema/version, durable dispatch
+    schema/version, workflow, Runtime, verification, Reviewer or Publisher semantics.
+  - >
+    Change Antigravity or Antigravity MiniMax defaults, supported efforts, model
+    semantics or native command behavior.
+  - >
+    Add minimal, ultra, persistent or arbitrary Custom effort values to the
+    canonical Codex/GPT-6 Sol policy.
+  - >
+    Add model routing, task-difficulty classification, adaptive effort selection,
+    automatic escalation/downgrade, retry, fallback, failover, executor substitution
+    or model scoring.
+  - >
+    Reinterpret or mutate any historical execution-profile sidecar, RUN, RESULT,
+    FAILURE, dispatch journal, REVIEW, REMEDIATION or REPAIR.
+  - >
+    Require a real provider/network smoke as deterministic verification. Provider
+    entitlement/availability remains operational, not canonical test truth.
+  - >
+    Advance BP9, mutate downstream Python Agent, review or publish from Executor work.
+
+constraints:
+  hard:
+    - >
+      .ai/executor-profiles.yaml remains the single repository-owned default/capability
+      authority. Codex must be exactly default_model gpt-6-sol,
+      default_reasoning_effort high, supported_reasoning_efforts in canonical order
+      [none, low, medium, high, xhigh, max].
+    - >
+      Antigravity policy remains byte-semantically unchanged at
+      gemini-3.8-flash/medium with [low, medium, high].
+    - >
+      Do not add a second effort enum or model capability table in Python source,
+      adapters, workflows, tests or docs. Tests may assert the canonical policy but
+      must not become runtime policy authority.
+    - >
+      Human explicit model/effort selection continues to outrank repository defaults.
+      Omitted Codex effort now resolves to high for each new authorization; explicit
+      none/low/medium/high/xhigh/max must retain EXPLICIT attribution and exact value.
+    - >
+      Bound/replayed existing authorizations retain their immutable already-resolved
+      execution profile even after this default change; no historical identity is
+      re-resolved through high.
+    - >
+      Regression implementation must cover canonical policy parsing, default Codex
+      resolution to high, exact acceptance of all six Sol efforts, rejection of at
+      least minimal and ultra for canonical Codex policy, and preservation of
+      Antigravity's existing three-level policy.
+    - >
+      Operator regression must establish by construction that an omitted Codex
+      effort resolves through repository policy to high while an explicit effort
+      remains exact and attributed EXPLICIT.
+    - >
+      PRIMARY, REMEDIATION and REPAIR GitHub issue admission regressions must use
+      the canonical policy and represent omitted Codex effort resolving to high;
+      explicit effort cases remain exact. No carrier schema/version changes.
+    - >
+      Codex adapter regression must exercise all six canonical Sol efforts against
+      PRIMARY, REMEDIATION and REPAIR command construction and assert exact
+      model_reasoning_effort transport without adapter-side selection or substitution.
+    - >
+      Update docs/AIOS-EXECUTION-PROFILE-SELECTION.md so the Human-approved current
+      target states Codex gpt-6-sol/high, documents all six supported Sol efforts,
+      preserves Antigravity medium, and keeps the no-router/no-fallback authority
+      boundaries intact.
+    - >
+      Modify exactly the eight authorized files. No production Python or workflow
+      file changes are permitted. Zero unresolved implementation items.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository policy defines Codex exactly as gpt-6-sol/high with supported
+      efforts none/low/medium/high/xhigh/max in canonical order, while Antigravity
+      remains gemini-3.8-flash/medium with low/medium/high.
+  - id: AC2
+    condition: >
+      Focused profile regression code represents default Codex resolution to high,
+      exact acceptance and source attribution for each of the six canonical Sol
+      efforts, explicit rejection of non-Sol minimal/ultra under the canonical Codex
+      policy, and preservation of immutable existing-profile semantics.
+  - id: AC3
+    condition: >
+      Operator and PRIMARY/REMEDIATION/REPAIR carrier regression code represents
+      omitted Codex effort resolving from the single repository policy to high and
+      explicit supported effort remaining exact, without any schema/version or
+      production-code change.
+  - id: AC4
+    condition: >
+      Codex adapter regression code represents exact unchanged native command
+      transport for all six Sol effort values across PRIMARY, REMEDIATION and REPAIR,
+      with no adapter-side effort selection, downgrade, substitution, retry or fallback.
+  - id: AC5
+    condition: >
+      The execution-profile planning document reflects the new Human-approved
+      gpt-6-sol/high default and six-level Sol capability while preserving Human
+      override precedence, Antigravity policy and all existing authority boundaries.
+  - id: AC6
+    condition: >
+      The implementation delta is confined exactly to the eight authorized
+      policy/documentation/test paths; src/aios_renew, workflows, roadmap engineering
+      truth and downstream repositories are untouched and zero unresolved items remain.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_execution_profile.py tests/test_codex_adapter.py
+    - python -m pytest -q tests/test_operator.py -k execution_profile
+    - python -m pytest -q tests/test_github_issue_wakeup.py tests/test_github_issue_remediation_intent.py tests/test_github_issue_repair_wakeup.py
+    - git diff --check
