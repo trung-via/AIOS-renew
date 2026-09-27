@@ -1,65 +1,57 @@
 task_id: TASK-202
-revision: 3
+revision: 4
 
 goal: >
-  Harden source-control legacy-bootstrap for canonical mixed RUN history and add one
-  bounded transactional recovery path for a consumed version-2 handoff that failed
-  before any bound RUN. Recovery must preserve old evidence while allowing exactly one
-  replacement edge to a separately activated exact consumer target and, when the
-  originally bound downstream TASK has become semantically stale before execution,
-  allow only the same TASK id at an exactly authorized same-or-newer revision on a clean
-  fast-forward descendant control commit. Preserve single-RUN/single-Executor authority
-  and generation-exact completed steady state.
+  Preserve the TASK-202 r3 source-bootstrap mixed-RUN and transactional recovery
+  semantics unchanged while correcting the TASK completion contract so Executor-owned
+  acceptance claims do not pre-assert Runtime-owned verification truth. The implementation
+  must still satisfy the same recovery, authority, activation, generation-exact and
+  historical-compatibility requirements; deterministic verification remains solely a
+  Runtime responsibility after completion-gate admission.
 
 problem: >
-  TASK-199/TASK-201 source-bootstrap currently fails on repositories containing valid
-  canonical REMEDIATION RUN documents because _migration_run_terminal assumes every
-  state.runs document is a simple top-level Run. The real Python Agent attempt therefore
-  left an exact v2 handoff staged+consumed but uncompleted and created no TASK-255 r5
-  RUN. A second audit also proved that TASK-255 r5 itself is now stale: it requires its
-  final downstream pin to bbc8f09f38ac4d150060c6fcc851b6da2140e5a0, while the
-  preserved steady-state invariant requires a source-bootstrap adoption candidate to pin
-  first to the exact bootstrap consumer target. Recovery that forces the old r5 semantic
-  identity would therefore execute a known-stale TASK. The protocol needs a bounded
-  transactional supersession that can replace a pre-RUN edge with the same TASK id at
-  an exact authorized successor revision on a clean fast-forward descendant, while
-  forbidding arbitrary TASK substitution or generation routing.
+  RUN-202-001 executed TASK-202 r3 with Codex gpt-6-sol/high and produced clean candidate
+  c4511881c2d1f6f7b9f7c51e2a105276dc51106a within the exact three-path modification
+  scope, but Runtime failed at COMPLETION_GATE before verification with
+  "RESULT does not satisfy acceptance criteria: AC8". TASK-202 r3 AC8 incorrectly
+  combined Executor-claimable semantic preservation with the statements that
+  tests/test_operator.py and git diff --check pass. The lifecycle requires complete
+  acceptance coverage before Runtime invokes verification, while canonical authority
+  assigns verification truth to Runtime rather than Executor. This creates a circular
+  gate: Executor must claim a Runtime result that has not yet occurred before Runtime is
+  permitted to produce that result. RUN-202-001 remains immutable FAILURE evidence and
+  must not be reinterpreted as PASS.
 
 assumptions:
   - >
-    Canonical AIOS-renew main at r3 authoring is
-    67c9088d12ec6a7aa5bb8e61efca513acfc10a73, whose only semantic deltas after
-    bbc8f09f38ac4d150060c6fcc851b6da2140e5a0 are canonical TASK-202 r1/r2 artifacts.
+    Canonical AIOS-renew main at r4 authoring is
+    40466c71028821b2a317cc12b8f2895e20d5c1ff and contains canonical TASK-202 r3.
   - >
-    TASK-199 / RUN-199-001 / REVIEW-199-001 is reviewed/published at exact
-    ff29666d50eaf9276ab62d944018f2bbeb91f073 and introduced source-control
-    legacy-bootstrap v2.
+    Canonical RUN-202-001 is FAILURE at phase COMPLETION_GATE with failed candidate
+    c4511881c2d1f6f7b9f7c51e2a105276dc51106a, exact error
+    "RESULT does not satisfy acceptance criteria: AC8", executor Codex,
+    model gpt-6-sol, reasoning effort high, and verification_seconds=null.
   - >
-    TASK-201 / RUN-201-001 / REVIEW-201-001 is reviewed/published at exact
-    bbc8f09f38ac4d150060c6fcc851b6da2140e5a0 and activates only target
-    ff29666d50eaf9276ab62d944018f2bbeb91f073.
+    RUN-202-001 candidate metadata reports exactly
+    docs/AIOS-BRAIN-PORTABILITY.md, src/aios_renew/operator.py and
+    tests/test_operator.py changed, descends_from_base=true, dirty=false,
+    outside_task_scope=[], repairable=true and transportable=true.
+    These facts are diagnostic lineage only; r4 does not declare that candidate verified,
+    reviewed, publishable or reusable.
   - >
-    Canonical Runtime RUN storage includes simple top-level Run documents and
-    kind=REMEDIATION documents whose canonical Run is execution.run.
+    TASK-202 r3 architecture remains the intended Brain semantics: mixed simple and
+    canonical REMEDIATION RUN history support, one bounded transactional recovery/
+    supersession for consumed pre-RUN source-bootstrap v2 edges, same TASK id with an
+    explicitly Brain-authored same/newer revision on clean fast-forward current main,
+    separate exact target activation, at-most-one RUN/Executor and generation-exact
+    completed steady state.
   - >
-    The observed Python Agent diagnostic contains 99 structurally readable local RUN
-    records: 85 simple and 14 canonical REMEDIATION records, zero malformed. Its failed
-    source-bootstrap handoff is v2, staged+consumed, not completed, binds legacy
-    edd7d8d92d54900c56442bbfcddb8648ec4d2e09 -> target
-    ff29666d50eaf9276ab62d944018f2bbeb91f073 for TASK-255 r5/codex at downstream
-    source control 73c1f97a093aadc4945ffd43d98592acef6d7826, and has no bound r5 RUN.
+    TASK-199/TASK-201 historical authority, TASK-198 bootstrap-primary behavior and BP-9
+    planning state remain as stated by r3.
   - >
-    Canonical downstream TASK-255 r5 explicitly requires final dependency pin
-    bbc8f09f38ac4d150060c6fcc851b6da2140e5a0, so it must not be executed after the
-    newly established generation-exact steady-state requirement. A later TASK-255
-    successor revision will be separately Brain-authored before real recovery.
-  - >
-    BP-9 remains roadmap NEXT. This TASK is upstream maintenance only and does not
-    mutate downstream or roadmap state.
-  - >
-    A separate successor activation TASK is required after TASK-202 review/publication
-    before the exact reviewed/published TASK-202 consumer SHA may be a replacement
-    source-bootstrap target.
+    Verification authority belongs to AIOS Runtime. Executor claims may assert implemented
+    semantics and evidence about its committed result, but may not become verification
+    truth for required verification commands.
 
 scope:
   inspect:
@@ -80,134 +72,99 @@ scope:
 
 non_goals:
   - >
-    Modify Python Agent, author TASK-255 r6, execute real recovery, remove/rewrite local
-    migration/RUN history, or claim BP-9 complete.
+    Change the recovery architecture, target activation model, downstream choreography,
+    source-bootstrap v2 identity model or modification scope established by TASK-202 r3.
   - >
-    Permit replacement with another TASK id, another Executor, another repository,
-    another legacy source generation, a different pin path/content, mutable target,
-    unactivated target, non-fast-forward control history, or arbitrary semantic routing.
+    Modify Python Agent, author TASK-255 r6, execute downstream recovery, delete/rewrite
+    historical RUN/migration evidence, mutate roadmap state or claim BP-9 complete.
   - >
-    Recover an edge that has a bound RUN, RESULT/FAILURE, completed marker, malformed or
-    ambiguous identity, or conflicting active migration state.
+    Repair, amend or reinterpret RUN-202-001. It remains canonical FAILURE lineage.
   - >
-    Loosen generation-exact completed steady state, frozen Kernel semantics, Runtime
-    verification/terminal authority, Reviewer/Publisher/Executor ownership, or historical
-    TASK-198 bootstrap-primary behavior.
+    Treat Executor claims, Executor-run tests, prose assertions or candidate existence as
+    Runtime verification truth.
   - >
-    Add generic retry/fallback/failover, planner/router, queue, scheduler, cleanup daemon,
-    automatic task-revision selector, or second lifecycle authority.
+    Move verification before completion-gate structural admission, weaken required
+    verification, or bypass existing Runtime verification/evidence publication.
   - >
-    Activate the eventual TASK-202 candidate or mutate roadmap planning state.
+    Add generic retry/fallback/failover, Planner/router, automatic revision selection,
+    second lifecycle authority, Reviewer or Publisher behavior.
 
 constraints:
   hard:
     - >
+      Preserve every TASK-202 r3 mixed-RUN, supersession, transactional commit-point,
+      same-TASK successor revision, fast-forward, exact legacy pin, activation,
+      idempotency, concurrency, at-most-one RUN/Executor and generation-exact steady-state
+      semantic requirement unless this r4 contract explicitly changes completion/
+      verification ownership.
+    - >
       Migration RUN inspection must accept both canonical simple Run documents and
-      kind=REMEDIATION documents by extracting only the nested execution.run identity
-      needed for migration matching. It must not reinterpret remediation semantics or
-      require remote remediation/review resolution.
+      kind=REMEDIATION documents by extracting only execution.run for migration identity;
+      malformed/unknown/ambiguous/conflicting RUN state remains fail-closed.
     - >
-      Unrelated historical RUNs are inert. Only exact base/control SHA, TASK id/revision,
-      Executor and resolved repository workspace may match the migration edge. Malformed
-      JSON, unknown document shape, malformed nested Run, ambiguous matches, mismatched
-      source-bootstrap history and conflicting terminal state remain fail-closed.
+      Recovery remains limited to one consumed, uncompleted source-bootstrap-v2 edge
+      with no bound RUN, immutable old evidence, additive exact supersession evidence and
+      one separately activated replacement target.
     - >
-      Add one explicit source-bootstrap-v2 recovery/supersession operation. It is admitted
-      only for exactly one selected prior v2 marker whose consumed marker equals its
-      fingerprint, completed marker is absent, and migration RUN inspection proves no
-      bound RUN for that old edge.
+      Recovery may retain the exact old TASK revision or a strictly newer explicitly
+      Brain-authored revision of the same TASK id only on clean attached fast-forward
+      current main with byte/blob-identical legacy pin and unchanged source generation,
+      repository and Executor authority. Runtime never chooses a successor revision.
     - >
-      Old marker, consumed marker, bound intent and transport bundle remain immutable.
-      Recovery records only additive durable supersession evidence; it never deletes,
-      renames-as-history, overwrites or compacts old authority evidence.
+      Before the serialized supersession commit point, the old edge remains active.
+      After commit, old/replacement evidence must be complete and mutually bound.
+      Partial/orphaned/duplicate/cyclic/concurrent-conflicting evidence fails closed.
     - >
-      The replacement must preserve source_generation_sha, target_url, repository,
-      pin_path, the exact legacy pin content/blob, task_id and executor. The replacement
-      target_generation_sha may change only to the single exact
-      _SOURCE_BOOTSTRAP_TARGET_SHA active in the running reviewed source and must differ
-      from the old target.
+      Recovery itself creates no RUN and invokes no Executor. Only the exact replacement
+      target may consume the replacement handoff and admit the replacement TASK through
+      ordinary run_task(... synchronize=False ...), yielding at most one bound RUN and
+      one Executor invocation.
     - >
-      Replacement source_control_sha may differ from the old source_control_sha only when
-      it is the clean attached current main, is an exact fast-forward descendant of the
-      old source_control_sha, and the repository-owned pin artifact remains byte/blob
-      identical and still uniquely names the same legacy source generation.
+      Preserve two-stage activation. TASK-202 r4 may publish recovery capability but may
+      not activate its own candidate or mutable main as _SOURCE_BOOTSTRAP_TARGET_SHA.
     - >
-      Replacement TASK identity must keep the same task_id. If revision is unchanged,
-      task_revision/task_blob_sha/task_commit_sha must be exactly identical to the old
-      bound intent. If revision changes, it must be strictly greater than the old
-      revision, its exact blob must be present at replacement source_control_sha, its
-      authorization commit must be an ancestor of that control SHA and contain the same
-      blob, and no deterministic logic may choose the successor revision on the Human/
-      Brain's behalf.
+      Preserve generation-exact steady state and BP-9 choreography: the first downstream
+      adoption candidate after recovered source-bootstrap must pin to the exact activated
+      bootstrap consumer target; movement to a newer activation/latest generation is a
+      later separate ordinary migrate-primary operation.
     - >
-      Recovery must independently attest the actually installed legacy generation still
-      equals source_generation_sha and recheck repository cleanliness, attached main,
-      exact upstream/main identity, unchanged legacy pin and exact replacement TASK
-      authorization before replacement authority can commit.
+      Acceptance criteria must contain only properties that can be semantically claimed
+      from the committed implementation/result before Runtime verification. No acceptance
+      criterion may require or imply that a required Runtime verification command has
+      already passed.
     - >
-      Supersession has one serialized fail-closed commit point under existing Runtime/
-      migration locking. Before commit, the old consumed edge remains active. The
-      replacement target source, replacement bound intent and replacement handoff marker
-      must all be exactly validated and durably staged before additive supersession
-      evidence can make the old edge historical.
+      Required deterministic verification remains declared only under verification.required
+      and is executed/owned by Runtime after completion-gate admission. Executor may
+      provide implementation evidence related to tests but its claim must not substitute
+      for Runtime evidence or PASS/FAIL.
     - >
-      Supersession is effective only when old marker+consumed evidence, replacement
-      marker/bound intent and exact old->replacement linkage are mutually consistent.
-      Partial/orphaned/one-sided evidence, duplicate successors, cycles, conflicting
-      concurrent requests or mismatched fingerprints fail closed and must not deactivate
-      the old edge.
+      Preserve TASK-198/bootstrap-primary behavior, source-bootstrap v2 field meanings,
+      frozen Kernel boundaries, Runtime verification/RESULT/FAILURE authority,
+      Reviewer/Publisher authority and roadmap state.
     - >
-      Exact replay of the same committed recovery identity reconciles idempotently and
-      cannot grant another edge or Executor invocation. A different replacement request
-      after committed supersession fails closed.
-    - >
-      Recovery creates no RUN and invokes no Executor. Only the exact replacement target
-      consumes the newly staged handoff and admits the replacement TASK through ordinary
-      run_task(... synchronize=False ...). At most one bound Runtime RUN and one Executor
-      invocation may result.
-    - >
-      _require_no_active_migration must treat a superseded old edge as historical only
-      after the exact committed linkage above; the active replacement edge continues to
-      gate ordinary admission. A completed replacement still requires installed
-      generation to equal its exact target.
-    - >
-      Preserve two-stage activation: TASK-202 publishes compatibility/recovery capability
-      without activating its own candidate. A separate reviewed activation TASK must bind
-      _SOURCE_BOOTSTRAP_TARGET_SHA to the exact reviewed/published TASK-202 consumer SHA
-      before real replacement recovery can target it.
-    - >
-      Documentation/tests must make the BP-9 choreography explicit: publish TASK-202;
-      separately activate its exact consumer SHA; author a downstream successor TASK on a
-      fast-forward main while legacy pin is unchanged; transactionally recover/supersede
-      the consumed pre-RUN edge into that exact successor intent; source-bootstrap the
-      downstream candidate so its first final pin equals the exact consumer target; only
-      a later separate ordinary migrate-primary may move to a newer activation/latest SHA.
-    - >
-      Preserve TASK-198/bootstrap-primary behavior, existing source-bootstrap v2 field
-      meanings outside recovery, Runtime verification/RESULT/FAILURE authority and
-      roadmap state.
-    - >
-      Verification is deterministic/offline and must cover mixed simple+REMEDIATION RUN
-      history, same-revision exact recovery, higher-revision fast-forward recovery,
-      stale/non-fast-forward/different-TASK/different-Executor/pin-change rejection,
-      interruption before supersession commit, exact replay, conflicting concurrency and
-      generation-exact completed steady state without network or real Executor.
+      Verification is deterministic/offline and must cover the r3 semantic matrix:
+      mixed simple+REMEDIATION RUN history, same-revision exact recovery, higher-revision
+      fast-forward recovery, stale/non-fast-forward/different-TASK/different-Executor/
+      pin-change rejection, interruption before supersession commit, exact replay,
+      conflicting concurrency and generation-exact completed steady state.
 
 acceptance:
   - id: AC1
     condition: >
-      Valid mixed simple+REMEDIATION RUN history no longer blocks migration reconciliation,
-      while malformed/unknown/ambiguous/conflicting RUN state remains fail-closed.
+      Valid mixed simple+REMEDIATION RUN history no longer blocks migration
+      reconciliation, while malformed/unknown/ambiguous/conflicting RUN state remains
+      fail-closed.
   - id: AC2
     condition: >
-      One consumed uncompleted v2 edge with no bound RUN can be transactionally superseded
-      without modifying old evidence and only toward the separately activated exact target.
+      One consumed uncompleted v2 edge with no bound RUN can be transactionally
+      superseded without modifying old evidence and only toward the separately activated
+      exact target.
   - id: AC3
     condition: >
-      Recovery supports either the exact originally bound TASK revision or the same TASK id
-      at a strictly newer exact Brain-authored revision on clean fast-forward current main;
-      it cannot select/route a revision itself or cross TASK/Executor/repository/pin/source
-      authority boundaries.
+      Recovery supports either the exact originally bound TASK revision or the same TASK
+      id at a strictly newer exact Brain-authored revision on clean fast-forward current
+      main; it cannot select/route a revision itself or cross TASK/Executor/repository/
+      pin/source authority boundaries.
   - id: AC4
     condition: >
       Before supersession commit the old edge remains active; after commit replacement
@@ -230,9 +187,11 @@ acceptance:
       target; later upstream movement uses separate migrate-primary.
   - id: AC8
     condition: >
-      TASK-198 behavior, two-stage activation, Runtime verification/terminal authority,
-      frozen Kernel boundaries and roadmap state remain unchanged; tests/test_operator.py
-      and git diff --check pass with zero unresolved items.
+      The committed implementation preserves historical TASK-198/bootstrap-primary
+      behavior, two-stage source-bootstrap activation, Runtime verification and terminal
+      authority, frozen Kernel boundaries, roadmap planning state and the exact allowed
+      three-path TASK modification scope, with zero Executor-reported unresolved items.
+      AC8 does not assert or require Runtime verification PASS before the completion gate.
 
 verification:
   policy: minimum-sufficient-v1
