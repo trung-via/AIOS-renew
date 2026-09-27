@@ -407,11 +407,38 @@ python -m pytest -q tests/test_hot_swap_conformance.py
 
 BP-7 exits only when the complete ten-scenario matrix passes without hidden prior-model state and without consuming BP-8 real-provider proof.
 
+Engineering closure: TASK-190 r1 implemented the complete ten-scenario matrix in `tests/test_hot_swap_conformance.py`. RUN-190-001 reached RESULT but REVIEW-190-001 returned CHANGES_REQUIRED for the scenario-7 pre-AIOS boundary and the resulting AC8 matrix-completeness claim. FINDING-190-001 was corrected by RUN-190-002 and REVIEW-190-002 DELTA PASS at `b2a59f30483eeb7f2da4f0812ef3025174eb8a17`; FINDING-190-002 was then corrected by RUN-190-003 and REVIEW-190-003 DELTA PASS at `80b918c2cf964eea91416dd8a9c202f8a8319719`. Runtime verification remained focused on the BP-7 suite and the final candidate passed all 11 tests. Exact publication of `80b918c2cf964eea91416dd8a9c202f8a8319719` closes BP-7 without production semantic changes, real-provider invocation, hidden model memory, new lifecycle state, retry/failover, provider routing, or authority merger.
+
 ### BP-8 — Real Second-provider Proof
 
 Run one controlled real workflow using a non-default Brain and/or Reviewer provider through the provider-neutral contracts while keeping existing GitHub/self-host execution semantics.
 
 Exit gate: observed evidence proves provider replacement rather than only mocked interface compatibility.
+
+#### BP8 post-BP7 architecture audit
+
+BP-8 is an **evidence milestone**, not authorization to add a provider registry, model router, retry/fallback/failover layer, persistent session store, new lifecycle state, or second semantic authority. BP-5, BP-6 and BP-7 already define the semantic contracts and continuation rules. BP-8 should add only the minimum provider-bound transport/proof surface needed to demonstrate one real non-default provider can consume one unchanged reviewed contract.
+
+The preferred first real-provider path is **Reviewer-only**. BP-6 already defines one exact self-sufficient `AIOS_REVIEW_REQUEST v1`, exactly one provider invocation, one transient `AIOS_REVIEW_DECISION v1`, existing `review.validate_review` authority, and stable pre-REVIEW failure semantics. Using Reviewer avoids the Brain audited two-call + fresh-packet gate and therefore minimizes new moving parts while still satisfying the BP-8 exit gate. A real Brain-provider proof remains unnecessary unless Reviewer proof exposes a contract gap.
+
+BP-8 should proceed in two separately reviewed steps:
+
+1. **BP8-P1 — Provider-bound real Reviewer proof path.** After Human explicitly selects one concrete provider/model, add only the narrow proof transport needed to feed the exact serialized Reviewer request to that provider and return the native semantic response through the existing Reviewer provider shell. The path must be bound to that one provider/model; it must not become a registry, generic provider selector, adaptive transport, or Executor adapter. Deterministic/offline tests must prove request isolation, exact one-call behavior, closed native parsing, operational-attribution separation, bounded output, no repository mutation, no provider retry/fallback, no credential persistence, and no import/reuse of `codex_adapter.py`, `antigravity_adapter.py`, or Executor execution-profile routing as Reviewer authority.
+
+2. **BP8-P2 — Controlled real invocation.** Use the reviewed P1 path exactly once against the Human-approved real non-default provider/model on the self-host environment. The invocation must receive only the complete bounded Reviewer request plus transport-minimal instruction needed to return strict structured output. Runtime-owned evidence must bind the exact request fingerprint, provider/model selection, invocation count, validated decision fingerprint, process/transport outcome, and a provider-native witness sufficient to distinguish a real remote model call from a local mock or echo. The semantic verdict itself need not be predetermined; success requires that the returned semantic response validates through the unchanged BP-6 protocol and existing REVIEW validator. Failure stays typed pre-REVIEW provider/transport failure and must not fabricate REVIEW, RUN failure, remediation, retry or fallback.
+
+Additional BP-8 boundaries:
+
+- the Human owns the concrete external provider/model choice and risk acceptance before TASK authoring or credential-bearing execution;
+- credentials/authentication remain external operational configuration and must never be committed, copied into TASK/RESULT/REVIEW artifacts, printed to evidence, or persisted by the proof path;
+- the provider must remain repository-blind: no repository path, Git/GitHub handle, mutation permission, Executor role, Runtime authority, ingress authority or Publisher authority is granted merely to perform review;
+- provider/model/session/invocation attribution remains operational-only and cannot change semantic request/decision fingerprints;
+- the proof may use a provider-native CLI or API transport, but it must be implemented as a dedicated Reviewer proof boundary rather than importing Executor adapters or their execution-profile authority;
+- a caller-injected `provider/model` label alone is insufficient evidence of real replacement; the controlled invocation must expose a bounded provider-native call witness such as native usage/call metadata or another exact transport signal that cannot be produced by the non-network fake adapters used in BP-6;
+- deterministic unit verification for P1 and the one controlled external observation for P2 must remain separate evidence obligations so a transient provider outage is not misclassified as a code defect;
+- downstream repositories remain untouched until BP-9.
+
+The first BP-8 implementation TASK must therefore wait for an explicit Human provider/model selection. Do not author a generic transport TASK to avoid that decision.
 
 ### BP-9 — Explicit Downstream Adoption
 
