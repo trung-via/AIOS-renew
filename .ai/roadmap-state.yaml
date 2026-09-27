@@ -43,7 +43,7 @@ human_priority_side_track:
     defaults through versioned carriers, then generic continuation returns to BP-V4.
     Historical BP-V4 artifacts remain immutable and are not reinterpreted.
 next_items:
-  - bp-6-reviewer-provider-protocol
+  - bp-7-hot-swap-conformance
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -806,8 +806,8 @@ sequence:
       adapter boundaries, fresh Stage-2 packet binding, and no dependency on provider-specific
       GitHub access, chat memory, provider identity, or new semantic/lifecycle authority.
   - id: bp-6-reviewer-provider-protocol
-    status: NEXT
-    current_phase: BP6-P4
+    status: DONE
+    exit_gate: SATISFIED
     planning_document: docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md
     phases:
       - id: BP6-P1A
@@ -879,7 +879,23 @@ sequence:
         objective: >-
           Define pure provider-neutral AIOS_REVIEW_REQUEST v1 / AIOS_REVIEW_DECISION v1.
       - id: BP6-P4
-        status: NEXT
+        status: DONE
+        task_id: TASK-189
+        completed_by:
+          task_revision: 1
+          failed_runs:
+            - RUN-189-001
+            - RUN-189-002
+          repairs:
+            - REPAIR-189-001
+            - REPAIR-189-002
+          run_id: RUN-189-003
+          operation: REPAIR
+          review_id: REVIEW-189-001
+          reviewed_sha: "0ef36225108a463efd9e54566190826125d363dc"
+          published_sha: "0ef36225108a463efd9e54566190826125d363dc"
+          verification_evidence:
+            - RUN-189-003-V001
         objective: >-
           Prove one-call Reviewer provider conformance with two independent non-network
           adapters and no retry/fallback/router authority.
@@ -887,7 +903,7 @@ sequence:
       Establish a separate provider-neutral Reviewer protocol without merging Brain and
       Reviewer authorities.
   - id: bp-7-hot-swap-conformance
-    status: PLANNED
+    status: NEXT
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Prove cross-context/provider continuation from canonical state without previous
@@ -929,16 +945,16 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol is
-    reviewed/published complete and BP-6 Reviewer Provider Protocol is current. BP6-P1A,
-    BP6-P1B, BP6-P2A, BP6-P2B and BP6-P3 are reviewed/published complete through
-    TASK-184, TASK-185, TASK-186, TASK-187 and TASK-188. The unique next implementation
-    obligation is BP6-P4 Reviewer Provider Conformance under
-    docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md. Do not add a second Reviewer call, generic
-    provider/model router, retry/fallback/voting/provider switch, hidden-session semantic
-    dependency, repository discovery inside adapters, automatic remediation/publication,
-    Brain/Reviewer authority crossover, or consume BP-7 hot-swap / BP-8 real-provider
-    proof early.
+    Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol and BP-6
+    Reviewer Provider Protocol are reviewed/published complete. BP6-P1A, BP6-P1B,
+    BP6-P2A, BP6-P2B, BP6-P3 and BP6-P4 are complete through TASK-184, TASK-185,
+    TASK-186, TASK-187, TASK-188 and TASK-189; BP6-P4 closed through RUN-189-003,
+    REVIEW-189-001 and exact publication of 0ef36225108a463efd9e54566190826125d363dc.
+    The unique next planning milestone is BP-7 Cross-context / Hot-swap Conformance under
+    docs/AIOS-BRAIN-PORTABILITY.md. BP-7 must prove deterministic continuation from
+    canonical state without previous model memory and must not consume BP-8 real-provider
+    proof, create a generic lifecycle/provider router, merge Brain and Reviewer authority,
+    or add automatic retry/failover/correction-selection semantics.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
