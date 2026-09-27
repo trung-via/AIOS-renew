@@ -1,0 +1,144 @@
+task_id: TASK-201
+revision: 1
+
+goal: >
+  Activate the reviewed TASK-199 source-control legacy-bootstrap capability through
+  its single production allowlist slot, binding that slot only to the exact
+  reviewed and published TASK-199 capability SHA
+  ff29666d50eaf9276ab62d944018f2bbeb91f073, without performing any downstream
+  migration or changing lifecycle authority.
+
+problem: >
+  TASK-199 intentionally published the reusable source-control legacy-bootstrap
+  capability with production admission closed through
+  _SOURCE_BOOTSTRAP_TARGET_SHA = None. Its reviewed architecture requires a
+  separate post-publication activation TASK that names the exact reviewed and
+  published capability SHA before BP-9 may consume it. TASK-200 subsequently
+  hardened GitHub carrier fan-out hygiene and is independently published at
+  f248416cf4ac8f41203898f530bc21d0500a5479; that maintenance commit must not
+  silently replace or broaden the exact TASK-199 target identity.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    f248416cf4ac8f41203898f530bc21d0500a5479.
+  - >
+    TASK-199 / RUN-199-001 / REVIEW-199-001 is reviewed and exactly published at
+    ff29666d50eaf9276ab62d944018f2bbeb91f073.
+  - >
+    TASK-200 / RUN-200-001 / REVIEW-200-001 is reviewed and exactly published at
+    f248416cf4ac8f41203898f530bc21d0500a5479 and changes only carrier-noise
+    hygiene; it does not supersede the TASK-199 capability target.
+  - >
+    docs/AIOS-BRAIN-PORTABILITY.md already defines the mandatory two-stage
+    sequence: publish TASK-199 capability closed, then activate exactly that
+    reviewed/published SHA, then perform explicit BP-9 downstream adoption.
+  - >
+    BP-9 remains the Human/Brain roadmap NEXT. This TASK is the required bounded
+    activation prerequisite and does not itself advance roadmap planning state.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-199.yaml
+    - .ai/tasks/TASK-200.yaml
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - >
+    Modify Python Agent or any downstream repository, dependency pin, downstream
+    TASK, runner configuration, or repository-owned migration intent.
+  - >
+    Execute bootstrap-source-primary against a real downstream or claim BP-9
+    migration/conformance complete.
+  - >
+    Change the source-control bootstrap protocol, handoff format, legacy attestation,
+    Runtime, run_task, verification, RESULT/FAILURE, Reviewer, Publisher, Executor,
+    migration reconciliation, or TASK-198/TASK-197 behavior.
+  - >
+    Activate mutable main, TASK-200's maintenance SHA, the eventual TASK-201
+    candidate/publication SHA, or more than one target generation.
+  - >
+    Add routing, retry/fallback/failover, automatic migration selection, a second
+    lifecycle authority, or any downstream-specific policy.
+  - >
+    Mutate roadmap planning state.
+
+constraints:
+  hard:
+    - >
+      Production behavior change is limited to filling the existing single
+      _SOURCE_BOOTSTRAP_TARGET_SHA allowlist slot with the exact literal
+      ff29666d50eaf9276ab62d944018f2bbeb91f073. No alternate/floating target,
+      list/set of targets, branch/ref lookup, environment override, config lookup,
+      network discovery, or self-derived SHA is permitted.
+    - >
+      Preserve the existing guard semantics: staging is admitted only when
+      intent.target_generation_sha equals the exact activated SHA; every other
+      target remains rejected before legacy attestation can grant a handoff edge
+      or any Executor/RUN can exist.
+    - >
+      The activated target is the TASK-199 capability commit
+      ff29666d50eaf9276ab62d944018f2bbeb91f073, not current main
+      f248416cf4ac8f41203898f530bc21d0500a5479 and not the future TASK-201
+      candidate SHA. Target-side consumption must continue to prove its running
+      source equals the bound handoff target, so no source self-authorizes.
+    - >
+      Preserve historical _BOOTSTRAP_TARGET_SHA =
+      83115b26df85a7ad6643f317833e18b18586bdbe and all TASK-198 bootstrap-primary
+      behavior byte-for-byte unless a test-only adjustment is required to reflect
+      the newly activated source-bootstrap slot.
+    - >
+      Update deterministic tests so repository production state itself proves the
+      allowlist equals the exact TASK-199 published SHA, a different target is
+      rejected, the existing injected/local-fixture source-bootstrap success path
+      remains testable, and the activated source cannot be confused with current
+      source/main or a prospective self-authorized target.
+    - >
+      Do not weaken existing identity/pin/TASK/Executor/replay/reentry/terminal
+      checks or pre-edge no-RUN/no-Executor guarantees.
+    - >
+      Executor returns one clean candidate with zero unresolved implementation
+      items and does not review, publish, migrate downstream, mutate roadmap state,
+      or perform any post-publication BP-9 action.
+
+acceptance:
+  - id: AC1
+    condition: >
+      src/aios_renew/operator.py contains exactly one production source-bootstrap
+      activation target and it is the literal exact SHA
+      ff29666d50eaf9276ab62d944018f2bbeb91f073.
+  - id: AC2
+    condition: >
+      With production defaults, any source-bootstrap intent naming a target other
+      than ff29666d50eaf9276ab62d944018f2bbeb91f073 is rejected before a handoff
+      edge, Executor invocation, or RUN can be created.
+  - id: AC3
+    condition: >
+      Regression coverage proves the existing source-bootstrap protocol still
+      stages/consumes correctly when bound to an admitted exact target and retains
+      legacy/source-control/pin/TASK/Executor/reentry/terminal protections.
+  - id: AC4
+    condition: >
+      The historical TASK-198 bootstrap-primary target
+      83115b26df85a7ad6643f317833e18b18586bdbe and ordinary migrate-primary
+      semantics remain unchanged.
+  - id: AC5
+    condition: >
+      No downstream repository/pin/TASK is mutated or executed, no roadmap state is
+      advanced, and the activation introduces no new Runtime/lifecycle/router/
+      retry/fallback authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
