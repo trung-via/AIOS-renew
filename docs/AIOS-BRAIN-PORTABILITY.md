@@ -440,6 +440,8 @@ Additional BP-8 boundaries:
 
 The first BP-8 implementation TASK must therefore wait for an explicit Human provider/model selection. Do not author a generic transport TASK to avoid that decision.
 
+Human/Brain planning selection for the first proof is now explicit: the Reviewer role will use the existing Antigravity native transport surface with model `gemini-3.8-flash` as the **first controlled real-provider proof only**. This selection does not make Gemini 3.8 Flash the default Reviewer, does not modify Executor defaults, and does not create a provider preference policy. BP8-P1 remains deterministic/offline and may only prepare the dedicated provider-bound proof transport; BP8-P2 owns the later real invocation. Reviewer reasoning effort remains an explicit P2 operational choice rather than an implicit default in BP8-P1.
+
 ### BP-9 — Explicit Downstream Adoption
 
 Only after BP-8 PASS, offer the capability through an explicit reviewed downstream migration/profile bound to that downstream repository's exact AIOS dependency pin and repository-owned configuration.
