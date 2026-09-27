@@ -1,0 +1,149 @@
+task_id: TASK-197
+revision: 1
+
+goal: >
+  Establish a reusable cross-generation downstream migration protocol so an exact
+  currently-active AIOS generation N can admit and hand off an explicit downstream
+  migration to exact reviewed generation N+1 without importing or executing
+  synchronized N+1 repository source before migration admission.
+
+problem: >
+  BP-9 downstream adoption exposed a bootstrap-generation hazard. PRIMARY
+  synchronization may fast-forward a persistent downstream checkout when
+  .ai/tasks/* or kernel source changes and then _restart_primary_invocation prepends
+  the synchronized repository src directory to PYTHONPATH. That can change
+  implementation authority between the pre-sync process and its restarted process
+  before the intended downstream migration has been admitted. Repeated retries or
+  downstream-specific bypasses do not provide a reusable migration invariant.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is 615a13ab519d5d285801cc79e40cb5e25bb16617 and the Brain-owned roadmap
+    NEXT remains BP-9 downstream adoption.
+  - >
+    Downstreams remain governed by their exact active AIOS pin until an explicit
+    reviewed migration changes it; mutable AIOS-renew main is never implicit authority.
+  - >
+    Existing synchronization/restart behavior remains valid for same-generation
+    refreshes; this TASK addresses only the cross-generation migration boundary.
+  - >
+    Motivating downstream carrier/runner attempts are operational evidence only
+    unless canonical RUN lineage exists and must not be reinterpreted here.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/task.py
+    - src/aios_renew/execution_profile.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - docs/AIOS-BRAIN-PORTABILITY.md
+
+non_goals:
+  - >
+    Perform a downstream migration, change any downstream repository/pin/lineage,
+    or certify downstream conformance.
+  - >
+    Create a second Runtime, Planner, lifecycle router, Publisher, Reviewer,
+    retry/fallback/failover mechanism, migration daemon, broker, or bypass.
+  - >
+    Make mutable AIOS-renew main downstream authority or permit a floating target.
+  - >
+    Weaken TASK identity, canonical authorization, Executor exclusivity, Runtime
+    verification, review, publication, or fail-closed behavior.
+  - >
+    Rewrite frozen Kernel v0.1 semantics. If that is required, stop unresolved for
+    separate Human authority.
+  - >
+    Redesign same-generation PRIMARY synchronization beyond the minimum required
+    to prevent cross-generation authority switching.
+
+constraints:
+  hard:
+    - >
+      Migration admission remains under exact active generation N until handoff is
+      deterministically bound to an exact reviewed target generation and exact
+      downstream control state.
+    - >
+      Fast-forwarding a persistent checkout must never itself grant target-generation
+      authority. Restart mechanics must not silently replace active-generation
+      implementation authority with synchronized repository source through PYTHONPATH
+      or equivalent import precedence before migration admission.
+    - >
+      Bind immutable source generation, exact target AIOS identity, governed
+      repository, and downstream control/TASK identity sufficiently to reject stale,
+      ambiguous, floating, mismatched, or replayed migration intent.
+    - >
+      Target generation may become execution authority only at one explicit
+      deterministic handoff boundary after active-generation pre-handoff checks pass.
+    - >
+      Any transient trusted control checkout or equivalent mechanism is subordinate
+      transport: exact-SHA-bound, isolated from persistent mutation until handoff, and
+      never lifecycle truth or a second Runtime.
+    - >
+      Pre-handoff failure creates no fabricated RUN and invokes no Executor under
+      mixed generation authority; evidence must retain admission/operational vs RUN
+      failure distinction.
+    - >
+      Preserve safe same-generation synchronization and historical carrier
+      compatibility unless directly necessary for this invariant.
+    - >
+      Regression coverage includes downstream-behind-main, .ai/tasks/* movement,
+      repository src/aios_renew differing from installed active generation, exact
+      target binding, stale/mismatched target rejection, and proof pre-handoff restart
+      cannot accidentally import synchronized target/source generation.
+    - >
+      Design is repository-neutral with no hard-coded downstream repository, task,
+      pin, runner path, provider, or executor policy.
+    - >
+      Production mutation is limited to operator.py. If another production module is
+      required for a clean authority boundary, stop unresolved rather than silently
+      expanding scope.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Deterministic regression proves synchronization containing TASK/kernel-generation
+      state cannot make a restarted pre-migration process import synchronized
+      repository AIOS source instead of the exact active installed generation.
+  - id: AC2
+    condition: >
+      One explicit cross-generation handoff contract binds exact active generation,
+      exact target generation, governed repository and downstream control/TASK
+      identity and rejects stale, floating, mismatched or ambiguous intent before
+      target execution authority exists.
+  - id: AC3
+    condition: >
+      Handoff has one auditable authority transition: before it generation N owns
+      admission; after it only the exact admitted target may act, with no mixed window.
+  - id: AC4
+    condition: >
+      Pre-handoff failure invokes no Executor, creates no fabricated RUN, preserves
+      persistent state per fail-closed integrity, and retains correctly typed evidence.
+  - id: AC5
+    condition: >
+      Existing same-generation PRIMARY synchronization/restart behavior remains valid
+      or stronger without weakening exact TASK consumption, one-restart protection,
+      clean-main requirements, or repository integrity.
+  - id: AC6
+    condition: >
+      Tests prove repository neutrality and no downstream/provider/runner-specific
+      implementation policy.
+  - id: AC7
+    condition: >
+      Brain Portability documentation records reusable N-to-N+1 migration invariant
+      while preserving explicit reviewed BP-9 adoption semantics.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
