@@ -1,0 +1,8 @@
+review_id: REVIEW-190-003
+reviewed_sha: 80b918c2cf964eea91416dd8a9c202f8a8319719
+mode: DELTA
+verdict: PASS
+prior_finding_id: FINDING-190-002
+acceptance:
+  AC8: PASS
+findings: []
