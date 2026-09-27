@@ -3841,6 +3841,22 @@ def _migration_record(
     }
 
 
+def _migration_bundle_path(marker: Path, fingerprint: str, name: str) -> Path:
+    """Keep transport short while retaining the full fingerprint in durable state."""
+
+    if re.fullmatch(rf"{fingerprint[:12]}-[a-zA-Z0-9_-]+", name):
+        parent = marker.parent.parent / "m"
+    elif re.fullmatch(rf"{fingerprint}-[a-zA-Z0-9_-]+", name):
+        # Existing handoffs used the full fingerprint under migration-handoffs.
+        parent = marker.parent
+    else:
+        raise OperatorError("migration handoff bundle name mismatch")
+    bundle = parent / name
+    if bundle.resolve().parent != parent.resolve():
+        raise OperatorError("migration handoff bundle escapes runtime state")
+    return bundle
+
+
 def _migration_bundle(
     marker: Path, record: Mapping[str, Any], intent: Mapping[str, Any]
 ) -> tuple[Path, Path]:
@@ -3851,12 +3867,9 @@ def _migration_bundle(
         raise OperatorError("migration handoff record mismatch")
     bundle_name = record.get("bundle")
     if (not isinstance(bundle_name, str)
-            or not re.fullmatch(rf"{fingerprint}-[a-zA-Z0-9_-]+", bundle_name)
             or record != _migration_record(intent, fingerprint, bundle_name)):
         raise OperatorError("migration handoff record mismatch")
-    bundle = marker.parent / bundle_name
-    if bundle.resolve().parent != marker.parent.resolve():
-        raise OperatorError("migration handoff bundle escapes runtime state")
+    bundle = _migration_bundle_path(marker, fingerprint, bundle_name)
     bound_intent = bundle / "intent.json"
     try:
         stored_intent = _exact_migration_intent(
@@ -4031,12 +4044,9 @@ def _require_migration_target(root: Path, fingerprint: str) -> dict[str, Any]:
             or consumed != fingerprint):
         raise OperatorError("migration target handoff mismatch")
     bundle_name = record.get("bundle")
-    if (not isinstance(bundle_name, str)
-            or not re.fullmatch(rf"{fingerprint}-[a-zA-Z0-9_-]+", bundle_name)):
+    if not isinstance(bundle_name, str):
         raise OperatorError("migration target handoff mismatch")
-    bundle_path = marker.parent / bundle_name
-    if bundle_path.resolve().parent != marker.parent.resolve():
-        raise OperatorError("migration target handoff mismatch")
+    bundle_path = _migration_bundle_path(marker, fingerprint, bundle_name)
     try:
         intent = _exact_migration_intent(json.loads(
             (bundle_path / "intent.json").read_text(encoding="utf-8")
@@ -4214,7 +4224,9 @@ def migrate_primary(
             with RepositoryLock(runtime_paths(root).lock):
                 _check_migration_control(root, intent, transport=control)
             marker.parent.mkdir(parents=True, exist_ok=True)
-            bundle = Path(tempfile.mkdtemp(prefix=f"{fingerprint}-", dir=marker.parent))
+            transport_dir = runtime_state_root(root) / "m"
+            transport_dir.mkdir(parents=True, exist_ok=True)
+            bundle = Path(tempfile.mkdtemp(prefix=f"{fingerprint[:12]}-", dir=transport_dir))
             target = bundle / "source"
             _git(root, "clone", "--no-checkout", "--no-tags", intent["target_url"], str(target))
             _git(target, "checkout", "--detach", intent["target_generation_sha"])

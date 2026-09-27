@@ -5,7 +5,7 @@ import subprocess
 import tomllib
 from contextlib import contextmanager
 from dataclasses import replace
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 
 import pytest
@@ -9251,6 +9251,27 @@ def test_migration_exact_handoff_and_replay_rejection(
     bound_intent = Path(observed[0][0][-3])
     assert bound_intent.is_file()
     assert json.loads(bound_intent.read_text(encoding="utf-8")) == intent
+    fingerprint = operator_module._migration_fingerprint(intent)
+    bundle = bound_intent.parent
+    assert bundle.parent == runtime_state_root(repo) / "m"
+    assert bundle.name.startswith(f"{fingerprint[:12]}-")
+    assert len(bundle.name) <= 24
+
+    # Model a long Windows workspace independently of this machine's tmp_path.
+    long_root = PureWindowsPath("C:/") / ("w" * 150)
+    old_source = (long_root / ".git" / "aios" / "migration-handoffs"
+                  / f"{fingerprint}-abcdefgh" / "source" / "src"
+                  / "aios_renew" / "operator.py")
+    bounded_source = (long_root / ".git" / "aios" / "m" / bundle.name
+                      / "source" / "src" / "aios_renew" / "operator.py")
+    bounded_marker = (long_root / ".git" / "aios" / "migration-handoffs"
+                      / f"{fingerprint}.json")
+    assert len(str(old_source)) > 260
+    assert len(str(bounded_marker)) < 260
+    assert len(str(bounded_source)) < 240
+    wrong_fingerprint = ("f" if fingerprint[0] != "f" else "e") + fingerprint[1:]
+    with pytest.raises(OperatorError, match="bundle name mismatch"):
+        operator_module._migration_bundle_path(marker, wrong_fingerprint, bundle.name)
     assert operator_module.migrate_primary(intent_path, runner=child) == 0
     assert len(observed) == 2
     assert observed[1][0] == observed[0][0]
