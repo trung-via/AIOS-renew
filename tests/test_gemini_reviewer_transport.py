@@ -136,6 +136,12 @@ def test_invalid_request_bound_and_encoding_do_not_call_native():
     (b"x" * 262145, None),
     (None, subprocess.TimeoutExpired("agy", 300)),
     (None, OSError("secret detail must not escape")),
+], ids=[
+    "empty-output", "invalid-utf8", "non-object", "duplicate-status",
+    "duplicate-usage", "nonfinite-usage", "invalid-structured-output",
+    "invalid-status", "missing-structured-output", "missing-usage",
+    "negative-usage", "excess-cache-usage", "invalid-cache-alias",
+    "over-bound-output", "timeout", "runner-error",
 ])
 def test_failure_closes_workspace_and_stops_after_one_call(response, failure):
     runner = Runner(response=response, failure=failure)
