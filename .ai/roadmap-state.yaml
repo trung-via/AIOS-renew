@@ -972,7 +972,38 @@ sequence:
       or pytest/xdist identity for ordinary cases.
   - id: bp-8-real-second-provider-proof
     status: NEXT
-    phase: BP8-P2
+    phase: BP8-P2A
+    task_id: TASK-193
+    task_revision: 1
+    selected_proof:
+      role: REVIEWER
+      provider: antigravity
+      model: gemini-3.8-flash
+      reasoning_effort: high
+      authority: HUMAN
+      note: >-
+        Human explicitly selected high effort for the one controlled BP8-P2 real
+        Reviewer proof. This is proof-specific operational input only, not a Reviewer
+        default, provider preference policy, Executor default, router input, or
+        automatic model-selection rule.
+    p2_plan:
+      - id: BP8-P2A
+        status: NEXT
+        task_id: TASK-193
+        task_revision: 1
+        objective: >-
+          Add and review one deterministic proof harness that composes the already
+          reviewed BP6 Reviewer provider protocol with the BP8-P1
+          Antigravity/Gemini transport, emits a bounded observation contract, and
+          can later run one explicit real call without treating provider failure as
+          an engineering RUN failure.
+      - id: BP8-P2B
+        status: PLANNED
+        objective: >-
+          Execute the reviewed proof harness exactly once as Runtime-owned
+          verification with explicit --effort high. The observation may report
+          validated-decision success or a typed pre-REVIEW provider failure; only a
+          validated-decision observation closes the BP8 real-provider evidence gate.
     completed_phases:
       - id: BP8-P1
         status: DONE
@@ -1046,12 +1077,14 @@ sequencing_rule:
     maintenance-pytest-bounded-parameter-id-hardening is now reviewed/published
     complete through TASK-192 r2, RUN-192-002, REVIEW-192-001 and exact publication
     of ba4ae3da4dcfa09466e3455e67e77d703cf86259. The unique NEXT item therefore
-    returns to BP-8 P2 controlled real Gemini Reviewer invocation. BP8-P2 must preserve
-    the reviewed P1 one-call repository-blind transport and must not turn a transient
-    provider/transport failure into fabricated REVIEW, RUN failure, remediation, retry
-    or fallback. Neither BP-8 nor later work may create a generic lifecycle/provider
-    router, merge Brain and Reviewer authority, add automatic retry/failover/correction
-    selection, or silently retarget downstreams.
+    returns to BP-8 P2. Human explicitly selected Reviewer effort high for this one
+    Antigravity/gemini-3.8-flash proof. P2 is split into reviewed harness preparation
+    (BP8-P2A / TASK-193) followed by one zero-delta Runtime-owned real observation
+    (BP8-P2B) so a transient provider/transport failure is recorded as typed
+    pre-REVIEW observation rather than fabricated RUN failure. Neither BP-8 nor later
+    work may create a generic lifecycle/provider router, merge Brain and Reviewer
+    authority, add automatic retry/failover/correction selection, or silently retarget
+    downstreams.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
