@@ -1,0 +1,172 @@
+task_id: TASK-198
+revision: 1
+
+goal: >
+  Close the one-time legacy bootstrap gap before BP-9 downstream adoption by establishing
+  a repository-neutral, bounded compatibility path from an exact legacy installed AIOS
+  generation that predates migrate-primary to the first exact reviewed migration-capable
+  generation, without allowing target-generation source to self-authorize or creating a
+  second Runtime/lifecycle authority.
+
+problem: >
+  TASK-197 published the reusable N-to-N+1 migrate-primary invariant at exact source
+  83115b26df85a7ad6643f317833e18b18586bdbe. Fresh downstream audit proves Python Agent
+  is still governed by exact installed generation edd7d8d92d54900c56442bbfcddb8648ec4d2e09,
+  and that generation has no migrate-primary command. Therefore TASK-197 is sufficient
+  for future migrations only after a downstream has reached a migration-capable
+  generation. Running target 83115b26 code first would let N+1 self-grant authority;
+  retrying legacy PRIMARY repeats the already-observed pre-admission generation-switch
+  hazard. A bounded legacy-to-capable bootstrap is required once, and must not become a
+  downstream-specific bypass or permanent alternate migration engine.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    83115b26df85a7ad6643f317833e18b18586bdbe and Brain-owned roadmap NEXT remains
+    BP-9 downstream adoption.
+  - >
+    TASK-197 / RUN-197-003 / REVIEW-197-002 is reviewed and exactly published at
+    83115b26df85a7ad6643f317833e18b18586bdbe.
+  - >
+    The motivating legacy generation edd7d8d92d54900c56442bbfcddb8648ec4d2e09 already
+    contains fail-closed operator primitives including exact TASK parsing, repository
+    locking, Git identity/control operations, Runtime state separation, dispatch identity
+    and canonical ingress, but contains no migrate-primary CLI or equivalent composed
+    cross-generation handoff.
+  - >
+    The bridge must be reusable for an exact legacy generation class and cannot encode
+    Python Agent, TASK-255, a local runner path, or a mutable downstream pin as policy.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-197.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/task.py
+    - src/aios_renew/github_issue_wakeup.py
+    - src/aios_renew/github_issue_ingress.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - docs/AIOS-BRAIN-PORTABILITY.md
+
+non_goals:
+  - >
+    Perform Python Agent TASK-255, mutate any downstream repository, change a downstream
+    dependency pin, or certify downstream conformance.
+  - >
+    Rewrite historical generation edd7d8d or any frozen Kernel artifact.
+  - >
+    Create a second Runtime, lifecycle router, migration daemon, Planner, Reviewer,
+    Publisher, retry/fallback/failover authority, provider selector or downstream-specific
+    migration script.
+  - >
+    Allow mutable AIOS-renew main, an unreviewed target, synchronized target repository
+    source, or target code itself to establish legacy-source authority.
+  - >
+    Replace or weaken TASK-197 migrate-primary for generations that already support it.
+
+constraints:
+  hard:
+    - >
+      Treat this as a one-time compatibility bootstrap into the existing TASK-197
+      protocol, not a parallel general migration protocol. A migration-capable active
+      generation must continue to use migrate-primary directly.
+    - >
+      Before any target-generation execution authority exists, the bootstrap must prove
+      the exact active legacy installed distribution identity and bind an immutable
+      authorization covering exact legacy generation, exact reviewed migration-capable
+      target generation/source, governed downstream repository, exact source/target
+      downstream control, pin artifacts, TASK semantic identity and Executor at least as
+      strongly as TASK-197 migration intent.
+    - >
+      Target-generation source must not self-attest the legacy generation. The trust
+      anchor must be independently bound to the actually imported legacy installed
+      distribution and immutable authorization/control evidence. If this cannot be done
+      without changing frozen Kernel semantics, stop unresolved.
+    - >
+      Reuse existing operator/Runtime primitives and TASK-197 handoff semantics wherever
+      possible. Do not duplicate RUN creation, verification, review, publication,
+      lifecycle reduction or Executor invocation logic.
+    - >
+      The compatibility transition must have one auditable authority edge. Before that
+      edge target source cannot admit or execute the downstream TASK; after it, only the
+      exact bound migration-capable target may continue through the TASK-197-compatible
+      handoff path.
+    - >
+      Pre-transition rejection or operational failure invokes no Executor and fabricates
+      no RUN/FAILURE. Evidence must remain typed as admission/operational evidence.
+    - >
+      Replay, stale authorization, source-generation mismatch, target mismatch, control
+      mismatch, pin mismatch, TASK mismatch, dirty/detached unsafe downstream state,
+      duplicate/ambiguous bootstrap state and interrupted bootstrap must fail closed or
+      deterministically reconcile without a second Executor invocation.
+    - >
+      Bootstrap state must be bounded, exact-SHA-bound, crash/re-entry safe and unable to
+      remain as a permanent alternate authority after successful transition.
+    - >
+      Tests must model at least one legacy installed generation with no migrate-primary,
+      exact target 83115b26-compatible behavior, target-source self-authorization
+      rejection, stale/mismatched identities, interruption/re-entry, and successful
+      one-time transition followed by ordinary migrate-primary ownership.
+    - >
+      Implementation must remain repository-neutral and cross-platform, including Windows
+      path-budget constraints already established by TASK-197.
+    - >
+      Production mutation is limited to operator.py. If a clean solution requires another
+      production module or frozen-spec change, stop unresolved rather than widening scope.
+    - >
+      Executor returns one clean candidate with zero unresolved implementation items and
+      does not review, publish, mutate roadmap planning, or execute any downstream task.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Deterministic evidence proves a legacy installed generation lacking migrate-primary
+      can be identified exactly without importing synchronized/target AIOS source as its
+      authority.
+  - id: AC2
+    condition: >
+      The compatibility authorization binds legacy generation, exact reviewed
+      migration-capable target, repository, source/target control and pin identities,
+      exact TASK identity and Executor, rejecting stale/floating/mismatched/ambiguous
+      input before target execution authority.
+  - id: AC3
+    condition: >
+      The target cannot self-authorize the transition; one explicit auditable authority
+      edge exists and only the exact admitted target can consume it.
+  - id: AC4
+    condition: >
+      Successful bootstrap composes into TASK-197 migration semantics and admits at most
+      one downstream RUN/Executor invocation; it does not implement a second RUN,
+      verification or lifecycle path.
+  - id: AC5
+    condition: >
+      Interruption/re-entry/replay is deterministic and fail-closed or reconciled without
+      duplicate execution, while pre-transition failures create no fabricated RUN.
+  - id: AC6
+    condition: >
+      Existing migrate-primary behavior for already-capable generations remains unchanged
+      or stronger, and successful bootstrap cannot become a persistent alternate
+      migration authority.
+  - id: AC7
+    condition: >
+      Tests prove repository neutrality, cross-platform/path-budget safety and no
+      downstream/provider/runner-specific policy.
+  - id: AC8
+    condition: >
+      Brain Portability documentation distinguishes the bounded legacy bootstrap from the
+      reusable TASK-197 N-to-N+1 invariant and keeps explicit reviewed BP-9 downstream
+      adoption as the next consumer.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
