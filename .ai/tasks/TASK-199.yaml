@@ -1,48 +1,41 @@
 task_id: TASK-199
-revision: 1
+revision: 2
 
 goal: >
-  Close the remaining BP-9 legacy-bootstrap control paradox by extending the bounded
-  TASK-198 compatibility path so an exact legacy installed generation can transfer one
-  authority edge to the first reviewed migration-capable generation and that target can
-  execute one exact authorized downstream migration TASK from the unchanged source-control
-  commit, without requiring a pre-existing downstream target-control commit whose pin already
-  names the target generation. Preserve one Runtime, one RUN, one Executor and ordinary
-  TASK-197 migrate-primary ownership for already-migration-capable generations.
+  Implement the generic source-control legacy-bootstrap protocol needed by BP-9 while
+  keeping its production activation closed until a later exact reviewed target SHA is
+  known. The new protocol must let a future exact admission source transfer one durable
+  authority edge to an exact migration-capable target that already contains the protocol,
+  and let that target execute one exact authorized downstream migration TASK from the
+  unchanged source-control commit through the existing PRIMARY Runtime. Do not activate
+  Python Agent migration in this TASK.
 
 problem: >
-  TASK-197 requires an exact target downstream control commit whose pin already names the
-  target generation. TASK-198 reused that target-control contract for bootstrap-primary.
-  The first real BP-9 consumer exposes a circular dependency: Python Agent is still at exact
-  legacy pin edd7d8d92d54900c56442bbfcddb8648ec4d2e09; its canonical control main can author
-  TASK-255 but cannot legitimately contain a future 83115b26... pin-changing implementation
-  commit before Runtime/Executor execution. Therefore current bootstrap-primary cannot stage
-  the authority edge because _check_migration_control requires target_control_sha and
-  target_pin_blob_sha to exist before the target generation may execute. Creating such a
-  commit outside Runtime would violate mutation authority; retrying legacy PRIMARY repeats
-  the already-diagnosed authority inversion. The compatibility protocol needs one bounded
-  legacy-source-control execution shape, not a second migration engine.
+  Revision 1 correctly identified the pre-existing target-control paradox in TASK-198,
+  but second-pass Brain audit found a bootstrapping flaw: the currently fixed bootstrap
+  target 83115b26df85a7ad6643f317833e18b18586bdbe predates this new source-control
+  protocol and therefore cannot consume a new handoff shape. Updating only the admission
+  side would create a protocol the exact target cannot understand. A safe bootstrap
+  requires two stages: this TASK publishes the generic consumer-capable protocol with
+  production activation disabled; a separate successor, authored only after this exact
+  source is reviewed and published, may bind that published SHA as the one allowed target.
+  This preserves target non-self-authorization and avoids self-referential SHA policy.
 
 assumptions:
   - >
-    Canonical AIOS-renew main at authoring is
-    45c46397914aadf20cb4cb6b874f274da43e2b9c.
+    Canonical AIOS-renew main at r2 authoring is
+    61130727e0693eac968dc1fb057096d185152620, containing only TASK-199 r1 authoring
+    on top of exact published TASK-198 source.
   - >
-    TASK-197 / RUN-197-003 / REVIEW-197-002 are exact-source published and own reusable
-    migrate-primary for migration-capable generations.
+    TASK-197 and TASK-198 remain reviewed/source-published history and their existing
+    migrate-primary / bootstrap-primary behavior must remain compatible.
   - >
-    TASK-198 / RUN-198-002 / REVIEW-198-001 are exact-source published and own the bounded
-    legacy bootstrap with isolated installed-distribution attestation; its fixed first capable
-    target remains 83115b26df85a7ad6643f317833e18b18586bdbe.
+    The exact SHA produced by this TASK cannot be known until independent review and
+    publication, so this TASK cannot truthfully authorize itself as the production
+    source-control-bootstrap target.
   - >
-    Fresh BP-9 downstream sync shows the motivating downstream still has only the legacy exact
-    pin and no canonically produced future control commit containing an 83115b26 pin. This
-    downstream fact motivates the generic correction but must not be encoded as repository-
-    specific policy.
-  - >
-    BP-9 downstream adoption remains the Brain-owned roadmap NEXT; this TASK is a bounded
-    prerequisite maintenance correction inside that milestone and does not itself adopt any
-    downstream repository.
+    BP-9 downstream adoption remains the roadmap NEXT. Python Agent TASK-255 r4 is
+    authored but unexecuted and must not be invoked while this prerequisite remains open.
 
 scope:
   inspect:
@@ -54,6 +47,7 @@ scope:
     - .ai/roadmap-state.yaml
     - .ai/tasks/TASK-197.yaml
     - .ai/tasks/TASK-198.yaml
+    - .ai/tasks/TASK-199.yaml
     - src/aios_renew/operator.py
     - src/aios_renew/task.py
     - tests/test_operator.py
@@ -64,122 +58,114 @@ scope:
 
 non_goals:
   - >
-    Modify Python Agent or any downstream repository, downstream pin, workflow, carrier,
-    TASK-255, conformance state, roadmap state or product code.
+    Activate any downstream migration, modify Python Agent, change a downstream pin,
+    execute TASK-255, or advance roadmap planning.
   - >
-    Change frozen Kernel artifacts or historical TASK/RUN/RESULT/FAILURE/REVIEW/REPAIR lineage.
+    Change the existing TASK-198 fixed target-control bootstrap target
+    83115b26df85a7ad6643f317833e18b18586bdbe or reinterpret its historical semantics.
   - >
-    Replace or weaken ordinary TASK-197 migrate-primary for a generation that already supports it.
+    Author the later activation SHA inside this TASK, infer it from mutable main/latest,
+    or let the new target source authorize itself.
   - >
-    Create a second Runtime, lifecycle reducer, migration daemon, Planner, Reviewer, Publisher,
-    retry/fallback/failover authority, provider selector, scheduler, queue or downstream-specific
-    migration script.
+    Create a second Runtime, lifecycle reducer, migration daemon, Planner, Reviewer,
+    Publisher, retry/fallback/failover authority, provider selector or downstream-specific
+    migration implementation.
   - >
-    Allow target source, synchronized downstream source, mutable main/latest or an unreviewed
-    upstream generation to establish legacy-source authority.
-  - >
-    Pre-create or publish a downstream pin-changing implementation commit outside the normal
-    Executor/Runtime lifecycle.
+    Rewrite frozen Kernel artifacts or historical lineage.
 
 constraints:
   hard:
     - >
-      Keep the compatibility path one-time and additive. The only bootstrap target remains the
-      exact first reviewed migration-capable generation
-      83115b26df85a7ad6643f317833e18b18586bdbe. A migration-capable installed generation must
-      continue to use ordinary migrate-primary.
+      Add a distinct versioned source-control legacy-bootstrap intent/handoff shape;
+      do not weaken or overload TASK-197 migration intent v1. It must bind exact legacy
+      installed generation, exact prospective target generation/source URL, repository,
+      exact clean attached source-control SHA, exact source pin blob naming the legacy
+      generation, exact TASK id/revision/blob/authorization commit and selected Executor.
     - >
-      Introduce a distinct exact legacy-bootstrap execution contract/version rather than weakening
-      TASK-197 migration intent v1. Before the authority edge it must bind at minimum: exact active
-      legacy installed generation, exact reviewed bootstrap target generation/source URL, governed
-      repository, exact clean attached source-control commit, exact source pin blob naming the
-      legacy generation, exact TASK id/revision/blob/authorization commit and selected Executor.
-      Unexpected/missing/floating/stale identities fail closed.
+      Add target-side consumption/execution support in the same published operator source
+      so a later exact target carrying this code can validate the durable handoff and invoke
+      existing run_task exactly once with synchronize=False against the exact source-control
+      SHA and TASK identity.
     - >
-      Legacy identity must continue to be attested independently through the actually imported
-      installed distribution in the isolated interpreter. Target/current source cannot self-attest
-      the legacy generation.
+      Production admission for this new source-control shape must remain CLOSED in this
+      TASK. Use one explicit fail-closed activation datum/allowlist slot whose default
+      state authorizes no source-control-bootstrap target. Tests may inject/monkeypatch
+      an exact target solely to exercise deterministic protocol semantics.
     - >
-      The legacy-source-control contract must not require a future target_control_sha or
-      target_pin_blob_sha before target authority. It must prove the current persistent control
-      checkout is clean, attached to main, upstream-bound unambiguously, at the exact authorized
-      source-control SHA, and that the exact TASK artifact/authorization is present and unchanged.
+      The existing TASK-198 bootstrap-primary target-control path and fixed
+      _BOOTSTRAP_TARGET_SHA behavior remain unchanged and fully regression-tested.
     - >
-      The single durable handoff is still the authority edge. Before it, target code may not create
-      a RUN or invoke an Executor. After it, only the exact bound 83115b26 target source may consume
-      the handoff and it may invoke the existing run_task path exactly once with synchronize=False
-      against the exact authorized source-control SHA and TASK identity.
+      A later activation source must be able to bind exactly one reviewed/published target
+      SHA that already contains this r2 consumer capability. The target consumer must not
+      itself decide whether its own SHA is approved; it only validates that the exact durable
+      handoff names its running source.
     - >
-      The target-side path must reuse canonical PRIMARY Runtime allocation, Executor invocation,
-      verification, RESULT/FAILURE persistence, transport and terminal reduction. Do not duplicate
-      any RUN, verification, review or publication semantics inside bootstrap code.
+      Legacy identity remains independently attested through the actually imported installed
+      distribution in an isolated interpreter. Synchronized/target source cannot attest the
+      legacy generation.
     - >
-      The authorized downstream TASK candidate may contain the dependency-pin migration and
-      repository-owned compatibility delta as normal Executor work. Bootstrap code must not choose,
-      edit, predict or validate semantic implementation content beyond exact TASK/control identity;
-      semantic acceptance remains Brain/Reviewer-owned and deterministic verification remains
-      Runtime-owned.
+      Before a future authority edge, validate clean attached main, unambiguous upstream,
+      exact source-control SHA, exact source pin blob and unchanged exact TASK artifact.
+      No future target-control or target-pin commit is required for this new shape.
     - >
-      Re-entry/interruption must deterministically reconcile the exact handoff and at most one
-      matching RUN. An active RUN cannot be re-invoked; a terminal RESULT/FAILURE closes the handoff;
-      completed/replayed/stale/mismatched/ambiguous handoffs fail closed. No second Executor call.
+      After a valid edge, only the exact target source named by the handoff may consume it.
+      It reuses canonical PRIMARY run_task, verification, RESULT/FAILURE, transport and
+      lifecycle reduction; bootstrap code creates no duplicate RUN or verification path.
     - >
-      Existing TASK-198 target-control bootstrap shape may remain readable/reconcilable for
-      compatibility, but the new legacy-source-control shape must be unambiguous and must not weaken
-      existing TASK-197/TASK-198 mismatch, collision, path-budget, replay or durable-record checks.
+      Re-entry/interruption/replay must reconcile at most one matching RUN; active RUN means
+      no reinvocation, terminal state closes the handoff, and completed/stale/mismatched/
+      ambiguous state fails closed without a second Executor call.
     - >
-      Pre-edge rejection or operational failure creates no RUN/FAILURE and no Executor invocation.
-      Evidence remains typed admission/operational evidence.
+      Pre-edge rejection/failure creates no RUN/FAILURE and no Executor invocation.
     - >
-      Preserve repository neutrality and cross-platform behavior, including bounded Windows path
-      handling and read-only Git object cleanup established by TASK-197/TASK-198.
+      Preserve repository neutrality, Windows path-budget/read-only cleanup protections and
+      existing TASK-197/TASK-198 handoff compatibility.
     - >
-      Production mutation is limited to src/aios_renew/operator.py. If correctness requires another
-      production module or frozen-spec change, stop unresolved rather than widening scope.
+      Production mutation is limited to operator.py. If another production module or frozen
+      Kernel change is required, stop unresolved.
     - >
-      Executor returns one clean candidate with zero unresolved implementation items and does not
-      review, publish, mutate roadmap planning or execute any downstream adoption.
+      Documentation must explicitly state that this TASK publishes capability only and that
+      a separate post-publication activation TASK is mandatory before BP-9 can consume it.
+    - >
+      Executor returns one clean candidate with zero unresolved implementation items and does
+      not review, publish, activate the protocol, mutate roadmap state or execute downstream work.
 
 acceptance:
   - id: AC1
     condition: >
-      Exact deterministic evidence proves the one-time legacy contract can authorize from a clean
-      exact source-control commit whose pin still names the legacy generation, without requiring or
-      fabricating a future target-control/pin commit.
+      A versioned source-control legacy-bootstrap handoff can be deterministically staged and
+      consumed in tests without any pre-existing target-control/pin commit, while binding exact
+      legacy/source-control/pin/TASK/Executor/target identities.
   - id: AC2
     condition: >
-      The contract independently attests the exact installed legacy generation and binds the exact
-      reviewed 83115b26 target, repository, source control/pin, TASK identity and Executor before the
-      single authority edge; target self-authorization and stale/mismatched inputs are rejected.
+      Target-side code validates the exact durable handoff and exact running target source,
+      then delegates one exact TASK execution to existing run_task with no second Runtime.
   - id: AC3
     condition: >
-      Only the exact bound 83115b26 target consumes the durable handoff and delegates one exact TASK
-      execution to existing run_task with no second Runtime or lifecycle path.
+      Production admission for the new shape is provably disabled by default; current source
+      cannot self-authorize and the historical 83115b26 TASK-198 target-control bootstrap path
+      remains unchanged.
   - id: AC4
     condition: >
-      Successful execution produces at most one canonical downstream RUN and one Executor invocation;
-      active, terminal, interrupted and replayed states reconcile deterministically without duplicate
-      execution.
+      Active, terminal, interrupted, replayed, stale and mismatched states reconcile or fail
+      closed with at most one RUN and one Executor invocation.
   - id: AC5
     condition: >
-      Ordinary migrate-primary semantics for migration-capable generations remain unchanged or
-      stronger, and the legacy compatibility entry cannot become a permanent/general migration
-      authority.
+      Pre-edge failures invoke no Executor and create no fabricated engineering lifecycle state.
   - id: AC6
     condition: >
-      Pre-edge rejection/failure creates no fabricated RUN/FAILURE or Executor invocation and
-      preserves typed admission/operational evidence.
+      Ordinary migrate-primary and existing bootstrap-primary regression behavior remains green,
+      including Windows path budget and cleanup.
   - id: AC7
     condition: >
-      Tests cover source-control legacy bootstrap, exact TASK binding, target self-authorization
-      rejection, dirty/detached/upstream ambiguity, pin/TASK/source/target mismatch, interruption,
-      active-RUN reconciliation, terminal replay, Windows path budget/cleanup and non-regression of
-      existing TASK-197/TASK-198 paths.
+      Tests cover source-control identity/pin/TASK binding, target-source mismatch, closed
+      production activation, injected exact activation, dirty/detached/upstream ambiguity,
+      replay/reentry and no-duplicate execution.
   - id: AC8
     condition: >
-      Brain Portability documentation explains why legacy bootstrap executes the exact migration TASK
-      from source control, distinguishes this from ordinary N-to-N+1 target-control migration, and
-      keeps explicit reviewed BP-9 downstream adoption as the next consumer.
+      Brain Portability documentation records the required two-stage bootstrap: capability
+      publication first, exact reviewed-SHA activation second, then explicit BP-9 downstream
+      adoption; no downstream is claimed migrated by this TASK.
 
 verification:
   policy: minimum-sufficient-v1
