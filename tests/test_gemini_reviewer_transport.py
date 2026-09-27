@@ -60,9 +60,13 @@ def assert_isolated(runner, request):
     assert runner.requests == [request]
     assert all(not path.exists() for path in runner.workspaces)
     assert command.count("agy") == 1
-    assert command[command.index("--model") + 1] == MODEL
-    assert command[command.index("--effort") + 1] == "medium"
-    assert command[command.index("--add-dir") + 1] == kwargs["cwd"]
+    assert command == (
+        "agy", "--print", command[2], "--add-dir", kwargs["cwd"],
+        "--model", MODEL, "--effort", "medium",
+        "--disable-slash-commands", "--output-format", "json",
+        "--json-schema", str(Path(kwargs["cwd"]) / "response_schema.json"),
+        "--print-timeout", "300s",
+    )
     assert "--mode" not in command
     assert "plan" not in command
     assert command[command.index("--json-schema") + 1].startswith(kwargs["cwd"])
