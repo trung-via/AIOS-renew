@@ -1,37 +1,35 @@
 task_id: TASK-202
-revision: 2
+revision: 3
 
 goal: >
-  Harden the reviewed source-control legacy-bootstrap protocol so it can operate over
-  repositories with canonical mixed PRIMARY/REPAIR and REMEDIATION RUN history, and add
-  one bounded, transactional Runtime-owned recovery path for an already-consumed
-  version-2 source-bootstrap handoff that failed before any bound RUN was created.
-  Preserve all historical handoff/RUN evidence, exact target activation,
-  single-Executor/single-RUN authority, and the invariant that a completed bootstrap
-  leaves the installed generation at the exact handoff target.
+  Harden source-control legacy-bootstrap for canonical mixed RUN history and add one
+  bounded transactional recovery path for a consumed version-2 handoff that failed
+  before any bound RUN. Recovery must preserve old evidence while allowing exactly one
+  replacement edge to a separately activated exact consumer target and, when the
+  originally bound downstream TASK has become semantically stale before execution,
+  allow only the same TASK id at an exactly authorized same-or-newer revision on a clean
+  fast-forward descendant control commit. Preserve single-RUN/single-Executor authority
+  and generation-exact completed steady state.
 
 problem: >
-  TASK-199/TASK-201 source-bootstrap is production-activated for exact target
-  ff29666d50eaf9276ab62d944018f2bbeb91f073. Real BP-9 downstream use against
-  trung-via/python_complete_agent exposed two previously untested boundaries. First,
-  _migration_run_terminal currently parses every local .git/aios/runs/*.json with the
-  simple _run_from_data schema, while AIOS itself canonically persists REMEDIATION RUNs
-  as kind=REMEDIATION documents whose actual Run is execution.run. A repository with
-  valid remediation history therefore fails with 'invalid migration RUN record' even
-  when no RUN artifact is malformed. Second, that failure occurred after the exact v2
-  handoff was durably staged and consumed but before a bound TASK-255 r5 RUN existed,
-  leaving an immutable consumed/uncompleted authority edge. Current code has no
-  canonical primitive to supersede such a pre-RUN edge; deleting or rewriting it by
-  hand would destroy authority lineage. Recovery must also be transactional: the old
-  consumed edge cannot become inactive before one exact replacement handoff is durably
-  complete enough to assume authority, otherwise a failed replacement staging attempt
-  could leave an authority gap or ambiguous half-superseded state.
+  TASK-199/TASK-201 source-bootstrap currently fails on repositories containing valid
+  canonical REMEDIATION RUN documents because _migration_run_terminal assumes every
+  state.runs document is a simple top-level Run. The real Python Agent attempt therefore
+  left an exact v2 handoff staged+consumed but uncompleted and created no TASK-255 r5
+  RUN. A second audit also proved that TASK-255 r5 itself is now stale: it requires its
+  final downstream pin to bbc8f09f38ac4d150060c6fcc851b6da2140e5a0, while the
+  preserved steady-state invariant requires a source-bootstrap adoption candidate to pin
+  first to the exact bootstrap consumer target. Recovery that forces the old r5 semantic
+  identity would therefore execute a known-stale TASK. The protocol needs a bounded
+  transactional supersession that can replace a pre-RUN edge with the same TASK id at
+  an exact authorized successor revision on a clean fast-forward descendant, while
+  forbidding arbitrary TASK substitution or generation routing.
 
 assumptions:
   - >
-    Canonical AIOS-renew main at r2 authoring is
-    cd135f0182d7d5197a232abb31cb1fce314a4ace, whose only semantic delta from
-    bbc8f09f38ac4d150060c6fcc851b6da2140e5a0 is canonical TASK-202 r1.
+    Canonical AIOS-renew main at r3 authoring is
+    67c9088d12ec6a7aa5bb8e61efca513acfc10a73, whose only semantic deltas after
+    bbc8f09f38ac4d150060c6fcc851b6da2140e5a0 are canonical TASK-202 r1/r2 artifacts.
   - >
     TASK-199 / RUN-199-001 / REVIEW-199-001 is reviewed/published at exact
     ff29666d50eaf9276ab62d944018f2bbeb91f073 and introduced source-control
@@ -41,24 +39,27 @@ assumptions:
     bbc8f09f38ac4d150060c6fcc851b6da2140e5a0 and activates only target
     ff29666d50eaf9276ab62d944018f2bbeb91f073.
   - >
-    Canonical AIOS Runtime RUN storage includes both simple top-level Run documents and
-    kind=REMEDIATION documents whose canonical Run is nested at execution.run.
+    Canonical Runtime RUN storage includes simple top-level Run documents and
+    kind=REMEDIATION documents whose canonical Run is execution.run.
   - >
     The observed Python Agent diagnostic contains 99 structurally readable local RUN
-    records: 85 simple and 14 canonical REMEDIATION records, with zero malformed records.
-    Its failed source-bootstrap handoff is version 2, staged and consumed, not completed,
-    binds legacy edd7d8d92d54900c56442bbfcddb8648ec4d2e09 to target
-    ff29666d50eaf9276ab62d944018f2bbeb91f073 for TASK-255 r5/codex at exact downstream
+    records: 85 simple and 14 canonical REMEDIATION records, zero malformed. Its failed
+    source-bootstrap handoff is v2, staged+consumed, not completed, binds legacy
+    edd7d8d92d54900c56442bbfcddb8648ec4d2e09 -> target
+    ff29666d50eaf9276ab62d944018f2bbeb91f073 for TASK-255 r5/codex at downstream
     source control 73c1f97a093aadc4945ffd43d98592acef6d7826, and has no bound r5 RUN.
-    These downstream facts are diagnostic basis only; this TASK must implement reusable
-    upstream semantics rather than hard-code that repository or fingerprint.
   - >
-    BP-9 remains roadmap NEXT. This TASK is a bounded upstream prerequisite and must not
-    advance roadmap state or mutate any downstream repository.
+    Canonical downstream TASK-255 r5 explicitly requires final dependency pin
+    bbc8f09f38ac4d150060c6fcc851b6da2140e5a0, so it must not be executed after the
+    newly established generation-exact steady-state requirement. A later TASK-255
+    successor revision will be separately Brain-authored before real recovery.
+  - >
+    BP-9 remains roadmap NEXT. This TASK is upstream maintenance only and does not
+    mutate downstream or roadmap state.
   - >
     A separate successor activation TASK is required after TASK-202 review/publication
-    before its exact reviewed consumer SHA may be used as a replacement source-bootstrap
-    target. TASK-202 must not self-authorize its eventual candidate.
+    before the exact reviewed/published TASK-202 consumer SHA may be a replacement
+    source-bootstrap target.
 
 scope:
   inspect:
@@ -79,181 +80,159 @@ scope:
 
 non_goals:
   - >
-    Modify Python Agent or any downstream repository, delete/rewrite downstream RUN or
-    migration files, execute a real downstream recovery, or claim BP-9 adoption complete.
+    Modify Python Agent, author TASK-255 r6, execute real recovery, remove/rewrite local
+    migration/RUN history, or claim BP-9 complete.
   - >
-    Change frozen Kernel semantics, TASK/RUN identity, Runtime verification authority,
-    Reviewer, Publisher, Executor ownership, ordinary PRIMARY semantics, or the historical
-    TASK-198 bootstrap-primary target/behavior except where shared read-only helpers must
-    understand existing canonical RUN document shapes.
+    Permit replacement with another TASK id, another Executor, another repository,
+    another legacy source generation, a different pin path/content, mutable target,
+    unactivated target, non-fast-forward control history, or arbitrary semantic routing.
   - >
-    Treat a consumed handoff with an existing bound RUN, terminal RESULT/FAILURE,
-    completed marker, malformed identity, ambiguous siblings, or mismatched
-    repository/TASK as recoverable.
+    Recover an edge that has a bound RUN, RESULT/FAILURE, completed marker, malformed or
+    ambiguous identity, or conflicting active migration state.
   - >
-    Permit recovery to mutable main/latest, a caller-selected arbitrary target, a target
-    not separately activated through _SOURCE_BOOTSTRAP_TARGET_SHA, or a different TASK,
-    Executor, source generation, repository, source-control SHA, pin blob, TASK blob,
-    TASK authorization commit, or target URL.
+    Loosen generation-exact completed steady state, frozen Kernel semantics, Runtime
+    verification/terminal authority, Reviewer/Publisher/Executor ownership, or historical
+    TASK-198 bootstrap-primary behavior.
   - >
-    Loosen the steady-state invariant that ordinary post-bootstrap operation requires the
-    actually installed generation to equal the final non-superseded completed handoff
-    target. Downstream adoption must pin the bootstrap candidate to that exact consumer
-    target before any later ordinary migrate-primary step.
+    Add generic retry/fallback/failover, planner/router, queue, scheduler, cleanup daemon,
+    automatic task-revision selector, or second lifecycle authority.
   - >
-    Add a generic migration router, retry/fallback/failover loop, automatic correction
-    selector, cleanup daemon, second lifecycle store, Planner, Reviewer, Publisher, or
-    provider-selection authority.
-  - >
-    Mutate roadmap planning state or activate the eventual TASK-202 candidate SHA.
+    Activate the eventual TASK-202 candidate or mutate roadmap planning state.
 
 constraints:
   hard:
     - >
-      _migration_run_terminal (or one bounded helper it delegates to) must accept every
-      canonical RUN document shape that current Runtime itself writes into state.runs:
-      simple top-level Run documents and kind=REMEDIATION documents whose Run is
-      execution.run. It must not reinterpret REMEDIATION semantics or require remote
-      review/remediation resolution merely to identify its nested Run.
+      Migration RUN inspection must accept both canonical simple Run documents and
+      kind=REMEDIATION documents by extracting only the nested execution.run identity
+      needed for migration matching. It must not reinterpret remediation semantics or
+      require remote remediation/review resolution.
     - >
-      Historical RUNs unrelated to the current migration TASK must remain inert. Only an
-      exact Run matching the handoff control SHA, TASK id/revision, Executor and resolved
-      repository workspace may become the migration RUN. Existing source-bootstrap
-      mismatched-history protections must remain fail-closed.
+      Unrelated historical RUNs are inert. Only exact base/control SHA, TASK id/revision,
+      Executor and resolved repository workspace may match the migration edge. Malformed
+      JSON, unknown document shape, malformed nested Run, ambiguous matches, mismatched
+      source-bootstrap history and conflicting terminal state remain fail-closed.
     - >
-      Truly malformed JSON, unknown/unsupported RUN document shape, missing required
-      nested Run identity, filename/run_id inconsistency if filename identity is checked,
-      conflicting terminal artifacts, or ambiguous matching RUNs must still fail closed.
-      Valid REMEDIATION documents may never be classified as malformed merely because
-      their Run is nested.
+      Add one explicit source-bootstrap-v2 recovery/supersession operation. It is admitted
+      only for exactly one selected prior v2 marker whose consumed marker equals its
+      fingerprint, completed marker is absent, and migration RUN inspection proves no
+      bound RUN for that old edge.
     - >
-      Add one explicit bounded recovery/supersession operation for source-bootstrap v2.
-      Recovery may proceed only when exactly one authoritative prior v2 handoff is
-      selected and fully revalidated, its consumed marker equals its fingerprint, it has
-      no completed marker, _migration_run_terminal proves no bound RUN for that handoff,
-      and there is no conflicting active migration state.
+      Old marker, consumed marker, bound intent and transport bundle remain immutable.
+      Recovery records only additive durable supersession evidence; it never deletes,
+      renames-as-history, overwrites or compacts old authority evidence.
     - >
-      Recovery must preserve the original marker, consumed marker, bound intent and
-      transport evidence unchanged. Supersession is additive durable evidence that binds
-      the exact old fingerprint to exactly one replacement intent/fingerprint. No rm,
-      rename-as-history, overwrite, silent marker mutation, or history compaction is
-      allowed.
+      The replacement must preserve source_generation_sha, target_url, repository,
+      pin_path, the exact legacy pin content/blob, task_id and executor. The replacement
+      target_generation_sha may change only to the single exact
+      _SOURCE_BOOTSTRAP_TARGET_SHA active in the running reviewed source and must differ
+      from the old target.
     - >
-      Supersession has one fail-closed commit point. The old consumed edge must remain
-      authoritative/active until the replacement target source, replacement bound intent
-      and replacement handoff marker have all been exactly validated and durably staged,
-      and the additive supersession evidence closes the old->replacement relationship.
-      Any exception/crash before that commit point must leave the old edge active and
-      must not cause _require_no_active_migration to treat it as historical.
+      Replacement source_control_sha may differ from the old source_control_sha only when
+      it is the clean attached current main, is an exact fast-forward descendant of the
+      old source_control_sha, and the repository-owned pin artifact remains byte/blob
+      identical and still uniquely names the same legacy source generation.
     - >
-      Supersession evidence is effective only when the old marker, old consumed marker,
-      old bound intent, replacement marker and exact old->replacement binding are all
-      present and mutually consistent. A lone/partial supersession sidecar, orphaned
-      replacement transport, one-sided linkage, duplicate successor, cycle, or
-      mismatched fingerprint is invalid and must fail closed rather than deactivate the
-      old edge.
+      Replacement TASK identity must keep the same task_id. If revision is unchanged,
+      task_revision/task_blob_sha/task_commit_sha must be exactly identical to the old
+      bound intent. If revision changes, it must be strictly greater than the old
+      revision, its exact blob must be present at replacement source_control_sha, its
+      authorization commit must be an ancestor of that control SHA and contain the same
+      blob, and no deterministic logic may choose the successor revision on the Human/
+      Brain's behalf.
     - >
-      Recovery staging and commit must be serialized by existing repository/migration
-      locking authority so concurrent or repeated recovery requests cannot create two
-      replacement edges. Reentry with the exact same already-staged replacement identity
-      must reconcile idempotently; a different replacement request after a committed
-      supersession must fail closed.
+      Recovery must independently attest the actually installed legacy generation still
+      equals source_generation_sha and recheck repository cleanliness, attached main,
+      exact upstream/main identity, unchanged legacy pin and exact replacement TASK
+      authorization before replacement authority can commit.
     - >
-      A recovery replacement must preserve source_generation_sha, target_url, repository,
-      source_control_sha, pin_path, source_pin_blob_sha, task_id, task_revision,
-      task_blob_sha, task_commit_sha and executor exactly from the old bound v2 intent.
-      Only target_generation_sha may change, and the replacement target must equal the
-      single exact _SOURCE_BOOTSTRAP_TARGET_SHA active in the running reviewed source and
-      must differ from the superseded target.
+      Supersession has one serialized fail-closed commit point under existing Runtime/
+      migration locking. Before commit, the old consumed edge remains active. The
+      replacement target source, replacement bound intent and replacement handoff marker
+      must all be exactly validated and durably staged before additive supersession
+      evidence can make the old edge historical.
     - >
-      Recovery must independently recheck the same clean attached source-control,
-      unchanged legacy pin/TASK authorization and installed legacy-generation witness
-      required by a fresh source bootstrap before it can commit replacement authority.
-      A stale/dirty/detached repository, changed pin/TASK, non-legacy installed
-      generation, or unavailable exact target fails before the old edge can become
-      historical.
+      Supersession is effective only when old marker+consumed evidence, replacement
+      marker/bound intent and exact old->replacement linkage are mutually consistent.
+      Partial/orphaned/one-sided evidence, duplicate successors, cycles, conflicting
+      concurrent requests or mismatched fingerprints fail closed and must not deactivate
+      the old edge.
     - >
-      Superseded pre-RUN edges must remain queryable historical evidence but must not be
-      counted as active links by _require_no_active_migration only after the exact
-      transactional supersession commit above. An edge with a bound RUN or completed
-      marker can never be superseded by this recovery path.
+      Exact replay of the same committed recovery identity reconciles idempotently and
+      cannot grant another edge or Executor invocation. A different replacement request
+      after committed supersession fails closed.
     - >
-      Recovery itself creates no RUN and invokes no Executor. It may only authorize and
-      launch the exact replacement target source after replacement authority is
-      transactionally established; the replacement target still owns consumed-handoff
-      validation and ordinary run_task(... synchronize=False ...) admission. Exactly one
-      bound RUN/Executor invocation remains the lifecycle outcome.
+      Recovery creates no RUN and invokes no Executor. Only the exact replacement target
+      consumes the newly staged handoff and admits the replacement TASK through ordinary
+      run_task(... synchronize=False ...). At most one bound Runtime RUN and one Executor
+      invocation may result.
     - >
-      Preserve the separate two-stage activation model. TASK-202 implementation may
-      publish recovery/compatibility capability but must not replace
-      _SOURCE_BOOTSTRAP_TARGET_SHA with its own candidate or mutable main. A separate
-      post-publication activation TASK must name the exact reviewed/published TASK-202
-      consumer SHA before real recovery can target it.
+      _require_no_active_migration must treat a superseded old edge as historical only
+      after the exact committed linkage above; the active replacement edge continues to
+      gate ordinary admission. A completed replacement still requires installed
+      generation to equal its exact target.
     - >
-      Preserve ordinary completed-handoff steady-state semantics: the final active
-      installed generation must equal the final non-superseded handoff target. Add
-      regression/documentation making clear that a downstream candidate produced under
-      source bootstrap must pin to the exact bootstrap consumer target; later movement to
-      a newer activation/latest SHA belongs to a separate ordinary migrate-primary step.
+      Preserve two-stage activation: TASK-202 publishes compatibility/recovery capability
+      without activating its own candidate. A separate reviewed activation TASK must bind
+      _SOURCE_BOOTSTRAP_TARGET_SHA to the exact reviewed/published TASK-202 consumer SHA
+      before real replacement recovery can target it.
     - >
-      Existing TASK-198 bootstrap-primary behavior, legacy _BOOTSTRAP_TARGET_SHA, TASK-199
-      intent/handoff version-2 identity fields, Runtime verification, RESULT/FAILURE
-      terminal ownership and carrier authority remain unchanged except for the bounded
-      compatibility/recovery semantics above.
+      Documentation/tests must make the BP-9 choreography explicit: publish TASK-202;
+      separately activate its exact consumer SHA; author a downstream successor TASK on a
+      fast-forward main while legacy pin is unchanged; transactionally recover/supersede
+      the consumed pre-RUN edge into that exact successor intent; source-bootstrap the
+      downstream candidate so its first final pin equals the exact consumer target; only
+      a later separate ordinary migrate-primary may move to a newer activation/latest SHA.
     - >
-      Verification must be deterministic/offline and must model mixed historical RUN
-      namespaces, interrupted recovery before/at/after the supersession commit point,
-      exact recovery replay, conflicting concurrent successor intent and
-      consumed-but-no-RUN recovery without network access, real downstream mutation or
-      real Executor invocation.
+      Preserve TASK-198/bootstrap-primary behavior, existing source-bootstrap v2 field
+      meanings outside recovery, Runtime verification/RESULT/FAILURE authority and
+      roadmap state.
+    - >
+      Verification is deterministic/offline and must cover mixed simple+REMEDIATION RUN
+      history, same-revision exact recovery, higher-revision fast-forward recovery,
+      stale/non-fast-forward/different-TASK/different-Executor/pin-change rejection,
+      interruption before supersession commit, exact replay, conflicting concurrency and
+      generation-exact completed steady state without network or real Executor.
 
 acceptance:
   - id: AC1
     condition: >
-      Mixed valid local RUN history containing both simple and canonical REMEDIATION
-      documents no longer blocks source-bootstrap reconciliation; unrelated remediation
-      history is ignored for migration matching while exact matching/mismatched migration
-      RUN protections remain intact.
+      Valid mixed simple+REMEDIATION RUN history no longer blocks migration reconciliation,
+      while malformed/unknown/ambiguous/conflicting RUN state remains fail-closed.
   - id: AC2
     condition: >
-      Malformed/unknown RUN documents, malformed nested remediation Run identity,
-      ambiguous matches and conflicting terminal state still fail closed with no new RUN
-      or Executor invocation.
+      One consumed uncompleted v2 edge with no bound RUN can be transactionally superseded
+      without modifying old evidence and only toward the separately activated exact target.
   - id: AC3
     condition: >
-      One consumed, uncompleted source-bootstrap v2 edge with no bound RUN can be
-      superseded only through explicit exact recovery: original evidence stays immutable,
-      one additive durable supersession binds old and replacement fingerprints, and only
-      separately activated exact target authority may receive the replacement handoff.
+      Recovery supports either the exact originally bound TASK revision or the same TASK id
+      at a strictly newer exact Brain-authored revision on clean fast-forward current main;
+      it cannot select/route a revision itself or cross TASK/Executor/repository/pin/source
+      authority boundaries.
   - id: AC4
     condition: >
-      Recovery transactionality is fail-closed: before the supersession commit point the
-      old edge remains active; after commit, old/replacement evidence is mutually bound
-      and complete. Partial/orphaned state, duplicate/different replay, concurrency,
-      cycles or one-sided linkage cannot deactivate the old edge or grant two successors.
+      Before supersession commit the old edge remains active; after commit replacement
+      evidence is complete and mutually bound. Partial/orphaned/concurrent/cyclic or
+      conflicting recovery cannot create an authority gap, deactivate the old edge or
+      grant two successors.
   - id: AC5
     condition: >
-      Recovery rejects any prior edge with a bound RUN/completed marker, any changed
-      repository/pin/TASK/Executor/source identity, non-legacy installed generation,
-      arbitrary/unactivated target or conflicting migration history before RUN/Executor
-      creation; exact replay reconciles without another authority edge.
+      Exact recovery replay is idempotent; edges with a bound RUN/completed marker and
+      stale/dirty/non-fast-forward/pin-changed/non-legacy states reject before new
+      RUN/Executor creation.
   - id: AC6
     condition: >
-      A valid superseded edge is historical rather than active for migration gating, while
-      the replacement edge retains existing consumed/terminal/idempotent reconciliation
-      semantics and permits at most one matching Runtime RUN and one Executor invocation.
+      The replacement target retains existing consumed/terminal reconciliation and admits
+      at most one exact Runtime RUN/Executor invocation for the replacement TASK.
   - id: AC7
     condition: >
-      Completed steady state remains generation-exact: ordinary no-migration admission is
-      valid only when installed generation equals the final non-superseded target.
-      Documentation/tests state that downstream source-bootstrap adoption first pins to
-      that exact consumer target; any later newer pin uses ordinary migrate-primary.
+      Completed steady state remains generation-exact and documented BP-9 choreography
+      requires the first downstream adoption pin to equal the exact bootstrap consumer
+      target; later upstream movement uses separate migrate-primary.
   - id: AC8
     condition: >
-      Historical bootstrap-primary/TASK-198 behavior, source-bootstrap v2 identity,
-      activation separation, Runtime verification/terminal authority and roadmap state
-      are preserved, and focused tests plus git diff --check pass with zero unresolved
-      items.
+      TASK-198 behavior, two-stage activation, Runtime verification/terminal authority,
+      frozen Kernel boundaries and roadmap state remain unchanged; tests/test_operator.py
+      and git diff --check pass with zero unresolved items.
 
 verification:
   policy: minimum-sufficient-v1
