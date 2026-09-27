@@ -1,0 +1,56 @@
+review_id: REVIEW-191-001
+reviewed_sha: 89404bb52e176a5baa12d0df710762391399648e
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: FAIL
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: FAIL
+findings:
+  - id: FINDING-191-001
+    basis: AC3
+    action: CODE_FIX
+    location: src/aios_renew/gemini_reviewer_transport.py::GeminiReviewerTransport.__call__ and tests/test_gemini_reviewer_transport.py::assert_isolated
+    issue: >-
+      The Reviewer transport hard-codes "--mode plan" together with
+      "--disable-slash-commands" and the focused test asserts that combination.
+      This conflicts with the repository's reviewed Antigravity zero-mutation
+      native contract. TASK-126 deliberately removed "--mode plan" from
+      read-only Antigravity invocations after the exact RUN-121-005 failure
+      family produced "warning: --mode plan has no effect while slash command
+      expansion is disabled" and empty stdout; current Antigravity regression
+      coverage explicitly requires read-only commands to contain no "--mode"
+      and no "plan". TASK-191 therefore reintroduces a known contradictory
+      native command shape instead of using the established read-only surface.
+    expected: >-
+      Keep the dedicated Reviewer transport independent from the Executor
+      adapter, but align its native read-only mechanics with the already-reviewed
+      Antigravity contract: omit "--mode" entirely for this zero-mutation call,
+      retain no accept-edits/dangerous permission flags, preserve the isolated
+      workspace, fixed Gemini model, explicit effort, bounded schema/output/time
+      mechanics and exact one-call semantics, and update focused regression
+      assertions to require "--mode" absent and "plan" absent. Do not widen into
+      Executor adapter/profile authority or perform a real provider invocation.
+  - id: FINDING-191-002
+    basis: AC8
+    action: CODE_FIX
+    location: tests/test_gemini_reviewer_transport.py and BP8-P1 readiness claim
+    issue: >-
+      AC8 claims the reviewed offline path is ready for the separately authorized
+      BP8-P2 real call, but its native command currently encodes the exact
+      read-only plan-mode combination that canonical TASK-126 removed after a
+      production-shaped no-output failure. The green injected-runner suite cannot
+      establish P2 readiness while it positively asserts that known-incompatible
+      command shape.
+    expected: >-
+      After correcting FINDING-191-001, preserve all existing offline isolation,
+      failure-family, P3-composition, fingerprint and no-real-provider coverage,
+      and make the focused suite assert the current canonical Antigravity
+      zero-mutation command invariant rather than the obsolete plan mode. P1 may
+      claim readiness for P2 only after that corrected command shape passes
+      Runtime-owned focused verification.
