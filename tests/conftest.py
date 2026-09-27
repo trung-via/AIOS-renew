@@ -2,9 +2,50 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 
 import pytest
+
+
+_MAX_UNCHANGED_PARAMETER_LENGTH = 512
+_MAX_NODEID_LENGTH = 8192
+
+
+def pytest_make_parametrize_id(
+    config: pytest.Config, val: object, argname: str
+) -> str | None:
+    """Keep pytest's usual ids except for oversized text and byte values."""
+
+    if isinstance(val, str):
+        if len(val) <= _MAX_UNCHANGED_PARAMETER_LENGTH:
+            return None
+        kind = "str"
+        content = val.encode("utf-8", errors="surrogatepass")
+    elif isinstance(val, bytes):
+        if len(val) <= _MAX_UNCHANGED_PARAMETER_LENGTH:
+            return None
+        kind = "bytes"
+        content = val
+    else:
+        return None
+
+    return f"{kind}-len{len(val)}-sha256-{hashlib.sha256(content).hexdigest()}"
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Reject final nodeids too long for the current-test environment value."""
+
+    for index, item in enumerate(items):
+        nodeid = item.nodeid
+        if len(nodeid) > _MAX_NODEID_LENGTH:
+            digest = hashlib.sha256(
+                nodeid.encode("utf-8", errors="surrogatepass")
+            ).hexdigest()
+            raise pytest.UsageError(
+                "collected nodeid exceeds 8192 characters: "
+                f"item index {index}, length {len(nodeid)}, sha256 {digest}"
+            )
 
 
 @pytest.fixture(scope="session", autouse=True)
