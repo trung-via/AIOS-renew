@@ -3823,11 +3823,14 @@ def _migration_marker(root: Path, fingerprint: str) -> Path:
     return runtime_state_root(root) / "migration-handoffs" / f"{fingerprint}.json"
 
 
-def _migration_record(intent: Mapping[str, Any], fingerprint: str) -> dict[str, Any]:
+def _migration_record(
+    intent: Mapping[str, Any], fingerprint: str, bundle: str
+) -> dict[str, Any]:
     return {
         "format": "AIOS_MIGRATION_HANDOFF",
         "version": 1,
         "fingerprint": fingerprint,
+        "bundle": bundle,
         **{key: intent[key] for key in (
             "source_generation_sha", "target_generation_sha", "repository",
             "source_control_sha", "target_control_sha", "pin_path",
@@ -3836,6 +3839,127 @@ def _migration_record(intent: Mapping[str, Any], fingerprint: str) -> dict[str, 
         )},
         "target_url_sha256": hashlib.sha256(intent["target_url"].encode("utf-8")).hexdigest(),
     }
+
+
+def _migration_bundle(
+    marker: Path, record: Mapping[str, Any], intent: Mapping[str, Any]
+) -> tuple[Path, Path]:
+    """Resolve only the durable source and intent bound before handoff."""
+
+    fingerprint = _migration_fingerprint(intent)
+    if not isinstance(record, Mapping):
+        raise OperatorError("migration handoff record mismatch")
+    bundle_name = record.get("bundle")
+    if (not isinstance(bundle_name, str)
+            or not re.fullmatch(rf"{fingerprint}-[a-zA-Z0-9_-]+", bundle_name)
+            or record != _migration_record(intent, fingerprint, bundle_name)):
+        raise OperatorError("migration handoff record mismatch")
+    bundle = marker.parent / bundle_name
+    if bundle.resolve().parent != marker.parent.resolve():
+        raise OperatorError("migration handoff bundle escapes runtime state")
+    bound_intent = bundle / "intent.json"
+    try:
+        stored_intent = _exact_migration_intent(
+            json.loads(bound_intent.read_text(encoding="utf-8"))
+        )
+    except (OSError, ValueError, OperatorError) as exc:
+        raise OperatorError("migration bound intent is unavailable or invalid") from exc
+    if stored_intent != intent:
+        raise OperatorError("migration bound intent mismatch")
+    target = bundle / "source"
+    if (_git(target, "rev-parse", "HEAD") != intent["target_generation_sha"]
+            or _git(target, "status", "--porcelain")
+            or not (target / "src" / "aios_renew" / "operator.py").is_file()):
+        raise OperatorError("migration bound target source mismatch")
+    return bound_intent, target
+
+
+def _migration_run_terminal(root: Path, intent: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    """Identify the one admitted migration RUN without creating another RUN."""
+
+    state = runtime_paths(root)
+    matches: list[str] = []
+    for path in state.runs.glob("*.json"):
+        try:
+            run = _run_from_data(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise OperatorError("invalid migration RUN record") from exc
+        if (run.base_sha == intent["target_control_sha"]
+                and run.task.id == intent["task_id"]
+                and run.task.revision == intent["task_revision"]
+                and run.executor == intent["executor"]
+                and Path(run.workspace).resolve() == root.resolve()):
+            matches.append(run.run_id)
+    if len(matches) > 1:
+        raise OperatorError("ambiguous migration RUN history")
+    if not matches:
+        return None, None
+    run_id = matches[0]
+    result = (state.results / f"{run_id}.json").is_file()
+    failure = (state.failures / f"{run_id}.json").is_file()
+    if result and failure:
+        raise OperatorError("migration RUN has conflicting terminal state")
+    if result:
+        try:
+            payload = json.loads((state.results / f"{run_id}.json").read_text(encoding="utf-8"))
+            canonical = validate_result(payload["result"])
+            if not re.fullmatch(r"[0-9a-f]{40}", canonical.head_sha):
+                raise ValueError("invalid RESULT head")
+        except (OSError, ValueError, KeyError, TypeError, ArtifactValidationError) as exc:
+            raise OperatorError("invalid migration RESULT artifact") from exc
+    if failure:
+        try:
+            payload = json.loads((state.failures / f"{run_id}.json").read_text(encoding="utf-8"))
+            if (payload["kind"] != "FAILURE" or payload["run_id"] != run_id
+                    or payload["task"] != {"id": intent["task_id"], "revision": intent["task_revision"]}
+                    or payload["executor"] != intent["executor"]
+                    or payload["base_sha"] != intent["target_control_sha"]):
+                raise ValueError("FAILURE identity mismatch")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise OperatorError("invalid migration FAILURE artifact") from exc
+    return run_id, "RESULT" if result else "FAILURE" if failure else None
+
+
+def _complete_migration(marker: Path, fingerprint: str) -> None:
+    completed = marker.with_suffix(".completed")
+    if completed.is_file():
+        if completed.read_text(encoding="utf-8") != fingerprint:
+            raise OperatorError("migration completion marker mismatch")
+        return
+    _write_migration_atomic(completed, fingerprint)
+
+
+def _write_migration_atomic(path: Path, content: str) -> None:
+    """Publish a complete handoff transition in one filesystem rename."""
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent,
+        prefix=f"{path.stem}-", suffix=".pending", delete=False,
+    ) as stream:
+        pending = Path(stream.name)
+        stream.write(content)
+        stream.flush()
+        os.fsync(stream.fileno())
+    try:
+        os.replace(pending, path)
+    finally:
+        pending.unlink(missing_ok=True)
+
+
+def _launch_migration_target(
+    root: Path, marker: Path, bound_intent: Path, target: Path,
+    runner: NativeRunner,
+) -> int:
+    """Transport the existing handoff; all target entry is serialized there."""
+
+    env = dict(os.environ)
+    checkout_source = str((root / "src").resolve())
+    inherited = [part for part in env.get("PYTHONPATH", "").split(os.pathsep)
+                 if part and str(Path(part).resolve()) != checkout_source]
+    env["PYTHONPATH"] = os.pathsep.join([str(target / "src"), *inherited])
+    command = [sys.executable, "-m", "aios_renew.operator", "migrate-primary",
+               str(bound_intent), "--accept-handoff", str(marker)]
+    return runner(command, env=env).returncode
 
 
 def _require_no_active_migration(root: Path) -> None:
@@ -3906,8 +4030,22 @@ def _require_migration_target(root: Path, fingerprint: str) -> dict[str, Any]:
             or Path(record.get("repository", "")).resolve() != root.resolve()
             or consumed != fingerprint):
         raise OperatorError("migration target handoff mismatch")
+    bundle_name = record.get("bundle")
+    if (not isinstance(bundle_name, str)
+            or not re.fullmatch(rf"{fingerprint}-[a-zA-Z0-9_-]+", bundle_name)):
+        raise OperatorError("migration target handoff mismatch")
+    bundle_path = marker.parent / bundle_name
+    if bundle_path.resolve().parent != marker.parent.resolve():
+        raise OperatorError("migration target handoff mismatch")
+    try:
+        intent = _exact_migration_intent(json.loads(
+            (bundle_path / "intent.json").read_text(encoding="utf-8")
+        ))
+    except (OSError, ValueError, OperatorError) as exc:
+        raise OperatorError("migration bound intent is unavailable or invalid") from exc
+    _, target = _migration_bundle(marker, record, intent)
     target_source = Path(__file__).resolve().parent.parent.parent
-    if _git(target_source, "rev-parse", "HEAD") != target_sha:
+    if target_source != target.resolve() or _git(target_source, "rev-parse", "HEAD") != target_sha:
         raise OperatorError("running source differs from admitted migration target")
     if marker.with_suffix(".completed").exists():
         raise OperatorError("migration handoff already completed")
@@ -4002,37 +4140,61 @@ def migrate_primary(
     if handoff_path is not None:
         if Path(handoff_path).resolve() != marker.resolve():
             raise OperatorError("migration handoff marker mismatch")
-        if not (marker.is_file() and json.loads(marker.read_text(encoding="utf-8"))
-                == _migration_record(intent, fingerprint)):
-            raise OperatorError("migration handoff record mismatch")
-        source_root = Path(__file__).resolve().parent.parent.parent
-        if _git(source_root, "rev-parse", "HEAD") != intent["target_generation_sha"]:
-            raise OperatorError("target source does not match admitted generation")
-        consumed = marker.with_suffix(".consumed")
-        try:
-            with consumed.open("x", encoding="utf-8") as stream:
-                stream.write(fingerprint)
-        except FileExistsError as exc:
-            raise OperatorError("migration handoff already consumed") from exc
-        with RepositoryLock(runtime_paths(root).lock):
-            _check_migration_control(root, intent)
-            _git(root, "merge", "--ff-only", intent["target_control_sha"])
-            if _git(root, "rev-parse", "HEAD") != intent["target_control_sha"] or _git(root, "status", "--porcelain"):
-                raise OperatorError("repository-integrity BLOCKED: migration fast-forward state is unsafe")
-        summary = run_task(
-            intent["task_id"], executor=intent["executor"], repo=root,
-            synchronize=False, preflight_sha=intent["target_control_sha"],
-            task_revision=intent["task_revision"], task_blob_sha=intent["task_blob_sha"],
-            task_commit_sha=intent["task_commit_sha"],
-            _migration_handoff=fingerprint,
-        )
-        try:
-            with marker.with_suffix(".completed").open("x", encoding="utf-8") as stream:
-                stream.write(fingerprint)
-        except FileExistsError as exc:
-            raise OperatorError("migration handoff completion already recorded") from exc
-        print(summary.render())
-        return 0
+        with RepositoryLock(marker.with_suffix(".lock")):
+            try:
+                record = json.loads(marker.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise OperatorError("migration handoff record is unavailable") from exc
+            _, target = _migration_bundle(marker, record, intent)
+            source_root = Path(__file__).resolve().parent.parent.parent
+            if source_root != target.resolve():
+                raise OperatorError("running source differs from bound migration target")
+            if _git(source_root, "rev-parse", "HEAD") != intent["target_generation_sha"]:
+                raise OperatorError("target source does not match admitted generation")
+            consumed = marker.with_suffix(".consumed")
+            if consumed.is_file():
+                if consumed.read_text(encoding="utf-8") != fingerprint:
+                    raise OperatorError("migration consumed marker mismatch")
+            else:
+                _write_migration_atomic(consumed, fingerprint)
+            run_id, terminal = _migration_run_terminal(root, intent)
+            if run_id is not None:
+                if terminal is None:
+                    raise OperatorError(f"migration RUN {run_id} is active; reconcile its persisted state")
+                _complete_migration(marker, fingerprint)
+                return 0 if terminal == "RESULT" else 1
+            if marker.with_suffix(".completed").exists():
+                raise OperatorError("migration completion has no bound RUN")
+            with RepositoryLock(runtime_paths(root).lock):
+                head = _git(root, "rev-parse", "HEAD")
+                if head == intent["source_control_sha"]:
+                    _check_migration_control(root, intent)
+                    _git(root, "merge", "--ff-only", intent["target_control_sha"])
+                elif head != intent["target_control_sha"]:
+                    raise OperatorError("migration control HEAD differs from admitted handoff")
+                if (_git(root, "rev-parse", "HEAD") != intent["target_control_sha"]
+                        or _git(root, "status", "--porcelain")
+                        or _git(root, "symbolic-ref", "--quiet", "--short", "HEAD") != "main"):
+                    raise OperatorError("repository-integrity BLOCKED: migration fast-forward state is unsafe")
+            try:
+                summary = run_task(
+                    intent["task_id"], executor=intent["executor"], repo=root,
+                    synchronize=False, preflight_sha=intent["target_control_sha"],
+                    task_revision=intent["task_revision"], task_blob_sha=intent["task_blob_sha"],
+                    task_commit_sha=intent["task_commit_sha"],
+                    _migration_handoff=fingerprint,
+                )
+            except BaseException:
+                run_id, terminal = _migration_run_terminal(root, intent)
+                if terminal is not None:
+                    _complete_migration(marker, fingerprint)
+                raise
+            run_id, terminal = _migration_run_terminal(root, intent)
+            if terminal != "RESULT":
+                raise OperatorError("migration execution returned without a terminal RESULT")
+            _complete_migration(marker, fingerprint)
+            print(summary.render())
+            return 0
 
     admission = _new_admission(
         "PRIMARY", phase="MIGRATION_PRE_HANDOFF", reason_code="MIGRATION_PRE_HANDOFF_REJECTED",
@@ -4041,37 +4203,36 @@ def migrate_primary(
     try:
         if _installed_generation_sha() != intent["source_generation_sha"]:
             raise OperatorError("migration source generation mismatch")
+        if marker.is_file():
+            record = json.loads(marker.read_text(encoding="utf-8"))
+            bound_intent, target = _migration_bundle(marker, record, intent)
+            return _launch_migration_target(root, marker, bound_intent, target, runner)
         _require_no_active_migration(root)
         with tempfile.TemporaryDirectory(prefix="aios-target-generation-") as temporary:
             control = Path(temporary) / "control"
             _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags", str(root), str(control))
             with RepositoryLock(runtime_paths(root).lock):
                 _check_migration_control(root, intent, transport=control)
-            target = Path(temporary) / "target"
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            bundle = Path(tempfile.mkdtemp(prefix=f"{fingerprint}-", dir=marker.parent))
+            target = bundle / "source"
             _git(root, "clone", "--no-checkout", "--no-tags", intent["target_url"], str(target))
             _git(target, "checkout", "--detach", intent["target_generation_sha"])
             if _git(target, "rev-parse", "HEAD") != intent["target_generation_sha"] or _git(target, "status", "--porcelain"):
                 raise OperatorError("target generation checkout mismatch")
             if not (target / "src" / "aios_renew" / "operator.py").is_file():
                 raise OperatorError("target generation has no operator source")
-            bound_intent = Path(temporary) / "intent.json"
+            bound_intent = bundle / "intent.json"
             bound_intent.write_text(json.dumps(intent, sort_keys=True), encoding="utf-8")
             with RepositoryLock(runtime_paths(root).lock):
                 _check_migration_control(root, intent, transport=control)
-                marker.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    with marker.open("x", encoding="utf-8") as stream:
-                        json.dump(_migration_record(intent, fingerprint), stream, sort_keys=True)
-                except FileExistsError as exc:
-                    raise OperatorError("migration handoff already exists") from exc
-            env = dict(os.environ)
-            checkout_source = str((root / "src").resolve())
-            inherited = [part for part in env.get("PYTHONPATH", "").split(os.pathsep)
-                         if part and str(Path(part).resolve()) != checkout_source]
-            env["PYTHONPATH"] = os.pathsep.join([str(target / "src"), *inherited])
-            command = [sys.executable, "-m", "aios_renew.operator", "migrate-primary",
-                       str(bound_intent), "--accept-handoff", str(marker)]
-            return runner(command, env=env).returncode
+                if marker.exists():
+                    raise OperatorError("migration handoff already exists")
+                _write_migration_atomic(
+                    marker,
+                    json.dumps(_migration_record(intent, fingerprint, bundle.name), sort_keys=True),
+                )
+            return _launch_migration_target(root, marker, bound_intent, target, runner)
     except BaseException as exc:
         if not marker.exists():
             _persist_and_transport_admission_failure(root, admission=admission, failure=exc)

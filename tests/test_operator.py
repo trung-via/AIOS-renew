@@ -9248,6 +9248,12 @@ def test_migration_exact_handoff_and_replay_rejection(
     assert len(observed) == 1
     marker = Path(observed[0][0][-1])
     assert marker.is_file()
+    bound_intent = Path(observed[0][0][-3])
+    assert bound_intent.is_file()
+    assert json.loads(bound_intent.read_text(encoding="utf-8")) == intent
+    assert operator_module.migrate_primary(intent_path, runner=child) == 0
+    assert len(observed) == 2
+    assert observed[1][0] == observed[0][0]
     assert not list(runtime_paths(repo).runs.glob("*.json"))
     with pytest.raises(OperatorError, match="superseded"):
         operator_module._require_no_active_migration(repo)
@@ -9259,7 +9265,8 @@ def test_migration_exact_handoff_and_replay_rejection(
             repo, operator_module._migration_fingerprint(intent)
         )
 
-    monkeypatch.setattr(operator_module, "__file__", str(target_source / "src" / "aios_renew" / "operator.py"))
+    bound_target = Path(observed[0][1]["PYTHONPATH"].split(operator_module.os.pathsep)[0])
+    monkeypatch.setattr(operator_module, "__file__", str(bound_target / "aios_renew" / "operator.py"))
     admitted = []
 
     def admitted_run(*args, **kwargs):
@@ -9274,6 +9281,17 @@ def test_migration_exact_handoff_and_replay_rejection(
                 task_revision=2, task_blob_sha=intent["task_blob_sha"],
                 task_commit_sha=intent["task_commit_sha"],
             )
+        run_id = "RUN-101-001"
+        state = runtime_paths(repo)
+        (state.runs / f"{run_id}.json").write_text(json.dumps({
+            "run_id": run_id, "task": {"id": intent["task_id"], "revision": 2},
+            "executor": "codex", "base_sha": intent["target_control_sha"],
+            "workspace": str(repo), "status": "ACTIVE",
+        }), encoding="utf-8")
+        (state.results / f"{run_id}.json").write_text(json.dumps({
+            "result": {"head_sha": intent["target_control_sha"], "claims": [],
+                       "changed_files": [], "unresolved": []}, "evidence": [],
+        }), encoding="utf-8")
         return SimpleNamespace(render=lambda: "ADMITTED")
 
     monkeypatch.setattr(operator_module, "run_task", admitted_run)
@@ -9288,9 +9306,106 @@ def test_migration_exact_handoff_and_replay_rejection(
     assert git(repo, "rev-parse", "HEAD") == intent["target_control_sha"]
     assert admitted[0][1]["task_blob_sha"] == intent["task_blob_sha"]
     assert admitted[0][1]["_migration_handoff"] == operator_module._migration_fingerprint(intent)
-    with pytest.raises(OperatorError, match="already consumed"):
-        operator_module.migrate_primary(intent_path, handoff_path=marker)
+    assert operator_module.migrate_primary(intent_path, handoff_path=marker) == 0
     assert len(admitted) == 1
+
+
+@pytest.mark.parametrize("control_advanced", [False, True])
+def test_migration_resumes_consumed_handoff_before_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, control_advanced: bool
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: intent["source_generation_sha"])
+    intent_path = tmp_path / "intent.json"
+    intent_path.write_text(json.dumps(intent), encoding="utf-8")
+    commands = []
+
+    def child(command, **kwargs):
+        commands.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    assert operator_module.migrate_primary(intent_path, runner=child) == 0
+    marker = Path(commands[0][0][-1])
+    marker.with_suffix(".consumed").write_text(marker.stem, encoding="utf-8")
+    if control_advanced:
+        git(repo, "fetch", "origin", "main")
+        git(repo, "merge", "--ff-only", intent["target_control_sha"])
+    bound_target = Path(commands[0][1]["PYTHONPATH"].split(operator_module.os.pathsep)[0])
+    monkeypatch.setattr(operator_module, "__file__", str(bound_target / "aios_renew" / "operator.py"))
+    calls = []
+
+    def admitted_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        run_id = "RUN-101-001"
+        state = runtime_paths(repo)
+        (state.runs / f"{run_id}.json").write_text(json.dumps({
+            "run_id": run_id, "task": {"id": intent["task_id"], "revision": 2},
+            "executor": "codex", "base_sha": intent["target_control_sha"],
+            "workspace": str(repo), "status": "ACTIVE",
+        }), encoding="utf-8")
+        (state.results / f"{run_id}.json").write_text(json.dumps({
+            "result": {"head_sha": intent["target_control_sha"], "claims": [],
+                       "changed_files": [], "unresolved": []}, "evidence": [],
+        }), encoding="utf-8")
+        return SimpleNamespace(render=lambda: "ADMITTED")
+
+    monkeypatch.setattr(operator_module, "run_task", admitted_run)
+    assert operator_module.migrate_primary(intent_path, handoff_path=marker) == 0
+    assert len(calls) == 1
+    assert git(repo, "rev-parse", "HEAD") == intent["target_control_sha"]
+    assert marker.with_suffix(".completed").read_text(encoding="utf-8") == marker.stem
+
+
+@pytest.mark.parametrize("terminal, expected", [(None, None), ("RESULT", 0), ("FAILURE", 1)])
+def test_migration_reconciles_reserved_run_without_executor_reentry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    terminal: str | None, expected: int | None,
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: intent["source_generation_sha"])
+    intent_path = tmp_path / "intent.json"
+    intent_path.write_text(json.dumps(intent), encoding="utf-8")
+    commands = []
+
+    def child(command, **kwargs):
+        commands.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    assert operator_module.migrate_primary(intent_path, runner=child) == 0
+    marker = Path(commands[0][0][-1])
+    marker.with_suffix(".consumed").write_text(marker.stem, encoding="utf-8")
+    git(repo, "fetch", "origin", "main")
+    git(repo, "merge", "--ff-only", intent["target_control_sha"])
+    state = runtime_paths(repo)
+    run_id = "RUN-101-001"
+    (state.runs / f"{run_id}.json").write_text(json.dumps({
+        "run_id": run_id, "task": {"id": intent["task_id"], "revision": 2},
+        "executor": "codex", "base_sha": intent["target_control_sha"],
+        "workspace": str(repo), "status": "ACTIVE",
+    }), encoding="utf-8")
+    if terminal is not None:
+        path = state.results if terminal == "RESULT" else state.failures
+        artifact = (
+            {"result": {"head_sha": intent["target_control_sha"], "claims": [],
+                        "changed_files": [], "unresolved": []}, "evidence": []}
+            if terminal == "RESULT" else
+            {"kind": "FAILURE", "run_id": run_id,
+             "task": {"id": intent["task_id"], "revision": 2},
+             "executor": "codex", "base_sha": intent["target_control_sha"]}
+        )
+        (path / f"{run_id}.json").write_text(json.dumps(artifact), encoding="utf-8")
+    bound_target = Path(commands[0][1]["PYTHONPATH"].split(operator_module.os.pathsep)[0])
+    monkeypatch.setattr(operator_module, "__file__", str(bound_target / "aios_renew" / "operator.py"))
+    invocations = []
+    monkeypatch.setattr(operator_module, "run_task", lambda *a, **k: invocations.append(a))
+    if terminal is None:
+        with pytest.raises(OperatorError, match=f"migration RUN {run_id} is active"):
+            operator_module.migrate_primary(intent_path, handoff_path=marker)
+        assert not marker.with_suffix(".completed").exists()
+    else:
+        assert operator_module.migrate_primary(intent_path, handoff_path=marker) == expected
+        assert marker.with_suffix(".completed").read_text(encoding="utf-8") == marker.stem
+    assert invocations == []
 
 
 def test_migration_stale_target_fails_before_handoff_or_run(
