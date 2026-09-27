@@ -9146,6 +9146,217 @@ def test_continue_pre_observation_preserves_non_main_branch_failure(
     assert not any(args and args[0] in prohibited for args in git_calls)
 
 
+def _migration_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
+    """Two unrelated Git repositories model control and exact package source."""
+
+    target_source = tmp_path / "reviewed-generation"
+    target_source.mkdir()
+    git(target_source, "init", "-b", "main")
+    git(target_source, "config", "user.name", "Migration Test")
+    git(target_source, "config", "user.email", "migration@example.invalid")
+    operator_path = target_source / "src" / "aios_renew" / "operator.py"
+    operator_path.parent.mkdir(parents=True)
+    operator_path.write_text("# exact reviewed target\n", encoding="utf-8")
+    git(target_source, "add", ".")
+    git(target_source, "commit", "-m", "reviewed generation")
+    target_generation = git(target_source, "rev-parse", "HEAD")
+
+    repo = make_repo(tmp_path / "control")
+    source_generation = "1" * 40
+    source_control = publish_upstream(
+        repo, {"AIOS_PIN": f"aios-renew @ {source_generation}\n"}, "active pin"
+    )
+    git(repo, "fetch", "origin", "main")
+    git(repo, "merge", "--ff-only", "origin/main")
+    target_task = TASK_SOURCE.replace("revision: 1", "revision: 2")
+    target_control = publish_upstream(
+        repo,
+        {
+            "AIOS_PIN": f"aios-renew @ {target_generation}\n",
+            ".ai/tasks/TASK-101.yaml": target_task,
+            "src/aios_renew/target_marker.py": "# newer package source\n",
+        },
+        "reviewed downstream migration",
+    )
+    publisher = repo.parent / "publisher"
+    intent = {
+        "version": 1,
+        "source_generation_sha": source_generation,
+        "target_generation_sha": target_generation,
+        "target_url": str(target_source),
+        "repository": str(repo.resolve()),
+        "source_control_sha": source_control,
+        "target_control_sha": target_control,
+        "pin_path": "AIOS_PIN",
+        "source_pin_blob_sha": git(repo, "rev-parse", f"{source_control}:AIOS_PIN"),
+        "target_pin_blob_sha": git(publisher, "rev-parse", f"{target_control}:AIOS_PIN"),
+        "task_id": "TASK-101",
+        "task_revision": 2,
+        "task_blob_sha": git(publisher, "rev-parse", f"{target_control}:.ai/tasks/TASK-101.yaml"),
+        "task_commit_sha": target_control,
+        "executor": "codex",
+    }
+    return repo, target_source, intent
+
+
+def test_restart_keeps_active_source_when_control_moves_task_and_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    package = repo / "src" / "aios_renew"
+    package.mkdir(parents=True)
+    (package / "operator.py").write_text("# generation N\n", encoding="utf-8")
+    monkeypatch.setattr(operator_module, "__file__", str(package / "operator.py"))
+    observed = []
+    with operator_module._active_restart_source(repo) as snapshot:
+        assert snapshot is not None
+        (package / "operator.py").write_text("# synchronized N+1\n", encoding="utf-8")
+        monkeypatch.setenv("PYTHONPATH", str(repo / "src"))
+
+        def child(command, **kwargs):
+            path = Path(kwargs["env"]["PYTHONPATH"].split(operator_module.os.pathsep)[0])
+            observed.append((path, (path / "aios_renew" / "operator.py").read_text()))
+            assert str(repo / "src") not in kwargs["env"]["PYTHONPATH"]
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+
+        with operator_module._restart_source_environment(snapshot):
+            assert operator_module._restart_primary_invocation(repo, runner=child) == 0
+    assert observed[0][1] == "# generation N\n"
+    assert not observed[0][0].exists()
+
+
+def test_migration_exact_handoff_and_replay_rejection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, target_source, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: intent["source_generation_sha"])
+    intent_path = tmp_path / "intent.json"
+    intent_path.write_text(json.dumps(intent), encoding="utf-8")
+    observed = []
+
+    def child(command, **kwargs):
+        observed.append((command, kwargs["env"]))
+        package_root = Path(kwargs["env"]["PYTHONPATH"].split(operator_module.os.pathsep)[0])
+        assert git(package_root.parent, "rev-parse", "HEAD") == intent["target_generation_sha"]
+        assert str(repo / "src") not in kwargs["env"]["PYTHONPATH"]
+        assert git(repo, "rev-parse", "HEAD") == intent["source_control_sha"]
+        assert git(repo, "rev-parse", "origin/main") == intent["source_control_sha"]
+        assert not list(runtime_paths(repo).runs.glob("*.json"))
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    assert operator_module.migrate_primary(intent_path, runner=child) == 0
+    assert len(observed) == 1
+    marker = Path(observed[0][0][-1])
+    assert marker.is_file()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    with pytest.raises(OperatorError, match="superseded"):
+        operator_module._require_no_active_migration(repo)
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: intent["target_generation_sha"])
+    with pytest.raises(OperatorError, match="not completed"):
+        operator_module._require_no_active_migration(repo)
+    with pytest.raises(OperatorError, match="no consumed exact handoff"):
+        operator_module._require_migration_target(
+            repo, operator_module._migration_fingerprint(intent)
+        )
+
+    monkeypatch.setattr(operator_module, "__file__", str(target_source / "src" / "aios_renew" / "operator.py"))
+    admitted = []
+
+    def admitted_run(*args, **kwargs):
+        admitted.append((args, kwargs))
+        record = operator_module._require_migration_target(
+            repo, operator_module._migration_fingerprint(intent)
+        )
+        with pytest.raises(OperatorError, match="differs from exact admitted TASK"):
+            operator_module._validate_migration_execution(
+                record, task_id="TASK-999", executor="codex", synchronize=False,
+                preflight_sha=intent["target_control_sha"], dispatch_id=None,
+                task_revision=2, task_blob_sha=intent["task_blob_sha"],
+                task_commit_sha=intent["task_commit_sha"],
+            )
+        return SimpleNamespace(render=lambda: "ADMITTED")
+
+    monkeypatch.setattr(operator_module, "run_task", admitted_run)
+    assert operator_module.migrate_primary(intent_path, handoff_path=marker) == 0
+    assert marker.with_suffix(".completed").read_text(encoding="utf-8") == operator_module._migration_fingerprint(intent)
+    with pytest.raises(OperatorError, match="already completed"):
+        operator_module._require_migration_target(
+            repo, operator_module._migration_fingerprint(intent)
+        )
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: intent["target_generation_sha"])
+    operator_module._require_no_active_migration(repo)
+    assert git(repo, "rev-parse", "HEAD") == intent["target_control_sha"]
+    assert admitted[0][1]["task_blob_sha"] == intent["task_blob_sha"]
+    assert admitted[0][1]["_migration_handoff"] == operator_module._migration_fingerprint(intent)
+    with pytest.raises(OperatorError, match="already consumed"):
+        operator_module.migrate_primary(intent_path, handoff_path=marker)
+    assert len(admitted) == 1
+
+
+def test_migration_stale_target_fails_before_handoff_or_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: intent["source_generation_sha"])
+    intent["target_control_sha"] = "0" * 40
+    intent_path = tmp_path / "stale-intent.json"
+    intent_path.write_text(json.dumps(intent), encoding="utf-8")
+    calls = []
+    with pytest.raises(OperatorError, match="target control SHA is stale"):
+        operator_module.migrate_primary(intent_path, runner=lambda *a, **k: calls.append(a))
+    assert calls == []
+    assert git(repo, "rev-parse", "HEAD") == intent["source_control_sha"]
+    assert git(repo, "rev-parse", "origin/main") == intent["source_control_sha"]
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+    diagnostics = list(runtime_paths(repo).admission_failures.glob("*.json"))
+    assert diagnostics
+    record = json.loads(diagnostics[-1].read_text(encoding="utf-8"))
+    assert record["kind"] == "ADMISSION_FAILURE"
+    assert record["phase"] == "MIGRATION_PRE_HANDOFF"
+    assert record["executor_invoked"] is False
+
+
+def test_migration_rejects_wrong_target_source_before_handoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: intent["source_generation_sha"])
+    wrong = tmp_path / "wrong-generation"
+    wrong.mkdir()
+    git(wrong, "init", "-b", "main")
+    git(wrong, "config", "user.name", "Migration Test")
+    git(wrong, "config", "user.email", "migration@example.invalid")
+    (wrong / "README.md").write_text("different source\n", encoding="utf-8")
+    git(wrong, "add", ".")
+    git(wrong, "commit", "-m", "wrong generation")
+    intent["target_url"] = str(wrong)
+    intent_path = tmp_path / "wrong-target.json"
+    intent_path.write_text(json.dumps(intent), encoding="utf-8")
+    calls = []
+    with pytest.raises(OperatorError, match="Git command failed"):
+        operator_module.migrate_primary(intent_path, runner=lambda *a, **k: calls.append(a))
+    assert calls == []
+    assert git(repo, "rev-parse", "HEAD") == intent["source_control_sha"]
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+
+
+def test_migration_rejects_mismatched_installed_source_before_transport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _, intent = _migration_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: "f" * 40)
+    intent_path = tmp_path / "wrong-source.json"
+    intent_path.write_text(json.dumps(intent), encoding="utf-8")
+    with pytest.raises(OperatorError, match="source generation mismatch"):
+        operator_module.migrate_primary(intent_path)
+    assert git(repo, "rev-parse", "HEAD") == intent["source_control_sha"]
+    assert git(repo, "rev-parse", "origin/main") == intent["source_control_sha"]
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+
+
 def _continuation_presentation_result(**changes):
     values = {
         "task_id": "TASK-106",

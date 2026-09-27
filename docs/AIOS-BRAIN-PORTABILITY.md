@@ -448,6 +448,14 @@ Only after BP-8 PASS, offer the capability through an explicit reviewed downstre
 
 Exit gate: no downstream repository is silently retargeted to mutable AIOS-renew `main`.
 
+#### Reusable N-to-N+1 PRIMARY migration invariant
+
+A downstream remains under its exact installed generation N while the operator checks a reviewed `migrate-primary` intent. The versioned intent binds the imported installed distribution's immutable VCS commit, the exact target AIOS commit and source URL, the downstream repository path, its current and target control commits, its repository-owned pin artifact at both commits, and the downstream TASK id, revision, blob, authorization commit, and Executor. Missing, floating, stale, or conflicting identities fail before target authority. The target control commit must be the current upstream `main` and a fast-forward of the clean attached source control commit; the pin artifacts must name the corresponding exact generation. The exact TASK blob must exist at the target and match its ancestor authorization commit.
+
+The target AIOS source and fetched downstream target control are checked out in disposable transport at exact commits, without changing the persistent downstream checkout or its remote tracking ref. After all N-side checks pass, an exclusive persistent handoff record binds both generations, both control commits, the pin and TASK identity to the intent fingerprint. That record is the single authority transition: N is barred from further PRIMARY admission, and only the exact target source may consume the handoff once. The target then rechecks control identity, fast-forwards the persistent checkout, and admits the bound TASK through the existing PRIMARY Runtime and Executor boundary. Ordinary target-generation PRIMARY admission opens only after that exact handoff completes. A pre-handoff rejection invokes no Executor and creates no RUN; the operator records a typed admission failure where the repository identity is available. The disposable checkout is transport, never a second Runtime or lifecycle record.
+
+Ordinary PRIMARY synchronization may still fast-forward a clean `main` and restart once. Its restarted process imports the active package source; when that source is the mutable control checkout, the pre-sync package is snapshotted for the restart. Synchronized `.ai/tasks/*` and `src/aios_renew/*` cannot silently change implementation authority. The handoff contract applies to any downstream repository and any exact reviewed N-to-N+1 pair; it does not itself approve BP-9 adoption, change a downstream pin, or advance the roadmap. BP-9 still requires explicit reviewed downstream migration and repository-owned activation.
+
 ## 16. Dependency order
 
 ```text
