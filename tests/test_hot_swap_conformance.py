@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -24,7 +25,6 @@ from aios_renew.brain_provider import BrainAttemptError, MappingBrainProvider, a
 from aios_renew.brain_return_contract import parse_return_contract_registry, select_return_contract
 from aios_renew.decision_packet import DecisionPacketError, compile_decision_packet
 from aios_renew.operator import OperatorError, recover_primary, run_task, runtime_paths
-from aios_renew.operational_receipt import invoked_receipt
 from aios_renew.review_material import construct_review_material_package
 from aios_renew.review_transport import (
     resolve_remote_repair_authorization, resolve_remote_task_lifecycle,
@@ -412,28 +412,55 @@ def test_scenario_6_unrelated_main_uses_latest_base_with_same_task_blob(tmp_path
     assert git(repo, "rev-parse", f"{execution.base_sha}:.ai/tasks/TASK-101.yaml") == task_blob
 
 
-def test_scenario_7_operational_failure_is_pre_run_and_receipt_is_not_success(tmp_path: Path):
+def test_scenario_7_operational_failure_is_pre_aios_and_receipt_is_not_success(tmp_path: Path):
     repo = make_repo(tmp_path)
-    git(repo, "remote", "set-url", "origin", str(tmp_path / "missing.git"))
-    calls = []
-    def no_executor(*args, **kwargs):
-        calls.append(1)
-        raise AssertionError("executor invoked after failed synchronization")
-    with pytest.raises(OperatorError, match="upstream fetch failed"):
-        run_task(TASK_ID, executor="codex", repo=repo, native_runner=no_executor)
+    workflow = yaml.safe_load((ROOT / ".github/workflows/aios-self-hosted-wakeup.yml").read_text(
+        encoding="utf-8"))
+    steps = workflow["jobs"]["wakeup"]["steps"]
+    assert steps[0]["name"] == "Prepare exact transient control source"
+    assert "$controlSource wakeup" not in steps[0]["run"]
+    assert "$controlSource wakeup" in steps[1]["run"]
+    script = tmp_path / "preflight.ps1"
+    script.write_text(steps[0]["run"], encoding="utf-8")
+    receipt_path = tmp_path / "operational-receipt.json"
+    env = dict(os.environ)
+    env.update({
+        "AIOS_REPO_ROOT": "",
+        "AIOS_OPERATIONAL_RECEIPT_PATH": str(receipt_path),
+        "AIOS_DISPATCH_ID": "delivery-1",
+        "AIOS_TASK_ID": TASK_ID,
+        "AIOS_TASK_REVISION": "1",
+        "AIOS_TASK_BLOB_SHA": git(repo, "rev-parse", f"HEAD:.ai/tasks/{TASK_ID}.yaml"),
+        "AIOS_TASK_COMMIT_SHA": git(repo, "rev-parse", "HEAD"),
+        "AIOS_EXECUTOR": "codex",
+    })
+    started = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+         "-File", str(script)],
+        env=env, capture_output=True, text=True, check=False,
+    )
+    assert started.returncode != 0
+    assert "AIOS_REPO_ROOT repository variable is not set or empty" in (
+        started.stdout + started.stderr)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8-sig"))
+    assert receipt["format"] == "AIOS_OPERATIONAL_RECEIPT"
+    assert receipt["version"] == 2
+    assert receipt["kind"] == "OPERATIONAL_RECEIPT"
+    assert receipt["family"] == "PRIMARY"
+    assert receipt["delivery"] == {"kind": "dispatch_id", "id": "delivery-1"}
+    assert receipt["boundary"] == "OPERATIONAL_FAILED"
+    assert receipt["cause"] == {
+        "authority": "WORKFLOW", "phase": "PRE_AIOS",
+        "reason_code": "AIOS_REPO_ROOT_NOT_CONFIGURED",
+    }
+    assert receipt["run_created"] is False
+    assert receipt["executor_invoked"] is False
+    assert "run_id" not in receipt and "terminal_pointer" not in receipt
     state = runtime_paths(repo)
-    records = admission_failure_records(repo)
-    assert len(records) == 1
-    assert records[0]["format"] == "AIOS_ADMISSION_FAILURE"
-    assert records[0]["executor_invoked"] is False
-    assert calls == []
     assert not list(state.runs.glob("*.json"))
     assert not list(state.failures.glob("*.json"))
-    assert records[0]["phase"] == "PRIMARY_SYNCHRONIZATION"
-    receipt = invoked_receipt("PRIMARY", "delivery-1", selectors={"task_id": TASK_ID}).as_dict()
-    assert receipt["boundary"] == "AIOS_INVOKED"
-    assert receipt["run_created"] is False and receipt["executor_invoked"] is False
-    assert "terminal_pointer" not in receipt
+    assert admission_failure_records(repo) == []
+    assert resolve_remote_task_lifecycle(repo, task_id=TASK_ID, task_revision=1).terminals == ()
 
 
 def test_scenario_8_pre_handoff_failure_and_canonical_recovery_are_distinct(tmp_path: Path):
