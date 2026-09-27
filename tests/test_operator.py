@@ -766,6 +766,27 @@ constraints:
     return review, remediation
 
 
+def run_authorized_remediation(*args, **kwargs):
+    """Supply fixture authorization after valid lineage resolution for downstream tests."""
+
+    resolve = operator_module._resolve_remediation_admission
+
+    def resolve_with_authorization(*resolve_args, **resolve_kwargs):
+        resolved = resolve(*resolve_args, **resolve_kwargs)
+        assert resolved.remote_mode is False
+        assert "remediation_authorization_sha" not in resolve_kwargs["admission"]
+        resolve_kwargs["admission"]["remediation_authorization_sha"] = "a" * 40
+        return resolved
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            operator_module,
+            "_resolve_remediation_admission",
+            resolve_with_authorization,
+        )
+        return run_remediation(*args, **kwargs)
+
+
 def admission_failure_records(repo: Path) -> list[dict]:
     return [
         json.loads(path.read_text(encoding="utf-8"))
@@ -1098,7 +1119,7 @@ def test_narrow_remediation_uses_shared_completion_policy(
     review, remediation = remediation_contract(repo)
     runner = RemediationRunner(repo)
 
-    summary = run_remediation(
+    summary = run_authorized_remediation(
         "TASK-101",
         review=review,
         remediation=remediation,
@@ -1164,7 +1185,7 @@ def test_remediation_failure_preserves_exact_staged_unresolved(
     verification_calls = []
 
     with pytest.raises(OperatorError, match="unresolved"):
-        run_remediation(
+        run_authorized_remediation(
             "TASK-101",
             review=review,
             remediation=remediation,
@@ -1199,7 +1220,7 @@ def test_code_fix_remediation_rejects_noop_and_empty_commit_before_verification(
     message = "committed delta is empty" if empty_commit else "did not advance HEAD"
 
     with pytest.raises(OperatorError, match=message):
-        run_remediation(
+        run_authorized_remediation(
             "TASK-101",
             review=review,
             remediation=remediation,
@@ -1250,7 +1271,7 @@ constraints:
     )
     runner = StaticRemediationRunner(repo)
 
-    summary = run_remediation(
+    summary = run_authorized_remediation(
         "TASK-101",
         review=review,
         remediation=remediation,
@@ -1466,7 +1487,7 @@ def test_persisted_remediation_result_is_authoritative_lineage(
     repo = make_repo(tmp_path)
     primary_review, first_remediation = remediation_contract(repo)
     first_runner = RemediationRunner(repo)
-    first = run_remediation(
+    first = run_authorized_remediation(
         "TASK-101",
         review=primary_review,
         remediation=first_remediation,
@@ -1504,7 +1525,7 @@ constraints:
     )
     second_runner = RemediationRunner(repo)
 
-    second = run_remediation(
+    second = run_authorized_remediation(
         "TASK-101",
         review=delta_review,
         remediation=second_remediation,
@@ -1527,7 +1548,7 @@ def test_remediation_sha_mismatch_fails_before_executor(tmp_path: Path) -> None:
     calls = []
 
     with pytest.raises(OperatorError, match="current HEAD"):
-        run_remediation(
+        run_authorized_remediation(
             "TASK-101",
             review=review,
             remediation=remediation,
@@ -1654,7 +1675,7 @@ def test_repository_admission_failure_creates_no_execution_state(
     state = runtime_paths(repo)
 
     with pytest.raises(OperatorError, match=message) as raised:
-        run_remediation(
+        run_authorized_remediation(
             "TASK-101",
             review=review,
             remediation=remediation,
@@ -1758,7 +1779,7 @@ def test_foreign_run_during_owned_run_failure_does_not_suppress_failure(
         )
 
     with pytest.raises(OperatorError, match="invalid structural ResultPackage"):
-        run_remediation(
+        run_authorized_remediation(
             "TASK-101",
             review=review,
             remediation=remediation,
@@ -2788,7 +2809,7 @@ def test_remediation_repair_and_candidate_do_not_auto_sync_upstream_main(
     upstream_rem_sha = publish_upstream(
         repo_rem, {"ADVANCE.txt": "advance\n"}, "advance upstream main"
     )
-    summary_rem = run_remediation(
+    summary_rem = run_authorized_remediation(
         "TASK-101",
         review=review,
         remediation=remediation,
@@ -3067,7 +3088,7 @@ def test_remediation_keyboard_interrupt_preserves_exact_lineage(tmp_path: Path) 
     runner = InterruptingRunner(repo)
 
     with pytest.raises(KeyboardInterrupt):
-        run_remediation(
+        run_authorized_remediation(
             "TASK-101",
             review=review,
             remediation=remediation,
@@ -3639,7 +3660,7 @@ def test_successful_verification_subject_mutation_fails_closed(
             )
         else:
             review, remediation = remediation_contract(repo)
-            run_remediation(
+            run_authorized_remediation(
                 "TASK-101",
                 review=review,
                 remediation=remediation,
@@ -4487,7 +4508,7 @@ def test_remediation_run_transports_review_and_artifacts_refs(tmp_path: Path) ->
     repo = make_repo(tmp_path)
     review, remediation = remediation_contract(repo)
     runner = RemediationRunner(repo)
-    summary = run_remediation(
+    summary = run_authorized_remediation(
         "TASK-101",
         review=review,
         remediation=remediation,
@@ -7479,7 +7500,7 @@ def test_operator_admission_fails_closed_on_unsupported_executor(
     with pytest.raises(
         OperatorError, match="unsupported executor: unsupported-executor"
     ):
-        run_remediation(
+        run_authorized_remediation(
             "TASK-101",
             executor="unsupported-executor",
             finding_id="F1",
@@ -7543,7 +7564,7 @@ def test_remediation_admission_persists_exact_predecessor_identity_ac1(
     review, remediation = remediation_contract(repo, reviewed_sha=sha)
     runner = RemediationRunner(repo)
 
-    summary = run_remediation(
+    summary = run_authorized_remediation(
         "TASK-101",
         review=review,
         remediation=remediation,
@@ -8847,7 +8868,7 @@ def test_operator_prior_result_fails_closed_on_conflicting_or_alias_predecessor(
     review, remediation = remediation_contract(repo, reviewed_sha=sha)
     runner = RemediationRunner(repo)
 
-    summary = run_remediation(
+    summary = run_authorized_remediation(
         "TASK-101",
         review=review,
         remediation=remediation,
