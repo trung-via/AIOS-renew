@@ -1,0 +1,242 @@
+task_id: TASK-215
+revision: 1
+
+goal: >
+  Close the post-TASK-212 cross-generation PRIMARY portability deadlock exposed by
+  Python Agent TASK-259 without weakening existing migration, legacy source-bootstrap,
+  source-REPAIR, execution-profile, or lifecycle boundaries. Add one bounded,
+  explicitly-invoked source-control upgrade staging path for the exact currently
+  installed migration-capable generation
+  31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 to hand off one exact
+  AIOS_SOURCE_CONTROL_BOOTSTRAP_INTENT v2 to the already reviewed/source-published
+  TASK-212 target 44eee353eda376c9db8cd88d97184d3122651bf5, where the existing
+  target-side bootstrap-source-primary consumer owns RUN admission and execution.
+
+problem: >
+  Python Agent TASK-259 r1 was canonically authored to migrate its exact AIOS-renew
+  dependency from 31fd2482... to the reviewed TASK-212 source 44eee353..., but its
+  normal PRIMARY carrier failed before RUN creation and before Executor invocation.
+  Operational receipt and self-host logs show the installed 31fd2482 generation
+  attempted PRIMARY v3 profile-journal validation beneath the transient worker package
+  instead of the governed Python Agent repository, exactly the defect fixed by TASK-212.
+  Replaying ordinary PRIMARY cannot cross the defect. Existing migrate-primary also
+  cannot perform this source-control-producing migration because its v1 contract requires
+  an already-existing target_control_sha and target pin blob that name the new generation,
+  while TASK-259 itself is the authorized implementation that must create those downstream
+  changes. Existing bootstrap-source-primary can stage a source-control-producing handoff,
+  but its staging witness intentionally admits only a legacy installed generation without
+  migrate-primary capability. source-REPAIR is inapplicable because TASK-259 has no RUN or
+  FAILURE and its subject is not a completed failed source-bootstrap recovery.
+  The missing capability is therefore a narrow staging authority edge, not a second
+  Runtime, generic router, retry path, or change to TASK-212 semantics.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is exactly
+    6bb08c56db2f753c6fb7a1ba0a2bf07fac0176e8, the reviewed/published TASK-214
+    revision-2 documentation source.
+  - >
+    Exact source generation 31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 is the
+    reviewed/published TASK-202 consumer generation and remains migration-capable:
+    it contains migrate-primary and the existing source-control v2 handoff consumer.
+  - >
+    Exact target generation 44eee353eda376c9db8cd88d97184d3122651bf5 is the
+    reviewed/published TASK-212 source containing the governed-repository PRIMARY v3
+    profile-journal fix. REVIEW-212-002 is PRIMARY PASS and the source is published.
+  - >
+    TASK-213 only activates 44eee353... as a source-REPAIR target. That activation
+    does not authorize this new PRIMARY staging edge and must remain semantically
+    distinct.
+  - >
+    TASK-214 revision 2 records the corrected downstream recovery order:
+    ordinary repair/publication of TASK-256, then a separate exact-pin migration to
+    a reviewed generation containing TASK-212, then fresh TASK-207 r9.
+  - >
+    Python Agent TASK-256 is now publication-complete and TASK-259 r1 is canonical,
+    but the TASK-259 carrier attempt created no RUN and invoked no Executor. It is an
+    operational pre-RUN failure and therefore has no REPAIR lineage.
+  - >
+    The existing AIOS_SOURCE_CONTROL_BOOTSTRAP_INTENT version-2 schema, durable
+    AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF record, exact TASK identity checks, source
+    control/pin checks, migration fingerprinting, target-source materialization,
+    target-side bootstrap-source-primary consumer, migration RUN reconciliation,
+    and completed-edge semantics are already reviewed architecture and remain suitable
+    for the handoff itself. The missing distinction is only how a migration-capable
+    installed source is attested and authorized to stage one exact activated edge.
+  - >
+    The current legacy attestation helper intentionally rejects any installed
+    generation containing migrate-primary and must retain that behavior for the
+    existing bootstrap-primary, bootstrap-source-primary, and source-REPAIR boundaries.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - .ai/tasks/TASK-199.yaml
+    - .ai/tasks/TASK-202.yaml
+    - .ai/tasks/TASK-203.yaml
+    - .ai/tasks/TASK-206.yaml
+    - .ai/tasks/TASK-212.yaml
+    - .ai/tasks/TASK-213.yaml
+    - .ai/tasks/TASK-214.yaml
+    - src/aios_renew/operator.py
+    - scripts/aios_control_entry.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+
+non_goals:
+  - >
+    Change TASK-212 PRIMARY v3 profile-journal semantics, execution-profile resolution,
+    dispatch journals, ordinary PRIMARY wakeup, ordinary REPAIR, REMEDIATION, Reviewer,
+    Publisher, Unified State, verification ownership, or frozen Kernel semantics.
+  - >
+    Change migrate-primary v1, bootstrap-primary, bootstrap-source-primary legacy
+    admission, recover-source-bootstrap, bootstrap-source-repair, or their existing
+    activation/source-lineage contracts except to share already-reviewed source-control
+    handoff internals where semantically identical.
+  - >
+    Remove or weaken the legacy installed-generation attestation rule that rejects a
+    migrate-primary-capable installed source for the existing legacy bootstrap paths.
+  - >
+    Introduce a new handoff record schema, generic migration router, retry/fallback/
+    failover mechanism, automatic correction selector, migration daemon, queue, broker,
+    Planner, Reviewer, Publisher, or model/provider router.
+  - >
+    Add or modify GitHub workflows, downstream repository files, Python Agent TASK-259,
+    Python Agent dependency pins, carrier policies, operational receipts, roadmap state,
+    or any downstream RUN/RESULT/FAILURE/REPAIR artifact.
+  - >
+    Execute Python Agent TASK-259, create RUN-259, certify TASK-207 r9, resume TASK-254,
+    or claim BP9 completion.
+  - >
+    Activate mutable upstream main, arbitrary source generations, arbitrary targets,
+    floating refs, caller-selected targets, or a broad N-to-N source-control bootstrap.
+
+constraints:
+  hard:
+    - >
+      Add one explicit Operator command for migration-capable source-control upgrade
+      staging, named bootstrap-source-upgrade-primary. It is a staging authority only:
+      it must not itself allocate a RUN, invoke an Executor, perform verification,
+      review, publication, or choose a lifecycle/correction action.
+    - >
+      The command must accept the existing exact AIOS_SOURCE_CONTROL_BOOTSTRAP_INTENT
+      version-2 contract unchanged. Do not add target_control_sha or target_pin_blob_sha
+      to that v2 source-control-producing handoff and do not define a second intent or
+      handoff schema.
+    - >
+      Production activation is bounded to the exact source/target edge
+      31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 ->
+      44eee353eda376c9db8cd88d97184d3122651bf5. Any other source or target must fail
+      before publishing a durable handoff edge or launching target code.
+    - >
+      Source attestation for this new command must run in an isolated interpreter against
+      the actually installed aios-renew distribution, prove exact immutable VCS identity,
+      non-editable package provenance, installed/operator path consistency, and prove the
+      installed source is migration-capable. It must bind exactly to the intent source
+      generation. It must not use mutable control-source __file__, PYTHONPATH inheritance,
+      downstream checkout source, chat state, or a caller claim as the installed witness.
+    - >
+      Existing legacy installed-generation attestation remains byte-semantically
+      legacy-only and continues to reject a migrate-primary-capable installed source.
+      The new migration-capable witness must be a separate bounded semantic path rather
+      than weakening the old guard.
+    - >
+      After exact source/target/witness admission, reuse the existing version-2
+      source-control handoff identity, source-control/pin/TASK validation, durable
+      fingerprint/marker/bundle semantics, clean attached-main requirements, exact target
+      checkout, and target launch. The launched target must consume the handoff through
+      its already-existing bootstrap-source-primary --accept-handoff path; target-side
+      RUN admission remains owned by the exact 44eee353... source.
+    - >
+      The target-side run must continue to bind the exact TASK id/revision/blob/authoring
+      commit and Executor carried by the existing v2 intent. This staging path grants no
+      authority to reinterpret TASK meaning, choose another Executor, or inject model/
+      effort values outside the target generation's governed repository policy.
+    - >
+      Exact replay of the same already-staged active edge may reuse the existing
+      idempotent handoff behavior. Conflicting fingerprints, active migration history,
+      dirty/detached/stale/ambiguous control state, source pin mismatch, TASK identity
+      mismatch, installed-source mismatch, unactivated source/target, or target checkout
+      mismatch must fail closed without fabricating RUN/FAILURE truth.
+    - >
+      Existing migrate-primary, legacy source-bootstrap and source-REPAIR regression
+      behavior must remain unchanged. In particular, this task does not make
+      source-REPAIR applicable to Python Agent's pre-RUN TASK-259 carrier failure and
+      does not widen TASK-213 subject eligibility.
+    - >
+      Documentation must classify this as an exceptional explicit source-control
+      upgrade staging bridge for an exact migration-capable generation whose normal
+      PRIMARY is unusable before RUN. It must not become the default migration path.
+      Normal migrate-primary remains authoritative when an exact target-control commit
+      and target pin already exist.
+    - >
+      Documentation must record the prospective downstream sequence only:
+      reviewed/published TASK-215 activation source -> separately reviewed bounded
+      Python Agent carrier for TASK-259 r1 -> exact v2 edge 31fd2482... to 44eee353...
+      -> target-owned TASK-259 RUN -> semantic review/publication -> fresh TASK-207 r9.
+      No later step is claimed complete by this task.
+    - >
+      scripts/aios_control_entry.py remains authority-neutral and byte-unchanged; it may
+      be used by a future downstream carrier only to enter this exact reviewed source.
+    - >
+      Runtime owns canonical verification. Executor changes only the four authorized
+      files, leaves zero unresolved Executor-owned implementation work, and does not
+      review, publish, dispatch downstream, or mutate roadmap planning state.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Operator exposes one explicit bootstrap-source-upgrade-primary staging command
+      that accepts the existing source-control v2 intent and performs no RUN allocation,
+      Executor invocation, verification, review or publication in its staging source.
+  - id: AC2
+    condition: >
+      The new staging path admits only an isolated-attested migration-capable installed
+      source exactly 31fd2482... and an activated target exactly 44eee353..., rejecting
+      alternate, floating, legacy-only, editable, path-mismatched or caller-fabricated
+      source/target identities before durable edge publication.
+  - id: AC3
+    condition: >
+      An admitted upgrade stages the same exact version-2 source-control handoff format
+      and delegates target consumption to the existing bootstrap-source-primary target
+      path, preserving exact repository, source pin, TASK identity, Executor, fingerprint,
+      bundle and migration reconciliation semantics without a new handoff schema.
+  - id: AC4
+    condition: >
+      Existing legacy bootstrap attestation and bootstrap-source-primary, migrate-primary,
+      recover-source-bootstrap and bootstrap-source-repair behavior remain semantically
+      unchanged; no existing source-REPAIR lineage boundary or TASK-213 eligibility is
+      widened.
+  - id: AC5
+    condition: >
+      Rejected or conflicting upgrade staging creates no fabricated RUN/FAILURE and no
+      Executor observation; exact replay and existing active-migration conflict behavior
+      remain deterministic and fail closed.
+  - id: AC6
+    condition: >
+      Canonical documentation distinguishes normal migrate-primary, legacy source
+      bootstrap, source-REPAIR, and the new bounded migration-capable source-upgrade
+      staging bridge, and records the downstream TASK-259 -> TASK-207 r9 sequence without
+      claiming downstream execution or publication.
+  - id: AC7
+    condition: >
+      Mutation is limited to operator.py, its focused tests, and the two authorized
+      architecture documents; no workflow, control-entry, policy, frozen Kernel,
+      downstream, lifecycle-schema or roadmap mutation is introduced, and Executor
+      reports zero unresolved implementation items.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q -k "source_upgrade_primary or source_bootstrap_production_allowlist_rejects_other_targets_before_edge or source_bootstrap_rejects_unbound_identity_before_edge or source_repair_bootstrap_requires_completed_failed_v2_lineage"
+    - git diff --check
