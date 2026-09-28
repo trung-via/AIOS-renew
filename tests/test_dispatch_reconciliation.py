@@ -830,20 +830,22 @@ def test_v3_rejects_unsupported_effort_invalid_profile_collision_and_sidecar(
         task_revision=TASK_REVISION, task_blob_sha=TASK_BLOB_SHA,
         task_commit_sha=TASK_COMMIT_SHA,
     )
-    for invalid in (
-        _bound_codex("AUTHORIZATION", "ultra"),
-        ResolvedExecutionProfile(
-            run_id="AUTHORIZATION", executor="codex", model="invalid model",
-            reasoning_effort="high", model_source="REPOSITORY_DEFAULT",
-            effort_source="REPOSITORY_DEFAULT",
-        ),
-    ):
-        with pytest.raises(DispatchError, match="profile"):
-            _execute_dispatch(
-                **base, execution_profile=invalid,
-                invoke_primary=lambda: pytest.fail("invalid profile invoked PRIMARY"),
-            )
+    with pytest.raises(DispatchError, match="profile"):
+        _execute_dispatch(
+            **base, execution_profile=_bound_codex("AUTHORIZATION", "ultra"),
+            invoke_primary=lambda: pytest.fail("unsupported effort invoked PRIMARY"),
+        )
+    with pytest.raises(DispatchError, match="profile"):
+        dispatch._validate_profile_binding(
+            {
+                "executor": "codex", "model": "invalid model",
+                "reasoning_effort": "high", "model_source": "REPOSITORY_DEFAULT",
+                "effort_source": "REPOSITORY_DEFAULT",
+            },
+            repo=repo,
+        )
     assert not list((state_root / "dispatches").glob("*.json"))
+    assert not (state_root / "runs").exists()
 
     def crash() -> DispatchInvocation:
         raise RuntimeError("simulated interruption")
