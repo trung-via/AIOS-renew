@@ -1,0 +1,155 @@
+task_id: TASK-203
+revision: 1
+
+goal: >
+  Activate the reviewed and published TASK-202 source-bootstrap recovery consumer
+  through the existing single production _SOURCE_BOOTSTRAP_TARGET_SHA allowlist slot,
+  binding that slot only to exact SHA
+  31fd2482cd87d97fd818e05eb5b4dcec69ffeee6, without changing migration/recovery
+  semantics or performing any downstream recovery.
+
+problem: >
+  TASK-202 r4 is reviewed and published at exact
+  31fd2482cd87d97fd818e05eb5b4dcec69ffeee6. It adds mixed simple/REMEDIATION RUN
+  compatibility and bounded transactional supersession for consumed pre-RUN
+  source-bootstrap v2 edges. Production activation still points to the older TASK-199
+  consumer ff29666d50eaf9276ab62d944018f2bbeb91f073. The two-stage activation boundary
+  therefore requires a separate post-publication TASK to replace only that exact
+  allowlist target before the downstream BP-9 recovery may target TASK-202 capability.
+  The activation must not point at mutable main or at the eventual TASK-203 candidate
+  itself.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is exactly
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6.
+  - >
+    TASK-202 r4 completed through RUN-202-003 remediation, Runtime verification passed
+    333 tests plus git diff --check on exact candidate
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6, REVIEW-202-002 DELTA is PASS, and Publisher
+    published that exact candidate to main.
+  - >
+    The current production source-bootstrap activation is still exact historical
+    TASK-199 consumer ff29666d50eaf9276ab62d944018f2bbeb91f073.
+  - >
+    The historical bootstrap-primary activation remains
+    _BOOTSTRAP_TARGET_SHA = 83115b26df85a7ad6643f317833e18b18586bdbe.
+  - >
+    BP-9 remains the Human/Brain roadmap NEXT. This TASK is only the upstream activation
+    prerequisite; it does not advance roadmap planning state or mutate Python Agent.
+  - >
+    Downstream TASK-255 r6 and recovery of the existing consumed TASK-255 r5 handoff are
+    separate later Human/Brain-authorized actions after TASK-203 review/publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-199.yaml
+    - .ai/tasks/TASK-201.yaml
+    - .ai/tasks/TASK-202.yaml
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - >
+    Modify source-bootstrap v2 fields, mixed-RUN parsing, recover_source_bootstrap,
+    supersession evidence, migration history semantics, handoff formats, run_task,
+    verification, RESULT/FAILURE, Reviewer, Publisher, Executor, or ordinary
+    migrate-primary behavior.
+  - >
+    Modify Python Agent or any downstream repository, pin, TASK, handoff, runner state,
+    or execute a real bootstrap/recovery operation.
+  - >
+    Activate mutable main, a branch/ref, the old TASK-199 consumer
+    ff29666d50eaf9276ab62d944018f2bbeb91f073, the eventual TASK-203 candidate SHA, or
+    more than one source-bootstrap target.
+  - >
+    Change historical _BOOTSTRAP_TARGET_SHA or TASK-198 bootstrap-primary behavior.
+  - >
+    Add routing, target selection, retry/fallback/failover, automatic recovery,
+    downstream-specific policy, or another lifecycle authority.
+  - >
+    Mutate roadmap planning state or claim BP-9/downstream adoption complete.
+
+constraints:
+  hard:
+    - >
+      The sole production behavior change is replacing the existing literal
+      _SOURCE_BOOTSTRAP_TARGET_SHA value
+      ff29666d50eaf9276ab62d944018f2bbeb91f073 with exact literal
+      31fd2482cd87d97fd818e05eb5b4dcec69ffeee6. No list/set, fallback target, mutable
+      lookup, environment/config override, network discovery, current-main derivation,
+      or self-derived candidate SHA is permitted.
+    - >
+      Preserve source-bootstrap staging guard semantics: a fresh or replacement
+      source-bootstrap intent is admitted only when intent.target_generation_sha equals
+      the exact activated SHA. Every other target must remain rejected before a handoff
+      authority edge, RUN, or Executor invocation can be granted.
+    - >
+      Preserve transactional recovery semantics from TASK-202. In particular, an old
+      consumed TASK-199-target edge may remain immutable historical/recoverable input,
+      while any replacement edge must target the newly activated exact TASK-202 consumer.
+      Activation itself must not supersede, mutate, complete, delete, or consume any
+      downstream handoff.
+    - >
+      Preserve target-side source proof: the consumer handling a bound handoff must still
+      prove its running source equals the bound target generation. The activation commit
+      cannot self-authorize its own future candidate SHA.
+    - >
+      Preserve _BOOTSTRAP_TARGET_SHA =
+      83115b26df85a7ad6643f317833e18b18586bdbe and TASK-198/bootstrap-primary behavior.
+    - >
+      Update deterministic tests so repository production state proves the single
+      activation equals exact TASK-202 published SHA; the former TASK-199 target,
+      a fixture target, and current/future source are rejected by production defaults;
+      injected fixture activation remains available only inside tests; and existing
+      TASK-202 recovery/mixed-RUN/history protections remain unchanged.
+    - >
+      No production code beyond the existing activation literal may change. Test changes
+      may adjust exact expected SHA values and add focused rejection coverage, but must
+      not weaken or rewrite TASK-202 recovery tests.
+    - >
+      Executor returns one clean candidate with zero unresolved implementation items and
+      does not review, publish, execute downstream recovery, mutate roadmap state, or
+      perform any post-publication BP-9 action.
+
+acceptance:
+  - id: AC1
+    condition: >
+      src/aios_renew/operator.py contains exactly one production
+      _SOURCE_BOOTSTRAP_TARGET_SHA and its value is exact literal
+      31fd2482cd87d97fd818e05eb5b4dcec69ffeee6.
+  - id: AC2
+    condition: >
+      Production defaults reject any source-bootstrap/recovery replacement target other
+      than 31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 before granting replacement handoff
+      authority, RUN creation, or Executor invocation.
+  - id: AC3
+    condition: >
+      Regression coverage proves the old TASK-199 target
+      ff29666d50eaf9276ab62d944018f2bbeb91f073 is no longer a fresh/replacement
+      production target, while existing exact consumed old-edge recovery semantics remain
+      available only through TASK-202 supersession rules.
+  - id: AC4
+    condition: >
+      TASK-202 mixed-RUN parsing, transactional supersession, same-TASK successor
+      revision, completed-history handling, idempotency, concurrency and
+      generation-exact steady-state behavior remain unchanged.
+  - id: AC5
+    condition: >
+      Historical TASK-198 bootstrap-primary target/behavior remains unchanged; no
+      downstream repository or roadmap state is mutated; activation introduces no new
+      Runtime/router/retry/fallback authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
