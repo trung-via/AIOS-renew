@@ -94,6 +94,29 @@ The Brain Portability plan records the separate downstream recovery order;
 this profile correction itself performs no delivery, review, publication, or
 migration.
 
+TASK-256's ordinary REPAIR and publication are now complete. Python Agent's
+canonical TASK-259 revision 1 then encountered a separate pre-RUN PRIMARY
+carrier failure while installed generation `31fd2482...` checked a PRIMARY v3
+journal beneath the transient worker package. Because no RUN or FAILURE was
+created, source-REPAIR cannot be used. Normal `migrate-primary` also requires
+an already-authored target control commit and target pin; TASK-259 is the work
+authorized to create them. The explicit TASK-215
+`bootstrap-source-upgrade-primary` command stages only the exact
+`31fd2482...` to `44eee353...` source-control v2 handoff after isolated
+installed-source attestation. The target's existing
+`bootstrap-source-primary --accept-handoff` path owns TASK-259 RUN admission
+and applies the governed Python Agent repository's profile policy. The staging
+command accepts no model or effort override and creates no execution-profile
+journal, RUN, FAILURE, or Executor observation. This is an exceptional bounded
+bridge; normal `migrate-primary` remains the migration path when target control
+and pin exist.
+
+The prospective sequence is reviewed and published TASK-215 activation source,
+a separately reviewed bounded TASK-259 carrier, exact v2 source upgrade,
+target-owned TASK-259 RUN, semantic review and publication, then fresh
+TASK-207 revision-9 conformance. None of those later steps is completed by
+this documentation or the staging implementation.
+
 ## Future model evolution invariant
 
 For an already-supported Executor whose native invocation contract remains compatible,

@@ -9210,6 +9210,7 @@ def _migration_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
 
 def _source_bootstrap_fixture(
     tmp_path: Path, *, consumer_source: bool = False,
+    source_generation: str = "1" * 40,
 ) -> tuple[Path, Path, dict]:
     target_source = tmp_path / "reviewed-generation"
     target_source.mkdir()
@@ -9232,7 +9233,7 @@ def _source_bootstrap_fixture(
     # The complete consumer package includes schema filenames that hit Win32's
     # path limit when cloned below the source-REPAIR transport state directory.
     repo = make_repo(tmp_path / ("c" if consumer_source else "control"))
-    legacy = "1" * 40
+    legacy = source_generation
     source_control = publish_upstream(
         repo,
         {"AIOS_PIN": f"aios-renew @ {legacy}\n",
@@ -9680,6 +9681,156 @@ def test_source_bootstrap_injected_exact_staging(
     )
     assert Path(launched[0][0][-3]).parent.parent == runtime_state_root(repo) / "m"
     assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_source_upgrade_stages_exact_v2_edge_without_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_sha = operator_module._SOURCE_UPGRADE_SOURCE_SHA
+    target_sha = operator_module._SOURCE_UPGRADE_TARGET_SHA
+    repo, _, intent = _source_bootstrap_fixture(
+        tmp_path, source_generation=source_sha,
+    )
+    intent["target_generation_sha"] = target_sha
+    intent["target_url"] = str(Path(operator_module.__file__).resolve().parents[2])
+    path = tmp_path / "upgrade-intent.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    parsed = operator_module._parser().parse_args([
+        "bootstrap-source-upgrade-primary", str(path),
+    ])
+    assert parsed.command == "bootstrap-source-upgrade-primary"
+    assert parsed.intent == str(path)
+    monkeypatch.setattr(operator_module, "_upgrade_installed_generation_sha",
+                        lambda **kwargs: source_sha)
+    launched = []
+
+    def child(command, **kwargs):
+        launched.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    assert operator_module.bootstrap_source_upgrade_primary(path, runner=child) == 0
+    assert operator_module.bootstrap_source_upgrade_primary(path, runner=child) == 0
+    assert launched[0] == launched[1]
+    assert launched[0][3] == "bootstrap-source-primary"
+    marker = Path(launched[0][-1])
+    record = json.loads(marker.read_text(encoding="utf-8"))
+    assert record["format"] == "AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF"
+    assert record["version"] == 2
+    assert record["source_generation_sha"] == source_sha
+    assert record["target_generation_sha"] == target_sha
+    assert record["task_blob_sha"] == intent["task_blob_sha"]
+    assert record["executor"] == intent["executor"]
+    assert json.loads(Path(launched[0][-3]).read_text(encoding="utf-8")) == intent
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list(runtime_paths(repo).failures.glob("*.json"))
+
+    conflict = dict(intent, executor="antigravity")
+    path.write_text(json.dumps(conflict), encoding="utf-8")
+    with pytest.raises(OperatorError):
+        operator_module.bootstrap_source_upgrade_primary(path, runner=child)
+    assert len(launched) == 2
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list(runtime_paths(repo).failures.glob("*.json"))
+
+
+@pytest.mark.parametrize("mutation", ["source", "target", "witness", "schema"])
+def test_source_upgrade_rejects_identity_before_edge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str,
+) -> None:
+    source_sha = operator_module._SOURCE_UPGRADE_SOURCE_SHA
+    repo, _, intent = _source_bootstrap_fixture(
+        tmp_path, source_generation=source_sha,
+    )
+    intent["target_generation_sha"] = operator_module._SOURCE_UPGRADE_TARGET_SHA
+    if mutation == "source":
+        intent["source_generation_sha"] = "2" * 40
+    elif mutation == "target":
+        intent["target_generation_sha"] = "3" * 40
+    elif mutation == "schema":
+        intent["target_control_sha"] = "4" * 40
+    path = tmp_path / "rejected-upgrade.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    monkeypatch.setattr(operator_module, "_upgrade_installed_generation_sha",
+                        lambda **kwargs: "5" * 40 if mutation == "witness" else source_sha)
+    with pytest.raises(OperatorError):
+        operator_module.bootstrap_source_upgrade_primary(
+            path, runner=lambda *args, **kwargs: pytest.fail("target launched"),
+        )
+    assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list(runtime_paths(repo).failures.glob("*.json"))
+
+
+def test_source_upgrade_witness_isolated_installed_distribution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    environment = tmp_path / "upgrade-env"
+    venv.EnvBuilder(with_pip=False).create(environment)
+    python = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    site = Path(subprocess.check_output(
+        [str(python), "-I", "-c", "import site; print(site.getsitepackages()[0])"],
+        text=True,
+    ).strip())
+    package = site / "aios_renew"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    active = package / "operator.py"
+    active.write_text("def migrate_primary(): pass\n# migrate-primary\n", encoding="utf-8")
+    metadata = site / "aios_renew-0.0.dist-info"
+    metadata.mkdir()
+    (metadata / "METADATA").write_text("Metadata-Version: 2.1\nName: aios-renew\nVersion: 0.0\n")
+    origin = {
+        "url": "https://example.invalid/aios-renew.git",
+        "vcs_info": {"vcs": "git", "commit_id": operator_module._SOURCE_UPGRADE_SOURCE_SHA},
+    }
+    direct_url = metadata / "direct_url.json"
+    direct_url.write_text(json.dumps(origin), encoding="utf-8")
+    synchronized = tmp_path / "synchronized" / "aios_renew"
+    synchronized.mkdir(parents=True)
+    (synchronized / "__init__.py").write_text("", encoding="utf-8")
+    (synchronized / "operator.py").write_text("# no migration capability\n", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(synchronized.parent))
+    monkeypatch.setattr(operator_module.sys, "executable", str(python))
+    assert operator_module._upgrade_installed_generation_sha() == operator_module._SOURCE_UPGRADE_SOURCE_SHA
+    with pytest.raises(OperatorError, match="legacy installed generation attestation failed"):
+        operator_module._legacy_installed_generation_sha()
+
+    for invalid in ("editable", "alternate", "legacy"):
+        if invalid == "editable":
+            origin["dir_info"] = {"editable": True}
+            direct_url.write_text(json.dumps(origin), encoding="utf-8")
+        elif invalid == "alternate":
+            origin.pop("dir_info")
+            origin["vcs_info"]["commit_id"] = "a" * 40
+            direct_url.write_text(json.dumps(origin), encoding="utf-8")
+        else:
+            origin["vcs_info"]["commit_id"] = operator_module._SOURCE_UPGRADE_SOURCE_SHA
+            direct_url.write_text(json.dumps(origin), encoding="utf-8")
+            active.write_text("# legacy-only source\n", encoding="utf-8")
+        with pytest.raises(OperatorError, match="upgrade installed generation attestation failed"):
+            operator_module._upgrade_installed_generation_sha()
+
+
+def test_source_upgrade_rejects_dirty_control_without_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_sha = operator_module._SOURCE_UPGRADE_SOURCE_SHA
+    repo, _, intent = _source_bootstrap_fixture(
+        tmp_path, source_generation=source_sha,
+    )
+    intent["target_generation_sha"] = operator_module._SOURCE_UPGRADE_TARGET_SHA
+    path = tmp_path / "dirty-upgrade.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    (repo / "untracked.txt").write_text("dirty", encoding="utf-8")
+    monkeypatch.setattr(operator_module, "_upgrade_installed_generation_sha",
+                        lambda **kwargs: source_sha)
+    with pytest.raises(OperatorError):
+        operator_module.bootstrap_source_upgrade_primary(
+            path, runner=lambda *args, **kwargs: pytest.fail("target launched"),
+        )
+    assert not list((runtime_state_root(repo) / "migration-handoffs").glob("*.json"))
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert not list(runtime_paths(repo).failures.glob("*.json"))
 
 
 @pytest.mark.parametrize("mutation", ["legacy", "source", "pin", "task", "target"])

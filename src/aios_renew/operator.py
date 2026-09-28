@@ -3782,6 +3782,10 @@ _BOOTSTRAP_TARGET_SHA = "83115b26df85a7ad6643f317833e18b18586bdbe"
 _SOURCE_BOOTSTRAP_TARGET_SHA: str | None = "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
 _SOURCE_BOOTSTRAP_FIELDS = (_MIGRATION_FIELDS - {"target_control_sha", "target_pin_blob_sha"}) | {"format"}
 
+# One separately activated migration-capable source-control staging edge.
+_SOURCE_UPGRADE_SOURCE_SHA = "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
+_SOURCE_UPGRADE_TARGET_SHA = "44eee353eda376c9db8cd88d97184d3122651bf5"
+
 # Activated only by a separate, post-publication successor. Never inferred from
 # this checkout, the requested target, or the source-PRIMARY activation.
 _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = "44eee353eda376c9db8cd88d97184d3122651bf5"
@@ -3975,6 +3979,50 @@ print(json.dumps({'generation': sha, 'operator': str(actual)}))
         return sha
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise OperatorError("legacy installed generation attestation failed") from exc
+
+
+def _upgrade_installed_generation_sha(
+    *, runner: NativeRunner = subprocess.run,
+) -> str:
+    """Witness the exact migration-capable installed source outside control code."""
+
+    probe = """import importlib.metadata as metadata
+import json
+import pathlib
+import re
+import aios_renew.operator as active
+dist = metadata.distribution('aios-renew')
+origin = json.loads(dist.read_text('direct_url.json') or 'null')
+sha = origin['vcs_info']['commit_id']
+installed = pathlib.Path(dist.locate_file('aios_renew/operator.py')).resolve()
+actual = pathlib.Path(active.__file__).resolve()
+if (installed != actual or not actual.is_file()
+        or origin['vcs_info']['vcs'] != 'git'
+        or not isinstance(origin.get('url'), str) or not origin['url']
+        or (origin.get('dir_info') or {}).get('editable')
+        or not isinstance(sha, str) or not re.fullmatch('[0-9a-f]{40}', sha)
+        or sha != '31fd2482cd87d97fd818e05eb5b4dcec69ffeee6'
+        or not callable(getattr(active, 'migrate_primary', None))
+        or 'migrate-primary' not in actual.read_text(encoding='utf-8')):
+    raise SystemExit(2)
+print(json.dumps({'generation': sha, 'operator': str(actual)}))
+"""
+    try:
+        completed = runner(
+            [sys.executable, "-I", "-c", probe], capture_output=True,
+            text=True, check=False,
+        )
+        if completed.returncode != 0:
+            raise OperatorError("upgrade installed generation attestation failed")
+        witness = json.loads(completed.stdout)
+        sha = witness["generation"]
+        operator = Path(witness["operator"])
+        if (sha != _SOURCE_UPGRADE_SOURCE_SHA or not operator.is_absolute()
+                or not operator.is_file()):
+            raise OperatorError("upgrade installed generation attestation is invalid")
+        return sha
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise OperatorError("upgrade installed generation attestation failed") from exc
 
 
 def _migration_fingerprint(intent: Mapping[str, Any]) -> str:
@@ -4577,6 +4625,41 @@ def bootstrap_primary(
         if not marker.exists():
             _persist_and_transport_admission_failure(root, admission=admission, failure=exc)
         raise
+
+
+def bootstrap_source_upgrade_primary(
+    intent_path: str | Path,
+    *,
+    runner: NativeRunner = subprocess.run,
+    witness_runner: NativeRunner = subprocess.run,
+) -> int:
+    """Stage only the activated migration-capable v2 source-control edge."""
+
+    intent = _exact_source_bootstrap_intent(
+        json.loads(Path(intent_path).read_text(encoding="utf-8"))
+    )
+    if (intent["source_generation_sha"] != _SOURCE_UPGRADE_SOURCE_SHA
+            or intent["target_generation_sha"] != _SOURCE_UPGRADE_TARGET_SHA):
+        raise OperatorError("source-control upgrade edge is not activated")
+    if _upgrade_installed_generation_sha(runner=witness_runner) != intent["source_generation_sha"]:
+        raise OperatorError("source-control upgrade installed generation mismatch")
+
+    root = resolve_repository(intent["repository"])
+    fingerprint = _migration_fingerprint(intent)
+    marker = _migration_marker(root, fingerprint)
+    if marker.with_suffix(".completed").exists():
+        raise OperatorError("source-control upgrade handoff already completed")
+    if marker.is_file():
+        siblings = list(marker.parent.glob("*.json"))
+        if siblings != [marker]:
+            raise OperatorError("ambiguous source-control upgrade handoff state")
+        record = json.loads(marker.read_text(encoding="utf-8"))
+        bound_intent, target = _migration_bundle(marker, record, intent)
+    else:
+        bound_intent, target = _stage_migration_handoff(root, intent, marker)
+    return _launch_migration_target(
+        root, marker, bound_intent, target, runner, source_bootstrap=True
+    )
 
 
 def bootstrap_source_primary(
@@ -7156,6 +7239,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     source_bootstrap_parser.add_argument("intent", help="Exact source-control bootstrap intent JSON")
     source_bootstrap_parser.add_argument("--accept-handoff", help=argparse.SUPPRESS)
+    source_upgrade_parser = commands.add_parser(
+        "bootstrap-source-upgrade-primary",
+        help="Stage the exact activated migration-capable source-control upgrade",
+    )
+    source_upgrade_parser.add_argument("intent", help="Exact source-control bootstrap intent JSON")
     recovery_parser = commands.add_parser(
         "recover-source-bootstrap", help="Supersede one consumed pre-RUN source bootstrap edge"
     )
@@ -7497,6 +7585,8 @@ def main(
             return bootstrap_source_primary(
                 args.intent, runner=native_runner, handoff_path=args.accept_handoff
             )
+        elif args.command == "bootstrap-source-upgrade-primary":
+            return bootstrap_source_upgrade_primary(args.intent, runner=native_runner)
         elif args.command == "recover-source-bootstrap":
             return recover_source_bootstrap(args.old_intent, args.replacement_intent)
         elif args.command == "bootstrap-source-repair":

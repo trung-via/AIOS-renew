@@ -577,6 +577,49 @@ The target AIOS source and fetched downstream target control are checked out in 
 
 Ordinary PRIMARY synchronization may still fast-forward a clean `main` and restart once. Its restarted process imports the active package source; when that source is the mutable control checkout, the pre-sync package is snapshotted for the restart. Synchronized `.ai/tasks/*` and `src/aios_renew/*` cannot silently change implementation authority. The handoff contract applies to any downstream repository and any exact reviewed N-to-N+1 pair; it does not itself approve BP-9 adoption, change a downstream pin, or advance the roadmap. BP-9 still requires explicit reviewed downstream migration and repository-owned activation.
 
+#### Exceptional migration-capable source-control upgrade staging (TASK-215)
+
+Normal `migrate-primary` remains authoritative when the exact target control
+commit and target pin blob already exist. Legacy `bootstrap-primary` and
+`bootstrap-source-primary` retain their isolated legacy-only installed witness;
+that witness still rejects a source containing `migrate-primary`.
+`recover-source-bootstrap` remains for a consumed pre-RUN v2 edge, and
+`bootstrap-source-repair` remains for a completed failed source-bootstrap RUN
+with separately activated subject lineage. Neither applies to a pre-RUN
+ordinary PRIMARY carrier failure.
+
+`bootstrap-source-upgrade-primary` is an explicit staging bridge for the exact
+installed migration-capable source `31fd2482cd87d97fd818e05eb5b4dcec69ffeee6`
+to the exact activated target `44eee353eda376c9db8cd88d97184d3122651bf5`
+when the source's ordinary PRIMARY cannot create the downstream target control
+commit and pin. Its separate isolated interpreter witnesses the actually
+installed, non-editable VCS distribution, matching operator path, exact source
+commit, and `migrate-primary` capability. It accepts the existing
+`AIOS_SOURCE_CONTROL_BOOTSTRAP_INTENT` version 2 unchanged; no prospective
+target control or pin fields are added. Alternate source or target generations,
+unsafe control, stale pin or TASK identity, and conflicting migration state
+fail before a durable edge or target launch.
+
+After admission, the existing version-2 fingerprint, bundle and durable
+`AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF` carry the exact repository, source pin,
+TASK id/revision/blob/authoring commit, and Executor. The exact checked-out
+target consumes it through `bootstrap-source-primary --accept-handoff` and owns
+RUN admission, execution-profile resolution under the governed repository,
+and migration reconciliation. Staging creates no RUN, FAILURE, Executor
+observation, verification, review, or publication. An identical active edge
+may replay through the existing handoff; conflicting or completed edges fail
+closed. This exact activation is separate from TASK-213's source-REPAIR target
+activation and grants no additional source-REPAIR eligibility.
+
+The prospective downstream order is reviewed and published TASK-215 activation
+source, then a separately reviewed bounded Python Agent carrier for TASK-259
+revision 1, then the exact v2 edge `31fd2482...` to `44eee353...`, followed by
+a target-owned TASK-259 RUN, semantic review and publication, and fresh
+TASK-207 revision-9 conformance. Python Agent's TASK-256 ordinary repair and
+publication precede that sequence. TASK-259's earlier carrier attempt created
+no RUN or Executor observation and has no REPAIR lineage. This staging change
+does not execute or publish any of those downstream steps.
+
 ### TASK-212 PRIMARY portability prerequisite after RUN-256-001
 
 Python Agent `RUN-256-001` is a canonical `TASK-256` revision-1 FAILURE at
@@ -608,14 +651,14 @@ only. That instruction is inconsistent with this RUN's ordinary PRIMARY lineage
 and requires immutable supersession before ordinary delivery; this document
 does not change the downstream authorization.
 
-The remaining recovery order is canonical REPAIR authorization, including
-supersession of `REPAIR-256-001` revision 1, then ordinary REPAIR delivery under
-the existing exact downstream runtime and profile policy, then semantic review
-and exact publication of the continuation, then a separate exact-pin migration
-to a reviewed generation containing the TASK-212 fix, then fresh `TASK-207`
-revision-9 conformance. None of those downstream steps is completed by this
-documentation correction. It changes no Python Agent, activation, migration,
-roadmap, Reviewer, or Publisher state.
+The corrected recovery order was canonical ordinary REPAIR authorization and
+delivery for TASK-256, semantic review and exact publication, then a separate
+exact-pin migration to a reviewed generation containing the TASK-212 fix, then
+fresh `TASK-207` revision-9 conformance. TASK-256 is now publication-complete;
+the migration is carried by canonical TASK-259 revision 1 through the bounded
+TASK-215 staging bridge described above. Its earlier ordinary PRIMARY carrier
+attempt failed before RUN creation. No TASK-259 RUN, migration publication, or
+TASK-207 revision-9 conformance is claimed here.
 
 ## 16. Dependency order
 
