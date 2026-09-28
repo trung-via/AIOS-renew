@@ -9229,7 +9229,9 @@ def _source_bootstrap_fixture(
     git(target_source, "commit", "-m", "reviewed target generation")
     target_generation = git(target_source, "rev-parse", "HEAD")
 
-    repo = make_repo(tmp_path / "control")
+    # The complete consumer package includes schema filenames that hit Win32's
+    # path limit when cloned below the source-REPAIR transport state directory.
+    repo = make_repo(tmp_path / ("c" if consumer_source else "control"))
     legacy = "1" * 40
     source_control = publish_upstream(
         repo,
@@ -9371,6 +9373,7 @@ def test_source_repair_bound_target_consumes_with_activation_closed(
         )
     bundle, target = operator_module._source_repair_bootstrap_state(repo, intent)
     assert not bundle.exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
 
     monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA",
                         intent["target_generation_sha"])
@@ -9384,6 +9387,8 @@ def test_source_repair_bound_target_consumes_with_activation_closed(
     bound = bundle / "intent.json"
     assert launched[0][0][-3:] == [str(bound), "--accept-transport", str(bound)]
     assert git(target, "rev-parse", "HEAD") == intent["target_generation_sha"]
+    assert operator_module._git(target, "status", "--porcelain") == ""
+    assert (target / "src" / "aios_renew" / "operator.py").is_file()
     assert json.loads(bound.read_text(encoding="utf-8")) == intent
     monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA", None)
 
@@ -9401,6 +9406,8 @@ assert operator._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
 lineage_checked = []
 operator._source_repair_bootstrap_lineage = lambda root, document: lineage_checked.append((root, document))
 def wakeup(*args, **kwargs):
+    assert Path(operator.__file__).resolve().parents[2] == Path(sys.argv[2]).resolve().parent / "source"
+    assert operator._git(Path(operator.__file__).resolve().parents[2], "rev-parse", "HEAD") == intent["target_generation_sha"]
     assert lineage_checked == [(Path(intent["repository"]), intent)]
     assert args == (intent["repair_dispatch_id"], intent["failed_run_id"], intent["repair_sha"])
     assert kwargs == {
@@ -9436,12 +9443,14 @@ raise SystemExit(operator.main([
         rejected = consume(intent_file, transport_file, exact_source=exact_source)
         assert rejected.returncode != 0 and error in rejected.stderr
         assert "REPAIR_DELEGATED" not in rejected.stdout
+        assert not list(runtime_paths(repo).runs.glob("*.json"))
     changed = dict(intent, repair_sha="b" * 40)
-    changed_path = tmp_path / "changed-source-repair.json"
-    changed_path.write_text(json.dumps(changed), encoding="utf-8")
-    rejected = consume(changed_path, bound)
+    bound.write_text(json.dumps(changed), encoding="utf-8")
+    rejected = consume(path, bound)
     assert rejected.returncode != 0 and "transport identity mismatch" in rejected.stderr
     assert "REPAIR_DELEGATED" not in rejected.stdout
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    bound.write_text(json.dumps(intent), encoding="utf-8")
     git(target, "commit", "--allow-empty", "-m", "different target HEAD")
     rejected = consume(path, bound)
     assert rejected.returncode != 0 and "transport identity mismatch" in rejected.stderr
