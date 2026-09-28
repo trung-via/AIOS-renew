@@ -587,16 +587,39 @@ and the candidate is clean, descendant, repairable, and transportable. Its exact
 profile is `codex / gpt-6-sol / high` with repository-default attribution. The
 downstream repository has a valid policy, so the failure exposes a PRIMARY v3
 journal validation path that consulted the installed package root instead of
-the governed repository. TASK-212 corrects that upstream policy boundary.
+the governed repository. TASK-212 fixed that upstream policy boundary and was
+published at exact source `44eee353eda376c9db8cd88d97184d3122651bf5`.
+TASK-213 separately activated that source in the production
+`_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA` slot.
 
-The prospective recovery order is TASK-212 review and publication, a separate
-successor activating the exact reviewed source-REPAIR consumer containing this
-fix, continuation of `RUN-256-001` under its existing `TASK-256` lineage,
-downstream exact-pin migration to a reviewed generation containing the fix,
-then fresh `TASK-207` revision-9 conformance. This upstream task performs no
-downstream mutation, source-REPAIR activation, roadmap advancement, review, or
-publication. The production source-REPAIR target remains
-`062031ab91118ecf784944e8dd7e3d76b0553c74` until separate authorization.
+`RUN-256-001` was admitted by ordinary `AIOS_PRIMARY_WAKEUP_REQUEST` issue
+`#447` and PRIMARY carrier dispatch
+`primary-TASK-256-r1-2a773fd1-codex-v1`. It has no canonical completed failed
+`source-bootstrap-v2` edge of its own. The TASK-206
+`bootstrap-source-repair` transport requires exactly one consumed and completed
+failed `source-bootstrap-v2` edge bound to its engineering RUN, together with
+the exact legacy, target, control, pin, canonical failed-candidate
+policy/profile, REPAIR SHA, and durable dispatch identities. Neither the
+PRIMARY failure nor TASK-213 activation supplies that lineage. TASK-213 remains
+valid for source-REPAIR subjects that already satisfy this contract; activation
+does not widen eligibility or permit synthetic migration history.
+
+Recovery of `RUN-256-001` therefore proceeds through canonical ordinary
+REPAIR. Python Agent has canonical `REPAIR-256-001` revision 1 authorization at
+`2dbf11ffe5390de3f461c427fd3a96345438b649`, but its source-REPAIR-only
+delivery instruction conflicts with the actual PRIMARY lineage. That immutable
+revision requires canonical supersession before ordinary delivery. Under the
+existing exact downstream pin
+`31fd2482cd87d97fd818e05eb5b4dcec69ffeee6`, ordinary REPAIR already
+supports `CONTINUE_IMPLEMENTATION` for an eligible clean pre-verification
+failure, requires an explicit Executor for coding work, and resolves/validates
+the execution profile against the governed repository. After authorized
+ordinary REPAIR delivery, the resulting candidate requires semantic review
+and exact publication. A separate exact-pin migration can then move Python
+Agent to a reviewed generation containing the TASK-212 fix, followed by fresh
+`TASK-207` revision-9 conformance. These downstream recovery, publication,
+migration, and conformance steps are prospective; this documentation correction
+does not execute or complete them.
 
 ## 16. Dependency order
 

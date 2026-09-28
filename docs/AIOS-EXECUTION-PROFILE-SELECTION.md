@@ -77,9 +77,20 @@ sidecar cannot acquire dispatch RUN ownership. Historical PRIMARY v1/v2 records
 remain readable under their original profile-unaware semantics without policy
 backfill or rewrite. Status inspection remains observational.
 
-This correction is upstream maintenance only. Recovery of `RUN-256-001` follows
-separate review, publication, activation, and downstream authority steps recorded
-in the Brain Portability plan.
+The TASK-212 defect was confined to PRIMARY v3 durable-journal policy lookup;
+it did not change ordinary REPAIR profile resolution. Ordinary REPAIR's
+`_authorization_profile` resolves and validates against the explicit governed
+repository. Under the existing exact downstream pin
+`31fd2482cd87d97fd818e05eb5b4dcec69ffeee6`, canonical Unified State and
+REPAIR authorization can permit `CONTINUE_IMPLEMENTATION` for a clean,
+transportable pre-verification `EXECUTION` or `COMPLETION_GATE` failure, with an
+explicit Executor for coding REPAIR. `RUN-256-001` was an ordinary PRIMARY
+wakeup failure, not a completed failed `source-bootstrap-v2` RUN. TASK-213's
+exact source-REPAIR target activation applies only after the existing failed
+source-bootstrap lineage contract is satisfied; it does not widen subject
+lineage or authorize fabricated migration history. Its recovery therefore
+requires ordinary canonical REPAIR under the existing downstream runtime and
+profile policy, as detailed in the Brain Portability plan.
 
 ## Future model evolution invariant
 
