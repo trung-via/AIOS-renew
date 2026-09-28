@@ -4368,8 +4368,18 @@ def _recovery_identity_matches(old: Mapping[str, Any], new: Mapping[str, Any]) -
     return new["task_revision"] > old["task_revision"]
 
 
-def _require_no_active_migration(root: Path) -> None:
+def _require_no_active_migration(
+    root: Path, *, installed_generation_sha: str | None = None,
+    replay_fingerprint: str | None = None,
+) -> None:
     edges, superseded, pending = _migration_history(root)
+    if installed_generation_sha is not None and pending:
+        raise OperatorError("pending migration handoff history")
+    if replay_fingerprint is not None:
+        if (installed_generation_sha is None or replay_fingerprint not in edges
+                or replay_fingerprint in superseded or replay_fingerprint in pending
+                or edges[replay_fingerprint][0].with_suffix(".completed").exists()):
+            raise OperatorError("ambiguous source-control upgrade handoff state")
     links: dict[str, str] = {}
     markers: dict[str, Path] = {}
     targets: set[str] = set()
@@ -4390,6 +4400,10 @@ def _require_no_active_migration(root: Path) -> None:
                 or not re.fullmatch(r"[0-9a-f]{40}", target)
                 or source in links or target in targets or source == target):
             raise OperatorError("ambiguous migration handoff history")
+        if fingerprint == replay_fingerprint:
+            if source != installed_generation_sha:
+                raise OperatorError("active generation was superseded by migration handoff")
+            continue
         links[source] = target
         markers[source] = marker
         targets.add(target)
@@ -4409,7 +4423,8 @@ def _require_no_active_migration(root: Path) -> None:
         current = links[current]
     if len(visited) != len(links):
         raise OperatorError("ambiguous migration handoff history")
-    if _installed_generation_sha() != current:
+    if (installed_generation_sha if installed_generation_sha is not None
+            else _installed_generation_sha()) != current:
         raise OperatorError("active generation was superseded by migration handoff")
     if final_marker is None or not final_marker.with_suffix(".completed").is_file():
         raise OperatorError("migration target has not completed exact handoff")
@@ -4534,13 +4549,14 @@ def _check_migration_control(
 def _stage_migration_handoff(
     root: Path, intent: Mapping[str, Any], marker: Path, *,
     allow_historical: bool = False,
+    installed_generation_sha: str | None = None,
 ) -> tuple[Path, Path]:
     """Bind exact transport before granting the target entry."""
 
     fingerprint = _migration_fingerprint(intent)
     source_bootstrap = intent.get("version") == 2
     control_intent = _source_bootstrap_check_control(intent) if source_bootstrap else intent
-    _require_no_active_migration(root)
+    _require_no_active_migration(root, installed_generation_sha=installed_generation_sha)
     with RepositoryLock(runtime_paths(root).lock), tempfile.TemporaryDirectory(
         prefix="aios-target-generation-"
     ) as temporary:
@@ -4642,7 +4658,8 @@ def bootstrap_source_upgrade_primary(
     if (intent["source_generation_sha"] != _SOURCE_UPGRADE_SOURCE_SHA
             or intent["target_generation_sha"] != _SOURCE_UPGRADE_TARGET_SHA):
         raise OperatorError("source-control upgrade edge is not activated")
-    if _upgrade_installed_generation_sha(runner=witness_runner) != intent["source_generation_sha"]:
+    installed_source_sha = _upgrade_installed_generation_sha(runner=witness_runner)
+    if installed_source_sha != intent["source_generation_sha"]:
         raise OperatorError("source-control upgrade installed generation mismatch")
 
     root = resolve_repository(intent["repository"])
@@ -4656,11 +4673,16 @@ def bootstrap_source_upgrade_primary(
                   if edge_fp not in superseded and not edge_marker.with_suffix(".completed").is_file()}
         if pending or fingerprint in superseded or active != {fingerprint}:
             raise OperatorError("ambiguous source-control upgrade handoff state")
+        _require_no_active_migration(
+            root, installed_generation_sha=installed_source_sha,
+            replay_fingerprint=fingerprint,
+        )
         record = edges[fingerprint][1]
         bound_intent, target = _migration_bundle(marker, record, intent)
     else:
         bound_intent, target = _stage_migration_handoff(
             root, intent, marker, allow_historical=True,
+            installed_generation_sha=installed_source_sha,
         )
     return _launch_migration_target(
         root, marker, bound_intent, target, runner, source_bootstrap=True

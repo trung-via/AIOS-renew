@@ -577,7 +577,7 @@ The target AIOS source and fetched downstream target control are checked out in 
 
 Ordinary PRIMARY synchronization may still fast-forward a clean `main` and restart once. Its restarted process imports the active package source; when that source is the mutable control checkout, the pre-sync package is snapshotted for the restart. Synchronized `.ai/tasks/*` and `src/aios_renew/*` cannot silently change implementation authority. The handoff contract applies to any downstream repository and any exact reviewed N-to-N+1 pair; it does not itself approve BP-9 adoption, change a downstream pin, or advance the roadmap. BP-9 still requires explicit reviewed downstream migration and repository-owned activation.
 
-#### Exceptional migration-capable source-control upgrade staging (TASK-215)
+#### Exceptional migration-capable source-control upgrade staging (TASK-215, corrected by TASK-216)
 
 Normal `migrate-primary` remains authoritative when the exact target control
 commit and target pin blob already exist. Legacy `bootstrap-primary` and
@@ -600,6 +600,19 @@ target control or pin fields are added. Alternate source or target generations,
 unsafe control, stale pin or TASK identity, and conflicting migration state
 fail before a durable edge or target launch.
 
+This bridge distinguishes three identities. The reviewed and published
+TASK-216 activation/control source supplies the Operator code used for staging;
+it may be loaded from a separate source tree by `aios_control_entry.py`. The
+isolated installed migration-source witness alone attests the immutable,
+non-editable `31fd2482...` distribution and its own matching installed/operator
+path. The exact `44eee353...` checkout is the target generation. TASK-216 binds
+migration-history terminal validation to that installed-source witness, even
+when completed or superseded history precedes it. Ordinary migration callers
+still require their imported Operator path to match installed distribution
+metadata. Active, incomplete, conflicting, cyclic, or malformed history fails
+closed; exact replay requires the selected fingerprint to be the sole valid
+active edge after the completed history chain.
+
 After admission, the existing version-2 fingerprint, bundle and durable
 `AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF` carry the exact repository, source pin,
 TASK id/revision/blob/authoring commit, and Executor. The exact checked-out
@@ -611,14 +624,14 @@ may replay through the existing handoff; conflicting or completed edges fail
 closed. This exact activation is separate from TASK-213's source-REPAIR target
 activation and grants no additional source-REPAIR eligibility.
 
-The prospective downstream order is reviewed and published TASK-215 activation
-source, then a separately reviewed bounded Python Agent carrier for TASK-259
-revision 1, then the exact v2 edge `31fd2482...` to `44eee353...`, followed by
-a target-owned TASK-259 RUN, semantic review and publication, and fresh
-TASK-207 revision-9 conformance. Python Agent's TASK-256 ordinary repair and
-publication precede that sequence. TASK-259's earlier carrier attempt created
-no RUN or Executor observation and has no REPAIR lineage. This staging change
-does not execute or publish any of those downstream steps.
+The prospective downstream order is published TASK-216 correction source as
+activation/control source, the same bounded Python Agent TASK-259 revision-1
+carrier, the exact v2 edge `31fd2482...` to `44eee353...`, a target-owned
+TASK-259 RUN, semantic review and publication, and fresh TASK-207 revision-9
+conformance. Python Agent's TASK-256 ordinary repair and publication precede
+that sequence. TASK-259's earlier carrier attempt created no RUN or Executor
+observation and has no REPAIR lineage. This correction executes and publishes
+none of those prospective downstream steps.
 
 ### TASK-212 PRIMARY portability prerequisite after RUN-256-001
 
@@ -656,8 +669,8 @@ delivery for TASK-256, semantic review and exact publication, then a separate
 exact-pin migration to a reviewed generation containing the TASK-212 fix, then
 fresh `TASK-207` revision-9 conformance. TASK-256 is now publication-complete;
 the migration is carried by canonical TASK-259 revision 1 through the bounded
-TASK-215 staging bridge described above. Its earlier ordinary PRIMARY carrier
-attempt failed before RUN creation. No TASK-259 RUN, migration publication, or
+TASK-215 staging bridge as corrected by TASK-216 above. Its earlier ordinary
+PRIMARY carrier attempt failed before RUN creation. No TASK-259 RUN, migration publication, or
 TASK-207 revision-9 conformance is claimed here.
 
 ## 16. Dependency order

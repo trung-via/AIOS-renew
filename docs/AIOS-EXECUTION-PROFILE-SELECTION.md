@@ -103,7 +103,13 @@ an already-authored target control commit and target pin; TASK-259 is the work
 authorized to create them. The explicit TASK-215
 `bootstrap-source-upgrade-primary` command stages only the exact
 `31fd2482...` to `44eee353...` source-control v2 handoff after isolated
-installed-source attestation. The target's existing
+installed-source attestation. TASK-216 corrects its history check for the
+deliberate split between the reviewed activation/control Operator source and
+the exact installed migration-source witness. The witness attests the installed
+non-editable migration-capable `31fd2482...` distribution and its own operator
+path; the separate `44eee353...` checkout is the target generation. Completed
+history must end at that witnessed installed source, while ordinary callers
+retain imported-package path consistency. The target's existing
 `bootstrap-source-primary --accept-handoff` path owns TASK-259 RUN admission
 and applies the governed Python Agent repository's profile policy. The staging
 command accepts no model or effort override and creates no execution-profile
@@ -111,11 +117,11 @@ journal, RUN, FAILURE, or Executor observation. This is an exceptional bounded
 bridge; normal `migrate-primary` remains the migration path when target control
 and pin exist.
 
-The prospective sequence is reviewed and published TASK-215 activation source,
-a separately reviewed bounded TASK-259 carrier, exact v2 source upgrade,
-target-owned TASK-259 RUN, semantic review and publication, then fresh
-TASK-207 revision-9 conformance. None of those later steps is completed by
-this documentation or the staging implementation.
+The prospective sequence is published TASK-216 correction source as the
+activation/control source, the same bounded TASK-259 revision-1 carrier, exact
+v2 source upgrade, target-owned TASK-259 RUN, semantic review and publication,
+then fresh TASK-207 revision-9 conformance. None of those downstream steps is
+completed by this documentation or the staging implementation.
 
 ## Future model evolution invariant
 

@@ -9688,6 +9688,35 @@ def test_source_upgrade_stages_exact_v2_edge_without_run(
 ) -> None:
     source_sha = operator_module._SOURCE_UPGRADE_SOURCE_SHA
     target_sha = operator_module._SOURCE_UPGRADE_TARGET_SHA
+    control_source = Path(operator_module.__file__).resolve()
+    environment = tmp_path / "installed-source"
+    venv.EnvBuilder(with_pip=False).create(environment)
+    python = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    site = Path(subprocess.check_output(
+        [str(python), "-I", "-c", "import site; print(site.getsitepackages()[0])"],
+        text=True,
+    ).strip())
+    package = site / "aios_renew"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    installed_operator = package / "operator.py"
+    installed_operator.write_text("def migrate_primary(): pass\n# migrate-primary\n", encoding="utf-8")
+    metadata = site / "aios_renew-0.0.dist-info"
+    metadata.mkdir()
+    (metadata / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: aios-renew\nVersion: 0.0\n", encoding="utf-8",
+    )
+    (metadata / "direct_url.json").write_text(json.dumps({
+        "url": "https://example.invalid/aios-renew.git",
+        "vcs_info": {"vcs": "git", "commit_id": source_sha},
+    }), encoding="utf-8")
+    assert installed_operator.resolve() != control_source
+    monkeypatch.setattr(operator_module.sys, "executable", str(python))
+    monkeypatch.setattr(operator_module.importlib.metadata, "distribution",
+                        lambda name: operator_module.importlib.metadata.PathDistribution(metadata))
+    assert operator_module._upgrade_installed_generation_sha() == source_sha
+    with pytest.raises(OperatorError, match="imported package differs from active installed generation"):
+        operator_module._installed_generation_sha()
     repo, _, intent = _source_bootstrap_fixture(
         tmp_path, source_generation=source_sha,
     )
@@ -9700,9 +9729,6 @@ def test_source_upgrade_stages_exact_v2_edge_without_run(
     ])
     assert parsed.command == "bootstrap-source-upgrade-primary"
     assert parsed.intent == str(path)
-    monkeypatch.setattr(operator_module, "_upgrade_installed_generation_sha",
-                        lambda **kwargs: source_sha)
-    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: source_sha)
     historical = dict(intent, source_generation_sha="1" * 40,
                       target_generation_sha=source_sha)
     historical_fp = operator_module._migration_fingerprint(historical)
@@ -9721,6 +9747,8 @@ def test_source_upgrade_stages_exact_v2_edge_without_run(
     historical_files = (historical_marker, historical_marker.with_suffix(".consumed"),
                         historical_marker.with_suffix(".completed"), historical_bundle / "intent.json")
     historical_bytes = {artifact: artifact.read_bytes() for artifact in historical_files}
+    with pytest.raises(OperatorError, match="imported package differs from active installed generation"):
+        operator_module._require_no_active_migration(repo)
     launched = []
 
     def child(command, **kwargs):
@@ -9820,7 +9848,7 @@ def test_source_upgrade_witness_isolated_installed_distribution(
     with pytest.raises(OperatorError, match="legacy installed generation attestation failed"):
         operator_module._legacy_installed_generation_sha()
 
-    for invalid in ("editable", "alternate", "legacy"):
+    for invalid in ("editable", "alternate", "legacy", "path_mismatch"):
         if invalid == "editable":
             origin["dir_info"] = {"editable": True}
             direct_url.write_text(json.dumps(origin), encoding="utf-8")
@@ -9828,10 +9856,22 @@ def test_source_upgrade_witness_isolated_installed_distribution(
             origin.pop("dir_info")
             origin["vcs_info"]["commit_id"] = "a" * 40
             direct_url.write_text(json.dumps(origin), encoding="utf-8")
-        else:
+        elif invalid == "legacy":
             origin["vcs_info"]["commit_id"] = operator_module._SOURCE_UPGRADE_SOURCE_SHA
             direct_url.write_text(json.dumps(origin), encoding="utf-8")
             active.write_text("# legacy-only source\n", encoding="utf-8")
+        else:
+            active.write_text("def migrate_primary(): pass\n# migrate-primary\n", encoding="utf-8")
+            shadow = tmp_path / "shadow" / "aios_renew"
+            shadow.mkdir(parents=True)
+            (shadow / "__init__.py").write_text("", encoding="utf-8")
+            (shadow / "operator.py").write_text(
+                "def migrate_primary(): pass\n# migrate-primary\n", encoding="utf-8",
+            )
+            (site / "sitecustomize.py").write_text(
+                f"import sys\nsys.path.insert(0, {str(shadow.parent)!r})\n",
+                encoding="utf-8",
+            )
         with pytest.raises(OperatorError, match="upgrade installed generation attestation failed"):
             operator_module._upgrade_installed_generation_sha()
 
