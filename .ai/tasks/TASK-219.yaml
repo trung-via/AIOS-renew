@@ -1,0 +1,250 @@
+task_id: TASK-219
+revision: 1
+
+goal: >
+  Activate the exact reviewed and published TASK-218 post-terminal source-bootstrap
+  successor consumer by binding the single production
+  _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA allowlist slot to exact generation
+  8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29, and document one explicit Human-local
+  subordinate carrier for the demonstrated Python Agent TASK-259 successor-revision
+  continuation. Preserve the TASK-218 successor contract, target-side consumption,
+  Runtime PRIMARY authority, all other activation families, downstream state, Reviewer,
+  Publisher and frozen-Kernel boundaries unchanged.
+
+problem: >
+  TASK-218 revision 1 introduced the bounded post-terminal same-TASK strictly-newer
+  revision PRIMARY capability required after Python Agent RUN-259-001 exposed a TASK-259
+  r1 authoring contradiction that cannot be repaired within r1 scope. TASK-218 completed
+  through RUN-218-003 RESULT, REVIEW-218-001 PRIMARY PASS and exact publication at
+  8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29. Its production successor consumer remains
+  intentionally closed because _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is None. A separate
+  post-publication activation is therefore required before any real downstream successor
+  staging. Python Agent also has no repository-owned workflow for this new successor
+  command, while TASK-217's Human-local exception is intentionally scoped only to
+  bootstrap-source-upgrade-primary. The remaining bounded work is to activate exactly the
+  published TASK-218 source and prospectively authorize one explicit Human-selected local
+  shell as transport for this demonstrated successor continuation, without granting the
+  shell lifecycle semantics or generic bootstrap authority.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at TASK-219 authoring is exactly
+    8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29.
+  - >
+    TASK-218 r1 canonical successful lineage is RUN-218-003 RESULT,
+    REVIEW-218-001 PRIMARY PASS and Publisher publication of exact
+    8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29. RUN-218-001 and RUN-218-002
+    remain immutable historical FAILURES/correction lineage.
+  - >
+    Current production _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is exactly None. Current
+    _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA remains exact
+    44eee353eda376c9db8cd88d97184d3122651bf5, _SOURCE_UPGRADE_TARGET_SHA remains exact
+    44eee353eda376c9db8cd88d97184d3122651bf5, _SOURCE_BOOTSTRAP_TARGET_SHA remains exact
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6, and _BOOTSTRAP_TARGET_SHA remains exact
+    83115b26df85a7ad6643f317833e18b18586bdbe.
+  - >
+    TASK-218 intentionally checks production activation only on the staging side when
+    transport_path is absent. The exact bound target consumes --accept-transport after
+    verifying its durable intent/source identity and must not require its own
+    _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA to match, because the target is the earlier
+    published TASK-218 source whose activation slot remains None.
+  - >
+    Current Python Agent canonical main remains
+    95f47b9a5832835b9a4265c892b813e492270cf8 with active AIOS-renew pin
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 and canonical failed
+    RUN-259-001 for TASK-259 revision 1. TASK-259 revision 2 does not yet exist and this
+    task must not author or execute it.
+  - >
+    TASK-217 permits an explicit Human-local subordinate carrier only for the earlier
+    bootstrap-source-upgrade-primary circular-bootstrap case. TASK-219 must not silently
+    generalize that rule; any local successor carrier authority must be stated separately
+    and narrowly for bootstrap-source-successor-primary.
+  - >
+    BP-9 downstream adoption remains the Human/Brain planning NEXT. TASK-219 is only the
+    exact activation/transport prerequisite and does not mutate downstream state or claim
+    BP-9 completion.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-213.yaml
+    - .ai/tasks/TASK-217.yaml
+    - .ai/tasks/TASK-218.yaml
+    - src/aios_renew/operator.py
+    - scripts/aios_control_entry.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - docs/AIOS-BRAIN-PORTABILITY.md
+
+non_goals:
+  - >
+    Modify TASK-218 successor intent schema, lineage selection, completed-failed-edge
+    eligibility, same-TASK/strictly-newer revision checks, unchanged-pin/control checks,
+    durable successor transport state, path-budget correction, replay/at-most-once logic,
+    target-side revalidation, PRIMARY Runtime delegation, RESULT/FAILURE semantics or
+    source-REPAIR selector behavior.
+  - >
+    Modify _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA, _SOURCE_UPGRADE_TARGET_SHA,
+    _SOURCE_BOOTSTRAP_TARGET_SHA, _BOOTSTRAP_TARGET_SHA or any other production activation
+    family.
+  - >
+    Add an upstream or downstream workflow, reusable automation carrier, generic bootstrap
+    router, target chooser, retry/fallback/failover, queue, daemon, scheduler, Planner,
+    automatic TASK-revision selector, Reviewer, Publisher or second lifecycle authority.
+  - >
+    Modify Python Agent, author TASK-259 revision 2, execute RUN-259 successor lineage,
+    mutate its dependency pin, migration/source-bootstrap history, roadmap/adoption state,
+    TASK-207 revision 9, TASK-254 product work or claim BP-9 completion.
+  - >
+    Activate mutable main, a branch/ref, the eventual TASK-219 candidate/published SHA,
+    multiple targets, fallback targets, environment/config overrides, caller-supplied
+    source authority or network discovery.
+  - >
+    Add model or reasoning-effort fields to the successor intent or Human-local carrier.
+    Fresh successor PRIMARY profile selection remains governed by the downstream
+    repository under existing Runtime policy.
+  - >
+    Change frozen Kernel semantics, Human/Brain/Executor/Runtime/Reviewer/Publisher
+    authority or reinterpret historical TASK/RUN/FAILURE/RESULT/REVIEW lineage.
+
+constraints:
+  hard:
+    - >
+      The sole production Python behavior change is replacing
+      _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA: str | None = None with the exact literal
+      _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA: str | None =
+      "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29". No list/set, mutable lookup,
+      environment/config override, current-main derivation, network discovery, fallback
+      or self-derived activation is permitted.
+    - >
+      Production staging through bootstrap_source_successor_primary with transport_path
+      absent must accept only intent.target_generation_sha equal to exact
+      8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29. Every other target must fail before target
+      clone/staging, installed-generation attestation, target invocation or fresh
+      successor RUN admission.
+    - >
+      Bound target consumption through --accept-transport must remain independent of the
+      target source's own activation constant. The exact published TASK-218 target
+      8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29 contains
+      _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA = None and must still consume an already
+      bound exact transport after source/path/intent/lineage validation. Do not move or
+      duplicate the staging activation guard into target-side consumption.
+    - >
+      Preserve TASK-218 exact successor semantics byte-for-byte outside the activation
+      literal: completed failed source-bootstrap edge selection, immutable historical
+      handoff/RUN/FAILURE, same TASK id, strictly newer pre-authored revision, clean
+      fast-forward current control, unchanged legacy pin, same Executor, exact target
+      source, short deterministic filesystem locator with full durable identity,
+      target-side revalidation, fresh PRIMARY Runtime delegation, exact replay and
+      at-most-one successor RUN/Executor invocation.
+    - >
+      Preserve _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA =
+      44eee353eda376c9db8cd88d97184d3122651bf5, _SOURCE_UPGRADE_TARGET_SHA =
+      44eee353eda376c9db8cd88d97184d3122651bf5, _SOURCE_BOOTSTRAP_TARGET_SHA =
+      31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 and _BOOTSTRAP_TARGET_SHA =
+      83115b26df85a7ad6643f317833e18b18586bdbe exactly.
+    - >
+      Update deterministic tests so production state proves exactly one
+      _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA literal equal to
+      8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29; representative non-activated targets,
+      including 44eee353..., 31fd2482..., fixture/current/future values, reject before
+      staging; and fixture activation remains explicitly test-only where needed to
+      exercise transport behavior.
+    - >
+      Add a regression proving the staging/target activation split: staging under an
+      explicitly activated control source may bind and launch the exact target, while a
+      fresh target interpreter whose production _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is
+      None can consume the exact --accept-transport path and reach the existing successor
+      PRIMARY delegation after all target-side validations. Wrong path, altered stored
+      intent, wrong source/HEAD and conflicting identities must still fail before RUN.
+    - >
+      Documentation may prospectively authorize one explicit Human-selected local
+      PowerShell/shell invocation as the subordinate transport carrier for the
+      demonstrated Python Agent post-terminal TASK-259 successor continuation. The shell
+      may only construct/write the exact version-1
+      AIOS_SOURCE_BOOTSTRAP_SUCCESSOR_INTENT, select/materialize the exact published
+      TASK-219 activation/control source, locate the existing worker Python, and invoke
+      scripts/aios_control_entry.py with bootstrap-source-successor-primary. It owns no
+      eligibility, target selection, TASK revision selection, RUN allocation, profile,
+      verification, review, publication or roadmap semantics.
+    - >
+      The Human-local successor carrier is explicit, one-time and non-automatic. Runtime,
+      Executor, workflow, provider and retry logic cannot select it. It is not a reusable
+      automation surface, generic bootstrap permission or extension of TASK-217's
+      source-upgrade carrier. Reusable automated successor transport would require a
+      separately reviewed repository-owned carrier.
+    - >
+      The real downstream successor intent must be authored only after a fresh downstream
+      Brain Sync and canonical TASK-259 revision 2 exist. It must bind exact RUN-259-001,
+      TASK-259 prior revision 1 and successor revision 2, exact then-current downstream
+      control/TASK blob/authoring commit, unchanged legacy pin/source generation
+      31fd2482..., prior target generation 44eee353..., successor Runtime target
+      8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29 and Executor codex. TASK-219 must not
+      invent or hard-code future r2 control/blob identities.
+    - >
+      A local pre-AIOS carrier/staging failure remains operational only and fabricates no
+      RUN, FAILURE, RESULT, verification, REVIEW, publication or roadmap completion. Once
+      the exact target admits a successor RUN, canonical Runtime artifacts become
+      engineering truth.
+    - >
+      No production Python outside the single activation literal may change. Tests may
+      update exact production expectations and add focused staging/target split/rejection
+      coverage only. Documentation changes only AIOS-BRAIN-PORTABILITY.md.
+    - >
+      Executor returns one clean candidate with zero unresolved implementation items and
+      does not author/execute downstream successor work, review, publish, mutate roadmap
+      state or claim BP-9 completion.
+
+acceptance:
+  - id: AC1
+    condition: >
+      src/aios_renew/operator.py contains exactly one production
+      _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA and its value is the literal exact published
+      TASK-218 generation 8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29.
+  - id: AC2
+    condition: >
+      With production defaults, successor staging accepts only exact target generation
+      8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29 and rejects every other target before
+      target staging/invocation or fresh successor RUN authority.
+  - id: AC3
+    condition: >
+      The exact bound TASK-218 target consumes --accept-transport without depending on its
+      own activation slot, while wrong transport/source/HEAD/intent/lineage continues to
+      fail closed before RUN admission.
+  - id: AC4
+    condition: >
+      TASK-218 successor lineage, replay, at-most-once, path-budget and PRIMARY Runtime
+      semantics remain unchanged outside activation, and all other activation families,
+      source-REPAIR/source-upgrade and ordinary PRIMARY behavior remain unchanged.
+  - id: AC5
+    condition: >
+      Canonical Brain Portability documentation recognizes one explicit Human-selected,
+      one-time subordinate local carrier for the demonstrated Python Agent
+      bootstrap-source-successor-primary continuation, without granting the shell generic
+      bootstrap, lifecycle, TASK-selection, profile, retry/fallback/failover or automation
+      authority.
+  - id: AC6
+    condition: >
+      Documentation requires fresh downstream Brain Sync and an exact canonical TASK-259
+      r2 before constructing the real successor intent; TASK-219 itself neither invents
+      future r2 identities nor mutates/executes Python Agent, TASK-207 r9 or BP-9.
+  - id: AC7
+    condition: >
+      Only src/aios_renew/operator.py, tests/test_operator.py and
+      docs/AIOS-BRAIN-PORTABILITY.md change; production Python delta is exactly the single
+      activation literal, no other lifecycle authority changes, and zero Executor-owned
+      work remains unresolved.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q -k "source_successor"
+    - git diff --check

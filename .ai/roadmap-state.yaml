@@ -1130,23 +1130,30 @@ sequence:
       Adopt the reviewed capability downstream only through an explicit exact-pin,
       repository-owned migration after BP-8 evidence exists.
     current_prerequisite:
-      task_id: TASK-218
+      task_id: TASK-219
       task_revision: 1
       approved_on: "2026-09-29"
-      approved_against_main_sha: "a5e4fa46579fb4013a25f5f9821c3d55377529ba"
+      approved_against_main_sha: "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
       authority: HUMAN_BRAIN_PLANNING
       reason: >-
-        Python Agent RUN-259-001 is a completed failed source-bootstrap PRIMARY whose
-        TASK-259 r1 contract cannot be validly repaired because a verification-required
-        active-pin assertion lies outside r1 scope.modify. Existing pre-RUN recovery and
-        same-failed-RUN source-REPAIR do not authorize a strictly newer TASK revision.
-        TASK-218 therefore adds the bounded post-terminal same-TASK successor-revision
-        PRIMARY authority before downstream TASK-259 r2 can be authored/executed.
+        TASK-218 successor-revision capability is now REVIEW-218-001 PASS and published
+        exactly at 8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29, but its production successor
+        activation remains intentionally closed. TASK-219 binds the single exact production
+        successor target to that published source and documents one explicit Human-local
+        subordinate carrier for the demonstrated Python Agent TASK-259 continuation without
+        widening lifecycle or automation authority.
+      predecessor_completed:
+        task_id: TASK-218
+        task_revision: 1
+        run_id: RUN-218-003
+        review_id: REVIEW-218-001
+        reviewed_sha: "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
+        published_sha: "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
       follow_on: >-
-        After TASK-218 is reviewed and source-published, author a separate exact activation
-        TASK for its successor consumer; then fresh downstream Brain Sync may author
-        TASK-259 r2, execute it through the bounded successor transport, publish the exact
-        reviewed candidate, and only then proceed to fresh TASK-207 r9.
+        After TASK-219 is reviewed and source-published, perform a fresh downstream Brain
+        Sync, author exact TASK-259 r2, construct one exact successor intent under current
+        downstream identities, execute it through the bounded Human-local successor carrier,
+        review/publish the resulting candidate, and only then proceed to fresh TASK-207 r9.
 previous_track:
   id: control-plane-closure
   status: COMPLETE
@@ -1172,15 +1179,16 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item, BP-9 downstream adoption. Current
-    explicit Human/Brain planning inserts TASK-218 r1 as the bounded prerequisite after
-    Python Agent RUN-259-001 exposed a post-terminal source-bootstrap TASK-contract gap:
-    preserve RUN-259-001/FAILURE immutably, publish TASK-218 successor-revision capability,
-    then separately activate one exact reviewed TASK-218 consumer, fresh-sync downstream,
-    author TASK-259 r2, execute that exact newer revision through the bounded successor
-    transport, review/publish it, and only then author/execute fresh TASK-207 r9. TASK-218
-    must not be replaced by REPAIR-259, source-REPAIR reuse, migration-state rewriting,
-    automatic revision selection, generic retry/failover, or product work.
+    Continue only the unique canonical NEXT item, BP-9 downstream adoption. TASK-218 r1
+    capability is now reviewed and published exactly at
+    8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29. Current explicit Human/Brain planning makes
+    TASK-219 r1 the bounded activation prerequisite: activate only that exact TASK-218
+    successor consumer and document the one-time Human-local successor carrier; then
+    fresh-sync downstream, author exact TASK-259 r2, execute that newer revision through
+    the bounded successor transport, review/publish it, and only then author/execute fresh
+    TASK-207 r9. Do not replace this sequence with REPAIR-259, source-REPAIR reuse,
+    migration-state rewriting, automatic revision selection, generic retry/failover,
+    reusable unreviewed shell automation, or product work.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
