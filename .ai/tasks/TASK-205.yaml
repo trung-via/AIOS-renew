@@ -1,0 +1,175 @@
+task_id: TASK-205
+revision: 1
+
+goal: >
+  Harden BP-V3 verification-subject materialization so canonical verification runs
+  against a tracked worktree whose bytes are not altered by ambient host/user Git
+  text-conversion policy. Preserve the independent exact-subject clone, the transient
+  subject-local .git/aios scratch namespace introduced by TASK-204, exact candidate
+  SHA binding, Runtime evidence ownership, subject-integrity checks and all existing
+  lifecycle authorities.
+
+problem: >
+  Canonical downstream RUN-255-003 exposed a second verification-subject fidelity
+  defect after the missing subject-local .git/aios parent was isolated. The failed
+  candidate's canonical Git blobs for LF-sensitive files are LF-only, while the
+  independently materialized Windows verification worktree contained CRLF bytes.
+  Byte-sensitive tests therefore reported CRLF/frontmatter and historical blob-hash
+  failures even though the candidate blobs themselves were canonical. The current
+  materialize_verification_subject() clone/checkout path does not explicitly isolate
+  tracked-file checkout semantics from ambient Git configuration such as core.autocrlf.
+  A verification subject that is HEAD-correct and git-status-clean but byte-different
+  from the canonical candidate is not a reproducible verification subject. This task
+  closes only that upstream verification-fidelity defect; it does not repair or
+  reinterpret any downstream failed RUN or candidate defect.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is exactly
+    f77bb129c75af88d5bec975ff0c50e43e96a5e58.
+  - >
+    TASK-204 / RUN-204-001 / REVIEW-204-001 is reviewed PASS and published at exact
+    f77bb129c75af88d5bec975ff0c50e43e96a5e58. Its subject-local .git/aios namespace
+    semantics remain authoritative and must be preserved.
+  - >
+    Downstream RUN-255-003 is immutable canonical FAILURE evidence. Direct inspection
+    of candidate 04fdd9841b47a8c8b50a4b1313071d966a549c46 shows the relevant canonical
+    Git blobs are LF-only while the isolated verification worktree reported CRLF bytes.
+    This establishes an upstream materialization fidelity defect without asserting that
+    every RUN-255-003 failure is upstream-caused.
+  - >
+    Repository-owned tracked attributes, when explicitly present, remain part of
+    canonical repository policy. Ambient host/user/system Git configuration is not
+    verification authority and must not silently change tracked bytes.
+  - >
+    BP-9 downstream adoption remains the Human/Brain roadmap NEXT. This bounded
+    maintenance side-track is a prerequisite discovered from downstream evidence and
+    does not itself advance BP-9 planning state.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-156.yaml
+    - .ai/tasks/TASK-204.yaml
+    - src/aios_renew/verification.py
+    - src/aios_renew/runtime.py
+    - tests/test_verification.py
+    - tests/test_runtime.py
+  modify:
+    - src/aios_renew/verification.py
+    - tests/test_verification.py
+
+non_goals:
+  - >
+    Repair, retry, supersede, reinterpret or otherwise mutate downstream RUN-255-003,
+    any downstream TASK, candidate, dependency pin, migration handoff or roadmap state.
+  - >
+    Change source-bootstrap, migration, REPAIR, RuntimeCompletion policy selection,
+    verification command selection, execution profiles, carrier semantics, Reviewer,
+    Publisher, terminal truth, roadmap state or frozen Kernel semantics.
+  - >
+    Normalize, rewrite or mutate candidate tracked files after materialization merely to
+    satisfy byte-sensitive tests, or add downstream .gitattributes as a workaround.
+  - >
+    Copy the control worktree, share mutable Git metadata, replace the independent clone
+    with a linked worktree, or expose control-repository .git/aios state inside the
+    verification subject.
+  - >
+    Disable or weaken byte-sensitive, line-ending, historical-hash or subject-integrity
+    checks. Verification must observe the canonical candidate faithfully rather than
+    make tests less strict.
+  - >
+    Add caches, persistent state, retry/fallback/failover, a generic router, Planner,
+    Reviewer, Publisher or any new semantic/lifecycle authority.
+  - >
+    Perform downstream adoption or publication from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      materialize_verification_subject() remains the single low-level boundary that
+      creates one independently mutable exact verification clone per RuntimeCompletion.
+      Exact detached HEAD, clean tracked state and independent mutable Git metadata must
+      remain required before canonical commands execute.
+    - >
+      The materialized subject must be deterministic with respect to tracked-file
+      checkout bytes: ambient user/system/host Git text-conversion settings must not
+      cause a tracked file to differ from the canonical committed content merely because
+      verification runs on a particular machine. Repository-tracked attributes remain
+      authoritative where they explicitly define checkout behavior.
+    - >
+      Do not implement fidelity by rewriting tracked files after checkout, modifying
+      candidate content, normalizing verification inputs, or teaching Runtime to special
+      case downstream filenames/tests. The materialization boundary itself must establish
+      the correct subject semantics before yielding it.
+    - >
+      Preserve TASK-204 semantics exactly: each subject contains one newly created empty
+      <subject>/.git/aios directory; no control Runtime files, migration state, RUN/RESULT/
+      FAILURE artifacts, evidence, profiles, locks or other canonical .git/aios content
+      may be copied, linked or observed there.
+    - >
+      Preserve exact canonical verification command text and cwd semantics, one subject
+      for the full ordered command list, EVIDENCE.subject_sha binding, Windows external
+      TEMP/TMP isolation, post-command HEAD/clean-state checks and subordinate cleanup.
+    - >
+      Add a deterministic regression that creates an LF-only committed sentinel and
+      simulates an ambient Git configuration capable of checkout EOL conversion. The
+      independently materialized subject must retain the expected canonical LF bytes,
+      exact HEAD and clean tracked state without relying on the developer machine's
+      actual global Git configuration.
+    - >
+      Add regression coverage proving subject-local repository configuration changes
+      needed for deterministic materialization do not mutate or depend on the control
+      repository's mutable Git config and do not weaken repository-owned tracked
+      attribute semantics.
+    - >
+      Preserve the TASK-204 composition regression for empty .git/aios isolation and all
+      existing BP-V3 exact-subject regressions; new coverage must compose with rather
+      than replace those invariants.
+    - >
+      No production file other than src/aios_renew/verification.py may change. Executor
+      returns one clean candidate with zero unresolved implementation items and does not
+      review, publish, mutate roadmap state or perform downstream work.
+
+acceptance:
+  - id: AC1
+    condition: >
+      An independently materialized verification subject preserves deterministic tracked
+      checkout bytes against ambient Git text-conversion policy, so an LF-only canonical
+      tracked sentinel remains LF-only in the subject while exact subject HEAD and clean
+      tracked state are preserved.
+  - id: AC2
+    condition: >
+      Verification-subject fidelity is established at materialization time without
+      post-checkout tracked-file rewriting, candidate mutation, verification-command
+      rewriting or downstream-specific filename/test exceptions.
+  - id: AC3
+    condition: >
+      Repository-owned tracked attributes remain authoritative where explicitly present,
+      while control-repository or host-global mutable Git configuration cannot silently
+      become verification-subject authority.
+  - id: AC4
+    condition: >
+      TASK-204 subject-local .git/aios isolation remains intact: the namespace starts
+      empty, contains no copied/linked control Runtime state, and is removed with the
+      transient subject.
+  - id: AC5
+    condition: >
+      Existing exact-SHA, independent-Git-state, one-subject-per-completion, command/cwd,
+      Runtime evidence, Windows TEMP isolation, post-verification integrity and cleanup
+      semantics remain unchanged.
+  - id: AC6
+    condition: >
+      The implementation changes only the authorized production/test paths, introduces
+      no lifecycle or semantic authority, and reports zero Executor-owned unresolved
+      implementation items.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_verification.py tests/test_runtime.py
+    - git diff --check
