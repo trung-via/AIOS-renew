@@ -3784,7 +3784,7 @@ _SOURCE_BOOTSTRAP_FIELDS = (_MIGRATION_FIELDS - {"target_control_sha", "target_p
 
 # Activated only by a separate, post-publication successor. Never inferred from
 # this checkout, the requested target, or the source-PRIMARY activation.
-_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = "062031ab91118ecf784944e8dd7e3d76b0553c74"
+_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = "44eee353eda376c9db8cd88d97184d3122651bf5"
 _SOURCE_REPAIR_BOOTSTRAP_FIELDS = frozenset({
     "format", "version", "repository", "bootstrap_fingerprint",
     "legacy_generation_sha", "target_generation_sha", "target_url",
