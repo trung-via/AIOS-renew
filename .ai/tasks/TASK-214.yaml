@@ -1,5 +1,5 @@
 task_id: TASK-214
-revision: 1
+revision: 2
 
 goal: >
   Reconcile the source-REPAIR lineage boundary after TASK-212/TASK-213 by correcting
@@ -24,12 +24,28 @@ problem: >
   CONTINUE_IMPLEMENTATION REPAIR and validates ordinary REPAIR profiles against the
   governed repository. TASK-212 remains the upstream root fix for future PRIMARY v3
   authorization, and TASK-213 remains valid exact activation provenance; neither widens
-  source-REPAIR failed-lineage eligibility.
+  source-REPAIR failed-lineage eligibility. TASK-214 r1 produced the intended two-file
+  documentation candidate but RUN-214-001 failed at COMPLETION_GATE before Runtime
+  verification because AC6 incorrectly required the Executor to claim post-verification
+  test and git-diff outcomes. Revision 2 preserves the same engineering intent and
+  verification commands while rewriting AC6 as a pre-verification implementation property,
+  consistent with the TASK-174 structural-completion contract.
 
 assumptions:
   - >
-    Canonical AIOS-renew main at authoring is
-    c1fab3aac286bb51457a2504b5a229c0a9c93479.
+    Canonical AIOS-renew main at TASK-214 r2 authoring is
+    09b8dd54381c0a710e5ae2199c88aef6ebbf4df0 and contains TASK-214 r1 only; the failed
+    RUN-214-001 candidate has not been published to main.
+  - >
+    RUN-214-001 is canonical COMPLETION_GATE FAILURE artifact
+    a27e9bfa28ec1cf05a100cce4e57facf4faba286. Its failed candidate is
+    e1942099918dd395113a3f4b054934e89bd02f20, changes only the two authorized docs,
+    is clean/descendant/in-scope/repairable/transportable, and recorded
+    verification_seconds=null with error "RESULT does not satisfy acceptance criteria: AC6".
+  - >
+    TASK-174 r2 requires newly authored acceptance criteria to be truthfully claimable as
+    pre-verification implementation properties; Runtime verification outcomes, EVIDENCE,
+    review, publication and roadmap state remain outside Executor claims.
   - >
     TASK-212 published the PRIMARY durable-journal governed-repository policy correction
     at exact source 44eee353eda376c9db8cd88d97184d3122651bf5, and TASK-213 changed only
@@ -49,11 +65,10 @@ assumptions:
     PRIMARY carrier dispatch primary-TASK-256-r1-2a773fd1-codex-v1. It has no canonical
     completed failed source-bootstrap-v2 edge of its own.
   - >
-    Python Agent now has canonical REPAIR authorization for RUN-256-001 at
-    2dbf11ffe5390de3f461c427fd3a96345438b649. Its revision-1 instructions inherited the
-    erroneous prospective source-REPAIR-only choreography and must not be delivered while
-    that conflict remains. A later downstream AUTHOR_REPAIR supersession may correct the
-    delivery instruction without rewriting this immutable revision.
+    Python Agent has canonical REPAIR authorization for RUN-256-001 revision 1 at
+    2dbf11ffe5390de3f461c427fd3a96345438b649. Its source-REPAIR-only instruction is not
+    executable under the corrected lineage classification and must be immutably superseded
+    before ordinary REPAIR delivery.
   - >
     At exact downstream pin 31fd2482..., ordinary REPAIR already supports
     CONTINUE_IMPLEMENTATION for pre-verification EXECUTION/COMPLETION_GATE failures, coding
@@ -67,6 +82,7 @@ scope:
     - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
     - docs/AIOS-CONSTITUTION.md
     - docs/CHATGPT_PROJECT_CONTRACT.md
+    - .ai/tasks/TASK-174.yaml
     - .ai/tasks/TASK-206.yaml
     - .ai/tasks/TASK-208.yaml
     - .ai/tasks/TASK-210.yaml
@@ -81,6 +97,10 @@ scope:
     - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
 
 non_goals:
+  - >
+    Repair, rewrite, publish, reinterpret or otherwise mutate historical RUN-214-001 or
+    candidate e1942099918dd395113a3f4b054934e89bd02f20. Revision 2 is a new TASK revision
+    on canonical main and must produce its own ordinary PRIMARY lineage.
   - >
     Change bootstrap-source-repair intent schema, failed-lineage admission, source-REPAIR
     staging/target execution, repair-dispatch, ordinary REPAIR Runtime, PRIMARY Runtime,
@@ -129,18 +149,25 @@ constraints:
       requiring immutable supersession before ordinary delivery. Do not rewrite or delete
       that downstream artifact from this task.
     - >
-      No production code, tests, task artifacts, activation literals, roadmap state or
-      runtime state may change. Documentation must describe existing deterministic
-      semantics rather than creating a second authority.
+      No production code, tests, task artifacts other than this canonical TASK revision,
+      activation literals, roadmap state or runtime state may change. Documentation must
+      describe existing deterministic semantics rather than creating a second authority.
     - >
-      Reuse existing focused regression evidence without changing tests:
+      Preserve the Runtime-owned verification contract exactly. Executor must not execute
+      or claim the outcome of the required pytest or git diff --check commands. Runtime
+      alone runs those commands and constructs canonical EVIDENCE after structural
+      completion succeeds.
+    - >
+      Existing focused regression targets remain unchanged:
       test_source_repair_bootstrap_requires_completed_failed_v2_lineage,
       test_continue_implementation_repair_binds_exact_failed_run_and_preserves_runtime_boundary,
       and test_repair_wakeup_delegates_once_then_replays_without_new_observation.
     - >
-      Executor changes only the two authorized documentation files, returns one clean
-      candidate with zero unresolved items, and does not review, publish, mutate downstream,
-      create/supersede a REPAIR, or execute any recovery.
+      Executor changes only the two authorized documentation files, returns affirmative
+      pre-verification claims for implementation properties it can truthfully establish,
+      returns zero unresolved Executor-owned implementation work when complete, and does
+      not review, publish, mutate downstream, create/supersede a REPAIR, or execute any
+      recovery.
 
 acceptance:
   - id: AC1
@@ -165,12 +192,15 @@ acceptance:
       inconsistent with the actual RUN-256-001 lineage, without mutating downstream state.
   - id: AC5
     condition: >
-      Production Python, tests, activation constants, historical TASKs, roadmap, migration
-      history and all lifecycle authorities are byte-identical to the predecessor main.
+      The implementation delta is limited to the two authorized documentation files; it
+      changes no production Python, tests, activation constants, historical TASKs, roadmap,
+      migration history or lifecycle authority.
   - id: AC6
     condition: >
-      Existing focused source-REPAIR/CONTINUE_IMPLEMENTATION/repair-wakeup regressions pass
-      unchanged and git diff --check passes.
+      The implementation preserves the exact Runtime-owned verification contract and all
+      three existing focused regression targets unchanged, introduces no verification-policy
+      bypass or test modification, and returns zero unresolved Executor-owned implementation
+      work when the documentation correction is complete.
 
 verification:
   policy: minimum-sufficient-v1
