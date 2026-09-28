@@ -3769,7 +3769,7 @@ _MIGRATION_FIELDS = frozenset({
 _BOOTSTRAP_TARGET_SHA = "83115b26df85a7ad6643f317833e18b18586bdbe"
 
 # Exact reviewed and published TASK-199 consumer-capable generation.
-_SOURCE_BOOTSTRAP_TARGET_SHA: str | None = "ff29666d50eaf9276ab62d944018f2bbeb91f073"
+_SOURCE_BOOTSTRAP_TARGET_SHA: str | None = "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
 _SOURCE_BOOTSTRAP_FIELDS = (_MIGRATION_FIELDS - {"target_control_sha", "target_pin_blob_sha"}) | {"format"}
 
 

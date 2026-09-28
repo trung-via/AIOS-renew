@@ -9241,19 +9241,23 @@ def _source_bootstrap_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
     return repo, target_source, intent
 
 
-@pytest.mark.parametrize("target_kind", ["fixture", "maintenance", "current_source"])
+@pytest.mark.parametrize("target_kind", [
+    "fixture", "old_task_199", "maintenance", "current_source", "future_source",
+])
 def test_source_bootstrap_production_allowlist_rejects_other_targets_before_edge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_kind: str
 ) -> None:
-    activated = "ff29666d50eaf9276ab62d944018f2bbeb91f073"
+    activated = "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
     assert operator_module._SOURCE_BOOTSTRAP_TARGET_SHA == activated
     assert operator_module._BOOTSTRAP_TARGET_SHA == "83115b26df85a7ad6643f317833e18b18586bdbe"
     repo, _, intent = _source_bootstrap_fixture(tmp_path)
     current_source = Path(operator_module.__file__).resolve().parents[2]
     intent["target_generation_sha"] = {
         "fixture": intent["target_generation_sha"],
+        "old_task_199": "ff29666d50eaf9276ab62d944018f2bbeb91f073",
         "maintenance": "f248416cf4ac8f41203898f530bc21d0500a5479",
         "current_source": git(current_source, "rev-parse", "HEAD"),
+        "future_source": "f" * 40,
     }[target_kind]
     assert intent["target_generation_sha"] != activated
     path = tmp_path / "unactivated-source-intent.json"
@@ -9516,6 +9520,37 @@ def test_migration_run_history_accepts_nested_remediation_and_rejects_unknown(
     path.write_text(json.dumps({"kind": "REMEDIATION", "execution": {"run": {}}}), encoding="utf-8")
     with pytest.raises(OperatorError, match="invalid migration RUN"):
         operator_module._migration_run_terminal(repo, intent)
+
+
+def test_source_bootstrap_production_rejects_retired_replacement_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    activated = "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
+    assert operator_module._SOURCE_BOOTSTRAP_TARGET_SHA == activated
+    repo, _, old = _source_bootstrap_fixture(tmp_path)
+    old_path = tmp_path / "old.json"
+    old_path.write_text(json.dumps(old), encoding="utf-8")
+    with monkeypatch.context() as patch:
+        patch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA",
+                      old["target_generation_sha"])
+        patch.setattr(operator_module, "_legacy_installed_generation_sha",
+                      lambda **kwargs: old["source_generation_sha"])
+        assert operator_module.bootstrap_source_primary(
+            old_path, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0)
+        ) == 0
+    old_marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(old))
+    old_marker.with_suffix(".consumed").write_text(old_marker.stem, encoding="utf-8")
+    old_bytes = old_marker.read_bytes()
+    replacement = dict(old, target_generation_sha="ff29666d50eaf9276ab62d944018f2bbeb91f073")
+    replacement_path = tmp_path / "replacement.json"
+    replacement_path.write_text(json.dumps(replacement), encoding="utf-8")
+    with pytest.raises(OperatorError, match="target is not activated"):
+        operator_module.recover_source_bootstrap(old_path, replacement_path)
+    assert old_marker.read_bytes() == old_bytes
+    assert old_marker.with_suffix(".consumed").read_text(encoding="utf-8") == old_marker.stem
+    assert not old_marker.with_suffix(".superseded").exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    assert len(list(old_marker.parent.glob("*.json"))) == 1
 
 
 @pytest.mark.parametrize("new_revision", [2, 3])
