@@ -3811,7 +3811,7 @@ _SOURCE_REPAIR_BOOTSTRAP_FIELDS = frozenset({
 })
 
 # A distinct, post-terminal PRIMARY consumer. TASK-218 publishes no activation.
-_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA: str | None = None
+_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA: str | None = "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
 _SOURCE_BOOTSTRAP_SUCCESSOR_FIELDS = frozenset({
     "format", "version", "repository", "bootstrap_fingerprint", "failed_run_id",
     "legacy_generation_sha", "prior_target_generation_sha",

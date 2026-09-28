@@ -1,3 +1,4 @@
+import ast
 import inspect
 import json
 import multiprocessing
@@ -9330,16 +9331,37 @@ def _source_successor_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     return repo, bootstrap, intent
 
 
-def test_source_successor_closed_and_exact_lineage(
+def test_source_successor_production_activation_and_exact_lineage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, bootstrap, intent = _source_successor_fixture(tmp_path, monkeypatch)
     path = tmp_path / "successor.json"
     path.write_text(json.dumps(intent), encoding="utf-8")
-    assert operator_module._SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is None
-    with pytest.raises(OperatorError, match="not activated"):
-        operator_module.bootstrap_source_successor_primary(path)
+    published = "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
+    source = Path(operator_module.__file__).read_text(encoding="utf-8")
+    assignments = [node for node in ast.walk(ast.parse(source))
+                   if isinstance(node, ast.AnnAssign)
+                   and isinstance(node.target, ast.Name)
+                   and node.target.id == "_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA"]
+    assert len(assignments) == 1
+    assert isinstance(assignments[0].value, ast.Constant)
+    assert assignments[0].value.value == published
+    assert operator_module._SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA == published
+    for target_sha in (
+        "44eee353eda376c9db8cd88d97184d3122651bf5",
+        "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6",
+        intent["target_generation_sha"], git(Path(operator_module.__file__).parents[2], "rev-parse", "HEAD"),
+        "f" * 40,
+    ):
+        rejected = {**intent, "target_generation_sha": target_sha}
+        path.write_text(json.dumps(rejected), encoding="utf-8")
+        with pytest.raises(OperatorError, match="not activated"):
+            operator_module.bootstrap_source_successor_primary(
+                path, runner=lambda *args, **kwargs: pytest.fail("target launched"),
+            )
     assert not (runtime_state_root(repo).parent / "s").exists()
+    assert not (runtime_paths(repo).runs / "RUN-101-002.json").exists()
+    path.write_text(json.dumps(intent), encoding="utf-8")
     operator_module._source_bootstrap_successor_lineage(repo, intent)
     for change in ({"failed_run_id": "RUN-101-002"}, {"task_revision": 2},
                    {"source_pin_blob_sha": "f" * 40}, {"executor": "antigravity"}):
@@ -9447,6 +9469,123 @@ def test_source_successor_stage_replay_and_conflict(
     )
     with pytest.raises(OperatorError, match="transport identity mismatch"):
         operator_module.bootstrap_source_successor_primary(path, transport_path=bound)
+
+
+def test_source_successor_published_target_consumes_without_activation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _, intent = _source_successor_fixture(tmp_path, monkeypatch)
+    published = "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
+    intent["target_generation_sha"] = published
+    intent["target_url"] = str(Path(operator_module.__file__).resolve().parents[2])
+    path = tmp_path / "successor.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    launched = []
+
+    def stage_runner(command, **kwargs):
+        launched.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0)
+
+    assert operator_module.bootstrap_source_successor_primary(path, runner=stage_runner) == 0
+    assert len(launched) == 1
+    bundle, target = operator_module._source_bootstrap_successor_state(repo, intent)
+    bound = bundle / "intent.json"
+    assert launched[0][0][-3:] == [str(bound), "--accept-transport", str(bound)]
+    assert git(target, "rev-parse", "HEAD") == published
+    assert json.loads(bound.read_text(encoding="utf-8")) == intent
+
+    # The real TASK-218 source has a closed activation slot. Import it afresh
+    # from the staged checkout; the control interpreter cannot donate its slot.
+    child = """
+import json
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+from aios_renew import operator
+
+intent = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if sys.argv[3] == "exact":
+    assert operator._SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is None
+    assert Path(operator.__file__).resolve().parents[2] == Path(sys.argv[4]).resolve()
+def primary(task_id, **kwargs):
+    operator._validate_successor_execution(
+        Path(intent["repository"]), kwargs["_successor_transport"], task_id,
+        kwargs["executor"], kwargs["synchronize"], kwargs["preflight_sha"],
+        None, kwargs["task_revision"], kwargs["task_blob_sha"],
+        kwargs["task_commit_sha"],
+    )
+    assert task_id == intent["task_id"]
+    assert kwargs["_successor_transport"] == sys.argv[2]
+    print("SUCCESSOR_PRIMARY_DELEGATED")
+    return SimpleNamespace(render=lambda: "delegated")
+operator.run_task = primary
+operator._legacy_installed_generation_sha = lambda **kwargs: intent["legacy_generation_sha"]
+raise SystemExit(operator.main([
+    "bootstrap-source-successor-primary", sys.argv[1],
+    "--accept-transport", sys.argv[2],
+]))
+"""
+
+    def consume(intent_file: Path, transport_file: Path, *, exact_source: bool = True):
+        env = dict(launched[0][1])
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        if not exact_source:
+            env["PYTHONPATH"] = str(Path(operator_module.__file__).resolve().parents[1])
+        return subprocess.run(
+            [sys.executable, "-c", child, str(intent_file), str(transport_file),
+             "exact" if exact_source else "wrong", str(target)],
+            cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
+        )
+
+    success = consume(path, bound)
+    assert success.returncode == 0, success.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" in success.stdout
+
+    wrong_path = consume(path, tmp_path / "wrong.json")
+    assert wrong_path.returncode != 0
+    assert "transport path mismatch" in wrong_path.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" not in wrong_path.stdout
+
+    altered = {**intent, "successor_delivery_id": "successor-101-conflict"}
+    bound.write_text(json.dumps(altered), encoding="utf-8")
+    changed_stored_intent = consume(path, bound)
+    assert changed_stored_intent.returncode != 0
+    assert "transport identity mismatch" in changed_stored_intent.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" not in changed_stored_intent.stdout
+    bound.write_text(json.dumps(intent), encoding="utf-8")
+
+    wrong_source = consume(path, bound, exact_source=False)
+    assert wrong_source.returncode != 0
+    assert "running source differs" in wrong_source.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" not in wrong_source.stdout
+
+    git(target, "checkout", "--detach", git(Path(operator_module.__file__).parents[2], "rev-parse", "HEAD"))
+    wrong_head = consume(path, bound)
+    assert wrong_head.returncode != 0
+    assert "transport identity mismatch" in wrong_head.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" not in wrong_head.stdout
+    git(target, "checkout", "--detach", published)
+
+    conflicting_path = tmp_path / "conflicting-successor.json"
+    conflicting_path.write_text(json.dumps({**intent, "executor": "other"}), encoding="utf-8")
+    conflicting = consume(conflicting_path, bound)
+    assert conflicting.returncode != 0
+    assert "successor identity is invalid" in conflicting.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" not in conflicting.stdout
+
+    conflicting_path.write_text(json.dumps({**intent, "source_pin_blob_sha": "f" * 40}),
+                                encoding="utf-8")
+    conflicting_binding = consume(conflicting_path, bound)
+    assert conflicting_binding.returncode != 0
+    assert "transport identity mismatch" in conflicting_binding.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" not in conflicting_binding.stdout
+
+    (runtime_paths(repo).failures / "RUN-101-001.json").unlink()
+    wrong_lineage = consume(path, bound)
+    assert wrong_lineage.returncode != 0
+    assert "completed failed v2 edge" in wrong_lineage.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" not in wrong_lineage.stdout
+    assert not (runtime_paths(repo).runs / "RUN-101-002.json").exists()
 
 
 def test_source_successor_transport_path_budget_and_full_identity(
