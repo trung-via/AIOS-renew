@@ -1,0 +1,219 @@
+task_id: TASK-217
+revision: 1
+
+goal: >
+  Resolve the TASK-259 source-upgrade self-bootstrap deadlock without adding a disposable
+  downstream workflow or weakening Runtime authority. Canonicalize one narrow Human-local
+  transport rule: when the Human explicitly invokes the already reviewed
+  bootstrap-source-upgrade-primary staging surface, a local shell may act only as the
+  subordinate carrier that materializes one exact version-2 intent and enters the reviewed
+  activation/control source. The reviewed Operator remains the staging authority, the exact
+  installed source witness remains provenance authority, and the target generation remains
+  the sole owner of TASK/RUN admission.
+
+problem: >
+  TASK-215 correctly required a separately reviewed bounded Python Agent carrier before
+  downstream TASK-259 r1, because package capability alone must not silently create
+  downstream transport authority. TASK-216 then corrected the reviewed source-upgrade
+  implementation for the real split topology between activation/control source and the
+  installed migration-capable source. Fresh downstream Brain Sync shows a remaining
+  bootstrap cycle: Python Agent main at 95f47b9a5832835b9a4265c892b813e492270cf8 has
+  canonical TASK-259 r1 and exact active pin 31fd2482..., but no source-upgrade workflow.
+  A new downstream carrier TASK cannot be implemented through ordinary PRIMARY because
+  that same 31fd2482 generation fails before RUN creation on the PRIMARY v3
+  governed-repository profile-journal defect that TASK-259 is intended to migrate away
+  from. Using bootstrap-source-upgrade-primary to implement a carrier-only task would
+  improperly conflate the migration task with the transport prerequisite. The already
+  reviewed Operator command itself performs the deterministic edge, installed-source,
+  repository, source-control, pin, TASK identity, migration-history, target checkout and
+  target-consumption checks. The missing decision is therefore whether an explicitly
+  Human-invoked local shell that adds no semantics may serve as the one-time transport
+  carrier for this exceptional deadlock.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is exactly
+    3bf89b3da9edf9ead751b25ed3f70fa82caba2d5, published from RUN-216-002 after
+    REVIEW-216-002 PASS.
+  - >
+    The reviewed source-upgrade production code at current main admits only exact
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 ->
+    44eee353eda376c9db8cd88d97184d3122651bf5, independently attests the installed
+    migration-capable source, validates historical migration continuity against that
+    witness, stages the existing version-2 source-control handoff, and delegates RUN
+    admission to the exact target's bootstrap-source-primary --accept-handoff path.
+  - >
+    scripts/aios_control_entry.py is authority-neutral. It only loads Operator code from
+    one explicitly selected source tree into the current process and does not install a
+    package, set PYTHONPATH, choose an operation, select an Executor, create a RUN, verify,
+    review, publish, or mutate roadmap state.
+  - >
+    Current Python Agent main is exactly
+    95f47b9a5832835b9a4265c892b813e492270cf8 with canonical TASK-259 r1 blob
+    ac480bcd45fb9560222f8c8e0f5d99c89c89a91d, source pin blob
+    72ac499a72083f4fd9bd3fabd3fce8d732291a50, and sole active AIOS-renew pin
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6.
+  - >
+    Python Agent's earlier ordinary TASK-259 carrier attempt failed before RUN creation
+    and before Executor invocation. No RUN-259, FAILURE-259 or REPAIR lineage exists.
+  - >
+    The Python Agent dedicated worker runtime has been locally re-attested to exact
+    installed generation 31fd2482... with migrate-primary capability. That local fact must
+    still be re-proven by the reviewed source-upgrade witness at invocation time; this task
+    does not canonicalize chat or local probe output as engineering truth.
+  - >
+    TASK-258 is immutable historical authored transport work for an older TASK-255 path,
+    has no RUN, and must not be executed, repaired, repurposed or treated as TASK-259
+    authority.
+  - >
+    The Human explicitly authorizes this prospective one-time local-carrier architecture
+    to break the demonstrated bootstrap cycle. This is a transport decision, not a change
+    to Human/Brain/Executor/Runtime/Reviewer/Publisher authority.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-215.yaml
+    - .ai/tasks/TASK-216.yaml
+    - src/aios_renew/operator.py
+    - scripts/aios_control_entry.py
+    - tests/test_operator.py
+  modify:
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+
+non_goals:
+  - >
+    Change bootstrap-source-upgrade-primary, migrate-primary, bootstrap-source-primary,
+    bootstrap-primary, source-REPAIR, migration schemas, activation constants, installed
+    provenance checks, migration-history checks, target-side admission, Runtime, Reviewer,
+    Publisher, frozen Kernel semantics or any production Python.
+  - >
+    Add an upstream or downstream workflow, reusable automation carrier, generic migration
+    CLI/router, retry/fallback/failover mechanism, queue, daemon, scheduler, Planner,
+    provider/model selector, or a second lifecycle authority.
+  - >
+    Modify Python Agent, TASK-259, TASK-258, its dependency pin, worker runtime, migration
+    handoff state, roadmap/adoption/conformance state, workflows, product code or any
+    downstream canonical artifact.
+  - >
+    Execute the local carrier, stage the real TASK-259 handoff, create RUN-259, invoke
+    Codex for TASK-259, review/publish downstream, certify TASK-207 r9 or resume TASK-254.
+  - >
+    Make Human-local invocation the default migration path or authorize automation to use
+    an unreviewed local shell. Normal migrate-primary remains authoritative when target
+    control and target pin already exist; repository-owned reviewed carriers remain the
+    preferred automation surface when they can be created without circular bootstrap.
+  - >
+    Retroactively rewrite TASK-215/TASK-216 historical contracts or claim their earlier
+    prospective downstream carrier step was completed.
+
+constraints:
+  hard:
+    - >
+      Documentation must distinguish the reviewed staging authority from its transport.
+      bootstrap-source-upgrade-primary plus the exact reviewed activation/control source
+      owns deterministic staging semantics. A Human-local PowerShell/shell invocation may
+      only construct/write the exact v2 intent, materialize/select the exact reviewed
+      activation source, locate the already-installed worker Python, and invoke
+      scripts/aios_control_entry.py with bootstrap-source-upgrade-primary. The shell owns
+      no lifecycle or migration semantics of its own.
+    - >
+      The local-carrier exception is eligible only when explicit current Human intent
+      selects it to resolve a demonstrated bootstrap deadlock in which the downstream
+      repository cannot first publish a repository-owned carrier through its currently
+      installed ordinary PRIMARY path. It is not an automatic fallback and may not be
+      selected by Runtime, Executor, workflow, provider or retry logic.
+    - >
+      For the current prospective Python Agent use, the intent remains exactly
+      AIOS_SOURCE_CONTROL_BOOTSTRAP_INTENT version 2 and binds the canonical repository,
+      source generation 31fd2482..., target generation 44eee353..., exact source-control
+      SHA, exact pin path/blob, TASK-259 revision 1, exact TASK blob/authoring commit and
+      executor codex. No model/effort field or caller-selected lifecycle action is added.
+    - >
+      All semantic and safety checks remain deterministic in reviewed code: exact activated
+      source/target edge, isolated installed distribution provenance and migrate capability,
+      source-control and pin identity, TASK identity, clean/attached control conditions,
+      migration-history continuity, durable fingerprint/marker/bundle identity, exact target
+      checkout and target-owned bootstrap-source-primary consumption. The local carrier must
+      not duplicate or bypass those checks.
+    - >
+      A local pre-AIOS failure or reviewed staging rejection remains operational/pre-RUN
+      only. It must not fabricate RUN, FAILURE, RESULT, verification, semantic review,
+      publication or migration completion. Once the exact target admits a RUN, canonical
+      Runtime artifacts and lineage become engineering truth.
+    - >
+      Historical TASK-215/TASK-216 artifacts remain immutable. Update current architecture
+      documentation prospectively to supersede only their earlier planning assumption that
+      TASK-259 necessarily requires a separately implemented downstream carrier. State that
+      a separately reviewed repository-owned carrier remains required for reusable
+      automation, but an explicit one-time Human-local subordinate carrier is sufficient
+      for this demonstrated circular-bootstrap case because the reviewed Operator contains
+      the staging authority.
+    - >
+      The prospective sequence after TASK-217 publication must be:
+      exact published TASK-217 source as activation/control source -> explicit Human-local
+      bounded carrier for unchanged Python Agent TASK-259 r1 -> exact v2 edge
+      31fd2482... -> 44eee353... -> target-owned RUN-259 -> semantic review/publication ->
+      fresh TASK-207 r9. No downstream step may be claimed complete by TASK-217.
+    - >
+      No production source, test, workflow, policy, task history, roadmap state, Kernel,
+      downstream repository or activation constant may change. Executor changes only the
+      two authorized architecture documents and leaves zero unresolved implementation work.
+    - >
+      Runtime verification should reuse the already-valid TASK-216 production regression
+      rather than inventing a new implementation test. Run the focused source-upgrade
+      regression set unchanged plus git diff --check to prove the documentation-only
+      semantic correction does not accompany hidden source changes.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Canonical Brain Portability documentation recognizes explicit Human-local invocation
+      as a valid one-time subordinate transport carrier for the demonstrated TASK-259
+      circular-bootstrap case, while keeping the reviewed Operator as the only source-upgrade
+      staging authority.
+  - id: AC2
+    condition: >
+      The exception is explicitly Human-selected, non-automatic, non-reusable automation
+      authority and cannot be interpreted as retry/fallback, generic migration routing,
+      Executor authority or Runtime lifecycle authority.
+  - id: AC3
+    condition: >
+      Documentation preserves every exact v2 identity/provenance/history/target-owned RUN
+      boundary from TASK-215/TASK-216 and states that pre-AIOS/local staging failures do not
+      fabricate engineering lifecycle truth.
+  - id: AC4
+    condition: >
+      Current documentation supersedes only the prospective requirement for a separately
+      implemented Python Agent carrier in this circular-bootstrap case; reusable automated
+      downstream transport still requires an explicit reviewed repository-owned binding.
+  - id: AC5
+    condition: >
+      Execution-profile documentation records that source-upgrade staging accepts no
+      model/effort override and that TASK-259's eventual target-owned RUN resolves the
+      governed downstream repository profile normally.
+  - id: AC6
+    condition: >
+      The documented prospective order is published TASK-217 source -> explicit Human-local
+      bounded carrier -> unchanged TASK-259 r1 -> exact 31fd2482... to 44eee353... edge ->
+      target-owned RUN-259 -> review/publication -> fresh TASK-207 r9, without claiming any
+      of those downstream steps complete.
+  - id: AC7
+    condition: >
+      Only docs/AIOS-BRAIN-PORTABILITY.md and docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+      change; production code, tests, workflows, roadmap, historical TASK artifacts and
+      downstream state remain byte-identical with zero unresolved Executor work.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q -k "source_upgrade"
+    - git diff --check
