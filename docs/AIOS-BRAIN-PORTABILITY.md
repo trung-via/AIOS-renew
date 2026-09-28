@@ -577,7 +577,7 @@ The target AIOS source and fetched downstream target control are checked out in 
 
 Ordinary PRIMARY synchronization may still fast-forward a clean `main` and restart once. Its restarted process imports the active package source; when that source is the mutable control checkout, the pre-sync package is snapshotted for the restart. Synchronized `.ai/tasks/*` and `src/aios_renew/*` cannot silently change implementation authority. The handoff contract applies to any downstream repository and any exact reviewed N-to-N+1 pair; it does not itself approve BP-9 adoption, change a downstream pin, or advance the roadmap. BP-9 still requires explicit reviewed downstream migration and repository-owned activation.
 
-#### Exceptional migration-capable source-control upgrade staging (TASK-215, corrected by TASK-216)
+#### Exceptional migration-capable source-control upgrade staging (TASK-215/TASK-216, transport clarified by TASK-217)
 
 Normal `migrate-primary` remains authoritative when the exact target control
 commit and target pin blob already exist. Legacy `bootstrap-primary` and
@@ -624,14 +624,61 @@ may replay through the existing handoff; conflicting or completed edges fail
 closed. This exact activation is separate from TASK-213's source-REPAIR target
 activation and grants no additional source-REPAIR eligibility.
 
-The prospective downstream order is published TASK-216 correction source as
-activation/control source, the same bounded Python Agent TASK-259 revision-1
-carrier, the exact v2 edge `31fd2482...` to `44eee353...`, a target-owned
-TASK-259 RUN, semantic review and publication, and fresh TASK-207 revision-9
-conformance. Python Agent's TASK-256 ordinary repair and publication precede
-that sequence. TASK-259's earlier carrier attempt created no RUN or Executor
-observation and has no REPAIR lineage. This correction executes and publishes
-none of those prospective downstream steps.
+TASK-217 prospectively supersedes only the TASK-215/TASK-216 planning
+assumption that this TASK-259 circular-bootstrap case necessarily needs a
+separately implemented Python Agent carrier. Python Agent cannot first publish
+one through its installed ordinary PRIMARY path: the existing TASK-259 carrier
+attempt failed before RUN creation on the PRIMARY v3 governed-repository
+profile-journal defect. The Human may explicitly select a one-time local
+PowerShell/shell invocation as the subordinate transport carrier for this
+demonstrated deadlock. Eligibility requires current explicit Human intent;
+Runtime, Executor, workflow, provider, and retry logic cannot select it. It is
+not an automatic retry/fallback, generic migration route, reusable automation
+authority, or lifecycle authority. A separately reviewed repository-owned
+carrier remains required for reusable automated downstream transport and is
+preferred whenever it can be created without circular bootstrap.
+
+That shell may only construct and write one exact
+`AIOS_SOURCE_CONTROL_BOOTSTRAP_INTENT` version-2 document, materialize/select
+the exact published TASK-217 activation/control source, locate the already
+installed worker Python, and invoke `scripts/aios_control_entry.py` with
+`bootstrap-source-upgrade-primary`. The entry script only loads the Operator
+from that selected source tree into the current process. It does not install a
+package, set `PYTHONPATH`, choose an operation or Executor, create a RUN, verify,
+review, publish, or mutate roadmap state. The shell adds no migration or
+lifecycle semantics. The reviewed `bootstrap-source-upgrade-primary` Operator
+and exact activation/control source alone own deterministic staging. The
+independent installed-source witness remains provenance authority; local
+attestation is not a substitute for its invocation-time proof.
+
+For unchanged Python Agent TASK-259 revision 1, the exact v2 intent binds the
+canonical repository at source-control SHA, source generation
+`31fd2482cd87d97fd818e05eb5b4dcec69ffeee6`, target generation
+`44eee353eda376c9db8cd88d97184d3122651bf5`, exact source pin path and
+blob (`72ac499a72083f4fd9bd3fabd3fce8d732291a50`), TASK blob
+`ac480bcd45fb9560222f8c8e0f5d99c89c89a91d`, exact TASK authoring commit,
+and Executor `codex`. Its source-control commit must match the current clean,
+attached canonical downstream checkout; the stated Python Agent main is
+`95f47b9a5832835b9a4265c892b813e492270cf8`. The intent adds no model,
+effort, or caller-selected lifecycle action. Reviewed code, not the shell,
+checks the exact activated edge, isolated non-editable installed distribution
+and `migrate-primary` capability, source-control/pin/TASK identities,
+migration-history continuity, durable fingerprint/marker/bundle identity,
+and exact target checkout and handoff consumption. The target generation alone
+owns TASK/RUN admission. A local pre-AIOS failure or staging rejection remains
+operational/pre-RUN and fabricates no RUN, FAILURE, RESULT, verification,
+semantic review, publication, or migration completion. After target admission,
+canonical Runtime artifacts and lineage are engineering truth.
+
+The prospective order after TASK-217 publication is exact published TASK-217
+source as activation/control source -> explicit Human-local bounded carrier
+for unchanged Python Agent TASK-259 r1 -> exact version-2 edge
+`31fd2482...` to `44eee353...` -> target-owned RUN-259 -> semantic review and
+publication -> fresh TASK-207 r9. Python Agent's TASK-256 ordinary repair and
+publication precede this sequence. TASK-258 remains immutable older TASK-255
+transport work with no RUN and supplies no TASK-259 authority. TASK-259's
+earlier carrier attempt created no RUN, FAILURE, or REPAIR lineage. TASK-217
+performs none of these downstream steps and does not complete BP-9.
 
 ### TASK-212 PRIMARY portability prerequisite after RUN-256-001
 

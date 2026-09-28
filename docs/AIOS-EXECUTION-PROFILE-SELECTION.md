@@ -112,16 +112,34 @@ history must end at that witnessed installed source, while ordinary callers
 retain imported-package path consistency. The target's existing
 `bootstrap-source-primary --accept-handoff` path owns TASK-259 RUN admission
 and applies the governed Python Agent repository's profile policy. The staging
-command accepts no model or effort override and creates no execution-profile
-journal, RUN, FAILURE, or Executor observation. This is an exceptional bounded
-bridge; normal `migrate-primary` remains the migration path when target control
-and pin exist.
+command accepts no model or effort override; the version-2 intent adds no
+model, effort, or caller-selected lifecycle action. Staging creates no
+execution-profile journal, RUN, FAILURE, or Executor observation. The eventual
+target-owned RUN-259 resolves and binds the normal governed downstream
+repository profile at target admission. Neither a Human-local transport shell
+nor the reviewed staging Operator selects an execution profile for that RUN.
+This is an exceptional bounded bridge; normal `migrate-primary` remains the
+migration path when target control and pin exist.
 
-The prospective sequence is published TASK-216 correction source as the
-activation/control source, the same bounded TASK-259 revision-1 carrier, exact
-v2 source upgrade, target-owned TASK-259 RUN, semantic review and publication,
-then fresh TASK-207 revision-9 conformance. None of those downstream steps is
-completed by this documentation or the staging implementation.
+TASK-217 prospectively clarifies the transport for this demonstrated
+circular-bootstrap case. Current explicit Human intent may select one
+Human-local PowerShell/shell invocation to write the exact v2 intent, select
+the exact published TASK-217 activation/control source, locate the installed
+worker Python, and enter its reviewed `bootstrap-source-upgrade-primary`
+Operator through `scripts/aios_control_entry.py`. The shell and entry script
+add no profile, migration, or lifecycle authority. This is one-time subordinate
+transport, never automatic fallback, retry, Executor or Runtime selection, or
+reusable automation authority. Reusable automated transport still requires a
+separately reviewed repository-owned carrier. This prospective clarification
+does not rewrite TASK-215/TASK-216 artifacts or the exact v2 identity,
+installed-source provenance, migration-history, and target-owned RUN boundary.
+
+After TASK-217 publication, the prospective sequence is exact published
+TASK-217 activation/control source -> explicit Human-local bounded carrier
+for unchanged Python Agent TASK-259 r1 -> exact version-2 edge
+`31fd2482...` to `44eee353...` -> target-owned RUN-259 with normal governed
+repository profile resolution -> semantic review and publication -> fresh
+TASK-207 r9. No downstream step is completed by TASK-217.
 
 ## Future model evolution invariant
 
