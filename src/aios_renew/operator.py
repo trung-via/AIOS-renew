@@ -3774,7 +3774,7 @@ _SOURCE_BOOTSTRAP_FIELDS = (_MIGRATION_FIELDS - {"target_control_sha", "target_p
 
 # Activated only by a separate, post-publication successor. Never inferred from
 # this checkout, the requested target, or the source-PRIMARY activation.
-_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = "37437be4e43d07d5c818022cb20d19d9c347da7c"
+_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = None
 _SOURCE_REPAIR_BOOTSTRAP_FIELDS = frozenset({
     "format", "version", "repository", "bootstrap_fingerprint",
     "legacy_generation_sha", "target_generation_sha", "target_url",
@@ -4845,9 +4845,6 @@ def bootstrap_source_repair(
     )
     root = resolve_repository(intent["repository"])
     bundle, target = _source_repair_bootstrap_state(root, intent)
-    if (_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
-            or intent["target_generation_sha"] != _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA):
-        raise OperatorError("source-REPAIR bootstrap target is not activated")
     if transport_path is not None:
         if Path(transport_path).resolve() != (bundle / "intent.json").resolve():
             raise OperatorError("source-REPAIR bootstrap transport path mismatch")
@@ -4865,6 +4862,9 @@ def bootstrap_source_repair(
         print(outcome.render())
         return outcome.exit_code
 
+    if (_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
+            or intent["target_generation_sha"] != _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA):
+        raise OperatorError("source-REPAIR bootstrap target is not activated")
     with RepositoryLock(runtime_state_root(root) / "source-repair-bootstrap.lock"):
         if _legacy_installed_generation_sha(runner=legacy_runner) != intent["legacy_generation_sha"]:
             raise OperatorError("source-REPAIR bootstrap legacy generation mismatch")

@@ -520,18 +520,32 @@ exact newer source URL and generation, and one canonical REPAIR delivery with
 its authorization SHA, failed RUN, Executor and execution-profile selectors.
 It keeps its transport state outside migration handoffs and creates no
 engineering terminal before existing REPAIR Runtime admits a continuation RUN.
-The target checkout proves its bound Git generation, then delegates to
+The staging entry requires one separately activated exact target before legacy
+attestation, lineage admission, transport staging or target launch. The bound
+target entry consumes the durable transport only after its path, stored intent,
+clean checkout, exact target HEAD, running source and failed-bootstrap lineage
+match. It does not read the staging activation slot: the published target
+generation cannot activate itself. It then delegates only to
 `run_repair_wakeup`, whose correction preflight, Unified State and dispatch
-remain the sole REPAIR semantic authorities. Its production target activation
-is closed in TASK-206 and separate from the source-PRIMARY activation.
+remain the sole REPAIR semantic authorities.
 
-BP-9 recovery order after a failed bootstrap candidate is: publish this
-capability; separately activate its exact reviewed and published consumer;
+TASK-206 published the transport capability with activation closed. TASK-207
+activated the exact TASK-206 target, but that target checked its own closed
+activation slot on transport consumption and self-rejected. Their reviewed and
+published records remain historical capability and activation evidence, not
+failed engineering RUNs; the pair cannot stage a usable source-REPAIR for real
+downstream recovery. TASK-208 corrects the two-stage consumer and resets
+production source-REPAIR activation to closed. A separate post-publication
+successor must activate the exact reviewed and published TASK-208 consumer SHA
+before any downstream REPAIR transport. This does not recover Python Agent
+RUN-255-003 or complete BP-9.
+
+BP-9 recovery order after a failed bootstrap candidate is: publish the corrected
+consumer; separately activate its exact reviewed and published SHA;
 authorize one exact REPAIR for the failed bootstrap candidate; deliver that
 REPAIR through the activated newer source; review and publish the resulting
-downstream candidate; then resume ordinary exact-pin migration. TASK-206
-performs none of those downstream or publication steps and does not complete
-BP-9.
+downstream candidate; then resume ordinary exact-pin migration. TASK-208
+performs none of those downstream steps and does not complete BP-9.
 
 A downstream remains under its exact installed generation N while the operator checks a reviewed `migrate-primary` intent. The versioned intent binds the imported installed distribution's immutable VCS commit, the exact target AIOS commit and source URL, the downstream repository path, its current and target control commits, its repository-owned pin artifact at both commits, and the downstream TASK id, revision, blob, authorization commit, and Executor. Missing, floating, stale, or conflicting identities fail before target authority. The target control commit must be the current upstream `main` and a fast-forward of the clean attached source control commit; the pin artifacts must name the corresponding exact generation. The exact TASK blob must exist at the target and match its ancestor authorization commit.
 

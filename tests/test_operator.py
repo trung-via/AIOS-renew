@@ -1,6 +1,7 @@
 import inspect
 import json
 import multiprocessing
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -9207,15 +9208,23 @@ def _migration_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
     return repo, target_source, intent
 
 
-def _source_bootstrap_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
+def _source_bootstrap_fixture(
+    tmp_path: Path, *, consumer_source: bool = False,
+) -> tuple[Path, Path, dict]:
     target_source = tmp_path / "reviewed-generation"
     target_source.mkdir()
     git(target_source, "init", "-b", "main")
     git(target_source, "config", "user.name", "Bootstrap Test")
     git(target_source, "config", "user.email", "bootstrap@example.invalid")
     operator_path = target_source / "src" / "aios_renew" / "operator.py"
-    operator_path.parent.mkdir(parents=True)
-    operator_path.write_text("# exact consumer-capable target\n", encoding="utf-8")
+    if consumer_source:
+        shutil.copytree(
+            Path(operator_module.__file__).resolve().parent, operator_path.parent,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+    else:
+        operator_path.parent.mkdir(parents=True)
+        operator_path.write_text("# exact consumer-capable target\n", encoding="utf-8")
     git(target_source, "add", ".")
     git(target_source, "commit", "-m", "reviewed target generation")
     target_generation = git(target_source, "rev-parse", "HEAD")
@@ -9265,26 +9274,26 @@ def _source_repair_bootstrap_intent(bootstrap: dict, target_sha: str) -> dict:
 
 
 @pytest.mark.parametrize("target_kind", [
-    "fixture", "failed_task_206", "source_primary", "current_source", "future_source",
+    "fixture", "task_206_target", "failed_task_206", "source_primary",
+    "current_source", "future_source",
 ])
 def test_source_repair_bootstrap_production_rejects_other_targets_before_staging(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_kind: str,
 ) -> None:
-    activated = "37437be4e43d07d5c818022cb20d19d9c347da7c"
-    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA == activated
+    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
     source = Path(operator_module.__file__).read_text(encoding="utf-8")
     assert source.count("_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None =") == 1
-    assert source.count(f'_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = "{activated}"') == 1
+    assert source.count("_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = None") == 1
     repo, _, bootstrap = _source_bootstrap_fixture(tmp_path)
     current_source = Path(operator_module.__file__).resolve().parents[2]
     target_sha = {
         "fixture": bootstrap["target_generation_sha"],
+        "task_206_target": "37437be4e43d07d5c818022cb20d19d9c347da7c",
         "failed_task_206": "1669ef080f82862d5e7d4f607eb0d3b592011872",
         "source_primary": "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6",
         "current_source": git(current_source, "rev-parse", "HEAD"),
         "future_source": "f" * 40,
     }[target_kind]
-    assert target_sha != activated
     intent = _source_repair_bootstrap_intent(bootstrap, target_sha)
     path = tmp_path / "unactivated-source-repair.json"
     path.write_text(json.dumps(intent), encoding="utf-8")
@@ -9310,7 +9319,7 @@ def test_source_repair_bootstrap_closed_and_exact_replay(
     intent = _source_repair_bootstrap_intent(bootstrap, bootstrap["target_generation_sha"])
     path = tmp_path / "source-repair.json"
     path.write_text(json.dumps(intent), encoding="utf-8")
-    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA == "37437be4e43d07d5c818022cb20d19d9c347da7c"
+    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
     with pytest.raises(OperatorError, match="not activated"):
         operator_module.bootstrap_source_repair(path)
     monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA", intent["target_generation_sha"])
@@ -9331,20 +9340,6 @@ def test_source_repair_bootstrap_closed_and_exact_replay(
     assert operator_module.bootstrap_source_repair(path, runner=runner) == 0
     assert len(launched) == 2
     assert all(call[0][3] == "bootstrap-source-repair" for call in launched)
-    delivered = []
-    monkeypatch.setattr(operator_module, "run_repair_wakeup",
-                        lambda *args, **kwargs: delivered.append((args, kwargs)) or
-                        SimpleNamespace(render=lambda: "REPAIR delivered", exit_code=0))
-    with pytest.raises(OperatorError, match="running source differs"):
-        operator_module.bootstrap_source_repair(path, transport_path=bundle / "intent.json")
-    assert not delivered
-    monkeypatch.setattr(operator_module, "__file__", str(target / "src" / "aios_renew" / "operator.py"))
-    assert operator_module.bootstrap_source_repair(path, transport_path=bundle / "intent.json") == 0
-    assert delivered == [((intent["repair_dispatch_id"], intent["failed_run_id"],
-                           intent["repair_sha"]), {
-        "executor": intent["executor"], "repo": repo, "model": None,
-        "reasoning_effort": None, "model_source": None, "effort_source": None,
-    })]
     changed = dict(intent, repair_sha="b" * 40)
     path.write_text(json.dumps(changed), encoding="utf-8")
     with pytest.raises(OperatorError, match="transport identity mismatch"):
@@ -9355,6 +9350,103 @@ def test_source_repair_bootstrap_closed_and_exact_replay(
     with pytest.raises(OperatorError, match="partial or invalid"):
         operator_module.bootstrap_source_repair(path, runner=runner)
     assert len(launched) == 2
+
+
+def test_source_repair_bound_target_consumes_with_activation_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _, bootstrap = _source_bootstrap_fixture(tmp_path, consumer_source=True)
+    intent = _source_repair_bootstrap_intent(bootstrap, bootstrap["target_generation_sha"])
+    path = tmp_path / "source-repair.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    launched = []
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: intent["legacy_generation_sha"])
+    monkeypatch.setattr(operator_module, "_source_repair_bootstrap_lineage",
+                        lambda root, document: None)
+    monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA", "f" * 40)
+    with pytest.raises(OperatorError, match="not activated"):
+        operator_module.bootstrap_source_repair(
+            path, runner=lambda *args, **kwargs: pytest.fail("target launched"),
+        )
+    bundle, target = operator_module._source_repair_bootstrap_state(repo, intent)
+    assert not bundle.exists()
+
+    monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA",
+                        intent["target_generation_sha"])
+
+    def stage_runner(command, **kwargs):
+        launched.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0)
+
+    assert operator_module.bootstrap_source_repair(path, runner=stage_runner) == 0
+    assert len(launched) == 1
+    bound = bundle / "intent.json"
+    assert launched[0][0][-3:] == [str(bound), "--accept-transport", str(bound)]
+    assert git(target, "rev-parse", "HEAD") == intent["target_generation_sha"]
+    assert json.loads(bound.read_text(encoding="utf-8")) == intent
+    monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA", None)
+
+    # Import the separately committed target package in a fresh interpreter.
+    # The staging module's activation monkeypatch cannot cross this boundary.
+    child = """
+import json
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+from aios_renew import operator
+
+intent = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert operator._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
+lineage_checked = []
+operator._source_repair_bootstrap_lineage = lambda root, document: lineage_checked.append((root, document))
+def wakeup(*args, **kwargs):
+    assert lineage_checked == [(Path(intent["repository"]), intent)]
+    assert args == (intent["repair_dispatch_id"], intent["failed_run_id"], intent["repair_sha"])
+    assert kwargs == {
+        "executor": intent["executor"], "repo": Path(intent["repository"]),
+        "model": intent["model"], "reasoning_effort": intent["reasoning_effort"],
+        "model_source": intent["model_source"], "effort_source": intent["effort_source"],
+    }
+    print("REPAIR_DELEGATED")
+    return SimpleNamespace(render=lambda: "delivered", exit_code=0)
+operator.run_repair_wakeup = wakeup
+raise SystemExit(operator.main([
+    "bootstrap-source-repair", sys.argv[1], "--accept-transport", sys.argv[2],
+]))
+"""
+
+    def consume(intent_file: Path, transport_file: Path, *, exact_source: bool = True):
+        env = dict(launched[0][1])
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        if not exact_source:
+            env["PYTHONPATH"] = str(Path(operator_module.__file__).resolve().parents[1])
+        return subprocess.run(
+            [sys.executable, "-c", child, str(intent_file), str(transport_file)],
+            cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
+        )
+
+    success = consume(path, bound)
+    assert success.returncode == 0, success.stderr
+    assert "REPAIR_DELEGATED" in success.stdout
+    for intent_file, transport_file, exact_source, error in (
+        (path, tmp_path / "wrong.json", True, "transport path mismatch"),
+        (path, bound, False, "running source differs"),
+    ):
+        rejected = consume(intent_file, transport_file, exact_source=exact_source)
+        assert rejected.returncode != 0 and error in rejected.stderr
+        assert "REPAIR_DELEGATED" not in rejected.stdout
+    changed = dict(intent, repair_sha="b" * 40)
+    changed_path = tmp_path / "changed-source-repair.json"
+    changed_path.write_text(json.dumps(changed), encoding="utf-8")
+    rejected = consume(changed_path, bound)
+    assert rejected.returncode != 0 and "transport identity mismatch" in rejected.stderr
+    assert "REPAIR_DELEGATED" not in rejected.stdout
+    git(target, "commit", "--allow-empty", "-m", "different target HEAD")
+    rejected = consume(path, bound)
+    assert rejected.returncode != 0 and "transport identity mismatch" in rejected.stderr
+    assert "REPAIR_DELEGATED" not in rejected.stdout
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
 
 
 def test_source_repair_bootstrap_requires_completed_failed_v2_lineage(
