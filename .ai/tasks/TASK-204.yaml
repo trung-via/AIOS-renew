@@ -1,0 +1,155 @@
+task_id: TASK-204
+revision: 1
+
+goal: >
+  Restore BP-V3 exact verification-subject compatibility for canonical verification
+  commands that use repository-relative .git/aios/* scratch paths. Provision one empty
+  subject-local .git/aios namespace inside each independently materialized verification
+  clone without importing any control-repository Runtime state, while preserving exact
+  candidate SHA binding, Runtime evidence ownership, subject mutation detection and all
+  existing lifecycle authorities.
+
+problem: >
+  RUN-255-003 in downstream python_complete_agent exposed a compatibility gap in the
+  published BP-V3 verification isolation contract. Runtime materializes an independent
+  clean Git clone for the exact verification subject, but that clone contains .git/
+  without an .git/aios parent. A canonical downstream pytest command using
+  --basetemp=.git/aios/pytest-task255-r6 therefore fails during setup because pytest
+  cannot create the leaf path when the subject-local .git/aios parent is absent.
+  Existing upstream regression coverage does not prove the composed behavior: the
+  relative-basetemp probe bypasses materialize_verification_subject() and creates
+  parents=True itself, masking the missing subject-local namespace. The fix must preserve
+  TASK-156 isolation semantics: control .git/aios canonical Runtime state must never be
+  copied or aliased into the transient subject.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is exactly
+    275067b56cfd1dc9f7faf99fa2a3192e7cf48eec.
+  - >
+    BP-V3/TASK-156 verification workspace isolation is already reviewed and published
+    and remains authoritative: one exact independently mutable verification subject is
+    used for the full ordered verification command set.
+  - >
+    Downstream RUN-255-003 is a canonical VERIFICATION FAILURE whose command includes
+    --basetemp=.git/aios/pytest-task255-r6 and whose isolated verification subject lacks
+    the parent .git/aios namespace. This TASK fixes the upstream compatibility defect
+    only; it does not reinterpret or repair that downstream FAILURE.
+  - >
+    Runtime-owned canonical state remains in the control repository's existing
+    .git/aios tree. Subject-local .git/aios created by this TASK is transient scratch
+    only and must not become lifecycle truth.
+  - >
+    Canonical roadmap remains bp-9-downstream-adoption. TASK-204 is a bounded
+    maintenance side-track caused by observed downstream evidence and does not itself
+    advance BP-9 planning state.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-156.yaml
+    - src/aios_renew/verification.py
+    - src/aios_renew/runtime.py
+    - tests/test_verification.py
+    - tests/test_runtime.py
+  modify:
+    - src/aios_renew/verification.py
+    - tests/test_verification.py
+
+non_goals:
+  - >
+    Modify RuntimeCompletion, completion policy selection, task verification contracts,
+    repair_completion_policy, operator migration/source-bootstrap behavior, Reviewer,
+    Publisher, transport, roadmap state, execution-profile policy or frozen Kernel
+    semantics.
+  - >
+    Copy, mirror, hardlink, symlink, mount or otherwise expose control-repository
+    .git/aios Runtime state inside the verification subject.
+  - >
+    Rewrite or normalize canonical verification command strings, special-case pytest,
+    change downstream TASK-255 verification commands, or add command-specific routing.
+  - >
+    Repair, retry or otherwise mutate downstream RUN-255-003, Python Agent state,
+    dependency pins, migration handoffs or downstream roadmap/adoption state.
+  - >
+    Add persistent verification caches, a new state store, scheduler, router, retry,
+    fallback/failover, Planner, Reviewer, Publisher or semantic authority.
+
+constraints:
+  hard:
+    - >
+      Keep materialize_verification_subject() as the single low-level boundary that
+      creates the independent exact verification clone used by RuntimeCompletion.
+      After clone checkout has proven exact subject SHA and clean Git state, ensure
+      exactly one empty directory <subject>/.git/aios exists before yielding the
+      subject to canonical verification.
+    - >
+      Subject-local .git/aios is transient scratch only. It must be newly created from
+      the verification subject itself and must not contain copied control Runtime files,
+      migration state, RUN/RESULT/FAILURE artifacts, evidence, execution profiles,
+      locks or any other canonical .git/aios content.
+    - >
+      Preserve independent mutable Git metadata. Do not replace the subject .git
+      directory, use linked worktrees, symlink .git/aios to control state, or share a
+      mutable Runtime path across verification subjects.
+    - >
+      Preserve exact command text and cwd semantics. Commands using relative
+      .git/aios/<leaf> paths must work unchanged from the subject repository; Runtime
+      must not parse or rewrite basetemp arguments.
+    - >
+      Preserve one verification subject for the whole ordered command list, exact
+      EVIDENCE.subject_sha binding, post-command HEAD and clean-state checks, Windows
+      external TEMP/TMP isolation, and bounded cleanup behavior.
+    - >
+      Subject-local writes under .git/aios must not make the tracked worktree/index
+      dirty. HEAD/index/worktree mutation outside allowed Git metadata remains governed
+      by existing fail-closed subject-integrity checks.
+    - >
+      Add a composition regression that enters materialize_verification_subject(), proves
+      the new subject-local .git/aios starts empty, proves a control-side .git/aios
+      sentinel is absent from the subject, and runs an unchanged relative-path command
+      that creates only the requested leaf without parents=True. The test must prove
+      exact subject HEAD and clean tracked state remain unchanged.
+    - >
+      Preserve existing relative-basetemp and verification-isolation regressions; do not
+      weaken them to make the new test pass.
+    - >
+      No production files other than src/aios_renew/verification.py may change. Executor
+      returns one clean candidate with zero unresolved implementation items and does not
+      review, publish or perform downstream work.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Every independently materialized exact verification subject contains a newly
+      created empty subject-local .git/aios directory before canonical commands run.
+  - id: AC2
+    condition: >
+      Control-repository .git/aios content is not copied, linked, observed or reused as
+      subject scratch; a control sentinel is absent from the verification subject and
+      subject scratch disappears with transient subject cleanup.
+  - id: AC3
+    condition: >
+      An unchanged repository-relative verification command can create and use a leaf
+      under .git/aios without requiring parents=True or command rewriting, and completes
+      successfully against the isolated subject.
+  - id: AC4
+    condition: >
+      Exact subject SHA, clean tracked worktree/index, one-subject-per-completion
+      semantics, Runtime evidence ownership, Windows TEMP isolation and existing
+      fail-closed verification-subject mutation checks remain unchanged.
+  - id: AC5
+    condition: >
+      RuntimeCompletion, repair verification selection, migration/source-bootstrap,
+      Reviewer/Publisher, execution-profile, roadmap and downstream repository semantics
+      remain unchanged, and no new lifecycle or semantic authority is introduced.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_verification.py tests/test_runtime.py
+    - git diff --check
