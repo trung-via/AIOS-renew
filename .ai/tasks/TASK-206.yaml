@@ -1,0 +1,234 @@
+task_id: TASK-206
+revision: 1
+
+goal: >
+  Add one bounded cross-generation source-REPAIR bootstrap transport for the exact
+  case where a legacy-pinned downstream has already admitted a source-bootstrap
+  PRIMARY RUN that terminalized as FAILURE, while the correction must execute under
+  a newer reviewed AIOS source generation. The new transport must preserve the
+  failed RUN and completed migration handoff as immutable history and delegate only
+  to the existing canonical REPAIR wakeup/Runtime under an exact separately activated
+  target source. It must not create another PRIMARY, reinterpret migration completion,
+  or introduce generic retry/failover authority.
+
+problem: >
+  BP-9 downstream evidence exposed a post-RUN bootstrap gap. The existing
+  source-control bootstrap protocol can recover only a consumed pre-RUN edge with no
+  bound RUN. Once a source-bootstrap RUN exists and terminalizes, bootstrap_source_primary()
+  marks that migration handoff completed even when the terminal is FAILURE. This is
+  correct immutable migration history, but it leaves the downstream installed generation
+  at its legacy pin until the failed candidate can be repaired and published. Existing
+  run_repair()/run_repair_wakeup() can safely continue the historical failed candidate,
+  but downstream Phase-2 REPAIR carriers execute through the repository-pinned legacy
+  AIOS runtime. In the observed BP-9 case that legacy runtime predates later verification
+  hardening, so invoking ordinary REPAIR through it would re-use stale Runtime behavior.
+  The missing capability is therefore not a new REPAIR semantic path: it is one exact
+  transport that can attest the legacy installed generation and unchanged downstream
+  control/pin, materialize a separately activated newer AIOS source, bind that source to
+  the exact completed failed source-bootstrap lineage plus exact canonical REPAIR
+  authorization, and let the target source invoke the already-existing REPAIR wakeup.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is exactly
+    209255b26fc268a364a3cf2c4a886f3bde562346.
+  - >
+    TASK-205 / RUN-205-001 / REVIEW-205-001 is reviewed PASS and published at exact
+    209255b26fc268a364a3cf2c4a886f3bde562346. Its verification-subject byte-fidelity
+    behavior is required by the future target execution but this TASK does not change
+    verification semantics.
+  - >
+    Existing source-bootstrap v2 behavior remains authoritative: recover_source_bootstrap()
+    is limited to a consumed uncompleted pre-RUN edge with no bound RUN, and a handoff
+    with a terminal bound RUN becomes completed immutable migration history.
+  - >
+    Existing historical REPAIR behavior already supports exact failed-candidate
+    continuation, historical workspace materialization, existing correction preflight,
+    Unified State authorization, REPAIR dispatch, Runtime verification, semantic review
+    and publication. Those authorities must be reused rather than duplicated.
+  - >
+    Fresh downstream audit shows canonical main
+    9a57885900ff4848b6664034d789fb530c68a7e8 still pins AIOS-renew
+    edd7d8d92d54900c56442bbfcddb8648ec4d2e09, and its current Phase-2 REPAIR carrier
+    delegates through that pinned runtime. This is evidence motivating the generic
+    capability only; this TASK performs no downstream mutation.
+  - >
+    The existing production _SOURCE_BOOTSTRAP_TARGET_SHA remains exact
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 for source-PRIMARY behavior. A new
+    source-REPAIR target must not silently reuse that activation because that historical
+    generation does not contain this new consumer capability.
+  - >
+    BP-9 downstream adoption remains the Human/Brain roadmap NEXT. This bounded
+    prerequisite does not advance roadmap planning state.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-199.yaml
+    - .ai/tasks/TASK-202.yaml
+    - .ai/tasks/TASK-203.yaml
+    - .ai/tasks/TASK-205.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/correction_preflight.py
+    - src/aios_renew/unified_state.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/runtime.py
+    - scripts/aios_control_entry.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - docs/AIOS-BRAIN-PORTABILITY.md
+
+non_goals:
+  - >
+    Change REPAIR semantic authorization, correction preflight, Unified State reduction,
+    REPAIR dispatch semantics, Runtime verification ownership, Reviewer, Publisher,
+    correction frontier, RESULT/FAILURE formats or frozen Kernel semantics.
+  - >
+    Change, delete, supersede, reopen or reinterpret any completed migration/source-
+    bootstrap handoff or its bound failed RUN. A completed failed bootstrap edge remains
+    immutable history.
+  - >
+    Extend recover_source_bootstrap() to post-RUN failures, convert a failed RUN back to
+    pre-RUN state, create a second PRIMARY, or admit another migration RUN for the same
+    completed source-bootstrap edge.
+  - >
+    Modify the existing _SOURCE_BOOTSTRAP_TARGET_SHA activation or historical
+    bootstrap-primary/source-primary behavior in this TASK.
+  - >
+    Activate the new source-REPAIR consumer at this TASK's unknown future candidate SHA.
+    Production source-REPAIR activation remains closed until a separate successor TASK
+    binds the exact reviewed and published TASK-206 source.
+  - >
+    Build a generic cross-generation command runner, generic repository writer, arbitrary
+    source loader, retry/fallback/failover mechanism, Planner/router, Executor selector,
+    Reviewer, Publisher or second lifecycle authority.
+  - >
+    Mutate any downstream repository, downstream dependency pin, downstream TASK/RUN/
+    REPAIR artifact, migration marker, workflow, roadmap state or publication state.
+  - >
+    Automatically author or select a REPAIR. Brain/Human authorization and existing
+    canonical REPAIR lineage remain prerequisite.
+
+constraints:
+  hard:
+    - >
+      Define exactly one versioned source-REPAIR bootstrap contract distinct from
+      migration/source-PRIMARY intent. It must bind an exact repository, exact legacy
+      source generation, exact newer target generation and source URL, exact current
+      source-control commit and immutable pin blob, exact failed RUN, exact canonical
+      REPAIR authorization SHA, stable REPAIR delivery identity, Executor and any
+      execution-profile selectors required by the existing REPAIR wakeup contract.
+      No caller-selected arbitrary command, module, path, Git ref or destination is allowed.
+    - >
+      Admission is valid only for an existing source-bootstrap-v2 lineage whose exact
+      handoff is consumed and completed, whose unique bound RUN equals the requested
+      failed RUN and terminalizes as FAILURE, and whose source generation/control/pin
+      identity still matches the legacy installed downstream state. RESULT, active,
+      unbound, superseded, ambiguous, mismatched or non-source-bootstrap histories fail
+      before target invocation.
+    - >
+      Source-REPAIR transport must use a separate exact activation slot whose production
+      default in TASK-206 is closed. The target source may be staged only when its exact
+      SHA equals that separately activated value. Mutable main, branch names, latest,
+      fallback lists, environment overrides or target self-authorization are forbidden.
+    - >
+      The disposable target source must prove its own exact bound target generation before
+      it may invoke AIOS against the downstream repository. Target staging and transport
+      must not modify the downstream working tree, downstream control commit, pin,
+      migration markers or canonical lifecycle refs.
+    - >
+      Once target identity is proven, execution must delegate to the existing
+      run_repair_wakeup()/REPAIR dispatch boundary with the exact bound failed_run_id,
+      repair authorization SHA, delivery identity, Executor and execution-profile
+      selectors. Existing correction preflight and Unified State remain the sole semantic
+      gate for whether REPAIR may execute and which canonical authorization is current.
+    - >
+      A successful transport may create only the continuation RUN that existing REPAIR
+      semantics admit. It must never create a PRIMARY RUN, fabricate a replacement failed
+      RUN, mutate the original failure, or treat transport admission/target launch as
+      engineering success.
+    - >
+      The completed source-bootstrap migration edge remains unchanged before and after
+      source-REPAIR. This transport is not a migration successor and must use a distinct
+      transport-state namespace so _require_no_active_migration() and migration history
+      continue to describe only installed-generation handoff truth.
+    - >
+      Exact replay of an already accepted identical source-REPAIR delivery must be
+      idempotent through existing REPAIR dispatch identity/lineage. Conflicting reuse of
+      the same delivery identity, changed failed RUN/repair SHA/profile selectors,
+      multiple eligible failed bootstrap lineages, or partial transport state must fail
+      closed without automatic retry or alternate target selection.
+    - >
+      Failures before the existing REPAIR Runtime admits a continuation RUN are transport/
+      admission failures only: no synthetic RUN, FAILURE, RESULT or verification evidence
+      may be created. Once a continuation RUN exists, existing Runtime terminalization
+      remains authoritative.
+    - >
+      Preserve source-bootstrap v2 recovery, source-PRIMARY two-stage activation,
+      TASK-198 bootstrap-primary compatibility, historical REPAIR behavior, execution-
+      profile policy, verification-subject isolation and roadmap state.
+    - >
+      Document the new gap/transport boundary and exact BP-9 choreography: publish this
+      capability, separately activate its exact published consumer, authorize one exact
+      REPAIR for the failed bootstrap candidate, execute it through the activated newer
+      source, review/publish that downstream candidate, then resume ordinary exact-pin
+      migration. Do not claim any of those later lifecycle events in this TASK.
+    - >
+      Executor returns one clean candidate with zero unresolved implementation items and
+      does not perform source-REPAIR activation, downstream recovery, semantic review,
+      publication or roadmap mutation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      AIOS exposes one bounded versioned source-REPAIR bootstrap transport whose exact
+      contract binds legacy source identity, target source identity, unchanged downstream
+      control/pin identity, one failed RUN and one canonical REPAIR delivery without
+      exposing arbitrary command/ref/path execution.
+  - id: AC2
+    condition: >
+      Only one consumed+completed source-bootstrap-v2 edge whose unique bound terminal is
+      the requested FAILURE is eligible; active, RESULT, pre-RUN, unbound, superseded,
+      ambiguous or mismatched histories reject before target invocation or RUN creation.
+  - id: AC3
+    condition: >
+      Source-REPAIR target activation is separate from source-PRIMARY activation and is
+      production-closed in TASK-206; no mutable/self-derived/fallback target can be used.
+  - id: AC4
+    condition: >
+      An exact admitted target proves it is running from the bound generation and then
+      delegates only to existing canonical REPAIR wakeup/preflight/Unified State/dispatch
+      semantics with the exact bound failed RUN, repair SHA and execution profile.
+  - id: AC5
+    condition: >
+      Source-REPAIR neither modifies nor supersedes completed migration history and cannot
+      create another PRIMARY; pre-REPAIR transport failures create no engineering RUN or
+      terminal artifact.
+  - id: AC6
+    condition: >
+      Exact replay is idempotent and conflicting/partial/concurrent transport state fails
+      closed, while the existing REPAIR at-most-once and historical failed-candidate
+      continuation semantics remain unchanged.
+  - id: AC7
+    condition: >
+      Existing source-bootstrap recovery/PRIMARY behavior, historical bootstrap-primary,
+      Runtime verification/evidence ownership, Reviewer/Publisher authority, execution-
+      profile behavior and roadmap state remain compatible.
+  - id: AC8
+    condition: >
+      Documentation records the post-failed-bootstrap recovery choreography and the
+      mandatory separate activation successor without claiming downstream recovery or
+      BP-9 completion.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q
+    - git diff --check
