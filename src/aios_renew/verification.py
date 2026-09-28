@@ -70,7 +70,14 @@ def materialize_verification_subject(
         subject = temp_root / "subject"
         hooks = temp_root / "hooks"
         hooks.mkdir()
-        origin_url = _optional_git(repository, "remote", "get-url", "origin")
+        empty_config = temp_root / "empty-gitconfig"
+        empty_config.touch()
+        empty_attributes = temp_root / "empty-attributes"
+        empty_attributes.touch()
+        git_environment = _materialization_git_environment(empty_config)
+        origin_url = _optional_git(
+            repository, "remote", "get-url", "origin", environment=git_environment
+        )
         _git(
             repository,
             "-c",
@@ -82,9 +89,25 @@ def materialize_verification_subject(
             "--no-tags",
             str(repository),
             str(subject),
+            environment=git_environment,
         )
+        # Set subject-local checkout policy before Git writes any tracked file.
+        # Tracked .gitattributes still overrides these defaults where explicit.
+        for key, value in (
+            ("core.autocrlf", "false"),
+            ("core.eol", "lf"),
+            ("core.attributesFile", str(empty_attributes)),
+        ):
+            _git(subject, "config", "--local", key, value, environment=git_environment)
         if origin_url is not None:
-            _git(subject, "remote", "set-url", "origin", origin_url)
+            _git(
+                subject,
+                "remote",
+                "set-url",
+                "origin",
+                origin_url,
+                environment=git_environment,
+            )
         _git(
             subject,
             "-c",
@@ -92,14 +115,15 @@ def materialize_verification_subject(
             "checkout",
             "--detach",
             subject_sha,
+            environment=git_environment,
         )
         if not (subject / ".git").is_dir():
             raise RuntimeVerificationError(
                 "verification subject Git directory is unavailable"
             )
-        if _git(subject, "rev-parse", "HEAD") != subject_sha:
+        if _git(subject, "rev-parse", "HEAD", environment=git_environment) != subject_sha:
             raise RuntimeVerificationError("verification subject HEAD mismatch")
-        if _git(subject, "status", "--porcelain"):
+        if _git(subject, "status", "--porcelain", environment=git_environment):
             raise RuntimeVerificationError("verification subject is initially dirty")
         (subject / ".git" / "aios").mkdir()
     except RuntimeVerificationError:
@@ -371,13 +395,33 @@ def _has_git_ancestor(path: Path) -> bool:
     return any((parent / ".git").exists() for parent in (path, *path.parents))
 
 
-def _git(repository: Path, *args: str) -> str:
+def _materialization_git_environment(empty_config: Path) -> dict[str, str]:
+    """Keep host Git configuration out of the transient subject's creation."""
+
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith("GIT_")
+    }
+    env.update(
+        GIT_CONFIG_GLOBAL=str(empty_config),
+        GIT_CONFIG_SYSTEM=str(empty_config),
+        GIT_CONFIG_NOSYSTEM="1",
+        GIT_ATTR_NOSYSTEM="1",
+    )
+    return env
+
+
+def _git(
+    repository: Path, *args: str, environment: Mapping[str, str] | None = None
+) -> str:
     try:
         completed = subprocess.run(
             ("git", "-C", str(repository), *args),
             capture_output=True,
             text=False,
             check=False,
+            env=environment,
         )
         stdout = completed.stdout.decode("utf-8", errors="strict")
         stderr = completed.stderr.decode("utf-8", errors="strict")
@@ -389,13 +433,16 @@ def _git(repository: Path, *args: str) -> str:
     return stdout.strip()
 
 
-def _optional_git(repository: Path, *args: str) -> str | None:
+def _optional_git(
+    repository: Path, *args: str, environment: Mapping[str, str] | None = None
+) -> str | None:
     try:
         completed = subprocess.run(
             ("git", "-C", str(repository), *args),
             capture_output=True,
             text=False,
             check=False,
+            env=environment,
         )
         stdout = completed.stdout.decode("utf-8", errors="strict")
     except (OSError, UnicodeError) as exc:

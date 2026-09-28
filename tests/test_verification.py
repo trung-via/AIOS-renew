@@ -76,6 +76,89 @@ def test_materializes_one_clean_exact_subject_with_independent_git_state(
     assert not subject_root.exists()
 
 
+def test_materialized_subject_ignores_ambient_and_control_checkout_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    control = tmp_path / "control"
+    control.mkdir()
+    git(control, "init")
+    git(control, "config", "user.name", "Test")
+    git(control, "config", "user.email", "test@example.invalid")
+    canonical = b"first\nsecond\n"
+    (control / "sentinel.txt").write_bytes(canonical)
+    git(control, "add", "sentinel.txt")
+    git(control, "commit", "-m", "LF-only candidate")
+    candidate = git(control, "rev-parse", "HEAD")
+
+    host_attributes = tmp_path / "host-attributes"
+    host_attributes.write_bytes(b"*.txt text eol=crlf\n")
+    host_config = tmp_path / "host-gitconfig"
+    git(control, "config", "--file", str(host_config), "core.autocrlf", "true")
+    git(control, "config", "--file", str(host_config), "core.eol", "crlf")
+    git(
+        control,
+        "config",
+        "--file",
+        str(host_config),
+        "core.attributesFile",
+        str(host_attributes),
+    )
+    git(control, "config", "--local", "core.autocrlf", "true")
+    git(control, "config", "--local", "core.eol", "crlf")
+    git(control, "config", "--local", "core.attributesFile", str(host_attributes))
+    control_config = (control / ".git" / "config").read_bytes()
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(host_config))
+
+    with materialize_verification_subject(
+        control, run_id="RUN-205-001", subject_sha=candidate
+    ) as subject:
+        blob = subprocess.run(
+            ("git", "-C", str(control), "show", f"{candidate}:sentinel.txt"),
+            capture_output=True,
+            check=True,
+        )
+        assert blob.stdout == canonical
+        assert (subject / "sentinel.txt").read_bytes() == canonical
+        assert git(subject, "rev-parse", "HEAD") == candidate
+        assert git(subject, "status", "--porcelain") == ""
+        assert git(subject, "config", "--local", "core.autocrlf") == "false"
+        assert git(subject, "config", "--local", "core.eol") == "lf"
+        assert git(subject, "config", "--local", "core.attributesFile") != str(
+            host_attributes
+        )
+        assert (control / ".git" / "config").read_bytes() == control_config
+
+
+def test_materialized_subject_honors_tracked_checkout_attributes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    control = tmp_path / "control"
+    control.mkdir()
+    git(control, "init")
+    git(control, "config", "user.name", "Test")
+    git(control, "config", "user.email", "test@example.invalid")
+    (control / ".gitattributes").write_bytes(
+        b"explicit-crlf.txt text eol=crlf\nexplicit-lf.txt text eol=lf\n"
+    )
+    canonical = b"first\nsecond\n"
+    (control / "explicit-crlf.txt").write_bytes(canonical)
+    (control / "explicit-lf.txt").write_bytes(canonical)
+    git(control, "add", ".gitattributes", "explicit-crlf.txt", "explicit-lf.txt")
+    git(control, "commit", "-m", "tracked checkout policy")
+    candidate = git(control, "rev-parse", "HEAD")
+    host_config = tmp_path / "host-gitconfig"
+    git(control, "config", "--file", str(host_config), "core.autocrlf", "true")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(host_config))
+
+    with materialize_verification_subject(
+        control, run_id="RUN-205-002", subject_sha=candidate
+    ) as subject:
+        assert (subject / "explicit-crlf.txt").read_bytes() == b"first\r\nsecond\r\n"
+        assert (subject / "explicit-lf.txt").read_bytes() == canonical
+        assert git(subject, "rev-parse", "HEAD") == candidate
+        assert git(subject, "status", "--porcelain") == ""
+
+
 def test_materialized_subject_stays_exact_when_control_head_moves(
     tmp_path: Path,
 ) -> None:
