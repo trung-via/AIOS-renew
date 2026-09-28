@@ -1,0 +1,224 @@
+task_id: TASK-216
+revision: 1
+
+goal: >
+  Correct the published TASK-215 source-control upgrade bridge so one exact reviewed
+  activation/control source may stage the exact 31fd2482... -> 44eee353... handoff
+  while the actually installed migration-capable source remains independently attested
+  as 31fd2482..., without weakening installed-package provenance, migration-history
+  continuity, ordinary migration semantics, or target-owned RUN admission.
+
+problem: >
+  TASK-215 introduced bootstrap-source-upgrade-primary and correctly separated the
+  migration-capable installed-source witness from legacy bootstrap attestation. After
+  TASK-215 publication, production-shaped downstream replay exposed one remaining
+  identity conflation before any TASK-259 RUN or new handoff was created. The Python
+  Agent worker runtime was re-attested to exact installed generation
+  31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 and independently proved
+  migrate-primary capability, while scripts/aios_control_entry.py intentionally loaded
+  the reviewed activation Operator from published TASK-215 source
+  4b397a052f3b856633bb34e56488957997ad4290. The upgrade witness therefore passed,
+  but _stage_migration_handoff called _require_no_active_migration, which called
+  _installed_generation_sha in the activation-source process. That helper requires
+  importlib.metadata's installed operator path to equal the current module __file__;
+  under the deliberate control-source topology those paths belong to 31fd2482... and
+  4b397a... respectively, so staging failed with "imported package differs from active
+  installed generation". The TASK-215 regression masked this production topology by
+  monkeypatching _installed_generation_sha to the source SHA. The missing correction is
+  a narrow distinction between reviewed control-source identity and the already-attested
+  installed migration-source identity during source-upgrade history validation.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is exactly
+    4b397a052f3b856633bb34e56488957997ad4290, the published RUN-215-002 candidate
+    accepted by REVIEW-215-002 DELTA PASS.
+  - >
+    Exact migration source generation
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 remains the reviewed/published
+    migration-capable TASK-202 consumer generation and contains migrate-primary.
+  - >
+    Exact migration target generation
+    44eee353eda376c9db8cd88d97184d3122651bf5 remains the reviewed/published TASK-212
+    source containing the governed-repository PRIMARY v3 profile-journal fix.
+  - >
+    scripts/aios_control_entry.py is intentionally authority-neutral and imports the
+    Operator from one explicitly selected reviewed source tree without installing that
+    source or changing installed-package provenance. Therefore control-source __file__
+    and installed-distribution operator path may legitimately differ on this exceptional
+    staging bridge.
+  - >
+    TASK-215's isolated _upgrade_installed_generation_sha witness already proves the
+    installed distribution's own immutable VCS identity, non-editable provenance,
+    installed/operator path consistency, exact 31fd2482... identity, and migration
+    capability. That witness remains the installed-source authority for this bridge.
+  - >
+    Python Agent TASK-259 remains a downstream pre-RUN blocked operation. This upstream
+    correction does not create or reinterpret any downstream RUN, FAILURE, REPAIR,
+    RESULT, review, publication, pin, or roadmap state.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - .ai/tasks/TASK-202.yaml
+    - .ai/tasks/TASK-212.yaml
+    - .ai/tasks/TASK-213.yaml
+    - .ai/tasks/TASK-214.yaml
+    - .ai/tasks/TASK-215.yaml
+    - src/aios_renew/operator.py
+    - scripts/aios_control_entry.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+
+non_goals:
+  - >
+    Relax, remove, or globally reinterpret _installed_generation_sha, installed package
+    provenance, path-consistency checks, editable-package rejection, or immutable VCS
+    identity for ordinary migration/runtime paths.
+  - >
+    Change migrate-primary v1, bootstrap-primary, legacy bootstrap-source-primary
+    admission, recover-source-bootstrap, bootstrap-source-repair, TASK-213 eligibility,
+    TASK-212 PRIMARY v3 profile-journal semantics, execution-profile resolution,
+    Reviewer, Publisher, Unified State, verification ownership, or frozen Kernel semantics.
+  - >
+    Modify scripts/aios_control_entry.py, GitHub workflows, downstream repositories,
+    Python Agent TASK-259, dependency pins, migration handoff schemas, roadmap state, or
+    any downstream lifecycle artifact.
+  - >
+    Add a generic migration router, retry/fallback/failover, second Runtime, migration
+    daemon, Planner, Reviewer, Publisher, queue, broker, provider/model router, or
+    automatic correction selector.
+  - >
+    Broaden source-upgrade activation beyond exact
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 ->
+    44eee353eda376c9db8cd88d97184d3122651bf5 or accept mutable/floating source or target.
+  - >
+    Execute TASK-259, create RUN-259, certify downstream TASK-207 r9, resume downstream
+    product work, or claim BP9 completion.
+
+constraints:
+  hard:
+    - >
+      Preserve bootstrap-source-upgrade-primary as staging-only authority. It must create
+      no RUN, invoke no Executor directly, perform no verification/review/publication,
+      and must continue to delegate target consumption to the existing exact
+      bootstrap-source-primary --accept-handoff path.
+    - >
+      Preserve the existing isolated migration-capable installed-source witness. The
+      exact installed source used by the upgrade path must still be proven in an isolated
+      interpreter from the installed aios-renew distribution itself, including exact
+      31fd2482... VCS identity, non-editable provenance, installed/operator path
+      consistency within that isolated installed distribution, and migrate-primary
+      capability.
+    - >
+      For this exact source-upgrade path only, migration-history tip validation must use
+      the already-attested installed source identity rather than requiring the reviewed
+      activation/control module __file__ to equal the installed-distribution operator path.
+      The control source remains reviewed execution code; it is not the installed-source
+      provenance witness.
+    - >
+      Existing ordinary callers of _require_no_active_migration and
+      _installed_generation_sha must retain their fail-closed semantics. If internals are
+      refactored, the default/ordinary path must still reject imported-package versus
+      installed-generation path mismatch exactly as before.
+    - >
+      Completed migration history must remain validated as one non-ambiguous chain whose
+      terminal generation equals the exact isolated-attested installed source when such
+      history exists. Superseded/pending/conflicting/cyclic/malformed history and an
+      incomplete terminal edge must continue to fail closed.
+    - >
+      Preserve the exact source/target activation constants, version-2 intent schema,
+      fingerprint, durable marker/bundle format, source-control/pin/TASK identity checks,
+      clean attached-main requirements, exact target checkout, replay semantics and
+      target-owned migration RUN reconciliation from TASK-215.
+    - >
+      Exact replay of an already-staged active source-upgrade edge may reuse the existing
+      handoff only when canonical migration history proves that selected fingerprint is
+      the sole valid active edge. Historical completed/superseded evidence remains
+      preserved and cannot be deleted, rewritten or treated as conflicting merely because
+      control-source and installed-source paths differ.
+    - >
+      Add a production-shaped regression for the topology that TASK-215 failed to cover:
+      reviewed control-source Operator code is resolved from a source tree distinct from
+      the installed aios-renew distribution; the installed distribution is exact
+      migration-capable 31fd2482...; valid completed historical migration evidence ends at
+      31fd2482...; and the exact upgrade to 44eee353... can stage and launch the existing
+      target consumer without a staging RUN or fabricated FAILURE.
+    - >
+      That production-shaped regression must not monkeypatch _installed_generation_sha
+      to return 31fd2482..., must not bypass the isolated installed-source witness, and
+      must fail against the published TASK-215 behavior that compares activation-source
+      __file__ to installed-distribution metadata during history validation.
+    - >
+      Negative regressions must preserve rejection of alternate installed SHA, editable
+      distribution, installed/operator path mismatch inside the isolated witness,
+      alternate source/target activation, conflicting active history, and the ordinary
+      non-upgrade imported-package mismatch boundary.
+    - >
+      Documentation must explicitly distinguish three identities on this bridge:
+      reviewed activation/control source, exact installed migration-source witness, and
+      exact target generation. It must update the prospective downstream recovery order
+      so the published TASK-216 correction source, not the defective TASK-215 source,
+      becomes the activation source for the same TASK-259 r1 attempt.
+    - >
+      Runtime owns canonical verification. Executor changes only the four authorized
+      files, returns one clean candidate with zero unresolved implementation items, and
+      does not review, publish, dispatch downstream, mutate roadmap planning, or perform
+      any real downstream migration.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Exact source-upgrade staging succeeds under the intended split topology where the
+      reviewed activation/control Operator source differs from the installed distribution,
+      while the installed source is independently and exactly attested as migration-capable
+      31fd2482....
+  - id: AC2
+    condition: >
+      Source-upgrade migration-history validation binds its terminal generation to the
+      exact isolated installed-source witness and does not use activation-source __file__
+      as installed provenance; completed/superseded history remains reusable and unsafe
+      history still fails closed.
+  - id: AC3
+    condition: >
+      Ordinary migrate-primary, legacy source-bootstrap, source-REPAIR and other
+      _require_no_active_migration callers preserve their prior installed-generation and
+      path-consistency semantics with no broad provenance relaxation.
+  - id: AC4
+    condition: >
+      The existing exact v2 31fd2482... -> 44eee353... handoff identity, TASK/Executor
+      binding, target checkout, target-owned bootstrap-source-primary admission and
+      migration reconciliation remain unchanged; staging itself creates no RUN/FAILURE or
+      Executor observation.
+  - id: AC5
+    condition: >
+      Focused regression covers the real control-source-versus-installed-source split
+      without monkeypatching _installed_generation_sha to force success and would fail on
+      published TASK-215 behavior; negative identity/history boundaries remain covered.
+  - id: AC6
+    condition: >
+      Canonical docs distinguish activation/control source, installed migration-source
+      witness and target generation, and record published TASK-216 source -> same
+      downstream TASK-259 r1 -> target-owned RUN -> review/publication -> fresh TASK-207 r9
+      as prospective sequence only.
+  - id: AC7
+    condition: >
+      Mutation is limited to operator.py, tests/test_operator.py and the two authorized
+      architecture documents; scripts/aios_control_entry.py, workflows, policies, Kernel,
+      roadmap and downstream state remain unchanged, with zero unresolved Executor work.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q -k "source_upgrade or source_bootstrap_production_allowlist_rejects_other_targets_before_edge or source_bootstrap_rejects_unbound_identity_before_edge or source_repair_bootstrap_requires_completed_failed_v2_lineage"
+    - git diff --check
