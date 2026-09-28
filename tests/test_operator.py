@@ -9277,6 +9277,162 @@ def _source_repair_bootstrap_intent(bootstrap: dict, target_sha: str) -> dict:
     }
 
 
+def _source_successor_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, dict, dict]:
+    repo, source, bootstrap = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA",
+                        bootstrap["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: bootstrap["source_generation_sha"])
+    old_path = tmp_path / "bootstrap.json"
+    old_path.write_text(json.dumps(bootstrap), encoding="utf-8")
+    assert operator_module.bootstrap_source_primary(
+        old_path, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0)
+    ) == 0
+    fingerprint = operator_module._migration_fingerprint(bootstrap)
+    marker = operator_module._migration_marker(repo, fingerprint)
+    marker.with_suffix(".consumed").write_text(fingerprint, encoding="utf-8")
+    marker.with_suffix(".completed").write_text(fingerprint, encoding="utf-8")
+    state = runtime_paths(repo)
+    run_id = "RUN-101-001"
+    (state.runs / f"{run_id}.json").write_text(json.dumps({
+        "run_id": run_id, "task": {"id": "TASK-101", "revision": 2},
+        "executor": "codex", "base_sha": bootstrap["source_control_sha"],
+        "workspace": str(repo), "status": "ACTIVE",
+    }), encoding="utf-8")
+    (state.failures / f"{run_id}.json").write_text(json.dumps({
+        "kind": "FAILURE", "run_id": run_id,
+        "task": {"id": "TASK-101", "revision": 2},
+        "executor": "codex", "base_sha": bootstrap["source_control_sha"],
+    }), encoding="utf-8")
+    successor_control = publish_upstream(
+        repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE.replace("revision: 1", "revision: 3")},
+        "Brain-authored successor TASK",
+    )
+    git(repo, "fetch", "origin", "main")
+    git(repo, "merge", "--ff-only", "origin/main")
+    (source / "successor-capability").write_text("published", encoding="utf-8")
+    git(source, "add", ".")
+    git(source, "commit", "-m", "published successor source")
+    intent = {
+        "format": "AIOS_SOURCE_BOOTSTRAP_SUCCESSOR_INTENT", "version": 1,
+        "repository": bootstrap["repository"], "bootstrap_fingerprint": fingerprint,
+        "failed_run_id": run_id, "legacy_generation_sha": bootstrap["source_generation_sha"],
+        "prior_target_generation_sha": bootstrap["target_generation_sha"],
+        "target_generation_sha": git(source, "rev-parse", "HEAD"),
+        "target_url": str(source), "source_control_sha": bootstrap["source_control_sha"],
+        "current_control_sha": successor_control, "pin_path": bootstrap["pin_path"],
+        "source_pin_blob_sha": bootstrap["source_pin_blob_sha"],
+        "task_id": "TASK-101", "prior_task_revision": 2, "task_revision": 3,
+        "task_blob_sha": git(repo, "rev-parse", f"{successor_control}:.ai/tasks/TASK-101.yaml"),
+        "task_commit_sha": successor_control, "successor_delivery_id": "successor-101-001",
+        "executor": "codex",
+    }
+    return repo, bootstrap, intent
+
+
+def test_source_successor_closed_and_exact_lineage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bootstrap, intent = _source_successor_fixture(tmp_path, monkeypatch)
+    path = tmp_path / "successor.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    assert operator_module._SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is None
+    with pytest.raises(OperatorError, match="not activated"):
+        operator_module.bootstrap_source_successor_primary(path)
+    assert not (runtime_state_root(repo) / "source-bootstrap-successors").exists()
+    operator_module._source_bootstrap_successor_lineage(repo, intent)
+    for change in ({"failed_run_id": "RUN-101-002"}, {"task_revision": 2},
+                   {"source_pin_blob_sha": "f" * 40}, {"executor": "antigravity"}):
+        altered = {**intent, **change}
+        if change.get("task_revision") == 2:
+            with pytest.raises(OperatorError, match="strictly newer"):
+                operator_module._exact_source_bootstrap_successor_intent(altered)
+        else:
+            with pytest.raises(OperatorError):
+                operator_module._source_bootstrap_successor_lineage(repo, altered)
+    dirty = repo / "uncommitted-control"
+    dirty.write_text("dirty", encoding="utf-8")
+    with pytest.raises(OperatorError, match="clean attached main"):
+        operator_module._source_bootstrap_successor_lineage(repo, intent)
+    dirty.unlink()
+    state = runtime_paths(repo)
+    failure = state.failures / "RUN-101-001.json"
+    failure.unlink()
+    result = state.results / "RUN-101-001.json"
+    result.write_text(json.dumps({
+        "result": {"head_sha": bootstrap["source_control_sha"], "claims": [],
+                   "changed_files": [], "unresolved": []}, "evidence": [],
+    }), encoding="utf-8")
+    with pytest.raises(OperatorError, match="completed failed v2 edge"):
+        operator_module._source_bootstrap_successor_lineage(repo, intent)
+    result.unlink()
+    failure.write_text(json.dumps({
+        "kind": "FAILURE", "run_id": "RUN-101-001",
+        "task": {"id": "TASK-101", "revision": 2},
+        "executor": "codex", "base_sha": bootstrap["source_control_sha"],
+    }), encoding="utf-8")
+    assert operator_module._migration_marker(repo, intent["bootstrap_fingerprint"]).with_suffix(".completed").is_file()
+    assert failure.is_file()
+
+
+def test_source_successor_stage_replay_and_conflict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _, intent = _source_successor_fixture(tmp_path, monkeypatch)
+    # A future published source is represented by the exact test checkout.
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA",
+                        intent["target_generation_sha"])
+    path = tmp_path / "successor.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    launched = []
+    def child(command, **kwargs):
+        launched.append(command)
+        return subprocess.CompletedProcess(command, 0)
+    assert operator_module.bootstrap_source_successor_primary(path, runner=child) == 0
+    assert operator_module.bootstrap_source_successor_primary(path, runner=child) == 0
+    assert len(launched) == 2 and launched[0] == launched[1]
+    bound = Path(launched[0][-1])
+    assert bound.parent.parent == runtime_state_root(repo) / "source-bootstrap-successors"
+    monkeypatch.setattr(operator_module, "__file__", str(bound.parent / "source" / "src" / "aios_renew" / "operator.py"))
+    operator_module._validate_successor_execution(
+        repo, str(bound), intent["task_id"], intent["executor"], False,
+        intent["current_control_sha"], None, intent["task_revision"],
+        intent["task_blob_sha"], intent["task_commit_sha"],
+    )
+    monkeypatch.setattr(operator_module, "_installed_generation_sha",
+                        lambda: intent["legacy_generation_sha"])
+    with pytest.raises(OperatorError, match="active generation was superseded"):
+        operator_module.run_task(intent["task_id"], executor=intent["executor"],
+                                 repo=repo, synchronize=False)
+    invocations = []
+    def admitted(*args, **kwargs):
+        invocations.append(kwargs)
+        state = runtime_paths(repo)
+        (state.runs / "RUN-101-002.json").write_text(json.dumps({
+            "run_id": "RUN-101-002", "task": {"id": "TASK-101", "revision": 3},
+            "executor": "codex", "base_sha": intent["current_control_sha"],
+            "workspace": str(repo), "status": "ACTIVE",
+        }), encoding="utf-8")
+        (state.results / "RUN-101-002.json").write_text(json.dumps({
+            "result": {"head_sha": intent["current_control_sha"], "claims": [],
+                       "changed_files": [], "unresolved": []}, "evidence": [],
+        }), encoding="utf-8")
+        return SimpleNamespace(render=lambda: "ADMITTED")
+    monkeypatch.setattr(operator_module, "run_task", admitted)
+    assert operator_module.bootstrap_source_successor_primary(path, transport_path=bound) == 0
+    assert operator_module.bootstrap_source_successor_primary(path, transport_path=bound) == 0
+    assert len(invocations) == 1
+    assert invocations[0]["_successor_transport"] == str(bound)
+    conflicting = {**intent, "successor_delivery_id": "successor-101-002"}
+    with pytest.raises(OperatorError, match="competing"):
+        operator_module._source_bootstrap_successor_lineage(repo, conflicting)
+    (bound.parent / "source" / "src" / "aios_renew" / "operator.py").write_text(
+        "# changed target source\n", encoding="utf-8"
+    )
+    with pytest.raises(OperatorError, match="transport identity mismatch"):
+        operator_module.bootstrap_source_successor_primary(path, transport_path=bound)
+
+
 def test_source_repair_uses_canonical_failed_candidate_policy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

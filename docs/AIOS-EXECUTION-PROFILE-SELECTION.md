@@ -222,3 +222,7 @@ Historical BP-V4 work and all existing evidence remain immutable.
 - changes to sandbox/mutation authority;
 - moving canonical verification or semantic review to an LLM;
 - rewriting historical execution identity under the new defaults.
+
+## TASK-218 successor PRIMARY profile boundary
+
+The post-terminal source-bootstrap successor transport is distinct from pre-RUN `recover-source-bootstrap` supersession and same-failed-RUN `bootstrap-source-repair`. Its exact version-1 intent carries neither model nor reasoning-effort selection. After the target validates one completed failed v2 edge and one strictly newer Brain-authored TASK revision, existing PRIMARY Runtime allocates a new RUN and binds the normal governed repository execution profile. The failed RUN's profile and FAILURE remain independent immutable history. The successor consumer activation is closed in TASK-218 and requires a separate reviewed post-publication exact-source activation. Python Agent TASK-259 is motivation only; TASK-218 does not author or run its revision 2.

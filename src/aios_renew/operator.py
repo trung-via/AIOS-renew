@@ -1037,11 +1037,18 @@ def run_task(
     model_source: str | None = None,
     effort_source: str | None = None,
     _migration_handoff: str | None = None,
+    _successor_transport: str | None = None,
 ) -> RunSummary:
     """Execute a TASK and persist/transport deterministic pre-PASS failure facts."""
 
     root = resolve_repository(repo)
-    if _migration_handoff is None:
+    if _successor_transport is not None:
+        if _migration_handoff is not None:
+            raise OperatorError("conflicting PRIMARY admission authorities")
+        _validate_successor_execution(root, _successor_transport, task_id, executor,
+                                      synchronize, preflight_sha, dispatch_id,
+                                      task_revision, task_blob_sha, task_commit_sha)
+    elif _migration_handoff is None:
         _require_no_active_migration(root)
     else:
         _validate_migration_execution(
@@ -1089,6 +1096,7 @@ def run_task(
             effort_source=effort_source,
             admission=admission,
             migration_handoff=_migration_handoff,
+            successor_transport=_successor_transport,
         )
     except KeyboardInterrupt as original:
         if attempt.run_path is not None:
@@ -1295,6 +1303,7 @@ def _run_task_impl(
     model_source: str | None = None,
     effort_source: str | None = None,
     migration_handoff: str | None = None,
+    successor_transport: str | None = None,
 ) -> RunSummary:
     """Execute a stored TASK through the frozen kernel boundary."""
 
@@ -1318,7 +1327,11 @@ def _run_task_impl(
     state = runtime_paths(root)
 
     with RepositoryLock(state.lock):
-        if migration_handoff is None:
+        if successor_transport is not None:
+            _validate_successor_execution(root, successor_transport, task_id, executor,
+                                          synchronize, preflight_sha, dispatch_id,
+                                          task_revision, task_blob_sha, task_commit_sha)
+        elif migration_handoff is None:
             _require_no_active_migration(root)
         else:
             _validate_migration_execution(
@@ -3797,6 +3810,60 @@ _SOURCE_REPAIR_BOOTSTRAP_FIELDS = frozenset({
     "model", "reasoning_effort", "model_source", "effort_source",
 })
 
+# A distinct, post-terminal PRIMARY consumer. TASK-218 publishes no activation.
+_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA: str | None = None
+_SOURCE_BOOTSTRAP_SUCCESSOR_FIELDS = frozenset({
+    "format", "version", "repository", "bootstrap_fingerprint", "failed_run_id",
+    "legacy_generation_sha", "prior_target_generation_sha",
+    "target_generation_sha", "target_url", "source_control_sha",
+    "current_control_sha", "pin_path", "source_pin_blob_sha", "task_id",
+    "prior_task_revision", "task_revision", "task_blob_sha", "task_commit_sha",
+    "successor_delivery_id", "executor",
+})
+
+
+def _exact_source_bootstrap_successor_intent(document: Any) -> dict[str, Any]:
+    if (not isinstance(document, dict) or set(document) != _SOURCE_BOOTSTRAP_SUCCESSOR_FIELDS
+            or type(document["version"]) is not int or document["version"] != 1
+            or document["format"] != "AIOS_SOURCE_BOOTSTRAP_SUCCESSOR_INTENT"):
+        raise OperatorError("source-bootstrap successor intent has missing or unexpected fields")
+    for field in ("legacy_generation_sha", "prior_target_generation_sha",
+                  "target_generation_sha", "source_control_sha", "current_control_sha",
+                  "source_pin_blob_sha", "task_blob_sha", "task_commit_sha"):
+        if not isinstance(document[field], str) or not re.fullmatch(r"[0-9a-f]{40}", document[field]):
+            raise OperatorError(f"source-bootstrap successor {field} is not an exact SHA")
+    if (not isinstance(document["bootstrap_fingerprint"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", document["bootstrap_fingerprint"])):
+        raise OperatorError("source-bootstrap successor fingerprint is invalid")
+    from .repair_dispatch import FAILED_RUN_ID_PATTERN, REPAIR_DISPATCH_ID_PATTERN
+    if (not isinstance(document["failed_run_id"], str)
+            or not FAILED_RUN_ID_PATTERN.fullmatch(document["failed_run_id"])
+            or not isinstance(document["successor_delivery_id"], str)
+            or not REPAIR_DISPATCH_ID_PATTERN.fullmatch(document["successor_delivery_id"])):
+        raise OperatorError("source-bootstrap successor delivery or RUN identity is invalid")
+    if (type(document["prior_task_revision"]) is not int
+            or type(document["task_revision"]) is not int
+            or document["prior_task_revision"] < 1
+            or document["task_revision"] <= document["prior_task_revision"]):
+        raise OperatorError("source-bootstrap successor revision is not strictly newer")
+    if (not isinstance(document["repository"], str)
+            or not Path(document["repository"]).is_absolute()
+            or not isinstance(document["target_url"], str) or not document["target_url"]
+            or document["target_url"].startswith("-")
+            or not isinstance(document["pin_path"], str)
+            or not isinstance(document["task_id"], str)
+            or not re.fullmatch(r"TASK-[0-9]+", document["task_id"])
+            or not isinstance(document["executor"], str)
+            or document["executor"] not in {"codex", "antigravity", "antigravity-minimax"}):
+        raise OperatorError("source-bootstrap successor identity is invalid")
+    pin = Path(document["pin_path"])
+    if pin.is_absolute() or not pin.parts or ".." in pin.parts or ".git" in pin.parts:
+        raise OperatorError("source-bootstrap successor pin path is unsafe")
+    if len({document["legacy_generation_sha"], document["prior_target_generation_sha"],
+            document["target_generation_sha"]}) != 3:
+        raise OperatorError("source-bootstrap successor generations are not distinct")
+    return document
+
 
 def _exact_source_repair_bootstrap_intent(document: Any) -> dict[str, Any]:
     if (not isinstance(document, dict) or set(document) != _SOURCE_REPAIR_BOOTSTRAP_FIELDS
@@ -5067,6 +5134,271 @@ def bootstrap_source_repair(
             sys.executable, "-m", "aios_renew.operator", "bootstrap-source-repair",
             str(bound_intent), "--accept-transport", str(bound_intent),
         ], env=env).returncode
+
+
+def _source_bootstrap_successor_state(root: Path, intent: Mapping[str, Any]) -> tuple[Path, Path]:
+    bundle = runtime_state_root(root) / "source-bootstrap-successors" / intent["successor_delivery_id"]
+    return bundle, bundle / "source"
+
+
+def _source_bootstrap_successor_record(root: Path, intent: Mapping[str, Any]) -> tuple[Path, Path]:
+    bundle, target = _source_bootstrap_successor_state(root, intent)
+    bound = bundle / "intent.json"
+    try:
+        stored = _exact_source_bootstrap_successor_intent(
+            json.loads(bound.read_text(encoding="utf-8"))
+        )
+    except (OSError, ValueError, OperatorError) as exc:
+        raise OperatorError("source-bootstrap successor transport is partial or invalid") from exc
+    operator_source = target / "src" / "aios_renew" / "operator.py"
+    if (stored != intent or bundle.is_symlink() or bound.is_symlink() or target.is_symlink()
+            or not target.is_dir() or {path.name for path in bundle.iterdir()} != {"source", "intent.json"}
+            or _git(target, "rev-parse", "HEAD") != intent["target_generation_sha"]
+            or _git(target, "remote", "get-url", "origin") != intent["target_url"]
+            or _git(target, "status", "--porcelain")
+            or not operator_source.is_file() or operator_source.is_symlink()
+            or _git(target, "cat-file", "-t", "HEAD:src/aios_renew/operator.py") != "blob"):
+        raise OperatorError("source-bootstrap successor transport identity mismatch")
+    return bound, target
+
+
+def _source_bootstrap_successor_lineage(
+    root: Path, intent: Mapping[str, Any], *, check_control: bool = True,
+) -> None:
+    """Select only the requested failed edge; other historical failures are independent."""
+
+    edges, superseded, pending = _migration_history(root)
+    fingerprint = intent["bootstrap_fingerprint"]
+    if fingerprint not in edges or fingerprint in superseded or fingerprint in pending:
+        raise OperatorError("source-bootstrap successor edge is unavailable")
+    marker, record, old = edges[fingerprint]
+    if (old.get("version") != 2
+            or record["format"] != "AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF"
+            or marker.with_suffix(".predecessor").exists()
+            or marker.with_suffix(".superseded").exists()
+            or not marker.with_suffix(".consumed").is_file()
+            or not marker.with_suffix(".completed").is_file()
+            or marker.with_suffix(".consumed").read_text(encoding="utf-8") != fingerprint
+            or marker.with_suffix(".completed").read_text(encoding="utf-8") != fingerprint
+            or _migration_run_terminal(root, old) != (intent["failed_run_id"], "FAILURE")):
+        raise OperatorError("source-bootstrap successor requires one completed failed v2 edge")
+    bindings = {
+        "repository": "repository", "source_generation_sha": "legacy_generation_sha",
+        "target_generation_sha": "prior_target_generation_sha",
+        "source_control_sha": "source_control_sha", "pin_path": "pin_path",
+        "source_pin_blob_sha": "source_pin_blob_sha", "task_id": "task_id",
+        "task_revision": "prior_task_revision", "executor": "executor",
+    }
+    if any(old[prior] != intent[successor] for prior, successor in bindings.items()):
+        raise OperatorError("source-bootstrap successor failed lineage identity mismatch")
+    _require_no_active_migration(
+        root, installed_generation_sha=intent["prior_target_generation_sha"]
+    )
+    directory = runtime_state_root(root) / "source-bootstrap-successors"
+    for bundle in directory.iterdir() if directory.is_dir() else ():
+        if not bundle.is_dir() or bundle.is_symlink():
+            raise OperatorError("source-bootstrap successor transport history is invalid")
+        path = bundle / "intent.json"
+        if not path.is_file():
+            raise OperatorError("source-bootstrap successor transport history is partial")
+        try:
+            other = _exact_source_bootstrap_successor_intent(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError, OperatorError) as exc:
+            raise OperatorError("source-bootstrap successor transport history is invalid") from exc
+        if (other["successor_delivery_id"] != bundle.name
+                or other["bootstrap_fingerprint"] == fingerprint and other != intent):
+            raise OperatorError("competing source-bootstrap successor evidence")
+        _source_bootstrap_successor_record(root, other)
+    if Path(intent["repository"]).resolve() != root.resolve():
+        raise OperatorError("source-bootstrap successor repository mismatch")
+    if not check_control:
+        return
+    if (_git(root, "status", "--porcelain")
+            or _git(root, "symbolic-ref", "--quiet", "--short", "HEAD") != "main"
+            or _git(root, "rev-parse", "HEAD") != intent["current_control_sha"]):
+        raise OperatorError("source-bootstrap successor control is not clean attached main")
+    if intent["current_control_sha"] == old["source_control_sha"]:
+        raise OperatorError("source-bootstrap successor control has no newer TASK commit")
+    with tempfile.TemporaryDirectory(prefix="aios-successor-control-") as temporary:
+        control = Path(temporary) / "control"
+        _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags",
+             str(root), str(control))
+        check = {
+            **_source_bootstrap_check_control(old),
+            "source_control_sha": intent["current_control_sha"],
+            "target_control_sha": intent["current_control_sha"],
+            "task_revision": intent["task_revision"],
+            "task_blob_sha": intent["task_blob_sha"],
+            "task_commit_sha": intent["task_commit_sha"],
+        }
+        _check_migration_control(root, check, transport=control)
+        if not _git_is_ancestor(control, old["source_control_sha"], intent["current_control_sha"]):
+            raise OperatorError("source-bootstrap successor control is not a fast-forward")
+        pin = intent["pin_path"].replace("\\", "/")
+        if (_git(control, "rev-parse", f"{old['source_control_sha']}:{pin}") != intent["source_pin_blob_sha"]
+                or _git(control, "show", f"{old['source_control_sha']}:{pin}")
+                != _git(control, "show", f"{intent['current_control_sha']}:{pin}")
+                or intent["prior_target_generation_sha"] in _git(control, "show", f"{intent['current_control_sha']}:{pin}")
+                or intent["target_generation_sha"] in _git(control, "show", f"{intent['current_control_sha']}:{pin}")):
+            raise OperatorError("source-bootstrap successor pin authority changed")
+
+
+def _source_bootstrap_successor_run(root: Path, intent: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    state = runtime_paths(root)
+    matches = []
+    for path in state.runs.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict) or data.get("kind") == "REMEDIATION":
+                continue
+            run = _run_from_data(data)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise OperatorError("invalid successor RUN history") from exc
+        if (run.task.id == intent["task_id"]
+                and run.task.revision > intent["prior_task_revision"]
+                and Path(run.workspace).resolve() == root.resolve()):
+            if (run.run_id != path.stem or run.task.revision != intent["task_revision"]
+                    or run.executor != intent["executor"]
+                    or run.base_sha != intent["current_control_sha"]):
+                raise OperatorError("competing source-bootstrap successor RUN")
+            matches.append(run.run_id)
+    if len(matches) > 1:
+        raise OperatorError("ambiguous source-bootstrap successor RUN")
+    if not matches:
+        return None, None
+    run_id = matches[0]
+    result = (state.results / f"{run_id}.json").is_file()
+    failure = (state.failures / f"{run_id}.json").is_file()
+    if result and failure:
+        raise OperatorError("source-bootstrap successor RUN has conflicting terminals")
+    if result:
+        try:
+            payload = json.loads((state.results / f"{run_id}.json").read_text(encoding="utf-8"))
+            canonical = validate_result(payload["result"])
+            if not re.fullmatch(r"[0-9a-f]{40}", canonical.head_sha):
+                raise ValueError("invalid successor RESULT head")
+        except (OSError, ValueError, KeyError, TypeError, ArtifactValidationError) as exc:
+            raise OperatorError("invalid source-bootstrap successor RESULT") from exc
+    if failure:
+        try:
+            payload = json.loads((state.failures / f"{run_id}.json").read_text(encoding="utf-8"))
+            if (payload["kind"] != "FAILURE" or payload["run_id"] != run_id
+                    or payload["task"] != {"id": intent["task_id"], "revision": intent["task_revision"]}
+                    or payload["executor"] != intent["executor"]
+                    or payload["base_sha"] != intent["current_control_sha"]
+                    or not isinstance(payload["failed_head_sha"], str)
+                    or not re.fullmatch(r"[0-9a-f]{40}", payload["failed_head_sha"])):
+                raise ValueError("successor FAILURE identity mismatch")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise OperatorError("invalid source-bootstrap successor FAILURE") from exc
+    return run_id, "RESULT" if result else "FAILURE" if failure else None
+
+
+def _source_bootstrap_successor_replay_control(
+    root: Path, run_id: str, terminal: str,
+) -> None:
+    state = runtime_paths(root)
+    path = (state.results if terminal == "RESULT" else state.failures) / f"{run_id}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    head = (payload["result"]["head_sha"] if terminal == "RESULT"
+            else payload["failed_head_sha"])
+    if (not isinstance(head, str) or not re.fullmatch(r"[0-9a-f]{40}", head)
+            or _git(root, "status", "--porcelain")
+            or _git(root, "symbolic-ref", "--quiet", "--short", "HEAD") != "main"
+            or _git(root, "rev-parse", "HEAD") != head):
+        raise OperatorError("source-bootstrap successor replay control changed")
+
+
+def _validate_successor_execution(
+    root: Path, transport: str, task_id: str, executor: str,
+    synchronize: bool, preflight_sha: str | None, dispatch_id: str | None,
+    task_revision: int | None, task_blob_sha: str | None, task_commit_sha: str | None,
+) -> None:
+    path = Path(transport)
+    try:
+        intent = _exact_source_bootstrap_successor_intent(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, OperatorError) as exc:
+        raise OperatorError("source-bootstrap successor bound intent is invalid") from exc
+    bound, target = _source_bootstrap_successor_record(root, intent)
+    source_root = Path(__file__).resolve().parent.parent.parent
+    if (source_root != target.resolve() or path.resolve() != bound.resolve()
+            or synchronize or dispatch_id is not None
+            or (task_id, executor, preflight_sha, task_revision, task_blob_sha, task_commit_sha)
+            != (intent["task_id"], intent["executor"], intent["current_control_sha"],
+                intent["task_revision"], intent["task_blob_sha"], intent["task_commit_sha"])):
+        raise OperatorError("source-bootstrap successor PRIMARY admission mismatch")
+    _source_bootstrap_successor_lineage(root, intent)
+    if _source_bootstrap_successor_run(root, intent)[0] is not None:
+        raise OperatorError("source-bootstrap successor RUN already admitted")
+
+
+def bootstrap_source_successor_primary(
+    intent_path: str | Path, *, runner: NativeRunner = subprocess.run,
+    legacy_runner: NativeRunner = subprocess.run,
+    transport_path: str | Path | None = None,
+) -> int:
+    """Transport one completed failed bootstrap into a newer TASK PRIMARY."""
+
+    intent = _exact_source_bootstrap_successor_intent(
+        json.loads(Path(intent_path).read_text(encoding="utf-8"))
+    )
+    root = resolve_repository(intent["repository"])
+    bundle, target = _source_bootstrap_successor_state(root, intent)
+    if transport_path is None and (_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is None
+            or intent["target_generation_sha"] != _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA):
+        raise OperatorError("source-bootstrap successor target is not activated")
+    lock = runtime_state_root(root) / "source-bootstrap-successor.lock"
+    if transport_path is not None:
+        with RepositoryLock(lock):
+            if Path(transport_path).resolve() != (bundle / "intent.json").resolve():
+                raise OperatorError("source-bootstrap successor transport path mismatch")
+            bound, target = _source_bootstrap_successor_record(root, intent)
+            source_root = Path(__file__).resolve().parent.parent.parent
+            if source_root != target.resolve():
+                raise OperatorError("running source differs from bound successor target")
+            if _legacy_installed_generation_sha(runner=legacy_runner) != intent["legacy_generation_sha"]:
+                raise OperatorError("source-bootstrap successor installed generation mismatch")
+            run_id, terminal = _source_bootstrap_successor_run(root, intent)
+            _source_bootstrap_successor_lineage(root, intent, check_control=run_id is None)
+            if run_id is not None:
+                if terminal is None:
+                    raise OperatorError(f"source-bootstrap successor RUN {run_id} is active")
+                _source_bootstrap_successor_replay_control(root, run_id, terminal)
+                return 0 if terminal == "RESULT" else 1
+            summary = run_task(
+                intent["task_id"], executor=intent["executor"], repo=root,
+                synchronize=False, preflight_sha=intent["current_control_sha"],
+                task_revision=intent["task_revision"], task_blob_sha=intent["task_blob_sha"],
+                task_commit_sha=intent["task_commit_sha"], _successor_transport=str(bound),
+            )
+            print(summary.render())
+            return 0
+    with RepositoryLock(lock):
+        if _legacy_installed_generation_sha(runner=legacy_runner) != intent["legacy_generation_sha"]:
+            raise OperatorError("source-bootstrap successor installed generation mismatch")
+        run_id, terminal = _source_bootstrap_successor_run(root, intent)
+        _source_bootstrap_successor_lineage(root, intent, check_control=run_id is None)
+        if run_id is not None and terminal is not None:
+            _source_bootstrap_successor_replay_control(root, run_id, terminal)
+        if bundle.exists():
+            bound, target = _source_bootstrap_successor_record(root, intent)
+        else:
+            bundle.mkdir(parents=True)
+            _git(root, "clone", "--no-checkout", "--no-tags", intent["target_url"], str(target))
+            _git(target, "checkout", "--detach", intent["target_generation_sha"])
+            bound = bundle / "intent.json"
+            _write_migration_atomic(bound, json.dumps(intent, sort_keys=True))
+            _source_bootstrap_successor_record(root, intent)
+        _source_bootstrap_successor_lineage(root, intent, check_control=run_id is None)
+        env = dict(os.environ)
+        checkout_source = str((root / "src").resolve())
+        inherited = [part for part in env.get("PYTHONPATH", "").split(os.pathsep)
+                     if part and str(Path(part).resolve()) != checkout_source]
+        env["PYTHONPATH"] = os.pathsep.join([str(target / "src"), *inherited])
+    return runner([
+        sys.executable, "-m", "aios_renew.operator", "bootstrap-source-successor-primary",
+        str(bound), "--accept-transport", str(bound),
+    ], env=env).returncode
 
 
 def migrate_primary(
@@ -7281,6 +7613,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     source_repair_parser.add_argument("intent", help="Exact source-REPAIR bootstrap intent JSON")
     source_repair_parser.add_argument("--accept-transport", help=argparse.SUPPRESS)
+    successor_parser = commands.add_parser(
+        "bootstrap-source-successor-primary",
+        help="Transport one completed failed source bootstrap into a newer TASK PRIMARY",
+    )
+    successor_parser.add_argument("intent", help="Exact post-terminal successor intent JSON")
+    successor_parser.add_argument("--accept-transport", help=argparse.SUPPRESS)
     wakeup_parser = commands.add_parser(
         "wakeup", help="Idempotently wake one canonical PRIMARY execution"
     )
@@ -7618,6 +7956,10 @@ def main(
             return recover_source_bootstrap(args.old_intent, args.replacement_intent)
         elif args.command == "bootstrap-source-repair":
             return bootstrap_source_repair(
+                args.intent, runner=native_runner, transport_path=args.accept_transport
+            )
+        elif args.command == "bootstrap-source-successor-primary":
+            return bootstrap_source_successor_primary(
                 args.intent, runner=native_runner, transport_path=args.accept_transport
             )
         elif args.command == "wakeup":
