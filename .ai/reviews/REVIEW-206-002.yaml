@@ -1,0 +1,15 @@
+review_id: REVIEW-206-002
+run_id: RUN-206-002
+reviewed_sha: 37437be4e43d07d5c818022cb20d19d9c347da7c
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
