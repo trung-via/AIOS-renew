@@ -9339,7 +9339,7 @@ def test_source_successor_closed_and_exact_lineage(
     assert operator_module._SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is None
     with pytest.raises(OperatorError, match="not activated"):
         operator_module.bootstrap_source_successor_primary(path)
-    assert not (runtime_state_root(repo) / "source-bootstrap-successors").exists()
+    assert not (runtime_state_root(repo).parent / "s").exists()
     operator_module._source_bootstrap_successor_lineage(repo, intent)
     for change in ({"failed_run_id": "RUN-101-002"}, {"task_revision": 2},
                    {"source_pin_blob_sha": "f" * 40}, {"executor": "antigravity"}):
@@ -9379,6 +9379,7 @@ def test_source_successor_stage_replay_and_conflict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, _, intent = _source_successor_fixture(tmp_path, monkeypatch)
+    intent["successor_delivery_id"] = "successor-" + "x" * 118
     # A future published source is represented by the exact test checkout.
     monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA",
                         intent["target_generation_sha"])
@@ -9392,8 +9393,16 @@ def test_source_successor_stage_replay_and_conflict(
     assert operator_module.bootstrap_source_successor_primary(path, runner=child) == 0
     assert len(launched) == 2 and launched[0] == launched[1]
     bound = Path(launched[0][-1])
-    assert bound.parent.parent == runtime_state_root(repo) / "source-bootstrap-successors"
-    monkeypatch.setattr(operator_module, "__file__", str(bound.parent / "source" / "src" / "aios_renew" / "operator.py"))
+    assert bound.parent.parent == runtime_state_root(repo).parent / "s"
+    assert (json.loads(bound.read_text(encoding="utf-8"))["successor_delivery_id"]
+            == intent["successor_delivery_id"])
+    bound.write_text(json.dumps({**intent, "successor_delivery_id": "successor-101-002"}),
+                     encoding="utf-8")
+    with pytest.raises(OperatorError, match="transport identity mismatch"):
+        operator_module._source_bootstrap_successor_record(repo, intent)
+    bound.write_text(json.dumps(intent), encoding="utf-8")
+    monkeypatch.setattr(operator_module, "__file__",
+                        str(bound.parent / "s" / "src" / "aios_renew" / "operator.py"))
     operator_module._validate_successor_execution(
         repo, str(bound), intent["task_id"], intent["executor"], False,
         intent["current_control_sha"], None, intent["task_revision"],
@@ -9426,11 +9435,41 @@ def test_source_successor_stage_replay_and_conflict(
     conflicting = {**intent, "successor_delivery_id": "successor-101-002"}
     with pytest.raises(OperatorError, match="competing"):
         operator_module._source_bootstrap_successor_lineage(repo, conflicting)
-    (bound.parent / "source" / "src" / "aios_renew" / "operator.py").write_text(
+    # Even a forced locator collision cannot substitute a different delivery.
+    sha256 = operator_module.hashlib.sha256
+    with monkeypatch.context() as patch:
+        patch.setattr(operator_module, "hashlib", SimpleNamespace(
+            sha256=lambda _: sha256(intent["successor_delivery_id"].encode("utf-8"))))
+        with pytest.raises(OperatorError, match="transport identity mismatch"):
+            operator_module._source_bootstrap_successor_record(repo, conflicting)
+    (bound.parent / "s" / "src" / "aios_renew" / "operator.py").write_text(
         "# changed target source\n", encoding="utf-8"
     )
     with pytest.raises(OperatorError, match="transport identity mismatch"):
         operator_module.bootstrap_source_successor_primary(path, transport_path=bound)
+
+
+def test_source_successor_transport_path_budget_and_full_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A long verification checkout plus Git's loose-object suffix must still
+    # fit the default Win32 path limit; the full 128-character id must not be
+    # used as a filesystem component or shortened into an authority token.
+    base = Path("C:/verification")
+    root = base / ("r" * (170 - len(str(base)) - 1))
+    assert len(str(root)) == 170
+    monkeypatch.setattr(operator_module, "runtime_state_root",
+                        lambda repo: Path(repo) / ".git" / "aios")
+    delivery = "successor-" + "x" * 118
+    intent = {"successor_delivery_id": delivery}
+    bundle, target = operator_module._source_bootstrap_successor_state(root, intent)
+    assert bundle == operator_module._source_bootstrap_successor_state(root, intent)[0]
+    assert bundle != operator_module._source_bootstrap_successor_state(
+        root, {"successor_delivery_id": delivery[:-1] + "y"})[0]
+    assert len(str(target / ".git" / "objects" / "ff" / ("f" * 38))) < 260
+    assert len(str(target / "src" / "aios_renew" / "schemas" /
+                   "finalize_candidate_result_package.json")) < 260
+    assert delivery not in str(bundle)
 
 
 def test_source_repair_uses_canonical_failed_candidate_policy(

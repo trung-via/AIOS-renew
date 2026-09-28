@@ -5137,8 +5137,12 @@ def bootstrap_source_repair(
 
 
 def _source_bootstrap_successor_state(root: Path, intent: Mapping[str, Any]) -> tuple[Path, Path]:
-    bundle = runtime_state_root(root) / "source-bootstrap-successors" / intent["successor_delivery_id"]
-    return bundle, bundle / "source"
+    # Keep the durable checkout below Win32's legacy path budget even when the
+    # repository lives below a verification workspace. The digest is only a
+    # directory locator: the full delivery id and intent remain authoritative.
+    key = hashlib.sha256(intent["successor_delivery_id"].encode("utf-8")).hexdigest()[:16]
+    bundle = runtime_state_root(root).parent / "s" / key
+    return bundle, bundle / "s"
 
 
 def _source_bootstrap_successor_record(root: Path, intent: Mapping[str, Any]) -> tuple[Path, Path]:
@@ -5152,7 +5156,7 @@ def _source_bootstrap_successor_record(root: Path, intent: Mapping[str, Any]) ->
         raise OperatorError("source-bootstrap successor transport is partial or invalid") from exc
     operator_source = target / "src" / "aios_renew" / "operator.py"
     if (stored != intent or bundle.is_symlink() or bound.is_symlink() or target.is_symlink()
-            or not target.is_dir() or {path.name for path in bundle.iterdir()} != {"source", "intent.json"}
+            or not target.is_dir() or {path.name for path in bundle.iterdir()} != {"s", "intent.json"}
             or _git(target, "rev-parse", "HEAD") != intent["target_generation_sha"]
             or _git(target, "remote", "get-url", "origin") != intent["target_url"]
             or _git(target, "status", "--porcelain")
@@ -5194,7 +5198,7 @@ def _source_bootstrap_successor_lineage(
     _require_no_active_migration(
         root, installed_generation_sha=intent["prior_target_generation_sha"]
     )
-    directory = runtime_state_root(root) / "source-bootstrap-successors"
+    directory = runtime_state_root(root).parent / "s"
     for bundle in directory.iterdir() if directory.is_dir() else ():
         if not bundle.is_dir() or bundle.is_symlink():
             raise OperatorError("source-bootstrap successor transport history is invalid")
@@ -5205,7 +5209,8 @@ def _source_bootstrap_successor_lineage(
             other = _exact_source_bootstrap_successor_intent(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError, OperatorError) as exc:
             raise OperatorError("source-bootstrap successor transport history is invalid") from exc
-        if (other["successor_delivery_id"] != bundle.name
+        expected_bundle, _ = _source_bootstrap_successor_state(root, other)
+        if (expected_bundle != bundle
                 or other["bootstrap_fingerprint"] == fingerprint and other != intent):
             raise OperatorError("competing source-bootstrap successor evidence")
         _source_bootstrap_successor_record(root, other)
