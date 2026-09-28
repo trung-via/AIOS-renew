@@ -1,0 +1,179 @@
+task_id: TASK-214
+revision: 1
+
+goal: >
+  Reconcile the source-REPAIR lineage boundary after TASK-212/TASK-213 by correcting
+  canonical architecture documentation for Python Agent RUN-256-001. Preserve
+  bootstrap-source-repair as a transport only for a consumed-and-completed source-bootstrap-v2
+  edge whose bound RUN ended in FAILURE. Record that RUN-256-001 is instead an ordinary
+  PRIMARY-wakeup failure and therefore must continue through canonical ordinary REPAIR,
+  not through fabricated source-bootstrap lineage. Preserve all Runtime, repair-dispatch,
+  activation, migration, Reviewer, Publisher and roadmap semantics.
+
+problem: >
+  Canonical documentation currently contradicts itself. AIOS-BRAIN-PORTABILITY lines
+  defining TASK-206 source-REPAIR correctly require an exact completed failed
+  source-bootstrap-v2 lineage, and current operator.py enforces this through
+  _source_repair_bootstrap_lineage(). But the later TASK-212 recovery note prospectively
+  says RUN-256-001 should continue through an activated source-REPAIR consumer. Canonical
+  downstream evidence proves RUN-256-001 was created by ordinary PRIMARY wakeup issue #447
+  with dispatch primary-TASK-256-r1-2a773fd1-codex-v1, not by bootstrap-source-primary.
+  Therefore current bootstrap-source-repair cannot admit RUN-256-001 without inventing
+  migration history, which is forbidden. Exact downstream pin
+  31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 already supports
+  CONTINUE_IMPLEMENTATION REPAIR and validates ordinary REPAIR profiles against the
+  governed repository. TASK-212 remains the upstream root fix for future PRIMARY v3
+  authorization, and TASK-213 remains valid exact activation provenance; neither widens
+  source-REPAIR failed-lineage eligibility.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    c1fab3aac286bb51457a2504b5a229c0a9c93479.
+  - >
+    TASK-212 published the PRIMARY durable-journal governed-repository policy correction
+    at exact source 44eee353eda376c9db8cd88d97184d3122651bf5, and TASK-213 changed only
+    _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA to that exact source.
+  - >
+    Current bootstrap-source-repair version-1 semantics require exactly one completed
+    failed source-bootstrap-v2 edge, exact legacy/target/control/pin identities, canonical
+    failed-candidate policy/profile evidence, canonical REPAIR SHA and durable dispatch
+    identity before delegating to run_repair_wakeup.
+  - >
+    Python Agent RUN-256-001 is canonical FAILURE artifact
+    e0e721aad9959880de464705a225e87c9c19820d at COMPLETION_GATE with failed head/base
+    2a773fd11636223b71f0b224523e0cef7915c07a, zero changed files, clean/descendant/
+    repairable/transportable candidate and codex/gpt-6-sol/high repository-default profile.
+  - >
+    RUN-256-001 was admitted by ordinary AIOS_PRIMARY_WAKEUP_REQUEST issue #447 and
+    PRIMARY carrier dispatch primary-TASK-256-r1-2a773fd1-codex-v1. It has no canonical
+    completed failed source-bootstrap-v2 edge of its own.
+  - >
+    Python Agent now has canonical REPAIR authorization for RUN-256-001 at
+    2dbf11ffe5390de3f461c427fd3a96345438b649. Its revision-1 instructions inherited the
+    erroneous prospective source-REPAIR-only choreography and must not be delivered while
+    that conflict remains. A later downstream AUTHOR_REPAIR supersession may correct the
+    delivery instruction without rewriting this immutable revision.
+  - >
+    At exact downstream pin 31fd2482..., ordinary REPAIR already supports
+    CONTINUE_IMPLEMENTATION for pre-verification EXECUTION/COMPLETION_GATE failures, coding
+    REPAIR requires one explicit Executor, and _authorization_profile resolves/validates
+    against the explicit governed repository. This is distinct from the PRIMARY v3 journal
+    defect fixed by TASK-212.
+
+scope:
+  inspect:
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - .ai/tasks/TASK-206.yaml
+    - .ai/tasks/TASK-208.yaml
+    - .ai/tasks/TASK-210.yaml
+    - .ai/tasks/TASK-212.yaml
+    - .ai/tasks/TASK-213.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/repair_dispatch.py
+    - tests/test_operator.py
+  modify:
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+
+non_goals:
+  - >
+    Change bootstrap-source-repair intent schema, failed-lineage admission, source-REPAIR
+    staging/target execution, repair-dispatch, ordinary REPAIR Runtime, PRIMARY Runtime,
+    execution-profile resolution, migration/source-bootstrap, or any production Python.
+  - >
+    Change _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA, _SOURCE_BOOTSTRAP_TARGET_SHA,
+    _BOOTSTRAP_TARGET_SHA, activate another source, or reinterpret TASK-213 as authority
+    for an ordinary PRIMARY failure.
+  - >
+    Edit historical TASK-206 through TASK-213 artifacts, frozen Kernel semantics,
+    Constitution, Project Contract, roadmap state, Reviewer or Publisher semantics.
+  - >
+    Mutate Python Agent, supersede or execute REPAIR-256-001, create RUN-256-002, migrate
+    the downstream pin, author TASK-207 r9, or claim BP-9 completion.
+  - >
+    Generalize source-REPAIR into a generic cross-generation REPAIR router or fabricate a
+    source-bootstrap fingerprint/edge for RUN-256-001.
+
+constraints:
+  hard:
+    - >
+      Preserve the existing architectural invariant that bootstrap-source-repair is only
+      eligible for one exact consumed-and-completed source-bootstrap-v2 edge whose bound
+      engineering RUN is terminal FAILURE. Ordinary PRIMARY failures are not silently
+      reclassified as migration/source-bootstrap history.
+    - >
+      Correct the TASK-212 recovery note in AIOS-BRAIN-PORTABILITY so RUN-256-001 recovery
+      is: canonical REPAIR authorization/supersession as needed -> ordinary REPAIR delivery
+      under the existing exact downstream runtime/profile policy -> semantic review and
+      exact publication -> separate exact-pin migration to a reviewed generation containing
+      the TASK-212 fix -> fresh TASK-207 revision-9 conformance. Do not claim any of those
+      later steps are already complete.
+    - >
+      Explicitly record that TASK-213 activation remains valid only for source-REPAIR
+      subjects satisfying the existing failed-source-bootstrap lineage contract. Activation
+      never widens lineage eligibility and must not be treated as permission to synthesize
+      migration history.
+    - >
+      AIOS-EXECUTION-PROFILE-SELECTION must distinguish the PRIMARY v3 journal defect from
+      ordinary REPAIR profile resolution: the former was fixed by TASK-212; the latter
+      already uses the governed repository and can continue a clean pre-verification
+      failure when canonical Unified State and REPAIR authorization permit it.
+    - >
+      Document the current downstream REPAIR-256-001 revision-1 source-REPAIR-only
+      instruction as not executable under the corrected lineage classification and as
+      requiring immutable supersession before ordinary delivery. Do not rewrite or delete
+      that downstream artifact from this task.
+    - >
+      No production code, tests, task artifacts, activation literals, roadmap state or
+      runtime state may change. Documentation must describe existing deterministic
+      semantics rather than creating a second authority.
+    - >
+      Reuse existing focused regression evidence without changing tests:
+      test_source_repair_bootstrap_requires_completed_failed_v2_lineage,
+      test_continue_implementation_repair_binds_exact_failed_run_and_preserves_runtime_boundary,
+      and test_repair_wakeup_delegates_once_then_replays_without_new_observation.
+    - >
+      Executor changes only the two authorized documentation files, returns one clean
+      candidate with zero unresolved items, and does not review, publish, mutate downstream,
+      create/supersede a REPAIR, or execute any recovery.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Canonical Brain Portability documentation no longer implies that RUN-256-001 is
+      eligible for bootstrap-source-repair and explicitly preserves the completed-failed-
+      source-bootstrap-v2 eligibility boundary without fabricated lineage.
+  - id: AC2
+    condition: >
+      The corrected recovery order uses ordinary canonical REPAIR for RUN-256-001, then
+      review/publication, then a separate exact-pin migration containing TASK-212, then
+      fresh TASK-207 r9; no downstream step is claimed complete by this task.
+  - id: AC3
+    condition: >
+      Execution-profile documentation explicitly separates the TASK-212 PRIMARY v3 policy
+      bug from already-valid ordinary REPAIR governed-repository profile resolution and
+      notes that activation does not widen subject lineage.
+  - id: AC4
+    condition: >
+      Documentation identifies canonical REPAIR-256-001 revision 1 as requiring
+      supersession before ordinary delivery because its source-REPAIR-only instruction is
+      inconsistent with the actual RUN-256-001 lineage, without mutating downstream state.
+  - id: AC5
+    condition: >
+      Production Python, tests, activation constants, historical TASKs, roadmap, migration
+      history and all lifecycle authorities are byte-identical to the predecessor main.
+  - id: AC6
+    condition: >
+      Existing focused source-REPAIR/CONTINUE_IMPLEMENTATION/repair-wakeup regressions pass
+      unchanged and git diff --check passes.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q -k "source_repair_bootstrap_requires_completed_failed_v2_lineage or continue_implementation_repair_binds_exact_failed_run_and_preserves_runtime_boundary or repair_wakeup_delegates_once_then_replays_without_new_observation"
+    - git diff --check
