@@ -19,6 +19,7 @@ from aios_renew.repair_dispatch import (
 )
 from aios_renew.execution_profile import (
     ResolvedExecutionProfile,
+    parse_execution_profile_policy,
     persist_execution_profile,
 )
 
@@ -117,6 +118,59 @@ def test_external_policy_governs_existing_repair_paths(tmp_path: Path) -> None:
         existing_repair_profile(
             state_root=state, repo_root=repo, repair_dispatch_id="external-repair"
         )
+
+
+def test_exact_source_repair_policy_admits_policyless_control_and_replays(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path
+    state = repo / ".git" / "aios"
+    policy_path = repo / ".ai" / "executor-profiles.yaml"
+    policy = parse_execution_profile_policy(policy_path.read_bytes())
+    policy_path.unlink()
+    profile = replace(profile_for("repair-source-111"), reasoning_effort="repo_only")
+    request = dict(
+        state_root=state, repo_root=repo, repair_dispatch_id="repair-source-111",
+        failed_run_id="RUN-111-001", repair_sha="a" * 40,
+        executor="codex", task_id="TASK-111", action="CODE_FIX",
+        execution_profile=profile,
+    )
+    called: list[str] = []
+    with pytest.raises(RepairDispatchError, match="profile binding"):
+        execute_repair_dispatch(
+            **request, invoke_repair=lambda: pytest.fail("ordinary REPAIR invoked")
+        )
+    assert not (state / "repair-dispatches").exists()
+    first = execute_repair_dispatch(
+        **request, source_repair_policy=policy,
+        invoke_repair=lambda: (called.append("once"), RepairInvocation(1))[1],
+    )
+    assert first.status == "FAILED" and called == ["once"]
+    exists, bound = existing_repair_profile(
+        state_root=state, repo_root=repo, repair_dispatch_id="repair-source-111",
+        source_repair_policy=policy,
+    )
+    assert exists and bound == profile
+    replay = replay_existing_repair_dispatch(
+        state_root=state, repo_root=repo, repair_dispatch_id="repair-source-111",
+        failed_run_id="RUN-111-001", repair_sha="a" * 40,
+        executor="codex", execution_profile=bound, source_repair_policy=policy,
+    )
+    assert replay is not None and replay.replayed and called == ["once"]
+    record_path = next((state / "repair-dispatches").glob("*.json"))
+    before = record_path.read_bytes()
+    with pytest.raises(RepairDispatchError, match="profile binding"):
+        existing_repair_profile(
+            state_root=state, repo_root=repo, repair_dispatch_id="repair-source-111"
+        )
+    with pytest.raises(RepairDispatchError, match="collision"):
+        reject_existing_selector_collision(
+            state_root=state, repo_root=repo, repair_dispatch_id="repair-source-111",
+            failed_run_id="RUN-111-001", repair_sha="b" * 40,
+            executor="codex", execution_profile=bound,
+            source_repair_policy=policy,
+        )
+    assert record_path.read_bytes() == before and called == ["once"]
 
 
 def _write_run(

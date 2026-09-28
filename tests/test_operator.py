@@ -9275,6 +9275,130 @@ def _source_repair_bootstrap_intent(bootstrap: dict, target_sha: str) -> dict:
     }
 
 
+def test_source_repair_uses_canonical_failed_candidate_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import aios_renew.review_transport as transport
+
+    root = tmp_path / "control"
+    root.mkdir()
+    state = root / ".git" / "aios"
+    candidate_sha = "c" * 40
+    failed_run_id = "RUN-255-003"
+    policy_blob = (Path(operator_module.__file__).parents[2] / ".ai" /
+                   "executor-profiles.yaml").read_bytes()
+    requested = {
+        "executor": "codex", "model": "gpt-6-sol", "reasoning_effort": "high",
+        "model_source": "REPOSITORY_DEFAULT", "effort_source": "REPOSITORY_DEFAULT",
+    }
+    intent = {"failed_run_id": failed_run_id, **requested}
+    run = {
+        "run_id": failed_run_id, "task": {"id": "TASK-255", "revision": 1},
+        "executor": "codex", "base_sha": "b" * 40, "workspace": str(root),
+        "status": "ACTIVE",
+    }
+    failure = {
+        "kind": "FAILURE", "run_id": failed_run_id,
+        "task": run["task"], "executor": "codex",
+        "base_sha": run["base_sha"], "failed_head_sha": candidate_sha,
+    }
+    profile = {
+        "format": "AIOS_EXECUTION_PROFILE", "version": 1,
+        "run_id": failed_run_id, **requested,
+    }
+
+    def artifact(candidate=candidate_sha, profile_data=profile):
+        return RemoteFailureArtifacts(
+            failed_run_id, candidate, json.dumps(run).encode(),
+            json.dumps(failure).encode(), None,
+            execution_profile=(None if profile_data is None else
+                               json.dumps(profile_data).encode()),
+        )
+
+    selected = artifact()
+    blob = policy_blob
+
+    @contextmanager
+    def observer(_root):
+        yield root
+
+    monkeypatch.setattr(operator_module, "_remote_observation_repository", observer)
+    monkeypatch.setattr(operator_module, "resolve_remote_repair_recovery",
+                        lambda repo, *, failed_run_id: RemoteRepairRecovery((selected,), (failed_run_id,)))
+    monkeypatch.setattr(transport, "resolve_transport_remote", lambda repo: "origin")
+
+    def read_blob(repo, remote, sha, path):
+        assert (repo, remote, path) == (root, "origin", ".ai/executor-profiles.yaml")
+        assert sha == selected.candidate_sha
+        return blob
+
+    monkeypatch.setattr(transport, "_read_remote_blob", read_blob)
+    assert not (root / ".ai/executor-profiles.yaml").exists()
+    policy = operator_module._source_repair_failed_candidate_policy(root, intent)
+    assert policy.default_model("codex") == "gpt-6-sol"
+
+    monkeypatch.setattr(operator_module, "resolve_repository", lambda repo: root)
+    monkeypatch.setattr(operator_module, "runtime_state_root", lambda repo: state)
+    monkeypatch.setattr(operator_module, "preflight_repair", lambda *args, **kwargs:
+                        CorrectionPreflightResult(
+                            family="REPAIR", status="READY", phase="READY",
+                            reason_code="READY", task_id="TASK-255", task_revision=1,
+                            failed_run_id=failed_run_id, action="CODE_FIX",
+                            executor_required=True))
+    monkeypatch.setattr(operator_module, "observe_unified_state", lambda *args, **kwargs:
+                        SimpleNamespace(
+                            next_action="EXECUTE_REPAIR", failed_run_id=failed_run_id,
+                            correction_sha="a" * 40,
+                            correction_document={"action": "CODE_FIX"},
+                            correction={"executor_required": True}, task_id="TASK-255"))
+    calls = []
+    monkeypatch.setattr(operator_module, "run_repair",
+                        lambda *args, **kwargs: calls.append(kwargs) or
+                        (_ for _ in ()).throw(OperatorError("stub stopped before RUN")))
+    token = operator_module._SOURCE_REPAIR_POLICY.set(policy)
+    try:
+        outcome = run_repair_wakeup(
+            "repair-255-003", failed_run_id, "a" * 40, repo=root, **requested
+        )
+    finally:
+        operator_module._SOURCE_REPAIR_POLICY.reset(token)
+    assert outcome.status == "FAILED" and len(calls) == 1
+    assert not (state / "runs").exists()
+    record = next((state / "repair-dispatches").glob("*.json"))
+    assert json.loads(record.read_text(encoding="utf-8"))["model"] == "gpt-6-sol"
+    before = record.read_bytes()
+    token = operator_module._SOURCE_REPAIR_POLICY.set(policy)
+    try:
+        replay = run_repair_wakeup(
+            "repair-255-003", failed_run_id, "a" * 40, repo=root, **requested
+        )
+        with pytest.raises(OperatorError, match="collision"):
+            run_repair_wakeup(
+                "repair-255-003", failed_run_id, "b" * 40, repo=root, **requested
+            )
+    finally:
+        operator_module._SOURCE_REPAIR_POLICY.reset(token)
+    assert replay.replayed and len(calls) == 1 and record.read_bytes() == before
+    with pytest.raises(OperatorError, match="profile binding"):
+        run_repair_wakeup("repair-255-003", failed_run_id, "a" * 40,
+                          executor="codex", repo=root)
+
+    for bad_artifact, bad_blob, error in (
+        (artifact(profile_data=None), policy_blob, "profile missing"),
+        (artifact(profile_data={**profile, "model": "other"}), policy_blob, "profile mismatch"),
+        (artifact(candidate="d" * 40), policy_blob, "lineage mismatch"),
+        (replace(artifact(), run_id="RUN-255-004"), policy_blob, "failed RUN mismatch"),
+        (artifact(), None, "policy missing"),
+        (artifact(), b"malformed: [", "policy rejected"),
+        (artifact(), policy_blob.replace(b"default_reasoning_effort: high", b"default_reasoning_effort: low")
+         .replace(b"      - high\n", b""), "unsupported reasoning effort"),
+    ):
+        selected, blob = bad_artifact, bad_blob
+        with pytest.raises(OperatorError, match=error):
+            operator_module._source_repair_failed_candidate_policy(root, intent)
+    assert not (state / "runs").exists()
+
+
 @pytest.mark.parametrize("target_kind", [
     "fixture", "task_206_target", "failed_task_206", "source_primary",
     "task_209_candidate_current_source", "future_source",
@@ -9283,10 +9407,10 @@ def test_source_repair_bootstrap_production_rejects_other_targets_before_staging
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_kind: str,
 ) -> None:
     activated = "ce56528487e1f521d0c458dc4e48575620d87a42"
-    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA == activated
+    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
     source = Path(operator_module.__file__).read_text(encoding="utf-8")
     assert source.count("_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None =") == 1
-    assert source.count(f'_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = "{activated}"') == 1
+    assert source.count('_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = None') == 1
     repo, _, bootstrap = _source_bootstrap_fixture(tmp_path)
     current_source = Path(operator_module.__file__).resolve().parents[2]
     target_sha = {
@@ -9323,7 +9447,7 @@ def test_source_repair_bootstrap_closed_and_exact_replay(
     intent = _source_repair_bootstrap_intent(bootstrap, bootstrap["target_generation_sha"])
     path = tmp_path / "source-repair.json"
     path.write_text(json.dumps(intent), encoding="utf-8")
-    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA == "ce56528487e1f521d0c458dc4e48575620d87a42"
+    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
     with pytest.raises(OperatorError, match="not activated"):
         operator_module.bootstrap_source_repair(path)
     monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA", intent["target_generation_sha"])
@@ -9404,14 +9528,16 @@ from types import SimpleNamespace
 from aios_renew import operator
 
 intent = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert operator._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA == "ce56528487e1f521d0c458dc4e48575620d87a42"
+assert operator._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
 assert intent["target_generation_sha"] != operator._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA
 lineage_checked = []
 operator._source_repair_bootstrap_lineage = lambda root, document: lineage_checked.append((root, document))
+operator._source_repair_failed_candidate_policy = lambda root, document: "exact-policy"
 def wakeup(*args, **kwargs):
     assert Path(operator.__file__).resolve().parents[2] == Path(sys.argv[2]).resolve().parent / "source"
     assert operator._git(Path(operator.__file__).resolve().parents[2], "rev-parse", "HEAD") == intent["target_generation_sha"]
     assert lineage_checked == [(Path(intent["repository"]), intent)]
+    assert operator._SOURCE_REPAIR_POLICY.get() == "exact-policy"
     assert args == (intent["repair_dispatch_id"], intent["failed_run_id"], intent["repair_sha"])
     assert kwargs == {
         "executor": intent["executor"], "repo": Path(intent["repository"]),

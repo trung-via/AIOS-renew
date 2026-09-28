@@ -535,17 +535,41 @@ activation slot on transport consumption and self-rejected. Their reviewed and
 published records remain historical capability and activation evidence, not
 failed engineering RUNs; the pair cannot stage a usable source-REPAIR for real
 downstream recovery. TASK-208 corrects the two-stage consumer and resets
-production source-REPAIR activation to closed. A separate post-publication
-successor must activate the exact reviewed and published TASK-208 consumer SHA
-before any downstream REPAIR transport. This does not recover Python Agent
-RUN-255-003 or complete BP-9.
+production source-REPAIR activation to closed. TASK-209 subsequently activated
+the exact reviewed and published TASK-208 consumer SHA. TASK-208 itself did not
+recover Python Agent RUN-255-003 or complete BP-9.
 
-BP-9 recovery order after a failed bootstrap candidate is: publish the corrected
-consumer; separately activate its exact reviewed and published SHA;
-authorize one exact REPAIR for the failed bootstrap candidate; deliver that
-REPAIR through the activated newer source; review and publish the resulting
-downstream candidate; then resume ordinary exact-pin migration. TASK-208
-performs none of those downstream steps and does not complete BP-9.
+TASK-209 separately activated the exact TASK-208 consumer
+`ce56528487e1f521d0c458dc4e48575620d87a42`. The first real Python Agent
+source-REPAIR delivery for failed `RUN-255-003` passed target and transport
+identity checks, then failed at REPAIR profile/dispatch admission with
+`invalid repair profile binding`. This was a pre-RUN failure: no `RUN-255-004`
+engineering or terminal record was created. The downstream control main
+`9a57885900ff4848b6664034d789fb530c68a7e8` predates
+`.ai/executor-profiles.yaml`; failed candidate
+`04fdd9841b47a8c8b50a4b1313071d966a549c46` contains that policy and
+the canonical `RUN-255-003` execution profile is
+`codex` / `gpt-6-sol` / `high` with repository-default attribution.
+TASK-210 derives the source-REPAIR policy only from that exact canonical
+failed candidate after checking the failure and profile transport lineage.
+The policy is held as internal validation context through dispatch replay,
+admission and RUN binding. Ordinary REPAIR still requires policy in its own
+control repository. Production source-REPAIR activation is closed again.
+
+The next recovery order is TASK-210 review and publication, then a separate
+successor activating its exact reviewed consumer SHA, then a new Human-bound
+source-REPAIR delivery identity, then downstream REPAIR continuation. The old
+partial pre-RUN transport identity remains operational history and is neither
+deleted nor reused with changed selectors. This upstream correction does not
+mutate Python Agent or the roadmap, and does not complete BP-9.
+
+BP-9 recovery order after the observed pre-RUN rejection is: publish the
+TASK-210 corrected consumer; separately activate its exact reviewed and
+published SHA; authorize a new exact delivery identity for the failed
+bootstrap candidate; deliver that REPAIR through the activated newer source;
+review and publish the resulting downstream candidate; then resume ordinary
+exact-pin migration. TASK-210 performs none of those downstream steps and does
+not complete BP-9.
 
 A downstream remains under its exact installed generation N while the operator checks a reviewed `migrate-primary` intent. The versioned intent binds the imported installed distribution's immutable VCS commit, the exact target AIOS commit and source URL, the downstream repository path, its current and target control commits, its repository-owned pin artifact at both commits, and the downstream TASK id, revision, blob, authorization commit, and Executor. Missing, floating, stale, or conflicting identities fail before target authority. The target control commit must be the current upstream `main` and a fast-forward of the clean attached source control commit; the pin artifacts must name the corresponding exact generation. The exact TASK blob must exist at the target and match its ancestor authorization commit.
 

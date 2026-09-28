@@ -54,6 +54,7 @@ from .dispatcher import (
     resolve_native_execution_policy,
 )
 from .execution_profile import (
+    ExecutionProfilePolicy,
     ExecutionProfileConflictError,
     ExecutionProfileError,
     ExecutionProfileValidationError,
@@ -62,6 +63,7 @@ from .execution_profile import (
     is_profile_managed_executor,
     load_execution_profile_policy,
     parse_execution_profile,
+    parse_execution_profile_policy,
     persist_execution_profile,
     validate_execution_profile,
 )
@@ -131,6 +133,9 @@ from .verification import VerificationRunner
 
 NativeRunner = Callable[..., subprocess.CompletedProcess[bytes]]
 _ACTIVE_RESTART_SOURCE: ContextVar[Path | None] = ContextVar("active_restart_source", default=None)
+_SOURCE_REPAIR_POLICY: ContextVar[ExecutionProfilePolicy | None] = ContextVar(
+    "source_repair_policy", default=None
+)
 
 
 @dataclass
@@ -1172,13 +1177,14 @@ def _bind_and_persist_execution_profile(
                 model_source=model_source,
                 effort_source=effort_source,
                 repo=repo,
+                policy=_SOURCE_REPAIR_POLICY.get(),
             )
             if existing != expected:
                 raise OperatorError(
                     f"persisted execution profile mismatch for RUN {run_id}"
                 )
         try:
-            policy = load_execution_profile_policy(repo)
+            policy = _SOURCE_REPAIR_POLICY.get() or load_execution_profile_policy(repo)
             validate_execution_profile(existing, policy, repo=repo)
         except ExecutionProfileError as exc:
             raise OperatorError(f"persisted execution profile is invalid: {exc}") from exc
@@ -1187,7 +1193,7 @@ def _bind_and_persist_execution_profile(
         return existing
 
     try:
-        policy = load_execution_profile_policy(repo)
+        policy = _SOURCE_REPAIR_POLICY.get() or load_execution_profile_policy(repo)
         profile = bind_execution_profile(
             policy=policy,
             run_id=run_id,
@@ -1251,6 +1257,7 @@ def _authorization_profile(
             model_source=model_source,
             effort_source=effort_source,
             repo=repo,
+            policy=_SOURCE_REPAIR_POLICY.get(),
         )
         if attempted != bound_profile:
             raise OperatorError("authorization execution profile collision")
@@ -1263,6 +1270,7 @@ def _authorization_profile(
         model_source=model_source,
         effort_source=effort_source,
         repo=repo,
+        policy=_SOURCE_REPAIR_POLICY.get(),
     )
 
 
@@ -2713,6 +2721,7 @@ def _run_repair_impl(
                 repair_dispatch_id=repair_dispatch_id,
                 run_id=run_id,
                 execution_profile=execution_profile,
+                source_repair_policy=_SOURCE_REPAIR_POLICY.get(),
             )
 
         if reusable_package is None:
@@ -3774,7 +3783,7 @@ _SOURCE_BOOTSTRAP_FIELDS = (_MIGRATION_FIELDS - {"target_control_sha", "target_p
 
 # Activated only by a separate, post-publication successor. Never inferred from
 # this checkout, the requested target, or the source-PRIMARY activation.
-_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = "ce56528487e1f521d0c458dc4e48575620d87a42"
+_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = None
 _SOURCE_REPAIR_BOOTSTRAP_FIELDS = frozenset({
     "format", "version", "repository", "bootstrap_fingerprint",
     "legacy_generation_sha", "target_generation_sha", "target_url",
@@ -4833,6 +4842,57 @@ def _source_repair_bootstrap_record(root: Path, intent: Mapping[str, Any]) -> tu
     return record_path, target
 
 
+def _source_repair_failed_candidate_policy(
+    root: Path, intent: Mapping[str, Any]
+) -> ExecutionProfilePolicy:
+    """Bind one policy blob and profile to the canonical failed RUN, without checkout."""
+
+    from .review_transport import _read_remote_blob, resolve_transport_remote
+
+    failed_run_id = intent["failed_run_id"]
+    requested = tuple(intent[field] for field in (
+        "executor", "model", "reasoning_effort", "model_source", "effort_source"
+    ))
+    if any(value is None for value in requested):
+        raise OperatorError("source-REPAIR requires one complete managed profile")
+    try:
+        with _remote_observation_repository(root) as observer:
+            recovery = resolve_remote_repair_recovery(
+                observer, failed_run_id=failed_run_id
+            )
+            if not recovery.failures or recovery.failures[0].run_id != failed_run_id:
+                raise OperatorError("source-REPAIR canonical failed RUN mismatch")
+            artifact = recovery.failures[0]
+            run = _run_from_data(_decode_remote_mapping(artifact.run, "RUN"))
+            failure = _decode_remote_mapping(artifact.failure, "FAILURE")
+            if (run.run_id != failed_run_id or run.executor != intent["executor"]
+                    or failure.get("run_id") != failed_run_id
+                    or failure.get("executor") != run.executor
+                    or failure.get("base_sha") != run.base_sha
+                    or failure.get("task") != {"id": run.task.id, "revision": run.task.revision}
+                    or failure.get("failed_head_sha") != artifact.candidate_sha):
+                raise OperatorError("source-REPAIR failed candidate lineage mismatch")
+            if artifact.execution_profile is None:
+                raise OperatorError("source-REPAIR canonical execution profile missing")
+            profile = parse_execution_profile(artifact.execution_profile)
+            actual = (profile.executor, profile.model, profile.reasoning_effort,
+                      profile.model_source, profile.effort_source)
+            if profile.run_id != failed_run_id or actual != requested:
+                raise OperatorError("source-REPAIR canonical execution profile mismatch")
+            policy_blob = _read_remote_blob(
+                observer, resolve_transport_remote(observer),
+                artifact.candidate_sha, ".ai/executor-profiles.yaml",
+            )
+            if policy_blob is None:
+                raise OperatorError("source-REPAIR failed candidate policy missing")
+            policy = parse_execution_profile_policy(policy_blob)
+            validate_execution_profile(profile, policy)
+            return policy
+    except (ReviewTransportError, ExecutionProfileError, KeyError, TypeError,
+            ValueError, UnicodeError) as exc:
+        raise OperatorError(f"source-REPAIR failed candidate policy rejected: {exc}") from exc
+
+
 def bootstrap_source_repair(
     intent_path: str | Path, *, runner: NativeRunner = subprocess.run,
     legacy_runner: NativeRunner = subprocess.run,
@@ -4853,12 +4913,17 @@ def bootstrap_source_repair(
         if source_root != target.resolve() or _git(source_root, "rev-parse", "HEAD") != intent["target_generation_sha"]:
             raise OperatorError("running source differs from bound source-REPAIR target")
         _source_repair_bootstrap_lineage(root, intent)
-        outcome = run_repair_wakeup(
-            intent["repair_dispatch_id"], intent["failed_run_id"], intent["repair_sha"],
-            executor=intent["executor"], repo=root, model=intent["model"],
-            reasoning_effort=intent["reasoning_effort"], model_source=intent["model_source"],
-            effort_source=intent["effort_source"],
-        )
+        policy = _source_repair_failed_candidate_policy(root, intent)
+        token = _SOURCE_REPAIR_POLICY.set(policy)
+        try:
+            outcome = run_repair_wakeup(
+                intent["repair_dispatch_id"], intent["failed_run_id"], intent["repair_sha"],
+                executor=intent["executor"], repo=root, model=intent["model"],
+                reasoning_effort=intent["reasoning_effort"], model_source=intent["model_source"],
+                effort_source=intent["effort_source"],
+            )
+        finally:
+            _SOURCE_REPAIR_POLICY.reset(token)
         print(outcome.render())
         return outcome.exit_code
 
@@ -6868,10 +6933,12 @@ def run_repair_wakeup(
     try:
         root = resolve_repository(repo)
         state_root = runtime_state_root(root)
+        source_repair_policy = _SOURCE_REPAIR_POLICY.get()
         exists, remote_profile = existing_repair_profile(
             state_root=state_root,
             repo_root=root,
             repair_dispatch_id=repair_dispatch_id,
+            source_repair_policy=source_repair_policy,
         )
         remote_profile = _authorization_profile(
             repo=root,
@@ -6892,6 +6959,7 @@ def run_repair_wakeup(
             repair_sha=repair_sha,
             executor=executor,
             execution_profile=remote_profile,
+            source_repair_policy=source_repair_policy,
         )
         replay = replay_existing_repair_dispatch(
             state_root=state_root,
@@ -6901,6 +6969,7 @@ def run_repair_wakeup(
             repair_sha=repair_sha,
             executor=executor,
             execution_profile=remote_profile,
+            source_repair_policy=source_repair_policy,
         )
         if replay is not None:
             return replay
@@ -6999,6 +7068,7 @@ def run_repair_wakeup(
             action=action,
             invoke_repair=invoke_repair,
             execution_profile=remote_profile,
+            source_repair_policy=source_repair_policy,
         )
     except (RepairDispatchError, ExecutionProfileError) as exc:
         raise OperatorError(str(exc)) from exc
