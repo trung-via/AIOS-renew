@@ -9505,8 +9505,9 @@ from aios_renew import operator
 
 intent = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 if sys.argv[3] == "exact":
-    assert operator._SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is None
     assert Path(operator.__file__).resolve().parents[2] == Path(sys.argv[4]).resolve()
+    if sys.argv[5] == "published":
+        assert operator._SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is None
 def primary(task_id, **kwargs):
     operator._validate_successor_execution(
         Path(intent["repository"]), kwargs["_successor_transport"], task_id,
@@ -9526,14 +9527,16 @@ raise SystemExit(operator.main([
 ]))
 """
 
-    def consume(intent_file: Path, transport_file: Path, *, exact_source: bool = True):
+    def consume(intent_file: Path, transport_file: Path, *, exact_source: bool = True,
+                published_source: bool = True):
         env = dict(launched[0][1])
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         if not exact_source:
             env["PYTHONPATH"] = str(Path(operator_module.__file__).resolve().parents[1])
         return subprocess.run(
             [sys.executable, "-c", child, str(intent_file), str(transport_file),
-             "exact" if exact_source else "wrong", str(target)],
+             "exact" if exact_source else "wrong", str(target),
+             "published" if published_source else "wrong_head"],
             cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
         )
 
@@ -9560,7 +9563,7 @@ raise SystemExit(operator.main([
     assert "SUCCESSOR_PRIMARY_DELEGATED" not in wrong_source.stdout
 
     git(target, "checkout", "--detach", git(Path(operator_module.__file__).parents[2], "rev-parse", "HEAD"))
-    wrong_head = consume(path, bound)
+    wrong_head = consume(path, bound, published_source=False)
     assert wrong_head.returncode != 0
     assert "transport identity mismatch" in wrong_head.stderr
     assert "SUCCESSOR_PRIMARY_DELEGATED" not in wrong_head.stdout
