@@ -1,0 +1,231 @@
+task_id: TASK-210
+revision: 1
+
+goal: >
+  Correct the source-REPAIR execution-profile validation boundary exposed by the first
+  real BP-9 downstream recovery attempt: a managed REPAIR transported from an older
+  downstream control main must validate its immutable profile against the exact canonical
+  failed candidate's repository policy, not require that policy file to already exist on
+  the older control main. Preserve ordinary REPAIR policy semantics, durable dispatch
+  identity/at-most-once behavior, Runtime/Reviewer/Publisher authority, and close the
+  currently activated source-REPAIR target until a separate post-publication successor
+  binds this task's exact reviewed consumer SHA.
+
+problem: >
+  TASK-209 published activation source
+  49eac6e54e4079a3e06bd2acc0b21c98be9c9400 targeting corrected source-REPAIR consumer
+  ce56528487e1f521d0c458dc4e48575620d87a42. The first real downstream source-REPAIR
+  attempt for Python Agent RUN-255-003 passed exact activation, legacy generation,
+  completed failed source-bootstrap lineage, target-source identity and bound transport,
+  then failed before continuation RUN creation with
+  "AIOS ERROR: invalid repair profile binding".
+  Canonical downstream main is
+  9a57885900ff4848b6664034d789fb530c68a7e8 and intentionally predates
+  .ai/executor-profiles.yaml; canonical failed candidate
+  04fdd9841b47a8c8b50a4b1313071d966a549c46 introduced that policy and RUN-255-003's
+  transported execution-profile artifact is exactly codex/gpt-6-sol/high with
+  REPOSITORY_DEFAULT attribution. Operator authorization already resolves/binds an exact
+  managed profile, but repair_dispatch independently revalidates durable v2 records only
+  through <control-repo>/.ai/executor-profiles.yaml. That second validation therefore
+  rejects the historical cross-generation case even though the exact failed candidate
+  policy and profile provenance are canonical. Broad fallback to the active AIOS package
+  policy would weaken repository-owned policy authority and break existing ordinary
+  REPAIR fail-closed semantics. The missing behavior is a source-REPAIR-only exact policy
+  evidence handoff derived from canonical failed-candidate lineage.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is exactly
+    49eac6e54e4079a3e06bd2acc0b21c98be9c9400.
+  - >
+    TASK-208 corrected target-side source-REPAIR consumption and TASK-209 activated only
+    exact target ce56528487e1f521d0c458dc4e48575620d87a42. Their reviewed/published
+    history remains immutable.
+  - >
+    Python Agent canonical main remains
+    9a57885900ff4848b6664034d789fb530c68a7e8; RUN-255-003 canonical FAILURE candidate is
+    04fdd9841b47a8c8b50a4b1313071d966a549c46; failure-artifacts commit is
+    4002fea8c79b17195e0a8f9f32181488b19958dc; REPAIR-255-003 authorization is
+    659eae343ddd46b0ca73d2850e7020fd8b92aa36.
+  - >
+    RUN-255-003 canonical execution-profile artifact is exactly executor codex,
+    model gpt-6-sol, reasoning_effort high, model_source REPOSITORY_DEFAULT and
+    effort_source REPOSITORY_DEFAULT.
+  - >
+    The observed source-REPAIR attempt created no RUN-255-004 canonical terminal or
+    engineering RUN. Any persisted source-repair transport bundle from that pre-RUN attempt
+    is operational state only and must not be deleted, rewritten or reinterpreted here.
+  - >
+    Existing tests/test_repair_dispatch.py deliberately proves that ordinary external
+    REPAIR paths fail when their repo-local .ai/executor-profiles.yaml is missing or
+    malformed. That behavior is authoritative and must remain.
+  - >
+    BP-9 downstream adoption remains the unique Human/Brain roadmap NEXT. This TASK is an
+    upstream prerequisite only and does not mutate downstream state or advance roadmap
+    planning state.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    - .ai/roadmap-state.yaml
+    - .ai/executor-profiles.yaml
+    - .ai/tasks/TASK-162.yaml
+    - .ai/tasks/TASK-195.yaml
+    - .ai/tasks/TASK-206.yaml
+    - .ai/tasks/TASK-208.yaml
+    - .ai/tasks/TASK-209.yaml
+    - src/aios_renew/execution_profile.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/repair_dispatch.py
+    - src/aios_renew/review_transport.py
+    - tests/test_execution_profile.py
+    - tests/test_repair_dispatch.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/repair_dispatch.py
+    - tests/test_repair_dispatch.py
+    - tests/test_operator.py
+    - docs/AIOS-BRAIN-PORTABILITY.md
+
+non_goals:
+  - >
+    Change canonical REPAIR semantic authorization, correction preflight, Unified State,
+    REPAIR action/scope selection, RUN allocation, Runtime verification, RESULT/FAILURE,
+    Reviewer, Publisher, correction integration or frozen Kernel semantics.
+  - >
+    Make ordinary PRIMARY/REMEDIATION/REPAIR carriers fall back to the active AIOS package
+    policy when their repository-local execution-profile policy is missing or malformed.
+  - >
+    Treat target-source .ai/executor-profiles.yaml, mutable main, latest, environment
+    variables or a caller-provided policy path as repository policy for source-REPAIR.
+  - >
+    Add a policy path, policy blob, failed-head SHA, execution-profile artifact, command,
+    ref or arbitrary source selector to the public source-REPAIR intent contract or CLI.
+  - >
+    Change durable repair-dispatch record schema/version or execution-profile artifact
+    schema/version, reinterpret historical profiles, re-resolve historical defaults, or
+    mutate existing dispatch records.
+  - >
+    Delete/rewrite the already-created pre-RUN source-repair transport bundle, reuse its
+    delivery identity with changed selectors, fabricate RUN-255-004, retry downstream
+    recovery, mutate Python Agent, or publish any downstream candidate.
+  - >
+    Activate this TASK's unknown future candidate SHA. A separate successor must bind the
+    exact reviewed/published TASK-210 source before another production source-REPAIR attempt.
+  - >
+    Add retry/fallback/failover, model routing, policy routing, Planner, Reviewer,
+    Publisher or another lifecycle authority.
+
+constraints:
+  hard:
+    - >
+      Source-REPAIR managed-profile validation must derive policy evidence only from the
+      exact canonical failed candidate bound to the requested failed RUN. The policy path
+      is fixed to .ai/executor-profiles.yaml inside that exact failed candidate commit; no
+      caller may provide or override the path/source.
+    - >
+      Before using failed-candidate policy evidence, prove canonical remote failed-RUN
+      identity and exact candidate SHA through existing review-transport/failure lineage,
+      and require the canonical transported execution-profile artifact for that failed RUN
+      to match the requested executor/model/reasoning_effort/model_source/effort_source
+      identity. Missing, malformed, conflicting or ambiguous evidence fails before durable
+      REPAIR dispatch admission or continuation RUN creation.
+    - >
+      Read/parse/validate the exact failed-candidate policy blob through existing execution
+      profile parsing/validation semantics. Do not materialize or modify it in the downstream
+      worktree and do not infer defaults from current control main.
+    - >
+      Thread the exact validated policy only as an internal source-REPAIR validation context
+      through existing run_repair_wakeup/repair-dispatch operations needed for existing
+      profile read, selector collision, replay, first dispatch admission and RUN binding.
+      Expose no new public CLI selector. The durable dispatch record remains bound only to
+      existing immutable profile identity fields.
+    - >
+      Ordinary repair_dispatch callers that do not receive this exact source-REPAIR context
+      retain current strict repo-local policy behavior. In particular, the existing
+      external-repository regression where .ai/executor-profiles.yaml is removed must
+      continue to fail with invalid repair profile binding.
+    - >
+      Source-REPAIR replay with the same exact failed RUN, repair SHA, delivery identity and
+      profile must be idempotent under the same exact failed-candidate policy evidence.
+      Changed policy blob/candidate/profile/repair selectors or a pre-existing conflicting
+      dispatch record fails closed without invoking an Executor.
+    - >
+      Preserve TASK-208 target-side rule: a bound --accept-transport target does not depend
+      on the staging activation slot, but still proves exact transport path, immutable intent,
+      target HEAD/running source, completed failed bootstrap lineage and all existing guards.
+    - >
+      Because ce56528487e1f521d0c458dc4e48575620d87a42 is now proven incomplete for the
+      real BP-9 managed-profile topology, TASK-210 must reset production
+      _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA to None. No new target is activated here.
+    - >
+      Preserve _SOURCE_BOOTSTRAP_TARGET_SHA =
+      31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 and _BOOTSTRAP_TARGET_SHA =
+      83115b26df85a7ad6643f317833e18b18586bdbe exactly.
+    - >
+      Deterministic regression must reproduce the observed topology without network/provider
+      execution: downstream control main lacks .ai/executor-profiles.yaml; exact failed
+      candidate contains a valid policy; canonical failure/profile evidence binds that
+      candidate and gpt-6-sol/high profile; source-REPAIR target reaches existing REPAIR
+      dispatch admission using that exact policy. A normal REPAIR call on the same policy-less
+      control repo must still reject.
+    - >
+      Negative regression must cover missing/malformed failed-candidate policy, profile
+      artifact mismatch, wrong failed candidate/failed RUN, unsupported effort and conflicting
+      durable dispatch identity, all before Executor invocation/RUN creation where applicable.
+    - >
+      Document that the first real TASK-209 activation attempt was a pre-RUN transport/
+      admission failure, not RUN-255-004, and that the next choreography is TASK-210
+      publication -> separate exact activation successor -> new Human-bound source-REPAIR
+      delivery identity -> downstream REPAIR continuation. Do not delete or reuse the old
+      partial transport identity.
+    - >
+      Runtime owns verification. Executor returns one clean candidate with zero unresolved
+      items and does not activate source-REPAIR, execute downstream recovery, mutate roadmap,
+      review or publish.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Source-REPAIR derives and validates one exact failed-candidate repository policy plus
+      exact canonical failed-RUN execution-profile evidence without caller-selected policy
+      source/path or current-main fallback.
+  - id: AC2
+    condition: >
+      A managed source-REPAIR for a control main that predates .ai/executor-profiles.yaml can
+      pass profile/dispatch admission only when the exact failed candidate contains a valid
+      policy supporting the immutable requested profile.
+  - id: AC3
+    condition: >
+      Ordinary REPAIR dispatch semantics remain unchanged: missing/malformed repo-local policy
+      continues to fail closed, and no broad active-package/current-main fallback is introduced.
+  - id: AC4
+    condition: >
+      Existing durable REPAIR at-most-once, collision, replay and RUN-binding semantics operate
+      under the same exact source-REPAIR policy context without schema/version changes or
+      historical profile re-resolution.
+  - id: AC5
+    condition: >
+      Missing/conflicting candidate policy, canonical profile mismatch, unsupported effort,
+      wrong lineage or conflicting dispatch identity rejects before unauthorized Executor
+      invocation or continuation RUN creation.
+  - id: AC6
+    condition: >
+      Production source-REPAIR activation is reset to None while source-PRIMARY/bootstrap
+      activations and TASK-208 target-consumption security checks remain unchanged.
+  - id: AC7
+    condition: >
+      Documentation records the observed pre-RUN failure and exact corrected recovery
+      choreography, with no downstream mutation, RUN-255-004 claim or BP-9 completion claim.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_repair_dispatch.py -q
+    - python -m pytest tests/test_operator.py -q -k "source_repair or repair_wakeup"
+    - git diff --check
