@@ -589,14 +589,33 @@ downstream repository has a valid policy, so the failure exposes a PRIMARY v3
 journal validation path that consulted the installed package root instead of
 the governed repository. TASK-212 corrects that upstream policy boundary.
 
-The prospective recovery order is TASK-212 review and publication, a separate
-successor activating the exact reviewed source-REPAIR consumer containing this
-fix, continuation of `RUN-256-001` under its existing `TASK-256` lineage,
-downstream exact-pin migration to a reviewed generation containing the fix,
-then fresh `TASK-207` revision-9 conformance. This upstream task performs no
-downstream mutation, source-REPAIR activation, roadmap advancement, review, or
-publication. The production source-REPAIR target remains
-`062031ab91118ecf784944e8dd7e3d76b0553c74` until separate authorization.
+`RUN-256-001` was admitted by ordinary `AIOS_PRIMARY_WAKEUP_REQUEST` issue
+`#447` and PRIMARY dispatch `primary-TASK-256-r1-2a773fd1-codex-v1`. It has no
+consumed-and-completed `source-bootstrap-v2` edge whose bound RUN failed.
+`bootstrap-source-repair` admits only that exact failed source-bootstrap
+lineage; an ordinary PRIMARY failure cannot acquire eligibility by fabricating
+a migration fingerprint or edge. TASK-213 activated the exact published
+TASK-212 source-REPAIR target `44eee353eda376c9db8cd88d97184d3122651bf5`,
+but activation applies only to source-REPAIR subjects satisfying the existing
+failed-lineage contract. It does not widen subject lineage.
+
+At downstream pin `31fd2482cd87d97fd818e05eb5b4dcec69ffeee6`, ordinary
+REPAIR already supports `CONTINUE_IMPLEMENTATION` for a clean pre-verification
+`COMPLETION_GATE` failure and resolves its execution profile against the
+governed repository. Canonical `REPAIR-256-001` revision 1 at
+`2dbf11ffe5390de3f461c427fd3a96345438b649` instead instructs source-REPAIR
+only. That instruction is inconsistent with this RUN's ordinary PRIMARY lineage
+and requires immutable supersession before ordinary delivery; this document
+does not change the downstream authorization.
+
+The remaining recovery order is canonical REPAIR authorization, including
+supersession of `REPAIR-256-001` revision 1, then ordinary REPAIR delivery under
+the existing exact downstream runtime and profile policy, then semantic review
+and exact publication of the continuation, then a separate exact-pin migration
+to a reviewed generation containing the TASK-212 fix, then fresh `TASK-207`
+revision-9 conformance. None of those downstream steps is completed by this
+documentation correction. It changes no Python Agent, activation, migration,
+roadmap, Reviewer, or Publisher state.
 
 ## 16. Dependency order
 
