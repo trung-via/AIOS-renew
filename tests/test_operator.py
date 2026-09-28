@@ -9702,6 +9702,25 @@ def test_source_upgrade_stages_exact_v2_edge_without_run(
     assert parsed.intent == str(path)
     monkeypatch.setattr(operator_module, "_upgrade_installed_generation_sha",
                         lambda **kwargs: source_sha)
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: source_sha)
+    historical = dict(intent, source_generation_sha="1" * 40,
+                      target_generation_sha=source_sha)
+    historical_fp = operator_module._migration_fingerprint(historical)
+    historical_marker = operator_module._migration_marker(repo, historical_fp)
+    historical_marker.parent.mkdir(parents=True, exist_ok=True)
+    historical_bundle = runtime_state_root(repo) / "m" / f"{historical_fp[:12]}-historical"
+    historical_bundle.mkdir(parents=True)
+    (historical_bundle / "intent.json").write_text(json.dumps(historical), encoding="utf-8")
+    git(repo, "clone", str(Path(operator_module.__file__).resolve().parents[2]),
+        str(historical_bundle / "source"))
+    git(historical_bundle / "source", "checkout", "--detach", source_sha)
+    historical_marker.write_text(json.dumps(operator_module._source_bootstrap_record(
+        historical, historical_fp, historical_bundle.name)), encoding="utf-8")
+    for suffix in (".consumed", ".completed"):
+        historical_marker.with_suffix(suffix).write_text(historical_fp, encoding="utf-8")
+    historical_files = (historical_marker, historical_marker.with_suffix(".consumed"),
+                        historical_marker.with_suffix(".completed"), historical_bundle / "intent.json")
+    historical_bytes = {artifact: artifact.read_bytes() for artifact in historical_files}
     launched = []
 
     def child(command, **kwargs):
@@ -9710,6 +9729,7 @@ def test_source_upgrade_stages_exact_v2_edge_without_run(
 
     assert operator_module.bootstrap_source_upgrade_primary(path, runner=child) == 0
     assert operator_module.bootstrap_source_upgrade_primary(path, runner=child) == 0
+    assert all(artifact.read_bytes() == content for artifact, content in historical_bytes.items())
     assert launched[0] == launched[1]
     assert launched[0][3] == "bootstrap-source-primary"
     marker = Path(launched[0][-1])
@@ -9727,6 +9747,11 @@ def test_source_upgrade_stages_exact_v2_edge_without_run(
     conflict = dict(intent, executor="antigravity")
     path.write_text(json.dumps(conflict), encoding="utf-8")
     with pytest.raises(OperatorError):
+        operator_module.bootstrap_source_upgrade_primary(path, runner=child)
+    assert len(launched) == 2
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    historical_marker.with_suffix(".completed").unlink()
+    with pytest.raises(OperatorError, match="ambiguous source-control upgrade handoff state"):
         operator_module.bootstrap_source_upgrade_primary(path, runner=child)
     assert len(launched) == 2
     assert not list(runtime_paths(repo).runs.glob("*.json"))

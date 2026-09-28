@@ -4532,7 +4532,8 @@ def _check_migration_control(
 
 
 def _stage_migration_handoff(
-    root: Path, intent: Mapping[str, Any], marker: Path,
+    root: Path, intent: Mapping[str, Any], marker: Path, *,
+    allow_historical: bool = False,
 ) -> tuple[Path, Path]:
     """Bind exact transport before granting the target entry."""
 
@@ -4571,7 +4572,7 @@ def _stage_migration_handoff(
                 _check_migration_control(root, control_intent, transport=control)
             if marker.exists():
                 raise OperatorError("migration handoff already exists")
-            if any(path != marker for path in marker.parent.glob("*.json")):
+            if not allow_historical and any(path != marker for path in marker.parent.glob("*.json")):
                 raise OperatorError("ambiguous migration handoff history")
             _write_migration_atomic(
                 marker,
@@ -4650,13 +4651,17 @@ def bootstrap_source_upgrade_primary(
     if marker.with_suffix(".completed").exists():
         raise OperatorError("source-control upgrade handoff already completed")
     if marker.is_file():
-        siblings = list(marker.parent.glob("*.json"))
-        if siblings != [marker]:
+        edges, superseded, pending = _migration_history(root)
+        active = {edge_fp for edge_fp, (edge_marker, _, _) in edges.items()
+                  if edge_fp not in superseded and not edge_marker.with_suffix(".completed").is_file()}
+        if pending or fingerprint in superseded or active != {fingerprint}:
             raise OperatorError("ambiguous source-control upgrade handoff state")
-        record = json.loads(marker.read_text(encoding="utf-8"))
+        record = edges[fingerprint][1]
         bound_intent, target = _migration_bundle(marker, record, intent)
     else:
-        bound_intent, target = _stage_migration_handoff(root, intent, marker)
+        bound_intent, target = _stage_migration_handoff(
+            root, intent, marker, allow_historical=True,
+        )
     return _launch_migration_target(
         root, marker, bound_intent, target, runner, source_bootstrap=True
     )
