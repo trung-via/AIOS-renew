@@ -74,6 +74,9 @@ def test_status_reports_allowlisted_dispatch_and_run_facts_without_mutation(
     tmp_path: Path,
 ) -> None:
     state_root = tmp_path / ".git" / "aios"
+    policy_path = tmp_path / ".ai" / "executor-profiles.yaml"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_bytes((Path(__file__).parents[1] / ".ai" / "executor-profiles.yaml").read_bytes())
 
     def invoke() -> DispatchInvocation:
         from aios_renew.dispatch_reconciliation import bind_dispatch_run
@@ -84,6 +87,7 @@ def test_status_reports_allowlisted_dispatch_and_run_facts_without_mutation(
             state_root / "execution-profiles" / "RUN-074-001.json", run_profile
         )
         bind_dispatch_run(
+            repo=tmp_path,
             state_root=state_root,
             dispatch_id="delivery-074",
             task_id="TASK-074",
@@ -100,6 +104,7 @@ def test_status_reports_allowlisted_dispatch_and_run_facts_without_mutation(
         return DispatchInvocation(0, "RUN-074-001")
 
     execute_dispatch(
+        repo=tmp_path,
         state_root=state_root,
         dispatch_id="delivery-074",
         task_id="TASK-074",

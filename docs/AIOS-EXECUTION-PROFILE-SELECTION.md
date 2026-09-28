@@ -56,6 +56,31 @@ Unsupported or unavailable explicit selections fail closed. There is no automati
 11. Runtime verification, Reviewer authority, Publisher authority, RunLease, ExecutorBoundary, mutation permissions, sandbox selection, and canonical evidence ownership do not move.
 12. Historical TASK/RUN/dispatch/carrier artifacts are never reinterpreted under new defaults.
 
+## PRIMARY durable journal policy boundary (TASK-212)
+
+Python Agent `RUN-256-001` exposed a portability defect in the installed AIOS
+package governing an external repository. The downstream repository had a valid
+`.ai/executor-profiles.yaml` and bound `codex / gpt-6-sol / high` with
+`REPOSITORY_DEFAULT` attribution, but the PRIMARY v3 journal read at the
+completion gate looked for policy beneath the transient installed worker package.
+The canonical failure artifact is `e0e721aad9959880de464705a225e87c9c19820d`;
+it records no changed files and a clean failed head equal to the RUN base.
+
+Every PRIMARY v3 journal creation, read, RUN bind, replay, reconciliation, and
+status inspection validates the stored exact identity against the explicit
+governed repository's policy file. Runtime state paths and package install paths
+are not repository authority. A missing or malformed governed policy, invalid
+profile, or unsupported effort blocks new v3 authorization before native
+invocation. Changed defaults do not replace the journal's bound model, effort,
+or source attribution. An immutable identity collision or mismatched per-RUN
+sidecar cannot acquire dispatch RUN ownership. Historical PRIMARY v1/v2 records
+remain readable under their original profile-unaware semantics without policy
+backfill or rewrite. Status inspection remains observational.
+
+This correction is upstream maintenance only. Recovery of `RUN-256-001` follows
+separate review, publication, activation, and downstream authority steps recorded
+in the Brain Portability plan.
+
 ## Future model evolution invariant
 
 For an already-supported Executor whose native invocation contract remains compatible,

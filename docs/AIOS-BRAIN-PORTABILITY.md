@@ -577,6 +577,27 @@ The target AIOS source and fetched downstream target control are checked out in 
 
 Ordinary PRIMARY synchronization may still fast-forward a clean `main` and restart once. Its restarted process imports the active package source; when that source is the mutable control checkout, the pre-sync package is snapshotted for the restart. Synchronized `.ai/tasks/*` and `src/aios_renew/*` cannot silently change implementation authority. The handoff contract applies to any downstream repository and any exact reviewed N-to-N+1 pair; it does not itself approve BP-9 adoption, change a downstream pin, or advance the roadmap. BP-9 still requires explicit reviewed downstream migration and repository-owned activation.
 
+### TASK-212 PRIMARY portability prerequisite after RUN-256-001
+
+Python Agent `RUN-256-001` is a canonical `TASK-256` revision-1 FAILURE at
+`COMPLETION_GATE`, recorded by artifact commit
+`e0e721aad9959880de464705a225e87c9c19820d`. Its failed head equals base
+`2a773fd11636223b71f0b224523e0cef7915c07a`; changed files are empty,
+and the candidate is clean, descendant, repairable, and transportable. Its exact
+profile is `codex / gpt-6-sol / high` with repository-default attribution. The
+downstream repository has a valid policy, so the failure exposes a PRIMARY v3
+journal validation path that consulted the installed package root instead of
+the governed repository. TASK-212 corrects that upstream policy boundary.
+
+The prospective recovery order is TASK-212 review and publication, a separate
+successor activating the exact reviewed source-REPAIR consumer containing this
+fix, continuation of `RUN-256-001` under its existing `TASK-256` lineage,
+downstream exact-pin migration to a reviewed generation containing the fix,
+then fresh `TASK-207` revision-9 conformance. This upstream task performs no
+downstream mutation, source-REPAIR activation, roadmap advancement, review, or
+publication. The production source-REPAIR target remains
+`062031ab91118ecf784944e8dd7e3d76b0553c74` until separate authorization.
+
 ## 16. Dependency order
 
 ```text

@@ -123,7 +123,9 @@ def remote_status(
             from .operator import runtime_state_root
 
             state_root = runtime_state_root(repo)
-        status = inspect_dispatch(state_root=state_root, dispatch_id=dispatch_id)
+        status = inspect_dispatch(
+            repo=repo, state_root=state_root, dispatch_id=dispatch_id
+        )
     except (DispatchError, RuntimeError) as exc:
         raise RemoteSurfaceError("dispatch status is unavailable") from exc
     return RemoteStatusSummary(**asdict(status))

@@ -1403,6 +1403,7 @@ def _run_task_impl(
         )
         if dispatch_id is not None:
             bind_dispatch_run(
+                repo=root,
                 state_root=state.root,
                 dispatch_id=dispatch_id,
                 task_id=task_id,
@@ -7506,6 +7507,7 @@ def main(
             repo_root = resolve_repository(args.repo)
             dispatch_state_root = runtime_paths(repo_root).root
             exists, remote_profile = existing_dispatch_profile(
+                repo=repo_root,
                 state_root=dispatch_state_root,
                 dispatch_id=args.dispatch_id,
             )
@@ -7594,6 +7596,7 @@ def main(
 
             try:
                 outcome = execute_dispatch(
+                    repo=repo_root,
                     state_root=dispatch_state_root,
                     dispatch_id=args.dispatch_id,
                     task_id=args.task_id,

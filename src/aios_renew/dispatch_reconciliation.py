@@ -12,9 +12,13 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from .execution_profile import (
+    EXECUTION_PROFILE_FORMAT,
+    EXECUTION_PROFILE_VERSION,
+    ExecutionProfileError,
     PROFILE_IDENTITY_FIELDS,
     ResolvedExecutionProfile,
     execution_profile_identity,
+    load_execution_profile_policy,
     parse_execution_profile,
     validate_profile_identity,
 )
@@ -101,7 +105,7 @@ class DispatchStatus:
 
 
 def existing_dispatch_profile(
-    *, state_root: Path, dispatch_id: str
+    *, repo: Path, state_root: Path, dispatch_id: str
 ) -> tuple[bool, ResolvedExecutionProfile | None]:
     """Return an existing dispatch's exact bound profile without resolving defaults."""
 
@@ -109,7 +113,7 @@ def existing_dispatch_profile(
     path = state_root / "dispatches" / f"{_dispatch_key(dispatch_id)}.json"
     if not path.is_file():
         return False, None
-    record = _read_record(path)
+    record = _read_record(path, repo=repo)
     if record["dispatch_id"] != dispatch_id:
         raise DispatchError("dispatch journal hash collision")
     if record["version"] in (1, 2):
@@ -124,14 +128,16 @@ def existing_dispatch_profile(
     )
 
 
-def inspect_dispatch(*, state_root: Path, dispatch_id: str) -> DispatchStatus:
+def inspect_dispatch(
+    *, repo: Path, state_root: Path, dispatch_id: str
+) -> DispatchStatus:
     """Read one dispatch and bounded RUN facts without reconciling or writing."""
 
     _validate_dispatch_id(dispatch_id)
     record_path = state_root / "dispatches" / f"{_dispatch_key(dispatch_id)}.json"
     if not record_path.is_file():
         raise DispatchError("dispatch record does not exist")
-    record = _read_record(record_path)
+    record = _read_record(record_path, repo=repo)
     if record["dispatch_id"] != dispatch_id:
         raise DispatchError("dispatch journal hash collision")
 
@@ -209,6 +215,7 @@ def _validate_bound_profile(
 
 def execute_dispatch(
     *,
+    repo: Path | None = None,
     state_root: Path,
     dispatch_id: str,
     task_id: str,
@@ -241,7 +248,7 @@ def execute_dispatch(
 
     with _DispatchLock(lock_path):
         if record_path.exists():
-            record = _read_record(record_path)
+            record = _read_record(record_path, repo=repo)
             _require_same_request(
                 record, dispatch_id, task_id, executor, *authorization, profile
             )
@@ -264,6 +271,7 @@ def execute_dispatch(
         )
         if profile is None:
             raise DispatchError("complete resolved execution profile is required")
+        _validate_profile_binding(profile, repo=repo)
         pre_run_ids = _primary_run_ids(state_root / "runs", task_id)
         record: dict[str, Any] = {
             "version": 3,
@@ -288,7 +296,7 @@ def execute_dispatch(
         invocation = invoke_primary()
 
         with _DispatchLock(lock_path):
-            current = _read_record(record_path)
+            current = _read_record(record_path, repo=repo)
             _require_same_request(
                 current, dispatch_id, task_id, executor, *authorization, profile
             )
@@ -302,6 +310,7 @@ def execute_dispatch(
 
 def bind_dispatch_run(
     *,
+    repo: Path | None = None,
     state_root: Path,
     dispatch_id: str,
     task_id: str,
@@ -324,7 +333,7 @@ def bind_dispatch_run(
     with _DispatchLock(lock_path):
         if not record_path.is_file():
             raise DispatchError("dispatch admission record does not exist")
-        record = _read_record(record_path)
+        record = _read_record(record_path, repo=repo)
         _require_same_request(
             record,
             dispatch_id,
@@ -433,7 +442,38 @@ def _require_same_request(
         )
 
 
-def _read_record(path: Path) -> dict[str, Any]:
+def _validate_profile_binding(
+    identity: Mapping[str, str], *, repo: Path | None
+) -> None:
+    if repo is None:
+        raise DispatchError(
+            "governed repository is required for PRIMARY profile validation"
+        )
+    try:
+        parsed = parse_execution_profile(
+            {
+                "format": EXECUTION_PROFILE_FORMAT,
+                "version": EXECUTION_PROFILE_VERSION,
+                "run_id": "AUTHORIZATION",
+                **{field: identity[field] for field in PROFILE_IDENTITY_FIELDS},
+            }
+        )
+        # Pass the exact policy file: the profile loader's repository convenience
+        # path permits package-root fallback when a repository file is absent.
+        policy = load_execution_profile_policy(repo / ".ai" / "executor-profiles.yaml")
+        validate_profile_identity(
+            executor=parsed.executor,
+            model=parsed.model,
+            reasoning_effort=parsed.reasoning_effort,
+            model_source=parsed.model_source,
+            effort_source=parsed.effort_source,
+            policy=policy,
+        )
+    except (ExecutionProfileError, KeyError, TypeError, ValueError) as exc:
+        raise DispatchError(f"invalid PRIMARY execution profile binding: {exc}") from exc
+
+
+def _read_record(path: Path, *, repo: Path | None = None) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -460,13 +500,7 @@ def _read_record(path: Path) -> dict[str, Any]:
                 required=True,
             )
         if version == 3:
-            validate_profile_identity(
-                executor=data["executor"],
-                model=data["model"],
-                reasoning_effort=data["reasoning_effort"],
-                model_source=data["model_source"],
-                effort_source=data["effort_source"],
-            )
+            _validate_profile_binding(data, repo=repo)
     except (KeyError, DispatchError) as exc:
         raise DispatchError(f"invalid dispatch record binding: {exc}") from exc
     status = data.get("status")

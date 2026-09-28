@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from aios_renew import dispatch_reconciliation as dispatch
+from aios_renew import execution_profile as profile_module
 from aios_renew import operator as operator_module
 from aios_renew.dispatch_reconciliation import (
     DispatchError,
@@ -31,6 +32,7 @@ TASK_BLOB_SHA = "a" * 40
 TASK_COMMIT_SHA = "b" * 40
 _execute_dispatch = execute_dispatch
 _bind_dispatch_run = bind_dispatch_run
+SOURCE_REPO = Path(__file__).parents[1]
 
 
 def profile_for(
@@ -47,6 +49,7 @@ def profile_for(
 
 
 def execute_dispatch(**kwargs: object):
+    kwargs.setdefault("repo", SOURCE_REPO)
     kwargs.setdefault("task_revision", TASK_REVISION)
     kwargs.setdefault("task_blob_sha", TASK_BLOB_SHA)
     kwargs.setdefault("task_commit_sha", TASK_COMMIT_SHA)
@@ -58,6 +61,7 @@ def execute_dispatch(**kwargs: object):
 
 
 def bind_dispatch_run(**kwargs: object) -> None:
+    kwargs.setdefault("repo", SOURCE_REPO)
     kwargs.setdefault("task_revision", TASK_REVISION)
     kwargs.setdefault("task_blob_sha", TASK_BLOB_SHA)
     kwargs.setdefault("task_commit_sha", TASK_COMMIT_SHA)
@@ -340,6 +344,9 @@ def test_wakeup_sync_restart_continues_the_same_durable_dispatch(
     repo = tmp_path / "repo"
     state_root = repo / ".git" / "aios"
     state_root.mkdir(parents=True)
+    policy_path = repo / ".ai" / "executor-profiles.yaml"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_bytes((SOURCE_REPO / ".ai" / "executor-profiles.yaml").read_bytes())
     runtime = SimpleNamespace(
         root=state_root,
         lock=state_root / "operator.lock",
@@ -407,6 +414,7 @@ def test_wakeup_sync_restart_continues_the_same_durable_dispatch(
             execution_profile=run_profile,
         )
         bind_dispatch_run(
+            repo=repo,
             state_root=state_root,
             dispatch_id="delivery-073",
             task_id=task_id,
@@ -701,12 +709,193 @@ def test_inspect_dispatch_is_observational_and_does_not_reconcile(tmp_path: Path
     before = record_path.read_bytes()
 
     status = dispatch.inspect_dispatch(
-        state_root=state_root, dispatch_id="delivery-068"
+        repo=SOURCE_REPO, state_root=state_root, dispatch_id="delivery-068"
     )
 
     assert status.stored_status == "STARTED"
     assert status.run_id is None
     assert status.observed_run_state == "NOT_ATTRIBUTED"
+    assert record_path.read_bytes() == before
+
+
+def _external_policy(repo: Path) -> Path:
+    path = repo / ".ai" / "executor-profiles.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes((SOURCE_REPO / ".ai" / "executor-profiles.yaml").read_bytes())
+    return path
+
+
+def _bound_codex(run_id: str, effort: str = "high") -> ResolvedExecutionProfile:
+    return ResolvedExecutionProfile(
+        run_id=run_id,
+        executor="codex",
+        model="gpt-6-sol",
+        reasoning_effort=effort,
+        model_source="REPOSITORY_DEFAULT",
+        effort_source="REPOSITORY_DEFAULT",
+    )
+
+
+def test_external_repository_v3_uses_only_its_policy_for_bind_replay_and_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "governed"
+    policy_path = _external_policy(repo)
+    state_root = tmp_path / "separate-runtime-state"
+    # Model an installed distribution without package-root .ai material.
+    missing_package_policy = tmp_path / "installed-package" / ".ai" / "executor-profiles.yaml"
+    monkeypatch.setattr(
+        profile_module, "canonical_policy_path", lambda _repo=None: missing_package_policy
+    )
+    calls = 0
+
+    def invoke() -> DispatchInvocation:
+        nonlocal calls
+        calls += 1
+        run_id = "RUN-256-001"
+        run_profile = _bound_codex(run_id)
+        write_run(state_root, run_id, task_id="TASK-256", execution_profile=run_profile)
+        bind_dispatch_run(
+            repo=repo, state_root=state_root, dispatch_id="delivery-256",
+            task_id="TASK-256", executor="codex", run_id=run_id,
+            execution_profile=run_profile,
+        )
+        write_terminal(state_root, "results", run_id)
+        return DispatchInvocation(0, run_id)
+
+    kwargs = dict(
+        repo=repo, state_root=state_root, dispatch_id="delivery-256",
+        task_id="TASK-256", executor="codex",
+        task_revision=TASK_REVISION, task_blob_sha=TASK_BLOB_SHA,
+        task_commit_sha=TASK_COMMIT_SHA,
+        execution_profile=_bound_codex("AUTHORIZATION"),
+    )
+    first = _execute_dispatch(**kwargs, invoke_primary=invoke)
+    record_path = next((state_root / "dispatches").glob("*.json"))
+    before = record_path.read_bytes()
+    policy_path.write_text(
+        policy_path.read_text(encoding="utf-8").replace(
+            "default_model: gpt-6-sol", "default_model: gpt-7-sol"
+        ), encoding="utf-8"
+    )
+    exists, stored = dispatch.existing_dispatch_profile(
+        repo=repo, state_root=state_root, dispatch_id="delivery-256"
+    )
+    replay = _execute_dispatch(
+        **kwargs, invoke_primary=lambda: pytest.fail("replay invoked PRIMARY")
+    )
+    status = dispatch.inspect_dispatch(
+        repo=repo, state_root=state_root, dispatch_id="delivery-256"
+    )
+    assert calls == 1
+    assert first.run_id == replay.run_id == status.run_id == "RUN-256-001"
+    assert replay.replayed and exists and stored is not None
+    assert stored.model == "gpt-6-sol" and stored.reasoning_effort == "high"
+    assert status.observed_run_state == "RESULT_AVAILABLE"
+    assert record_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("policy_content", [None, "not: a-profile-policy", "format: ["])
+def test_first_seen_v3_rejects_missing_or_malformed_governed_policy(
+    tmp_path: Path, policy_content: str | None
+) -> None:
+    repo = tmp_path / "governed"
+    if policy_content is not None:
+        path = repo / ".ai" / "executor-profiles.yaml"
+        path.parent.mkdir(parents=True)
+        path.write_text(policy_content, encoding="utf-8")
+    state_root = tmp_path / "state"
+    with pytest.raises(DispatchError, match="profile"):
+        _execute_dispatch(
+            repo=repo, state_root=state_root, dispatch_id="delivery-256",
+            task_id="TASK-256", executor="codex",
+            task_revision=TASK_REVISION, task_blob_sha=TASK_BLOB_SHA,
+            task_commit_sha=TASK_COMMIT_SHA,
+            execution_profile=_bound_codex("AUTHORIZATION"),
+            invoke_primary=lambda: pytest.fail("invalid policy invoked PRIMARY"),
+        )
+    assert not list((state_root / "dispatches").glob("*.json"))
+    assert not (state_root / "runs").exists()
+
+
+def test_v3_rejects_unsupported_effort_invalid_profile_collision_and_sidecar(
+    tmp_path: Path
+) -> None:
+    repo = tmp_path / "governed"
+    _external_policy(repo)
+    state_root = tmp_path / "state"
+    base = dict(
+        repo=repo, state_root=state_root, dispatch_id="delivery-256",
+        task_id="TASK-256", executor="codex",
+        task_revision=TASK_REVISION, task_blob_sha=TASK_BLOB_SHA,
+        task_commit_sha=TASK_COMMIT_SHA,
+    )
+    for invalid in (
+        _bound_codex("AUTHORIZATION", "ultra"),
+        ResolvedExecutionProfile(
+            run_id="AUTHORIZATION", executor="codex", model="invalid model",
+            reasoning_effort="high", model_source="REPOSITORY_DEFAULT",
+            effort_source="REPOSITORY_DEFAULT",
+        ),
+    ):
+        with pytest.raises(DispatchError, match="profile"):
+            _execute_dispatch(
+                **base, execution_profile=invalid,
+                invoke_primary=lambda: pytest.fail("invalid profile invoked PRIMARY"),
+            )
+    assert not list((state_root / "dispatches").glob("*.json"))
+
+    def crash() -> DispatchInvocation:
+        raise RuntimeError("simulated interruption")
+
+    with pytest.raises(RuntimeError, match="interruption"):
+        _execute_dispatch(**base, execution_profile=_bound_codex("AUTHORIZATION"), invoke_primary=crash)
+    record_path = next((state_root / "dispatches").glob("*.json"))
+    before = record_path.read_bytes()
+    with pytest.raises(DispatchError, match="binding does not match"):
+        _execute_dispatch(
+            **base,
+            execution_profile=ResolvedExecutionProfile(
+                run_id="AUTHORIZATION", executor="codex", model="gpt-7-sol",
+                reasoning_effort="high", model_source="REPOSITORY_DEFAULT",
+                effort_source="REPOSITORY_DEFAULT",
+            ),
+            invoke_primary=lambda: pytest.fail("collision invoked PRIMARY"),
+        )
+    run_id = "RUN-256-001"
+    write_run(state_root, run_id, task_id="TASK-256", execution_profile=_bound_codex(run_id))
+    sidecar = state_root / "execution-profiles" / f"{run_id}.json"
+    sidecar_data = json.loads(sidecar.read_text(encoding="utf-8"))
+    sidecar_data["reasoning_effort"] = "low"
+    sidecar.write_text(json.dumps(sidecar_data), encoding="utf-8")
+    with pytest.raises(DispatchError, match="does not match dispatch"):
+        _bind_dispatch_run(
+            **base, run_id=run_id, execution_profile=_bound_codex(run_id)
+        )
+    assert record_path.read_bytes() == before
+    assert json.loads(record_path.read_text(encoding="utf-8"))["run_id"] is None
+
+
+def test_existing_v3_missing_policy_is_read_only_rejection(tmp_path: Path) -> None:
+    repo = tmp_path / "governed"
+    policy_path = _external_policy(repo)
+    state_root = tmp_path / "state"
+    _execute_dispatch(
+        repo=repo, state_root=state_root, dispatch_id="delivery-256",
+        task_id="TASK-256", executor="codex", task_revision=TASK_REVISION,
+        task_blob_sha=TASK_BLOB_SHA, task_commit_sha=TASK_COMMIT_SHA,
+        execution_profile=_bound_codex("AUTHORIZATION"),
+        invoke_primary=lambda: DispatchInvocation(1),
+    )
+    record_path = next((state_root / "dispatches").glob("*.json"))
+    before = record_path.read_bytes()
+    policy_path.unlink()
+    with pytest.raises(DispatchError, match="profile"):
+        dispatch.existing_dispatch_profile(
+            repo=repo, state_root=state_root, dispatch_id="delivery-256"
+        )
+    with pytest.raises(DispatchError, match="profile"):
+        dispatch.inspect_dispatch(repo=repo, state_root=state_root, dispatch_id="delivery-256")
     assert record_path.read_bytes() == before
 
 
