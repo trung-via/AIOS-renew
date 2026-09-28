@@ -1129,6 +1129,24 @@ sequence:
     objective: >-
       Adopt the reviewed capability downstream only through an explicit exact-pin,
       repository-owned migration after BP-8 evidence exists.
+    current_prerequisite:
+      task_id: TASK-218
+      task_revision: 1
+      approved_on: "2026-09-29"
+      approved_against_main_sha: "a5e4fa46579fb4013a25f5f9821c3d55377529ba"
+      authority: HUMAN_BRAIN_PLANNING
+      reason: >-
+        Python Agent RUN-259-001 is a completed failed source-bootstrap PRIMARY whose
+        TASK-259 r1 contract cannot be validly repaired because a verification-required
+        active-pin assertion lies outside r1 scope.modify. Existing pre-RUN recovery and
+        same-failed-RUN source-REPAIR do not authorize a strictly newer TASK revision.
+        TASK-218 therefore adds the bounded post-terminal same-TASK successor-revision
+        PRIMARY authority before downstream TASK-259 r2 can be authored/executed.
+      follow_on: >-
+        After TASK-218 is reviewed and source-published, author a separate exact activation
+        TASK for its successor consumer; then fresh downstream Brain Sync may author
+        TASK-259 r2, execute it through the bounded successor transport, publish the exact
+        reviewed candidate, and only then proceed to fresh TASK-207 r9.
 previous_track:
   id: control-plane-closure
   status: COMPLETE
@@ -1154,24 +1172,15 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item. BP-5 Brain Provider Protocol, BP-6
-    Reviewer Provider Protocol, and BP-7 Cross-context / Hot-swap Conformance are
-    reviewed/published complete. BP-8 P1 also completed through TASK-191 r1,
-    RUN-191-003 / REVIEW-191-001 CHANGES_REQUIRED, RUN-191-004 /
-    REVIEW-191-002 DELTA PASS for FINDING-191-001, RUN-191-005 /
-    REVIEW-191-003 DELTA PASS for FINDING-191-002, and exact publication of
-    a967ef7f6e16c893600a7cc0731e1f0bc94f3077. The inserted
-    maintenance-pytest-bounded-parameter-id-hardening is now reviewed/published
-    complete through TASK-192 r2, RUN-192-002, REVIEW-192-001 and exact publication
-    of ba4ae3da4dcfa09466e3455e67e77d703cf86259. The unique NEXT item therefore
-    returns to BP-8 P2. Human explicitly selected Reviewer effort high for this one
-    Antigravity/gemini-3.8-flash proof. P2 is split into reviewed harness preparation
-    (BP8-P2A / TASK-193) followed by one zero-delta Runtime-owned real observation
-    (BP8-P2B) so a transient provider/transport failure is recorded as typed
-    pre-REVIEW observation rather than fabricated RUN failure. Neither BP-8 nor later
-    work may create a generic lifecycle/provider router, merge Brain and Reviewer
-    authority, add automatic retry/failover/correction selection, or silently retarget
-    downstreams.
+    Continue only the unique canonical NEXT item, BP-9 downstream adoption. Current
+    explicit Human/Brain planning inserts TASK-218 r1 as the bounded prerequisite after
+    Python Agent RUN-259-001 exposed a post-terminal source-bootstrap TASK-contract gap:
+    preserve RUN-259-001/FAILURE immutably, publish TASK-218 successor-revision capability,
+    then separately activate one exact reviewed TASK-218 consumer, fresh-sync downstream,
+    author TASK-259 r2, execute that exact newer revision through the bounded successor
+    transport, review/publish it, and only then author/execute fresh TASK-207 r9. TASK-218
+    must not be replaced by REPAIR-259, source-REPAIR reuse, migration-state rewriting,
+    automatic revision selection, generic retry/failover, or product work.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
