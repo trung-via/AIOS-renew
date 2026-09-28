@@ -1,0 +1,181 @@
+task_id: TASK-211
+revision: 1
+
+goal: >
+  Activate the reviewed and published TASK-210 corrected source-REPAIR consumer through
+  the existing single production _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA allowlist slot,
+  binding that slot only to exact SHA
+  062031ab91118ecf784944e8dd7e3d76b0553c74, without changing source-REPAIR profile
+  policy semantics, migration, REPAIR, Runtime, Reviewer, Publisher, roadmap or downstream
+  semantics.
+
+problem: >
+  TASK-210 completed through RUN-210-001 RESULT, REVIEW-210-001 PASS and exact publication
+  at 062031ab91118ecf784944e8dd7e3d76b0553c74. That published generation corrects the
+  source-REPAIR managed execution-profile validation boundary exposed by the first real
+  Python Agent recovery attempt: a control main that predates .ai/executor-profiles.yaml
+  can validate the immutable requested profile only against the exact canonical failed
+  candidate's repository policy and canonical failed-RUN execution-profile evidence.
+  TASK-210 intentionally reset _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA to None and documented
+  that a separate post-publication activation successor is required before any new
+  downstream source-REPAIR delivery identity is attempted.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is exactly
+    062031ab91118ecf784944e8dd7e3d76b0553c74.
+  - >
+    TASK-210 r1 canonical lineage is RUN-210-001 RESULT, REVIEW-210-001 PRIMARY PASS and
+    Publisher publication of exact
+    062031ab91118ecf784944e8dd7e3d76b0553c74.
+  - >
+    The published TASK-210 consumer keeps _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA = None and
+    therefore rejects production source-REPAIR staging until this successor activation.
+  - >
+    TASK-210 already proves exact failed-candidate policy derivation, canonical failed-RUN
+    execution-profile binding, ordinary REPAIR repo-local policy preservation, durable
+    dispatch/replay/binding behavior and target-side transport security.
+  - >
+    Existing _SOURCE_BOOTSTRAP_TARGET_SHA remains exact
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 and _BOOTSTRAP_TARGET_SHA remains exact
+    83115b26df85a7ad6643f317833e18b18586bdbe.
+  - >
+    Python Agent RUN-255-003 remains the exact failed downstream lineage with
+    REPAIR-255-003 authorization already canonicalized. The prior source-REPAIR delivery
+    identity that failed before RUN creation must not be reused with changed target
+    selectors. No RUN-255-004 exists at authoring.
+  - >
+    BP-9 downstream adoption remains the unique Human/Brain roadmap NEXT. This TASK is only
+    the bounded upstream activation prerequisite and does not mutate or advance downstream
+    state or roadmap planning state.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-209.yaml
+    - .ai/tasks/TASK-210.yaml
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - >
+    Modify TASK-210 source-REPAIR failed-candidate policy derivation, canonical failed-RUN
+    profile checks, ContextVar scoping, ordinary REPAIR policy validation, durable
+    repair-dispatch schema/replay/binding, target-side transport consumption, failed-lineage
+    admission, legacy generation attestation, control/pin checks, Runtime, Reviewer or
+    Publisher semantics.
+  - >
+    Modify source-bootstrap v2, recover_source_bootstrap(), migrate-primary,
+    bootstrap-source-primary, bootstrap-primary, migration history or activation values
+    for _SOURCE_BOOTSTRAP_TARGET_SHA or _BOOTSTRAP_TARGET_SHA.
+  - >
+    Modify documentation or roadmap planning state; TASK-210 already documents the exact
+    corrected recovery choreography and separate activation requirement.
+  - >
+    Modify or execute any downstream repository, dependency pin, TASK, RUN, REPAIR
+    authorization, migration/source-bootstrap marker, workflow, runner state or publication
+    state.
+  - >
+    Execute a real source-REPAIR bootstrap, reuse the prior failed delivery identity, create
+    or claim RUN-255-004, recover RUN-255-003, or claim BP-9 completion.
+  - >
+    Activate mutable main, a branch/ref, TASK-208 target
+    ce56528487e1f521d0c458dc4e48575620d87a42, the eventual TASK-211 candidate SHA, or more
+    than one source-REPAIR target.
+  - >
+    Add routing, target selection, retry/fallback/failover, environment/config override,
+    network discovery, automatic recovery, Planner, Reviewer, Publisher or another
+    lifecycle authority.
+
+constraints:
+  hard:
+    - >
+      The sole production behavior change is replacing the existing literal
+      _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA = None with exact literal
+      062031ab91118ecf784944e8dd7e3d76b0553c74. No list/set of targets, fallback, mutable
+      lookup, environment/config override, network discovery, current-main derivation or
+      self-derived candidate SHA is permitted.
+    - >
+      Preserve source-REPAIR staging guard semantics: production staging is admitted only
+      when intent.target_generation_sha equals exact
+      062031ab91118ecf784944e8dd7e3d76b0553c74. Any other target must reject before target
+      staging, target invocation, REPAIR dispatch admission or continuation RUN creation.
+    - >
+      Preserve TASK-210 production semantics byte-for-byte outside the activation literal:
+      target-side --accept-transport consumption must still validate exact transport path,
+      immutable stored intent, clean exact target HEAD/running source, completed failed
+      bootstrap lineage, exact canonical failed candidate policy and execution-profile
+      evidence, then delegate only through existing run_repair_wakeup semantics.
+    - >
+      Ordinary REPAIR without source-REPAIR context must continue to require its repo-local
+      .ai/executor-profiles.yaml and fail closed when that policy is missing or malformed.
+    - >
+      Preserve completed failed source-bootstrap history as immutable input and preserve
+      exact failed RUN, control/pin identity, legacy generation attestation, separate
+      transport namespace, idempotency, conflict rejection and no synthetic engineering
+      terminal before REPAIR Runtime admission.
+    - >
+      Preserve _SOURCE_BOOTSTRAP_TARGET_SHA =
+      31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 and _BOOTSTRAP_TARGET_SHA =
+      83115b26df85a7ad6643f317833e18b18586bdbe exactly.
+    - >
+      Update deterministic tests so repository production state proves exactly one
+      source-REPAIR activation equal to the published TASK-210 SHA; production defaults
+      reject fixture, TASK-206/TASK-208 historical targets, source-PRIMARY,
+      TASK-211/self/current and future targets before staging; fixture activation remains
+      explicitly test-only where required to exercise transport behavior.
+    - >
+      Existing TASK-210 source-REPAIR policy and fresh-interpreter target-consumption
+      regressions and all negative path/intent/source/HEAD/profile/policy proofs must not be
+      weakened. Test updates may adapt only production activation expectations and local
+      fixture injection required by the new exact activation.
+    - >
+      No production code beyond the existing source-REPAIR activation literal may change.
+      Tests may update exact production expectations and focused rejection coverage only.
+    - >
+      Executor returns one clean candidate with zero unresolved implementation items and
+      does not review, publish, execute downstream recovery, create a downstream RUN, mutate
+      roadmap state or perform any later BP-9 action.
+
+acceptance:
+  - id: AC1
+    condition: >
+      src/aios_renew/operator.py contains exactly one production
+      _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA and its value is the literal exact SHA
+      062031ab91118ecf784944e8dd7e3d76b0553c74.
+  - id: AC2
+    condition: >
+      With production defaults, a source-REPAIR bootstrap intent naming any target other
+      than 062031ab91118ecf784944e8dd7e3d76b0553c74 is rejected before target staging,
+      target invocation, REPAIR dispatch admission or continuation RUN creation, including
+      the TASK-211 candidate/current source itself.
+  - id: AC3
+    condition: >
+      TASK-210 source-REPAIR semantics remain intact: exact failed-candidate policy/profile
+      evidence governs managed source-REPAIR, ordinary REPAIR remains repo-local-policy
+      strict, and target-side transport/security checks are unchanged.
+  - id: AC4
+    condition: >
+      Source-bootstrap/migration activations, historical bootstrap/failure lineage,
+      Runtime verification/evidence ownership, Reviewer/Publisher authority, documentation
+      and roadmap state remain unchanged.
+  - id: AC5
+    condition: >
+      No downstream repository/pin/TASK/RUN/REPAIR or migration state is mutated or
+      executed, the old failed source-REPAIR delivery identity is not reused, no
+      RUN-255-004 or BP-9 completion is claimed, and activation introduces no new
+      routing/retry/fallback/failover or lifecycle authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q -k "source_repair"
+    - git diff --check
