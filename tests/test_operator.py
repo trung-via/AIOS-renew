@@ -9241,6 +9241,105 @@ def _source_bootstrap_fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
     return repo, target_source, intent
 
 
+def _source_repair_bootstrap_intent(bootstrap: dict, target_sha: str) -> dict:
+    return {
+        "format": "AIOS_SOURCE_REPAIR_BOOTSTRAP_INTENT", "version": 1,
+        "repository": bootstrap["repository"],
+        "bootstrap_fingerprint": operator_module._migration_fingerprint(bootstrap),
+        "legacy_generation_sha": bootstrap["source_generation_sha"],
+        "target_generation_sha": target_sha, "target_url": bootstrap["target_url"],
+        "source_control_sha": bootstrap["source_control_sha"],
+        "pin_path": bootstrap["pin_path"],
+        "source_pin_blob_sha": bootstrap["source_pin_blob_sha"],
+        "failed_run_id": "RUN-101-001", "repair_sha": "a" * 40,
+        "repair_dispatch_id": "repair-101-001", "executor": "codex",
+        "model": None, "reasoning_effort": None,
+        "model_source": None, "effort_source": None,
+    }
+
+
+def test_source_repair_bootstrap_closed_and_exact_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, source, bootstrap = _source_bootstrap_fixture(tmp_path)
+    intent = _source_repair_bootstrap_intent(bootstrap, bootstrap["target_generation_sha"])
+    path = tmp_path / "source-repair.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
+    with pytest.raises(OperatorError, match="not activated"):
+        operator_module.bootstrap_source_repair(path)
+    monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA", intent["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: intent["legacy_generation_sha"])
+    monkeypatch.setattr(operator_module, "_source_repair_bootstrap_lineage",
+                        lambda root, document: None)
+    launched = []
+
+    def runner(command, **kwargs):
+        launched.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0)
+
+    assert operator_module.bootstrap_source_repair(path, runner=runner) == 0
+    bundle, target = operator_module._source_repair_bootstrap_state(repo, intent)
+    assert git(target, "rev-parse", "HEAD") == intent["target_generation_sha"]
+    assert json.loads((bundle / "intent.json").read_text(encoding="utf-8")) == intent
+    assert operator_module.bootstrap_source_repair(path, runner=runner) == 0
+    assert len(launched) == 2
+    assert all(call[0][3] == "bootstrap-source-repair" for call in launched)
+    delivered = []
+    monkeypatch.setattr(operator_module, "run_repair_wakeup",
+                        lambda *args, **kwargs: delivered.append((args, kwargs)) or
+                        SimpleNamespace(render=lambda: "REPAIR delivered", exit_code=0))
+    with pytest.raises(OperatorError, match="running source differs"):
+        operator_module.bootstrap_source_repair(path, transport_path=bundle / "intent.json")
+    assert not delivered
+    monkeypatch.setattr(operator_module, "__file__", str(target / "src" / "aios_renew" / "operator.py"))
+    assert operator_module.bootstrap_source_repair(path, transport_path=bundle / "intent.json") == 0
+    assert delivered == [((intent["repair_dispatch_id"], intent["failed_run_id"],
+                           intent["repair_sha"]), {
+        "executor": intent["executor"], "repo": repo, "model": None,
+        "reasoning_effort": None, "model_source": None, "effort_source": None,
+    })]
+    changed = dict(intent, repair_sha="b" * 40)
+    path.write_text(json.dumps(changed), encoding="utf-8")
+    with pytest.raises(OperatorError, match="transport identity mismatch"):
+        operator_module.bootstrap_source_repair(path, runner=runner)
+    assert len(launched) == 2
+    (bundle / "intent.json").unlink()
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    with pytest.raises(OperatorError, match="partial or invalid"):
+        operator_module.bootstrap_source_repair(path, runner=runner)
+    assert len(launched) == 2
+
+
+def test_source_repair_bootstrap_requires_completed_failed_v2_lineage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _, bootstrap = _source_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", bootstrap["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: bootstrap["source_generation_sha"])
+    path = tmp_path / "source-primary.json"
+    path.write_text(json.dumps(bootstrap), encoding="utf-8")
+    assert operator_module.bootstrap_source_primary(
+        path, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0)
+    ) == 0
+    fingerprint = operator_module._migration_fingerprint(bootstrap)
+    marker = operator_module._migration_marker(repo, fingerprint)
+    intent = _source_repair_bootstrap_intent(bootstrap, bootstrap["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_migration_run_terminal",
+                        lambda root, document: (intent["failed_run_id"], "FAILURE"))
+    with pytest.raises(OperatorError, match="active or incomplete"):
+        operator_module._source_repair_bootstrap_lineage(repo, intent)
+    marker.with_suffix(".consumed").write_text(fingerprint, encoding="utf-8")
+    marker.with_suffix(".completed").write_text(fingerprint, encoding="utf-8")
+    operator_module._source_repair_bootstrap_lineage(repo, intent)
+    monkeypatch.setattr(operator_module, "_migration_run_terminal",
+                        lambda root, document: (intent["failed_run_id"], "RESULT"))
+    with pytest.raises(OperatorError, match="one exact completed failed"):
+        operator_module._source_repair_bootstrap_lineage(repo, intent)
+
+
 @pytest.mark.parametrize("target_kind", [
     "fixture", "old_task_199", "maintenance", "current_source", "future_source",
 ])

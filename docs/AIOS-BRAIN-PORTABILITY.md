@@ -510,6 +510,29 @@ consumer target. Moving later to a newer activation or latest upstream SHA
 requires a separate ordinary `migrate-primary` handoff. TASK-202 does not
 activate its own candidate, change downstream state, or complete BP-9.
 
+TASK-206 addresses the separate post-RUN gap. A consumed and completed
+`source-bootstrap-v2` handoff whose unique bound RUN ended in `FAILURE` is
+immutable migration history. `recover-source-bootstrap` remains limited to a
+consumed pre-RUN edge; it cannot reopen that completed handoff. The versioned
+`bootstrap-source-repair` transport binds that exact failed lineage, the legacy
+installed generation, unchanged downstream control commit and pin blob, an
+exact newer source URL and generation, and one canonical REPAIR delivery with
+its authorization SHA, failed RUN, Executor and execution-profile selectors.
+It keeps its transport state outside migration handoffs and creates no
+engineering terminal before existing REPAIR Runtime admits a continuation RUN.
+The target checkout proves its bound Git generation, then delegates to
+`run_repair_wakeup`, whose correction preflight, Unified State and dispatch
+remain the sole REPAIR semantic authorities. Its production target activation
+is closed in TASK-206 and separate from the source-PRIMARY activation.
+
+BP-9 recovery order after a failed bootstrap candidate is: publish this
+capability; separately activate its exact reviewed and published consumer;
+authorize one exact REPAIR for the failed bootstrap candidate; deliver that
+REPAIR through the activated newer source; review and publish the resulting
+downstream candidate; then resume ordinary exact-pin migration. TASK-206
+performs none of those downstream or publication steps and does not complete
+BP-9.
+
 A downstream remains under its exact installed generation N while the operator checks a reviewed `migrate-primary` intent. The versioned intent binds the imported installed distribution's immutable VCS commit, the exact target AIOS commit and source URL, the downstream repository path, its current and target control commits, its repository-owned pin artifact at both commits, and the downstream TASK id, revision, blob, authorization commit, and Executor. Missing, floating, stale, or conflicting identities fail before target authority. The target control commit must be the current upstream `main` and a fast-forward of the clean attached source control commit; the pin artifacts must name the corresponding exact generation. The exact TASK blob must exist at the target and match its ancestor authorization commit.
 
 The target AIOS source and fetched downstream target control are checked out in disposable transport at exact commits, without changing the persistent downstream checkout or its remote tracking ref. After all N-side checks pass, an exclusive persistent handoff record binds both generations, both control commits, the pin and TASK identity to the intent fingerprint. That record is the single authority transition: N is barred from further PRIMARY admission, and only the exact target source may consume the handoff once. The target then rechecks control identity, fast-forwards the persistent checkout, and admits the bound TASK through the existing PRIMARY Runtime and Executor boundary. Ordinary target-generation PRIMARY admission opens only after that exact handoff completes. A pre-handoff rejection invokes no Executor and creates no RUN; the operator records a typed admission failure where the repository identity is available. The disposable checkout is transport, never a second Runtime or lifecycle record.

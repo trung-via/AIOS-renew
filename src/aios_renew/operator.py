@@ -3772,6 +3772,53 @@ _BOOTSTRAP_TARGET_SHA = "83115b26df85a7ad6643f317833e18b18586bdbe"
 _SOURCE_BOOTSTRAP_TARGET_SHA: str | None = "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
 _SOURCE_BOOTSTRAP_FIELDS = (_MIGRATION_FIELDS - {"target_control_sha", "target_pin_blob_sha"}) | {"format"}
 
+# Activated only by a separate, post-publication successor. Never inferred from
+# this checkout, the requested target, or the source-PRIMARY activation.
+_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = None
+_SOURCE_REPAIR_BOOTSTRAP_FIELDS = frozenset({
+    "format", "version", "repository", "bootstrap_fingerprint",
+    "legacy_generation_sha", "target_generation_sha", "target_url",
+    "source_control_sha", "pin_path", "source_pin_blob_sha",
+    "failed_run_id", "repair_sha", "repair_dispatch_id", "executor",
+    "model", "reasoning_effort", "model_source", "effort_source",
+})
+
+
+def _exact_source_repair_bootstrap_intent(document: Any) -> dict[str, Any]:
+    if (not isinstance(document, dict) or set(document) != _SOURCE_REPAIR_BOOTSTRAP_FIELDS
+            or type(document["version"]) is not int or document["version"] != 1
+            or document["format"] != "AIOS_SOURCE_REPAIR_BOOTSTRAP_INTENT"):
+        raise OperatorError("source-REPAIR bootstrap intent has missing or unexpected fields")
+    for field in ("bootstrap_fingerprint",):
+        if not isinstance(document[field], str) or not re.fullmatch(r"[0-9a-f]{64}", document[field]):
+            raise OperatorError(f"source-REPAIR bootstrap {field} is invalid")
+    for field in ("legacy_generation_sha", "target_generation_sha", "source_control_sha",
+                  "source_pin_blob_sha", "repair_sha"):
+        if not isinstance(document[field], str) or not re.fullmatch(r"[0-9a-f]{40}", document[field]):
+            raise OperatorError(f"source-REPAIR bootstrap {field} is not an exact SHA")
+    from .repair_dispatch import REPAIR_DISPATCH_ID_PATTERN, FAILED_RUN_ID_PATTERN
+    if (not isinstance(document["repair_dispatch_id"], str)
+            or not REPAIR_DISPATCH_ID_PATTERN.fullmatch(document["repair_dispatch_id"])
+            or not isinstance(document["failed_run_id"], str)
+            or not FAILED_RUN_ID_PATTERN.fullmatch(document["failed_run_id"])):
+        raise OperatorError("source-REPAIR bootstrap delivery or failed RUN is invalid")
+    if (not isinstance(document["repository"], str) or not Path(document["repository"]).is_absolute()
+            or not isinstance(document["target_url"], str) or not document["target_url"]
+            or document["target_url"].startswith("-")
+            or not isinstance(document["pin_path"], str)):
+        raise OperatorError("source-REPAIR bootstrap source or repository is invalid")
+    pin = Path(document["pin_path"])
+    if pin.is_absolute() or not pin.parts or ".." in pin.parts or ".git" in pin.parts:
+        raise OperatorError("source-REPAIR bootstrap pin path is unsafe")
+    if document["legacy_generation_sha"] == document["target_generation_sha"]:
+        raise OperatorError("source-REPAIR bootstrap does not change generation")
+    if document["executor"] not in (None, "codex", "antigravity", "antigravity-minimax"):
+        raise OperatorError("source-REPAIR bootstrap Executor is invalid")
+    for field in ("model", "reasoning_effort", "model_source", "effort_source"):
+        if document[field] is not None and (not isinstance(document[field], str) or not document[field]):
+            raise OperatorError(f"source-REPAIR bootstrap {field} is invalid")
+    return document
+
 
 def _exact_source_bootstrap_intent(document: Any) -> dict[str, Any]:
     """A distinct source-control bootstrap contract, never migration intent v1."""
@@ -4721,6 +4768,129 @@ def recover_source_bootstrap(
                     _remove_historical_workspace(root, bundle)
                 raise
     return 0
+
+
+def _source_repair_bootstrap_lineage(root: Path, intent: Mapping[str, Any]) -> None:
+    """Read the completed failed v2 edge without changing migration history."""
+
+    edges, superseded, pending = _migration_history(root)
+    eligible: list[str] = []
+    for fingerprint, (marker, record, bootstrap) in edges.items():
+        if (bootstrap.get("version") != 2 or fingerprint in superseded
+                or fingerprint in pending):
+            continue
+        consumed = marker.with_suffix(".consumed")
+        completed = marker.with_suffix(".completed")
+        if not consumed.is_file() or not completed.is_file():
+            raise OperatorError("active or incomplete source-bootstrap history blocks source-REPAIR")
+        if (consumed.read_text(encoding="utf-8") != fingerprint
+                or completed.read_text(encoding="utf-8") != fingerprint):
+            raise OperatorError("source-REPAIR bootstrap handoff state mismatch")
+        run_id, terminal = _migration_run_terminal(root, bootstrap)
+        if run_id is not None and terminal == "FAILURE":
+            eligible.append(fingerprint)
+    if eligible != [intent["bootstrap_fingerprint"]]:
+        raise OperatorError("source-REPAIR bootstrap requires one exact completed failed v2 edge")
+    _, record, bootstrap = edges[eligible[0]]
+    if (record["format"] != "AIOS_SOURCE_CONTROL_BOOTSTRAP_HANDOFF"
+            or bootstrap["repository"] != intent["repository"]
+            or bootstrap["source_generation_sha"] != intent["legacy_generation_sha"]
+            or bootstrap["source_control_sha"] != intent["source_control_sha"]
+            or bootstrap["pin_path"] != intent["pin_path"]
+            or bootstrap["source_pin_blob_sha"] != intent["source_pin_blob_sha"]
+            or _migration_run_terminal(root, bootstrap) != (intent["failed_run_id"], "FAILURE")):
+        raise OperatorError("source-REPAIR bootstrap lineage identity mismatch")
+    with tempfile.TemporaryDirectory(prefix="aios-source-repair-control-") as temporary:
+        control = Path(temporary) / "control"
+        _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags",
+             str(root), str(control))
+        _check_source_bootstrap_control(root, bootstrap, transport=control)
+
+
+def _source_repair_bootstrap_state(root: Path, intent: Mapping[str, Any]) -> tuple[Path, Path]:
+    directory = runtime_state_root(root) / "source-repair-transports"
+    bundle = directory / intent["repair_dispatch_id"]
+    return bundle, bundle / "source"
+
+
+def _source_repair_bootstrap_record(root: Path, intent: Mapping[str, Any]) -> tuple[Path, Path]:
+    bundle, target = _source_repair_bootstrap_state(root, intent)
+    record_path = bundle / "intent.json"
+    try:
+        stored = _exact_source_repair_bootstrap_intent(
+            json.loads(record_path.read_text(encoding="utf-8"))
+        )
+    except (OSError, ValueError, OperatorError) as exc:
+        raise OperatorError("source-REPAIR bootstrap transport is partial or invalid") from exc
+    if (stored != intent or bundle.is_symlink() or target.is_symlink()
+            or record_path.is_symlink() or not target.is_dir()
+            or {path.name for path in bundle.iterdir()} != {"source", "intent.json"}
+            or _git(target, "rev-parse", "HEAD") != intent["target_generation_sha"]
+            or _git(target, "remote", "get-url", "origin") != intent["target_url"]
+            or _git(target, "status", "--porcelain")
+            or not (target / "src" / "aios_renew" / "operator.py").is_file()):
+        raise OperatorError("source-REPAIR bootstrap transport identity mismatch")
+    return record_path, target
+
+
+def bootstrap_source_repair(
+    intent_path: str | Path, *, runner: NativeRunner = subprocess.run,
+    legacy_runner: NativeRunner = subprocess.run,
+    transport_path: str | Path | None = None,
+) -> int:
+    """Transport one failed bootstrap candidate to the canonical REPAIR wakeup."""
+
+    intent = _exact_source_repair_bootstrap_intent(
+        json.loads(Path(intent_path).read_text(encoding="utf-8"))
+    )
+    root = resolve_repository(intent["repository"])
+    bundle, target = _source_repair_bootstrap_state(root, intent)
+    if (_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
+            or intent["target_generation_sha"] != _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA):
+        raise OperatorError("source-REPAIR bootstrap target is not activated")
+    if transport_path is not None:
+        if Path(transport_path).resolve() != (bundle / "intent.json").resolve():
+            raise OperatorError("source-REPAIR bootstrap transport path mismatch")
+        _source_repair_bootstrap_record(root, intent)
+        source_root = Path(__file__).resolve().parent.parent.parent
+        if source_root != target.resolve() or _git(source_root, "rev-parse", "HEAD") != intent["target_generation_sha"]:
+            raise OperatorError("running source differs from bound source-REPAIR target")
+        _source_repair_bootstrap_lineage(root, intent)
+        outcome = run_repair_wakeup(
+            intent["repair_dispatch_id"], intent["failed_run_id"], intent["repair_sha"],
+            executor=intent["executor"], repo=root, model=intent["model"],
+            reasoning_effort=intent["reasoning_effort"], model_source=intent["model_source"],
+            effort_source=intent["effort_source"],
+        )
+        print(outcome.render())
+        return outcome.exit_code
+
+    with RepositoryLock(runtime_state_root(root) / "source-repair-bootstrap.lock"):
+        if _legacy_installed_generation_sha(runner=legacy_runner) != intent["legacy_generation_sha"]:
+            raise OperatorError("source-REPAIR bootstrap legacy generation mismatch")
+        _source_repair_bootstrap_lineage(root, intent)
+        if bundle.exists():
+            bound_intent, target = _source_repair_bootstrap_record(root, intent)
+        else:
+            bundle.mkdir(parents=True)
+            _git(root, "clone", "--no-checkout", "--no-tags", intent["target_url"], str(target))
+            _git(target, "checkout", "--detach", intent["target_generation_sha"])
+            if (_git(target, "rev-parse", "HEAD") != intent["target_generation_sha"]
+                    or _git(target, "status", "--porcelain")
+                    or not (target / "src" / "aios_renew" / "operator.py").is_file()):
+                raise OperatorError("source-REPAIR bootstrap target source mismatch")
+            _source_repair_bootstrap_lineage(root, intent)
+            bound_intent = bundle / "intent.json"
+            _write_migration_atomic(bound_intent, json.dumps(intent, sort_keys=True))
+        env = dict(os.environ)
+        checkout_source = str((root / "src").resolve())
+        inherited = [part for part in env.get("PYTHONPATH", "").split(os.pathsep)
+                     if part and str(Path(part).resolve()) != checkout_source]
+        env["PYTHONPATH"] = os.pathsep.join([str(target / "src"), *inherited])
+        return runner([
+            sys.executable, "-m", "aios_renew.operator", "bootstrap-source-repair",
+            str(bound_intent), "--accept-transport", str(bound_intent),
+        ], env=env).returncode
 
 
 def migrate_primary(
@@ -6920,6 +7090,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     recovery_parser.add_argument("old_intent", help="Exact bound old v2 intent JSON")
     recovery_parser.add_argument("replacement_intent", help="Exact authorized replacement v2 intent JSON")
+    source_repair_parser = commands.add_parser(
+        "bootstrap-source-repair", help="Transport one completed failed source bootstrap into REPAIR"
+    )
+    source_repair_parser.add_argument("intent", help="Exact source-REPAIR bootstrap intent JSON")
+    source_repair_parser.add_argument("--accept-transport", help=argparse.SUPPRESS)
     wakeup_parser = commands.add_parser(
         "wakeup", help="Idempotently wake one canonical PRIMARY execution"
     )
@@ -7253,6 +7428,10 @@ def main(
             )
         elif args.command == "recover-source-bootstrap":
             return recover_source_bootstrap(args.old_intent, args.replacement_intent)
+        elif args.command == "bootstrap-source-repair":
+            return bootstrap_source_repair(
+                args.intent, runner=native_runner, transport_path=args.accept_transport
+            )
         elif args.command == "wakeup":
             repo_root = resolve_repository(args.repo)
             dispatch_state_root = runtime_paths(repo_root).root
