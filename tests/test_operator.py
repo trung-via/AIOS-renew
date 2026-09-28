@@ -5734,7 +5734,10 @@ def test_historical_verification_only_repair_uses_transported_candidate(
         verification_workspaces.append(subject_repo)
         assert git(subject_repo, "rev-parse", "HEAD") == failed_head
         assert (subject_repo / ".git").is_dir()
-        assert not (subject_repo / ".git" / "aios").exists()
+        subject_aios = subject_repo / ".git" / "aios"
+        assert subject_aios.is_dir()
+        assert subject_aios.resolve() != (repo / ".git" / "aios").resolve()
+        assert not any(subject_aios.iterdir())
         completed = subprocess.run(command, **kwargs)
         assert (
             subject_repo / ".git" / "aios" / "pytest-historical-repair"
@@ -6791,7 +6794,10 @@ def test_recover_primary_rebinds_exact_candidate_with_fresh_evidence(
         verification_calls.append(command)
         subject_repo = kwargs["cwd"]
         assert (subject_repo / ".git").is_dir()
-        assert not (subject_repo / ".git" / "aios").exists()
+        subject_aios = subject_repo / ".git" / "aios"
+        assert subject_aios.is_dir()
+        assert subject_aios.resolve() != (fresh / ".git" / "aios").resolve()
+        assert not any(subject_aios.iterdir())
         assert git(subject_repo, "remote", "get-url", "origin") == control_origin
         assert git(subject_repo, "rev-parse", "HEAD") == success.head_sha
         return subprocess.run(command, **kwargs)
