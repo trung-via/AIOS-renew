@@ -9264,6 +9264,45 @@ def _source_repair_bootstrap_intent(bootstrap: dict, target_sha: str) -> dict:
     }
 
 
+@pytest.mark.parametrize("target_kind", [
+    "fixture", "failed_task_206", "source_primary", "current_source", "future_source",
+])
+def test_source_repair_bootstrap_production_rejects_other_targets_before_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_kind: str,
+) -> None:
+    activated = "37437be4e43d07d5c818022cb20d19d9c347da7c"
+    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA == activated
+    source = Path(operator_module.__file__).read_text(encoding="utf-8")
+    assert source.count("_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None =") == 1
+    assert source.count(f'_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = "{activated}"') == 1
+    repo, _, bootstrap = _source_bootstrap_fixture(tmp_path)
+    current_source = Path(operator_module.__file__).resolve().parents[2]
+    target_sha = {
+        "fixture": bootstrap["target_generation_sha"],
+        "failed_task_206": "1669ef080f82862d5e7d4f607eb0d3b592011872",
+        "source_primary": "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6",
+        "current_source": git(current_source, "rev-parse", "HEAD"),
+        "future_source": "f" * 40,
+    }[target_kind]
+    assert target_sha != activated
+    intent = _source_repair_bootstrap_intent(bootstrap, target_sha)
+    path = tmp_path / "unactivated-source-repair.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
+                        lambda **kwargs: pytest.fail("legacy attestation reached"))
+    monkeypatch.setattr(operator_module, "_source_repair_bootstrap_lineage",
+                        lambda *args: pytest.fail("REPAIR lineage reached"))
+    monkeypatch.setattr(operator_module, "run_repair_wakeup",
+                        lambda *args, **kwargs: pytest.fail("REPAIR wakeup reached"))
+    with pytest.raises(OperatorError, match="target is not activated"):
+        operator_module.bootstrap_source_repair(
+            path, runner=lambda *args, **kwargs: pytest.fail("target launched"),
+        )
+    bundle, target = operator_module._source_repair_bootstrap_state(repo, intent)
+    assert not bundle.exists() and not target.exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
 def test_source_repair_bootstrap_closed_and_exact_replay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -9271,7 +9310,7 @@ def test_source_repair_bootstrap_closed_and_exact_replay(
     intent = _source_repair_bootstrap_intent(bootstrap, bootstrap["target_generation_sha"])
     path = tmp_path / "source-repair.json"
     path.write_text(json.dumps(intent), encoding="utf-8")
-    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
+    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA == "37437be4e43d07d5c818022cb20d19d9c347da7c"
     with pytest.raises(OperatorError, match="not activated"):
         operator_module.bootstrap_source_repair(path)
     monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA", intent["target_generation_sha"])
