@@ -4,6 +4,7 @@ import multiprocessing
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 import venv
 from contextlib import contextmanager
@@ -9684,6 +9685,17 @@ def test_source_bootstrap_injected_exact_staging(
 
 
 def test_source_upgrade_stages_exact_v2_edge_without_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Git copies commit-graph filenames into the historical bundle. Keep the
+    # real checkout outside pytest's deeply nested verification temp root.
+    with tempfile.TemporaryDirectory(prefix="au-", dir=Path.home()) as temporary:
+        _exercise_source_upgrade_stages_exact_v2_edge_without_run(
+            Path(temporary), monkeypatch,
+        )
+
+
+def _exercise_source_upgrade_stages_exact_v2_edge_without_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source_sha = operator_module._SOURCE_UPGRADE_SOURCE_SHA
@@ -9740,6 +9752,8 @@ def test_source_upgrade_stages_exact_v2_edge_without_run(
     git(repo, "clone", str(Path(operator_module.__file__).resolve().parents[2]),
         str(historical_bundle / "source"))
     git(historical_bundle / "source", "checkout", "--detach", source_sha)
+    assert git(historical_bundle / "source", "rev-parse", "HEAD") == source_sha
+    assert (historical_bundle / "source" / "src" / "aios_renew" / "operator.py").is_file()
     historical_marker.write_text(json.dumps(operator_module._source_bootstrap_record(
         historical, historical_fp, historical_bundle.name)), encoding="utf-8")
     for suffix in (".consumed", ".completed"):
