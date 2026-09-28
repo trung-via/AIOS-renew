@@ -101,6 +101,7 @@ def materialize_verification_subject(
             raise RuntimeVerificationError("verification subject HEAD mismatch")
         if _git(subject, "status", "--porcelain"):
             raise RuntimeVerificationError("verification subject is initially dirty")
+        (subject / ".git" / "aios").mkdir()
     except RuntimeVerificationError:
         if temp_root is not None:
             try:

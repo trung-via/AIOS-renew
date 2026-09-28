@@ -102,6 +102,63 @@ def test_materialized_subject_stays_exact_when_control_head_moves(
         assert git(subject, "status", "--porcelain") == ""
 
 
+def test_materialized_subject_has_empty_local_scratch_for_relative_command(
+    tmp_path: Path,
+) -> None:
+    control = tmp_path / "control"
+    control.mkdir()
+    git(control, "init")
+    git(control, "config", "user.name", "Test")
+    git(control, "config", "user.email", "test@example.invalid")
+    (control / "basetemp_probe.py").write_text(
+        "import sys\n"
+        "from pathlib import Path\n"
+        "target = Path(sys.argv[1].split('=', 1)[1])\n"
+        "target.mkdir()\n"
+        "(target / 'probe.txt').write_text('ready', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    git(control, "add", "basetemp_probe.py")
+    git(control, "commit", "-m", "candidate")
+    candidate = git(control, "rev-parse", "HEAD")
+    control_scratch = control / ".git" / "aios"
+    control_scratch.mkdir()
+    (control_scratch / "control-sentinel").write_text("control only", encoding="utf-8")
+    command = "python basetemp_probe.py --basetemp=.git/aios/pytest-task204"
+
+    with materialize_verification_subject(
+        control, run_id="RUN-204-001", subject_sha=candidate
+    ) as subject:
+        subject_root = subject.parent
+        scratch = subject / ".git" / "aios"
+        assert scratch.is_dir()
+        assert list(scratch.iterdir()) == []
+        assert not (scratch / "control-sentinel").exists()
+
+        evidence = execute_verification(
+            (command,),
+            run_id="RUN-204-001",
+            subject_sha=candidate,
+            repository=subject,
+            raw_directory=control_scratch / "verification",
+        )
+
+        assert evidence[0].source.command == command
+        assert evidence[0].subject_sha == candidate
+        assert evidence[0].result.exit_code == 0
+        assert list(scratch.iterdir()) == [scratch / "pytest-task204"]
+        assert (scratch / "pytest-task204" / "probe.txt").read_text(
+            encoding="utf-8"
+        ) == "ready"
+        assert git(subject, "rev-parse", "HEAD") == candidate
+        assert git(subject, "status", "--porcelain") == ""
+
+    assert not subject_root.exists()
+    assert (control_scratch / "control-sentinel").read_text(
+        encoding="utf-8"
+    ) == "control only"
+
+
 def test_relative_git_basetemp_command_runs_unchanged_from_subject_repo(
     tmp_path: Path,
 ) -> None:
