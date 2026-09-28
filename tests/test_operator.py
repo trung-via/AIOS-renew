@@ -9400,25 +9400,26 @@ def test_source_repair_uses_canonical_failed_candidate_policy(
 
 
 @pytest.mark.parametrize("target_kind", [
-    "fixture", "task_206_target", "failed_task_206", "source_primary",
-    "task_209_candidate_current_source", "future_source",
+    "fixture", "task_206_target", "failed_task_206", "task_208_target",
+    "source_primary", "task_211_candidate_current_source", "future_source",
 ])
 def test_source_repair_bootstrap_production_rejects_other_targets_before_staging(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_kind: str,
 ) -> None:
-    activated = "ce56528487e1f521d0c458dc4e48575620d87a42"
-    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
+    activated = "062031ab91118ecf784944e8dd7e3d76b0553c74"
+    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA == activated
     source = Path(operator_module.__file__).read_text(encoding="utf-8")
     assert source.count("_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None =") == 1
-    assert source.count('_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = None') == 1
+    assert source.count(f'_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA: str | None = "{activated}"') == 1
     repo, _, bootstrap = _source_bootstrap_fixture(tmp_path)
     current_source = Path(operator_module.__file__).resolve().parents[2]
     target_sha = {
         "fixture": bootstrap["target_generation_sha"],
         "task_206_target": "37437be4e43d07d5c818022cb20d19d9c347da7c",
         "failed_task_206": "1669ef080f82862d5e7d4f607eb0d3b592011872",
+        "task_208_target": "ce56528487e1f521d0c458dc4e48575620d87a42",
         "source_primary": "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6",
-        "task_209_candidate_current_source": git(current_source, "rev-parse", "HEAD"),
+        "task_211_candidate_current_source": git(current_source, "rev-parse", "HEAD"),
         "future_source": "f" * 40,
     }[target_kind]
     assert target_sha != activated
@@ -9447,7 +9448,7 @@ def test_source_repair_bootstrap_closed_and_exact_replay(
     intent = _source_repair_bootstrap_intent(bootstrap, bootstrap["target_generation_sha"])
     path = tmp_path / "source-repair.json"
     path.write_text(json.dumps(intent), encoding="utf-8")
-    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
+    assert operator_module._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA == "062031ab91118ecf784944e8dd7e3d76b0553c74"
     with pytest.raises(OperatorError, match="not activated"):
         operator_module.bootstrap_source_repair(path)
     monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA", intent["target_generation_sha"])
@@ -9528,7 +9529,7 @@ from types import SimpleNamespace
 from aios_renew import operator
 
 intent = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-assert operator._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA is None
+assert operator._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA == "062031ab91118ecf784944e8dd7e3d76b0553c74"
 assert intent["target_generation_sha"] != operator._SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA
 lineage_checked = []
 operator._source_repair_bootstrap_lineage = lambda root, document: lineage_checked.append((root, document))
