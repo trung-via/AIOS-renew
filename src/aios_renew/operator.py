@@ -3810,8 +3810,8 @@ _SOURCE_REPAIR_BOOTSTRAP_FIELDS = frozenset({
     "model", "reasoning_effort", "model_source", "effort_source",
 })
 
-# A distinct, post-terminal PRIMARY consumer. TASK-218 publishes no activation.
-_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA: str | None = "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
+# A distinct, post-terminal PRIMARY consumer requires separate exact activation.
+_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA: str | None = None
 _SOURCE_BOOTSTRAP_SUCCESSOR_FIELDS = frozenset({
     "format", "version", "repository", "bootstrap_fingerprint", "failed_run_id",
     "legacy_generation_sha", "prior_target_generation_sha",
@@ -4090,6 +4090,56 @@ print(json.dumps({'generation': sha, 'operator': str(actual)}))
         return sha
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise OperatorError("upgrade installed generation attestation failed") from exc
+
+
+def _successor_installed_generation_sha(
+    *, runner: NativeRunner = subprocess.run,
+) -> str:
+    """Attest installed provenance; the failed lineage decides the required SHA.
+
+    The reviewed control module and staged target may each live outside the
+    isolated interpreter's installed distribution. Neither source path or
+    migration capability classifies the installed generation here.
+    """
+
+    probe = """import importlib.metadata as metadata
+import json
+import pathlib
+import re
+import aios_renew.operator as active
+matches = [candidate for candidate in metadata.distributions()
+           if re.sub('[-_.]+', '-', candidate.metadata.get('Name', '')).lower() == 'aios-renew']
+if len(matches) != 1:
+    raise SystemExit(2)
+dist = metadata.distribution('aios-renew')
+origin = json.loads(dist.read_text('direct_url.json') or 'null')
+sha = origin['vcs_info']['commit_id']
+installed = pathlib.Path(dist.locate_file('aios_renew/operator.py')).resolve()
+actual = pathlib.Path(active.__file__).resolve()
+if (installed != actual or not actual.is_file()
+        or origin['vcs_info']['vcs'] != 'git'
+        or not isinstance(origin.get('url'), str) or not origin['url']
+        or 'dir_info' in origin or 'archive_info' in origin
+        or not isinstance(sha, str) or not re.fullmatch('[0-9a-f]{40}', sha)):
+    raise SystemExit(2)
+print(json.dumps({'generation': sha, 'operator': str(actual)}))
+"""
+    try:
+        completed = runner(
+            [sys.executable, "-I", "-c", probe], capture_output=True,
+            text=True, check=False,
+        )
+        if completed.returncode != 0:
+            raise OperatorError("successor installed generation attestation failed")
+        witness = json.loads(completed.stdout)
+        sha = witness["generation"]
+        operator = Path(witness["operator"])
+        if (not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha)
+                or not operator.is_absolute() or not operator.is_file()):
+            raise OperatorError("successor installed generation attestation is invalid")
+        return sha
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise OperatorError("successor installed generation attestation failed") from exc
 
 
 def _migration_fingerprint(intent: Mapping[str, Any]) -> str:
@@ -5361,7 +5411,7 @@ def bootstrap_source_successor_primary(
             source_root = Path(__file__).resolve().parent.parent.parent
             if source_root != target.resolve():
                 raise OperatorError("running source differs from bound successor target")
-            if _legacy_installed_generation_sha(runner=legacy_runner) != intent["legacy_generation_sha"]:
+            if _successor_installed_generation_sha(runner=legacy_runner) != intent["legacy_generation_sha"]:
                 raise OperatorError("source-bootstrap successor installed generation mismatch")
             run_id, terminal = _source_bootstrap_successor_run(root, intent)
             _source_bootstrap_successor_lineage(root, intent, check_control=run_id is None)
@@ -5379,7 +5429,7 @@ def bootstrap_source_successor_primary(
             print(summary.render())
             return 0
     with RepositoryLock(lock):
-        if _legacy_installed_generation_sha(runner=legacy_runner) != intent["legacy_generation_sha"]:
+        if _successor_installed_generation_sha(runner=legacy_runner) != intent["legacy_generation_sha"]:
             raise OperatorError("source-bootstrap successor installed generation mismatch")
         run_id, terminal = _source_bootstrap_successor_run(root, intent)
         _source_bootstrap_successor_lineage(root, intent, check_control=run_id is None)

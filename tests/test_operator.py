@@ -2,7 +2,9 @@ import ast
 import inspect
 import json
 import multiprocessing
+import os
 import shutil
+import site
 import subprocess
 import sys
 import tempfile
@@ -9279,20 +9281,49 @@ def _source_repair_bootstrap_intent(bootstrap: dict, target_sha: str) -> dict:
 
 
 def _source_successor_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, dict, dict]:
-    repo, source, bootstrap = _source_bootstrap_fixture(tmp_path)
-    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA",
-                        bootstrap["target_generation_sha"])
-    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
-                        lambda **kwargs: bootstrap["source_generation_sha"])
-    old_path = tmp_path / "bootstrap.json"
-    old_path.write_text(json.dumps(bootstrap), encoding="utf-8")
-    assert operator_module.bootstrap_source_primary(
-        old_path, runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0)
-    ) == 0
+    installed_sha = "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
+    prior_target = "44eee353eda376c9db8cd88d97184d3122651bf5"
+    repo, source, bootstrap = _source_bootstrap_fixture(
+        tmp_path, source_generation=installed_sha,
+    )
+    control_source = Path(operator_module.__file__).resolve().parents[2]
+    bootstrap["target_generation_sha"] = prior_target
+    bootstrap["target_url"] = str(control_source)
     fingerprint = operator_module._migration_fingerprint(bootstrap)
     marker = operator_module._migration_marker(repo, fingerprint)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    bundle = runtime_state_root(repo) / "m" / f"{fingerprint[:12]}-source"
+    bundle.mkdir(parents=True)
+    (bundle / "intent.json").write_text(json.dumps(bootstrap), encoding="utf-8")
+    git(repo, "clone", "--no-checkout", str(control_source), str(bundle / "source"))
+    git(bundle / "source", "checkout", "--detach", prior_target)
+    marker.write_text(json.dumps(operator_module._source_bootstrap_record(
+        bootstrap, fingerprint, bundle.name)), encoding="utf-8")
     marker.with_suffix(".consumed").write_text(fingerprint, encoding="utf-8")
     marker.with_suffix(".completed").write_text(fingerprint, encoding="utf-8")
+    environment = tmp_path / "installed-source"
+    venv.EnvBuilder(with_pip=False).create(environment)
+    python = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    site = Path(subprocess.check_output(
+        [str(python), "-I", "-c", "import site; print(site.getsitepackages()[0])"],
+        text=True,
+    ).strip())
+    package = site / "aios_renew"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "operator.py").write_text(
+        "def migrate_primary(): pass\n# migrate-primary\n", encoding="utf-8",
+    )
+    metadata = site / "aios_renew-0.0.dist-info"
+    metadata.mkdir()
+    (metadata / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: aios-renew\nVersion: 0.0\n", encoding="utf-8",
+    )
+    (metadata / "direct_url.json").write_text(json.dumps({
+        "url": "https://example.invalid/aios-renew.git",
+        "vcs_info": {"vcs": "git", "commit_id": installed_sha},
+    }), encoding="utf-8")
+    monkeypatch.setattr(operator_module.sys, "executable", str(python))
     state = runtime_paths(repo)
     run_id = "RUN-101-001"
     (state.runs / f"{run_id}.json").write_text(json.dumps({
@@ -9309,8 +9340,17 @@ def _source_successor_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         repo, {".ai/tasks/TASK-101.yaml": TASK_SOURCE.replace("revision: 1", "revision: 3")},
         "Brain-authored successor TASK",
     )
+    current_control = publish_upstream(
+        repo, {"SUCCESSOR_CONTROL": "fast-forward descendant\n"},
+        "later clean control commit",
+    )
     git(repo, "fetch", "origin", "main")
     git(repo, "merge", "--ff-only", "origin/main")
+    shutil.copytree(
+        Path(operator_module.__file__).resolve().parent,
+        source / "src" / "aios_renew", dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
     (source / "successor-capability").write_text("published", encoding="utf-8")
     git(source, "add", ".")
     git(source, "commit", "-m", "published successor source")
@@ -9321,7 +9361,7 @@ def _source_successor_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
         "prior_target_generation_sha": bootstrap["target_generation_sha"],
         "target_generation_sha": git(source, "rev-parse", "HEAD"),
         "target_url": str(source), "source_control_sha": bootstrap["source_control_sha"],
-        "current_control_sha": successor_control, "pin_path": bootstrap["pin_path"],
+        "current_control_sha": current_control, "pin_path": bootstrap["pin_path"],
         "source_pin_blob_sha": bootstrap["source_pin_blob_sha"],
         "task_id": "TASK-101", "prior_task_revision": 2, "task_revision": 3,
         "task_blob_sha": git(repo, "rev-parse", f"{successor_control}:.ai/tasks/TASK-101.yaml"),
@@ -9337,7 +9377,7 @@ def test_source_successor_production_activation_and_exact_lineage(
     repo, bootstrap, intent = _source_successor_fixture(tmp_path, monkeypatch)
     path = tmp_path / "successor.json"
     path.write_text(json.dumps(intent), encoding="utf-8")
-    published = "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
+    published = None
     source = Path(operator_module.__file__).read_text(encoding="utf-8")
     assignments = [node for node in ast.walk(ast.parse(source))
                    if isinstance(node, ast.AnnAssign)
@@ -9345,11 +9385,9 @@ def test_source_successor_production_activation_and_exact_lineage(
                    and node.target.id == "_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA"]
     assert len(assignments) == 1
     assert isinstance(assignments[0].value, ast.Constant)
-    assert assignments[0].value.value == published
-    assert operator_module._SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA == published
+    assert assignments[0].value.value is published
+    assert operator_module._SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA is published
     for target_sha in (
-        "44eee353eda376c9db8cd88d97184d3122651bf5",
-        "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6",
         intent["target_generation_sha"], git(Path(operator_module.__file__).parents[2], "rev-parse", "HEAD"),
         "f" * 40,
     ):
@@ -9359,14 +9397,19 @@ def test_source_successor_production_activation_and_exact_lineage(
             operator_module.bootstrap_source_successor_primary(
                 path, runner=lambda *args, **kwargs: pytest.fail("target launched"),
             )
+    for target_sha in (bootstrap["target_generation_sha"], bootstrap["source_generation_sha"]):
+        path.write_text(json.dumps({**intent, "target_generation_sha": target_sha}), encoding="utf-8")
+        with pytest.raises(OperatorError, match="generations are not distinct"):
+            operator_module.bootstrap_source_successor_primary(path)
     assert not (runtime_state_root(repo).parent / "s").exists()
     assert not (runtime_paths(repo).runs / "RUN-101-002.json").exists()
     path.write_text(json.dumps(intent), encoding="utf-8")
     operator_module._source_bootstrap_successor_lineage(repo, intent)
     for change in ({"failed_run_id": "RUN-101-002"}, {"task_revision": 2},
+                   {"task_revision": 1}, {"task_id": "TASK-102"},
                    {"source_pin_blob_sha": "f" * 40}, {"executor": "antigravity"}):
         altered = {**intent, **change}
-        if change.get("task_revision") == 2:
+        if "task_revision" in change:
             with pytest.raises(OperatorError, match="strictly newer"):
                 operator_module._exact_source_bootstrap_successor_intent(altered)
         else:
@@ -9377,6 +9420,20 @@ def test_source_successor_production_activation_and_exact_lineage(
     with pytest.raises(OperatorError, match="clean attached main"):
         operator_module._source_bootstrap_successor_lineage(repo, intent)
     dirty.unlink()
+    git(repo, "checkout", "--detach", intent["current_control_sha"])
+    with pytest.raises(OperatorError, match="Git command failed|clean attached main"):
+        operator_module._source_bootstrap_successor_lineage(repo, intent)
+    git(repo, "checkout", "main")
+    disconnected = git(repo, "commit-tree", "HEAD^{tree}", "-m", "unrelated control")
+    git(repo, "update-ref", "refs/heads/main", disconnected)
+    try:
+        with pytest.raises(OperatorError):
+            operator_module._source_bootstrap_successor_lineage(
+                repo, {**intent, "current_control_sha": disconnected,
+                       "task_commit_sha": disconnected},
+            )
+    finally:
+        git(repo, "update-ref", "refs/heads/main", intent["current_control_sha"])
     state = runtime_paths(repo)
     failure = state.failures / "RUN-101-001.json"
     failure.unlink()
@@ -9423,47 +9480,9 @@ def test_source_successor_stage_replay_and_conflict(
     with pytest.raises(OperatorError, match="transport identity mismatch"):
         operator_module._source_bootstrap_successor_record(repo, intent)
     bound.write_text(json.dumps(intent), encoding="utf-8")
-    monkeypatch.setattr(operator_module, "__file__",
-                        str(bound.parent / "s" / "src" / "aios_renew" / "operator.py"))
-    operator_module._validate_successor_execution(
-        repo, str(bound), intent["task_id"], intent["executor"], False,
-        intent["current_control_sha"], None, intent["task_revision"],
-        intent["task_blob_sha"], intent["task_commit_sha"],
-    )
-    monkeypatch.setattr(operator_module, "_installed_generation_sha",
-                        lambda: intent["legacy_generation_sha"])
-    with pytest.raises(OperatorError, match="active generation was superseded"):
-        operator_module.run_task(intent["task_id"], executor=intent["executor"],
-                                 repo=repo, synchronize=False)
-    invocations = []
-    def admitted(*args, **kwargs):
-        invocations.append(kwargs)
-        state = runtime_paths(repo)
-        (state.runs / "RUN-101-002.json").write_text(json.dumps({
-            "run_id": "RUN-101-002", "task": {"id": "TASK-101", "revision": 3},
-            "executor": "codex", "base_sha": intent["current_control_sha"],
-            "workspace": str(repo), "status": "ACTIVE",
-        }), encoding="utf-8")
-        (state.results / "RUN-101-002.json").write_text(json.dumps({
-            "result": {"head_sha": intent["current_control_sha"], "claims": [],
-                       "changed_files": [], "unresolved": []}, "evidence": [],
-        }), encoding="utf-8")
-        return SimpleNamespace(render=lambda: "ADMITTED")
-    monkeypatch.setattr(operator_module, "run_task", admitted)
-    assert operator_module.bootstrap_source_successor_primary(path, transport_path=bound) == 0
-    assert operator_module.bootstrap_source_successor_primary(path, transport_path=bound) == 0
-    assert len(invocations) == 1
-    assert invocations[0]["_successor_transport"] == str(bound)
     conflicting = {**intent, "successor_delivery_id": "successor-101-002"}
     with pytest.raises(OperatorError, match="competing"):
         operator_module._source_bootstrap_successor_lineage(repo, conflicting)
-    # Even a forced locator collision cannot substitute a different delivery.
-    sha256 = operator_module.hashlib.sha256
-    with monkeypatch.context() as patch:
-        patch.setattr(operator_module, "hashlib", SimpleNamespace(
-            sha256=lambda _: sha256(intent["successor_delivery_id"].encode("utf-8"))))
-        with pytest.raises(OperatorError, match="transport identity mismatch"):
-            operator_module._source_bootstrap_successor_record(repo, conflicting)
     (bound.parent / "s" / "src" / "aios_renew" / "operator.py").write_text(
         "# changed target source\n", encoding="utf-8"
     )
@@ -9471,13 +9490,82 @@ def test_source_successor_stage_replay_and_conflict(
         operator_module.bootstrap_source_successor_primary(path, transport_path=bound)
 
 
+def test_source_successor_isolated_installed_provenance_rejects_before_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _, intent = _source_successor_fixture(tmp_path, monkeypatch)
+    assert intent["legacy_generation_sha"] == "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
+    assert intent["prior_target_generation_sha"] == "44eee353eda376c9db8cd88d97184d3122651bf5"
+    assert intent["task_commit_sha"] != intent["current_control_sha"]
+    assert (git(repo, "rev-parse", f"{intent['current_control_sha']}:.ai/tasks/TASK-101.yaml")
+            == intent["task_blob_sha"])
+    assert (git(repo, "show", f"{intent['source_control_sha']}:{intent['pin_path']}")
+            == git(repo, "show", f"{intent['current_control_sha']}:{intent['pin_path']}"))
+    assert operator_module._successor_installed_generation_sha() == intent["legacy_generation_sha"]
+    with pytest.raises(OperatorError, match="legacy installed generation attestation failed"):
+        operator_module._legacy_installed_generation_sha()
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA",
+                        intent["target_generation_sha"])
+    path = tmp_path / "successor.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    python = Path(sys.executable)
+    installed_site = Path(subprocess.check_output(
+        [str(python), "-I", "-c", "import site; print(site.getsitepackages()[0])"],
+        text=True,
+    ).strip())
+    direct_url = installed_site / "aios_renew-0.0.dist-info" / "direct_url.json"
+    original = json.loads(direct_url.read_text(encoding="utf-8"))
+    for malformed in (
+        {**original, "vcs_info": {"vcs": "git", "commit_id": "a" * 40}},
+        {**original, "dir_info": {"editable": True}},
+        {**original, "vcs_info": {"vcs": "hg", "commit_id": intent["legacy_generation_sha"]}},
+        {**original, "vcs_info": {"vcs": "git", "commit_id": "floating"}},
+        {"url": original["url"]},
+    ):
+        direct_url.write_text(json.dumps(malformed), encoding="utf-8")
+        with pytest.raises(OperatorError, match="attestation failed|generation mismatch"):
+            operator_module.bootstrap_source_successor_primary(
+                path, runner=lambda *args, **kwargs: pytest.fail("target launched"),
+            )
+        assert not (runtime_paths(repo).runs / "RUN-101-002.json").exists()
+    direct_url.write_text(json.dumps(original), encoding="utf-8")
+    shadow = tmp_path / "shadow" / "aios_renew"
+    shadow.mkdir(parents=True)
+    (shadow / "__init__.py").write_text("", encoding="utf-8")
+    (shadow / "operator.py").write_text("# wrong imported path\n", encoding="utf-8")
+    sitecustomize = installed_site / "sitecustomize.py"
+    sitecustomize.write_text(
+        f"import sys\nsys.path.insert(0, {str(shadow.parent)!r})\n", encoding="utf-8",
+    )
+    try:
+        with pytest.raises(OperatorError, match="attestation failed"):
+            operator_module.bootstrap_source_successor_primary(
+                path, runner=lambda *args, **kwargs: pytest.fail("target launched"),
+            )
+    finally:
+        sitecustomize.unlink()
+    duplicate = installed_site / "aios_renew-0.1.dist-info"
+    duplicate.mkdir()
+    (duplicate / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: aios-renew\nVersion: 0.1\n", encoding="utf-8",
+    )
+    (duplicate / "direct_url.json").write_text(json.dumps(original), encoding="utf-8")
+    try:
+        with pytest.raises(OperatorError, match="attestation failed"):
+            operator_module.bootstrap_source_successor_primary(
+                path, runner=lambda *args, **kwargs: pytest.fail("target launched"),
+            )
+    finally:
+        shutil.rmtree(duplicate)
+    assert not (runtime_paths(repo).runs / "RUN-101-002.json").exists()
+
+
 def test_source_successor_published_target_consumes_without_activation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, _, intent = _source_successor_fixture(tmp_path, monkeypatch)
-    published = "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
-    intent["target_generation_sha"] = published
-    intent["target_url"] = str(Path(operator_module.__file__).resolve().parents[2])
+    published = intent["target_generation_sha"]
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA", published)
     path = tmp_path / "successor.json"
     path.write_text(json.dumps(intent), encoding="utf-8")
     launched = []
@@ -9494,8 +9582,8 @@ def test_source_successor_published_target_consumes_without_activation(
     assert git(target, "rev-parse", "HEAD") == published
     assert json.loads(bound.read_text(encoding="utf-8")) == intent
 
-    # The real TASK-218 source has a closed activation slot. Import it afresh
-    # from the staged checkout; the control interpreter cannot donate its slot.
+    # The staged candidate has a closed activation slot. Import it afresh;
+    # only the control module receives the exact test-local staging activation.
     child = """
 import json
 import sys
@@ -9517,10 +9605,20 @@ def primary(task_id, **kwargs):
     )
     assert task_id == intent["task_id"]
     assert kwargs["_successor_transport"] == sys.argv[2]
+    if sys.argv[6] == "record":
+        state = operator.runtime_paths(Path(intent["repository"]))
+        (state.runs / "RUN-101-002.json").write_text(json.dumps({
+            "run_id": "RUN-101-002", "task": {"id": task_id, "revision": intent["task_revision"]},
+            "executor": intent["executor"], "base_sha": intent["current_control_sha"],
+            "workspace": intent["repository"], "status": "ACTIVE",
+        }))
+        (state.results / "RUN-101-002.json").write_text(json.dumps({
+            "result": {"head_sha": intent["current_control_sha"], "claims": [],
+                       "changed_files": [], "unresolved": []}, "evidence": [],
+        }))
     print("SUCCESSOR_PRIMARY_DELEGATED")
     return SimpleNamespace(render=lambda: "delegated")
 operator.run_task = primary
-operator._legacy_installed_generation_sha = lambda **kwargs: intent["legacy_generation_sha"]
 raise SystemExit(operator.main([
     "bootstrap-source-successor-primary", sys.argv[1],
     "--accept-transport", sys.argv[2],
@@ -9528,17 +9626,42 @@ raise SystemExit(operator.main([
 """
 
     def consume(intent_file: Path, transport_file: Path, *, exact_source: bool = True,
-                published_source: bool = True):
+                published_source: bool = True, record: bool = False):
         env = dict(launched[0][1])
         env["PYTHONDONTWRITEBYTECODE"] = "1"
+        env["PYTHONPATH"] += os.pathsep + site.getsitepackages()[-1]
         if not exact_source:
-            env["PYTHONPATH"] = str(Path(operator_module.__file__).resolve().parents[1])
+            env["PYTHONPATH"] = (str(Path(operator_module.__file__).resolve().parents[1])
+                                 + os.pathsep + site.getsitepackages()[-1])
         return subprocess.run(
             [sys.executable, "-c", child, str(intent_file), str(transport_file),
              "exact" if exact_source else "wrong", str(target),
-             "published" if published_source else "wrong_head"],
+             "published" if published_source else "wrong_head",
+             "record" if record else "observe"],
             cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
         )
+
+    python = Path(sys.executable)
+    installed_site = Path(subprocess.check_output(
+        [str(python), "-I", "-c", "import site; print(site.getsitepackages()[0])"],
+        text=True,
+    ).strip())
+    control_operator = Path(operator_module.__file__).resolve()
+    target_operator = (target / "src" / "aios_renew" / "operator.py").resolve()
+    installed_operator = (installed_site / "aios_renew" / "operator.py").resolve()
+    assert len({control_operator, target_operator, installed_operator}) == 3
+    assert published != git(control_operator.parents[2], "rev-parse", "HEAD")
+    direct_url = installed_site / "aios_renew-0.0.dist-info" / "direct_url.json"
+    original = direct_url.read_text(encoding="utf-8")
+    direct_url.write_text(json.dumps({
+        "url": "https://example.invalid/aios-renew.git",
+        "vcs_info": {"vcs": "git", "commit_id": "a" * 40},
+    }), encoding="utf-8")
+    rejected_installed = consume(path, bound)
+    assert rejected_installed.returncode != 0
+    assert "installed generation mismatch" in rejected_installed.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" not in rejected_installed.stdout
+    direct_url.write_text(original, encoding="utf-8")
 
     success = consume(path, bound)
     assert success.returncode == 0, success.stderr
@@ -9562,7 +9685,7 @@ raise SystemExit(operator.main([
     assert "running source differs" in wrong_source.stderr
     assert "SUCCESSOR_PRIMARY_DELEGATED" not in wrong_source.stdout
 
-    git(target, "checkout", "--detach", git(Path(operator_module.__file__).parents[2], "rev-parse", "HEAD"))
+    git(target, "commit", "--allow-empty", "-m", "wrong successor HEAD")
     wrong_head = consume(path, bound, published_source=False)
     assert wrong_head.returncode != 0
     assert "transport identity mismatch" in wrong_head.stderr
@@ -9589,6 +9712,17 @@ raise SystemExit(operator.main([
     assert "completed failed v2 edge" in wrong_lineage.stderr
     assert "SUCCESSOR_PRIMARY_DELEGATED" not in wrong_lineage.stdout
     assert not (runtime_paths(repo).runs / "RUN-101-002.json").exists()
+    (runtime_paths(repo).failures / "RUN-101-001.json").write_text(json.dumps({
+        "kind": "FAILURE", "run_id": "RUN-101-001",
+        "task": {"id": "TASK-101", "revision": 2},
+        "executor": "codex", "base_sha": intent["source_control_sha"],
+    }), encoding="utf-8")
+    admitted = consume(path, bound, record=True)
+    assert admitted.returncode == 0, admitted.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" in admitted.stdout
+    replay = consume(path, bound)
+    assert replay.returncode == 0, replay.stderr
+    assert "SUCCESSOR_PRIMARY_DELEGATED" not in replay.stdout
 
 
 def test_source_successor_transport_path_budget_and_full_identity(
