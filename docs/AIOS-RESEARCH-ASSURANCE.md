@@ -394,7 +394,9 @@ RA-5 defines a dedicated research-provider protocol family rather than modifying
 The provider request has exactly two modes:
 
 - EVIDENCE_CONSTRUCT — one self-sufficient request containing the exact Research Brief, research-high-value-v1 audit profile, exact successful baseline Acquisition Request/Attempt material, and optional exact predecessor Research Record needed for refresh context;
-- AUDIT_RECONCILE — the same exact semantic basis plus the exact RA-4 Evidence Construct and exact successful counter-evidence Request/Attempt material.
+- AUDIT_RECONCILE — the same exact semantic basis plus the exact RA-4 Evidence Construct, exact successful counter-evidence Request/Attempt material, and a bounded Stage-1 lineage projection binding the exact Stage-1 request fingerprint, normalized Stage-1 return fingerprint and construct fingerprint.
+
+Stage 2 must prove that Research Brief, audit profile, baseline acquisitions and predecessor Research Record are exactly the same semantic basis used by Stage 1 and that its Evidence Construct is exactly the construct derived from that Stage-1 return. A Stage-2 builder must fail closed on any subject substitution instead of merging reasoning across different research contexts.
 
 A provider request fingerprint is derived only from normalized semantic material. Provider, model, endpoint, session, host, invocation id, credentials, latency, token usage and native transport metadata are excluded from semantic identity.
 
