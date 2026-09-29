@@ -1256,7 +1256,7 @@ sequence:
       status: DONE
       outcome: PASS_WITH_BOUNDARY_REFINEMENT
       completed_on: "2026-09-29"
-      planning_document_commit: "dfaab9c43b7e5e1796db9f7c0223348c58be3030"
+      planning_document_commit: "7c77c342f9d150103acf26dfd8480f075ca791a2"
       findings:
         - RA2_RA5_ADAPTER_BOUNDARY_SEPARATION
         - SOURCE_REPRESENTATION_CLASS_DISTINCTION
@@ -1319,14 +1319,31 @@ sequence:
     status: NEXT
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_MANDATORY_PROTOCOL_REFINEMENTS
+      completed_on: "2026-09-29"
+      planning_document_commit: "7c77c342f9d150103acf26dfd8480f075ca791a2"
+      findings:
+        - PURE_PROTOCOL_NO_TOOL_INVOCATION
+        - SUCCESS_ATTEMPTS_ONLY_FOR_SEMANTIC_ADVANCEMENT
+        - OPERATIONAL_FAILURE_BLOCKS_NOT_CLOSES
+        - PASS1_PRECOMMITS_COUNTER_EVIDENCE_PLAN
+        - EXACTLY_ONE_COUNTER_EVIDENCE_BATCH
+        - NO_PASS2_CHALLENGE_OR_REQUEST_MUTATION
+        - COMPLETE_NINE_LENS_AUDIT_COVERAGE
+        - EXACT_PASS1_FINAL_CLAIM_RECONCILIATION
+        - GLOBAL_SOURCE_CORPUS_BOUND
+        - BRAIN_DECLARED_BLOCKER_CLOSURE_CONSISTENCY
+        - NO_RECURSIVE_RESEARCH_LOOP
     task_id: null
     objective: >-
-      Audit and freeze the exact bounded two-pass Research Assurance protocol before
-      authoring any implementation TASK.
+      Author the exact RA-4 pure two-pass protocol TASK from the audited Research
+      Assurance v2.4 baseline before any Executor invocation.
 
 research_assurance:
   id: research-assurance
-  version: 2.3
+  version: 2.4
   status: ACTIVE
   approved_on: "2026-09-29"
   approved_against_main_sha: "6538f2762620c510e594e7c1842319bc4a783ccf"
@@ -1440,10 +1457,13 @@ research_assurance:
     - id: RA-4
       name: Two-Pass Research Assurance Protocol
       status: NEXT_UNAUTHORED
+      architecture_audit: PASS_WITH_MANDATORY_PROTOCOL_REFINEMENTS
       objective: >-
-        Implement Evidence Construct followed by exactly one bounded counter-evidence
-        acquisition and adversarial audit/reconciliation/final closure pass, with no
-        recursive research loop, yielding RESEARCH_CANDIDATE or INSUFFICIENT_EVIDENCE.
+        Define a pure content-addressed Evidence Construct plus one exact Pass-2
+        reconciliation/closure contract. Pass 1 precommits all Challenge Targets and
+        counter-evidence requests before results exist; Pass 2 accepts only exact successful
+        attempts, requires nine-lens audit coverage and exact claim reconciliation, then
+        produces one final Research Record. No acquisition I/O or recursive research.
     - id: RA-5
       name: Provider & Tool Portability Contracts
       status: PLANNED
@@ -1470,10 +1490,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only RA-4 — Two-Pass Research Assurance Protocol as a Human/Brain
-    architecture audit and TASK-authoring step. RA-3 is reviewed and published. Until
-    RA-4 is audited and an exact TASK is authored, do not invoke an Executor or widen
-    into provider/tool portability or first-class RESEARCH Flow integration.
+    Continue only RA-4 — Two-Pass Research Assurance Protocol. Its architecture audit
+    is closed on Research Assurance v2.4; the next action is to author and bind one exact
+    RA-4 TASK. Do not invoke an Executor before exact TASK authoring/Brain Sync and do not
+    widen into RA-5 provider/tool portability or RA-6 RESEARCH Flow integration.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1482,9 +1502,9 @@ research_assurance:
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
     RA-1 through RA-3 are reviewed/published, with RA-3 published at exact SHA
-    222ce1e8e9405c624c1f8573b8af477a4f28f6db. RA-4 is now the unique planning NEXT but
-    remains unauthored. RA-4 TASK authoring is permitted only after its architecture
-    audit closes; RA-5 through RA-7 remain gated.
+    222ce1e8e9405c624c1f8573b8af477a4f28f6db. RA-4 architecture audit is closed on v2.4
+    and exact TASK authoring is now permitted. Execution remains forbidden until that TASK
+    revision is canonicalized and fresh Brain Sync selects it. RA-5 through RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
