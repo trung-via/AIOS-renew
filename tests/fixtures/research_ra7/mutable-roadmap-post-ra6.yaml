@@ -1,0 +1,1668 @@
+version: 1
+active_track: research-assurance
+active_track_status: ACTIVE
+planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+planning_baseline:
+  id: bp-0-architecture-baseline
+  status: HUMAN_APPROVED
+  approved_on: "2026-09-17"
+  approved_against_main_sha: "c96eb8b52acd865b9453409e6598e08a8bd4e48e"
+  authority: HUMAN_BRAIN_PLANNING
+  note: >-
+    BP-0 is the Human-approved architecture and roadmap planning baseline. It does
+    not claim implementation completion for BP-1 through BP-9, does not create RUN
+    or verification truth, and does not alter frozen Kernel v0.1 semantics.
+verification_foundation_audit:
+  id: ta-0-ta-1-verification-foundation
+  status: HUMAN_APPROVED
+  approved_on: "2026-09-20"
+  approved_against_main_sha: "edd7d8d92d54900c56442bbfcddb8648ec4d2e09"
+  authority: HUMAN_BRAIN_PLANNING
+  note: >-
+    TA-0 and TA-1 confirmed a prospective verification-foundation gap: minimum-sufficient
+    verification/subsumption enforcement is incomplete, intrinsic full-suite runtime is
+    dominated by Git-heavy control-plane test harnesses, long verification is coupled to
+    mutable control-checkout movement, and parallel speedup is not yet conformance-proven.
+    Historical Performance Closure engineering artifacts remain immutable and are not
+    reinterpreted by this planning decision.
+human_priority_side_track:
+  id: codex-gpt6-sol-effort-policy-alignment-v2
+  status: COMPLETE
+  approved_on: "2026-09-27"
+  approved_against_main_sha: "7eca2f912500297882bcaa5362b455d114729b63"
+  authority: HUMAN_BRAIN_PLANNING
+  planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+  sequence:
+    - TASK-195
+  return_to: bp-9-downstream-adoption
+  target:
+    executor: codex
+    model: gpt-6-sol
+    default_reasoning_effort: high
+    supported_reasoning_efforts:
+      - none
+      - low
+      - medium
+      - high
+      - xhigh
+      - max
+  source_basis:
+    authority: OPENAI_CURRENT_MODEL_CAPABILITY_PLUS_CANONICAL_REPOSITORY_AUDIT
+    note: >-
+      GPT-6 Sol currently supports none/low/medium/high/xhigh/max. Canonical AIOS
+      policy currently admits only low/medium/high and defaults Codex to medium.
+      The AIOS execution-profile resolver and Codex adapter already transport an
+      exact validated effort without a hard-coded three-level runtime enum, so this
+      is a narrow repository-policy/default alignment plus regression/documentation
+      change, not a lifecycle or carrier redesign.
+  historical_completed:
+    id: execution-profile-selection-v1
+    status: COMPLETE
+    approved_on: "2026-09-23"
+    sequence:
+      - TASK-162
+      - TASK-163
+  note: >-
+    Human explicitly prioritizes Codex GPT-6 Sol effort-capability alignment and a
+    gpt-6-sol/high repository default before BP9 downstream adoption. This task must
+    finish through review/publication first so Python Agent adopts one final exact
+    reviewed pin rather than migrating an immediately stale medium/three-effort policy.
+next_items:
+  - ra-7-real-project-proof-closure
+sequence:
+  - id: admission-failure-v2
+    status: DONE
+    completed_by:
+      task_id: TASK-081
+      published_sha: "65c1597eb59b06041fba1d749f2dea87e2c00833"
+  - id: correction-preflight
+    status: DONE
+    completed_by:
+      task_id: TASK-085
+      published_sha: "36ff663675ac04b94da406536ac523e820b1b21e"
+  - id: unified-state-next-action
+    status: DONE
+    completed_by:
+      task_id: TASK-086
+      published_sha: "e56abece22509dc6e7f4d3b641c9d5600798ec67"
+  - id: unified-human-surface
+    status: DONE
+    completed_by:
+      task_id: TASK-087
+      published_sha: "a607fb2cf1c57fe35a9a15504df0e98d28de2f5b"
+  - id: safe-publication-continuation-compatibility
+    status: DONE
+    completed_by:
+      task_id: TASK-090
+      published_sha: "08e4a612377ac82be36061286a34138ea53ab0d1"
+  - id: continue-implementation-executor-instruction-hardening
+    status: DONE
+    completed_by:
+      task_id: TASK-092
+      published_sha: "e72135cd5c5a1dec0d8374d9bb8994da5e458feb"
+  - id: antigravity-minimax-executor-adoption
+    status: DONE
+    completed_by:
+      task_id: TASK-091
+      published_sha: "a45e94294f0688e62dacfacd884f2736985fd616"
+  - id: continue-pre-observation-sync-hardening
+    status: DONE
+    completed_by:
+      task_id: TASK-102
+      published_sha: "2599202afedb0622e9e9bdc7b5a15f34da01cc27"
+  - id: cumulative-remediation-revision-neutral-hardening
+    status: DONE
+    completed_by:
+      task_id: TASK-103
+      task_revision: 2
+      published_sha: "3b7d1aa3035e7cf2794867b788bc8197e2c9f29f"
+  - id: brain-authoring-ingress
+    status: DONE
+    completed_by:
+      task_id: TASK-104
+      task_revision: 1
+      published_sha: "cdd230fedbb332f4e13a81a9607fea23976de36d"
+  - id: brain-authoring-ingress-structural-recovery
+    status: DONE
+    completed_by:
+      task_id: TASK-105
+      task_revision: 1
+      published_sha: "3c39371632a07efceecb5ff5aa83892aeaca3579"
+  - id: performance-closure
+    status: DONE
+    completed_by:
+      task_id: TASK-101
+      task_revision: 4
+      published_sha: "a3b723b49cd65677f548c5694a52a6fc006a9e2a"
+    phase: P5-performance-observation-surface
+    planning_document: docs/AIOS-PERFORMANCE-CLOSURE.md
+  - id: downstream-adoption
+    status: DONE
+    completed_by:
+      task_id: TASK-109
+      downstream_repository: trung-via/python_complete_agent
+      migration_task_id: TASK-201
+      downstream_aios_pin: "f0237a3b98985ce6ebbaf41af1e06fa3eb4e998e"
+  - id: bp-1-primary-exact-intent-binding-v2
+    status: DONE
+    completed_by:
+      task_id: TASK-130
+      task_revision: 1
+      run_id: RUN-130-006
+      review_id: REVIEW-130-006
+      reviewed_sha: "e544f59a1e456575e8a80155efe7319390263ea9"
+      published_sha: "e544f59a1e456575e8a80155efe7319390263ea9"
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Bind new PRIMARY authorization to exact TASK semantic identity while allowing
+      unrelated newer admissible main state when the authorized TASK artifact is unchanged.
+  - id: bp-2-operational-attribution-v2
+    status: DONE
+    completed_by:
+      task_id: TASK-149
+      task_revision: 1
+      run_id: RUN-149-004
+      review_id: REVIEW-149-004
+      reviewed_sha: "df4a3e45d6437d66d595f04a5c0291c01316e835"
+      published_sha: "df4a3e45d6437d66d595f04a5c0291c01316e835"
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Close pre-AIOS/self-host attribution gaps and preserve typed lower-layer causes
+      without fabricating engineering lifecycle truth.
+  - id: maintenance-self-host-workflow-dispatch-recovery
+    status: DONE
+    completed_by:
+      task_id: TASK-151
+      task_revision: 1
+      run_id: RUN-151-001
+      review_id: REVIEW-151-001
+      reviewed_sha: "95f44e3244d611bab442ef5e492d18c8e4432636"
+      published_sha: "95f44e3244d611bab442ef5e492d18c8e4432636"
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Restore parseable self-host workflow dispatch after the BP-2 runner.temp
+      regression, then resume the already-authored BP-V1 TASK-150 without changing
+      its semantics or fabricating lifecycle state for pre-AIOS transport failures.
+  - id: bp-v1-verification-contract-hardening
+    status: DONE
+    completed_by:
+      task_id: TASK-150
+      task_revision: 1
+      run_id: RUN-150-001
+      review_id: REVIEW-150-001
+      reviewed_sha: "e0323905b93e0eac69decf449fda2a1ba427c544"
+      published_sha: "e0323905b93e0eac69decf449fda2a1ba427c544"
+    task_id: TASK-150
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-0
+      - TA-1
+    objective: >-
+      Enforce minimum-sufficient deterministic verification, known coverage/subsumption
+      de-duplication, and bounded full-suite justification without moving semantic
+      judgment or verification truth out of Runtime.
+  - id: maintenance-full-suite-contract-compatibility
+    status: DONE
+    completed_by:
+      task_id: TASK-153
+      task_revision: 1
+      run_id: RUN-153-001
+      review_id: REVIEW-153-001
+      reviewed_sha: "64ee61b88d9949b8354c0749baa6454bf0cc0f5b"
+      published_sha: "64ee61b88d9949b8354c0749baa6454bf0cc0f5b"
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Restore stale synthetic test/harness compatibility with already-published
+      exact-intent v2, Operational Attribution v2, and Verification Contract v1
+      semantics exposed by RUN-152-002, without changing production behavior or
+      claiming a BP-V2 performance baseline.
+  - id: bp-v2-full-suite-harness-acceleration
+    status: DONE
+    completed_by:
+      task_id: TASK-154
+      task_revision: 3
+      run_id: RUN-154-009
+      review_id: REVIEW-154-009
+      reviewed_sha: "527944177d4f982fce4aa98e95038f24996391c3"
+      published_sha: "527944177d4f982fce4aa98e95038f24996391c3"
+      collection_evidence_id: RUN-154-009-V001
+      full_suite_evidence_id: RUN-154-009-V002
+      diff_check_evidence_id: RUN-154-009-V003
+      collected_tests: 1590
+      serial_full_suite_seconds: 1345.85
+      baseline_reduction_percent: 42.49
+      prior_green_reduction_percent: 22.15
+      saturation_review: PASS
+    task_id: TASK-154
+    task_revision: 3
+    planning_amendment:
+      approved_on: "2026-09-21"
+      authority: HUMAN_BRAIN_PLANNING
+      basis:
+        run_id: RUN-154-006
+        review_id: REVIEW-154-006
+        reviewed_sha: "332c3ce111c0e275df2c573f89f4df620c785fb8"
+        serial_full_suite_seconds: 1728.84
+      note: >-
+        Human clarified prospectively that the prior 50 percent / 1170.145 second
+        figure was an audit estimate rather than a mandatory completion threshold.
+        BP-V2 now closes only after one bounded caller-aware serial saturation pass
+        preserves canonical coverage and real-Git semantics and Reviewer judges that
+        remaining material serial cost is required semantic-boundary work or that no
+        further clearly safe setup-only optimization is justified. Historical TASK-154
+        r1 and REVIEW-154-006 remain immutable evidence and are not reinterpreted.
+    baseline_completed_by:
+      task_id: TASK-152
+      task_revision: 2
+      run_id: RUN-152-003
+      review_id: REVIEW-152-003
+      reviewed_sha: "0e40a6dfdae610dca0144200eaf38bd0a43696a7"
+      published_sha: "0e40a6dfdae610dca0144200eaf38bd0a43696a7"
+      collection_evidence_id: RUN-152-003-V001
+      full_suite_evidence_id: RUN-152-003-V002
+      collected_tests: 1581
+      serial_full_suite_seconds: 2340.29
+      self_host_class:
+        - self-hosted
+        - windows
+        - x64
+        - aios-renew
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-1
+    objective: >-
+      Reduce intrinsic serial full-suite wall time by accelerating isolated real-Git
+      fixtures and separating pure semantic from Git-boundary tests where valid, while
+      preserving the canonical test population and production-shaped Git evidence.
+  - id: bp-v3-verification-workspace-isolation
+    status: DONE
+    completed_by:
+      task_id: TASK-156
+      task_revision: 1
+      run_id: RUN-156-002
+      operation: REMEDIATION
+      source_run_id: RUN-156-001
+      prior_review_id: REVIEW-156-001
+      remediation_finding_id: FINDING-156-001
+      review_id: REVIEW-156-002
+      reviewed_sha: "076eb73f9be6cb813891242003af26ca5343864d"
+      published_sha: "076eb73f9be6cb813891242003af26ca5343864d"
+      verification_evidence:
+        - RUN-156-002-V001
+        - RUN-156-002-V002
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-0
+      - TA-1
+    objective: >-
+      Isolate exact candidate verification from unrelated mutable control-checkout
+      movement while preserving SHA binding, Runtime evidence ownership, clean-state
+      checks, and fail-closed mutation detection inside the verification subject.
+  - id: execution-profile-foundation-v1
+    status: DONE
+    completed_by:
+      task_id: TASK-162
+      task_revision: 1
+      run_id: RUN-162-005
+      operation: REMEDIATION
+      source_run_id: RUN-162-003
+      prior_review_id: REVIEW-162-003
+      remediation_findings:
+        - FINDING-162-003-A
+        - FINDING-162-003-B
+      final_review_id: REVIEW-162-005
+      reviewed_sha: "783f4929a97cb33445109593e95bda34132560f7"
+      published_sha: "783f4929a97cb33445109593e95bda34132560f7"
+    task_id: TASK-162
+    task_revision: 1
+    planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    objective: >-
+      Establish additive deterministic execution-profile resolution, one repository-owned
+      default-profile policy authority, exact native adapter injection, and immutable
+      per-RUN profile provenance without activating new Human/remote carrier defaults
+      or changing frozen TASK/RUN semantics; future compatible model-default changes
+      must require policy change plus focused validation/smoke rather than adapter,
+      Dispatcher, carrier, or lifecycle redesign.
+  - id: execution-profile-human-selection-default-activation
+    status: DONE
+    completed_by:
+      task_id: TASK-163
+      task_revision: 2
+      run_id: RUN-163-009
+      operation: REPAIR
+      failed_run_id: RUN-163-008
+      repair_id: REPAIR-163-008
+      review_id: REVIEW-163-009
+      reviewed_sha: "bb7e8bdc7da5e65660755b44d915f6bc15990ea8"
+      published_sha: "bb7e8bdc7da5e65660755b44d915f6bc15990ea8"
+      verification_evidence:
+        - RUN-163-009-V001
+        - RUN-163-009-V002
+        - RUN-163-009-V003
+        - RUN-163-009-V004
+        - RUN-163-009-V005
+    task_id: TASK-163
+    task_revision: 2
+    planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    objective: >-
+      Propagate exact Human-selected model/effort through CLI and versioned PRIMARY,
+      REMEDIATION, and REPAIR delivery/dispatch contracts, activate Codex GPT-6 Sol
+      medium and Antigravity Gemini 3.8 Flash medium defaults, and prove fail-closed
+      end-to-end native invocation with no automatic routing or fallback.
+  - id: maintenance-hosted-carrier-profile-policy-binding
+    status: DONE
+    completed_by:
+      task_id: TASK-165
+      task_revision: 1
+      run_id: RUN-165-003
+      operation: REPAIR
+      failed_run_id: RUN-165-002
+      repair_id: REPAIR-165-002
+      review_id: REVIEW-165-003
+      reviewed_sha: "ce0164e10886f583227009c5c6e9b8ce90df600c"
+      published_sha: "ce0164e10886f583227009c5c6e9b8ce90df600c"
+      verification_evidence:
+        - RUN-165-003-V001
+        - RUN-165-003-V002
+    task_id: TASK-165
+    task_revision: 1
+    planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    objective: >-
+      Restore deterministic zero-touch profile-aware hosted carrier admission for
+      PRIMARY, REMEDIATION, and coding REPAIR by binding execution-profile resolution
+      to the exact canonical carrier source before downstream self-host dispatch.
+  - id: maintenance-bp-v4-current-suite-compatibility
+    status: DONE
+    completed_by:
+      task_id: TASK-164
+      task_revision: 2
+      run_id: RUN-164-002
+      review_id: REVIEW-164-002
+      reviewed_sha: "64f29350dcb38af2f8e465f0583f34fcdc4235f1"
+      published_sha: "64f29350dcb38af2f8e465f0583f34fcdc4235f1"
+      verification_evidence:
+        - RUN-164-002-V001
+        - RUN-164-002-V002
+    task_id: TASK-164
+    task_revision: 2
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Restore the stale remote-surface regression to the already-published trusted
+      transient Control Source contract before spending another canonical BP-V4
+      serial/parallel measurement, without changing production behavior or claiming
+      BP-V4 conformance.
+  - id: maintenance-bp-v4-focused-diagnostic-primitive
+    status: DONE
+    completed_by:
+      task_id: TASK-166
+      task_revision: 1
+      run_id: RUN-166-003
+      operation: REPAIR
+      failed_run_id: RUN-166-002
+      repair_id: REPAIR-166-002
+      review_id: REVIEW-166-003
+      reviewed_sha: "94a16a9e67f494d71960e6a45032ba73912be61c"
+      published_sha: "94a16a9e67f494d71960e6a45032ba73912be61c"
+      verification_evidence:
+        - RUN-166-003-V001
+    task_id: TASK-166
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-1
+      - RUN-159-005
+    objective: >-
+      Establish and review one bounded repository-owned focused parallel diagnostic
+      primitive before spending another canonical BP-V4 full serial/parallel matrix,
+      without changing production behavior, existing measurement authority, worker
+      policy, or correction authority.
+  - id: maintenance-bp-v4-focused-diagnostic-execution
+    status: DONE
+    completed_by:
+      task_id: TASK-167
+      task_revision: 3
+      run_id: RUN-167-004
+      review_id: REVIEW-167-004
+      reviewed_sha: "234891513889448ab906425f92d06bdc7c5770e3"
+      published_sha: "234891513889448ab906425f92d06bdc7c5770e3"
+      verification_evidence:
+        - RUN-167-004-V001
+    task_id: TASK-167
+    task_revision: 3
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-1
+      - RUN-159-005
+      - TASK-166
+    objective: >-
+      Execute the reviewed focused diagnostic primitive against one exact current
+      canonical subject to obtain bounded serial/parallel failure-cause evidence
+      before any new full BP-V4 matrix, correction selection, or worker adoption.
+  - id: maintenance-bp-v4-focused-cause-observability
+    status: DONE
+    completed_by:
+      task_id: TASK-168
+      task_revision: 2
+      run_id: RUN-168-003
+      operation: REPAIR
+      failed_run_id: RUN-168-002
+      repair_id: REPAIR-168-002
+      review_id: REVIEW-168-003
+      reviewed_sha: "10d3576d6eaaffed48ce4f52ce41b1c59eafb829"
+      published_sha: "10d3576d6eaaffed48ce4f52ce41b1c59eafb829"
+      verification_evidence:
+        - RUN-168-003-V001
+    task_id: TASK-168
+    task_revision: 2
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-167-004
+      - TASK-166
+    objective: >-
+      Strengthen only the bounded focused-diagnostic cause surface so the six
+      current common serial/parallel failures can be distinguished safely before a
+      fresh diagnostic execution or any production correction/full-suite matrix.
+  - id: maintenance-bp-v4-focused-diagnostic-reexecution
+    status: DONE
+    completed_by:
+      task_id: TASK-169
+      task_revision: 1
+      run_id: RUN-169-001
+      operation: PRIMARY
+      review_id: REVIEW-169-001
+      reviewed_sha: "750d7776dee737941849f50c1494cb3935027b48"
+      published_sha: "750d7776dee737941849f50c1494cb3935027b48"
+      verification_evidence:
+        - RUN-169-001-V001
+    task_id: TASK-169
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-167-004
+      - TASK-168
+      - RUN-168-003
+    objective: >-
+      Execute the reviewed enhanced focused diagnostic exactly once against the
+      exact current admitted subject to obtain fresh bounded cause observations
+      before any production correction or full BP-V4 matrix.
+  - id: maintenance-bp-v4-windows-git-fixture-path-budget
+    status: DONE
+    completed_by:
+      task_id: TASK-170
+      task_revision: 1
+      run_id: RUN-170-001
+      operation: PRIMARY
+      review_id: REVIEW-170-001
+      reviewed_sha: "aea452d0dd57b2052812ec069c8609576d9648d5"
+      published_sha: "aea452d0dd57b2052812ec069c8609576d9648d5"
+      verification_evidence:
+        - RUN-170-001-V001
+        - RUN-170-001-V002
+        - RUN-170-001-V003
+    task_id: TASK-170
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-159-005
+      - RUN-169-001
+      - TASK-154
+      - TASK-156
+      - TASK-168
+    objective: >-
+      Remove the Windows filesystem path-budget artifact from repository-owned
+      real-Git test sandboxes so canonical 64-character AIOS integration and
+      admission-failure refs remain testable under Runtime/BP-V4 nested temporary
+      environments without changing production ref identities, transport
+      semantics, verification isolation, diagnostic semantics, or worker policy.
+  - id: maintenance-bp-v4-detached-observation-compatibility
+    status: DONE
+    completed_by:
+      task_id: TASK-171
+      task_revision: 1
+      run_id: RUN-171-001
+      review_id: REVIEW-171-001
+      reviewed_sha: "b56c88957a1475dd6074d83e11bbbf7941a5a9b6"
+      published_sha: "b56c88957a1475dd6074d83e11bbbf7941a5a9b6"
+      verification_evidence:
+        - RUN-171-001-V001
+        - RUN-171-001-V002
+        - RUN-171-001-V003
+    task_id: TASK-171
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-159-006
+      - TASK-121
+      - TASK-156
+      - TASK-159
+    objective: >-
+      Restore deterministic read-only canonical-main and Unified State observation
+      from TASK-156 exact detached verification subjects without widening
+      mutation-capable transport remote selection, changing lifecycle semantics,
+      or weakening fail-closed canonical identity.
+  - id: maintenance-bp-v4-terminal-attention-path-budget
+    status: DONE
+    completed_by:
+      task_id: TASK-172
+      task_revision: 1
+      run_id: RUN-172-002
+      review_id: REVIEW-172-002
+      reviewed_sha: "1427ebb1bac76832f09a63d77692cb304f187c11"
+      published_sha: "1427ebb1bac76832f09a63d77692cb304f187c11"
+      verification_evidence:
+        - RUN-172-002-V001
+        - RUN-172-002-V002
+        - RUN-172-002-V003
+    task_id: TASK-172
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-159-006
+      - TASK-170
+      - RUN-171-001
+    objective: >-
+      Restore Windows nested-path compatibility for the bespoke Terminal Attention
+      real-Git fixture so exact canonical signal refs remain testable under focused
+      serial and xdist execution without changing production Terminal Attention
+      semantics, canonical ref identity, transport authority, or worker policy.
+  - id: maintenance-bp-v4-minimax-carrier-regression
+    status: DONE
+    completed_by:
+      task_id: TASK-173
+      task_revision: 1
+      run_id: RUN-173-002
+      operation: REPAIR
+      failed_run_id: RUN-173-001
+      repair_id: REPAIR-173-001
+      review_id: REVIEW-173-002
+      reviewed_sha: "34b662d199d7a1a0bdfd332b2fb9c738b1201158"
+      published_sha: "34b662d199d7a1a0bdfd332b2fb9c738b1201158"
+      verification_evidence:
+        - RUN-173-002-V001
+        - RUN-173-002-V002
+        - RUN-173-002-V003
+    task_id: TASK-173
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-159-006
+      - TASK-139
+      - TASK-163
+      - TASK-165
+      - RUN-172-002
+    objective: >-
+      Restore the Antigravity-MiniMax remote-carrier exclusion regression against
+      the exact current profile-aware request contracts with hermetic execution-profile
+      policy binding, proving the intended codex/antigravity-only remote authorization
+      boundary under serial and focused xdist without changing production carrier
+      semantics, direct MiniMax execution support, or worker policy.
+  - id: maintenance-executor-structural-completion-contract
+    status: DONE
+    completed_by:
+      task_id: TASK-174
+      task_revision: 2
+      run_id: RUN-174-002
+      operation: REPAIR
+      failed_run_id: RUN-174-001
+      repair_id: REPAIR-174-001
+      review_id: REVIEW-174-002
+      reviewed_sha: "f9310c7234163756216968405391d8d5dbc5d380"
+      published_sha: "f9310c7234163756216968405391d8d5dbc5d380"
+      verification_evidence:
+        - RUN-174-002-V001
+        - RUN-174-002-V002
+        - RUN-174-002-V003
+    task_id: TASK-174
+    task_revision: 2
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TASK-154
+      - RUN-172-001
+      - RUN-173-001
+      - RUN-173-002
+      - TASK-079
+      - TASK-080
+    objective: >-
+      Harden the Brain-to-Executor pre-verification structural-completion contract so
+      acceptance criteria remain truthfully claimable before Runtime verification,
+      Executor unresolved semantics exclude merely pending Runtime/Reviewer/Publisher
+      work, successful claims are affirmative implementation assertions, and
+      FINALIZE_CANDIDATE can truthfully report an incomplete candidate without weakening
+      existing Runtime completion or other REPAIR action semantics.
+  - id: maintenance-continue-detached-admission-regression
+    status: DONE
+    completed_by:
+      task_id: TASK-175
+      task_revision: 1
+      run_id: RUN-175-001
+      review_id: REVIEW-175-001
+      reviewed_sha: "b2560b5f8f58c7b1b9f1d322a283eb8b4840ad26"
+      published_sha: "b2560b5f8f58c7b1b9f1d322a283eb8b4840ad26"
+      verification_evidence:
+        - RUN-175-001-V001
+        - RUN-175-001-V002
+    task_id: TASK-175
+    task_revision: 1
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-159-007
+      - TASK-102
+      - TASK-156
+      - TASK-171
+      - TASK-174
+    objective: >-
+      Reconcile the stale continue pre-observation regression with the already-published
+      detached read-only observation contract: detached exact subjects may be observed
+      without mutation, while mutation-capable PRIMARY admission still fails closed
+      before RUN creation or Executor invocation. Preserve current production semantics
+      and correct test coverage only.
+  - id: bp-v4-parallel-verification-performance-guard
+    status: DONE
+    completed_by:
+      task_id: TASK-176
+      task_revision: 1
+      run_id: RUN-176-001
+      review_id: REVIEW-176-001
+      reviewed_sha: "aba2ea2df72fadc7b474eaf9ed20c12d17a5c92d"
+      published_sha: "aba2ea2df72fadc7b474eaf9ed20c12d17a5c92d"
+      verification_evidence:
+        - RUN-176-001-V001
+        - RUN-176-001-V002
+    task_id: TASK-176
+    task_revision: 1
+    measurement_completed_by:
+      task_id: TASK-159
+      task_revision: 8
+      run_id: RUN-159-008
+      review_id: REVIEW-159-008
+      reviewed_sha: "2ed725df2a965d4f1def4750678672bcef4f0b4f"
+      published_sha: "2ed725df2a965d4f1def4750678672bcef4f0b4f"
+      verification_evidence:
+        - RUN-159-008-V001
+      canonical_collection_count: 1825
+      canonical_collection_digest: "2e40a04acedcf9869e3961718337744761ee0a29f55258d2313b0a50d5fd66bb"
+      serial_seconds: 1594.934653
+      parallel_2_seconds: 1393.273135
+      parallel_3_seconds: 1218.304415
+      parallel_4_seconds: 1097.184058
+    selection_decision:
+      authority: HUMAN_BRAIN_PLANNING
+      approved_on: "2026-09-25"
+      selected_workers: 4
+      selected_profile: bounded-parallel-full-suite-v1
+      selection_basis:
+        run_id: RUN-159-008
+        evidence_id: RUN-159-008-V001
+        subject_sha: "2ed725df2a965d4f1def4750678672bcef4f0b4f"
+      performance_guard:
+        mode: SOFT_ATTENTION
+        selected_baseline_seconds: 1097.184058
+        serial_baseline_seconds: 1594.934653
+        attention_threshold_seconds: 1346.059356
+        rule: HALF_MEASURED_GAIN_LOST
+      note: >-
+        Worker 4 is selected from the first green same-subject serial/2/3/4 matrix.
+        The selection is explicit Human/Brain planning state, not Runtime inference.
+        Performance attention is observational only and cannot change correctness,
+        review, retry, fallback, publication, or roadmap authority.
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - TA-1
+      - RUN-159-005
+      - RUN-159-006
+      - RUN-159-007
+      - RUN-159-008
+      - REVIEW-159-008
+      - RUN-163-009
+      - RUN-164-002
+      - RUN-169-001
+      - RUN-170-001
+      - RUN-171-001
+      - RUN-172-002
+      - RUN-173-002
+      - RUN-174-002
+      - RUN-175-001
+    objective: >-
+      Activate the explicitly selected four-worker canonical full-suite profile on the
+      supported self-host class, preserve the measured collection/isolation/evidence
+      semantics, and surface bounded soft performance-regression attention without
+      global pytest parallelization, automatic worker selection, retry/fallback, or
+      new lifecycle/semantic authority.
+  - id: bp-3-brain-context-foundation
+    status: DONE
+    completed_by:
+      task_id: TASK-177
+      task_revision: 2
+      run_id: RUN-177-002
+      operation: REPAIR
+      failed_run_id: RUN-177-001
+      repair_id: REPAIR-177-001
+      review_id: REVIEW-177-002
+      reviewed_sha: "bc4026a3886081ecc20248f2956ae65264c527ca"
+      published_sha: "bc4026a3886081ecc20248f2956ae65264c527ca"
+      verification_evidence:
+        - RUN-177-002-V001
+        - RUN-177-002-V002
+    task_id: TASK-177
+    task_revision: 2
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Add transient Work Context composition, thin Flow Resolver, and repository-owned
+      Flow Cards by reusing Brain Sync, Unified State, roadmap and canonical lineage.
+  - id: bp-4-decision-packet-compiler
+    status: DONE
+    completed_by:
+      task_id: TASK-178
+      task_revision: 2
+      run_id: RUN-178-009
+      operation: REMEDIATION
+      source_run_id: RUN-178-008
+      prior_review_id: REVIEW-178-008
+      remediation_finding_id: FINDING-178-009
+      review_id: REVIEW-178-009
+      reviewed_sha: "157732551f0a549b9644688a48ddc9c7c730c96d"
+      published_sha: "157732551f0a549b9644688a48ddc9c7c730c96d"
+    task_id: TASK-178
+    task_revision: 2
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Compile bounded deterministic decision packets that separate facts and observations
+      from semantic judgment.
+  - id: bp-4a-brain-semantic-audit-protocol
+    status: DONE
+    completed_by:
+      task_id: TASK-179
+      task_revision: 1
+      run_id: RUN-179-002
+      operation: REMEDIATION
+      source_run_id: RUN-179-001
+      prior_review_id: REVIEW-179-001
+      remediation_finding_id: FINDING-179-001
+      review_id: REVIEW-179-002
+      reviewed_sha: "1c324165f93285e8179f9b0d87ab9f1e9049aa6a"
+      published_sha: "1c324165f93285e8179f9b0d87ab9f1e9049aa6a"
+    planning_document: docs/AIOS-BRAIN-SEMANTIC-AUDIT-PROTOCOL.md
+    audit_basis:
+      - TASK-164
+      - TASK-167
+      - TASK-168
+      - TASK-174
+      - TASK-177
+      - TASK-178
+    objective: >-
+      Make high-value Brain decisions reproducibly execute one bounded two-stage semantic
+      audit procedure over the same Decision Packet and immutable repository-owned audit
+      profile, with construct binding, adversarial reconciliation and final closure sweep,
+      without chat memory, persistent reasoning state, multi-agent voting, provider-specific
+      behavior, lifecycle routing, or any new semantic authority.
+  - id: bp-5-brain-provider-protocol
+    status: DONE
+    completed_phases:
+      - id: BP5-P1
+        task_id: TASK-180
+        run_id: RUN-180-001
+        review_id: REVIEW-180-001
+        published_sha: "5e97e7b8d79d2f0e8b2d725ac4e9e7175a60fd4e"
+      - id: BP5-P2A
+        task_id: TASK-181
+        run_id: RUN-181-002
+        review_id: REVIEW-181-002
+        published_sha: "6901e29540bd98d1d5c4df0477b76594e5bcb4b7"
+      - id: BP5-P2B
+        task_id: TASK-182
+        source_run_id: RUN-182-001
+        remediation_run_id: RUN-182-002
+        review_id: REVIEW-182-002
+        prior_finding_id: FINDING-182-001
+        published_sha: "09b2d099dd90abae12083d6b0f7f5f4abbdd377d"
+      - id: BP5-P3
+        task_id: TASK-183
+        failed_run_id: RUN-183-001
+        repair_id: REPAIR-183-001
+        repair_run_id: RUN-183-002
+        review_id: REVIEW-183-002
+        published_sha: "7077d8c1c8e14f9c61240783fe049b63617443d6"
+    exit_gate: SATISFIED
+    planning_document: docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+    objective: >-
+      Establish provider-neutral Brain request/decision contracts over complete bounded
+      Decision Packet and self-sufficient audit-profile material, with explicit provider
+      adapter boundaries, fresh Stage-2 packet binding, and no dependency on provider-specific
+      GitHub access, chat memory, provider identity, or new semantic/lifecycle authority.
+  - id: bp-6-reviewer-provider-protocol
+    status: DONE
+    exit_gate: SATISFIED
+    planning_document: docs/AIOS-REVIEWER-PROVIDER-PROTOCOL.md
+    phases:
+      - id: BP6-P1A
+        status: DONE
+        task_id: TASK-184
+        run_id: RUN-184-001
+        review_id: REVIEW-184-001
+        published_sha: "070964600f4ae6e4282cfd3b92d7411c4abcab4f"
+        objective: >-
+          Derive exact deterministic semantic review scope identity across direct PRIMARY,
+          repaired PRIMARY, REMEDIATION DELTA, and repair-of-remediation DELTA without
+          duplicating lifecycle authority.
+      - id: BP6-P1B
+        status: DONE
+        task_id: TASK-185
+        source_run_id: RUN-185-001
+        source_review_id: REVIEW-185-001
+        prior_finding_id: FINDING-185-001
+        remediation_run_id: RUN-185-002
+        review_id: REVIEW-185-002
+        published_sha: "4023500e7a2a02aea59076581ab3b21ea5986fc8"
+        objective: >-
+          Bind the exact review scope to complete bounded implementation material for a
+          repository-blind Reviewer.
+      - id: BP6-P2A
+        status: DONE
+        task_id: TASK-186
+        completed_by:
+          task_revision: 1
+          failed_run_id: RUN-186-001
+          repair_id: REPAIR-186-001
+          run_id: RUN-186-002
+          operation: REPAIR
+          review_id: REVIEW-186-002
+          reviewed_sha: "4333e5644b997ce2980fd4f56d8df5d92fbd2f03"
+          published_sha: "4333e5644b997ce2980fd4f56d8df5d92fbd2f03"
+          verification_evidence:
+            - RUN-186-002-V001
+        objective: >-
+          Define one self-sufficient content-addressed Reviewer procedure profile for
+          PRIMARY and DELTA judgment without creating another Reviewer or validator.
+      - id: BP6-P2B
+        status: DONE
+        task_id: TASK-187
+        completed_by:
+          task_revision: 1
+          run_id: RUN-187-001
+          operation: PRIMARY
+          review_id: REVIEW-187-001
+          reviewed_sha: "860e8d86a4fef08671a487e8e670804b8dc41ed9"
+          published_sha: "860e8d86a4fef08671a487e8e670804b8dc41ed9"
+          verification_evidence:
+            - RUN-187-001-V001
+        objective: >-
+          Define the bounded provider-authored REVIEW semantic-body contract while
+          keeping canonical REVIEW identity and review.validate_review outside provider authority.
+      - id: BP6-P3
+        status: DONE
+        task_id: TASK-188
+        completed_by:
+          task_revision: 1
+          run_id: RUN-188-001
+          operation: PRIMARY
+          review_id: REVIEW-188-001
+          reviewed_sha: "71047cd526366130d5f49f2c30418aec940d5791"
+          published_sha: "71047cd526366130d5f49f2c30418aec940d5791"
+          verification_evidence:
+            - RUN-188-001-V001
+        objective: >-
+          Define pure provider-neutral AIOS_REVIEW_REQUEST v1 / AIOS_REVIEW_DECISION v1.
+      - id: BP6-P4
+        status: DONE
+        task_id: TASK-189
+        completed_by:
+          task_revision: 1
+          failed_runs:
+            - RUN-189-001
+            - RUN-189-002
+          repairs:
+            - REPAIR-189-001
+            - REPAIR-189-002
+          run_id: RUN-189-003
+          operation: REPAIR
+          review_id: REVIEW-189-001
+          reviewed_sha: "0ef36225108a463efd9e54566190826125d363dc"
+          published_sha: "0ef36225108a463efd9e54566190826125d363dc"
+          verification_evidence:
+            - RUN-189-003-V001
+        objective: >-
+          Prove one-call Reviewer provider conformance with two independent non-network
+          adapters and no retry/fallback/router authority.
+    objective: >-
+      Establish a separate provider-neutral Reviewer protocol without merging Brain and
+      Reviewer authorities.
+  - id: bp-7-hot-swap-conformance
+    status: DONE
+    completed_by:
+      task_id: TASK-190
+      task_revision: 1
+      primary_run_id: RUN-190-001
+      primary_review_id: REVIEW-190-001
+      remediation_runs:
+        - run_id: RUN-190-002
+          finding_id: FINDING-190-001
+          review_id: REVIEW-190-002
+          reviewed_sha: "b2a59f30483eeb7f2da4f0812ef3025174eb8a17"
+        - run_id: RUN-190-003
+          finding_id: FINDING-190-002
+          review_id: REVIEW-190-003
+          reviewed_sha: "80b918c2cf964eea91416dd8a9c202f8a8319719"
+      final_review_id: REVIEW-190-003
+      published_sha: "80b918c2cf964eea91416dd8a9c202f8a8319719"
+      verification_evidence:
+        - RUN-190-001-V001
+        - RUN-190-002-V001
+        - RUN-190-003-V001
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Prove cross-context/provider continuation from canonical state without previous
+      model memory.
+  - id: maintenance-pytest-bounded-parameter-id-hardening
+    status: DONE
+    completed_by:
+      task_id: TASK-192
+      task_revision: 2
+      failed_runs:
+        - RUN-192-001
+      run_id: RUN-192-002
+      review_id: REVIEW-192-001
+      reviewed_sha: "ba4ae3da4dcfa09466e3455e67e77d703cf86259"
+      published_sha: "ba4ae3da4dcfa09466e3455e67e77d703cf86259"
+      verification_evidence:
+        - RUN-192-002-V001
+        - RUN-192-002-V002
+        - RUN-192-002-V003
+        - RUN-192-002-V004
+    task_id: TASK-192
+    task_revision: 2
+    return_to: bp-8-real-second-provider-proof
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - RUN-189-001
+      - REPAIR-189-001
+      - RUN-191-001
+      - REPAIR-191-001
+      - RUN-191-002
+      - REPAIR-191-002
+      - RUN-192-001
+    revision_note: >-
+      TASK-192 r1 produced reusable in-scope candidate
+      50d6482ab09741ee155bd827fdf9553d633ee14e but failed at COMPLETION_GATE
+      before Runtime verification because AC3 and AC5 required the Executor to
+      claim future Runtime-owned verification facts. Revision 2 corrected that
+      authority boundary; RUN-192-002 then passed focused serial, two-worker xdist,
+      full repository collect-only and diff-check verification, REVIEW-192-001
+      returned PRIMARY PASS, and the exact reviewed candidate was published.
+    objective: >-
+      Prevent recurrence of Windows pytest node-id / PYTEST_CURRENT_TEST overflow
+      across the suite by bounding oversized auto-generated parameter identifiers
+      deterministically and failing closed on any still-overlong collected nodeid,
+      without changing production, Runtime verification authority, test semantics,
+      or pytest/xdist identity for ordinary cases.
+  - id: bp-8-real-second-provider-proof
+    status: DONE
+    phase: COMPLETE
+    task_id: TASK-194
+    task_revision: 1
+    completed_by:
+      task_id: TASK-194
+      task_revision: 1
+      run_id: RUN-194-001
+      review_id: REVIEW-194-001
+      reviewed_sha: "2cf7ba01222891bb5470b231fee01b7122e39cab"
+      published_sha: "2cf7ba01222891bb5470b231fee01b7122e39cab"
+      verification_evidence:
+        - RUN-194-001-V001
+      proof_observation:
+        outcome: VALIDATED_DECISION
+        provider: antigravity
+        model: gemini-3.8-flash
+        reasoning_effort: high
+        invocation_count: 1
+        request_fingerprint: "995de29f9223ff3b76d335fb5e69c6d9c63d98d0d3a01cb80c484e9be1558670"
+        request_sha256: "c108ae8f71ae008cf9de17d57f3f0500cbbc64f31038f5469a1fd20d2ead6f6b"
+        decision_fingerprint: "926d8348c655fddd33350be39db8669ca7a7842859cc09110bfda73b8e4b672f"
+        native_usage:
+          input_tokens: 37375
+          output_tokens: 5066
+          cached_input_tokens: 0
+    selected_proof:
+      role: REVIEWER
+      provider: antigravity
+      model: gemini-3.8-flash
+      reasoning_effort: high
+      authority: HUMAN
+      note: >-
+        Human explicitly selected high effort for the one controlled BP8-P2 real
+        Reviewer proof. This proof-specific selection did not become a Reviewer
+        default, provider preference policy, Executor default, router input, or
+        automatic model-selection rule.
+    p2_plan:
+      - id: BP8-P2A
+        status: DONE
+        task_id: TASK-193
+        task_revision: 1
+        run_id: RUN-193-001
+        review_id: REVIEW-193-001
+        reviewed_sha: "da21220d60b44f9e06c74b8f6d9c2e18d6d3cb30"
+        published_sha: "da21220d60b44f9e06c74b8f6d9c2e18d6d3cb30"
+        verification_evidence:
+          - RUN-193-001-V001
+          - RUN-193-001-V002
+        objective: >-
+          Add and review one deterministic proof harness that composes the already
+          reviewed BP6 Reviewer provider protocol with the BP8-P1
+          Antigravity/Gemini transport, emits a bounded observation contract, and
+          can later run one explicit real call without treating provider failure as
+          an engineering RUN failure.
+      - id: BP8-P2B
+        status: DONE
+        task_id: TASK-194
+        task_revision: 1
+        run_id: RUN-194-001
+        review_id: REVIEW-194-001
+        reviewed_sha: "2cf7ba01222891bb5470b231fee01b7122e39cab"
+        published_sha: "2cf7ba01222891bb5470b231fee01b7122e39cab"
+        verification_evidence:
+          - RUN-194-001-V001
+        outcome: VALIDATED_DECISION
+        objective: >-
+          Execute the reviewed proof harness exactly once as Runtime-owned
+          verification with explicit --effort high. The validated one-call decision
+          observation satisfied the BP8 real-provider evidence gate.
+    completed_phases:
+      - id: BP8-P1
+        status: DONE
+        task_id: TASK-191
+        task_revision: 1
+        failed_runs:
+          - RUN-191-001
+          - RUN-191-002
+        repairs:
+          - REPAIR-191-001
+          - REPAIR-191-002
+        completion_run_id: RUN-191-003
+        primary_review_id: REVIEW-191-001
+        remediation_runs:
+          - run_id: RUN-191-004
+            finding_id: FINDING-191-001
+            review_id: REVIEW-191-002
+            reviewed_sha: "3b85aee3aa40838ddf63f0cf29301d1b473181e3"
+          - run_id: RUN-191-005
+            finding_id: FINDING-191-002
+            review_id: REVIEW-191-003
+            reviewed_sha: "a967ef7f6e16c893600a7cc0731e1f0bc94f3077"
+        final_review_id: REVIEW-191-003
+        published_sha: "a967ef7f6e16c893600a7cc0731e1f0bc94f3077"
+        verification_evidence:
+          - RUN-191-003-V001
+          - RUN-191-004-V001
+          - RUN-191-005-V001
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Prove the contracts with one controlled real non-default Brain or Reviewer provider
+      while retaining the existing GitHub/self-host execution path.
+  - id: maintenance-codex-gpt6-sol-effort-policy-alignment-v2
+    status: DONE
+    task_id: TASK-195
+    task_revision: 1
+    return_to: bp-9-downstream-adoption
+    completed_by:
+      failed_run_id: RUN-195-001
+      repair_id: REPAIR-195-001
+      run_id: RUN-195-002
+      operation: REPAIR
+      review_id: REVIEW-195-001
+      reviewed_sha: "636cde7c55f8a843338ea407d2888ea1043875b5"
+      published_sha: "636cde7c55f8a843338ea407d2888ea1043875b5"
+      verification_evidence:
+        - RUN-195-002-V001
+        - RUN-195-002-V002
+        - RUN-195-002-V003
+        - RUN-195-002-V004
+    planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
+    objective: >-
+      Align the Codex execution-profile capability policy with current GPT-6 Sol
+      effort support by admitting none/low/medium/high/xhigh/max and changing the
+      repository default from gpt-6-sol/medium to gpt-6-sol/high, while preserving
+      exact Human override precedence, immutable bound profiles, no retry/fallback,
+      provider-neutral lifecycle semantics, and Antigravity policy unchanged.
+  - id: bp-9-downstream-adoption
+    status: DONE
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Adopt the reviewed capability downstream only through an explicit exact-pin,
+      repository-owned migration after BP-8 evidence exists.
+    closure_policy:
+      id: BP9_PLAN_A_STOP_LINE_TWO_TASK_CLOSURE
+      status: HUMAN_APPROVED
+      approved_on: "2026-09-29"
+      authority: HUMAN_BRAIN_PLANNING
+      observed_blocker: >-
+        The first real TASK-259 r2 successor carrier attempt failed before RUN creation
+        with legacy installed generation attestation failed. Canonical audit found that
+        TASK-218/219 successor code applies a legacy-only capability classifier to exact
+        installed generation 31fd2482..., even though that generation is deliberately
+        migration-capable.
+      max_new_upstream_task_ids: 2
+      correction_task:
+        task_id: TASK-220
+        task_revision: 1
+        status: DONE
+        objective: >-
+          Correct successor installed-generation attestation, close production successor
+          activation again, and prove the real control-source / installed-distribution /
+          target-source topology before publication.
+      activation_task:
+        task_id: TASK-221
+        task_revision: 1
+        status: DONE
+        target_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
+        gate: AFTER_EXACT_TASK_220_REVIEW_AND_PUBLICATION
+        completed_by:
+          failed_run_id: RUN-221-001
+          repair_id: REPAIR-221-001
+          run_id: RUN-221-002
+          operation: REPAIR
+          review_id: REVIEW-221-001
+          reviewed_sha: "6fbb19db9eb5af3adc55cca570f775d223841ae6"
+          published_sha: "6fbb19db9eb5af3adc55cca570f775d223841ae6"
+          verification_evidence:
+            - RUN-221-002-V001
+            - RUN-221-002-V002
+        objective: >-
+          Bind only the exact reviewed/published TASK-220 consumer SHA and prove the full
+          production-shaped composed successor path under production defaults before any
+          new real downstream attempt.
+      hard_stop: >-
+        No third narrow upstream bootstrap/correction task is authorized for this corridor.
+        If the exact TASK-220 correction plus TASK-221 activation both review/publish and
+        the next real downstream successor attempt still exposes a new architecture-level
+        pre-RUN bootstrap defect, Plan A terminates and the corridor returns to structural
+        redesign rather than TASK-222-style patch continuation.
+    completion_evidence:
+      authority: HUMAN_BRAIN_PLANNING
+      reconciled_on: "2026-09-29"
+      downstream_repository: trung-via/python_complete_agent
+      downstream_current_main_at_reconciliation: "59272cec5a77db4f71a181a56875f11b94497936"
+      exact_pin_migration:
+        task_id: TASK-259
+        task_revision: 2
+        failed_predecessor_run: RUN-259-001
+        successful_run_id: RUN-259-002
+        review_id: REVIEW-259-001
+        published_sha: "6c9cfcd258c492a5f2301936324379c5e862a2ce"
+        prior_pin_sha: "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
+        active_pin_sha: "44eee353eda376c9db8cd88d97184d3122651bf5"
+      fresh_downstream_conformance:
+        task_id: TASK-207
+        task_revision: 14
+        run_id: RUN-207-014
+        review_id: REVIEW-207-005
+        verdict: PASS
+        reviewed_sha: "6ba6c108e6a14bbeaa337769170975aab74560b6"
+        review_findings: 0
+        publication_effective: true
+        current_main_descends_from_reviewed_sha: true
+        downstream_pin_sha: "44eee353eda376c9db8cd88d97184d3122651bf5"
+      closure_note: >-
+        Fresh downstream canonical state proves TASK-259 revision 2 exact-pin migration
+        completed and TASK-207 revision 14 achieved PRIMARY PASS with exact reviewed source
+        6ba6c108e6a14bbeaa337769170975aab74560b6 publication-effective on canonical main.
+        The later downstream main 59272cec5a77db4f71a181a56875f11b94497936 descends from
+        that reviewed source. BP-9 is therefore closed as Human/Brain planning state without
+        importing downstream product priority into AIOS-renew.
+
+  - id: ra-0-research-architecture-threat-model-audit
+    status: DONE
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    completed_on: "2026-09-29"
+    completed_against_main_sha: "eb6b30a4a4e70ff95b92dab135f6b33c0ce011f5"
+    planning_amendment_commit: "adf0c98773d5b08b773938ff29b47888269d4c31"
+    outcome: PASS_WITH_MANDATORY_ARCHITECTURE_AMENDMENTS
+    objective: >-
+      Perform the read-only RA-0 architecture and threat-model audit before any
+      Research Assurance implementation TASK is authored.
+    findings:
+      - UNTRUSTED_CONTENT_INSTRUCTION_ISOLATION
+      - ACQUISITION_FAILURE_SEPARATION
+      - BOUNDED_ACQUISITION_REQUEST_AUTHORITY
+      - IMMUTABLE_RESEARCH_RECORD_REFRESH_LINEAGE
+      - MUTABLE_SOURCE_OBSERVATION_IDENTITY
+      - CLAIM_SCOPED_INVALIDATION
+      - DETERMINISTIC_VALIDATION_SEMANTIC_BOUNDARY
+      - EXPLICIT_RESEARCH_FLOW_DEDICATED_PACKET
+      - BRAIN_OWNED_RESEARCH_CLOSURE
+      - NON_TASK_NEXT_BRAIN_SYNC_MISMATCH
+  - id: ra-1-research-contract-foundation
+    status: DONE
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    completed_by:
+      task_id: TASK-222
+      task_revision: 1
+      run_id: RUN-222-001
+      review_id: REVIEW-222-001
+      verdict: PASS
+      reviewed_sha: "1eed373ce0b8b53aa12b024d66b339fe16454384"
+      published_sha: "1eed373ce0b8b53aa12b024d66b339fe16454384"
+      evidence_id: RUN-222-001-V001
+    objective: >-
+      Establish the pure deterministic Research Brief, Challenge Target, and bounded
+      Acquisition Request contracts without adding source acquisition, Research Record,
+      research audit, provider invocation, or first-class RESEARCH Flow semantics.
+  - id: ra-2-source-acquisition-provenance-boundary
+    status: DONE
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_BOUNDARY_REFINEMENT
+      completed_on: "2026-09-29"
+      planning_document_commit: "7ba40bc0b35c39a224c49d9a0785864619b21e91"
+      findings:
+        - RA2_RA5_ADAPTER_BOUNDARY_SEPARATION
+        - SOURCE_REPRESENTATION_CLASS_DISTINCTION
+        - SYNTHESIS_NOT_SOURCE_EVIDENCE
+        - STRUCTURAL_UNTRUSTED_CONTENT_ISOLATION
+        - REQUEST_SOURCE_FAMILY_NOT_AUTHORITY_TRUTH
+        - SUCCESS_EMPTY_RESULT_NOT_ABSENCE_PROOF
+        - OPERATIONAL_FAILURE_NOT_RESEARCH_CLOSURE
+        - PORTABLE_LOCATOR_NOT_NETWORK_SAFETY_PROOF
+        - PRIVATE_CONNECTED_SOURCE_SCOPE
+        - NO_HIDDEN_ACQUISITION_EXPANSION
+    completed_by:
+      task_id: TASK-223
+      task_revision: 1
+      run_id: RUN-223-001
+      review_id: REVIEW-223-001
+      verdict: PASS
+      reviewed_sha: "6c128fafacbdadc174909bcd2ec28afa16cf3247"
+      published_sha: "6c128fafacbdadc174909bcd2ec28afa16cf3247"
+      evidence_id: RUN-223-001-V001
+    objective: >-
+      Establish the pure normalized acquisition airlock for exact Source Observation and
+      Acquisition Attempt material without introducing source I/O or adapter routing.
+  - id: ra-3-research-evidence-record-audit-profile
+    status: DONE
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_MANDATORY_BOUNDARY_REFINEMENTS
+      completed_on: "2026-09-29"
+      planning_document_commit: "dfaab9c43b7e5e1796db9f7c0223348c58be3030"
+      findings:
+        - IMMUTABLE_RECORD_TRANSIENT_VALIDITY
+        - PRIVATE_RETENTION_SCOPE_PROPAGATION
+        - CLAIM_CONTENT_ADDRESSING_AND_EXACT_BINDING
+        - CLAIM_SCOPED_DECLARATIVE_INVALIDATION
+        - EXACT_PREDECESSOR_REFRESH_LINEAGE
+        - CHANGED_BRIEF_OR_PROFILE_STARTS_FRESH_LINEAGE
+        - DEDICATED_RESEARCH_AUDIT_PROFILE_REGISTRY
+        - RA4_PROCEDURE_DEFERRED
+        - NO_PERSISTENCE_OR_LATEST_RESOLVER
+        - SOURCE_ASSESSMENTS_REMAIN_BRAIN_CLAIMS
+    completed_by:
+      task_id: TASK-224
+      task_revision: 1
+      primary_run_id: RUN-224-001
+      remediation_run_id: RUN-224-002
+      primary_review_id: REVIEW-224-001
+      delta_review_id: REVIEW-224-002
+      verdict: PASS
+      reviewed_sha: "222ce1e8e9405c624c1f8573b8af477a4f28f6db"
+      published_sha: "222ce1e8e9405c624c1f8573b8af477a4f28f6db"
+      evidence_id: RUN-224-002-V001
+      resolved_finding_id: FINDING-224-001
+    objective: >-
+      Establish immutable Research Record, dedicated research audit profile and transient
+      claim-scoped reuse projection without persistence or two-pass orchestration.
+  - id: ra-4-two-pass-research-assurance-protocol
+    status: DONE
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_MANDATORY_PROTOCOL_REFINEMENTS
+      completed_on: "2026-09-29"
+      planning_document_commit: "7c77c342f9d150103acf26dfd8480f075ca791a2"
+      findings:
+        - PURE_PROTOCOL_NO_TOOL_INVOCATION
+        - SUCCESS_ATTEMPTS_ONLY_FOR_SEMANTIC_ADVANCEMENT
+        - OPERATIONAL_FAILURE_BLOCKS_NOT_CLOSES
+        - PASS1_PRECOMMITS_COUNTER_EVIDENCE_PLAN
+        - EXACTLY_ONE_COUNTER_EVIDENCE_BATCH
+        - NO_PASS2_CHALLENGE_OR_REQUEST_MUTATION
+        - COMPLETE_NINE_LENS_AUDIT_COVERAGE
+        - EXACT_PASS1_FINAL_CLAIM_RECONCILIATION
+        - GLOBAL_SOURCE_CORPUS_BOUND
+        - BRAIN_DECLARED_BLOCKER_CLOSURE_CONSISTENCY
+        - NO_RECURSIVE_RESEARCH_LOOP
+    completed_by:
+      task_id: TASK-225
+      task_revision: 1
+      primary_run_id: RUN-225-001
+      remediation_run_id: RUN-225-002
+      primary_review_id: REVIEW-225-001
+      delta_review_id: REVIEW-225-002
+      verdict: PASS
+      reviewed_sha: "405e0189cc2756ebf996aae618b7b7ed73dfca40"
+      published_sha: "405e0189cc2756ebf996aae618b7b7ed73dfca40"
+      evidence_id: RUN-225-002-V001
+      resolved_finding_id: FINDING-225-001
+    objective: >-
+      Establish the pure two-pass Research Assurance protocol with precommitted
+      counter-evidence and exact adversarial reconciliation without acquisition I/O.
+  - id: ra-5-provider-tool-portability-contracts
+    status: DONE
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_MANDATORY_PORTABILITY_BOUNDARIES
+      completed_on: "2026-09-29"
+      planning_document_commit: "7ba40bc0b35c39a224c49d9a0785864619b21e91"
+      findings:
+        - RESEARCH_PROVIDER_PROTOCOL_SEPARATE_FROM_CORE_BRAIN_PROVIDER
+        - PROVIDER_STAGE_CONTINUITY_BINDING
+        - TWO_INDEPENDENT_PORTABILITY_PLANES
+        - PROVIDER_METADATA_EXCLUDED_FROM_SEMANTIC_IDENTITY
+        - EXPLICIT_PROVIDER_SELECTION_NO_ROUTER
+        - EXPLICIT_ADAPTER_SELECTION_NO_SOURCE_FAMILY_ROUTER
+        - ADAPTER_MANIFEST_NOT_AUTHORIZATION
+        - ONE_REQUEST_ONE_NATIVE_OPERATION
+        - NO_HIDDEN_PAGINATION_QUERY_EXPANSION_RETRY_OR_FALLBACK
+        - PUBLIC_HTTP_EFFECTIVE_DESTINATION_SAFETY
+        - PUBLIC_SEARCH_NO_FOLLOWUP_FETCH
+        - AUTHORIZED_CONNECTOR_EXTERNAL_ACCESS_REFERENCE
+        - RAW_ADAPTER_OUTPUT_NOT_RA2_TRUTH
+        - OBSERVATION_IDENTITY_EXCLUDES_ADAPTER_ATTRIBUTION
+        - ATTEMPT_IDENTITY_PRESERVES_ADAPTER_ATTRIBUTION
+        - OPERATIONAL_FAILURE_NEVER_RESEARCH_CLOSURE
+        - RA6_INTEGRATION_DEFERRED
+    completed_by:
+      task_id: TASK-226
+      task_revision: 1
+      failed_run_id: RUN-226-001
+      repair_id: REPAIR-226-001
+      run_id: RUN-226-002
+      review_id: REVIEW-226-001
+      verdict: PASS
+      reviewed_sha: "73b4e23227dee9a046c8b2b5a1b06751a61c745a"
+      published_sha: "73b4e23227dee9a046c8b2b5a1b06751a61c745a"
+      evidence_id: RUN-226-002-V001
+    task_id: TASK-226
+    task_revision: 1
+    authored_commit_sha: "2f9b7819617d3828955596a75db7be7f9ad92d85"
+    task_blob_sha: "dac63d7f9d95a2a894bfc0a9c82d4217fe1ce03b"
+    objective: >-
+      Define and prove provider-neutral research semantics plus explicit acquisition-adapter
+      portability without provider/tool routing, hidden retry/fallback or authority widening.
+  - id: ra-6-aios-integration-continuity-conformance
+    status: DONE
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_MANDATORY_INTEGRATION_BOUNDARIES
+      completed_on: "2026-09-29"
+      planning_document_commit: "781d4d633de457ca759689d05f9b32ffe9069996"
+      findings:
+        - EXPLICIT_RESEARCH_FLOW_ONLY
+        - NO_UNIFIED_STATE_OR_ROADMAP_AUTO_SELECTION
+        - DEDICATED_RESEARCH_PACKET_NOT_DECISION_PACKET
+        - RESEARCH_PROVIDER_STACK_SEPARATE_FROM_CORE_BRAIN_PROVIDER
+        - NO_SECOND_BRAIN_SEMANTIC_AUDIT_FOR_RESEARCH
+        - EXPLICIT_PROVIDER_AND_ADAPTER_SELECTION_NO_ROUTER
+        - FRESH_CONTEXT_BINDS_RESEARCH_SUBJECT_NOT_CHAT_HISTORY
+        - RESEARCH_RECORD_REUSE_CALLER_SUPPLIED_BASIS_ONLY
+        - NO_LATEST_RECORD_RESOLUTION_OR_FRESHNESS_DISCOVERY
+        - SOURCE_PROVIDER_SUBSTITUTION_CONFORMANCE_NOT_ANSWER_EQUALITY
+        - FRESH_ARCHITECTURE_HANDOFF_ONLY
+        - NO_RUNTIME_REVIEWER_PUBLISHER_OR_ROADMAP_AUTHORITY
+        - REAL_SOURCE_PROOF_DEFERRED_TO_RA7
+    task_id: TASK-227
+    task_revision: 1
+    authored_commit_sha: "a05006a0b13b73e7b314b4be683601f849386039"
+    task_blob_sha: "81bf580f8c97e36c0ce76dab8266b46d1c478856"
+    completed_by:
+      task_id: TASK-227
+      task_revision: 1
+      primary_run_id: RUN-227-001
+      remediation_run_id: RUN-227-002
+      primary_review_id: REVIEW-227-001
+      delta_review_id: REVIEW-227-002
+      verdict: PASS
+      reviewed_sha: "dd78b6cb54674e0a564ecbe1215d7918d81f6a1e"
+      published_sha: "dd78b6cb54674e0a564ecbe1215d7918d81f6a1e"
+      evidence_id: RUN-227-002-V001
+      resolved_finding_id: F-227-001
+    objective: >-
+      Execute the exact authored RA-6 integration/conformance TASK only after fresh Brain
+      Sync confirms TASK-227 revision 1 as the unique canonical NEXT.
+  - id: ra-7-real-project-proof-closure
+    status: NEXT
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    objective: >-
+      Prove the complete Research Assurance architecture on controlled stable/immutable,
+      mutable/time-sensitive, and adversarial/prompt-injection-bearing real-project sources,
+      including valid-record reuse, relevant invalidation, bounded refresh with unaffected
+      evidence reuse, audited fresh ARCHITECTURE handoff, and no automatic roadmap/TASK
+      progression.
+
+
+research_assurance:
+  id: research-assurance
+  version: 2.5
+  status: ACTIVE
+  approved_on: "2026-09-29"
+  approved_against_main_sha: "6538f2762620c510e594e7c1842319bc4a783ccf"
+  canonical_planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+  planning_document_commit: "781d4d633de457ca759689d05f9b32ffe9069996"
+  authority: HUMAN_BRAIN_PLANNING
+  activation_basis:
+    bp9_status: DONE
+    fresh_brain_sync: SATISFIED
+    human_final_approval: true
+  objective: >-
+    Make high-value external and project research reproducible, source-grounded,
+    adversarially audited, provider/tool-portable, reusable until invalidated, and
+    safely usable as bounded Brain decision support without depending on chat memory.
+  architecture_rule: >-
+    Research Assurance remains cognitive support inside existing Brain authority.
+    It must not create a Research Agent, Planner, Reviewer, Runtime, lifecycle router,
+    persistent reasoning/chat-memory database, automatic roadmap authority, automatic
+    TASK author, automatic provider/tool router, or second source of engineering truth.
+  target_architecture:
+    - RESEARCH_BRIEF
+    - BOUNDED_ACQUISITION_REQUEST
+    - SOURCE_ACQUISITION_BOUNDARY
+    - BASELINE_SOURCE_CORPUS
+    - EVIDENCE_CONSTRUCT
+    - BOUNDED_COUNTER_EVIDENCE_ACQUISITION
+    - ADVERSARIAL_RESEARCH_AUDIT_AND_RECONCILE
+    - FINAL_RESEARCH_CLOSURE
+    - RESEARCH_RECORD
+    - FRESH_ARCHITECTURE_HANDOFF
+  final_outcomes:
+    - RESEARCH_CANDIDATE
+    - INSUFFICIENT_EVIDENCE
+  research_record:
+    classification: BOUNDED_DURABLE_PLANNING_EVIDENCE
+    engineering_truth: false
+    memory_database: false
+    reuse_policy: REUSE_UNTIL_RELEVANT_INVALIDATION
+  audit_lenses:
+    - SOURCE_AUTHORITY_PROVENANCE
+    - SOURCE_FRESHNESS_VERSION
+    - CLAIM_EVIDENCE_BINDING
+    - COVERAGE_INDEPENDENCE
+    - CONTRADICTION_COUNTEREVIDENCE
+    - PROJECT_APPLICABILITY_NOVELTY
+    - ASSUMPTION_UNCERTAINTY
+    - UNTRUSTED_CONTENT_INSTRUCTION_ISOLATION
+    - AUTHORITY_HANDOFF_BOUNDARY
+  milestones:
+    - id: RA-0
+      roadmap_id: ra-0-research-architecture-threat-model-audit
+      name: Research Architecture & Threat-Model Audit
+      status: DONE
+      classification: READ_ONLY_ARCHITECTURE_AUDIT
+      objective: >-
+        Audit and freeze the minimum authority-safe RA architecture, threat/failure model,
+        source taxonomy, acquisition boundary, evidence/claim model, freshness/invalidation
+        semantics, reuse rules, and exact integration boundaries before implementation.
+      closure: >-
+        Completed as Human/Brain read-only architecture audit with PASS_WITH_MANDATORY_
+        ARCHITECTURE_AMENDMENTS; amendments are canonicalized in Research Assurance v2.1
+        before RA-1 TASK authoring.
+    - id: RA-1
+      name: Research Contract Foundation
+      status: DONE
+      task_id: TASK-222
+      task_revision: 1
+      run_id: RUN-222-001
+      review_id: REVIEW-222-001
+      reviewed_sha: "1eed373ce0b8b53aa12b024d66b339fe16454384"
+      published_sha: "1eed373ce0b8b53aa12b024d66b339fe16454384"
+      objective: >-
+        Define the bounded Research Brief identity, question, decision context,
+        scope/non-goals, project/currentness basis, source policy, resource bounds,
+        handoff and invalidation contract plus bounded Acquisition Request and exact
+        Pass-1 challenge-target semantics without adding RESEARCH to core Flow Resolver yet.
+    - id: RA-2
+      name: Source Acquisition & Provenance Boundary
+      status: DONE
+      architecture_audit: PASS_WITH_BOUNDARY_REFINEMENT
+      task_id: TASK-223
+      task_revision: 1
+      run_id: RUN-223-001
+      review_id: REVIEW-223-001
+      reviewed_sha: "6c128fafacbdadc174909bcd2ec28afa16cf3247"
+      published_sha: "6c128fafacbdadc174909bcd2ec28afa16cf3247"
+      objective: >-
+        Define the pure normalized acquisition airlock: content-addressed Source Observation
+        and Acquisition Attempt contracts with exact Brief/Request binding, representation
+        class, provenance-safe identity/version/retrieval facts, access scope,
+        instruction_trust UNTRUSTED, request-budget enforcement, and closed operational
+        failure semantics. Concrete source-tool invocation is deferred to RA-5.
+    - id: RA-3
+      name: Research Evidence Record & Audit Profile
+      status: DONE
+      architecture_audit: PASS_WITH_MANDATORY_BOUNDARY_REFINEMENTS
+      task_id: TASK-224
+      task_revision: 1
+      primary_run_id: RUN-224-001
+      remediation_run_id: RUN-224-002
+      primary_review_id: REVIEW-224-001
+      delta_review_id: REVIEW-224-002
+      reviewed_sha: "222ce1e8e9405c624c1f8573b8af477a4f28f6db"
+      published_sha: "222ce1e8e9405c624c1f8573b8af477a4f28f6db"
+      objective: >-
+        Define a pure immutable/content-addressed Research Record, exact predecessor refresh
+        lineage, claim/source-binding and uncertainty grammar, source assessment grammar,
+        claim-scoped invalidation and transient reuse projection, plus the dedicated
+        research-high-value-v1 nine-lens audit-profile registry. Persistence and the
+        two-pass procedure remain deferred.
+    - id: RA-4
+      name: Two-Pass Research Assurance Protocol
+      status: DONE
+      architecture_audit: PASS_WITH_MANDATORY_PROTOCOL_REFINEMENTS
+      task_id: TASK-225
+      task_revision: 1
+      primary_run_id: RUN-225-001
+      remediation_run_id: RUN-225-002
+      primary_review_id: REVIEW-225-001
+      delta_review_id: REVIEW-225-002
+      reviewed_sha: "405e0189cc2756ebf996aae618b7b7ed73dfca40"
+      published_sha: "405e0189cc2756ebf996aae618b7b7ed73dfca40"
+      objective: >-
+        Define a pure content-addressed Evidence Construct plus one exact Pass-2
+        reconciliation/closure contract. Pass 1 precommits all Challenge Targets and
+        counter-evidence requests before results exist; Pass 2 accepts only exact successful
+        attempts, requires nine-lens audit coverage and exact claim reconciliation, then
+        produces one final Research Record. No acquisition I/O or recursive research.
+    - id: RA-5
+      name: Provider & Tool Portability Contracts
+      status: DONE
+      architecture_audit: PASS_WITH_MANDATORY_PORTABILITY_BOUNDARIES
+      task_id: TASK-226
+      task_revision: 1
+      run_id: RUN-226-002
+      review_id: REVIEW-226-001
+      reviewed_sha: "73b4e23227dee9a046c8b2b5a1b06751a61c745a"
+      published_sha: "73b4e23227dee9a046c8b2b5a1b06751a61c745a"
+      evidence_id: RUN-226-002-V001
+      repair_lineage:
+        failed_run_id: RUN-226-001
+        repair_id: REPAIR-226-001
+      objective: >-
+        Define a dedicated provider-neutral research semantic request/return protocol over
+        RA-4 plus an explicitly selected acquisition-adapter invocation boundary over RA-2,
+        with public-destination safety, authorized-connector isolation, exact operational
+        attribution and no automatic provider/tool routing, retry, pagination, query
+        expansion, fallback or failover.
+    - id: RA-6
+      name: AIOS Integration & Continuity Conformance
+      status: DONE
+      architecture_audit: PASS_WITH_MANDATORY_INTEGRATION_BOUNDARIES
+      planning_document_commit: "781d4d633de457ca759689d05f9b32ffe9069996"
+      task_id: TASK-227
+      task_revision: 1
+      authored_commit_sha: "a05006a0b13b73e7b314b4be683601f849386039"
+      task_blob_sha: "81bf580f8c97e36c0ce76dab8266b46d1c478856"
+      completed_by:
+        primary_run_id: RUN-227-001
+        remediation_run_id: RUN-227-002
+        primary_review_id: REVIEW-227-001
+        delta_review_id: REVIEW-227-002
+        verdict: PASS
+        reviewed_sha: "dd78b6cb54674e0a564ecbe1215d7918d81f6a1e"
+        published_sha: "dd78b6cb54674e0a564ecbe1215d7918d81f6a1e"
+        evidence_id: RUN-227-002-V001
+        resolved_finding_id: F-227-001
+      objective: >-
+        Integrate an explicit-only first-class RESEARCH Flow/Card/context with a dedicated
+        Research Packet and separate ResearchProvider surface, and prove fresh-context,
+        cross-provider, source-substitution, invalidation and Research Record reuse
+        continuity without changing engineering lifecycle authority.
+    - id: RA-7
+      name: Real Project Proof & Closure
+      status: NEXT
+      objective: >-
+        Prove the complete architecture on stable/immutable, mutable/time-sensitive, and
+        adversarial/prompt-injection-bearing source research, including instruction
+        isolation, valid-record reuse, relevant invalidation, bounded refresh with
+        unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
+  sequencing_rule:
+  generic_continuation: >-
+    Continue RA-7 — Real Project Proof & Closure as the unique Human/Brain planning NEXT.
+    Perform a fresh architecture/threat-model audit first, then author and canonically bind
+    one exact RA-7 engineering TASK. Do not execute RA-7 before that audit is closed, the
+    exact TASK is authored, and fresh Brain Sync selects it under normal Runtime admission.
+  human_override: >-
+    A newer explicit Human track or priority change outranks this pointer prospectively
+    and must be canonicalized before later generic continuation relies on it.
+  task_gate: >-
+    A NEXT milestone with a task_id is not executable until that exact TASK revision is
+    canonically authored and Brain Sync reconciles it against current engineering lineage.
+  ra_implementation_gate: >-
+    RA-1 through RA-6 are reviewed and published. RA-6 closed through RUN-227-002 /
+    REVIEW-227-002 DELTA PASS at exact published SHA
+    dd78b6cb54674e0a564ecbe1215d7918d81f6a1e after F-227-001 remediation, with
+    RUN-227-002-V001 focused verification evidence. RA-7 is now the unique planning NEXT,
+    but remains non-executable until its architecture/threat-model audit is closed, one exact
+    engineering TASK is canonically authored and bound, fresh Brain Sync selects that TASK,
+    and normal Runtime admission applies.
+
+authority:
+  purpose: Human/Brain planning state only
+  engineering_truth: >-
+    Exact canonical Git state and immutable TASK, RUN, RESULT, FAILURE, REVIEW,
+    REMEDIATION, and REPAIR lineage remain the sole engineering-state truth.
+  completion: >-
+    Implementation milestone DONE requires exact supporting reviewed/published evidence;
+    this roadmap state never makes a TASK or RUN complete and cannot override conflicting lineage.
+  advancement: >-
+    Updates are explicit Human/Brain roadmap-authority changes grounded in canonical evidence;
+    execution, review, publication, workflows, Brain providers, and Runtime do not advance
+    roadmap semantics automatically.
