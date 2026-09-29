@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-stable-failure-cause-probe
+  - verification-performance-rebaseline-v2-stable-failure-detail-probe
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1605,7 +1605,7 @@ sequence:
         correctness still reported 36 failures. Canonical failure diagnostics
         expose only the bounded lowest 20 identities, so a separate bounded
         contention diagnostic is required before another TASK-231 attempt.
-    blocked_by: verification-performance-rebaseline-v2-stable-failure-cause-probe
+    blocked_by: verification-performance-rebaseline-v2-stable-failure-detail-probe
     prerequisite_resolution:
       roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
       task_id: TASK-232
@@ -1781,7 +1781,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-stable-failure-cause-probe
 
   - id: verification-performance-rebaseline-v2-stable-failure-cause-probe
-    status: NEXT
+    status: DONE
     task_id: TASK-235
     task_revision: 1
     authored_commit_sha: "1a8dd934450eec1791f232e63cc2bc19e93bfe26"
@@ -1795,6 +1795,23 @@ sequence:
       published_sha: "38c94bcf0a6eb70f35b6a99e2e88dc5b22b1f552"
       classification: SERIAL_STABLE_FAILURE
       stable_failure_count: 3
+    completed_by:
+      run_id: RUN-235-001
+      result_artifact_sha: "7c5a26d7a88d4d0001d5d7aa29d061d49d840d18"
+      review_id: REVIEW-235-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-235-001-V001
+        - RUN-235-001-V002
+        - RUN-235-001-V003
+      review_decision_sha: "d61f86d2c13e4edbb3223c8831b0a0d8f32bf7e5"
+      reviewed_sha: "33d1b2a26b356cce9d1aaf383bfda2cc173cce3a"
+      published_sha: "33d1b2a26b356cce9d1aaf383bfda2cc173cce3a"
+      classification: MIXED_KNOWN_UNKNOWN
+      details:
+        hot_swap_scenario_2: UNKNOWN
+        source_repair_closed_replay: GIT_COMMAND_FAILED
+        source_repair_bound_target: GIT_COMMAND_FAILED
     objective: >-
       Identify the exact fail-closed guard categories for the three stable serial
       failures using isolated cold subprocesses and privacy-safe typed cause facts,
@@ -1804,8 +1821,38 @@ sequence:
       state: UNVERIFIED
       note: >-
         All three tests use shared Git fixture machinery and TASK-232 changed
-        packed-object fixture inspection, but exception classes alone do not prove
-        causal linkage. TASK-235 must resolve the exact guards before any fix.
+        packed-object fixture inspection, but TASK-235 resolved only two failures
+        to the generic GIT_COMMAND_FAILED boundary and left the ingress failure
+        UNKNOWN. Causality remains unproven.
+    return_to: verification-performance-rebaseline-v2-stable-failure-detail-probe
+
+  - id: verification-performance-rebaseline-v2-stable-failure-detail-probe
+    status: NEXT
+    task_id: TASK-236
+    task_revision: 1
+    authored_commit_sha: "97a28213be16aad457ddf18bb4bf7ca7f549d48f"
+    task_blob_sha: "0f347f3ffc125fb13d6da58198ec55ad3190735c"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-235
+      run_id: RUN-235-001
+      review_id: REVIEW-235-001
+      published_sha: "33d1b2a26b356cce9d1aaf383bfda2cc173cce3a"
+      classification: MIXED_KNOWN_UNKNOWN
+      git_command_failed_count: 2
+      unknown_ingress_count: 1
+    objective: >-
+      Resolve the two generic GIT_COMMAND_FAILED outcomes to privacy-safe Git
+      command family/return-code/stderr categories and resolve the ingress UNKNOWN
+      to an allowlisted source raise-site, without changing behavior or selecting
+      a fix.
+    task232_regression_hypothesis:
+      authority: BRAIN_PLANNING_HYPOTHESIS_ONLY
+      state: UNVERIFIED
+    defender_hypothesis:
+      authority: HUMAN_PLANNING_EVIDENCE_ONLY
+      state: UNVERIFIED
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
