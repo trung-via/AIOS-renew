@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-source-repair-path-hardening
+  - verification-performance-rebaseline-v2-ingress-metadata-identity-diagnostic
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1605,7 +1605,7 @@ sequence:
         correctness still reported 36 failures. Canonical failure diagnostics
         expose only the bounded lowest 20 identities, so a separate bounded
         contention diagnostic is required before another TASK-231 attempt.
-    blocked_by: verification-performance-rebaseline-v2-source-repair-path-hardening
+    blocked_by: verification-performance-rebaseline-v2-ingress-metadata-identity-diagnostic
     prerequisite_resolution:
       roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
       task_id: TASK-232
@@ -1884,7 +1884,7 @@ sequence:
 
 
   - id: verification-performance-rebaseline-v2-source-repair-path-hardening
-    status: NEXT
+    status: DONE
     task_id: TASK-237
     task_revision: 1
     authored_commit_sha: "1051d7e830a3e68b3093b6ca825c961727682287"
@@ -1909,11 +1909,55 @@ sequence:
       content and all source-REPAIR lineage/activation/REPAIR semantics remain
       unchanged.
     remaining_followups:
-      ingress_metadata_content_mismatch: PENDING_AFTER_TASK_237
+      ingress_metadata_content_mismatch: ACTIVE_TASK_238_DIAGNOSTIC
       parallel_only_git_fixture_failure: PENDING_AFTER_STABLE_FAILURE_CORRECTIONS
     defender_hypothesis:
       authority: HUMAN_PLANNING_EVIDENCE_ONLY
       state: UNVERIFIED
+    completed_by:
+      run_id: RUN-237-003
+      result_artifact_sha: "0a7a93837a02342b9a9a786dd0e57bb12171ca0a"
+      review_id: REVIEW-237-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-237-003-V001
+        - RUN-237-003-V002
+        - RUN-237-003-V003
+      review_decision_sha: "be7da6587faa9981e254bd2b46775e0280b11526"
+      reviewed_sha: "3687fa06e12e22933e7184eba95fd0a6be4fae03"
+      published_sha: "3687fa06e12e22933e7184eba95fd0a6be4fae03"
+    return_to: verification-performance-rebaseline-v2-ingress-metadata-identity-diagnostic
+
+  - id: verification-performance-rebaseline-v2-ingress-metadata-identity-diagnostic
+    status: NEXT
+    task_id: TASK-238
+    task_revision: 1
+    authored_commit_sha: "55647dc4b3353320155e753155444c64c60bb313"
+    task_blob_sha: "83af7decc5bc93ad58e066fd87f12081685ce619"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-236
+      run_id: RUN-236-001
+      review_id: REVIEW-236-001
+      published_sha: "15fce5f5642d4defd3aa1df0f15292191683221b"
+      target: tests/test_hot_swap_conformance.py::test_scenario_2_fresh_correction_accepts_only_current_finding
+      detail:
+        source_locus: src/aios_renew/authoring_ingress.py:_validate_metadata_commit
+        category: METADATA_CONTENT_MISMATCH
+    prerequisite_closure:
+      task_id: TASK-237
+      run_id: RUN-237-003
+      review_id: REVIEW-237-001
+      published_sha: "3687fa06e12e22933e7184eba95fd0a6be4fae03"
+    objective: >-
+      Resolve the remaining stable fresh-clone AUTHOR_REMEDIATION metadata-content
+      mismatch to a bounded exact byte/object identity boundary without changing
+      production behavior or selecting a remediation.
+    post_completion_commitment:
+      ingress_metadata_content_correction: REQUIRED_IF_MISMATCH_REMAINS_AND_BOUNDARY_IS_RESOLVED
+      parallel_only_git_fixture_failure: AFTER_STABLE_FAILURE_CORRECTION
+      task231_workers_12: AFTER_BOTH_PRE_TASK231_BLOCKERS
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
