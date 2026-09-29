@@ -10,7 +10,9 @@ from aios_renew.decision_packet import DecisionPacketError, compile_decision_pac
 from aios_renew.research_packet import (
     ResearchPacketError, compile_research_packet, project_research_architecture_handoff,
 )
-from aios_renew.research_record import construct_research_record, project_research_reuse
+from aios_renew.research_record import (
+    construct_research_claim, construct_research_record, project_research_reuse,
+)
 from aios_renew.research_contract import construct_research_brief
 from test_brain_context import snapshot
 from test_research_record import brief_request, claim, material, profile, source
@@ -144,3 +146,21 @@ def test_candidate_handoff_is_bounded_cognitive_projection():
     excerpt_record = construct_research_record(excerpt_raw, p, observations=public_supplied)
     with pytest.raises(ResearchPacketError):
         project_research_architecture_handoff(excerpt_record, p)
+
+
+def test_candidate_handoff_rejects_excerpt_only_in_uncertainty_summary():
+    brief, request = brief_request()
+    p = profile()
+    excerpt = "A retained source excerpt"
+    public_source, supplied = source(brief, request, excerpt, excerpt=excerpt)
+    source_id = public_source["observation_fingerprint"]
+    raw_claim = claim([source_id], "Independent conclusion")
+    raw_claim["uncertainty"]["summary"] = excerpt
+    del raw_claim["claim_fingerprint"]
+    excerpt_claim = construct_research_claim(raw_claim, [source_id])
+    raw = material(brief, p, [public_source], [excerpt_claim])
+    raw["closure"]["outcome"] = "RESEARCH_CANDIDATE"
+    record = construct_research_record(raw, p, observations=supplied)
+
+    with pytest.raises(ResearchPacketError, match="source excerpt cannot enter architecture handoff"):
+        project_research_architecture_handoff(record, p)

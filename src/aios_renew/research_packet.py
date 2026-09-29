@@ -161,7 +161,8 @@ def project_research_architecture_handoff(
         text = [brief["question"], brief["decision_context"],
                 *brief["scope"]["include"], *brief["scope"]["exclude"],
                 bound["project_assessment"]["summary"], bound["closure"]["summary"]]
-        text += [claim["statement"] for claim in claims]
+        text += [item for claim in claims
+                 for item in (claim["statement"], claim["uncertainty"]["summary"])]
         excerpts = [source["retained_excerpt"] for source in bound["sources"]
                     if source["retained_excerpt"]]
         if any(excerpt in item for excerpt in excerpts for item in text):
