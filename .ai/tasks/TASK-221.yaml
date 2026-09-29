@@ -1,0 +1,121 @@
+task_id: TASK-221
+revision: 1
+
+goal: >
+  Final Plan-A activation for the corrected successor consumer published by TASK-220.
+  Bind production _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA to exact
+  5d8ac589cbb4f611816d2926cff1989eda4eb74d and prove the full production-default
+  control-source / installed-distribution / target-source topology before any real
+  downstream TASK-259 r2 retry. This is the second and final upstream TASK id allowed
+  by the Human-approved BP-9 STOP-LINE closure.
+
+problem: >
+  TASK-220 corrected successor installed-generation provenance, passed RUN-220-002 and
+  REVIEW-220-001, and is publication-effective exactly at
+  5d8ac589cbb4f611816d2926cff1989eda4eb74d. That published target intentionally keeps
+  successor activation closed (None), so one separate reviewed activation is required.
+  Unlike TASK-220 capability tests, the final activation proof must use committed
+  production activation defaults and exact published target source rather than test-local
+  activation injection or a synthetic target commit.
+
+assumptions:
+  - Canonical AIOS-renew main at authoring is exact 5d8ac589cbb4f611816d2926cff1989eda4eb74d.
+  - TASK-220 target 5d8ac589... has _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA = None.
+  - Python Agent main remains 1468d2b26f2d1f5ed6acb6f152f512a39c4c52ec with TASK-259 r2 and no RUN-259-002 terminal artifact.
+  - The demonstrated failed-v2 lineage remains source 31fd2482cd87d97fd818e05eb5b4dcec69ffeee6, prior target 44eee353eda376c9db8cd88d97184d3122651bf5, failed RUN-259-001, executor codex.
+  - No TASK-222-style narrow continuation is authorized if Plan A later exposes another architecture-level pre-RUN defect.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-218.yaml
+    - .ai/tasks/TASK-219.yaml
+    - .ai/tasks/TASK-220.yaml
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - docs/AIOS-BRAIN-PORTABILITY.md
+
+non_goals:
+  - Modify successor intent schema, installed-generation witness semantics, migration history, Runtime, Reviewer, Publisher, workflows, carriers, retry/fallback/failover, legacy bootstrap, source-upgrade or source-REPAIR.
+  - Modify Python Agent, TASK-259 r2, downstream pin/roadmap/conformance state, TASK-207 r9 or TASK-254.
+  - Infer target from mutable main, activate any SHA other than exact 5d8ac589..., or add a generic activation router/manifest.
+  - Execute the real downstream carrier or create RUN-259-002.
+
+constraints:
+  hard:
+    - >
+      The sole production behavior change is
+      _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA =
+      "5d8ac589cbb4f611816d2926cff1989eda4eb74d". All other activation/fixed-generation
+      constants, successor schema, lineage rules and installed-generation witness logic
+      remain unchanged.
+    - >
+      Add or adapt a deterministic final composed activation regression that calls
+      bootstrap_source_successor_primary from the TASK-221 candidate with its committed
+      production activation value. The final proof itself must not monkeypatch, overwrite
+      or inject _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA.
+    - >
+      The final proof stages exact published target
+      5d8ac589cbb4f611816d2926cff1989eda4eb74d from repository history, not synthetic main.
+      A fresh target interpreter must import Operator from that exact checkout and prove
+      the target's own production successor activation remains None.
+    - >
+      Use a separate isolated installed aios-renew distribution whose immutable VCS
+      provenance witnesses exact 31fd2482cd87d97fd818e05eb5b4dcec69ffeee6.
+      Its Operator path must differ from both TASK-221 control source and TASK-220 target.
+      Real _successor_installed_generation_sha attestation must run; do not monkeypatch it.
+    - >
+      Model exact completed failed-v2 lineage: source 31fd2482..., prior target 44eee353...,
+      terminal failed predecessor, same TASK id at strictly newer revision, unchanged pin,
+      unchanged TASK blob, clean attached fast-forward current control and executor continuity.
+    - >
+      Cross real staging and target-side admission and reach final run_task delegation
+      exactly once. run_task may be stubbed only at that final boundary after target
+      identity, installed provenance, lineage, control, pin, TASK and replay validation.
+      Replay must not invoke run_task again.
+    - >
+      Preserve fail-closed coverage for wrong target/source, wrong installed provenance,
+      altered transport, missing failed lineage, conflicting binding and Windows path
+      budget. Existing TASK-220 capability tests may retain their explicitly authorized
+      test-local activation injection; the new final TASK-221 proof may not.
+    - >
+      Keep Git-heavy fixtures on the bounded short-root strategy established by
+      REPAIR-220-001 so Windows verification reaches semantic assertions.
+    - >
+      Document TASK-221 as exact activation of published TASK-220 target 5d8ac589...,
+      second/final Plan-A upstream id, with real downstream retry blocked until exact
+      TASK-221 Runtime verification, review and publication.
+    - >
+      Executor changes only the three authorized paths, returns zero unresolved work,
+      and does not review, publish, mutate roadmap or dispatch downstream.
+
+acceptance:
+  - id: AC1
+    condition: Production successor activation equals exact 5d8ac589cbb4f611816d2926cff1989eda4eb74d; all other activation and successor semantics are unchanged.
+  - id: AC2
+    condition: Production-default composed proof, without activation monkeypatching, stages exact target 5d8ac589..., confirms target activation None, and uses real isolated installed provenance for exact 31fd2482....
+  - id: AC3
+    condition: Proof demonstrates three distinct identities plus exact failed-v2 lineage, unchanged pin/TASK blob, current-control descendant, same-TASK newer revision and executor continuity.
+  - id: AC4
+    condition: Final run_task delegation occurs exactly once and replay causes no second invocation; negative identity/provenance/lineage cases remain fail-closed.
+  - id: AC5
+    condition: Windows short-root and successor path-budget behavior remain regression-safe.
+  - id: AC6
+    condition: Only src/aios_renew/operator.py, tests/test_operator.py and docs/AIOS-BRAIN-PORTABILITY.md change; no downstream or lifecycle-authority state changes.
+  - id: AC7
+    condition: Zero unresolved work remains and real TASK-259 r2 stays blocked until exact TASK-221 review/publication; this TASK does not authorize a third narrow upstream patch.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q -k "source_successor or source_upgrade or source_bootstrap_production_allowlist_rejects_other_targets_before_edge or source_repair_bootstrap_requires_completed_failed_v2_lineage"
+    - git diff --check
