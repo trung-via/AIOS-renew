@@ -1,0 +1,273 @@
+task_id: TASK-222
+revision: 1
+
+goal: >
+  Establish RA-1 Research Contract Foundation as a pure, deterministic, read-only,
+  provider-neutral structural contract for AIOS_RESEARCH_BRIEF v1, bounded
+  AIOS_ACQUISITION_REQUEST v1, and AIOS_RESEARCH_CHALLENGE_TARGET v1 so a fresh Brain
+  can define one reproducible research subject, derive bounded acquisition work, and bind
+  future counter-evidence requests to exact Pass-1 challenge targets without chat memory,
+  provider-native search authority, repository mutation, source-content ingestion, or any
+  new lifecycle/planning authority.
+
+problem: >
+  Research Assurance v2.1 closes RA-0 with a validated architecture but the repository has
+  no machine-checkable research-subject contract. Without RA-1, a later acquisition layer
+  could receive ambiguous free-form scope, silently widen a query, lose project/currentness
+  provenance, exceed resource bounds, substitute counter-evidence targets, or smuggle raw
+  source/provider/session material into the semantic control plane. RA-1 must freeze only
+  the research intent and acquisition-request grammar needed by RA-2 through RA-4, while
+  deliberately deferring Source Observation, Research Record, research audit, provider/tool
+  invocation and first-class RESEARCH Flow integration.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    6f7ea289bd890b949dcd4ff836c12a5838fed354. RA-0 is DONE and RA-1 Research Contract
+    Foundation is the unique Human/Brain planning NEXT with no authored TASK yet.
+  - >
+    docs/AIOS-RESEARCH-ASSURANCE.md at the RA-0-audited v2.1 baseline is authoritative
+    planning for RA-1: all acquired source content is untrusted data, acquisition adapters
+    are subordinate tools, acquisition failure is not INSUFFICIENT_EVIDENCE, Research
+    Record and audit semantics remain later milestones, and RESEARCH Flow integration is
+    deferred to RA-6.
+  - >
+    Existing BP-3 Brain Work Context/Flow Resolver, BP-4 Decision Packet, BP-4A Brain
+    Semantic Audit, BP-5 Brain Provider Protocol, Unified State, Runtime, Reviewer,
+    Publisher and authoring ingress remain authoritative and unchanged.
+  - >
+    The BP-9 Plan-A prohibition on a TASK-222-style bootstrap/correction continuation was
+    scoped to the now-closed downstream-adoption corridor. This TASK-222 is a new
+    Research Assurance milestone and must not reopen or reinterpret BP-9 lineage.
+  - >
+    RA-2 will define Source Observation/provenance and acquisition operational-failure
+    contracts; RA-3 will define Research Record and the research audit profile; RA-4 will
+    define two-pass research orchestration. RA-1 must not consume those milestones early.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RESEARCH-ASSURANCE.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-177.yaml
+    - .ai/tasks/TASK-179.yaml
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/brain_audit.py
+    - src/aios_renew/brain_provider_protocol.py
+    - src/aios_renew/brain_provider.py
+    - src/aios_renew/task.py
+    - tests/test_brain_context.py
+    - tests/test_decision_packet.py
+  modify:
+    - src/aios_renew/research_contract.py
+    - tests/test_research_contract.py
+
+non_goals:
+  - >
+    Add RESEARCH to Flow Cards, Brain Work Context, Flow Resolver, Decision Packet,
+    Brain Return Contracts, Brain Provider Protocol, Reviewer Provider Protocol, Unified
+    State, roadmap selection, Runtime, authoring ingress, publication, or frozen Kernel
+    semantics.
+  - >
+    Implement web/Git/GitHub/document connectors, acquisition adapters, network or file
+    retrieval, Source Observation, source-content parsing, citation extraction, source
+    authority classification from real material, operational acquisition failures, or
+    counter-evidence execution.
+  - >
+    Implement Research Record persistence, latest-record discovery, refresh selection,
+    knowledge graph/database, memory store, chat-history access, persistent reasoning,
+    cache, background worker, watcher, scheduler, broker, or orchestration database.
+  - >
+    Implement Evidence Construct, research claims, claim-to-source binding, research
+    audit lenses, RESEARCH_CANDIDATE / INSUFFICIENT_EVIDENCE closure, provider invocation,
+    cross-provider conformance, automatic retry/fallback/failover, or real research proof.
+  - >
+    Let deterministic code decide whether a research claim is true, whether evidence is
+    persuasive, what research should be prioritized, what roadmap item should execute,
+    or whether a TASK should be authored.
+  - >
+    Accept raw source content, excerpts, observations, provider/model/session identity,
+    credentials, secrets, chat history, chain-of-thought, Runtime evidence, REVIEW
+    verdicts, lifecycle commands, or arbitrary destination/command fields in RA-1
+    semantic contracts.
+  - >
+    Mutate any repository/ref/roadmap state, create RUN/RESULT/EVIDENCE/FAILURE/REVIEW/
+    REMEDIATION/REPAIR artifacts, invoke an Executor/provider, or publish as a side effect
+    of research-contract construction or validation.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The only production mutation surface is scope.modify. If satisfying RA-1 requires
+      changing existing Brain/Runtime/Reviewer/Flow/Decision Packet/provider contracts,
+      fail closed back to Brain rather than widening scope.
+    - >
+      Implement RA-1 as a pure no-I/O structural module. Its behavior must be deterministic
+      from caller-supplied strict JSON-compatible material only. It must not read Git,
+      repository files, environment state, network, clock, credentials, provider/session
+      state or chat history.
+    - >
+      AIOS_RESEARCH_BRIEF v1 is a closed contract with exactly:
+      format, version, kind, question, decision_context, scope, current_as_of,
+      project_basis, source_policy, resource_bounds, handoff_target,
+      invalidation_basis, and brief_fingerprint. format is AIOS_RESEARCH_BRIEF,
+      version is integer 1, kind is RESEARCH_BRIEF, and handoff_target is exactly
+      ARCHITECTURE.
+    - >
+      Research Brief question and decision_context are non-empty normalized UTF-8 text
+      bounded to 8192 bytes each. scope contains exactly include and exclude lists;
+      each list has at most 32 unique non-empty entries, each entry is at most 2048
+      UTF-8 bytes, and normalized equivalent ordering must not alter brief identity.
+    - >
+      current_as_of contains exactly mode and value. mode is DATE, TIMESTAMP, or
+      NOT_APPLICABLE. DATE requires a real calendar YYYY-MM-DD value; TIMESTAMP requires
+      a real UTC YYYY-MM-DDTHH:MM:SSZ value; NOT_APPLICABLE requires value null. No
+      implicit current clock is permitted.
+    - >
+      project_basis and invalidation_basis are each bounded to at most 16 unique records.
+      Each record contains exactly kind, locator, identity. kind is an uppercase token of
+      at most 64 characters; locator is portable non-empty UTF-8 text of at most 2048
+      bytes; identity is non-empty UTF-8 text of at most 512 bytes. Machine-local absolute
+      paths, credential-bearing locators, duplicate normalized records and malformed
+      Unicode fail closed. Empty lists are allowed when no such basis is applicable.
+    - >
+      source_policy contains exactly allowed_source_families, independence_required and
+      excluded_locators. allowed_source_families is a non-empty unique subset of exactly
+      REPOSITORY, OFFICIAL_DOCS, SPECIFICATION, PAPER_REPORT, PUBLIC_WEB and
+      CONNECTED_SOURCE. independence_required is boolean. excluded_locators contains at
+      most 16 unique portable strings of at most 2048 bytes and carries no credentials.
+    - >
+      resource_bounds contains exactly max_baseline_requests, max_sources_per_request,
+      max_observation_bytes and max_counter_evidence_requests. Values are positive
+      integers with ceilings 32, 32, 262144 and 16 respectively. These are Brain-authored
+      budgets only; RA-1 does not execute or count acquisition attempts.
+    - >
+      The normalized Research Brief is at most 65536 UTF-8 JSON bytes and
+      brief_fingerprint is lowercase SHA-256 over canonical strict JSON of the complete
+      normalized brief excluding only brief_fingerprint. Equivalent mapping order,
+      CRLF/LF representation and order-insensitive list permutations yield identical
+      identity; any semantic field change changes identity. No silent truncation is
+      allowed.
+    - >
+      AIOS_RESEARCH_CHALLENGE_TARGET v1 is a closed content-addressed contract containing
+      exactly format, version, kind, brief_fingerprint, target_kind, target_ref,
+      challenge, rationale and target_fingerprint. format/version/kind are respectively
+      AIOS_RESEARCH_CHALLENGE_TARGET / 1 / RESEARCH_CHALLENGE_TARGET. target_kind is
+      exactly one of CLAIM, SOURCE, ASSUMPTION, FRESHNESS, COVERAGE, APPLICABILITY,
+      INSTRUCTION_BOUNDARY or GAP. target_ref is bounded to 1024 UTF-8 bytes; challenge
+      and rationale are non-empty and each bounded to 4096 bytes. A target must bind one
+      exact valid Research Brief fingerprint.
+    - >
+      Challenge-target identity is lowercase SHA-256 over canonical strict JSON excluding
+      only target_fingerprint. The normalized target is at most 16384 UTF-8 JSON bytes.
+      RA-1 target semantics describe what Pass 1 asks to challenge; they are not a claim,
+      finding, Reviewer verdict, Runtime evidence or correction authorization.
+    - >
+      AIOS_ACQUISITION_REQUEST v1 is a closed content-addressed contract containing
+      exactly format, version, kind, brief_fingerprint, phase, purpose,
+      locator_or_query, source_family, challenge_target_fingerprints, bounds and
+      request_fingerprint. format/version/kind are respectively
+      AIOS_ACQUISITION_REQUEST / 1 / ACQUISITION_REQUEST.
+    - >
+      Acquisition phase is exactly BASELINE or COUNTER_EVIDENCE. BASELINE requires an
+      empty challenge_target_fingerprints list. COUNTER_EVIDENCE requires 1..16 unique
+      target fingerprints and every supplied target must validate against the same exact
+      brief_fingerprint. No request may infer or fabricate a challenge target.
+    - >
+      Acquisition purpose is non-empty normalized UTF-8 text bounded to 4096 bytes;
+      locator_or_query is non-empty portable UTF-8 text bounded to 8192 bytes;
+      source_family must be one of the exact brief.source_policy.allowed_source_families.
+      Acquisition Request contains no source result, content, excerpt, observation,
+      semantic research outcome, adapter/provider identity or lifecycle state.
+    - >
+      Acquisition bounds contains exactly max_items and max_total_observation_bytes.
+      Both are positive integers and must not exceed the bound Research Brief's
+      max_sources_per_request and max_observation_bytes respectively. The normalized
+      request is at most 32768 UTF-8 JSON bytes.
+    - >
+      request_fingerprint is lowercase SHA-256 over canonical strict JSON excluding only
+      request_fingerprint. Request validation must bind the exact Research Brief and, for
+      COUNTER_EVIDENCE, the exact supplied challenge-target fingerprints. Substituted,
+      stale, foreign-brief or missing target material fails closed.
+    - >
+      Contract construction/revalidation rejects unknown or duplicate fields, duplicate
+      normalized list items, invalid Unicode, NaN/non-JSON values, booleans where integer
+      bounds are required, over-bound/depth-abusive material, credentials/secrets,
+      machine-local absolute paths in portable locator fields and nested RA protocol
+      envelopes where not explicitly allowed. No silent trimming or best-effort repair.
+    - >
+      All retrieved source material remains outside RA-1 contracts. Source authority can
+      later affect research evidence quality, but no acquired text has instruction
+      authority. RA-1 must not expose a field through which source content can become a
+      Brain/provider/tool instruction.
+    - >
+      RA-1 introduces no artifact persistence and no automatic latest-version resolver.
+      The three fingerprints are semantic content identities only, not lifecycle truth,
+      canonical engineering evidence, publication authority or mutation permission.
+    - >
+      Existing Brain Context, Flow Cards, Decision Packet, Brain Audit, Brain Provider,
+      Unified State, Runtime, Reviewer, Publisher and authoring ingress behavior must be
+      unchanged by RA-1.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository exposes a pure deterministic AIOS_RESEARCH_BRIEF v1 contract with
+      the exact closed fields, bounds, explicit current_as_of grammar, fixed source-family
+      policy, resource budgets, ARCHITECTURE handoff and content-addressed identity
+      defined by this TASK.
+  - id: AC2
+    condition: >
+      Equivalent Research Brief representations including mapping-order, LF/CRLF and
+      permutations of order-insensitive unique lists normalize to the same
+      brief_fingerprint, while every semantic field change changes the fingerprint and
+      malformed, duplicate, non-portable, private or over-bound material fails closed.
+  - id: AC3
+    condition: >
+      The repository exposes a pure content-addressed AIOS_RESEARCH_CHALLENGE_TARGET v1
+      bound to one exact Research Brief, with the exact closed target kinds and text
+      bounds, and rejects stale/foreign brief bindings, malformed fields and over-bound
+      targets without interpreting the target as evidence, finding or verdict.
+  - id: AC4
+    condition: >
+      The repository exposes a pure AIOS_ACQUISITION_REQUEST v1 whose source family and
+      per-request limits are bounded by one exact Research Brief; BASELINE accepts no
+      challenge targets, COUNTER_EVIDENCE accepts only exact valid same-brief challenge
+      targets, and any substitution, missing target, foreign target or budget widening
+      fails closed.
+  - id: AC5
+    condition: >
+      Acquisition Request identity is deterministic and representation-independent for
+      equivalent semantic material, changes on any semantic request change, and contains
+      no source result/content/observation, provider/model/session attribution, research
+      closure, lifecycle state, arbitrary command/destination, credential or secret field.
+  - id: AC6
+    condition: >
+      RA-1 construction/revalidation is pure and side-effect free: it performs no
+      repository/network/filesystem/clock/provider access, creates no RUN or canonical
+      artifact, mutates no state/ref/roadmap, and cannot make an acquisition, research,
+      review, publication or lifecycle decision.
+  - id: AC7
+    condition: >
+      Existing six Flow Cards, Brain Work Context/Resolver, Decision Packet, BP-4A audit,
+      Brain Provider Protocol, Unified State, Runtime, Reviewer, Publisher and authoring
+      ingress contracts remain unmodified and no first-class RESEARCH flow, Source
+      Observation, Research Record or audit protocol is introduced.
+  - id: AC8
+    condition: >
+      Focused deterministic regressions cover valid and malformed briefs, calendar/time
+      grammar, normalization/fingerprints, portability/privacy rejection, resource-bound
+      failures, challenge-target binding, BASELINE/COUNTER_EVIDENCE request rules,
+      cross-brief substitution, request budget widening, forbidden source/provider
+      material and proof of no I/O/lifecycle side effects.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_research_contract.py
