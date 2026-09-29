@@ -1252,19 +1252,35 @@ sequence:
     status: NEXT
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_BOUNDARY_REFINEMENT
+      completed_on: "2026-09-29"
+      planning_document_commit: "c46f19eb4492c07af27a5e3aa017d039c66faf76"
+      findings:
+        - RA2_RA5_ADAPTER_BOUNDARY_SEPARATION
+        - SOURCE_REPRESENTATION_CLASS_DISTINCTION
+        - SYNTHESIS_NOT_SOURCE_EVIDENCE
+        - STRUCTURAL_UNTRUSTED_CONTENT_ISOLATION
+        - REQUEST_SOURCE_FAMILY_NOT_AUTHORITY_TRUTH
+        - SUCCESS_EMPTY_RESULT_NOT_ABSENCE_PROOF
+        - OPERATIONAL_FAILURE_NOT_RESEARCH_CLOSURE
+        - PORTABLE_LOCATOR_NOT_NETWORK_SAFETY_PROOF
+        - PRIVATE_CONNECTED_SOURCE_SCOPE
+        - NO_HIDDEN_ACQUISITION_EXPANSION
     task_id: null
     objective: >-
-      Audit and freeze the RA-2 Source Acquisition & Provenance Boundary before
-      authoring any implementation TASK.
+      Author the exact RA-2 normalized acquisition-airlock TASK from the audited
+      Research Assurance v2.2 baseline before any Executor invocation.
 
 research_assurance:
   id: research-assurance
-  version: 2.1
+  version: 2.2
   status: ACTIVE
   approved_on: "2026-09-29"
   approved_against_main_sha: "6538f2762620c510e594e7c1842319bc4a783ccf"
   canonical_planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
-  planning_document_commit: "adf0c98773d5b08b773938ff29b47888269d4c31"
+  planning_document_commit: "c46f19eb4492c07af27a5e3aa017d039c66faf76"
   authority: HUMAN_BRAIN_PLANNING
   activation_basis:
     bp9_status: DONE
@@ -1339,11 +1355,13 @@ research_assurance:
     - id: RA-2
       name: Source Acquisition & Provenance Boundary
       status: NEXT_UNAUTHORED
+      architecture_audit: PASS_WITH_BOUNDARY_REFINEMENT
       objective: >-
-        Define replaceable subordinate acquisition adapters and normalized source
-        observations/provenance, untrusted-content instruction isolation, and operational
-        acquisition-failure taxonomy while granting no semantic, roadmap, TASK, review,
-        lifecycle or publication authority.
+        Define the pure normalized acquisition airlock: content-addressed Source Observation
+        and Acquisition Attempt contracts with exact Brief/Request binding, representation
+        class, provenance-safe identity/version/retrieval facts, access scope,
+        instruction_trust UNTRUSTED, request-budget enforcement, and closed operational
+        failure semantics. Concrete source-tool invocation is deferred to RA-5.
     - id: RA-3
       name: Research Evidence Record & Audit Profile
       status: PLANNED
@@ -1384,10 +1402,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only RA-2 — Source Acquisition & Provenance Boundary as a Human/Brain
-    architecture audit and TASK-authoring step. RA-1 is reviewed and published. Until
-    RA-2 is audited and an exact TASK is authored, do not invoke an Executor or add
-    first-class RESEARCH Flow semantics.
+    Continue only RA-2 — Source Acquisition & Provenance Boundary. Its architecture audit
+    is closed on Research Assurance v2.2; the next action is to author and bind one exact
+    RA-2 TASK. Do not invoke an Executor before exact TASK authoring/Brain Sync, and do
+    not add concrete source-tool invocation or first-class RESEARCH Flow semantics.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1396,9 +1414,9 @@ research_assurance:
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
     RA-1 is reviewed/published at exact SHA 1eed373ce0b8b53aa12b024d66b339fe16454384.
-    RA-2 is now the unique planning NEXT but remains unauthored. RA-2 implementation
-    TASK authoring is permitted only after its architecture/threat-model audit closes;
-    RA-3 through RA-7 remain gated.
+    RA-2 architecture audit is closed on v2.2 and exact TASK authoring is now permitted.
+    Execution remains forbidden until that TASK revision is canonicalized and fresh Brain
+    Sync selects it. RA-3 through RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
