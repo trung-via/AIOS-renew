@@ -1,0 +1,187 @@
+task_id: TASK-236
+revision: 1
+
+goal: >
+  Add one bounded stable-failure detail diagnostic for the three RUN-235-001
+  targets. Resolve the remaining AuthoringIngressError UNKNOWN to a safe
+  source raise-site and resolve each OperatorError GIT_COMMAND_FAILED to a
+  privacy-safe failing Git command family, return code and stderr category,
+  without changing production, fixtures, worker policy or host configuration.
+
+problem: >
+  RUN-235-001 completed with classification MIXED_KNOWN_UNKNOWN. The hot-swap
+  Scenario 2 target failed with AuthoringIngressError but guard_category UNKNOWN
+  because TASK-235 deliberately suppressed source locus for unmatched messages.
+  The two source-REPAIR targets both failed at src/aios_renew/operator.py:_git
+  with guard_category GIT_COMMAND_FAILED, but durable evidence intentionally
+  omitted the Git argv/return code/stderr detail needed to distinguish fixture
+  state, ref/object lookup, repository state, access/path, or another Git failure.
+  A production or fixture fix remains underdetermined.
+
+assumptions:
+  - >
+    Canonical main at authoring is 33d1b2a26b356cce9d1aaf383bfda2cc173cce3a, the reviewed and published
+    RUN-235-001 candidate.
+  - >
+    RUN-235-001 RESULT artifact is
+    7c5a26d7a88d4d0001d5d7aa29d061d49d840d18 and REVIEW-235-001 PASS decision is
+    d61f86d2c13e4edbb3223c8831b0a0d8f32bf7e5.
+  - >
+    RUN-235-001-V002 observed exactly three target failures:
+    the hot-swap target AuthoringIngressError/UNKNOWN and two source-REPAIR
+    OperatorError/GIT_COMMAND_FAILED failures at src/aios_renew/operator.py:7242.
+  - >
+    TASK-232 regression and Defender remain hypotheses only. TASK-236 must not
+    attribute causality or select a fix.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-232.yaml
+    - .ai/tasks/TASK-234.yaml
+    - .ai/tasks/TASK-235.yaml
+    - scripts/aios_stable_failure_cause_diagnostic.py
+    - tests/aios_stable_failure_probe_plugin.py
+    - tests/test_hot_swap_conformance.py
+    - tests/test_operator.py
+    - tests/git_fixture_support.py
+    - tests/operator_test_support.py
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/operator.py
+  modify:
+    - scripts/aios_stable_failure_detail_diagnostic.py
+    - tests/aios_stable_failure_detail_probe_plugin.py
+    - tests/test_aios_stable_failure_detail_diagnostic.py
+
+non_goals:
+  - >
+    Modify production code, existing tests or fixture support under diagnosis,
+    TASK-231/232/233/234/235, selected workers=12 policy, frozen Kernel semantics,
+    roadmap from Executor execution, workflows, Reviewer or Publisher behavior.
+  - >
+    Fix, skip, xfail, reorder or weaken any target.
+  - >
+    Run full-suite, n4/n12, benchmark, retry, fallback or automatic correction.
+  - >
+    Persist raw Git argv operands, repository paths, refs, SHAs supplied as Git
+    operands, remote URLs, stdout, stderr, exception messages, credentials,
+    environment values or private host paths.
+  - >
+    Change Defender, PATH, Git executable selection or any host-wide setting.
+
+constraints:
+  hard:
+    - >
+      Add one fixed no-argument command:
+      'python scripts/aios_stable_failure_detail_diagnostic.py'. Reject all
+      positional/options input before test execution.
+    - >
+      Bind exactly the same three non-parameterized targets as TASK-235 and no
+      others. Perform one collection-only identity check, then execute each target
+      exactly once in its own fresh serial subprocess with independent basetemp and
+      process-local Git fixture cache.
+    - >
+      Preserve exact subject SHA and clean worktree before and after collection and
+      every target subprocess. Missing, duplicate, malformed, reused-root or
+      subject-mutating observations fail closed.
+    - >
+      For the hot-swap Scenario 2 target, when an AuthoringIngressError occurs,
+      persist no exception message. Persist only exception type, message SHA-256
+      fingerprint, bounded cause-chain exception types, and a safe traceback
+      raise-site selected only from the allowlisted source file
+      src/aios_renew/authoring_ingress.py. The raise-site may contain path,
+      function name and positive source line. If no such frame exists, report
+      UNKNOWN_LOCUS rather than guessing.
+    - >
+      A source raise-site is observational evidence only. Do not infer or emit a
+      semantic guard category from line number alone unless it matches an existing
+      TASK-235 source-auditable guard mapping exactly.
+    - >
+      For either source-REPAIR target whose outer failure is
+      OperatorError/GIT_COMMAND_FAILED, observe the one native Git invocation that
+      returned nonzero and caused the exception. Instrumentation must be
+      diagnostic-only and transparent: delegate the original invocation exactly
+      once with identical arguments/environment/working directory, never retry,
+      alter, suppress or substitute the command.
+    - >
+      Persist only a fixed allowlisted Git command_family derived from static Git
+      grammar, never dynamic operands. Allowed examples include REV_PARSE,
+      CLONE, CHECKOUT, STATUS, REMOTE_GET_URL, FETCH, LS_REMOTE, SHOW,
+      LS_TREE, MERGE_BASE, UPDATE_REF, CAT_FILE, PUSH, or OTHER. Do not persist
+      repository paths, refs, object IDs, remote names/URLs, force-with-lease
+      operands or other argv values.
+    - >
+      Persist the failing Git integer return_code and one fixed stderr_category
+      derived transiently from bounded source-auditable patterns. Categories may
+      include UNKNOWN_REVISION_OR_OBJECT, MISSING_REF, NOT_A_REPOSITORY,
+      LOCK_OR_REF_UPDATE, REPOSITORY_STATE, PATH_OR_FILENAME,
+      ACCESS_OR_PERMISSION, TRANSPORT_OR_REMOTE, or OTHER. Raw stderr/stdout must
+      never be emitted or written to the durable observation.
+    - >
+      For a GIT_COMMAND_FAILED target, require exactly one observed failing Git
+      invocation causally associated with that target. Zero or multiple
+      indistinguishable failing invocations make detail_status AMBIGUOUS rather
+      than selecting one arbitrarily; this is an observational outcome, not an
+      integrity failure.
+    - >
+      If any target unexpectedly passes, record PASS without forcing a synthetic
+      failure. Final aggregate classification must be exactly one of
+      DETAILS_RESOLVED, PARTIAL_DETAILS, PASS_DRIFT, or MIXED_PASS_FAIL.
+      DETAILS_RESOLVED requires the ingress failure to have a safe source locus and
+      both Git failures to have one unambiguous command family/return code/stderr
+      category; PARTIAL_DETAILS covers unresolved or ambiguous details while all
+      three still fail; PASS_DRIFT means all three pass; MIXED_PASS_FAIL covers
+      any mixed pass/fail outcome.
+    - >
+      Durable output remains bounded to exactly three target records plus subject
+      and aggregate classification. No raw message, raw subprocess output or
+      unbounded trace/argv data may be present.
+    - >
+      The diagnostic exits zero when the experiment itself completes faithfully
+      regardless of target pass/fail or PARTIAL_DETAILS. Integrity/privacy/identity
+      failures exit nonzero.
+    - >
+      TASK-236 is observational only and must not declare fixture or production
+      causality, select a remediation, unblock TASK-231 automatically, or change
+      Human workers=12 intent.
+    - >
+      No file outside the three scope.modify files may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The command binds and executes exactly the three TASK-235 targets once each
+      in isolated cold serial subprocesses after one collection identity check.
+  - id: AC2
+    condition: >
+      The ingress UNKNOWN failure exposes a privacy-safe allowlisted production
+      raise-site/function or explicit UNKNOWN_LOCUS without raw message disclosure.
+  - id: AC3
+    condition: >
+      Each OperatorError/GIT_COMMAND_FAILED target exposes only a bounded Git
+      command family, integer return code and stderr category when unambiguous,
+      while ambiguous detail remains explicit and no dynamic Git operand/output is
+      durable.
+  - id: AC4
+    condition: >
+      Diagnostic instrumentation delegates native Git invocation exactly once and
+      does not mutate command/environment/cwd, retry, suppress or change production
+      behavior.
+  - id: AC5
+    condition: >
+      Subject stability, exact execution identity, process/root/cache isolation,
+      privacy and bounded-schema checks fail closed, and final classification is
+      one of the four allowed observational outcomes without causal/remediation
+      claims.
+  - id: AC6
+    condition: >
+      Regression tests cover safe ingress locus extraction, UNKNOWN_LOCUS, every
+      Git command/stderr category grammar used by the implementation, dynamic
+      operand redaction, exact-once delegation, ambiguous Git failures, pass drift,
+      mixed pass/fail, argument rejection and subject/root isolation failure.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_aios_stable_failure_detail_diagnostic.py
+    - python scripts/aios_stable_failure_detail_diagnostic.py
+    - git diff --check
