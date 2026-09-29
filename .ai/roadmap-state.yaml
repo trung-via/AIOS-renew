@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - ra-6-aios-integration-continuity-conformance
+  - ra-7-real-project-proof-closure
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1397,7 +1397,7 @@ sequence:
       Define and prove provider-neutral research semantics plus explicit acquisition-adapter
       portability without provider/tool routing, hidden retry/fallback or authority widening.
   - id: ra-6-aios-integration-continuity-conformance
-    status: NEXT
+    status: DONE
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
     architecture_audit:
@@ -1423,9 +1423,32 @@ sequence:
     task_revision: 1
     authored_commit_sha: "a05006a0b13b73e7b314b4be683601f849386039"
     task_blob_sha: "81bf580f8c97e36c0ce76dab8266b46d1c478856"
+    completed_by:
+      task_id: TASK-227
+      task_revision: 1
+      primary_run_id: RUN-227-001
+      remediation_run_id: RUN-227-002
+      primary_review_id: REVIEW-227-001
+      delta_review_id: REVIEW-227-002
+      verdict: PASS
+      reviewed_sha: "dd78b6cb54674e0a564ecbe1215d7918d81f6a1e"
+      published_sha: "dd78b6cb54674e0a564ecbe1215d7918d81f6a1e"
+      evidence_id: RUN-227-002-V001
+      resolved_finding_id: F-227-001
     objective: >-
       Execute the exact authored RA-6 integration/conformance TASK only after fresh Brain
       Sync confirms TASK-227 revision 1 as the unique canonical NEXT.
+  - id: ra-7-real-project-proof-closure
+    status: NEXT
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    objective: >-
+      Prove the complete Research Assurance architecture on controlled stable/immutable,
+      mutable/time-sensitive, and adversarial/prompt-injection-bearing real-project sources,
+      including valid-record reuse, relevant invalidation, bounded refresh with unaffected
+      evidence reuse, audited fresh ARCHITECTURE handoff, and no automatic roadmap/TASK
+      progression.
+
 
 research_assurance:
   id: research-assurance
@@ -1580,13 +1603,23 @@ research_assurance:
         expansion, fallback or failover.
     - id: RA-6
       name: AIOS Integration & Continuity Conformance
-      status: AUTHORED_UNEXECUTED
+      status: DONE
       architecture_audit: PASS_WITH_MANDATORY_INTEGRATION_BOUNDARIES
       planning_document_commit: "781d4d633de457ca759689d05f9b32ffe9069996"
       task_id: TASK-227
       task_revision: 1
       authored_commit_sha: "a05006a0b13b73e7b314b4be683601f849386039"
       task_blob_sha: "81bf580f8c97e36c0ce76dab8266b46d1c478856"
+      completed_by:
+        primary_run_id: RUN-227-001
+        remediation_run_id: RUN-227-002
+        primary_review_id: REVIEW-227-001
+        delta_review_id: REVIEW-227-002
+        verdict: PASS
+        reviewed_sha: "dd78b6cb54674e0a564ecbe1215d7918d81f6a1e"
+        published_sha: "dd78b6cb54674e0a564ecbe1215d7918d81f6a1e"
+        evidence_id: RUN-227-002-V001
+        resolved_finding_id: F-227-001
       objective: >-
         Integrate an explicit-only first-class RESEARCH Flow/Card/context with a dedicated
         Research Packet and separate ResearchProvider surface, and prove fresh-context,
@@ -1594,7 +1627,7 @@ research_assurance:
         continuity without changing engineering lifecycle authority.
     - id: RA-7
       name: Real Project Proof & Closure
-      status: PLANNED
+      status: NEXT
       objective: >-
         Prove the complete architecture on stable/immutable, mutable/time-sensitive, and
         adversarial/prompt-injection-bearing source research, including instruction
@@ -1602,9 +1635,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only exact TASK-227 revision 1 for RA-6 — AIOS Integration & Continuity
-    Conformance after fresh Brain Sync reconciles that authored TASK against current
-    canonical lineage. Do not widen into RA-7 real-project proof.
+    Continue RA-7 — Real Project Proof & Closure as the unique Human/Brain planning NEXT.
+    Perform a fresh architecture/threat-model audit first, then author and canonically bind
+    one exact RA-7 engineering TASK. Do not execute RA-7 before that audit is closed, the
+    exact TASK is authored, and fresh Brain Sync selects it under normal Runtime admission.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1612,12 +1646,13 @@ research_assurance:
     A NEXT milestone with a task_id is not executable until that exact TASK revision is
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
-    RA-1 through RA-5 are reviewed/published, with RA-5 published at exact SHA
-    73b4e23227dee9a046c8b2b5a1b06751a61c745a after REVIEW-226-001 PASS. RA-6
-    architecture audit is closed and TASK-227 revision 1 is canonically authored at
-    a05006a0b13b73e7b314b4be683601f849386039. RA-6 execution may proceed only after
-    fresh Brain Sync selects that exact TASK and normal Runtime admission applies.
-    RA-7 remains gated.
+    RA-1 through RA-6 are reviewed and published. RA-6 closed through RUN-227-002 /
+    REVIEW-227-002 DELTA PASS at exact published SHA
+    dd78b6cb54674e0a564ecbe1215d7918d81f6a1e after F-227-001 remediation, with
+    RUN-227-002-V001 focused verification evidence. RA-7 is now the unique planning NEXT,
+    but remains non-executable until its architecture/threat-model audit is closed, one exact
+    engineering TASK is canonically authored and bound, fresh Brain Sync selects that TASK,
+    and normal Runtime admission applies.
 
 authority:
   purpose: Human/Brain planning state only
