@@ -621,7 +621,37 @@ RA-5 must not modify the existing Brain/Reviewer provider protocols, add RESEARC
 
 ### RA-6 — AIOS Integration & Continuity Conformance
 
-Only after RA-1 through RA-5 semantics are stable, integrate an explicit-only first-class RESEARCH Flow with Flow Cards/context/dedicated Research Packet/provider surfaces and prove fresh-context, cross-provider, source-substitution, invalidation and Research Record reuse behavior.
+Architecture audit: DONE — PASS WITH MANDATORY INTEGRATION BOUNDARIES.
+
+RA-6 integrates the already-frozen RA-1 through RA-5 semantics into AIOS cognitive support without creating a second lifecycle, Planner, generic router, Reviewer, Publisher or Runtime authority.
+
+Mandatory integration boundaries:
+
+- RESEARCH is an explicit Brain-owned Flow only. It is never selected from Unified State, roadmap lifecycle status, source family, provider identity or tool capability.
+- The existing engineering `AIOS_DECISION_PACKET`, Brain return-contract registry and BrainProvider semantic protocol remain closed to their current architecture/TASK/correction/diagnostic subjects. RESEARCH uses a dedicated bounded `AIOS_RESEARCH_PACKET` family and the already-separate RA-5 research-provider protocol.
+- Flow Resolver may expose RESEARCH only through an explicit selector and must preserve any pending canonical engineering obligation exactly as existing explicit side flows do. RESEARCH never changes `next_action`, acquires mutation authority or satisfies an engineering obligation.
+- Research Packet identity binds the fresh Brain Work Context plus exact Research Brief, research audit profile and any supplied predecessor/reuse basis. It excludes chat history, credentials, machine-local paths, provider/model/session identity and native transport material.
+- Research-provider invocation remains an explicitly supplied single provider surface over `AIOS_RESEARCH_PROVIDER_REQUEST/RETURN`; provider substitution may change semantic conclusions but cannot change the same normalized semantic request identity. No provider scoring, discovery, routing, fallback or automatic retry is introduced.
+- Acquisition remains the RA-5 explicitly selected adapter boundary. RA-6 must not add a source-family/tool router, hidden pagination, query expansion, retry, fallback, connector authorization or credential retention.
+- Research Record reuse is derived only from exact caller-supplied current-basis identities through the RA-3 reuse projection. Integration must not resolve a latest record, search/fetch to determine freshness, mutate record validity or infer semantic invalidation.
+- Fresh-context conformance must reconstruct the same bounded research subject from canonical/current supplied inputs without chat memory. Stale Work Context, changed Brief/profile, substituted predecessor lineage or changed declared basis fails closed or starts the already-defined fresh/refresh semantics.
+- Source/provider substitution conformance tests identity, provenance, instruction isolation and authority behavior; it must not require two providers to reach identical semantic conclusions.
+- RA-4 already owns the two-pass nine-lens research audit. RA-6 must not add a second Brain Semantic Audit pass over RESEARCH or reuse the engineering Brain audit profile as a competing research reviewer.
+- A successful Research Record may be supplied only as bounded cognitive input to a fresh ARCHITECTURE flow. That architecture decision remains independent and, where applicable, still passes through the existing high-value Brain Semantic Audit. Research never creates/selects a TASK or advances roadmap state.
+- Runtime, Unified State, engineering REVIEW/REMEDIATION/REPAIR, publication and canonical verification semantics remain unchanged.
+- RA-6 conformance uses injected/fake provider and acquisition transports sufficient to prove composition and continuity. Controlled real-project source proof, mutable-source refresh proof and adversarial live-source proof remain RA-7.
+
+The intended minimal path is:
+
+```text
+explicit RESEARCH selector
+  -> fresh Brain Work Context
+  -> dedicated Research Packet
+  -> explicit RA-5 acquisition/provider surfaces
+  -> RA-4 two-pass semantic closure
+  -> immutable RA-3 Research Record / reuse projection
+  -> optional fresh ARCHITECTURE handoff
+```
 
 Conformance is protocol/authority conformance, not identical semantic conclusions between providers.
 
@@ -657,8 +687,8 @@ RA v2.5 does not:
 
 Brain Portability BP-9 downstream adoption is complete based on downstream exact-pin migration and fresh current-pin conformance publication evidence.
 
-RA v2.5 is the active Human/Brain planning baseline after RA-0, RA-2, RA-3, RA-4 and RA-5 architecture audits.
+RA v2.5 remains the active Human/Brain planning baseline. RA-1 through RA-5 are now reviewed/published. RA-5 closed through TASK-226 revision 1: RUN-226-001 failed at completion gate, REPAIR-226-001 continued the exact failed candidate, RUN-226-002 produced reviewed SHA `73b4e23227dee9a046c8b2b5a1b06751a61c745a`, deterministic focused verification passed 75 tests, and REVIEW-226-001 returned PRIMARY PASS with no findings; that exact reviewed source is current canonical main.
 
-RA-1 through RA-4 are reviewed/published. RA-5 architecture semantics are now audited but remain non-executable until one exact canonical RA-5 TASK is authored and bound by Human/Brain planning authority. RA-6 and RA-7 remain gated.
+The RA-6 architecture audit is now closed with the mandatory integration boundaries above. The next planning action is to author and canonically bind one exact RA-6 engineering TASK. RA-6 execution remains forbidden until fresh Brain Sync selects that authored TASK under normal Runtime admission. RA-7 remains gated.
 
 A newer explicit Human priority may prospectively supersede this track, but future generic continuation may rely on that change only after it is canonicalized.
