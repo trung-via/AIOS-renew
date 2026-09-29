@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-adopt-workers-12
+  - verification-performance-rebaseline-v2-test-hermeticity-hardening
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1566,7 +1566,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2
 
   - id: verification-performance-rebaseline-v2-adopt-workers-12
-    status: NEXT
+    status: ACTIVE
     task_id: TASK-231
     task_revision: 2
     authored_commit_sha: "b5b454e3573498a717f66861ad70adb518d96133"
@@ -1585,6 +1585,22 @@ sequence:
         Runtime verification outcome. Revision 2 preserves the Human workers=12
         intent and implementation semantics while making every acceptance
         criterion claimable before Runtime verification.
+    latest_attempt:
+      run_id: RUN-231-002
+      terminal_kind: FAILURE
+      phase: VERIFICATION
+      failure_artifact_sha: "70067af710b8930c7c6532554b0f7632e0c94227"
+      failed_head_sha: "bc5a7604ee5473ab0ad6fdee8095394a065d0f3a"
+      selected_workers: 12
+      pytest_failure_count: 36
+      wrapper_conformance_passed: true
+      reason: >-
+        Runtime reached the selected 12-worker suite and all wrapper/worker
+        conformance facts passed, but pytest correctness failed. The current
+        planning response is bounded test-hermeticity hardening before resuming
+        adoption; the failure is not reinterpreted as a Human worker-selection
+        reversal.
+    blocked_by: verification-performance-rebaseline-v2-test-hermeticity-hardening
     human_selection:
       selected_workers: 12
       selected_on: "2026-09-29"
@@ -1602,6 +1618,33 @@ sequence:
       no-auto-selection, no-fallback and historical workers=4 evidence as
       non-comparable context.
     return_to: verification-performance-rebaseline-v2
+
+  - id: verification-performance-rebaseline-v2-test-hermeticity-hardening
+    status: NEXT
+    task_id: TASK-232
+    task_revision: 1
+    authored_commit_sha: "a1ccbeee3255ecfedfb68436f00a23aeb828b00d"
+    task_blob_sha: "6cdece95d614a8af1cef080e52eb75410935945f"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      run_id: RUN-231-002
+      failure_artifact_sha: "70067af710b8930c7c6532554b0f7632e0c94227"
+      failed_head_sha: "bc5a7604ee5473ab0ad6fdee8095394a065d0f3a"
+    human_diagnostic_context:
+      authority: HUMAN_PLANNING_EVIDENCE_ONLY
+      serial_subset: "375 passed"
+      n4_subset: "1 failed, 374 passed"
+      n12_subset: "2 failed, 373 passed"
+      note: >-
+        These manual observations guide bounded diagnosis only and are not
+        canonical Runtime verification evidence.
+    objective: >-
+      Harden the two parallel-sensitive test-infrastructure contracts exposed
+      during TASK-231: Scenario 7 must bind structured PRE_AIOS receipt semantics
+      rather than exact PowerShell stderr wording, and Git fixture object access
+      must remain correct for valid loose or packed object storage.
+    return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
 research_assurance:
