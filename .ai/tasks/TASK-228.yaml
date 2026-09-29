@@ -1,0 +1,238 @@
+task_id: TASK-228
+revision: 1
+
+goal: >
+  Close RA-7 Real Project Proof & Closure by proving the already-reviewed RA-1 through RA-6
+  Research Assurance architecture against one Brain-prebound controlled real-project corpus
+  containing stable/immutable, mutable/time-sensitive and adversarial/prompt-injection-bearing
+  project sources. The proof must be deterministic and offline at Runtime verification time,
+  preserve exact Research Record reuse/invalidation lineage and fresh ARCHITECTURE handoff
+  boundaries, and introduce no production capability or authority.
+
+problem: >
+  RA-1 through RA-6 now provide the complete bounded Research Brief, acquisition airlock,
+  Research Record/reuse semantics, two-pass audit, provider/adapter portability and explicit
+  RESEARCH flow integration, but RA-7 still needs a real-project closure proof. A weak proof
+  could call live web/provider services during pytest and become non-reproducible, let the
+  Executor choose both the corpus and expected semantics, use synthetic fixtures unrelated to
+  canonical project material, refresh the whole record when only one basis changed, treat
+  prompt-like source text as instructions, leak retained excerpts into ARCHITECTURE handoff,
+  or accidentally create new research lifecycle/router/memory authority. RA-7 must instead
+  replay exact Brain-prebound project-source bytes through the existing public contracts and
+  leave semantic adequacy to Reviewer judgment.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    33ee5c9e7286475586db4ddc1f4937cf68731663. RA-6 closed through TASK-227 revision 1,
+    RUN-227-001 / F-227-001 / remediation RUN-227-002 and REVIEW-227-002 DELTA PASS;
+    exact reviewed/published RA-6 source is dd78b6cb54674e0a564ecbe1215d7918d81f6a1e.
+  - >
+    .ai/roadmap-state.yaml on authoring main records RA-7 as the unique NEXT and its
+    architecture audit as PASS_WITH_MANDATORY_PROOF_BOUNDARIES against
+    42247614faefe04342b5c23755c552cc7afc5d16.
+  - >
+    The Brain-prebound proof corpus is fixed before Executor admission and consists exactly of:
+    STABLE_CONSTITUTION = docs/AIOS-CONSTITUTION.md at repository commit
+    42247614faefe04342b5c23755c552cc7afc5d16, Git blob
+    a4e33646c6ec7573cadeb2b10379b1606eac9322;
+    MUTABLE_ROADMAP_PRE_RA6_CLOSURE = .ai/roadmap-state.yaml at repository commit
+    dd78b6cb54674e0a564ecbe1215d7918d81f6a1e, Git blob
+    3ec4e92d204bc66f0537dbe804071adc0154df30;
+    MUTABLE_ROADMAP_POST_RA6_CLOSURE = .ai/roadmap-state.yaml at repository commit
+    42247614faefe04342b5c23755c552cc7afc5d16, Git blob
+    c55a4ef0f88e1b256e34925f1fe110052b5eb4d0;
+    ADVERSARIAL_PROMPT_LIKE_PROJECT_SOURCE = tests/test_research_provider_protocol.py at
+    repository commit 42247614faefe04342b5c23755c552cc7afc5d16, Git blob
+    9536758685a750bbfea4366902ea0588ab34b57e.
+  - >
+    The proof snapshots are bounded immutable test evidence copied byte-for-byte from those
+    exact project blobs. They are not a second canonical repository truth, latest-source
+    resolver, Research Record store or persistence mechanism.
+  - >
+    Existing RA-1 through RA-6 production modules are reviewed and behaviorally frozen for
+    this proof. RA-7 may exercise only their public exported construction/validation/
+    projection/invocation surfaces and must fail closed if production changes appear necessary.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RESEARCH-ASSURANCE.md
+    - .ai/roadmap-state.yaml
+    - .ai/research-audit-profiles.yaml
+    - .ai/tasks/TASK-222.yaml
+    - .ai/tasks/TASK-223.yaml
+    - .ai/tasks/TASK-224.yaml
+    - .ai/tasks/TASK-225.yaml
+    - .ai/tasks/TASK-226.yaml
+    - .ai/tasks/TASK-227.yaml
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/research_contract.py
+    - src/aios_renew/source_acquisition.py
+    - src/aios_renew/research_record.py
+    - src/aios_renew/research_protocol.py
+    - src/aios_renew/research_provider_protocol.py
+    - src/aios_renew/acquisition_adapter.py
+    - src/aios_renew/research_packet.py
+    - src/aios_renew/research_provider.py
+    - tests/test_brain_context.py
+    - tests/test_research_contract.py
+    - tests/test_source_acquisition.py
+    - tests/test_research_record.py
+    - tests/test_research_protocol.py
+    - tests/test_research_provider_protocol.py
+    - tests/test_acquisition_adapter.py
+    - tests/test_research_packet.py
+    - tests/test_research_provider.py
+  modify:
+    - tests/fixtures/research_ra7/stable-constitution.md
+    - tests/fixtures/research_ra7/mutable-roadmap-pre-ra6.yaml
+    - tests/fixtures/research_ra7/mutable-roadmap-post-ra6.yaml
+    - tests/fixtures/research_ra7/adversarial-provider-protocol.py
+    - tests/test_research_real_project_proof.py
+
+non_goals:
+  - >
+    Modify any production Python, Flow Card, Brain Context, Research Assurance contract,
+    Runtime, Unified State, Reviewer, Publisher, ingress, workflow, executor profile,
+    roadmap state, Constitution, Manifesto or planning documentation.
+  - >
+    Add a web/search/GitHub/connector client, real model/provider client, crawler, source
+    discovery service, latest resolver, clock-based freshness resolver, repository scanner,
+    credential store, provider/tool/source router, retry/fallback/failover policy or memory DB.
+  - >
+    Perform live network, DNS, provider, connector or external repository access during
+    canonical Runtime verification. Real-source acquisition is represented only by the exact
+    prebound source snapshots and deterministic adapter/provider replay.
+  - >
+    Let Executor choose a replacement corpus, substitute source identities, change the
+    expected stable/mutable/adversarial subjects, define a new research semantic outcome as
+    deterministic truth, or make tests act as a semantic Reviewer.
+  - >
+    Require providers to agree on one semantic answer, create an automatic Stage-2 loop,
+    auto-author/select a TASK, advance roadmap, or create RUN/RESULT/FAILURE/REVIEW/
+    REMEDIATION/REPAIR/publication state from research proof code.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The implementation delta is exactly within scope.modify. All files under src/, .ai/,
+      docs/ and .github/ remain byte-identical to authoring main. If proof requires changing a
+      production contract or planning state, fail closed back to Brain rather than widening.
+    - >
+      Each of the four fixture files must be byte-for-byte equal to its prebound source blob.
+      The proof test must compute the Git blob SHA-1 from fixture bytes using the canonical
+      "blob <len>\0<bytes>" object representation and assert the exact expected blob SHA
+      listed in assumptions. Do not rely on live GitHub, network access or mutable main to
+      establish fixture identity during Runtime verification.
+    - >
+      The stable scenario must use STABLE_CONSTITUTION as real SOURCE_CONTENT under an exact
+      Research Brief and Acquisition Request, normalize it through the existing RA-5 adapter
+      boundary, complete the existing RA-4 two-pass/provider contracts with explicit
+      deterministic test-local providers, produce an exact RESEARCH_CANDIDATE Research Record,
+      and prove unchanged caller-supplied invalidation basis yields VALID reuse without source
+      discovery, clock inference or a second acquisition.
+    - >
+      The mutable scenario must use both prebound roadmap snapshots under one unchanged
+      Research Brief with one fixed explicit current_as_of value. The predecessor record must
+      contain at least one claim whose invalidation basis is the stable Constitution identity
+      and at least one claim whose invalidation basis is the pre-closure roadmap identity.
+      Supplying the post-closure roadmap identity plus the unchanged Constitution identity
+      must yield REFRESH_REQUIRED only for the roadmap-dependent claim(s), preserve the exact
+      stable claim fingerprint as reusable, and construct a refreshed record whose predecessor
+      partition retains unaffected claims and invalidates exactly affected predecessor claims.
+    - >
+      The mutable refresh must acquire only bounded replacement evidence needed by the
+      invalidated roadmap-dependent claim. It must not silently refresh stable evidence,
+      change the Research Brief/profile, discover latest state, or rewrite predecessor
+      history. The refreshed record must validate only with its exact immediate predecessor
+      witness when that witness is required by existing RA-3 semantics.
+    - >
+      The adversarial scenario must source its prompt-like text from the exact prebound
+      ADVERSARIAL_PROMPT_LIKE_PROJECT_SOURCE fixture, prove the normalized Source Observation
+      remains instruction_trust=UNTRUSTED, and carry it only as source data through existing
+      acquisition/research contracts. The literal prompt-like source excerpt must not become
+      protocol/control fields, provider/tool attribution, authority, roadmap/TASK instruction
+      or a material semantic instruction.
+    - >
+      A successful adversarial RESEARCH_CANDIDATE may project an
+      AIOS_RESEARCH_ARCHITECTURE_HANDOFF only when material semantic text is independently
+      authored and source-excerpt-free. The handoff must contain no retained source excerpt,
+      credentials, provider/model/session/invocation metadata or lifecycle command. A
+      deliberate attempt to place the real adversarial retained excerpt into an emitted
+      material claim or uncertainty summary must fail closed through the existing RA-6
+      handoff guard rather than through new production logic.
+    - >
+      Test-local acquisition adapters and ResearchProviders are explicit deterministic replay
+      callables only. Each adapter/provider invocation is exactly one call per request under
+      the existing RA-5/RA-6 surfaces; no hidden retry, fallback, provider switch, pagination,
+      query expansion, recursive research loop or auto Stage-2 orchestration is permitted.
+      Operational provider/adapter attribution must remain outside semantic request identity.
+    - >
+      The proof must exercise a fresh explicit RESEARCH Work Context/Research Packet and a
+      separately fresh ARCHITECTURE continuation boundary sufficiently to show that research
+      does not depend on chat/session memory and does not satisfy, erase or mutate any
+      canonical engineering obligation. No test may mutate .ai/roadmap-state.yaml or author a
+      TASK as part of the proof.
+    - >
+      Deterministic assertions may verify identity, provenance, closed fields, bounds,
+      lineage, reuse partition, instruction isolation, invocation counts and handoff
+      containment. They must not encode "this research conclusion is true" as a new canonical
+      semantic oracle; Reviewer remains the authority for semantic adequacy of the complete
+      RA-7 proof.
+    - >
+      Runtime verification must be fully offline with respect to live source/provider
+      acquisition. Fixture identity plus public RA APIs are sufficient to replay the proof.
+      Environment clocks, network availability, provider behavior and mutable repository main
+      must not influence the expected result.
+
+acceptance:
+  - id: AC1
+    condition: >
+      All four proof fixtures are byte-exact snapshots of the Brain-prebound real project
+      corpus and the test independently reproduces each listed Git blob SHA; no source subject
+      or corpus identity is chosen by Executor at runtime.
+  - id: AC2
+    condition: >
+      The stable Constitution scenario composes existing RA acquisition/provider/two-pass
+      surfaces into one deterministic RESEARCH_CANDIDATE and proves unchanged explicit basis
+      gives VALID claim reuse without additional acquisition or freshness discovery.
+  - id: AC3
+    condition: >
+      The mutable roadmap scenario uses one unchanged Brief/profile and exact predecessor
+      lineage to prove changed roadmap basis refreshes only affected claims, retains exact
+      unaffected claim fingerprints/evidence and constructs a valid bounded refreshed record
+      from the post-closure roadmap snapshot.
+  - id: AC4
+    condition: >
+      The adversarial real-project scenario proves prompt-like source text remains UNTRUSTED
+      source data, does not alter control/authority/provider semantics, and cannot leak as a
+      retained source excerpt into the bounded ARCHITECTURE handoff.
+  - id: AC5
+    condition: >
+      Real-project proof composes explicit one-shot acquisition adapters and ResearchProviders
+      without retry/fallback/routing/automatic Stage-2 behavior, while operational attribution
+      remains outside semantic identity and source/provenance identities remain exact.
+  - id: AC6
+    condition: >
+      Fresh RESEARCH packet/context and fresh ARCHITECTURE handoff continuity are demonstrated
+      without chat/session memory, latest-record lookup, automatic TASK creation, roadmap
+      mutation or engineering lifecycle authority.
+  - id: AC7
+    condition: >
+      Runtime verification is deterministic and offline: no live network/DNS/provider/
+      connector/GitHub access, wall-clock freshness inference or mutable-main lookup is needed
+      to reproduce the exact proof from the committed fixtures.
+  - id: AC8
+    condition: >
+      Candidate changes only the five authorized proof files, all RA-1 through RA-6
+      production and governance files remain unchanged, and the proof adds no Planner,
+      Reviewer, Runtime, Publisher, router, retry authority, persistence or new lifecycle.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_research_real_project_proof.py tests/test_brain_context.py tests/test_research_packet.py tests/test_research_provider.py tests/test_research_provider_protocol.py tests/test_acquisition_adapter.py tests/test_research_protocol.py tests/test_research_record.py tests/test_source_acquisition.py tests/test_research_contract.py tests/test_decision_packet.py tests/test_brain_provider_protocol.py tests/test_brain_return_contract.py
