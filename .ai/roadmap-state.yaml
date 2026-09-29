@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - ra-5-provider-tool-portability-contracts
+  - ra-6-aios-integration-continuity-conformance
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1352,7 +1352,7 @@ sequence:
       Establish the pure two-pass Research Assurance protocol with precommitted
       counter-evidence and exact adversarial reconciliation without acquisition I/O.
   - id: ra-5-provider-tool-portability-contracts
-    status: NEXT
+    status: DONE
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
     architecture_audit:
@@ -1378,13 +1378,52 @@ sequence:
         - ATTEMPT_IDENTITY_PRESERVES_ADAPTER_ATTRIBUTION
         - OPERATIONAL_FAILURE_NEVER_RESEARCH_CLOSURE
         - RA6_INTEGRATION_DEFERRED
+    completed_by:
+      task_id: TASK-226
+      task_revision: 1
+      failed_run_id: RUN-226-001
+      repair_id: REPAIR-226-001
+      run_id: RUN-226-002
+      review_id: REVIEW-226-001
+      verdict: PASS
+      reviewed_sha: "73b4e23227dee9a046c8b2b5a1b06751a61c745a"
+      published_sha: "73b4e23227dee9a046c8b2b5a1b06751a61c745a"
+      evidence_id: RUN-226-002-V001
     task_id: TASK-226
     task_revision: 1
     authored_commit_sha: "2f9b7819617d3828955596a75db7be7f9ad92d85"
     task_blob_sha: "dac63d7f9d95a2a894bfc0a9c82d4217fe1ce03b"
     objective: >-
-      Execute the exact authored RA-5 provider/tool portability TASK only after fresh Brain
-      Sync confirms TASK-226 revision 1 as the unique canonical NEXT.
+      Define and prove provider-neutral research semantics plus explicit acquisition-adapter
+      portability without provider/tool routing, hidden retry/fallback or authority widening.
+  - id: ra-6-aios-integration-continuity-conformance
+    status: NEXT
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_MANDATORY_INTEGRATION_BOUNDARIES
+      completed_on: "2026-09-29"
+      planning_document_commit: "781d4d633de457ca759689d05f9b32ffe9069996"
+      findings:
+        - EXPLICIT_RESEARCH_FLOW_ONLY
+        - NO_UNIFIED_STATE_OR_ROADMAP_AUTO_SELECTION
+        - DEDICATED_RESEARCH_PACKET_NOT_DECISION_PACKET
+        - RESEARCH_PROVIDER_STACK_SEPARATE_FROM_CORE_BRAIN_PROVIDER
+        - NO_SECOND_BRAIN_SEMANTIC_AUDIT_FOR_RESEARCH
+        - EXPLICIT_PROVIDER_AND_ADAPTER_SELECTION_NO_ROUTER
+        - FRESH_CONTEXT_BINDS_RESEARCH_SUBJECT_NOT_CHAT_HISTORY
+        - RESEARCH_RECORD_REUSE_CALLER_SUPPLIED_BASIS_ONLY
+        - NO_LATEST_RECORD_RESOLUTION_OR_FRESHNESS_DISCOVERY
+        - SOURCE_PROVIDER_SUBSTITUTION_CONFORMANCE_NOT_ANSWER_EQUALITY
+        - FRESH_ARCHITECTURE_HANDOFF_ONLY
+        - NO_RUNTIME_REVIEWER_PUBLISHER_OR_ROADMAP_AUTHORITY
+        - REAL_SOURCE_PROOF_DEFERRED_TO_RA7
+    task_id: null
+    objective: >-
+      Author one exact RA-6 TASK that integrates explicit-only RESEARCH Flow/Card/context,
+      a dedicated Research Packet and separate ResearchProvider invocation surface, then
+      proves fresh-context and reuse/invalidation continuity without changing lifecycle truth.
 
 research_assurance:
   id: research-assurance
@@ -1393,7 +1432,7 @@ research_assurance:
   approved_on: "2026-09-29"
   approved_against_main_sha: "6538f2762620c510e594e7c1842319bc4a783ccf"
   canonical_planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
-  planning_document_commit: "7c77c342f9d150103acf26dfd8480f075ca791a2"
+  planning_document_commit: "781d4d633de457ca759689d05f9b32ffe9069996"
   authority: HUMAN_BRAIN_PLANNING
   activation_basis:
     bp9_status: DONE
@@ -1519,11 +1558,18 @@ research_assurance:
         produces one final Research Record. No acquisition I/O or recursive research.
     - id: RA-5
       name: Provider & Tool Portability Contracts
-      status: AUTHORED_UNEXECUTED
+      status: DONE
       architecture_audit: PASS_WITH_MANDATORY_PORTABILITY_BOUNDARIES
       task_id: TASK-226
       task_revision: 1
-      authored_commit_sha: "2f9b7819617d3828955596a75db7be7f9ad92d85"
+      run_id: RUN-226-002
+      review_id: REVIEW-226-001
+      reviewed_sha: "73b4e23227dee9a046c8b2b5a1b06751a61c745a"
+      published_sha: "73b4e23227dee9a046c8b2b5a1b06751a61c745a"
+      evidence_id: RUN-226-002-V001
+      repair_lineage:
+        failed_run_id: RUN-226-001
+        repair_id: REPAIR-226-001
       objective: >-
         Define a dedicated provider-neutral research semantic request/return protocol over
         RA-4 plus an explicitly selected acquisition-adapter invocation boundary over RA-2,
@@ -1532,13 +1578,14 @@ research_assurance:
         expansion, fallback or failover.
     - id: RA-6
       name: AIOS Integration & Continuity Conformance
-      status: PLANNED
+      status: NEXT_UNAUTHORED
+      architecture_audit: PASS_WITH_MANDATORY_INTEGRATION_BOUNDARIES
+      planning_document_commit: "781d4d633de457ca759689d05f9b32ffe9069996"
       objective: >-
-        Only after RA-1 through RA-5 semantics stabilize, integrate an explicit-only
-        first-class RESEARCH Flow/Card/context/dedicated Research Packet/provider surface
-        and prove fresh-context, cross-provider, source-substitution, invalidation and
-        Research Record reuse behavior. Conformance concerns protocol/authority behavior,
-        not identical semantic conclusions.
+        Integrate an explicit-only first-class RESEARCH Flow/Card/context with a dedicated
+        Research Packet and separate ResearchProvider surface, and prove fresh-context,
+        cross-provider, source-substitution, invalidation and Research Record reuse
+        continuity without changing engineering lifecycle authority.
     - id: RA-7
       name: Real Project Proof & Closure
       status: PLANNED
@@ -1549,10 +1596,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only exact TASK-226 revision 1 for RA-5 — Provider & Tool Portability
-    Contracts after fresh Brain Sync reconciles that authored TASK against current
-    canonical lineage. Do not widen into RA-6 first-class RESEARCH Flow integration
-    outside TASK-226 scope.
+    Continue only RA-6 — AIOS Integration & Continuity Conformance. Its architecture
+    audit is closed; the next action is to author and canonically bind one exact RA-6
+    TASK. Do not invoke an Executor before fresh Brain Sync selects that exact authored
+    TASK, and do not widen into RA-7 real-project proof.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1560,11 +1607,11 @@ research_assurance:
     A NEXT milestone with a task_id is not executable until that exact TASK revision is
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
-    RA-1 through RA-4 are reviewed/published, with RA-4 published at exact SHA
-    405e0189cc2756ebf996aae618b7b7ed73dfca40. RA-5 architecture audit is closed and
-    TASK-226 revision 1 is canonically authored. RA-5 execution may proceed only after
-    fresh Brain Sync selects that exact TASK and normal Runtime admission applies.
-    RA-6 and RA-7 remain gated.
+    RA-1 through RA-5 are reviewed/published, with RA-5 published at exact SHA
+    73b4e23227dee9a046c8b2b5a1b06751a61c745a after REVIEW-226-001 PASS. RA-6
+    architecture audit is closed and exact TASK authoring is now permitted. RA-6
+    execution remains forbidden until that TASK revision is canonicalized and fresh
+    Brain Sync selects it under normal Runtime admission. RA-7 remains gated.
 
 authority:
   purpose: Human/Brain planning state only
