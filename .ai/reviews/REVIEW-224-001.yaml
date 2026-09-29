@@ -1,0 +1,31 @@
+review_id: REVIEW-224-001
+reviewed_sha: 58bdcad64a5ec92b60c17df481e9c4cd0cc134c9
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: FAIL
+  AC7: PASS
+  AC8: PASS
+findings:
+- id: FINDING-224-001
+  basis: AC6
+  action: CODE_FIX
+  location: src/aios_renew/research_record.py::project_research_reuse/_basis and tests/test_research_record.py
+  issue: The transient reuse projection reuses _basis(), whose fixed list bound is
+    16. TASK-224 permits up to 64 claims and up to 16 invalidation-basis entries per
+    claim, with no 16-item record-wide current_basis ceiling. A valid record with
+    more than 16 distinct declared basis keys therefore cannot be projected even when
+    the caller supplies the exact complete current basis, so AC6 is not satisfied
+    for the admitted record space.
+  expected: Keep the per-claim invalidation_basis bound at 16, but make the transient
+    current_basis input capable of representing the bounded union of declared basis
+    keys for the exact validated record (without widening discovery or semantic authority),
+    reject duplicates/foreign excess deterministically, and add a focused regression
+    proving a valid record with more than 16 distinct cross-claim basis keys can project
+    VALID when all exact identities are supplied and only affected claims become REFRESH_REQUIRED
+    on a targeted mismatch.
