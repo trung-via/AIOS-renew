@@ -1,0 +1,194 @@
+task_id: TASK-234
+revision: 1
+
+goal: >
+  Add one bounded serial-context diagnostic for the 35 RUN-233-002 failures that
+  reproduced in target-only serial replay. Determine whether those failures still
+  occur when the exact targets are the first executed tests on a fresh isolated
+  serial process, and whether they disappear when the same targets execute inside
+  their complete source-file serial context. Produce only observational topology
+  evidence; do not modify production semantics, worker policy, or tests under
+  diagnosis.
+
+problem: >
+  RUN-233-002 completed TASK-233 and classified the workers=12 failure topology as
+  MIXED: 36 full-n12 failures, 35 reproduced when only the failed nodeids were
+  replayed serially, and all 36 reproduced at n4. The 35 serial reproductions are
+  34 tests from tests/test_operator.py plus
+  tests/test_hot_swap_conformance.py::test_scenario_2_fresh_correction_accepts_only_current_finding.
+  However TASK-233 necessarily ran full-n12 before its serial replay and replayed
+  only the failed selector set, while earlier Human diagnostic evidence had shown
+  the broader operator/hot-swap/git-fixture subset passing serially. Therefore the
+  current evidence does not distinguish intrinsic serial correctness failure from
+  missing predecessor/file context or prior-phase contamination. A new full-suite
+  rerun or production fix would be premature.
+
+assumptions:
+  - >
+    Canonical main at authoring is 191d489a2f6cd5ddfd7151eb68f850d85c4c139d, the reviewed/published TASK-233
+    candidate from RUN-233-002.
+  - >
+    RUN-233-002 RESULT artifact is f4db25e086cc41388c0c4bb198378969bea6f0c3,
+    reviewed candidate is 191d489a2f6cd5ddfd7151eb68f850d85c4c139d, and REVIEW-233-001 PASS decision is
+    6dcd9c6ee5644e4a95e3d4a5593383533fa2c1b9.
+  - >
+    RUN-233-002-V002 observed collection count 2457, full-n12 failure count 36,
+    serial reproduction count 35, n4 reproduction count 36, and classification
+    MIXED.
+  - >
+    The 35 serial-reproduced safe identities in RUN-233-002-V002 are the exact
+    target set for this task. Executor must bind that exact set from the canonical
+    evidence when implementing the diagnostic; count, safe identity and SHA-256
+    fingerprints must match exactly, with no manual widening or substitution.
+  - >
+    The one RUN-233-002 failure absent from serial replay is
+    tests/test_git_fixture_isolation.py::test_depth_amplified_sandboxes_push_and_resolve_full_aios_refs;
+    it is outside TASK-234 target scope because TASK-234 addresses only the 35
+    serial-reproduced failures.
+  - >
+    Human prior diagnostic evidence that a broader three-file subset passed
+    serially is planning evidence only, not Runtime verification truth for current
+    main.
+  - >
+    Windows Defender remains an unverified host-performance hypothesis. TASK-234
+    must neither attribute these 35 failures to Defender nor change Defender or
+    other host-wide policy.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-231.yaml
+    - .ai/tasks/TASK-233.yaml
+    - scripts/aios_full_suite_contention_diagnostic.py
+    - tests/aios_full_suite_contention_plugin.py
+    - tests/test_aios_full_suite_contention_diagnostic.py
+    - tests/test_operator.py
+    - tests/operator_test_support.py
+    - tests/git_fixture_support.py
+    - tests/test_hot_swap_conformance.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/authoring_ingress.py
+  modify:
+    - scripts/aios_serial_context_diagnostic.py
+    - tests/test_aios_serial_context_diagnostic.py
+
+non_goals:
+  - >
+    Modify production Runtime, Operator, Authoring Ingress, test fixtures under
+    diagnosis, TASK-231, TASK-233, selected verification profile, worker count,
+    frozen Kernel semantics, Reviewer/Publisher behavior, workflows, or roadmap
+    from Executor execution.
+  - >
+    Run the full suite, any xdist/parallel profile, any worker-selection matrix,
+    performance benchmark, retry loop, fallback, randomized ordering, predecessor
+    search/bisection, or automatic remediation.
+  - >
+    Fix, skip, xfail, reorder, weaken or rewrite any of the 35 target tests or their
+    fixture support in this task.
+  - >
+    Persist raw pytest parameter values, raw exception text, absolute private
+    paths, credentials, URLs or unbounded stdout/stderr.
+  - >
+    Disable or exclude Windows Defender, change PATH/Git selection, or make any
+    host-wide configuration change.
+
+constraints:
+  hard:
+    - >
+      Add one fixed no-argument command:
+      'python scripts/aios_serial_context_diagnostic.py'. Reject positional or
+      option input before test execution.
+    - >
+      Require one clean exact Git subject and prove the subject SHA is unchanged
+      before and after every phase. Any subject mutation fails closed.
+    - >
+      Perform exactly one collection-only phase before any test execution. Resolve
+      the exact 35 RUN-233-002-V002 safe identities to current raw pytest selectors
+      by the TASK-233 safe-identity/SHA-256 algorithm. Resolution must be
+      one-to-one, exact-count 35, collision-free and fail closed for missing,
+      duplicate, changed or ambiguous identity.
+    - >
+      Phase A is the first actual test execution. Run exactly those 35 reconstructed
+      raw selectors serially, once, in their deterministic canonical collection
+      order, in a fresh subprocess with a fresh pytest temporary root and
+      process-local Git fixture cache. Do not sort the raw selectors into a new
+      semantic order after resolving collection order.
+    - >
+      Phase B runs exactly the two complete source files
+      tests/test_hot_swap_conformance.py and tests/test_operator.py serially, once,
+      in a separate fresh subprocess/temp root/cache, with ordinary pytest
+      collection order and no explicit target selector list.
+    - >
+      Phase B must identify the same 35 target safe identities within its
+      collection/execution set and separately report target failures and non-target
+      failures. It must not treat a passing target as absent and must fail closed if
+      any target is not collected/executed exactly once.
+    - >
+      Reuse the published TASK-233 safe nodeid/fingerprint and sanitized typed
+      failure representation where possible. Raw selectors may remain transient
+      only for exact execution. Durable JSON must expose safe identities,
+      exception type, stable message fingerprint, sanitized source locus and
+      bounded typed cause fields only.
+    - >
+      Hard-bound observed failures in each execution phase to 128 unique
+      identities. Overflow or malformed/inconsistent observations fail closed
+      rather than truncate silently.
+    - >
+      Produce one deterministic observational classification using only:
+      COLD_TARGET_PASS when Phase A has zero target failures;
+      FILE_CONTEXT_RESOLVES when Phase A has failures but all 35 targets pass in
+      Phase B;
+      SERIAL_STABLE_FAILURE when the Phase A target-failure set equals the Phase B
+      target-failure set;
+      PARTIAL_FILE_CONTEXT_EFFECT for every other bounded difference.
+      Also expose Phase B non-target failure count/set separately; classification
+      must not hide broader file-context failures.
+    - >
+      The diagnostic command exits zero when the experiment itself completed
+      faithfully regardless of observed pytest pass/fail. Integrity, identity,
+      bound, privacy or subject-stability failures exit nonzero.
+    - >
+      TASK-234 output is diagnostic evidence only. It must not choose a remediation,
+      declare production code defective, change workers=12 Human planning intent,
+      unblock TASK-231 automatically, or attribute causality to Defender.
+    - >
+      No file outside the two scope.modify files may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The fixed diagnostic deterministically binds and reconstructs exactly the 35
+      RUN-233-002 serial-reproduced target identities from a fresh canonical
+      collection without durable raw-selector disclosure.
+  - id: AC2
+    condition: >
+      The first executed phase is exactly one target-only serial run in canonical
+      collection order with isolated mutable roots; no prior n12/n4/full-suite or
+      unrelated test execution occurs.
+  - id: AC3
+    condition: >
+      Exactly one independent serial file-context run executes the complete
+      test_hot_swap_conformance.py and test_operator.py files and mechanically
+      separates the 35 target outcomes from non-target outcomes.
+  - id: AC4
+    condition: >
+      Safe identity, typed/sanitized failure evidence, exact-subject stability,
+      execution identity and hard failure bounds fail closed under malformed,
+      missing, duplicated, ambiguous, unsafe or over-bound observations.
+  - id: AC5
+    condition: >
+      Final JSON exposes Phase A target failures, Phase B target failures, Phase B
+      non-target failures and exactly one allowed observational classification,
+      without remediation, worker selection or Defender attribution.
+  - id: AC6
+    condition: >
+      Regression tests cover all four classifications, exact 35-target binding,
+      canonical collection-order execution, missing/duplicate target rejection,
+      Phase B non-target failure reporting, raw-selector privacy, subject mutation
+      and over-bound failure.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_aios_serial_context_diagnostic.py
+    - python scripts/aios_serial_context_diagnostic.py
+    - git diff --check
