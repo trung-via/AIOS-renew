@@ -1256,7 +1256,7 @@ sequence:
       status: DONE
       outcome: PASS_WITH_BOUNDARY_REFINEMENT
       completed_on: "2026-09-29"
-      planning_document_commit: "0eeda1d4524ccda26333e94727b32db40ea63615"
+      planning_document_commit: "7ba40bc0b35c39a224c49d9a0785864619b21e91"
       findings:
         - RA2_RA5_ADAPTER_BOUNDARY_SEPARATION
         - SOURCE_REPRESENTATION_CLASS_DISTINCTION
@@ -1359,9 +1359,10 @@ sequence:
       status: DONE
       outcome: PASS_WITH_MANDATORY_PORTABILITY_BOUNDARIES
       completed_on: "2026-09-29"
-      planning_document_commit: "0eeda1d4524ccda26333e94727b32db40ea63615"
+      planning_document_commit: "7ba40bc0b35c39a224c49d9a0785864619b21e91"
       findings:
         - RESEARCH_PROVIDER_PROTOCOL_SEPARATE_FROM_CORE_BRAIN_PROVIDER
+        - PROVIDER_STAGE_CONTINUITY_BINDING
         - TWO_INDEPENDENT_PORTABILITY_PLANES
         - PROVIDER_METADATA_EXCLUDED_FROM_SEMANTIC_IDENTITY
         - EXPLICIT_PROVIDER_SELECTION_NO_ROUTER
