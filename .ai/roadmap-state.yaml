@@ -1235,10 +1235,13 @@ sequence:
     status: NEXT
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
-    task_id: null
+    task_id: TASK-222
+    task_revision: 1
+    authored_commit_sha: "b625b8ee4b24717d34db1e700b08ae18e0e7766e"
+    task_blob_sha: "b210e4530dbe5508f6ec1f0380193315b9106775"
     objective: >-
-      Author the exact RA-1 Research Contract Foundation engineering TASK from the
-      RA-0-audited v2.1 planning baseline before any Executor invocation.
+      Execute the exact authored RA-1 Research Contract Foundation TASK after fresh
+      Brain Sync confirms TASK-222 revision 1 as the unique canonical NEXT.
 
 research_assurance:
   id: research-assurance
@@ -1307,7 +1310,10 @@ research_assurance:
         before RA-1 TASK authoring.
     - id: RA-1
       name: Research Contract Foundation
-      status: NEXT_UNAUTHORED
+      status: AUTHORED_UNEXECUTED
+      task_id: TASK-222
+      task_revision: 1
+      authored_commit_sha: "b625b8ee4b24717d34db1e700b08ae18e0e7766e"
       objective: >-
         Define the bounded Research Brief identity, question, decision context,
         scope/non-goals, project/currentness basis, source policy, resource bounds,
@@ -1361,10 +1367,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item RA-1 — Research Contract Foundation.
-    RA-0 is closed in Research Assurance v2.1. Until an exact RA-1 TASK is authored,
-    this planning NEXT is intentionally unauthored; do not widen Brain Sync into a
-    generic planning router, add RESEARCH to core Flow Resolver, or invoke an Executor.
+    Continue only exact TASK-222 revision 1 for RA-1 — Research Contract Foundation
+    after fresh Brain Sync reconciles the authored TASK against current canonical
+    lineage. Do not widen Brain Sync into a generic planning router or add RESEARCH to
+    core Flow Resolver outside TASK-222 scope.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1372,9 +1378,10 @@ research_assurance:
     A NEXT milestone with a task_id is not executable until that exact TASK revision is
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
-    RA-0 is closed. RA-1 TASK authoring is now Human/Brain-authorized, but execution
-    remains forbidden until that exact TASK revision is canonicalized and fresh Brain
-    Sync reconciles roadmap NEXT to the authored TASK. RA-2 through RA-7 remain gated.
+    RA-0 is closed and TASK-222 revision 1 is canonically authored. RA-1 execution may
+    proceed only after fresh Brain Sync selects that exact TASK and normal Runtime
+    admission applies. RA-2 through RA-7 remain gated until reviewed/published RA-1
+    evidence and fresh Human/Brain planning reconciliation.
 
 authority:
   purpose: Human/Brain planning state only
