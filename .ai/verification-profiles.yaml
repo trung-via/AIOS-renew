@@ -3,14 +3,19 @@ version: 1
 ordinary_canonical_full_suite:
   profile: bounded-parallel-full-suite-v1
   command: python scripts/aios_parallel_full_suite.py
-  workers: 4
+  workers: 12
   distribution: load
   max_worker_restart: 0
   selection_provenance:
+    authority: HUMAN
+    task_id: TASK-231
+  selected_baseline: null
+  baseline:
+    context: historical-workers-4-only
+    workers: 4
     run_id: RUN-159-008
     evidence_id: RUN-159-008-V001
     subject_sha: 2ed725df2a965d4f1def4750678672bcef4f0b4f
-  baseline:
     canonical_collection:
       rule: sorted-posix-nodeid-lf-sha256-v1
       count: 1825
