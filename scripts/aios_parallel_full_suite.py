@@ -1,4 +1,4 @@
-"""Run the explicitly selected four-worker canonical full-suite profile once."""
+"""Run the explicitly selected twelve-worker canonical full-suite profile once."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ def execute(
     """One canonical collection followed by one fixed selected profile."""
 
     profile = load_policy(repository)
+    workers = profile["workers"]
     toolchain = toolchain_loader()
     subject = subject_identity(repository)
     if subject.get("kind") != "git-commit" or subject.get("worktree_clean") is not True:
@@ -42,14 +43,15 @@ def execute(
         if subject_identity(repository) != subject:
             raise ProbeError("canonical collection changed the verification subject")
         status, elapsed, observation = runner(
-            repository, root, label="parallel-4", workers=4, collect_only=False,
+            repository, root, label=f"parallel-{workers}", workers=workers,
+            collect_only=False,
         )
-        facts = _parallel_conformance(observation, canonical, 4)
+        facts = _parallel_conformance(observation, canonical, workers)
         if subject_identity(repository) != subject:
             raise ProbeError("selected profile changed the verification subject")
         facts["subject_unchanged"] = True
         result = _profile_result(
-            mode="parallel", workers=4, elapsed=elapsed, status=status,
+            mode="parallel", workers=workers, elapsed=elapsed, status=status,
             observation=observation, conformance=facts,
         )
     success = (
@@ -64,8 +66,9 @@ def execute(
         "toolchain": toolchain,
         "collection": canonical,
         "selected_profile": {
-            "profile": profile["profile"], "workers": 4,
-            "distribution": "load", "max_worker_restart": 0,
+            "profile": profile["profile"], "workers": workers,
+            "distribution": profile["distribution"],
+            "max_worker_restart": profile["max_worker_restart"],
             "selection_provenance": profile["selection_provenance"],
         },
         "result": result,
