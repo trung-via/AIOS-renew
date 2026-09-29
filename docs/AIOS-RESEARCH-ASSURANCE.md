@@ -1,6 +1,6 @@
-# AIOS Research Assurance Architecture and Roadmap v2.1
+# AIOS Research Assurance Architecture and Roadmap v2.2
 
-Status: HUMAN-APPROVED PLANNING BASELINE — RA-0 AUDITED  
+Status: HUMAN-APPROVED PLANNING BASELINE — RA-0 / RA-2 ARCHITECTURE AUDITED  
 Approved by Human: 2026-09-29  
 RA-0 architecture audit closed: 2026-09-29  
 Scope: reproducible, source-grounded, adversarially audited research support under existing Brain authority
@@ -159,7 +159,25 @@ Acquisition must not produce architecture decisions, roadmap priority, TASK sema
 
 The architecture must support replaceable acquisition mechanisms without making one provider's native web/GitHub/search ability a hidden prerequisite.
 
-Acquisition operational failure is not a research conclusion. Transport/network/connector/provider/tool failure, malformed retrieval, protocol failure, or stale acquisition state must remain operational attempt outcomes such as `ACQUISITION_UNAVAILABLE`, `ACQUISITION_INVALID`, `PROTOCOL_INPUT_INVALID`, or `STALE_BEFORE_PASS2`. They must never be collapsed into `INSUFFICIENT_EVIDENCE`, which is a Brain semantic closure outcome only after a valid bounded research attempt.
+RA-2 freezes the normalized **acquisition airlock**, not concrete web/GitHub/connector invocation. The airlock consists of exact Source Observation and Acquisition Attempt contracts that future replaceable adapters must satisfy. Concrete adapter invocation, provider/tool portability and transport-specific enforcement remain RA-5 concerns. This avoids duplicating RA-5 and prevents RA-2 from becoming a tool router.
+
+A Source Observation must distinguish at least `SOURCE_CONTENT`, `DISCOVERY_SNIPPET`, and `SOURCE_METADATA`. A search-result snippet is not silently promoted to fetched source content. Tool/provider-generated synthesis or an AI-generated answer is not a Source Observation representation and cannot masquerade as source evidence.
+
+Every Source Observation remains opaque untrusted data. Retrieved text is carried only in a bounded data field, never merged into protocol/control mappings. The only admitted instruction-trust value is `UNTRUSTED`; RA-2 does not attempt to detect or semantically sanitize prompt injection. Isolation, not heuristic prompt classification, is the security property.
+
+Source provenance must preserve exact Research Brief and Acquisition Request bindings, a provenance-safe effective locator and/or stable source identity, bounded directly observed version facts, exact UTC retrieval time supplied by the acquisition boundary, access scope, bounded content identity, and enough resolution information to distinguish discovery from direct source retrieval. Tool/adapter attribution is operational provenance and must never become source authority.
+
+The Brain-authored `source_family` in an Acquisition Request is an expected acquisition/source class, not an adapter-certified truth claim. Whether provenance actually supports official, primary, independent, current, or authoritative treatment remains later Brain research judgment.
+
+A successful acquisition may legitimately yield zero observations. Empty discovery results do not prove absence. A failed acquisition yields no semantic research conclusion. Closed operational reasons should distinguish unavailable source/tool transport, access denial, not-found direct targets, malformed or over-bound response material, and attribution mismatch. `STALE_BEFORE_PASS2` remains a later RA-4 freshness gate, not an RA-2 transport verdict.
+
+RA-2 contracts are pure and perform no network, repository, connector, filesystem or clock I/O. Future concrete adapters must remain read-only, use only already-authorized access, avoid hidden query expansion, pagination, retries or fallback, and never retain access credentials or transport secrets inside provenance.
+
+RA-1 portable-locator validation is not a network-safety proof. A future network-capable adapter must separately validate the effective destination and resolution/redirect path before admitting an observation. RA-2 therefore preserves a bounded resolution/provenance shape so RA-5 can enforce tool-specific safety without changing semantic authority.
+
+Connected/private source observations must be explicitly marked as authorized-private acquisition material. RA-2 does not grant connector permission and does not make private source content durable. Durable retention/redaction/reuse policy belongs to the RA-3 Research Record design.
+
+Acquisition operational failure is not a research conclusion. Transport/network/connector/provider/tool failure, malformed retrieval, protocol failure, or stale acquisition state must remain subordinate operational outcomes and must never be collapsed into `INSUFFICIENT_EVIDENCE`, which is a Brain semantic closure outcome only after a valid bounded research attempt.
 
 ## 7. Research Evidence Record
 
@@ -361,7 +379,13 @@ Do not add the first-class RESEARCH Flow, acquisition adapters, Research Record,
 
 ### RA-2 — Source Acquisition & Provenance Boundary
 
-Define replaceable subordinate acquisition adapters, normalized Source Observation/provenance material, untrusted-content instruction isolation, and explicit operational acquisition-failure taxonomy without semantic decision authority, roadmap authority, or lifecycle authority.
+Architecture audit: DONE — PASS WITH BOUNDARY REFINEMENT.
+
+RA-2 defines a pure normalized acquisition airlock, not concrete source-tool invocation. It must freeze content-addressed Source Observation and Acquisition Attempt contracts, exact Brief/Request binding, representation-class distinction, provenance-safe source identity/version/retrieval facts, explicit PUBLIC vs AUTHORIZED_PRIVATE access scope, `instruction_trust: UNTRUSTED`, bounded content identity, request-budget enforcement, success-with-zero-observation semantics, and a closed operational failure taxonomy.
+
+RA-2 must not perform source I/O; implement concrete web/GitHub/connector clients; infer source authority or independence; summarize source material; admit tool-generated synthesis as source evidence; retain credential-bearing transport material; establish connector authorization; perform hidden retry/fallback/pagination/query expansion; create Research Record persistence; or add RESEARCH to the core Flow Resolver.
+
+Concrete replaceable adapter invocation and tool-specific access/safety enforcement belong to RA-5 after RA-3/RA-4 semantics are stable.
 
 ### RA-3 — Research Evidence Record & Audit Profile
 
@@ -373,7 +397,7 @@ Implement Evidence Construct followed by exactly one bounded counter-evidence ac
 
 ### RA-5 — Provider & Tool Portability Contracts
 
-Define provider-neutral Brain research request/return contracts and replaceable acquisition-adapter contracts while preserving their authority separation. No automatic provider/tool router, voting, scoring, retry, fallback or failover.
+Define provider-neutral Brain research request/return contracts and the concrete replaceable acquisition-adapter invocation boundary over RA-2's normalized airlock while preserving semantic/acquisition authority separation. Tool-specific invocation, effective-destination validation, operational attribution and already-authorized connector access are enforced here. No automatic provider/tool router, voting, scoring, retry, pagination, query expansion, fallback or failover.
 
 ### RA-6 — AIOS Integration & Continuity Conformance
 
@@ -395,7 +419,7 @@ RA closes only after Reviewer-quality semantic assessment confirms the proof pre
 
 ## 15. Non-goals
 
-RA v2.1 does not:
+RA v2.2 does not:
 
 - replace Brain Sync;
 - replace BP-4A Brain Semantic Audit;
@@ -413,7 +437,7 @@ RA v2.1 does not:
 
 Brain Portability BP-9 downstream adoption is complete based on downstream exact-pin migration and fresh current-pin conformance publication evidence.
 
-RA v2.1 is the active Human/Brain planning baseline after RA-0 closure.
+RA v2.2 is the active Human/Brain planning baseline after RA-0 and RA-2 architecture audits.
 
 RA-1 through RA-7 remain gated milestones and do not become executable merely because this planning baseline exists. The immediate post-RA-0 action is to author the exact RA-1 Research Contract Foundation TASK under explicit Human/Brain authority, then bind canonical roadmap NEXT to that exact authored TASK before execution.
 
