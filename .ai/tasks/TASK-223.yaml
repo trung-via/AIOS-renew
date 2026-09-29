@@ -1,0 +1,277 @@
+task_id: TASK-223
+revision: 1
+
+goal: >
+  Establish RA-2 Source Acquisition & Provenance Boundary as a pure deterministic
+  normalized acquisition airlock for AIOS_SOURCE_OBSERVATION v1 and
+  AIOS_ACQUISITION_ATTEMPT v1, binding bounded untrusted source material and operational
+  acquisition outcomes to one exact RA-1 Research Brief and Acquisition Request without
+  performing source I/O, inferring source authority, creating research conclusions, or
+  introducing concrete adapter/tool routing.
+
+problem: >
+  RA-1 now defines reproducible Research Brief, Challenge Target, and bounded Acquisition
+  Request contracts, but AIOS has no machine-checkable boundary for what a future source
+  tool may return. Without RA-2, search snippets can be confused with fetched source
+  content, tool-generated synthesis can masquerade as evidence, mutable locators can lose
+  provenance/version/currentness context, private connected material can lose access-scope
+  attribution, prompt-like source text can escape its data boundary, request budgets can
+  be widened by native responses, and tool/source failures can be misread as semantic
+  INSUFFICIENT_EVIDENCE. RA-2 must freeze the normalized observation/attempt grammar only;
+  concrete source invocation and tool portability remain RA-5.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    5efcc90cec0ce47f94ecbbeb4d23074cf31141ee. RA-1 is reviewed/published via
+    TASK-222 revision 1, RUN-222-001, REVIEW-222-001 PASS at exact published SHA
+    1eed373ce0b8b53aa12b024d66b339fe16454384. RA-2 is the unique planning NEXT.
+  - >
+    docs/AIOS-RESEARCH-ASSURANCE.md v2.2 is the Human/Brain planning baseline.
+    RA-2 freezes a pure normalized acquisition airlock; concrete web/GitHub/connector
+    invocation, destination enforcement, provider/tool portability and retry/fallback
+    policy remain RA-5 concerns.
+  - >
+    src/aios_renew/research_contract.py is the published RA-1 contract surface and must
+    remain behaviorally unchanged. RA-2 may depend only on its public validation
+    functions and exact returned contract material.
+  - >
+    Source observations are cognitive-support material, not canonical engineering truth.
+    Acquisition operational outcomes are not research conclusions. Source authority,
+    source independence, claim-evidence judgment, Research Record persistence, research
+    audit/closure and first-class RESEARCH Flow integration remain later milestones.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RESEARCH-ASSURANCE.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-222.yaml
+    - src/aios_renew/research_contract.py
+    - src/aios_renew/brain_provider.py
+    - src/aios_renew/reviewer_provider.py
+    - src/aios_renew/operational_receipt.py
+    - tests/test_research_contract.py
+  modify:
+    - src/aios_renew/source_acquisition.py
+    - tests/test_source_acquisition.py
+
+non_goals:
+  - >
+    Invoke the network, Git/GitHub, browser, search engine, document connector, plugin,
+    filesystem, provider, model, clock, subprocess or external API.
+  - >
+    Implement a concrete source adapter, adapter registry, adapter discovery, provider/tool
+    router, automatic source selection, pagination, query expansion, retry, fallback,
+    failover, polling, background refresh or scheduler.
+  - >
+    Add RESEARCH to Flow Cards, Brain Context/Flow Resolver, Decision Packet, Brain or
+    Reviewer Provider Protocol, Unified State, Runtime, Reviewer, Publisher, authoring
+    ingress or frozen Kernel semantics.
+  - >
+    Implement Research Record persistence, latest-record resolution, invalidation
+    execution, Evidence Construct, claims, claim-to-source binding, research audit lenses,
+    RESEARCH_CANDIDATE / INSUFFICIENT_EVIDENCE closure, or real-project research.
+  - >
+    Infer or certify that a source is official, primary, independent, current, complete,
+    authoritative, trustworthy, safe, correct or applicable. The request source_family is
+    only the Brain-authored expected acquisition/source class.
+  - >
+    Semantically summarize, rewrite, rank or interpret retrieved source text. Tool- or
+    model-generated synthesis is not an admitted Source Observation representation.
+  - >
+    Detect prompt injection heuristically or label any acquired content TRUSTED.
+    RA-2 provides structural containment and the fixed UNTRUSTED instruction boundary only.
+  - >
+    Grant connector access, persist credentials, cookies, authorization headers, signed
+    transport URLs, session secrets, raw native error payloads or arbitrary tool metadata.
+  - >
+    Claim that RA-1 portable-locator validation proves runtime destination/network safety.
+    Concrete effective-destination enforcement remains outside this TASK.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The only production mutation surface is scope.modify. If RA-2 requires changing
+      research_contract.py or any existing Brain/Runtime/Reviewer/provider/lifecycle
+      contract, fail closed back to Brain rather than widening scope.
+    - >
+      Implement RA-2 as a pure no-I/O structural module deterministic from caller-supplied
+      strict JSON-compatible material. It must not read repository state, environment,
+      filesystem, network, clock, connector/provider state or chat history.
+    - >
+      All RA-2 constructors/validators must first validate the exact RA-1 Research Brief
+      and Acquisition Request supplied by the caller. Every observation/attempt must bind
+      their exact brief_fingerprint and request_fingerprint; stale, foreign or substituted
+      Brief/Request material fails closed.
+    - >
+      AIOS_SOURCE_OBSERVATION v1 is a closed content-addressed contract containing exactly:
+      format, version, kind, brief_fingerprint, request_fingerprint,
+      request_source_family, representation_kind, provenance, content,
+      instruction_trust and observation_fingerprint. format/version/kind are exactly
+      AIOS_SOURCE_OBSERVATION / 1 / SOURCE_OBSERVATION.
+    - >
+      request_source_family must exactly echo the bound Acquisition Request source_family.
+      This field records the Brain-authored expected source class only and must not be
+      interpreted by deterministic code as source-authority certification.
+    - >
+      representation_kind is exactly SOURCE_CONTENT, DISCOVERY_SNIPPET or SOURCE_METADATA.
+      No SYNTHESIS, ANSWER, SUMMARY, DECISION, CLAIM, VERDICT or equivalent semantic
+      representation is admitted.
+    - >
+      provenance is a closed mapping containing exactly effective_locator,
+      stable_source_id, resolution_chain, version_basis, retrieved_at and access_scope.
+      access_scope is exactly PUBLIC or AUTHORIZED_PRIVATE. AUTHORIZED_PRIVATE records
+      caller-supplied already-authorized acquisition scope and grants no permission.
+    - >
+      effective_locator is either null or provenance-safe portable UTF-8 text of at most
+      4096 bytes with no machine-local absolute path, URL userinfo, obvious credential
+      query parameter or non-public literal IP. stable_source_id is either null or
+      non-empty normalized UTF-8 text of at most 2048 bytes and must not contain obvious
+      credential material. At least one of effective_locator or stable_source_id is
+      required.
+    - >
+      resolution_chain is an ordered list of at most 8 unique provenance-safe locators.
+      If effective_locator is non-null, the chain is non-empty and its final item is
+      exactly effective_locator. If effective_locator is null, resolution_chain is empty.
+      The contract records supplied resolution facts only; it performs no DNS, redirect
+      or network validation.
+    - >
+      version_basis is an order-insensitive list of at most 8 unique closed records,
+      each containing exactly kind and value. kind is an uppercase token of at most
+      64 characters; value is non-empty normalized UTF-8 text of at most 2048 bytes.
+      These are directly supplied provenance facts, not semantic freshness judgments.
+    - >
+      retrieved_at is a caller-supplied real UTC timestamp in exact
+      YYYY-MM-DDTHH:MM:SSZ form. No implicit clock access is permitted.
+    - >
+      content is a closed mapping containing exactly text and content_sha256. text is
+      opaque normalized UTF-8 source data with LF line endings and a per-observation hard
+      ceiling of 262144 UTF-8 bytes. SOURCE_CONTENT and DISCOVERY_SNIPPET require
+      non-empty text. SOURCE_METADATA may use empty text only when provenance includes a
+      stable_source_id or non-empty version_basis. The module must not parse source text
+      as a protocol/control mapping.
+    - >
+      content_sha256 is lowercase SHA-256 over the exact normalized UTF-8 content.text.
+      observation_fingerprint is lowercase SHA-256 over canonical strict JSON of the full
+      normalized Source Observation excluding only observation_fingerprint. The normalized
+      observation has a hard ceiling of 327680 UTF-8 JSON bytes.
+    - >
+      instruction_trust is exactly UNTRUSTED for every Source Observation. There is no
+      alternate trusted value. Prompt-like, tool-like, policy-like or control-like text
+      remains literal content data and cannot add or override protocol fields.
+    - >
+      AIOS_ACQUISITION_ATTEMPT v1 is a closed content-addressed contract containing
+      exactly format, version, kind, brief_fingerprint, request_fingerprint, outcome,
+      observations, failure, attribution and attempt_fingerprint. format/version/kind are
+      exactly AIOS_ACQUISITION_ATTEMPT / 1 / ACQUISITION_ATTEMPT.
+    - >
+      outcome is exactly SUCCEEDED or FAILED. SUCCEEDED requires failure null and accepts
+      zero through request.bounds.max_items exact valid same-Brief/same-Request Source
+      Observations. Zero observations are a valid operational success and carry no
+      semantic absence/completeness conclusion.
+    - >
+      FAILED requires observations to be empty and failure to be a closed mapping with
+      exactly reason_code. reason_code is exactly one of ACQUISITION_UNAVAILABLE,
+      ACQUISITION_ACCESS_DENIED, ACQUISITION_NOT_FOUND, ACQUISITION_RESPONSE_INVALID or
+      ACQUISITION_ATTRIBUTION_MISMATCH. Invalid Brief/Request/protocol input fails by
+      contract error before a valid attempt is constructed; STALE_BEFORE_PASS2 and
+      INSUFFICIENT_EVIDENCE are not RA-2 failure codes.
+    - >
+      attribution is a closed operational mapping containing exactly adapter_id,
+      adapter_version and invocation_id. adapter_id and adapter_version are non-empty
+      normalized UTF-8 text bounded to 512 bytes each; invocation_id is null or bounded
+      non-empty text of at most 2048 bytes. Attribution records acquisition mechanism
+      identity only and cannot establish source authority.
+    - >
+      For SUCCEEDED attempts, observation fingerprints must be unique and total normalized
+      content.text UTF-8 bytes across observations must not exceed the bound Acquisition
+      Request max_total_observation_bytes. No silent truncation, dropping, deduplication or
+      best-effort repair is allowed when native material exceeds caller-authored bounds.
+    - >
+      attempt_fingerprint is lowercase SHA-256 over canonical strict JSON of the complete
+      normalized Acquisition Attempt excluding only attempt_fingerprint. The normalized
+      attempt has a hard ceiling of 786432 UTF-8 JSON bytes. Observation list order is
+      preserved as supplied and is therefore part of attempt identity.
+    - >
+      RA-2 contracts reject unknown fields, duplicate normalized items/facts, invalid
+      Unicode, non-finite/non-JSON values, booleans in integer positions, over-bound or
+      depth-abusive material, credential-bearing provenance, nested protocol/control
+      envelopes in structural fields, and any attempt to represent source synthesis as an
+      admitted observation kind. No silent normalization may change source semantics.
+    - >
+      Source content itself is treated as opaque untrusted data and is not rejected merely
+      because its text resembles an instruction or secret. Transport/authentication
+      material must remain outside content/provenance contracts; durable private-content
+      retention/redaction policy is deferred to RA-3.
+    - >
+      RA-2 introduces no persistence, no automatic latest/source resolver, no external
+      side effect and no lifecycle state. Observation/attempt fingerprints are planning
+      material identities only, not engineering evidence, research truth, review verdict,
+      publication authority or mutation permission.
+    - >
+      Existing RA-1 contracts, six Flow Cards, Brain Context/Resolver, Decision Packet,
+      Brain Audit/Provider, Reviewer, Unified State, Runtime, Publisher and authoring
+      ingress behavior must remain unchanged.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository exposes a pure deterministic AIOS_SOURCE_OBSERVATION v1 contract
+      bound to one exact valid RA-1 Research Brief and Acquisition Request with the exact
+      closed fields, source-family echo, representation kinds, provenance/access scope,
+      fixed UNTRUSTED instruction boundary, content identity and observation fingerprint
+      required by this TASK.
+  - id: AC2
+    condition: >
+      Source Observation validation preserves caller-supplied source text as opaque data,
+      normalizes only declared text/line-ending/Unicode representation, keeps prompt-like
+      content structurally isolated, rejects unknown protocol/control fields and unsupported
+      synthesis representations, and performs no semantic source interpretation.
+  - id: AC3
+    condition: >
+      Provenance validation enforces exact UTC retrieved_at grammar, bounded safe locator
+      or stable source identity, ordered resolution-chain consistency, deterministic
+      order-insensitive version facts, PUBLIC/AUTHORIZED_PRIVATE scope, and rejects
+      credential-bearing or malformed provenance without claiming network safety.
+  - id: AC4
+    condition: >
+      The repository exposes a pure AIOS_ACQUISITION_ATTEMPT v1 whose exact Brief/Request
+      bindings, attribution and content-addressed identity are deterministic; SUCCEEDED
+      accepts bounded same-request observations including a valid zero-observation result,
+      while FAILED accepts only the closed operational reason taxonomy and no observations.
+  - id: AC5
+    condition: >
+      Acquisition Attempt validation enforces request max_items and
+      max_total_observation_bytes, rejects duplicate/foreign/substituted observations and
+      over-bound native material without silent truncation or deduplication, and never
+      maps operational failure or empty success to INSUFFICIENT_EVIDENCE or another
+      research conclusion.
+  - id: AC6
+    condition: >
+      Tool/adapter attribution remains operational only: malformed or over-bound
+      attribution fails closed, no credential/session/native-error payload is admitted,
+      and no attribution value can mutate source family, instruction trust, research
+      semantics, roadmap/TASK state or lifecycle authority.
+  - id: AC7
+    condition: >
+      RA-2 construction/revalidation is pure and side-effect free: it performs no
+      repository/network/filesystem/clock/provider/connector/subprocess access, persists
+      no observation or attempt, invokes no source adapter, and leaves all existing
+      RA-1/Brain/Runtime/Reviewer/Publisher/Flow contracts unmodified.
+  - id: AC8
+    condition: >
+      Focused deterministic regressions cover valid public/private observations,
+      content/fingerprint normalization, prompt-like opaque text, discovery-vs-source
+      representation, rejected synthesis kinds, retrieval/version/locator provenance,
+      foreign Brief/Request substitution, success-with-zero-observations, failure taxonomy,
+      attribution bounds, observation count/byte budgets, duplicate observations,
+      malformed/credential-bearing provenance and proof of no I/O/lifecycle side effects.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_source_acquisition.py
