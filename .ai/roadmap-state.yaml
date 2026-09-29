@@ -1568,11 +1568,23 @@ sequence:
   - id: verification-performance-rebaseline-v2-adopt-workers-12
     status: NEXT
     task_id: TASK-231
-    task_revision: 1
-    authored_commit_sha: "0957a19c50f6cb10d5e3b2b9a06100ac5cc0d998"
-    task_blob_sha: "19e6af939af77b71e5979bfc2a927f07711fb9d8"
+    task_revision: 2
+    authored_commit_sha: "b5b454e3573498a717f66861ad70adb518d96133"
+    task_blob_sha: "afaea313e95df9b9454daa0df8bfce9ec3c1163b"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    supersedes_revision:
+      task_revision: 1
+      run_id: RUN-231-001
+      terminal_kind: FAILURE
+      phase: COMPLETION_GATE
+      failure_artifact_sha: "b262e8e9fbccdf71b289e59e6df81cf9cd535b36"
+      failed_head_sha: "8ddc02be58f6e67edf9f465fac3924b6894e593e"
+      reason: >-
+        Revision 1 incorrectly required Executor acceptance coverage for a future
+        Runtime verification outcome. Revision 2 preserves the Human workers=12
+        intent and implementation semantics while making every acceptance
+        criterion claimable before Runtime verification.
     human_selection:
       selected_workers: 12
       selected_on: "2026-09-29"
@@ -1585,9 +1597,10 @@ sequence:
         verification truth.
     objective: >-
       Adopt the Human-selected fixed workers=12 ordinary full-suite profile and
-      require one exact-subject Runtime-owned 12-worker full-suite confirmation
-      before review/publication, preserving no-auto-selection, no-fallback and
-      historical workers=4 evidence as non-comparable context.
+      expose one fail-closed exact-subject 12-worker verification surface for
+      Runtime-owned confirmation before review/publication, preserving
+      no-auto-selection, no-fallback and historical workers=4 evidence as
+      non-comparable context.
     return_to: verification-performance-rebaseline-v2
 
 
