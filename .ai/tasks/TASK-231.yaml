@@ -1,0 +1,202 @@
+task_id: TASK-231
+revision: 1
+
+goal: >
+  Adopt the Human-selected fixed 12-worker ordinary canonical full-suite profile
+  for AIOS-renew and confirm that exact adoption candidate once through
+  Runtime-owned canonical full-suite verification, replacing workers=4 as the
+  selected profile without running the optional 4/8/12/16 rebaseline matrix,
+  introducing automatic worker selection, or treating Human exploratory timing as
+  Runtime verification truth.
+
+problem: >
+  TASK-230 added an additive structured rebaseline measurement capability for
+  workers 4/8/12/16 and was reviewed/published at
+  6167a9714efe1e284f4449a4cf56bbc45785a2af. The Human has now explicitly chosen
+  workers=12 based on prior same-host exploratory evidence: the current full suite
+  improved from approximately 474.82s at workers=4 to 311.87s at workers=12, while
+  a publication-heavy subset saturated around workers=12, with workers=16 providing
+  no meaningful test-time improvement and workers=20 regressing. Human owns this
+  selection decision. Re-running the entire 4/8/12/16 matrix would duplicate the
+  Human decision and add verification cost. AIOS still requires Runtime-owned
+  canonical evidence that the exact 12-worker adoption candidate preserves current
+  full-suite correctness, collection identity, exact-subject stability and worker
+  isolation before publication.
+
+assumptions:
+  - >
+    Canonical main at authoring is 6167a9714efe1e284f4449a4cf56bbc45785a2af; TASK-230 / RUN-230-001 /
+    REVIEW-230-001 PRIMARY PASS is published at this SHA.
+  - >
+    Human explicitly selects workers=12 for the ordinary canonical full-suite
+    profile on the supported Windows x64 self-host class. This is a Human planning
+    decision, not an inference or selection made by Runtime, Executor, Reviewer,
+    measurement tooling or CPU-count policy.
+  - >
+    Human exploratory timing is planning evidence only. It may explain WHY the
+    Human selected 12 but must not be represented as canonical Runtime
+    verification, EVIDENCE, review truth or an automatically recomputable policy.
+  - >
+    TASK-230's 4/8/12/16 measurement family remains available for future explicit
+    research/rebaseline use, but this adoption task intentionally does not invoke
+    it.
+  - >
+    TASK-176 remains historical authority for the original workers=4 selected
+    profile and RUN-159-008 baseline. Those artifacts remain immutable historical
+    evidence and must not be rewritten as 12-worker evidence.
+  - >
+    Existing selected-wrapper semantics already perform one canonical collection,
+    one fixed parallel profile, exact-subject checks, worker collection agreement,
+    isolated mutable roots, distinct worker process identities, bounded failure
+    diagnostics and no worker restart/fallback.
+  - >
+    Runtime owns canonical verification/EVIDENCE; Reviewer owns semantic verdict;
+    Human owns the 12-worker selection; Publisher owns publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-157.yaml
+    - .ai/tasks/TASK-159.yaml
+    - .ai/tasks/TASK-161.yaml
+    - .ai/tasks/TASK-176.yaml
+    - .ai/tasks/TASK-230.yaml
+    - .ai/verification-profiles.yaml
+    - scripts/aios_parallel_full_suite.py
+    - scripts/bp_v4_parallel_rebaseline.py
+    - src/aios_renew/parallel_verification.py
+    - src/aios_renew/verification_profile.py
+    - src/aios_renew/verification_contract.py
+    - tests/test_verification_profile.py
+    - tests/test_parallel_verification.py
+    - tests/test_verification_contract.py
+  modify:
+    - .ai/verification-profiles.yaml
+    - scripts/aios_parallel_full_suite.py
+    - src/aios_renew/verification_profile.py
+    - tests/test_verification_profile.py
+    - tests/test_parallel_verification.py
+
+non_goals:
+  - >
+    Run scripts/bp_v4_parallel_rebaseline.py or any 4/8/12/16 comparison matrix
+    during TASK-231 verification.
+  - >
+    Select, rank, recommend or reconsider a worker count. workers=12 is already the
+    explicit Human decision for this task.
+  - >
+    Modify historical TASK-157/TASK-159/TASK-176 evidence, RUN-159-008,
+    TASK-230 measurement grammar, BP-V4 v1 2/3/4 grammar, or historical review
+    decisions.
+  - >
+    Claim Human shell benchmarks are canonical Runtime evidence or bind the new
+    profile to a fabricated measurement RUN/evidence id.
+  - >
+    Add CPU-derived auto workers, adaptive tuning, retry, fallback to 4/8/16/serial,
+    scheduler selection, randomization, result-dependent routing or a performance
+    database.
+  - >
+    Add or select a direct Git executable, prepend Git directories to PATH, modify
+    Git/Defender/host configuration, or change verification-subject lifecycle.
+  - >
+    Change Runtime command rewriting, lifecycle, RepositoryLock, Unified State,
+    Reviewer, Publisher, transport, frozen Kernel, Research Assurance or downstream
+    adoption semantics.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Change the selected ordinary canonical full-suite profile from workers=4 to
+      exactly workers=12 while preserving distribution=load and
+      max_worker_restart=0. No other worker profile may be used by the selected
+      wrapper.
+    - >
+      The selected wrapper must continue to perform exactly one canonical
+      collection followed by exactly one parallel-12 full-suite execution. It must
+      pass workers=12 to the existing run_pytest primitive, which remains
+      responsible for '-n 12 --dist load --max-worker-restart 0'.
+    - >
+      Preserve exact-subject cleanliness and post-collection/post-profile subject
+      stability checks, deterministic collection identity, worker collection
+      agreement, isolated pytest temporary roots, isolated process-local Git fixture
+      cache roots, distinct worker process identities and bounded failure
+      diagnostics. Do not weaken any conformance gate to make 12 pass.
+    - >
+      The profile policy must record that workers=12 is a HUMAN-selected policy
+      decision associated with TASK-231. It must not claim that RUN-159-008,
+      TASK-230, or exploratory timing is canonical 12-worker verification evidence.
+    - >
+      Preserve the original RUN-159-008 workers=4 baseline as explicitly historical
+      context only. Because it was measured for workers=4 and a different collection,
+      the soft performance guard for the workers=12 selected profile must report
+      NOT_COMPARABLE rather than WITHIN/ATTENTION until a later explicit baseline
+      task binds a canonical 12-worker baseline. Do not fabricate a new threshold.
+    - >
+      Existing selected full-suite command surface remains exactly
+      'python scripts/aios_parallel_full_suite.py' and remains the only ordinary
+      selected-wrapper command recognized by verification_contract. TASK-231 must
+      not add a second ordinary command family.
+    - >
+      TASK-230's rebaseline command family and historical BP-V4 measurement family
+      remain behaviorally unchanged and distinct.
+    - >
+      Runtime verification for TASK-231 must execute exactly the newly selected
+      wrapper once on the exact candidate subject plus git diff --check. The full
+      suite is minimum-sufficient because it simultaneously validates the changed
+      profile loader/wrapper and current suite correctness/conformance at 12
+      workers. Do not add a duplicate focused pytest command before or after it.
+    - >
+      A failed 12-worker verification must fail TASK-231. No automatic retry,
+      fallback, alternate worker, profile mutation, test suppression, skip, xfail,
+      timeout inflation or automatic remediation is authorized.
+    - >
+      No file outside scope.modify may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Repository policy identifies workers=12, distribution=load and
+      max_worker_restart=0 as the Human-selected ordinary canonical full-suite
+      profile and no longer identifies workers=4 as the selected profile.
+  - id: AC2
+    condition: >
+      The selected wrapper performs exactly one collection and exactly one
+      parallel-12 full-suite execution, preserving all existing exact-subject and
+      worker-isolation conformance checks with no retry/fallback/alternate profile.
+  - id: AC3
+    condition: >
+      Selection provenance states Human authority and TASK-231 planning identity
+      without representing exploratory benchmarks, TASK-230 or RUN-159-008 as
+      canonical 12-worker verification evidence.
+  - id: AC4
+    condition: >
+      Historical RUN-159-008 workers=4 performance data remains immutable historical
+      context, and performance_guard returns NOT_COMPARABLE for the selected
+      workers=12 profile until a future explicit canonical 12-worker baseline exists.
+  - id: AC5
+    condition: >
+      Existing BP-V4 v1, TASK-230 rebaseline family, selected command grammar,
+      Runtime/Reviewer/Publisher authority and no-auto-selection semantics remain
+      compatible.
+  - id: AC6
+    condition: >
+      Exact candidate Runtime verification completes the newly selected wrapper
+      successfully at workers=12 with canonical collection/conformance evidence and
+      git diff --check passes; failure at 12 cannot silently fall back or publish.
+
+verification:
+  policy: minimum-sufficient-v1
+  full_suite_reason: >
+    TASK-231 changes the repository-selected full-suite worker profile itself.
+    One exact-subject execution of the selected wrapper at the Human-chosen
+    workers=12 is the minimum-sufficient proof of current full-suite correctness,
+    collection identity and worker isolation; a 4/8/12/16 matrix or duplicate
+    focused suite would add cost without changing the Human selection.
+  required:
+    - python scripts/aios_parallel_full_suite.py
+    - git diff --check
