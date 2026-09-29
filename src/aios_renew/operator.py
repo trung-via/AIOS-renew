@@ -3811,7 +3811,7 @@ _SOURCE_REPAIR_BOOTSTRAP_FIELDS = frozenset({
 })
 
 # A distinct, post-terminal PRIMARY consumer requires separate exact activation.
-_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA: str | None = None
+_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA: str | None = "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
 _SOURCE_BOOTSTRAP_SUCCESSOR_FIELDS = frozenset({
     "format", "version", "repository", "bootstrap_fingerprint", "failed_run_id",
     "legacy_generation_sha", "prior_target_generation_sha",
