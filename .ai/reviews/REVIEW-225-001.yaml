@@ -1,0 +1,32 @@
+review_id: REVIEW-225-001
+reviewed_sha: 1a4000db45efa529993635ad4d9a87654dd1b427
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: FAIL
+  AC8: FAIL
+findings:
+- id: FINDING-225-001
+  basis: AC7
+  action: CODE_FIX
+  location: src/aios_renew/research_protocol.py::_reconciliation audit_results.summary
+    and tests/test_research_protocol.py
+  issue: RA-4 audit_results.summary is normalized with research_contract._text(),
+    which rejects credentials/control characters but does not reject provider/model/session
+    identity, machine-local workspace/path material, or raw/native tool-log markers.
+    TASK-225 explicitly forbids these materials from RA-4 artifacts, so a content-addressed
+    AIOS_RESEARCH_RECONCILIATION can currently retain prohibited operational/private
+    metadata.
+  expected: Keep audit summary as bounded Brain semantic text, but apply the same
+    semantic/private-material exclusion boundary used by RA-3 semantic fields (or
+    an equivalent RA-4-local pure validator) so provider/model/session identity, machine-local
+    path/workspace metadata, raw/native tool-log material and similar prohibited operational
+    metadata fail closed without treating ordinary source/prompt-like text as control.
+    Add focused regressions proving these prohibited summary forms are rejected while
+    ordinary bounded Brain audit rationale remains accepted.
