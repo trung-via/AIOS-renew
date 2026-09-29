@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - ra-1-research-contract-foundation
+  - ra-2-source-acquisition-provenance-boundary
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1232,16 +1232,30 @@ sequence:
       - BRAIN_OWNED_RESEARCH_CLOSURE
       - NON_TASK_NEXT_BRAIN_SYNC_MISMATCH
   - id: ra-1-research-contract-foundation
+    status: DONE
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    completed_by:
+      task_id: TASK-222
+      task_revision: 1
+      run_id: RUN-222-001
+      review_id: REVIEW-222-001
+      verdict: PASS
+      reviewed_sha: "1eed373ce0b8b53aa12b024d66b339fe16454384"
+      published_sha: "1eed373ce0b8b53aa12b024d66b339fe16454384"
+      evidence_id: RUN-222-001-V001
+    objective: >-
+      Establish the pure deterministic Research Brief, Challenge Target, and bounded
+      Acquisition Request contracts without adding source acquisition, Research Record,
+      research audit, provider invocation, or first-class RESEARCH Flow semantics.
+  - id: ra-2-source-acquisition-provenance-boundary
     status: NEXT
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
-    task_id: TASK-222
-    task_revision: 1
-    authored_commit_sha: "b625b8ee4b24717d34db1e700b08ae18e0e7766e"
-    task_blob_sha: "b210e4530dbe5508f6ec1f0380193315b9106775"
+    task_id: null
     objective: >-
-      Execute the exact authored RA-1 Research Contract Foundation TASK after fresh
-      Brain Sync confirms TASK-222 revision 1 as the unique canonical NEXT.
+      Audit and freeze the RA-2 Source Acquisition & Provenance Boundary before
+      authoring any implementation TASK.
 
 research_assurance:
   id: research-assurance
@@ -1310,10 +1324,13 @@ research_assurance:
         before RA-1 TASK authoring.
     - id: RA-1
       name: Research Contract Foundation
-      status: AUTHORED_UNEXECUTED
+      status: DONE
       task_id: TASK-222
       task_revision: 1
-      authored_commit_sha: "b625b8ee4b24717d34db1e700b08ae18e0e7766e"
+      run_id: RUN-222-001
+      review_id: REVIEW-222-001
+      reviewed_sha: "1eed373ce0b8b53aa12b024d66b339fe16454384"
+      published_sha: "1eed373ce0b8b53aa12b024d66b339fe16454384"
       objective: >-
         Define the bounded Research Brief identity, question, decision context,
         scope/non-goals, project/currentness basis, source policy, resource bounds,
@@ -1321,7 +1338,7 @@ research_assurance:
         Pass-1 challenge-target semantics without adding RESEARCH to core Flow Resolver yet.
     - id: RA-2
       name: Source Acquisition & Provenance Boundary
-      status: PLANNED
+      status: NEXT_UNAUTHORED
       objective: >-
         Define replaceable subordinate acquisition adapters and normalized source
         observations/provenance, untrusted-content instruction isolation, and operational
@@ -1367,10 +1384,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only exact TASK-222 revision 1 for RA-1 — Research Contract Foundation
-    after fresh Brain Sync reconciles the authored TASK against current canonical
-    lineage. Do not widen Brain Sync into a generic planning router or add RESEARCH to
-    core Flow Resolver outside TASK-222 scope.
+    Continue only RA-2 — Source Acquisition & Provenance Boundary as a Human/Brain
+    architecture audit and TASK-authoring step. RA-1 is reviewed and published. Until
+    RA-2 is audited and an exact TASK is authored, do not invoke an Executor or add
+    first-class RESEARCH Flow semantics.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1378,10 +1395,10 @@ research_assurance:
     A NEXT milestone with a task_id is not executable until that exact TASK revision is
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
-    RA-0 is closed and TASK-222 revision 1 is canonically authored. RA-1 execution may
-    proceed only after fresh Brain Sync selects that exact TASK and normal Runtime
-    admission applies. RA-2 through RA-7 remain gated until reviewed/published RA-1
-    evidence and fresh Human/Brain planning reconciliation.
+    RA-1 is reviewed/published at exact SHA 1eed373ce0b8b53aa12b024d66b339fe16454384.
+    RA-2 is now the unique planning NEXT but remains unauthored. RA-2 implementation
+    TASK authoring is permitted only after its architecture/threat-model audit closes;
+    RA-3 through RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
