@@ -1,0 +1,26 @@
+review_id: REVIEW-227-001
+reviewed_sha: d31b4e16b3bf01f717a75d1de7331411e8a6c880
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: FAIL
+  AC8: PASS
+findings:
+- id: F-227-001
+  basis: AC7
+  action: CODE_FIX
+  location: src/aios_renew/research_packet.py::project_research_architecture_handoff;
+    tests/test_research_packet.py::test_candidate_handoff_is_bounded_cognitive_projection
+  issue: The architecture handoff copies material_claims[*].uncertainty into the handoff
+    but the retained_excerpt exclusion check inspects only claim statement text, project_assessment.summary,
+    closure.summary, and Brief text. A retained source excerpt can therefore pass
+    through uncertainty.summary, violating AC7's no-source-excerpts boundary.
+  expected: Reject any handoff whose emitted semantic text, including material_claims[*].uncertainty.summary,
+    contains a retained source excerpt, and add a regression proving an exact retained
+    excerpt placed only in uncertainty.summary is rejected.
