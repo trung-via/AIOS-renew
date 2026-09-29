@@ -141,6 +141,15 @@ constraints:
       _SOURCE_UPGRADE_SOURCE_SHA, _SOURCE_UPGRADE_TARGET_SHA and
       _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA remain unchanged.
     - >
+      Because TASK-220 cannot know its own future reviewed/published SHA while its
+      production activation is intentionally closed, capability-level tests may inject
+      one exact test-local successor activation only in the staging/control module to
+      exercise the corrected composed path. That injection must not alter the staged
+      target source's own closed activation and must not bypass installed-distribution
+      attestation, target-source identity, lineage, control, pin, TASK, replay or
+      at-most-once validation. The separately authored TASK-221 final activation proof
+      must use production activation defaults and may not rely on activation monkeypatching.
+    - >
       Add a production-shaped successor regression using three genuinely distinct
       identities: reviewed activation/control source, an isolated installed
       migration-capable distribution representing exact 31fd2482..., and an exact staged
@@ -208,8 +217,9 @@ acceptance:
       Deterministic production-shaped coverage proves the distinct control-source /
       installed-distribution / target-source topology with real isolated installed
       attestation, exact completed failed-v2 lineage and same-TASK newer-revision PRIMARY
-      admission, without monkeypatching the attestation or topology boundaries identified
-      by the TASK-218/219 miss.
+      admission. TASK-220 may use only the explicitly permitted exact test-local staging
+      activation injection; it must not monkeypatch the installed attestation, target
+      identity or lineage boundaries identified by the TASK-218/219 miss.
   - id: AC5
     condition: >
       Successor exact lineage, pin continuity, current-control descendant allowance,
