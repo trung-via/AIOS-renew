@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
+import hashlib
 import importlib
+import json
 import os
 from pathlib import Path
 import sys
@@ -51,7 +52,7 @@ def pytest_sessionstart(session: Any) -> None:
 def pytest_runtest_makereport(item: Any, call: Any):
     outcome = yield
     report = outcome.get_result()
-    nodeid = report.nodeid.replace("\\", "/")
+    nodeid = report.nodeid
     if report.when == "setup":
         _executions.append(nodeid)
     if report.failed and report.when in {"setup", "call", "teardown"}:
@@ -82,7 +83,7 @@ def _process_facts(config: Any) -> dict[str, Any]:
 
 
 def pytest_collection_finish(session: Any) -> None:
-    ids = [item.nodeid.replace("\\", "/") for item in session.items]
+    ids = [item.nodeid for item in session.items]
     config = session.config
     if hasattr(config, "workerinput"):
         config.workeroutput["aios_contention_collection"] = ids
@@ -102,6 +103,11 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
         "version": 1,
         "exit_status": int(exitstatus),
         "controller_collection": getattr(config, "_aios_contention_collection", None),
+        "nodeid_fingerprints": {
+            node: "sha256:" + hashlib.sha256(node.encode("utf-8")).hexdigest()
+            for node in (next(iter(_collections.values())) if _workers
+                         else getattr(config, "_aios_contention_collection", None) or [])
+        },
         "worker_collections": _collections,
         "workers": _workers,
         "worker_failure_reports": sorted(_worker_failures),
@@ -117,7 +123,7 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
 
 
 def pytest_xdist_node_collection_finished(node: Any, ids: list[str]) -> None:
-    _collections[node.gateway.id] = [value.replace("\\", "/") for value in ids]
+    _collections[node.gateway.id] = list(ids)
 
 
 def pytest_testnodedown(node: Any, error: object) -> None:

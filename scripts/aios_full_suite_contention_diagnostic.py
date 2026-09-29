@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from typing import Any, Callable, Sequence
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -27,7 +28,7 @@ PHASE_ORDER = {"setup": 0, "call": 1, "teardown": 2}
 FIELDS = {
     "schema", "version", "exit_status", "controller_collection", "worker_collections",
     "workers", "worker_failure_reports", "worker_execution_reports", "failures",
-    "over_bound", "executed_nodeids", "controller_process",
+    "over_bound", "executed_nodeids", "controller_process", "nodeid_fingerprints",
 }
 
 
@@ -36,26 +37,47 @@ def _integer(value: object) -> bool:
 
 
 def _nodeid(value: object) -> str:
-    if not isinstance(value, str) or not 0 < len(value) <= 8192 or "\\" in value:
+    if not isinstance(value, str) or not 0 < len(value) <= 8192:
         raise DiagnosticError("unsafe nodeid")
     path = value.split("::", 1)[0]
     if not re.fullmatch(r"tests/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.py", path):
         raise DiagnosticError("unsafe nodeid path")
     detail = value[len(path):]
-    if any(ord(char) < 32 or ord(char) > 126 for char in value) or any(
-        token in value for token in ("..", ":/", "@", "<", ">", "|", "\"", "'", "`", "$", "%")
-    ) or re.search(r"(?:^|[=\[,( ])/(?!/)", detail):
-        raise DiagnosticError("unsafe nodeid content")
-    if not re.fullmatch(r"[A-Za-z0-9_./:\[\], =+(){}!#&;?-]+", value):
-        raise DiagnosticError("unsafe nodeid characters")
+    structure = detail.split("[", 1)[0]
+    if not re.fullmatch(r"(?:::[A-Za-z_][A-Za-z0-9_]*)+", structure):
+        raise DiagnosticError("unsafe nodeid selector structure")
+    if "[" in detail and not detail.endswith("]"):
+        raise DiagnosticError("malformed pytest parameter selector")
+    if any(unicodedata.category(char) in {"Cc", "Cs"} for char in value):
+        raise DiagnosticError("unsafe nodeid control character")
     return value
+
+
+def _fingerprint(node: str) -> str:
+    return "sha256:" + hashlib.sha256(node.encode("utf-8")).hexdigest()
+
+
+def _safe_nodeid(node: str) -> str:
+    raw = _nodeid(node)
+    path, detail = raw.split("::", 1)
+    structure = detail.split("[", 1)[0]
+    return f"{path}::{structure}#{_fingerprint(raw)}"
+
+
+def _fingerprints(value: object, ids: list[str]) -> None:
+    if (not isinstance(value, dict) or set(value) != set(ids)
+            or any(not isinstance(item, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", item)
+                   or item != _fingerprint(node) for node, item in value.items())
+            or len(set(value.values())) != len(ids)):
+        raise DiagnosticError("malformed or tampered nodeid fingerprint")
 
 
 def _identities(value: object, *, expected: set[str] | None = None) -> list[str]:
     if not isinstance(value, list) or len(value) > 10000:
         raise DiagnosticError("malformed collection or execution identities")
     ids = [_nodeid(item) for item in value]
-    if len(ids) != len(set(ids)) or (expected is not None and set(ids) != expected):
+    if (len(ids) != len(set(ids)) or len({_safe_nodeid(node) for node in ids}) != len(ids)
+            or (expected is not None and set(ids) != expected)):
         raise DiagnosticError("duplicate or inconsistent collection or execution identities")
     return sorted(ids)
 
@@ -209,6 +231,7 @@ def _phase(label: str, workers: int, status: int, value: dict[str, Any],
         if value["controller_collection"] is not None:
             raise DiagnosticError("unexpected controller collection")
         collected = sorted(expected)
+    _fingerprints(value["nodeid_fingerprints"], collected)
     processes = [controller]
     for worker in sorted(worker_ids):
         item = reported[worker]
@@ -285,10 +308,16 @@ def diagnose(repository: Path, *, runner: Runner = run_pytest,
         classification = "FULL_SUITE_CONTEXT_DEPENDENT"
     else:
         classification = "MIXED"
+    for profile in profiles:
+        for fact in profile["failures"]:
+            fact["nodeid"] = _safe_nodeid(fact["nodeid"])
+    public_failed = sorted(_safe_nodeid(node) for node in failed)
+    public_serial = sorted(_safe_nodeid(node) for node in serial_failed)
+    public_n4 = sorted(_safe_nodeid(node) for node in n4_failed)
     return {"format": FORMAT, "version": 1, "subject": subject, "toolchain": toolchain,
             "collection": collection["collection"], "profiles": profiles,
-            "full_n12_failed_nodeids": failed, "serial_reproduced_nodeids": serial_failed,
-            "n4_reproduced_nodeids": n4_failed, "classification": classification}
+            "full_n12_failed_nodeids": public_failed, "serial_reproduced_nodeids": public_serial,
+            "n4_reproduced_nodeids": public_n4, "classification": classification}
 
 
 def main(argv: Sequence[str] | None = None) -> int:

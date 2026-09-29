@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -29,6 +31,9 @@ def _observation(label: str, workers: int, nodes: list[str], failed: list[str] |
     return {
         "schema": diagnostic.SCHEMA, "version": 1, "exit_status": int(bool(failed)),
         "controller_collection": None if worker_ids else nodes,
+        "nodeid_fingerprints": {
+            node: "sha256:" + hashlib.sha256(node.encode("utf-8")).hexdigest() for node in nodes
+        },
         "worker_collections": {key: nodes for key in worker_ids},
         "workers": {key: {
             "worker_id": key, "process_id": 200 + index,
@@ -83,11 +88,86 @@ def test_replay_classifications_and_exact_identity(monkeypatch: pytest.MonkeyPat
     failed = NODES[:2]
     result, calls = _diagnose(monkeypatch, failed, serial, n4)
     assert result["classification"] == classification
-    assert result["full_n12_failed_nodeids"] == failed
-    assert result["serial_reproduced_nodeids"] == serial
-    assert result["n4_reproduced_nodeids"] == n4
+    assert result["full_n12_failed_nodeids"] == sorted(map(diagnostic._safe_nodeid, failed))
+    assert result["serial_reproduced_nodeids"] == sorted(map(diagnostic._safe_nodeid, serial))
+    assert result["n4_reproduced_nodeids"] == sorted(map(diagnostic._safe_nodeid, n4))
     assert calls == [("collection", 1, True, ()), ("full-n12", 12, False, ()),
                      ("serial", 1, False, tuple(failed)), ("n4", 4, False, tuple(failed))]
+
+
+def test_parameter_data_replays_exactly_without_durable_disclosure(monkeypatch: pytest.MonkeyPatch) -> None:
+    nodes = [
+        'tests/test_example.py::test_case[/tmp/name]',
+        'tests/test_example.py::test_case["quoted" and \'single\']',
+        'tests/test_example.py::test_case[scheme://private.example/path]',
+        'tests/test_example.py::test_case[../relative]',
+        'tests/test_example.py::test_case[user@example.test%value$]',
+        'tests/test_example.py::test_case[C:\\private\\name]',
+    ]
+    result, calls = _diagnose(monkeypatch, nodes, nodes[:2], nodes[2:4], nodes=nodes)
+    assert calls[2][3] == tuple(sorted(nodes))
+    assert calls[3][3] == tuple(sorted(nodes))
+    expected = sorted(diagnostic._safe_nodeid(node) for node in nodes)
+    assert result["full_n12_failed_nodeids"] == expected
+    assert result["serial_reproduced_nodeids"] == sorted(map(diagnostic._safe_nodeid, nodes[:2]))
+    assert result["n4_reproduced_nodeids"] == sorted(map(diagnostic._safe_nodeid, nodes[2:4]))
+    assert len(set(expected)) == len(nodes)
+    for node, safe in zip(nodes, map(diagnostic._safe_nodeid, nodes)):
+        assert safe.startswith("tests/test_example.py::test_case#sha256:")
+        assert safe.endswith(hashlib.sha256(node.encode("utf-8")).hexdigest())
+    durable = json.dumps(result, sort_keys=True)
+    assert all(node not in durable for node in nodes)
+    assert all(fact["nodeid"] in expected for profile in result["profiles"]
+               for fact in profile["failures"])
+
+
+@pytest.mark.parametrize("node", [
+    "C:/private/test_example.py::test_case[x]",
+    "/tests/test_example.py::test_case[x]",
+    "tests/../test_example.py::test_case[x]",
+    "tests\\test_example.py::test_case[x]",
+    "tests/test_example.py::test_case[bad\x00value]",
+    "tests/test_example.py::test_case[bad\x1fvalue]",
+    "tests/test_example.py::test_case[unterminated",
+])
+def test_unsafe_nodeid_region_fails_closed(node: str) -> None:
+    with pytest.raises(diagnostic.DiagnosticError):
+        diagnostic._nodeid(node)
+
+
+def test_ambiguous_identity_and_tampered_fingerprint_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    nodes = ["tests/test_example.py::test_case[first]", "tests/test_example.py::test_case[second]"]
+    monkeypatch.setattr(diagnostic, "subject_identity", lambda _repository: SUBJECT)
+
+    def runner(_repository, _root, *, label, workers, collect_only, nodeids):
+        value = _observation(label, workers, nodes, [nodes[0]] if label == "full-n12" else [],
+                             collection_only=collect_only)
+        if label == "collection":
+            value["nodeid_fingerprints"][nodes[1]] = value["nodeid_fingerprints"][nodes[0]]
+        return value["exit_status"], value
+
+    with pytest.raises(diagnostic.DiagnosticError, match="fingerprint"):
+        diagnostic.diagnose(Path.cwd(), runner=runner, loader=lambda: {})
+    with pytest.raises(diagnostic.DiagnosticError, match="fingerprint"):
+        diagnostic._fingerprints({nodes[0]: "sha256:not-a-digest"}, nodes[:1])
+
+    with monkeypatch.context() as patch:
+        patch.setattr(diagnostic, "_safe_nodeid", lambda _node: "same-safe-identity")
+        with pytest.raises(diagnostic.DiagnosticError, match="duplicate or inconsistent"):
+            diagnostic._identities(nodes)
+
+
+def test_observer_preserves_raw_selector_during_collection() -> None:
+    node = r"tests/test_example.py::test_case[C:\private\name]"
+    config = SimpleNamespace()
+    plugin.pytest_collection_finish(SimpleNamespace(config=config, items=[SimpleNamespace(nodeid=node)]))
+    assert config._aios_contention_collection == [node]
+    worker = SimpleNamespace(gateway=SimpleNamespace(id="gw0"))
+    try:
+        plugin.pytest_xdist_node_collection_finished(worker, [node])
+        assert plugin._collections["gw0"] == [node]
+    finally:
+        plugin._collections.clear()
 
 
 def test_exact_64_identity_bound_and_overflow(monkeypatch: pytest.MonkeyPatch) -> None:
