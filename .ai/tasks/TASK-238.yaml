@@ -1,0 +1,182 @@
+task_id: TASK-238
+revision: 1
+
+goal: >
+  Add one bounded diagnostic that resolves the remaining stable fresh-clone
+  AUTHOR_REMEDIATION metadata-content mismatch into an exact privacy-safe byte/object
+  identity boundary, without changing Authoring Ingress, fixture behavior, worker
+  policy, correction semantics, or selecting a remediation.
+
+problem: >
+  RUN-234-001 proved
+  tests/test_hot_swap_conformance.py::test_scenario_2_fresh_correction_accepts_only_current_finding
+  is a stable serial failure in both isolated cold-target and full-file context.
+  RUN-236-001 then resolved its production raise-site to
+  src/aios_renew/authoring_ingress.py:_validate_metadata_commit with category
+  METADATA_CONTENT_MISMATCH. Existing ordinary AUTHOR_REMEDIATION coverage still
+  asserts exact metadata delta successfully, while the observed failure occurs only
+  after the Scenario 2 fresh-clone topology. The evidence therefore does not yet
+  distinguish metadata write/tree binding, native Git blob bytes, production
+  readback, line-ending transformation, or another topology-sensitive cause.
+  Weakening byte-exact validation or changing production now would be underdetermined.
+
+assumptions:
+  - >
+    Canonical main at authoring is 3687fa06e12e22933e7184eba95fd0a6be4fae03,
+    the reviewed and source-published TASK-237 candidate.
+  - >
+    RUN-234-001 classified the target as SERIAL_STABLE_FAILURE and observed the same
+    AuthoringIngressError in isolated Phase A and full-file Phase B.
+  - >
+    RUN-236-001 classified DETAILS_RESOLVED and bound the target to
+    _validate_metadata_commit line 1699 with category METADATA_CONTENT_MISMATCH.
+  - >
+    TASK-237 corrected only the two source-REPAIR CLONE/PATH_OR_FILENAME failures.
+    It intentionally did not correct this ingress mismatch.
+  - >
+    tests/test_authoring_ingress.py has ordinary AUTHOR_REMEDIATION coverage that
+    validates exact metadata bytes; this diagnostic must not reinterpret that
+    passing coverage as proof about the fresh-clone topology.
+  - >
+    The separate RUN-233 parallel-only Git fixture failure remains pending after
+    stable-failure correction and is outside this diagnostic.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-232.yaml
+    - .ai/tasks/TASK-234.yaml
+    - .ai/tasks/TASK-236.yaml
+    - .ai/tasks/TASK-237.yaml
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_authoring_ingress.py
+    - tests/test_hot_swap_conformance.py
+    - tests/git_fixture_support.py
+    - tests/operator_test_support.py
+  modify:
+    - scripts/aios_ingress_metadata_identity_diagnostic.py
+    - tests/aios_ingress_metadata_identity_probe_plugin.py
+    - tests/test_aios_ingress_metadata_identity_diagnostic.py
+
+non_goals:
+  - >
+    Modify src/aios_renew/authoring_ingress.py, any production module, existing test
+    subject, fixture support, Runtime, Reviewer, Publisher, workflow, roadmap, or
+    workers=12 policy.
+  - >
+    Fix, skip, xfail, normalize, weaken, bypass, or reinterpret exact metadata-content
+    validation.
+  - >
+    Attribute causality to TASK-232, Git for Windows, core.autocrlf, fixture caching,
+    fresh clone, or any other mechanism before the bounded observation proves it.
+  - >
+    Run the full suite, workers=4/workers=12 suite, retry the target, choose a correction,
+    or claim TASK-231 is unblocked.
+  - >
+    Persist raw metadata payload, review/remediation content, repository-private paths,
+    credentials, environment values, stdout/stderr, or unbounded traceback data.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Add one fixed no-argument command:
+      python scripts/aios_ingress_metadata_identity_diagnostic.py.
+      Reject positional/options input before subject execution.
+    - >
+      Bind exactly the Scenario 2 target
+      tests/test_hot_swap_conformance.py::test_scenario_2_fresh_correction_accepts_only_current_finding
+      and one semantically equivalent ordinary same-repository AUTHOR_REMEDIATION control.
+      Execute each observation context at most once, serially, in independent fresh
+      subprocess/temp roots. Do not retry a failing context.
+    - >
+      Preserve exact subject SHA and clean worktree before and after every observation
+      context. Subject mutation, missing target, duplicate target, reused observation
+      root, malformed observation, or ambiguous identity fails closed.
+    - >
+      Observe the AUTHOR_REMEDIATION metadata boundary without changing its outcome.
+      Diagnostic instrumentation must delegate the production operation exactly once
+      with the original arguments and must not suppress, normalize, rewrite, retry, or
+      substitute the ingress mutation or validation.
+    - >
+      For each observed metadata commit attempt, derive only privacy-safe bounded facts:
+      expected metadata byte length and SHA-256; expected Git blob object id derived from
+      exact bytes; committed tree-entry blob object id when available; native binary Git
+      blob byte length and SHA-256 when available; production _read_commit_blob byte
+      length and SHA-256 when available; and bounded newline/BOM signatures sufficient
+      to distinguish exact equality from CRLF/LF, trailing-newline, BOM, or OTHER
+      transformation. Never persist raw metadata bytes.
+    - >
+      Native blob observation must use a binary-safe Git object read and must not infer
+      equality from human-readable git show text. Object identity and byte hashes are
+      observational evidence only and do not replace production validation.
+    - >
+      Final per-context classification must be exactly one of PASS_EXACT,
+      WRITE_OR_TREE_BINDING_MISMATCH, NATIVE_BLOB_MISMATCH,
+      PRODUCTION_READBACK_MISMATCH, LINE_ENDING_OR_BOM_TRANSFORM, OTHER_MISMATCH,
+      or OBSERVATION_INCOMPLETE. Classification must be mechanically derived from the
+      bounded observations rather than exception text or model interpretation.
+    - >
+      Final aggregate classification must distinguish at least: both exact/pass,
+      fresh-clone-only mismatch with resolved boundary, mismatch in both contexts,
+      incomplete observation, and pass drift. It is diagnostic evidence only and must
+      not select a fix or declare fixture/production causality.
+    - >
+      Existing AuthoringIngressError message text may be fingerprinted with SHA-256 but
+      must not be emitted raw. Traceback evidence, if needed, is limited to allowlisted
+      repository-relative source file/function/positive line and bounded cause types.
+    - >
+      Durable output is bounded to subject identity, the two context records, fixed
+      classifications, hashes/lengths/object ids and safe signatures. No raw YAML/JSON
+      payloads, Git command operands containing paths/refs, stdout/stderr, exception
+      messages, or private host paths may be emitted.
+    - >
+      The diagnostic exits zero when both observation contexts execute faithfully even
+      when the subject failure remains. Integrity, privacy, identity, delegation, or
+      bounded-schema failures exit nonzero.
+    - >
+      No file outside the three scope.modify files may change. Executor does not mutate
+      roadmap, production, review, publication, or worker policy.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The diagnostic deterministically binds one same-repository AUTHOR_REMEDIATION
+      control and the exact fresh-clone Scenario 2 target, executes each at most once
+      in isolated serial contexts, and preserves the canonical subject unchanged.
+  - id: AC2
+    condition: >
+      Each context reports bounded expected-byte, expected-object, committed-tree,
+      native-blob, and production-readback identity facts sufficient to localize any
+      metadata mismatch without exposing raw semantic content.
+  - id: AC3
+    condition: >
+      Classification mechanically distinguishes write/tree binding, native blob,
+      production readback, line-ending/BOM transformation, other mismatch, incomplete
+      observation, and exact/pass outcomes without inferring a remediation.
+  - id: AC4
+    condition: >
+      Diagnostic instrumentation is transparent: the production AUTHOR_REMEDIATION
+      path is delegated exactly once per context with unchanged inputs and its success
+      or failure is not suppressed, normalized, retried, or replaced.
+  - id: AC5
+    condition: >
+      Raw metadata, exception messages, Git stdout/stderr, private repository paths,
+      credentials and environment values cannot appear in durable output; integrity or
+      privacy violations fail closed.
+  - id: AC6
+    condition: >
+      The implementation remains confined to the three diagnostic/test files and
+      changes no production semantics, fixture behavior, worker policy, lifecycle
+      authority, roadmap state, or existing target assertions.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_aios_ingress_metadata_identity_diagnostic.py
+    - python scripts/aios_ingress_metadata_identity_diagnostic.py
+    - git diff --check
