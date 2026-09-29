@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-precondition-correction
+  - verification-performance-rebaseline-v2-measurement-capability
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1506,11 +1506,21 @@ sequence:
 
 
   - id: verification-performance-rebaseline-v2-precondition-correction
-    status: NEXT
+    status: DONE
     task_id: TASK-229
     task_revision: 1
     authored_commit_sha: "815a3385c6047c2a56835546af8dae8f28118efc"
     task_blob_sha: "ba09ff592964ff97aed0c9752e26fdc18800584c"
+    completed_by:
+      run_id: RUN-229-001
+      review_id: REVIEW-229-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-229-001-V001
+        - RUN-229-001-V002
+      review_decision_sha: "b4350cd1cf1a3d46fa2b8b72ced41d5975fa3581"
+      reviewed_sha: "db66b9712e1b3ccaa83ae10ea6b835927003d382"
+      published_sha: "db66b9712e1b3ccaa83ae10ea6b835927003d382"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     audit_basis:
@@ -1527,6 +1537,22 @@ sequence:
       observation failure from being misreported as semantic roadmap lineage
       conflict. Preserve the existing workers=4 profile and defer worker/Git
       performance policy changes until focused follow-up evidence exists.
+    return_to: verification-performance-rebaseline-v2
+
+
+  - id: verification-performance-rebaseline-v2-measurement-capability
+    status: NEXT
+    task_id: TASK-230
+    task_revision: 1
+    authored_commit_sha: "45216e6492607f4956a3014950525df5e2486fd9"
+    task_blob_sha: "07b9db927fcad7646411d01762a10b0d38a6ad59"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Add an additive structured rebaseline measurement family for exact current
+      subject workers 4/8/12/16 while preserving historical BP-V4 v1 2/3/4,
+      current workers=4 selection, no automatic worker choice and no Git-path
+      policy change.
     return_to: verification-performance-rebaseline-v2
 
 
