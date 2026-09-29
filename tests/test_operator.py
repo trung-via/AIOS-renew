@@ -9757,9 +9757,10 @@ def test_source_successor_isolated_installed_provenance_rejects_before_run(
 def test_source_successor_published_target_consumes_without_activation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_successor_short_root: Path,
 ) -> None:
-    repo, _, intent = _source_successor_fixture(source_successor_short_root, monkeypatch)
-    published = intent["target_generation_sha"]
-    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA", published)
+    published = "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
+    repo, _, intent = _source_successor_fixture(
+        source_successor_short_root, monkeypatch, published_target_sha=published,
+    )
     path = tmp_path / "successor.json"
     path.write_text(json.dumps(intent), encoding="utf-8")
     launched = []
@@ -9776,8 +9777,8 @@ def test_source_successor_published_target_consumes_without_activation(
     assert git(target, "rev-parse", "HEAD") == published
     assert json.loads(bound.read_text(encoding="utf-8")) == intent
 
-    # The staged candidate has a closed activation slot. Import it afresh;
-    # only the control module receives the exact test-local staging activation.
+    # The published TASK-220 target has a closed activation slot. Import it
+    # afresh while the TASK-221 control module uses its committed activation.
     child = """
 import json
 import sys
