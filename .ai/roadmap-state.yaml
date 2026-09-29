@@ -1144,15 +1144,16 @@ sequence:
       correction_task:
         task_id: TASK-220
         task_revision: 1
-        status: AUTHORED_NEXT
+        status: DONE
         objective: >-
           Correct successor installed-generation attestation, close production successor
           activation again, and prove the real control-source / installed-distribution /
           target-source topology before publication.
       activation_task:
-        planned_task_id: TASK-221
-        expected_revision: 1
-        status: PLANNED_UNAUTHORED
+        task_id: TASK-221
+        task_revision: 1
+        status: AUTHORED_NEXT
+        target_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
         gate: AFTER_EXACT_TASK_220_REVIEW_AND_PUBLICATION
         objective: >-
           Bind only the exact reviewed/published TASK-220 consumer SHA and prove the full
@@ -1165,10 +1166,10 @@ sequence:
         pre-RUN bootstrap defect, Plan A terminates and the corridor returns to structural
         redesign rather than TASK-222-style patch continuation.
     current_prerequisite:
-      task_id: TASK-220
+      task_id: TASK-221
       task_revision: 1
       approved_on: "2026-09-29"
-      approved_against_main_sha: "6a82c3f6eeddb32b4b5f7ad18d674536a82887b1"
+      approved_against_main_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
       authority: HUMAN_BRAIN_PLANNING
       reason: >-
         TASK-219 is REVIEW-219-001 PASS and published exactly at
@@ -1229,10 +1230,7 @@ sequencing_rule:
     Continue only the unique canonical NEXT item, BP-9 downstream adoption under the
     Human-approved Plan A STOP-LINE closure. TASK-219 is already reviewed/published, and
     the first real TASK-259 r2 successor attempt failed pre-RUN at installed-generation
-    attestation. The unique current prerequisite is TASK-220 r1. After exact TASK-220
-    review/publication, author only the planned TASK-221 r1 exact activation and require
-    its full production-shaped composed proof; only then fresh-sync downstream and
-    re-attempt the already-authored TASK-259 r2 with a new exact successor delivery.
+    attestation. TASK-220 is REVIEW-220-001 PASS and publication-effective at exact 5d8ac589cbb4f611816d2926cff1989eda4eb74d. The unique current prerequisite is authored TASK-221 r1, which must bind only that SHA and pass the production-default composed proof before any downstream retry.
     At most two new upstream TASK ids, TASK-220 and TASK-221, are authorized for this
     corridor. If another architecture-level pre-RUN bootstrap defect appears after both,
     do not create a third narrow patch; return to structural redesign. Do not substitute
