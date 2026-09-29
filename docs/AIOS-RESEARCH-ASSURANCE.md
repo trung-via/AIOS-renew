@@ -1,6 +1,6 @@
-# AIOS Research Assurance Architecture and Roadmap v2.4
+# AIOS Research Assurance Architecture and Roadmap v2.5
 
-Status: HUMAN-APPROVED PLANNING BASELINE — RA-0 / RA-2 / RA-3 / RA-4 ARCHITECTURE AUDITED  
+Status: HUMAN-APPROVED PLANNING BASELINE — RA-0 / RA-2 / RA-3 / RA-4 / RA-5 ARCHITECTURE AUDITED  
 Approved by Human: 2026-09-29  
 RA-0 architecture audit closed: 2026-09-29  
 Scope: reproducible, source-grounded, adversarially audited research support under existing Brain authority
@@ -380,22 +380,131 @@ RA-3 freezes profile identity, lens order, lens text bounds and deterministic pr
 
 ## 10. Provider and tool portability
 
-Provider conformance does not require different models to reach identical semantic conclusions.
+RA-5 freezes two separate portability planes:
 
-It requires stable protocol behavior around:
+1. a provider-neutral Brain research semantic request/return protocol;
+2. an explicitly selected acquisition-adapter invocation boundary over the RA-2 airlock.
 
-- Research Brief identity;
-- source/provenance grammar;
-- claim/source binding;
-- resource bounds;
-- audit-lens coverage;
-- uncertainty and closure grammar;
-- invalidation semantics;
-- handoff authority.
+These planes must remain independent. A Brain provider never chooses or invokes an acquisition adapter. An acquisition adapter never authors claims, Challenge Targets, audit dispositions, reconciliation or closure.
 
-Semantic Brain providers and source-acquisition adapters are separate concerns. A Brain provider need not have direct GitHub/web access if the complete bounded research material can be supplied. An acquisition adapter does not become Brain merely because it can search or fetch. Acquisition adapters accept bounded Acquisition Requests and return bounded Source Observations plus operational attribution; they do not independently decide what else should be researched.
+### 10.1 Research provider semantic protocol
 
-No model scoring, voting, automatic provider choice, retry, fallback or failover authority is introduced.
+RA-5 defines a dedicated research-provider protocol family rather than modifying the existing BP-5 Brain provider protocol or adding RESEARCH to the current Flow Resolver.
+
+The provider request has exactly two modes:
+
+- EVIDENCE_CONSTRUCT — one self-sufficient request containing the exact Research Brief, research-high-value-v1 audit profile, exact successful baseline Acquisition Request/Attempt material, and optional exact predecessor Research Record needed for refresh context;
+- AUDIT_RECONCILE — the same exact semantic basis plus the exact RA-4 Evidence Construct and exact successful counter-evidence Request/Attempt material.
+
+A provider request fingerprint is derived only from normalized semantic material. Provider, model, endpoint, session, host, invocation id, credentials, latency, token usage and native transport metadata are excluded from semantic identity.
+
+The admitted provider response always echoes the exact request fingerprint and contains only mode-specific Brain semantic material:
+
+- EVIDENCE_CONSTRUCT returns claims, Challenge Targets and the precommitted COUNTER_EVIDENCE Acquisition Requests required by RA-4;
+- AUDIT_RECONCILE returns the nine audit results, exact claim reconciliation, new-claim identities, one final Research Record and the declared closure outcome required by RA-4.
+
+Deterministic RA-5 validation does not trust the provider response directly. It injects the already-known exact RA-1/RA-2/RA-3 identities and calls the reviewed RA-4 constructors/validators to derive the exact content-addressed Evidence Construct or Research Reconciliation.
+
+Provider-native output remains untrusted. Operational/provider/model/session fields, native logs, chain-of-thought, nested protocol envelopes, credentials and machine-local material are forbidden in the semantic response.
+
+Provider transport failure or malformed semantic output is an operational provider-protocol failure only. It must not fabricate Research Record closure, RESEARCH_CANDIDATE, INSUFFICIENT_EVIDENCE, RUN, RESULT, FAILURE, REVIEW, remediation or publication state.
+
+Provider selection is explicit Human/configuration input. RA-5 creates no model router, scoring, voting, automatic retry, fallback or failover.
+
+### 10.2 Acquisition adapter manifest
+
+Each replaceable acquisition adapter has one caller-supplied immutable manifest with:
+
+- adapter id and version;
+- one transport class;
+- supported RA-1 source families;
+- supported access scopes;
+- bounded operational capabilities;
+- manifest fingerprint.
+
+The closed transport classes are:
+
+- PUBLIC_HTTP — one explicit public HTTP(S) source read;
+- PUBLIC_SEARCH — one explicit search operation returning discovery snippets or source metadata only;
+- REPOSITORY_READ — one explicit repository read operation over a portable repository/source locator;
+- AUTHORIZED_CONNECTOR — one explicit read through an already-authorized connected source.
+
+The manifest describes capabilities only. It is not an authorization token and does not grant access.
+
+Adapter choice is explicit caller input. Source family, locator shape, cost, provider availability or task difficulty must never trigger an automatic adapter selection.
+
+### 10.3 Invocation boundary
+
+One RA-1 Acquisition Request maps to exactly one admitted adapter invocation.
+
+The normalized invocation binds:
+
+- one exact Research Brief;
+- one exact Acquisition Request and its Challenge Targets;
+- one exact adapter manifest reference;
+- one caller-supplied invocation id;
+- an optional opaque authorization-context reference used only for already-authorized private access.
+
+The authorization-context reference is operational only. It contains no credential, secret or session token and never enters Source Observation, Research Record or Brain semantic identity.
+
+A single adapter invocation may perform only the one native operation declared by its transport class. It may not silently retry, paginate, expand a query, fetch follow-up search hits, switch tools, switch providers, fall back to another adapter or recursively acquire more material.
+
+If a search result needs full source content, Brain must authorize a later explicit Acquisition Request. PUBLIC_SEARCH therefore admits only DISCOVERY_SNIPPET and SOURCE_METADATA observations.
+
+### 10.4 Public destination safety
+
+PUBLIC_HTTP adapters must enforce public-destination safety before every network connection and after every redirect.
+
+The adapter's bounded operational return carries a destination proof for each effective hop. Deterministic RA-5 validation requires:
+
+- http or https only;
+- no URL credentials or sensitive credential-bearing query parameters;
+- no localhost, loopback, private, link-local, multicast, reserved or otherwise non-global literal/resolved IP;
+- every redirect hop represented;
+- final hop consistent with the Source Observation effective_locator and resolution_chain.
+
+A destination-safety rejection is an operational access denial. It is never semantic evidence.
+
+PUBLIC_SEARCH result URLs are not fetched by the search invocation and therefore do not gain SOURCE_CONTENT status merely because a result URL is present.
+
+### 10.5 Authorized connector boundary
+
+AUTHORIZED_CONNECTOR is valid only for source families explicitly supported by its manifest and requires a non-secret opaque reference to an already-authorized access context supplied by the caller.
+
+RA-5 does not create connector authorization, request new permissions, discover accounts, store credentials or widen scopes.
+
+Observations acquired through authorized private connector access carry access_scope AUTHORIZED_PRIVATE. Existing RA-2/RA-3 private-retention rules remain unchanged.
+
+### 10.6 Adapter return and RA-2 normalization
+
+Adapter-native output is not itself an AIOS Source Observation or Acquisition Attempt.
+
+A successful adapter return provides bounded raw observation material plus bounded operational receipt data. Deterministic RA-5 support constructs exact RA-2 Source Observations from that raw material, fixes instruction_trust to UNTRUSTED, enforces the transport-class representation rules and then constructs one exact RA-2 Acquisition Attempt.
+
+Adapter id/version/invocation id enter only the RA-2 Attempt attribution. They do not enter Source Observation identity. Two adapters that observe identical normalized source/provenance/content may therefore yield the same Source Observation identity while their Acquisition Attempt identities remain operationally attributable.
+
+A failed adapter invocation uses a closed adapter failure taxonomy and is normalized to the existing RA-2 operational failure family. Unsupported manifest/request combinations fail before invocation and create no fabricated Acquisition Attempt.
+
+At minimum the adapter boundary distinguishes:
+
+- TOOL_UNAVAILABLE;
+- ACCESS_DENIED;
+- NOT_FOUND;
+- RESPONSE_INVALID;
+- ATTRIBUTION_MISMATCH;
+- UNSAFE_DESTINATION.
+
+UNSAFE_DESTINATION normalizes to RA-2 ACQUISITION_ACCESS_DENIED. Other adapter failures map only to their corresponding existing RA-2 operational reason. No adapter failure maps to research closure.
+
+### 10.7 Portability conformance
+
+RA-5 conformance proves contract interchangeability, not identical semantic conclusions.
+
+Research-provider conformance requires that provider/model/session substitution does not change request identity and that valid responses normalize through the same exact RA-4 contract.
+
+Adapter conformance requires that explicit adapter substitution cannot widen the Acquisition Request, change Brain semantics, bypass access/destination policy, leak credentials or create hidden retry/routing authority.
+
+Real provider/tool integration into an explicit first-class RESEARCH Flow remains RA-6. Real-project proof across stable, mutable and adversarial sources remains RA-7.
 
 ## 11. Integration rule
 
@@ -496,7 +605,17 @@ RA-4 must not invoke source tools/providers/models, create retries/fallback, sta
 
 ### RA-5 — Provider & Tool Portability Contracts
 
-Define provider-neutral Brain research request/return contracts and the concrete replaceable acquisition-adapter invocation boundary over RA-2's normalized airlock while preserving semantic/acquisition authority separation. Tool-specific invocation, effective-destination validation, operational attribution and already-authorized connector access are enforced here. No automatic provider/tool router, voting, scoring, retry, pagination, query expansion, fallback or failover.
+Architecture audit: DONE — PASS WITH MANDATORY PORTABILITY BOUNDARIES.
+
+RA-5 freezes two independent planes: a dedicated provider-neutral research semantic request/return protocol over RA-4, and an explicitly selected acquisition-adapter invocation boundary over RA-2.
+
+The research provider protocol has only EVIDENCE_CONSTRUCT and AUDIT_RECONCILE modes. Provider/model/session metadata never contributes to semantic identity, provider responses are untrusted, and deterministic support derives the exact RA-4 artifact rather than trusting provider-computed identities or outcomes.
+
+The acquisition boundary uses caller-supplied content-addressed adapter manifests and explicit adapter selection. PUBLIC_HTTP, PUBLIC_SEARCH, REPOSITORY_READ and AUTHORIZED_CONNECTOR have distinct closed transport semantics. One Acquisition Request authorizes one native adapter operation only; no hidden retry, pagination, query expansion, follow-up fetch, routing, fallback or failover is permitted.
+
+PUBLIC_HTTP requires effective-destination/redirect safety with only global public destinations. PUBLIC_SEARCH can produce discovery snippets/metadata but does not silently fetch result pages. AUTHORIZED_CONNECTOR requires an opaque non-secret reference to already-authorized access and does not create permission. Adapter-native output becomes RA-2 material only after deterministic normalization.
+
+RA-5 must not modify the existing Brain/Reviewer provider protocols, add RESEARCH to Flow Resolver, create provider/tool routers, persist prompts or credentials, infer semantic research judgments, create lifecycle state, or consume RA-6/RA-7 integration/proof early.
 
 ### RA-6 — AIOS Integration & Continuity Conformance
 
@@ -518,7 +637,7 @@ RA closes only after Reviewer-quality semantic assessment confirms the proof pre
 
 ## 15. Non-goals
 
-RA v2.4 does not:
+RA v2.5 does not:
 
 - replace Brain Sync;
 - replace BP-4A Brain Semantic Audit;
@@ -536,8 +655,8 @@ RA v2.4 does not:
 
 Brain Portability BP-9 downstream adoption is complete based on downstream exact-pin migration and fresh current-pin conformance publication evidence.
 
-RA v2.4 is the active Human/Brain planning baseline after RA-0, RA-2, RA-3 and RA-4 architecture audits.
+RA v2.5 is the active Human/Brain planning baseline after RA-0, RA-2, RA-3, RA-4 and RA-5 architecture audits.
 
-RA-1 through RA-3 are reviewed/published. RA-4 architecture semantics are now audited but remain non-executable until one exact canonical RA-4 TASK is authored and bound by Human/Brain planning authority. RA-5 through RA-7 remain gated.
+RA-1 through RA-4 are reviewed/published. RA-5 architecture semantics are now audited but remain non-executable until one exact canonical RA-5 TASK is authored and bound by Human/Brain planning authority. RA-6 and RA-7 remain gated.
 
 A newer explicit Human priority may prospectively supersede this track, but future generic continuation may rely on that change only after it is canonicalized.
