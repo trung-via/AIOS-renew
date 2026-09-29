@@ -1442,6 +1442,47 @@ sequence:
     status: NEXT
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_MANDATORY_PROOF_BOUNDARIES
+      completed_on: "2026-09-29"
+      audited_against_main_sha: "42247614faefe04342b5c23755c552cc7afc5d16"
+      findings:
+        - REAL_CORPUS_PREBOUND_BY_BRAIN
+        - NO_LIVE_NETWORK_OR_PROVIDER_IN_RUNTIME_VERIFICATION
+        - EXECUTOR_CANNOT_CHOOSE_PROOF_SUBJECT_OR_EXPECTED_SEMANTICS
+        - THREE_CONTROLLED_PROJECT_SOURCE_SCENARIOS
+        - FIXED_CURRENT_AS_OF_FOR_SAME_BRIEF_MUTABLE_REFRESH
+        - CLAIM_SCOPED_INVALIDATION_EXACT_PREDECESSOR_PARTITION
+        - RETAIN_UNAFFECTED_CLAIM_FINGERPRINTS
+        - ADVERSARIAL_SOURCE_TEXT_REMAINS_UNTRUSTED_DATA
+        - SOURCE_EXCERPTS_FORBIDDEN_FROM_ARCHITECTURE_HANDOFF
+        - SEMANTIC_TRUTH_REMAINS_REVIEWER_OWNED
+        - OPERATIONAL_ATTRIBUTION_OUTSIDE_SEMANTIC_IDENTITY
+        - FRESH_ARCHITECTURE_HANDOFF_NO_AUTO_TASK_OR_ROADMAP
+        - NO_NEW_CLIENT_ROUTER_RETRY_MEMORY_OR_LIFECYCLE
+      proof_corpus:
+        - id: STABLE_CONSTITUTION
+          repository_commit: "42247614faefe04342b5c23755c552cc7afc5d16"
+          path: docs/AIOS-CONSTITUTION.md
+          blob_sha: "a4e33646c6ec7573cadeb2b10379b1606eac9322"
+        - id: MUTABLE_ROADMAP_PRE_RA6_CLOSURE
+          repository_commit: "dd78b6cb54674e0a564ecbe1215d7918d81f6a1e"
+          path: .ai/roadmap-state.yaml
+          blob_sha: "3ec4e92d204bc66f0537dbe804071adc0154df30"
+        - id: MUTABLE_ROADMAP_POST_RA6_CLOSURE
+          repository_commit: "42247614faefe04342b5c23755c552cc7afc5d16"
+          path: .ai/roadmap-state.yaml
+          blob_sha: "c55a4ef0f88e1b256e34925f1fe110052b5eb4d0"
+        - id: ADVERSARIAL_PROMPT_LIKE_PROJECT_SOURCE
+          repository_commit: "42247614faefe04342b5c23755c552cc7afc5d16"
+          path: tests/test_research_provider_protocol.py
+          blob_sha: "9536758685a750bbfea4366902ea0588ab34b57e"
+      implementation_shape:
+        production_code_change: false
+        live_source_or_provider_call_in_verification: false
+        deterministic_replay_required: true
+        semantic_verdict_owner: REVIEWER
     objective: >-
       Prove the complete Research Assurance architecture on controlled stable/immutable,
       mutable/time-sensitive, and adversarial/prompt-injection-bearing real-project sources,
@@ -1628,6 +1669,9 @@ research_assurance:
     - id: RA-7
       name: Real Project Proof & Closure
       status: NEXT
+      architecture_audit: PASS_WITH_MANDATORY_PROOF_BOUNDARIES
+      audit_main_sha: "42247614faefe04342b5c23755c552cc7afc5d16"
+      implementation_shape: PROOF_ONLY_NO_PRODUCTION_CODE
       objective: >-
         Prove the complete architecture on stable/immutable, mutable/time-sensitive, and
         adversarial/prompt-injection-bearing source research, including instruction
@@ -1636,9 +1680,10 @@ research_assurance:
   sequencing_rule:
   generic_continuation: >-
     Continue RA-7 — Real Project Proof & Closure as the unique Human/Brain planning NEXT.
-    Perform a fresh architecture/threat-model audit first, then author and canonically bind
-    one exact RA-7 engineering TASK. Do not execute RA-7 before that audit is closed, the
-    exact TASK is authored, and fresh Brain Sync selects it under normal Runtime admission.
+    Its architecture/threat-model audit is closed PASS_WITH_MANDATORY_PROOF_BOUNDARIES.
+    Author and canonically bind one exact proof-only RA-7 engineering TASK using the prebound
+    real-project proof corpus. Do not execute RA-7 before that exact TASK is authored and
+    fresh Brain Sync selects it under normal Runtime admission.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1649,8 +1694,10 @@ research_assurance:
     RA-1 through RA-6 are reviewed and published. RA-6 closed through RUN-227-002 /
     REVIEW-227-002 DELTA PASS at exact published SHA
     dd78b6cb54674e0a564ecbe1215d7918d81f6a1e after F-227-001 remediation, with
-    RUN-227-002-V001 focused verification evidence. RA-7 is now the unique planning NEXT,
-    but remains non-executable until its architecture/threat-model audit is closed, one exact
+    RUN-227-002-V001 focused verification evidence. RA-7 is the unique planning NEXT and its
+    architecture/threat-model audit is closed against main
+    42247614faefe04342b5c23755c552cc7afc5d16 with mandatory proof boundaries and exact
+    prebound project-source blobs. RA-7 remains non-executable until one exact proof-only
     engineering TASK is canonically authored and bound, fresh Brain Sync selects that TASK,
     and normal Runtime admission applies.
 
