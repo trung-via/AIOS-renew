@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-full-suite-contention-diagnostic
+  - verification-performance-rebaseline-v2-serial-context-diagnostic
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1605,7 +1605,7 @@ sequence:
         correctness still reported 36 failures. Canonical failure diagnostics
         expose only the bounded lowest 20 identities, so a separate bounded
         contention diagnostic is required before another TASK-231 attempt.
-    blocked_by: verification-performance-rebaseline-v2-full-suite-contention-diagnostic
+    blocked_by: verification-performance-rebaseline-v2-serial-context-diagnostic
     prerequisite_resolution:
       roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
       task_id: TASK-232
@@ -1677,7 +1677,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
   - id: verification-performance-rebaseline-v2-full-suite-contention-diagnostic
-    status: NEXT
+    status: DONE
     task_id: TASK-233
     task_revision: 1
     authored_commit_sha: "31af3189eef49612890f15c7b25e3eecb180de3b"
@@ -1694,6 +1694,25 @@ sequence:
       pytest_failure_count: 36
       wrapper_conformance_passed: true
       diagnostic_truncated: true
+    completed_by:
+      run_id: RUN-233-002
+      operation: REPAIR
+      repair_id: REPAIR-233-001
+      result_artifact_sha: "f4db25e086cc41388c0c4bb198378969bea6f0c3"
+      review_id: REVIEW-233-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-233-002-V001
+        - RUN-233-002-V002
+        - RUN-233-002-V003
+      review_decision_sha: "6dcd9c6ee5644e4a95e3d4a5593383533fa2c1b9"
+      reviewed_sha: "191d489a2f6cd5ddfd7151eb68f850d85c4c139d"
+      published_sha: "191d489a2f6cd5ddfd7151eb68f850d85c4c139d"
+      classification: MIXED
+      collection_count: 2457
+      full_n12_failure_count: 36
+      serial_reproduction_count: 35
+      n4_reproduction_count: 36
     objective: >-
       Add and execute one bounded observational diagnostic: one full-suite n12
       run captures the complete failure identity set up to 64 with sanitized
@@ -1707,6 +1726,37 @@ sequence:
       note: >-
         Human observed Windows Defender activity during an n12 run. TASK-233
         neither attributes causality nor changes Defender configuration.
+    return_to: verification-performance-rebaseline-v2-serial-context-diagnostic
+
+  - id: verification-performance-rebaseline-v2-serial-context-diagnostic
+    status: NEXT
+    task_id: TASK-234
+    task_revision: 1
+    authored_commit_sha: "149d45c2424227cf2ae2a16548d398ef00833459"
+    task_blob_sha: "388a48019f285b61988b9efb6158c429feae4b1e"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-233
+      run_id: RUN-233-002
+      review_id: REVIEW-233-001
+      published_sha: "191d489a2f6cd5ddfd7151eb68f850d85c4c139d"
+      classification: MIXED
+      full_n12_failure_count: 36
+      serial_reproduction_count: 35
+      n4_reproduction_count: 36
+    objective: >-
+      Distinguish intrinsic serial failure from missing predecessor/file context
+      or prior-phase contamination for the exact 35 RUN-233-002 serial-reproduced
+      identities by running one cold target-only serial phase first and one
+      independent complete two-file serial context phase, without any full-suite
+      or parallel execution.
+    defender_hypothesis:
+      authority: HUMAN_PLANNING_EVIDENCE_ONLY
+      state: UNVERIFIED
+      note: >-
+        Defender remains a separate host-performance hypothesis and is not a
+        causal assumption or mutation target of TASK-234.
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
