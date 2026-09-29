@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - ra-0-research-architecture-threat-model-audit
+  - ra-1-research-contract-foundation
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1210,21 +1210,44 @@ sequence:
         importing downstream product priority into AIOS-renew.
 
   - id: ra-0-research-architecture-threat-model-audit
-    status: NEXT
+    status: DONE
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
+    completed_on: "2026-09-29"
+    completed_against_main_sha: "eb6b30a4a4e70ff95b92dab135f6b33c0ce011f5"
+    planning_amendment_commit: "adf0c98773d5b08b773938ff29b47888269d4c31"
+    outcome: PASS_WITH_MANDATORY_ARCHITECTURE_AMENDMENTS
     objective: >-
       Perform the read-only RA-0 architecture and threat-model audit before any
       Research Assurance implementation TASK is authored.
+    findings:
+      - UNTRUSTED_CONTENT_INSTRUCTION_ISOLATION
+      - ACQUISITION_FAILURE_SEPARATION
+      - BOUNDED_ACQUISITION_REQUEST_AUTHORITY
+      - IMMUTABLE_RESEARCH_RECORD_REFRESH_LINEAGE
+      - MUTABLE_SOURCE_OBSERVATION_IDENTITY
+      - CLAIM_SCOPED_INVALIDATION
+      - DETERMINISTIC_VALIDATION_SEMANTIC_BOUNDARY
+      - EXPLICIT_RESEARCH_FLOW_DEDICATED_PACKET
+      - BRAIN_OWNED_RESEARCH_CLOSURE
+      - NON_TASK_NEXT_BRAIN_SYNC_MISMATCH
+  - id: ra-1-research-contract-foundation
+    status: NEXT
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    task_id: null
+    objective: >-
+      Author the exact RA-1 Research Contract Foundation engineering TASK from the
+      RA-0-audited v2.1 planning baseline before any Executor invocation.
 
 research_assurance:
   id: research-assurance
-  version: 2
+  version: 2.1
   status: ACTIVE
   approved_on: "2026-09-29"
   approved_against_main_sha: "6538f2762620c510e594e7c1842319bc4a783ccf"
   canonical_planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
-  planning_document_commit: "7457bede2d0e2465a31196a90bd2d59eeb264e10"
+  planning_document_commit: "adf0c98773d5b08b773938ff29b47888269d4c31"
   authority: HUMAN_BRAIN_PLANNING
   activation_basis:
     bp9_status: DONE
@@ -1241,6 +1264,7 @@ research_assurance:
     TASK author, automatic provider/tool router, or second source of engineering truth.
   target_architecture:
     - RESEARCH_BRIEF
+    - BOUNDED_ACQUISITION_REQUEST
     - SOURCE_ACQUISITION_BOUNDARY
     - BASELINE_SOURCE_CORPUS
     - EVIDENCE_CONSTRUCT
@@ -1265,41 +1289,45 @@ research_assurance:
     - CONTRADICTION_COUNTEREVIDENCE
     - PROJECT_APPLICABILITY_NOVELTY
     - ASSUMPTION_UNCERTAINTY
+    - UNTRUSTED_CONTENT_INSTRUCTION_ISOLATION
     - AUTHORITY_HANDOFF_BOUNDARY
   milestones:
     - id: RA-0
       roadmap_id: ra-0-research-architecture-threat-model-audit
       name: Research Architecture & Threat-Model Audit
-      status: NEXT
+      status: DONE
       classification: READ_ONLY_ARCHITECTURE_AUDIT
       objective: >-
         Audit and freeze the minimum authority-safe RA architecture, threat/failure model,
         source taxonomy, acquisition boundary, evidence/claim model, freshness/invalidation
         semantics, reuse rules, and exact integration boundaries before implementation.
-      gate: >-
-        RA-0 does not itself authorize a production implementation TASK. Any RA-1
-        implementation authoring requires RA-0 closure plus fresh Brain reconciliation.
+      closure: >-
+        Completed as Human/Brain read-only architecture audit with PASS_WITH_MANDATORY_
+        ARCHITECTURE_AMENDMENTS; amendments are canonicalized in Research Assurance v2.1
+        before RA-1 TASK authoring.
     - id: RA-1
       name: Research Contract Foundation
-      status: PLANNED
+      status: NEXT_UNAUTHORED
       objective: >-
         Define the bounded Research Brief identity, question, decision context,
         scope/non-goals, project/currentness basis, source policy, resource bounds,
-        handoff and invalidation contract without adding RESEARCH to core Flow Resolver yet.
+        handoff and invalidation contract plus bounded Acquisition Request and exact
+        Pass-1 challenge-target semantics without adding RESEARCH to core Flow Resolver yet.
     - id: RA-2
       name: Source Acquisition & Provenance Boundary
       status: PLANNED
       objective: >-
         Define replaceable subordinate acquisition adapters and normalized source
-        observations/provenance while granting no semantic, roadmap, TASK, review,
+        observations/provenance, untrusted-content instruction isolation, and operational
+        acquisition-failure taxonomy while granting no semantic, roadmap, TASK, review,
         lifecycle or publication authority.
     - id: RA-3
       name: Research Evidence Record & Audit Profile
       status: PLANNED
       objective: >-
-        Define the bounded durable Research Record, claim/source/independence/freshness/
-        uncertainty grammar, content identity, claim-scoped invalidation semantics and
-        the fixed research-specific adversarial audit profile.
+        Define the immutable/content-addressed bounded Research Record, exact predecessor
+        refresh lineage, claim/source/independence/freshness/uncertainty grammar,
+        component-scoped invalidation semantics and the fixed nine-lens research audit profile.
     - id: RA-4
       name: Two-Pass Research Assurance Protocol
       status: PLANNED
@@ -1318,23 +1346,25 @@ research_assurance:
       name: AIOS Integration & Continuity Conformance
       status: PLANNED
       objective: >-
-        Only after RA-1 through RA-5 semantics stabilize, integrate first-class RESEARCH
-        Flow/Card/context/packet/provider surfaces and prove fresh-context, cross-provider,
-        source-substitution, invalidation and Research Record reuse behavior. Conformance
-        concerns protocol/authority behavior, not identical semantic conclusions.
+        Only after RA-1 through RA-5 semantics stabilize, integrate an explicit-only
+        first-class RESEARCH Flow/Card/context/dedicated Research Packet/provider surface
+        and prove fresh-context, cross-provider, source-substitution, invalidation and
+        Research Record reuse behavior. Conformance concerns protocol/authority behavior,
+        not identical semantic conclusions.
     - id: RA-7
       name: Real Project Proof & Closure
       status: PLANNED
       objective: >-
-        Prove the complete architecture on both stable/immutable and mutable/time-sensitive
-        research, including valid-record reuse, relevant invalidation, bounded refresh with
+        Prove the complete architecture on stable/immutable, mutable/time-sensitive, and
+        adversarial/prompt-injection-bearing source research, including instruction
+        isolation, valid-record reuse, relevant invalidation, bounded refresh with
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item RA-0 — Research Architecture &
-    Threat-Model Audit under docs/AIOS-RESEARCH-ASSURANCE.md. RA-0 is read-only
-    architecture/planning work and must not be skipped by directly adding RESEARCH to
-    core Flow Resolver, creating a Research Agent, or authoring RA-1 implementation.
+    Continue only the unique canonical NEXT item RA-1 — Research Contract Foundation.
+    RA-0 is closed in Research Assurance v2.1. Until an exact RA-1 TASK is authored,
+    this planning NEXT is intentionally unauthored; do not widen Brain Sync into a
+    generic planning router, add RESEARCH to core Flow Resolver, or invoke an Executor.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1342,9 +1372,9 @@ research_assurance:
     A NEXT milestone with a task_id is not executable until that exact TASK revision is
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
-    RA-0 has no automatic implementation authority. RA-1 through RA-7 remain PLANNED;
-    implementation TASK authoring begins only after RA-0 architecture closure and fresh
-    Human/Brain reconciliation.
+    RA-0 is closed. RA-1 TASK authoring is now Human/Brain-authorized, but execution
+    remains forbidden until that exact TASK revision is canonicalized and fresh Brain
+    Sync reconciles roadmap NEXT to the authored TASK. RA-2 through RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
