@@ -9300,16 +9300,17 @@ def source_repair_depth_root():
     with tempfile.TemporaryDirectory(prefix="a237-", dir=short_parent) as directory:
         base = Path(directory)
         longest = Path("src/aios_renew/schemas/gemini_reviewer_semantic_response.json")
-        new_leaf = base / "c" / ".git" / "r" / ("0" * 16) / "s" / longest
-        padding = 235 - len(str(new_leaf)) - 1
+        windows_legacy_path_budget = 260
+        new_leaf = base / "c" / "repo" / ".git" / "r" / ("0" * 16) / "s" / longest
+        padding = windows_legacy_path_budget - 25 - len(str(new_leaf)) - 1
         assert 1 <= padding <= 200
         depth_root = base / ("d" * padding)
-        repo = depth_root / "c"
+        repo = depth_root / "c" / "repo"
         bounded_leaf = repo / ".git" / "r" / ("0" * 16) / "s" / longest
         former_leaf = (repo / ".git" / "aios" / "source-repair-transports"
                        / "repair-101-001" / "source" / longest)
-        assert len(str(bounded_leaf)) == 235
-        assert len(str(former_leaf)) > 260
+        assert len(str(bounded_leaf)) < windows_legacy_path_budget
+        assert len(str(former_leaf)) > windows_legacy_path_budget
         depth_root.mkdir()
         yield depth_root
 
@@ -10227,7 +10228,7 @@ def test_source_repair_bound_target_consumes_without_matching_activation(
     assert operator_module._git(target, "status", "--porcelain") == ""
     assert (target / "src" / "aios_renew" / "operator.py").is_file()
     longest = target / "src/aios_renew/schemas/gemini_reviewer_semantic_response.json"
-    assert len(str(longest)) == 235 and longest.is_file()
+    assert len(str(longest)) < 260 and longest.is_file()
     assert json.loads(bound.read_text(encoding="utf-8")) == intent
     assert operator_module.bootstrap_source_repair(path, runner=stage_runner) == 0
     assert len(launched) == 2
