@@ -1378,10 +1378,13 @@ sequence:
         - ATTEMPT_IDENTITY_PRESERVES_ADAPTER_ATTRIBUTION
         - OPERATIONAL_FAILURE_NEVER_RESEARCH_CLOSURE
         - RA6_INTEGRATION_DEFERRED
-    task_id: null
+    task_id: TASK-226
+    task_revision: 1
+    authored_commit_sha: "2f9b7819617d3828955596a75db7be7f9ad92d85"
+    task_blob_sha: "dac63d7f9d95a2a894bfc0a9c82d4217fe1ce03b"
     objective: >-
-      Author the exact RA-5 research-provider and acquisition-adapter portability TASK from
-      the audited Research Assurance v2.5 baseline before any Executor invocation.
+      Execute the exact authored RA-5 provider/tool portability TASK only after fresh Brain
+      Sync confirms TASK-226 revision 1 as the unique canonical NEXT.
 
 research_assurance:
   id: research-assurance
@@ -1516,8 +1519,11 @@ research_assurance:
         produces one final Research Record. No acquisition I/O or recursive research.
     - id: RA-5
       name: Provider & Tool Portability Contracts
-      status: NEXT_UNAUTHORED
+      status: AUTHORED_UNEXECUTED
       architecture_audit: PASS_WITH_MANDATORY_PORTABILITY_BOUNDARIES
+      task_id: TASK-226
+      task_revision: 1
+      authored_commit_sha: "2f9b7819617d3828955596a75db7be7f9ad92d85"
       objective: >-
         Define a dedicated provider-neutral research semantic request/return protocol over
         RA-4 plus an explicitly selected acquisition-adapter invocation boundary over RA-2,
@@ -1543,10 +1549,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only RA-5 — Provider & Tool Portability Contracts. Its architecture audit is
-    closed on Research Assurance v2.5; the next action is to author and bind one exact
-    RA-5 TASK. Do not invoke an Executor before exact TASK authoring/Brain Sync and do not
-    widen into RA-6 first-class RESEARCH Flow integration.
+    Continue only exact TASK-226 revision 1 for RA-5 — Provider & Tool Portability
+    Contracts after fresh Brain Sync reconciles that authored TASK against current
+    canonical lineage. Do not widen into RA-6 first-class RESEARCH Flow integration
+    outside TASK-226 scope.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1555,9 +1561,10 @@ research_assurance:
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
     RA-1 through RA-4 are reviewed/published, with RA-4 published at exact SHA
-    405e0189cc2756ebf996aae618b7b7ed73dfca40. RA-5 architecture audit is closed on v2.5
-    and exact TASK authoring is now permitted. Execution remains forbidden until that TASK
-    revision is canonicalized and fresh Brain Sync selects it. RA-6 and RA-7 remain gated.
+    405e0189cc2756ebf996aae618b7b7ed73dfca40. RA-5 architecture audit is closed and
+    TASK-226 revision 1 is canonically authored. RA-5 execution may proceed only after
+    fresh Brain Sync selects that exact TASK and normal Runtime admission applies.
+    RA-6 and RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
