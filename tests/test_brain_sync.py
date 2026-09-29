@@ -11,6 +11,7 @@ from aios_renew.brain_sync import (
     observe_brain_sync,
 )
 from aios_renew.operator import (
+    OperatorError,
     runtime_state_root,
 )
 from aios_renew.verification import materialize_verification_subject
@@ -184,7 +185,15 @@ def test_brain_sync_unauthored_next(tmp_path: Path) -> None:
 
 def test_brain_sync_roadmap_lineage_conflict_done_sha(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
-    bogus_sha = "0123456789abcdef0123456789abcdef01234567"
+    main_sha = git(repo, "rev-parse", "refs/heads/main")
+    git(repo, "switch", "-c", "diverged")
+    (repo / "diverged.txt").write_text("diverged\n", encoding="utf-8")
+    git(repo, "add", "diverged.txt")
+    git(repo, "commit", "-m", "diverged published commit")
+    published_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "switch", "main")
+    assert published_sha != main_sha
+    assert git(repo, "merge-base", main_sha, published_sha) == main_sha
     roadmap = {
         "version": 1,
         "active_track": "control-plane-closure",
@@ -195,7 +204,7 @@ def test_brain_sync_roadmap_lineage_conflict_done_sha(tmp_path: Path) -> None:
                 "status": "DONE",
                 "completed_by": {
                     "task_id": "TASK-099",
-                    "published_sha": bogus_sha,
+                    "published_sha": published_sha,
                 },
             },
             {
@@ -211,6 +220,7 @@ def test_brain_sync_roadmap_lineage_conflict_done_sha(tmp_path: Path) -> None:
 
     snapshot = observe_brain_sync(repo=repo)
 
+    assert snapshot.main_sha == main_sha
     assert snapshot.selection_status == "ROADMAP_LINEAGE_CONFLICT"
     assert snapshot.selected_task is None
     assert snapshot.unified_state is None
@@ -219,6 +229,51 @@ def test_brain_sync_roadmap_lineage_conflict_done_sha(tmp_path: Path) -> None:
     assert snapshot.authority == "NONE"
     assert snapshot.blocker is not None
     assert snapshot.blocker["code"] == "ROADMAP_LINEAGE_CONFLICT"
+    assert snapshot.blocker["item_id"] == "diverged-done"
+    assert snapshot.blocker["published_sha"] == published_sha
+    assert snapshot.blocker["main_sha"] == main_sha
+
+
+def test_brain_sync_roadmap_ancestry_observation_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = make_repo(tmp_path)
+    main_sha = git(repo, "rev-parse", "refs/heads/main")
+    roadmap = {
+        "version": 1,
+        "active_track": "control-plane-closure",
+        "active_track_status": "ACTIVE",
+        "sequence": [{
+            "id": "observed-done",
+            "status": "DONE",
+            "completed_by": {
+                "task_id": "TASK-099",
+                "published_sha": main_sha,
+            },
+        }],
+    }
+    roadmap_path = repo / ".ai" / "roadmap-state.yaml"
+    roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+    roadmap_path.write_text(yaml.safe_dump(roadmap), encoding="utf-8")
+
+    import aios_renew.brain_sync as bs_module
+
+    observed = []
+
+    def fail_ancestry(root: Path, ancestor: str, descendant: str) -> bool:
+        observed.append((root, ancestor, descendant))
+        raise OperatorError("Git ancestry observation failed")
+
+    monkeypatch.setattr(bs_module, "_git_is_ancestor", fail_ancestry)
+
+    with pytest.raises(BrainSyncError, match="cannot observe Git ancestry") as error:
+        observe_brain_sync(repo=repo)
+
+    assert observed == [(repo, main_sha, main_sha)]
+    assert "observed-done" in str(error.value)
+    assert main_sha in str(error.value)
+    assert "ROADMAP_LINEAGE_CONFLICT" not in str(error.value)
+    assert isinstance(error.value.__cause__, OperatorError)
 
 
 def test_brain_sync_roadmap_lifecycle_conflict_next_already_done(
@@ -331,6 +386,12 @@ def test_brain_sync_exact_detached_candidate_observes_published_main(
     with materialize_verification_subject(
         repo, run_id="RUN-101-001", subject_sha=candidate
     ) as subject:
+        control_state_root = runtime_state_root(repo)
+        subject_state_root = runtime_state_root(subject)
+        assert subject_state_root == subject / ".git" / "aios"
+        assert subject_state_root.is_dir()
+        assert subject_state_root.resolve() != control_state_root.resolve()
+        assert list(subject_state_root.iterdir()) == []
         remote = Path(git(subject, "remote", "get-url", "origin"))
         before = (
             git(subject, "rev-parse", "HEAD"),
@@ -341,9 +402,6 @@ def test_brain_sync_exact_detached_candidate_observes_published_main(
             (subject / ".git" / "config").read_bytes(),
             (subject / ".git" / "index").read_bytes(),
         )
-        assert not runtime_state_root(subject).exists()
-
-
         snapshot = observe_brain_sync(repo=subject)
 
         assert snapshot.main_sha == published
@@ -369,7 +427,8 @@ def test_brain_sync_exact_detached_candidate_observes_published_main(
             (subject / ".git" / "index").read_bytes(),
         ) == before
         assert before[1] == ""
-        assert not runtime_state_root(subject).exists()
+        assert subject_state_root.is_dir()
+        assert list(subject_state_root.iterdir()) == []
 
 
 @pytest.mark.parametrize("topology", ["missing", "ambiguous"])

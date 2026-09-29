@@ -308,11 +308,15 @@ def observe_brain_sync(
                 if isinstance(completed_by, Mapping):
                     published_sha = completed_by.get("published_sha")
                     if isinstance(published_sha, str) and published_sha:
-                        is_ancestor = False
                         try:
                             is_ancestor = _git_is_ancestor(root, published_sha, main_sha)
-                        except OperatorError:
-                            is_ancestor = False
+                        except OperatorError as exc:
+                            raise BrainSyncError(
+                                "cannot observe Git ancestry for roadmap item "
+                                f"{str(item.get('id'))[:80]!r} "
+                                f"(published_sha={published_sha[:64]!r}, "
+                                f"main_sha={main_sha[:64]!r})"
+                            ) from exc
                         if not is_ancestor:
                             return BrainSyncSnapshot(
                                 repository=repo_info,
