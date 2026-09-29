@@ -1,6 +1,6 @@
-# AIOS Research Assurance Architecture and Roadmap v2.3
+# AIOS Research Assurance Architecture and Roadmap v2.4
 
-Status: HUMAN-APPROVED PLANNING BASELINE — RA-0 / RA-2 / RA-3 ARCHITECTURE AUDITED  
+Status: HUMAN-APPROVED PLANNING BASELINE — RA-0 / RA-2 / RA-3 / RA-4 ARCHITECTURE AUDITED  
 Approved by Human: 2026-09-29  
 RA-0 architecture audit closed: 2026-09-29  
 Scope: reproducible, source-grounded, adversarially audited research support under existing Brain authority
@@ -242,41 +242,121 @@ The projection is planning support only. It is not Runtime state, a REVIEW verdi
 
 RA deliberately does not copy BP-4A one-for-one.
 
-BP-4A audits semantic reasoning over an already-composed Decision Packet. Research may discover during adversarial audit that additional counter-evidence is required. RA therefore permits exactly one bounded counter-evidence acquisition pass between construct and final reconciliation.
+BP-4A audits semantic reasoning over an already-composed Decision Packet. Research may discover during adversarial audit that additional counter-evidence is required. RA therefore permits exactly one bounded counter-evidence acquisition batch between construct and final reconciliation.
 
-### Pass 1 — EVIDENCE_CONSTRUCT
+RA-4 freezes a pure **two-stage semantic protocol contract**. It does not perform source acquisition, invoke a provider/model/tool, select an adapter, retry a failed acquisition, persist protocol state, or create a lifecycle engine. Those concerns remain outside RA-4.
 
-Pass 1:
+### 8.1 Preconditions
 
-- acquires the bounded baseline corpus;
-- constructs material claims;
-- binds claims to sources;
-- records uncertainty and assumptions;
-- identifies gaps and challenge targets;
-- does not claim closure merely because supporting evidence was found.
+A semantic pass may advance only over exact valid RA-1/RA-2 material.
 
-### Pass 2 — ADVERSARIAL_RESEARCH_AUDIT_AND_RECONCILE
+For every baseline or counter-evidence Acquisition Request admitted into the protocol there must be exactly one exact same-request Acquisition Attempt with outcome SUCCEEDED. A successful attempt may contain zero Source Observations.
 
-Pass 2:
+An Acquisition Attempt with outcome FAILED is an operational acquisition outcome, not semantic evidence. It blocks the affected semantic stage from advancing and must not be converted into RESEARCH_CANDIDATE or INSUFFICIENT_EVIDENCE.
 
-- challenges source authority and currentness;
-- checks claim/source binding;
-- tests source independence;
-- seeks bounded contradictory or limiting evidence;
-- tests project applicability and duplication;
-- reconciles the exact Pass-1 claim set;
-- performs final closure over the reconciled result.
+The protocol never performs hidden retry, fallback, pagination, query expansion, provider switching or request mutation.
 
-Only one bounded counter-evidence acquisition pass is authorized by the base protocol. No recursive "research until satisfied" loop is created.
+### 8.2 Pass 1 — EVIDENCE_CONSTRUCT
 
-Final semantic outcomes are:
+Pass 1 consumes:
 
-```text
-RESEARCH_CANDIDATE
-INSUFFICIENT_EVIDENCE
-```
+- one exact Research Brief;
+- the exact research-high-value-v1 audit-profile identity;
+- one bounded non-empty set of BASELINE Acquisition Requests;
+- one exact successful Acquisition Attempt per baseline request;
+- Brain-authored material claims bound only to observations present in those successful attempts;
+- one bounded non-empty set of same-Brief Challenge Targets;
+- one precommitted bounded set of COUNTER_EVIDENCE Acquisition Requests.
 
-These outcomes exist only after valid acquisition and the required audit procedure. Acquisition/transport/protocol failures remain separate operational outcomes and do not imply either semantic result.
+Pass 1 produces one immutable/content-addressed Evidence Construct.
+
+The Evidence Construct stores only bounded protocol identities and Brain semantic material needed for Pass 2. It does not archive native tool payloads or operational logs.
+
+Pass 1 must freeze:
+
+- exact Brief and audit-profile identity;
+- exact baseline request/attempt identities;
+- exact baseline observation identities;
+- the exact Pass-1 claim set;
+- exact Challenge Target identities;
+- the exact counter-evidence request set;
+- one construct fingerprint.
+
+The counter-evidence request set is committed **before** counter-evidence results are observed. Pass 2 cannot add a new request, change a query/locator, widen a request bound, add a Challenge Target or start another acquisition round.
+
+Challenge Targets must be grounded in the Evidence Construct. CLAIM and ASSUMPTION targets reference exact Pass-1 claim fingerprints. SOURCE, FRESHNESS and INSTRUCTION_BOUNDARY targets reference exact baseline Source Observation fingerprints. COVERAGE, APPLICABILITY and GAP targets may use bounded descriptive target_ref values when no single claim/source identity is sufficient.
+
+Every Challenge Target must be referenced by at least one precommitted COUNTER_EVIDENCE request, and the union of request challenge_target_fingerprints must equal the exact Pass-1 Challenge Target set.
+
+At least one counter-evidence request is required. The number of requests must not exceed the Research Brief max_counter_evidence_requests bound. Each request remains subject to its RA-1 per-request target and acquisition bounds.
+
+The RA-4 protocol adds a global bounded-corpus rule compatible with the RA-3 Research Record: the union of unique Source Observation identities admitted across baseline and counter-evidence attempts must not exceed 64. The protocol never silently truncates or selects around an over-bound corpus.
+
+### 8.3 Counter-evidence acquisition boundary
+
+The exactly-one counter-evidence acquisition **batch** is external to the RA-4 pure protocol implementation.
+
+A future adapter layer may execute the exact precommitted COUNTER_EVIDENCE requests. RA-4 then accepts one exact same-request successful Acquisition Attempt for every request.
+
+A counter-evidence success with zero observations is valid. The later Brain audit decides whether the absence of additional material is meaningful.
+
+A failed, missing, foreign, duplicated or substituted attempt blocks Pass 2. It does not authorize a second counter-evidence batch.
+
+### 8.4 Pass 2 — ADVERSARIAL_RESEARCH_AUDIT_AND_RECONCILE
+
+Pass 2 consumes:
+
+- the exact Evidence Construct;
+- the exact successful counter-evidence attempts for every precommitted request;
+- one Brain-authored audit result for each of the nine research audit lenses;
+- explicit reconciliation of every Pass-1 claim;
+- one caller-supplied final Research Record material set constructed from only the exact baseline/counter observations admitted by this protocol.
+
+Every audit lens appears exactly once and receives a Brain semantic disposition:
+
+- CLEAR;
+- LIMITATION;
+- BLOCKING.
+
+Each lens result contains bounded rationale and exact references to relevant claim, source and Challenge Target fingerprints. Deterministic code validates grammar, bindings and complete nine-lens coverage only; it never decides which disposition is substantively correct.
+
+Every Pass-1 Challenge Target must be referenced by at least one Pass-2 lens result. Counter-evidence observations may support, contradict, limit or add context; duplication with baseline observations does not become independent corroboration merely because it came from the counter batch.
+
+Every Pass-1 claim receives exactly one reconciliation disposition:
+
+- RETAINED — the final claim fingerprint is unchanged;
+- REVISED — the final claim has a new fingerprint;
+- REMOVED — the Pass-1 claim does not appear in the final claim set.
+
+Every final claim must be accounted for either by a RETAINED/REVISED reconciliation entry or as an explicitly NEW claim. No Pass-1 claim or final claim may disappear from reconciliation coverage.
+
+Pass 2 may construct one final immutable AIOS_RESEARCH_RECORD v1 by reusing the RA-3 contract. Its Brief/profile identity must match the Evidence Construct. Its source registry may reference only Source Observations present in the exact admitted baseline/counter attempts. If a predecessor Research Record is supplied, existing RA-3 predecessor/refresh rules still apply unchanged.
+
+### 8.5 Final closure
+
+The only semantic closure outcomes remain:
+
+- RESEARCH_CANDIDATE;
+- INSUFFICIENT_EVIDENCE.
+
+The outcome is Brain-owned semantic material, but RA-4 enforces one structural closure invariant over the Brain's own audit dispositions:
+
+- RESEARCH_CANDIDATE is valid only when no audit lens is BLOCKING;
+- INSUFFICIENT_EVIDENCE requires at least one audit lens marked BLOCKING.
+
+LIMITATION does not automatically block a candidate; the limitation and uncertainty remain explicit in the final Research Record.
+
+This rule does not make deterministic code a research judge. Deterministic code checks that the Brain's declared closure is internally consistent with the Brain's declared audit blockers.
+
+### 8.6 Anti-recursion and authority boundary
+
+RA-4 ends after Pass 2.
+
+There is no Pass 3, recursive challenge generation, automatic request refinement, automatic retry/fallback, model voting, confidence scoring, automatic architecture decision, roadmap advancement or TASK creation.
+
+If Pass 2 exposes a material unresolved issue that would require new acquisition, the current protocol closes as INSUFFICIENT_EVIDENCE. A later Human/Brain decision may start a **new Research Brief/lineage**; it does not mutate or recursively continue the closed two-pass protocol.
+
+A successful Research Record is bounded planning evidence only. It may be handed to a fresh ARCHITECTURE flow, which independently decides project meaning and then uses the existing BP-4A audit where applicable.
 
 ## 9. Research Audit Profile v1
 
@@ -406,7 +486,13 @@ RA-3 must not persist records, auto-resolve a latest record, mutate record valid
 
 ### RA-4 — Two-Pass Research Assurance Protocol
 
-Implement Evidence Construct followed by exactly one bounded counter-evidence acquisition and adversarial audit/reconciliation/closure pass. Prohibit recursive research loops. Yield RESEARCH_CANDIDATE or INSUFFICIENT_EVIDENCE.
+Architecture audit: DONE — PASS WITH MANDATORY PROTOCOL REFINEMENTS.
+
+RA-4 freezes a pure two-stage protocol over exact RA-1/RA-2/RA-3 identities. Pass 1 creates one content-addressed Evidence Construct and precommits the exact Challenge Target plus counter-evidence request set. One external bounded counter-evidence acquisition batch may then occur. Pass 2 accepts only exact successful attempts for those precommitted requests, requires complete nine-lens Brain audit coverage, exact Pass-1/final-claim reconciliation and produces one final Research Record with RESEARCH_CANDIDATE or INSUFFICIENT_EVIDENCE closure.
+
+Operational acquisition failure blocks semantic advancement and never becomes a semantic outcome. RESEARCH_CANDIDATE requires no Brain-declared BLOCKING audit lens; INSUFFICIENT_EVIDENCE requires at least one Brain-declared BLOCKING lens. Deterministic code checks internal consistency and exact identity/budget/coverage bindings only.
+
+RA-4 must not invoke source tools/providers/models, create retries/fallback, start a second counter-evidence batch, persist protocol state, infer semantic audit dispositions, add RESEARCH to Flow Resolver, make architecture/TASK decisions, or create lifecycle/Reviewer/Publisher authority.
 
 ### RA-5 — Provider & Tool Portability Contracts
 
@@ -432,7 +518,7 @@ RA closes only after Reviewer-quality semantic assessment confirms the proof pre
 
 ## 15. Non-goals
 
-RA v2.3 does not:
+RA v2.4 does not:
 
 - replace Brain Sync;
 - replace BP-4A Brain Semantic Audit;
@@ -450,8 +536,8 @@ RA v2.3 does not:
 
 Brain Portability BP-9 downstream adoption is complete based on downstream exact-pin migration and fresh current-pin conformance publication evidence.
 
-RA v2.3 is the active Human/Brain planning baseline after RA-0, RA-2 and RA-3 architecture audits.
+RA v2.4 is the active Human/Brain planning baseline after RA-0, RA-2, RA-3 and RA-4 architecture audits.
 
-RA-1 and RA-2 are reviewed/published. RA-3 architecture semantics are now audited but remain non-executable until one exact canonical RA-3 TASK is authored and bound by Human/Brain planning authority. RA-4 through RA-7 remain gated.
+RA-1 through RA-3 are reviewed/published. RA-4 architecture semantics are now audited but remain non-executable until one exact canonical RA-4 TASK is authored and bound by Human/Brain planning authority. RA-5 through RA-7 remain gated.
 
 A newer explicit Human priority may prospectively supersede this track, but future generic continuation may rely on that change only after it is canonicalized.
