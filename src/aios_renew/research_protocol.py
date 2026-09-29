@@ -13,12 +13,12 @@ from typing import Any
 
 from .research_contract import (
     ResearchContractError, validate_research_brief, validate_challenge_target,
-    validate_acquisition_request, _text,
+    validate_acquisition_request,
 )
 from .source_acquisition import validate_acquisition_attempt
 from .research_record import (
     _LENSES, _fields, _literal, _choice, _sha, _json,
-    construct_research_claim, research_audit_profile_ref, validate_research_record,
+    _semantic, construct_research_claim, research_audit_profile_ref, validate_research_record,
 )
 
 
@@ -228,7 +228,7 @@ def _reconciliation(material: Any, construct: Any, profile: Any, baseline_pairs:
         challenged.update(refs)
         audits.append({"lens_id": expected,
                        "disposition": _choice(audit["disposition"], {"CLEAR", "LIMITATION", "BLOCKING"}, "audit disposition"),
-                       "summary": _text(audit["summary"], "audit summary", 8192),
+                       "summary": _semantic(audit["summary"], "audit summary", 8192),
                        "claim_fingerprints": _refs(audit["claim_fingerprints"], "audit claims", pass1 | final, 64),
                        "observation_fingerprints": _refs(audit["observation_fingerprints"], "audit observations", source_ids, 64),
                        "challenge_target_fingerprints": refs})

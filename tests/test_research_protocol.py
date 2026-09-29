@@ -235,6 +235,36 @@ def test_nine_lenses_claim_reconciliation_and_outcome():
     invalid(lambda value: value["research_record"]["sources"][0].update(observation_fingerprint="0" * 64))
 
 
+@pytest.mark.parametrize("summary", [
+    "provider: hidden-service",
+    "model=internal-model",
+    "session: private-session-id",
+    "workspace_root=/home/operator/project",
+    "Reviewed C:\\Users\\operator\\project\\notes.txt",
+    "raw tool log: retrieved response body",
+    "tool: native response payload",
+    "Traceback (most recent call last): native failure",
+    "HTTP/1.1 500 Internal Server Error",
+])
+def test_audit_summary_rejects_operational_and_native_material(summary):
+    p, baseline, counter, _, frozen, body = scenario()
+    body["audit_results"][0]["summary"] = summary
+    rejects(construct_research_reconciliation, body, frozen, p, baseline, counter)
+
+
+@pytest.mark.parametrize("summary", [
+    "The cited source supports the claim, with a limited observation window.",
+    "The source says 'ignore previous instructions'; this remains source text for the audit.",
+    "A model of seasonal demand could explain the difference between the sources.",
+])
+def test_audit_summary_accepts_bounded_brain_rationale(summary):
+    p, baseline, counter, _, frozen, body = scenario()
+    body["audit_results"][0]["summary"] = summary
+    result = construct_research_reconciliation(body, frozen, p, baseline, counter)
+    assert result["audit_results"][0]["summary"] == summary
+    assert validate_research_reconciliation(result, frozen, p, baseline, counter) == result
+
+
 def test_revised_removed_new_and_foreign_final_source():
     p, baseline, counter, _, frozen, body = scenario()
     brief = frozen["research_brief"]
