@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-stable-failure-detail-probe
+  - verification-performance-rebaseline-v2-source-repair-path-hardening
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1605,7 +1605,7 @@ sequence:
         correctness still reported 36 failures. Canonical failure diagnostics
         expose only the bounded lowest 20 identities, so a separate bounded
         contention diagnostic is required before another TASK-231 attempt.
-    blocked_by: verification-performance-rebaseline-v2-stable-failure-detail-probe
+    blocked_by: verification-performance-rebaseline-v2-source-repair-path-hardening
     prerequisite_resolution:
       roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
       task_id: TASK-232
@@ -1827,7 +1827,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-stable-failure-detail-probe
 
   - id: verification-performance-rebaseline-v2-stable-failure-detail-probe
-    status: NEXT
+    status: DONE
     task_id: TASK-236
     task_revision: 1
     authored_commit_sha: "97a28213be16aad457ddf18bb4bf7ca7f549d48f"
@@ -1853,8 +1853,68 @@ sequence:
     defender_hypothesis:
       authority: HUMAN_PLANNING_EVIDENCE_ONLY
       state: UNVERIFIED
-    return_to: verification-performance-rebaseline-v2-adopt-workers-12
+    completed_by:
+      run_id: RUN-236-001
+      result_artifact_sha: "189e5d9f438406b52ed2f9721f7950391e65a636"
+      review_id: REVIEW-236-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-236-001-V001
+        - RUN-236-001-V002
+        - RUN-236-001-V003
+      review_decision_sha: "7d53c23051bd584cd24d2ec3eebd7b4577bc5cea"
+      reviewed_sha: "15fce5f5642d4defd3aa1df0f15292191683221b"
+      published_sha: "15fce5f5642d4defd3aa1df0f15292191683221b"
+      classification: DETAILS_RESOLVED
+      details:
+        hot_swap_scenario_2:
+          source_locus: src/aios_renew/authoring_ingress.py:_validate_metadata_commit
+          line: 1699
+          category: METADATA_CONTENT_MISMATCH
+        source_repair_closed_replay:
+          command_family: CLONE
+          return_code: 128
+          stderr_category: PATH_OR_FILENAME
+        source_repair_bound_target:
+          command_family: CLONE
+          return_code: 128
+          stderr_category: PATH_OR_FILENAME
+    return_to: verification-performance-rebaseline-v2-source-repair-path-hardening
 
+
+
+  - id: verification-performance-rebaseline-v2-source-repair-path-hardening
+    status: NEXT
+    task_id: TASK-237
+    task_revision: 1
+    authored_commit_sha: "1051d7e830a3e68b3093b6ca825c961727682287"
+    task_blob_sha: "13b3ce9797a219531559f79c6a78a46db405699f"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-236
+      run_id: RUN-236-001
+      review_id: REVIEW-236-001
+      published_sha: "15fce5f5642d4defd3aa1df0f15292191683221b"
+      classification: DETAILS_RESOLVED
+      affected_failure_count: 2
+      detail:
+        command_family: CLONE
+        return_code: 128
+        stderr_category: PATH_OR_FILENAME
+    objective: >-
+      Harden only the source-REPAIR durable transport locator so complete target
+      source cloning remains within a bounded repository-owned path on Windows,
+      while full repair/transport identity remains authoritative in exact intent
+      content and all source-REPAIR lineage/activation/REPAIR semantics remain
+      unchanged.
+    remaining_followups:
+      ingress_metadata_content_mismatch: PENDING_AFTER_TASK_237
+      parallel_only_git_fixture_failure: PENDING_AFTER_STABLE_FAILURE_CORRECTIONS
+    defender_hypothesis:
+      authority: HUMAN_PLANNING_EVIDENCE_ONLY
+      state: UNVERIFIED
+    return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
 research_assurance:
