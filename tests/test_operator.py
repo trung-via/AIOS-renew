@@ -9292,6 +9292,29 @@ def _source_repair_bootstrap_intent(bootstrap: dict, target_sha: str) -> dict:
 
 
 @pytest.fixture
+def source_repair_depth_root():
+    # A complete consumer checkout fits at the bounded locator, while the
+    # former dispatch-id/source locator would cross the Win32 path budget.
+    short_parent = (Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "Temp"
+                    if sys.platform == "win32" else None)
+    with tempfile.TemporaryDirectory(prefix="a237-", dir=short_parent) as directory:
+        base = Path(directory)
+        longest = Path("src/aios_renew/schemas/gemini_reviewer_semantic_response.json")
+        new_leaf = base / "c" / ".git" / "r" / ("0" * 16) / "s" / longest
+        padding = 235 - len(str(new_leaf)) - 1
+        assert 1 <= padding <= 200
+        depth_root = base / ("d" * padding)
+        repo = depth_root / "c"
+        bounded_leaf = repo / ".git" / "r" / ("0" * 16) / "s" / longest
+        former_leaf = (repo / ".git" / "aios" / "source-repair-transports"
+                       / "repair-101-001" / "source" / longest)
+        assert len(str(bounded_leaf)) == 235
+        assert len(str(former_leaf)) > 260
+        depth_root.mkdir()
+        yield depth_root
+
+
+@pytest.fixture
 def source_successor_short_root():
     # Git copies commit-graph files beneath the migration bundle. Keep that
     # checkout independent of pytest's deeply nested Windows verification root.
@@ -10112,8 +10135,9 @@ def test_source_repair_bootstrap_production_rejects_other_targets_before_staging
 
 
 def test_source_repair_bootstrap_closed_and_exact_replay(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    source_repair_depth_root: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    tmp_path = source_repair_depth_root
     repo, source, bootstrap = _source_bootstrap_fixture(tmp_path)
     intent = _source_repair_bootstrap_intent(bootstrap, bootstrap["target_generation_sha"])
     path = tmp_path / "source-repair.json"
@@ -10136,6 +10160,19 @@ def test_source_repair_bootstrap_closed_and_exact_replay(
     bundle, target = operator_module._source_repair_bootstrap_state(repo, intent)
     assert git(target, "rev-parse", "HEAD") == intent["target_generation_sha"]
     assert json.loads((bundle / "intent.json").read_text(encoding="utf-8")) == intent
+    assert target == bundle / "s"
+    other = dict(intent, repair_dispatch_id="repair-101-002")
+    assert operator_module._source_repair_bootstrap_state(repo, other)[0] != bundle
+    stored = json.loads((bundle / "intent.json").read_text(encoding="utf-8"))
+    assert stored["repair_dispatch_id"] == intent["repair_dispatch_id"]
+    other_path = tmp_path / "other-source-repair.json"
+    other_path.write_text(json.dumps(other), encoding="utf-8")
+    with monkeypatch.context() as collision:
+        collision.setattr(operator_module, "_source_repair_bootstrap_state",
+                          lambda root, document: (bundle, target))
+        with pytest.raises(OperatorError, match="transport identity mismatch"):
+            operator_module.bootstrap_source_repair(other_path, runner=runner)
+    assert len(launched) == 1
     assert operator_module.bootstrap_source_repair(path, runner=runner) == 0
     assert len(launched) == 2
     assert all(call[0][3] == "bootstrap-source-repair" for call in launched)
@@ -10152,8 +10189,9 @@ def test_source_repair_bootstrap_closed_and_exact_replay(
 
 
 def test_source_repair_bound_target_consumes_without_matching_activation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    source_repair_depth_root: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    tmp_path = source_repair_depth_root
     repo, _, bootstrap = _source_bootstrap_fixture(tmp_path, consumer_source=True)
     intent = _source_repair_bootstrap_intent(bootstrap, bootstrap["target_generation_sha"])
     path = tmp_path / "source-repair.json"
@@ -10184,9 +10222,16 @@ def test_source_repair_bound_target_consumes_without_matching_activation(
     bound = bundle / "intent.json"
     assert launched[0][0][-3:] == [str(bound), "--accept-transport", str(bound)]
     assert git(target, "rev-parse", "HEAD") == intent["target_generation_sha"]
+    assert operator_module._source_repair_bootstrap_record(repo, intent) == (bound, target)
+    assert git(target, "branch", "--show-current") == ""
     assert operator_module._git(target, "status", "--porcelain") == ""
     assert (target / "src" / "aios_renew" / "operator.py").is_file()
+    longest = target / "src/aios_renew/schemas/gemini_reviewer_semantic_response.json"
+    assert len(str(longest)) == 235 and longest.is_file()
     assert json.loads(bound.read_text(encoding="utf-8")) == intent
+    assert operator_module.bootstrap_source_repair(path, runner=stage_runner) == 0
+    assert len(launched) == 2
+    assert launched[1][0] == launched[0][0]
     monkeypatch.setattr(operator_module, "_SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA", None)
 
     # Import the separately committed target package in a fresh interpreter.
@@ -10205,7 +10250,7 @@ lineage_checked = []
 operator._source_repair_bootstrap_lineage = lambda root, document: lineage_checked.append((root, document))
 operator._source_repair_failed_candidate_policy = lambda root, document: "exact-policy"
 def wakeup(*args, **kwargs):
-    assert Path(operator.__file__).resolve().parents[2] == Path(sys.argv[2]).resolve().parent / "source"
+    assert Path(operator.__file__).resolve().parents[2] == Path(sys.argv[2]).resolve().parent / "s"
     assert operator._git(Path(operator.__file__).resolve().parents[2], "rev-parse", "HEAD") == intent["target_generation_sha"]
     assert lineage_checked == [(Path(intent["repository"]), intent)]
     assert operator._SOURCE_REPAIR_POLICY.get() == "exact-policy"

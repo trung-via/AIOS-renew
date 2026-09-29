@@ -5045,9 +5045,11 @@ def _source_repair_bootstrap_lineage(root: Path, intent: Mapping[str, Any]) -> N
 
 
 def _source_repair_bootstrap_state(root: Path, intent: Mapping[str, Any]) -> tuple[Path, Path]:
-    directory = runtime_state_root(root) / "source-repair-transports"
-    bundle = directory / intent["repair_dispatch_id"]
-    return bundle, bundle / "source"
+    # The digest is a bounded storage locator only. The full dispatch id and
+    # every other transport binding remain authoritative in intent.json.
+    key = hashlib.sha256(intent["repair_dispatch_id"].encode("utf-8")).hexdigest()[:16]
+    bundle = runtime_state_root(root).parent / "r" / key
+    return bundle, bundle / "s"
 
 
 def _source_repair_bootstrap_record(root: Path, intent: Mapping[str, Any]) -> tuple[Path, Path]:
