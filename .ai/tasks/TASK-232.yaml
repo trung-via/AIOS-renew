@@ -1,0 +1,153 @@
+task_id: TASK-232
+revision: 1
+
+goal: >
+  Harden the parallel-sensitive test infrastructure exposed by RUN-231-002 so
+  AIOS verification tests preserve their semantic contracts under bounded xdist
+  execution without depending on PowerShell human-readable stderr formatting or
+  a loose-only Git object storage representation.
+
+problem: >
+  RUN-231-002 failed Runtime verification on the Human-selected workers=12
+  adoption candidate while every selected-wrapper conformance fact passed.
+  Canonical failure diagnostics reported 36 pytest failures concentrated in
+  Git/operator/hot-swap tests. A Human-run bounded diagnostic on the exact failed
+  candidate further showed the relevant three-file subset passing serially,
+  Scenario 7 failing at both workers=4 and workers=12 because it asserted one
+  human-readable PowerShell error string despite the structured operational
+  receipt remaining the semantic contract, and one source-successor fixture
+  failing at workers=12 because tests/git_fixture_support.py rejected a valid Git
+  object when it was not loose. Human diagnostic output is planning evidence only,
+  not Runtime verification truth. The canonical engineering defect to correct is
+  the test infrastructure contract: semantic operational assertions must bind the
+  structured receipt, and fixture object inspection must accept valid Git object
+  storage independently of loose-versus-packed representation.
+
+assumptions:
+  - >
+    Canonical main at authoring is a435c71f1b65d10bf36b0c8a0d8ada503939304c; RUN-231-002 is a canonical FAILURE
+    for TASK-231 r2 at phase VERIFICATION with failure artifact
+    70067af710b8930c7c6532554b0f7632e0c94227 and failed candidate
+    bc5a7604ee5473ab0ad6fdee8095394a065d0f3a.
+  - >
+    RUN-231-002 selected-wrapper conformance reported all_workers_reported,
+    collections_match_canonical, git_fixture_cache_roots_isolated,
+    processes_distinct, subject_unchanged and temporary_roots_isolated all true.
+  - >
+    Scenario 7's normative contract is the typed structured operational receipt:
+    OPERATIONAL_FAILED at PRE_AIOS with reason_code
+    AIOS_REPO_ROOT_NOT_CONFIGURED, run_created=false and executor_invoked=false,
+    with no fabricated RUN/FAILURE. Human-readable PowerShell stderr wording is
+    diagnostic presentation, not lifecycle truth.
+  - >
+    Git object identity and content are semantic fixture facts. Loose-object and
+    packed-object storage are both valid Git representations and must not alter
+    fixture semantics.
+  - >
+    TASK-231 remains unpublished. Human selection of workers=12 remains a planning
+    decision but is not advanced by this task. TASK-232 only removes test
+    infrastructure defects before TASK-231 is resumed.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-190.yaml
+    - .ai/tasks/TASK-231.yaml
+    - tests/test_hot_swap_conformance.py
+    - tests/git_fixture_support.py
+    - tests/test_git_fixture_isolation.py
+    - tests/operator_test_support.py
+    - tests/test_operator.py
+  modify:
+    - tests/test_hot_swap_conformance.py
+    - tests/git_fixture_support.py
+    - tests/test_git_fixture_isolation.py
+
+non_goals:
+  - >
+    Modify production Runtime, Operator, verification wrapper, selected worker
+    profile, lifecycle semantics, transport workflow, Reviewer, Publisher or
+    frozen Kernel behavior.
+  - >
+    Publish or adopt workers=12, rerun the TASK-231 full suite, select another
+    worker count, auto-tune workers, or reinterpret Human diagnostic timing as
+    Runtime evidence.
+  - >
+    Suppress, skip, xfail or weaken a semantic failure merely to make xdist pass.
+  - >
+    Remove Scenario 7's structured receipt, exact selector, pre-AIOS boundary,
+    no-RUN, no-Executor or no-terminal assertions.
+  - >
+    Require Git fixture objects to remain loose, disable legitimate Git packing,
+    globally change Git configuration, alter host Git behavior, or add a
+    repository-wide Git executable policy.
+  - >
+    Modify tests/operator_test_support.py or tests/test_operator.py unless a new
+    TASK revision explicitly expands scope.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Scenario 7 must continue to prove the same typed PRE_AIOS operational
+      failure and absence of fabricated lifecycle state using structured
+      operational receipt/state assertions. It must not depend on an exact
+      human-readable PowerShell stderr sentence for semantic success.
+    - >
+      Git fixture support must be representation-agnostic for valid objects
+      reachable from the fixture repository: a commit/tree/blob required by the
+      helper must be readable when Git stores it loose or packed, without
+      changing the object identity/content semantics seen by the tests.
+    - >
+      Corrupt, missing or type-incompatible Git objects must still fail closed;
+      representation-agnostic support must not turn malformed fixture state into
+      success.
+    - >
+      Fast materialization isolation properties remain intact: mutable sandbox
+      state stays per-sandbox/process, immutable cached baseline content does not
+      become shared writable state, and no production semantic authority moves
+      into test helpers.
+    - >
+      Add deterministic regression coverage that proves a valid packed-object
+      fixture remains readable/committable through the fixture helper and that
+      invalid object state is still rejected.
+    - >
+      Existing production tests, including the source-successor lineage test that
+      exposed the packed-object defect, must not be weakened or edited.
+    - >
+      No file outside scope.modify may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Scenario 7 validates the structured PRE_AIOS operational receipt and zero
+      fabricated lifecycle/Executor state without requiring one exact
+      human-readable PowerShell stderr sentence.
+  - id: AC2
+    condition: >
+      tests/git_fixture_support.py can inspect the exact Git commit/tree/blob
+      content required by fixture operations when valid objects are stored loose
+      or packed, while preserving exact object identity and content.
+  - id: AC3
+    condition: >
+      Missing, corrupt or type-incompatible fixture objects still fail closed with
+      deterministic errors rather than being silently accepted.
+  - id: AC4
+    condition: >
+      Regression coverage deterministically exercises packed-object fixture state
+      and demonstrates that subsequent fixture commit/state construction remains
+      valid without depending on loose-object layout.
+  - id: AC5
+    condition: >
+      Existing sandbox/cache isolation and long-path Git fixture behavior remain
+      intact, with no production or worker-policy semantic change.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_hot_swap_conformance.py tests/test_git_fixture_isolation.py
+    - python -m pytest -q -n 12 --dist load --max-worker-restart=0 tests/test_hot_swap_conformance.py::test_scenario_7_operational_failure_is_pre_aios_and_receipt_is_not_success tests/test_operator.py::test_source_successor_production_activation_and_exact_lineage tests/test_git_fixture_isolation.py
