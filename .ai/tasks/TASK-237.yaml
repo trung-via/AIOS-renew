@@ -1,0 +1,181 @@
+task_id: TASK-237
+revision: 1
+
+goal: >
+  Harden the source-REPAIR bootstrap transport storage boundary against Windows
+  path-budget failure by replacing the current depth-amplifying durable checkout
+  locator with one bounded deterministic repository-owned locator, while preserving
+  the full repair_dispatch_id and complete transport identity in canonical intent
+  content. Correct only the two RUN-236-001 CLONE/PATH_OR_FILENAME failures; do not
+  change REPAIR semantics, target activation, lineage, Runtime, worker policy or
+  host configuration.
+
+problem: >
+  RUN-236-001 resolved two stable serial failures to the same production boundary:
+  bootstrap_source_repair() reaches the target materialization clone and Git clone
+  exits 128 with stderr category PATH_OR_FILENAME. Current
+  _source_repair_bootstrap_state() nests the target beneath
+  runtime_state_root(root)/source-repair-transports/<repair_dispatch_id>/source.
+  The failing tests exercise complete source packages under deeply nested Windows
+  verification roots, and the existing test fixture already documents that these
+  packages can exceed Win32 legacy path budgets. In the same Operator module, the
+  later source-bootstrap successor transport already uses a bounded digest-based
+  directory locator while retaining full delivery identity in durable intent.
+  The source-REPAIR transport still uses the older depth-amplifying layout. This is
+  a bounded storage-locator defect, not evidence that Git, source-REPAIR lineage,
+  activation, target selection or REPAIR authority should be relaxed.
+
+assumptions:
+  - >
+    Canonical main at authoring is 15fce5f5642d4defd3aa1df0f15292191683221b, the reviewed and published
+    RUN-236-001 candidate.
+  - >
+    RUN-236-001 RESULT artifact is
+    189e5d9f438406b52ed2f9721f7950391e65a636 and REVIEW-236-001 PASS decision is
+    7d53c23051bd584cd24d2ec3eebd7b4577bc5cea.
+  - >
+    RUN-236-001-V002 classified DETAILS_RESOLVED. Both
+    test_source_repair_bootstrap_closed_and_exact_replay and
+    test_source_repair_bound_target_consumes_without_matching_activation failed
+    with OperatorError/GIT_COMMAND_FAILED at command family CLONE, return code 128,
+    stderr category PATH_OR_FILENAME.
+  - >
+    TASK-170 remains authoritative for repository-owned hermetic Windows path-budget
+    correction principles: no global Git/system/registry/runner mutation and no
+    canonical identity shortening.
+  - >
+    Existing _source_bootstrap_successor_state() is a reviewed architectural
+    precedent for a bounded directory locator whose digest is only storage location;
+    full semantic identity remains in durable intent and exact validation.
+  - >
+    The separate RUN-236 ingress metadata-content mismatch is not corrected by this
+    task and remains a distinct Brain follow-up.
+  - >
+    The RUN-233 parallel-only test_git_fixture_isolation failure is not claimed
+    solved by this task and remains separately observable after focused correction.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-170.yaml
+    - .ai/tasks/TASK-206.yaml
+    - .ai/tasks/TASK-208.yaml
+    - .ai/tasks/TASK-218.yaml
+    - .ai/tasks/TASK-220.yaml
+    - .ai/tasks/TASK-236.yaml
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - tests/git_fixture_support.py
+    - tests/operator_test_support.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - >
+    Change source-REPAIR intent schema, repair_dispatch_id, failed_run_id,
+    repair_sha, target_generation_sha, target_url, Executor/profile bindings,
+    completed failed source-bootstrap lineage, activation constants, target-side
+    --accept-transport authority, run_repair_wakeup delegation, or replay semantics.
+  - >
+    Modify Authoring Ingress or address the separate metadata-content mismatch.
+  - >
+    Modify git_fixture_support.py or operator_test_support.py unless a later
+    separately authorized task requires it.
+  - >
+    Change Git global/system/user configuration, Windows registry, PATH, Defender,
+    runner setup, longPaths policy or any host-wide setting.
+  - >
+    Shorten or alter canonical AIOS refs, SHAs, repair identities, transport
+    identities or user-visible lifecycle identities.
+  - >
+    Add retry/fallback/failover, alternate clone strategy, automatic correction,
+    worker selection, test skip/xfail/deselection or timeout inflation.
+  - >
+    Claim the RUN-233 parallel-only fixture failure or TASK-231 workers=12 adoption
+    is solved without fresh Runtime evidence.
+
+constraints:
+  hard:
+    - >
+      Replace only the source-REPAIR durable bundle/checkout storage locator with a
+      deterministic bounded-depth repository-owned locator. The locator may be
+      derived from repair_dispatch_id but is not semantic identity; full
+      repair_dispatch_id and complete exact intent remain authoritative in
+      intent.json and existing validation.
+    - >
+      The locator construction must remain stable for exact replay and must have a
+      bounded path component independent of repair_dispatch_id length. Collision or
+      pre-existing bundle content with a different exact intent must fail closed
+      through exact stored-intent validation; never silently reuse or overwrite a
+      conflicting transport.
+    - >
+      Preserve bundle contents and target-side contract: one target checkout plus
+      one intent.json, exact transport_path equality to the computed intent path,
+      stored-intent equality, symlink rejection, clean exact target HEAD, exact
+      origin target_url, operator source presence, lineage validation, failed
+      candidate policy validation and canonical REPAIR wakeup delegation.
+    - >
+      Preserve source-REPAIR staging activation exactly. No change to
+      _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA or any other source bootstrap activation
+      constant is authorized.
+    - >
+      Preserve one real Git clone with the same target_url and target generation.
+      Do not replace Git with file copy, mock transport, shared writable checkout,
+      retry or fallback.
+    - >
+      Add deterministic regression coverage demonstrating that the complete
+      consumer package can be staged and consumed under a deliberately
+      depth-amplified Windows-representative repository path while the source-REPAIR
+      durable checkout itself remains within the bounded locator. The regression
+      must exercise real clone, detach checkout, exact transport record validation
+      and replay.
+    - >
+      Add regression proving two distinct repair_dispatch_id values map to distinct
+      durable transport identities or otherwise fail closed on any locator
+      collision; full identity must always be recoverable from exact stored intent,
+      not from digest text alone.
+    - >
+      Existing negative tests for not-activated target, wrong transport path,
+      altered stored intent, wrong target HEAD/source, partial transport and replay
+      must remain fail-closed.
+    - >
+      No file outside the two scope.modify files may change. Executor does not
+      mutate roadmap, review, publish or claim Runtime verification completion.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Source-REPAIR target staging no longer depends on an unbounded
+      source-repair-transports/<repair_dispatch_id>/source path and instead uses a
+      deterministic bounded-depth repository-owned locator while retaining exact
+      full intent identity.
+  - id: AC2
+    condition: >
+      The two RUN-236 source-REPAIR targets execute through real Git clone and
+      transport validation without PATH_OR_FILENAME failure under a
+      depth-amplified Windows-representative test sandbox.
+  - id: AC3
+    condition: >
+      Exact transport-path, stored-intent, target HEAD/origin/cleanliness/source,
+      lineage, policy/profile and canonical REPAIR wakeup semantics are unchanged
+      and remain fail-closed.
+  - id: AC4
+    condition: >
+      Collision/conflict behavior is deterministic and fail-closed; no shortened
+      locator is treated as lifecycle or authorization identity.
+  - id: AC5
+    condition: >
+      No global/user/system Git, registry, runner, PATH, Defender or external host
+      mutation is introduced, and real Git behavior is preserved.
+  - id: AC6
+    condition: >
+      The implementation is confined to src/aios_renew/operator.py and
+      tests/test_operator.py and introduces no retry/fallback, test weakening,
+      worker-policy change, ingress correction or roadmap authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_operator.py::test_source_repair_bootstrap_closed_and_exact_replay tests/test_operator.py::test_source_repair_bound_target_consumes_without_matching_activation
+    - python -m pytest -q tests/test_operator.py -k "source_repair"
+    - git diff --check
