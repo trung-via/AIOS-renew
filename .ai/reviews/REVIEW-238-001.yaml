@@ -1,0 +1,32 @@
+review_id: REVIEW-238-001
+reviewed_sha: f0eb9bc278ac165cf46b7fa91887beec0a7c8c0f
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: FAIL
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings:
+  - id: F-238-001
+    basis: AC2
+    action: CODE_FIX
+    location: scripts/aios_ingress_metadata_identity_diagnostic.py
+    issue: >-
+      RUN-238-001-V002 reproduces the fresh-clone AuthoringIngressError with the
+      expected blob object, committed tree object, and native binary blob all exact,
+      and with the production read path observed exactly once, but the production
+      readback is null. The diagnostic classifies that exact observed case as
+      OBSERVATION_INCOMPLETE, so it does not localize the known mismatch to the
+      production-readback boundary as required by the task goal and AC2.
+    expected: >-
+      Preserve the same bounded, transparent observation and fail-closed privacy
+      constraints, but mechanically classify the reproduced fresh-clone case to the
+      task-authorized resolved boundary when the available facts are sufficient.
+      In particular, an exact expected/tree/native identity plus one observed
+      production read returning no bytes during the same metadata-content mismatch
+      must not remain merely OBSERVATION_INCOMPLETE. Add focused regression coverage
+      for the real observed fact pattern without weakening or changing production
+      Authoring Ingress behavior.
