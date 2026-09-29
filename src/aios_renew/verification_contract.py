@@ -17,6 +17,9 @@ MINIMUM_SUFFICIENT_V1 = "minimum-sufficient-v1"
 FULL_SUITE_REASON_LIMIT = 512
 BP_V4_PROBE_PATH = "scripts/bp_v4_parallel_probe.py"
 BP_V4_WORKERS = (2, 3, 4)
+REBASELINE_PATH = "scripts/bp_v4_parallel_rebaseline.py"
+REBASELINE_COMMAND = "python scripts/bp_v4_parallel_rebaseline.py --workers 4 8 12 16"
+REBASELINE_WORKERS = (4, 8, 12, 16)
 SELECTED_FULL_SUITE_PATH = "scripts/aios_parallel_full_suite.py"
 SELECTED_FULL_SUITE_COMMAND = "python scripts/aios_parallel_full_suite.py"
 
@@ -33,6 +36,7 @@ class PytestCoverage:
     paths: tuple[str, ...]
     filter_expression: str | None
     measurement: bool = False
+    measurement_family: str | None = None
     selected_parallel: bool = False
 
     @property
@@ -43,6 +47,11 @@ class PytestCoverage:
 def parse_pytest_coverage(command: str) -> PytestCoverage | None:
     """Return proven coverage for a supported command, otherwise ``None``."""
 
+    if parse_rebaseline_workers(command) is not None:
+        return PytestCoverage(
+            launcher="python -m pytest", paths=(), filter_expression=None,
+            measurement=True, measurement_family="bp-v4-rebaseline-v2",
+        )
     if command == SELECTED_FULL_SUITE_COMMAND:
         return PytestCoverage(
             launcher="python -m pytest", paths=(), filter_expression=None,
@@ -55,6 +64,7 @@ def parse_pytest_coverage(command: str) -> PytestCoverage | None:
             paths=(),
             filter_expression=None,
             measurement=True,
+            measurement_family="bp-v4-v1",
         )
 
     try:
@@ -132,6 +142,30 @@ def parse_bp_v4_probe_workers(command: str) -> tuple[int, ...] | None:
     return workers
 
 
+def parse_rebaseline_workers(command: str) -> tuple[int, int, int, int] | None:
+    """Recognize only the complete fixed rebaseline invocation."""
+
+    return REBASELINE_WORKERS if command == REBASELINE_COMMAND else None
+
+
+def _is_rebaseline_family(command: str) -> bool:
+    """Catch malformed rebaseline invocations before opaque classification."""
+
+    try:
+        tokens = shlex.split(command, posix=False)
+    except ValueError:
+        return re.match(
+            r'^\s*["\']?(?:python|py)["\']?\s+["\']?(?:\.[\\/])?scripts[\\/]bp_v4_parallel_rebaseline\.py(?=["\']|\s|$)',
+            command, flags=re.IGNORECASE,
+        ) is not None
+    if len(tokens) < 2 or tokens[0].strip('"\'').casefold() not in {"python", "py"}:
+        return False
+    path = tokens[1].strip('"\'').replace("\\", "/").casefold()
+    if path.startswith("./"):
+        path = path[2:]
+    return path == REBASELINE_PATH.casefold()
+
+
 def _is_bp_v4_probe_family(command: str) -> bool:
     """Identify probe-like input so malformed forms cannot become opaque."""
 
@@ -198,6 +232,10 @@ def validate_v1_verification(
             )
 
     for command in commands:
+        if _is_rebaseline_family(command) and parse_rebaseline_workers(command) is None:
+            raise VerificationContractError(
+                f"{path} contains malformed BP-V4 rebaseline command: {command!r}"
+            )
         if _is_selected_full_suite_family(command) and command != SELECTED_FULL_SUITE_COMMAND:
             raise VerificationContractError(
                 f"{path} contains malformed selected full-suite command: {command!r}"
@@ -255,6 +293,10 @@ def normalize_verification(commands: Sequence[str]) -> tuple[str, ...]:
     """
 
     for command in commands:
+        if _is_rebaseline_family(command) and parse_rebaseline_workers(command) is None:
+            raise VerificationContractError(
+                f"verification contains malformed BP-V4 rebaseline command: {command!r}"
+            )
         if _is_selected_full_suite_family(command) and command != SELECTED_FULL_SUITE_COMMAND:
             raise VerificationContractError(
                 f"verification contains malformed selected full-suite command: {command!r}"
@@ -318,6 +360,11 @@ def _subsumes(broader: PytestCoverage, narrower: PytestCoverage) -> bool:
     # A probe contains the ordinary module-launched full-suite proof as well as
     # its measurement profiles.  The ordinary proof cannot replace the probe.
     if narrower.measurement and not broader.measurement:
+        return False
+    if (
+        broader.measurement and narrower.measurement
+        and broader.measurement_family != narrower.measurement_family
+    ):
         return False
     if narrower.selected_parallel and not broader.selected_parallel:
         return False

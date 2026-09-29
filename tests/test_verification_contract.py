@@ -6,6 +6,7 @@ from aios_renew.verification_contract import (
     VerificationContractError,
     normalize_verification,
     parse_bp_v4_probe_workers,
+    parse_rebaseline_workers,
     parse_pytest_coverage,
     validate_v1_verification,
 )
@@ -219,3 +220,52 @@ def test_unrelated_opaque_behavior_remains_compatible(command) -> None:
         (command,), full_suite_reason=None, path="verification.required"
     )
     assert normalize_verification((command,)) == (command,)
+
+
+def test_rebaseline_exact_family_has_full_suite_measurement_coverage() -> None:
+    rebaseline = "python scripts/bp_v4_parallel_rebaseline.py --workers 4 8 12 16"
+    ordinary = "python -m pytest -q"
+    old_probe = "python scripts/bp_v4_parallel_probe.py --workers 2 3 4"
+    selected = "python scripts/aios_parallel_full_suite.py"
+    assert parse_rebaseline_workers(rebaseline) == (4, 8, 12, 16)
+    coverage = parse_pytest_coverage(rebaseline)
+    assert coverage is not None and coverage.measurement and coverage.is_full_suite
+    with pytest.raises(VerificationContractError, match="full_suite_reason"):
+        validate_v1_verification((rebaseline,), full_suite_reason=None, path="verification.required")
+    validate_v1_verification(
+        (rebaseline,), full_suite_reason="Compare the four explicit profiles.",
+        path="verification.required",
+    )
+    with pytest.raises(VerificationContractError, match="subsumed"):
+        validate_v1_verification(
+            (ordinary, rebaseline), full_suite_reason="Same full suite.",
+            path="verification.required",
+        )
+    assert normalize_verification((ordinary, rebaseline)) == (rebaseline,)
+    assert normalize_verification((rebaseline, selected)) == (rebaseline, selected)
+    # The distinct historical and new measurement commands cannot replace each other.
+    assert normalize_verification((old_probe, rebaseline)) == (old_probe, rebaseline)
+    assert parse_bp_v4_probe_workers(old_probe) == (2, 3, 4)
+
+
+@pytest.mark.parametrize("command", [
+    "python scripts/bp_v4_parallel_rebaseline.py",
+    "python scripts/bp_v4_parallel_rebaseline.py --workers",
+    "python scripts/bp_v4_parallel_rebaseline.py --workers 4 8 12",
+    "python scripts/bp_v4_parallel_rebaseline.py --workers 8 4 12 16",
+    "python scripts/bp_v4_parallel_rebaseline.py --workers 4 8 8 16",
+    "python scripts/bp_v4_parallel_rebaseline.py --workers 4 8 12 16 20",
+    "python scripts/bp_v4_parallel_rebaseline.py --workers auto",
+    "python scripts/bp_v4_parallel_rebaseline.py --workers 4 8 12 16 && echo injected",
+    "python scripts/bp_v4_parallel_rebaseline.py --workers '4",
+    "py scripts/bp_v4_parallel_rebaseline.py --workers 4 8 12 16",
+    "python .\\scripts\\bp_v4_parallel_rebaseline.py --workers 4 8 12 16",
+    "python scripts/BP_V4_PARALLEL_REBASELINE.py --workers 4 8 12 16",
+])
+def test_malformed_rebaseline_family_fails_closed(command) -> None:
+    assert parse_rebaseline_workers(command) is None
+    assert parse_pytest_coverage(command) is None
+    with pytest.raises(VerificationContractError, match="malformed BP-V4 rebaseline"):
+        validate_v1_verification((command,), full_suite_reason=None, path="verification.required")
+    with pytest.raises(VerificationContractError, match="malformed BP-V4 rebaseline"):
+        normalize_verification((command,))
