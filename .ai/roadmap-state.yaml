@@ -1,6 +1,6 @@
 version: 1
 active_track: research-assurance
-active_track_status: ACTIVE
+active_track_status: DONE
 planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
 planning_baseline:
   id: bp-0-architecture-baseline
@@ -67,8 +67,7 @@ human_priority_side_track:
     gpt-6-sol/high repository default before BP9 downstream adoption. This task must
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
-next_items:
-  - ra-7-real-project-proof-closure
+next_items: []
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1439,7 +1438,7 @@ sequence:
       Execute the exact authored RA-6 integration/conformance TASK only after fresh Brain
       Sync confirms TASK-227 revision 1 as the unique canonical NEXT.
   - id: ra-7-real-project-proof-closure
-    status: NEXT
+    status: DONE
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
     architecture_audit:
@@ -1487,6 +1486,16 @@ sequence:
     task_revision: 1
     authored_commit_sha: "7564cac019d8e1426ea3256e33aa807ec601c15f"
     task_blob_sha: "84ae3a8c394800b46543a76f53cb8a8438116fec"
+    completed_by:
+      task_id: TASK-228
+      task_revision: 1
+      run_id: RUN-228-001
+      review_id: REVIEW-228-001
+      verdict: PASS
+      evidence_id: RUN-228-001-V001
+      reviewed_sha: "01a83cab8db15f585eb8fca2a473dbf794fde04d"
+      published_sha: "01a83cab8db15f585eb8fca2a473dbf794fde04d"
+      review_decision_sha: "368809c002db65c7cfd85d0c7587875ff13ee9be"
     objective: >-
       Prove the complete Research Assurance architecture on controlled stable/immutable,
       mutable/time-sensitive, and adversarial/prompt-injection-bearing real-project sources,
@@ -1498,7 +1507,19 @@ sequence:
 research_assurance:
   id: research-assurance
   version: 2.5
-  status: ACTIVE
+  status: DONE
+  completed_on: "2026-09-29"
+  closure:
+    task_id: TASK-228
+    task_revision: 1
+    run_id: RUN-228-001
+    review_id: REVIEW-228-001
+    verdict: PASS
+    evidence_id: RUN-228-001-V001
+    reviewed_sha: "01a83cab8db15f585eb8fca2a473dbf794fde04d"
+    published_sha: "01a83cab8db15f585eb8fca2a473dbf794fde04d"
+    review_decision_sha: "368809c002db65c7cfd85d0c7587875ff13ee9be"
+    next_commitment: NONE
   approved_on: "2026-09-29"
   approved_against_main_sha: "6538f2762620c510e594e7c1842319bc4a783ccf"
   canonical_planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
@@ -1672,7 +1693,7 @@ research_assurance:
         continuity without changing engineering lifecycle authority.
     - id: RA-7
       name: Real Project Proof & Closure
-      status: NEXT
+      status: DONE
       architecture_audit: PASS_WITH_MANDATORY_PROOF_BOUNDARIES
       audit_main_sha: "42247614faefe04342b5c23755c552cc7afc5d16"
       implementation_shape: PROOF_ONLY_NO_PRODUCTION_CODE
@@ -1680,6 +1701,14 @@ research_assurance:
       task_revision: 1
       authored_commit_sha: "7564cac019d8e1426ea3256e33aa807ec601c15f"
       task_blob_sha: "84ae3a8c394800b46543a76f53cb8a8438116fec"
+      completed_by:
+        run_id: RUN-228-001
+        review_id: REVIEW-228-001
+        verdict: PASS
+        evidence_id: RUN-228-001-V001
+        reviewed_sha: "01a83cab8db15f585eb8fca2a473dbf794fde04d"
+        published_sha: "01a83cab8db15f585eb8fca2a473dbf794fde04d"
+        review_decision_sha: "368809c002db65c7cfd85d0c7587875ff13ee9be"
       objective: >-
         Prove the complete architecture on stable/immutable, mutable/time-sensitive, and
         adversarial/prompt-injection-bearing source research, including instruction
@@ -1687,10 +1716,12 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only exact TASK-228 revision 1 for RA-7 — Real Project Proof & Closure after
-    fresh Brain Sync reconciles authored commit 7564cac019d8e1426ea3256e33aa807ec601c15f and task blob 84ae3a8c394800b46543a76f53cb8a8438116fec
-    against current canonical lineage. Normal Runtime admission and one explicit Human-selected
-    Executor are still required before execution.
+    Research Assurance v2.5 is closed through TASK-228 / RUN-228-001 /
+    REVIEW-228-001 PRIMARY PASS and publication of exact reviewed SHA
+    01a83cab8db15f585eb8fca2a473dbf794fde04d. There is no canonical NEXT commitment.
+    On generic continuation, perform fresh Brain Sync, report the no-NEXT state, and require
+    an explicit Human priority before canonicalizing a new planning commitment. Do not infer,
+    author, select, dispatch, or execute a successor TASK from chat memory or historical plans.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1698,14 +1729,11 @@ research_assurance:
     A NEXT milestone with a task_id is not executable until that exact TASK revision is
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
-    RA-1 through RA-6 are reviewed and published. RA-6 closed through RUN-227-002 /
-    REVIEW-227-002 DELTA PASS at exact published SHA
-    dd78b6cb54674e0a564ecbe1215d7918d81f6a1e after F-227-001 remediation, with
-    RUN-227-002-V001 focused verification evidence. RA-7 architecture/threat-model audit is
-    closed PASS_WITH_MANDATORY_PROOF_BOUNDARIES and exact TASK-228 revision 1 is canonically
-    authored at 7564cac019d8e1426ea3256e33aa807ec601c15f with task blob 84ae3a8c394800b46543a76f53cb8a8438116fec. RA-7 execution remains gated on fresh
-    Brain Sync selecting that exact TASK, normal Runtime admission, and one explicit
-    Human-selected Executor.
+    CLOSED. RA-1 through RA-7 are reviewed and published. RA-7 closed through
+    TASK-228 revision 1 / RUN-228-001 / REVIEW-228-001 PRIMARY PASS with
+    RUN-228-001-V001 verification evidence and exact reviewed/published SHA
+    01a83cab8db15f585eb8fca2a473dbf794fde04d. No RA implementation item remains executable,
+    and this closure does not authorize a successor track or TASK.
 
 authority:
   purpose: Human/Brain planning state only

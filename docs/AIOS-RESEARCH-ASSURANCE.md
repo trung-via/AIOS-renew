@@ -657,7 +657,7 @@ Conformance is protocol/authority conformance, not identical semantic conclusion
 
 ### RA-7 — Real Project Proof & Closure
 
-Run controlled real-project proof covering both:
+Run controlled real-project proof covering all three:
 
 - stable/immutable-source research;
 - mutable/time-sensitive research; and
@@ -687,8 +687,8 @@ RA v2.5 does not:
 
 Brain Portability BP-9 downstream adoption is complete based on downstream exact-pin migration and fresh current-pin conformance publication evidence.
 
-RA v2.5 remains the active Human/Brain planning baseline. RA-1 through RA-5 are now reviewed/published. RA-5 closed through TASK-226 revision 1: RUN-226-001 failed at completion gate, REPAIR-226-001 continued the exact failed candidate, RUN-226-002 produced reviewed SHA `73b4e23227dee9a046c8b2b5a1b06751a61c745a`, deterministic focused verification passed 75 tests, and REVIEW-226-001 returned PRIMARY PASS with no findings; that exact reviewed source is current canonical main.
+Research Assurance v2.5 is closed. RA-1 through RA-7 are reviewed and published. Final closure is TASK-228 revision 1 / RUN-228-001 / REVIEW-228-001 PRIMARY PASS. Runtime verification evidence `RUN-228-001-V001` passed the exact required offline proof suite with 191 tests on reviewed SHA `01a83cab8db15f585eb8fca2a473dbf794fde04d`; that exact reviewed candidate was published to canonical `main`.
 
-The RA-6 architecture audit is now closed with the mandatory integration boundaries above. The next planning action is to author and canonically bind one exact RA-6 engineering TASK. RA-6 execution remains forbidden until fresh Brain Sync selects that authored TASK under normal Runtime admission. RA-7 remains gated.
+RA-7 proved the prebound stable/immutable Constitution source, the pre/post mutable roadmap snapshots with claim-scoped invalidation and unaffected-evidence reuse, and prompt-injection-bearing project source content with `instruction_trust=UNTRUSTED` plus source-excerpt exclusion from fresh ARCHITECTURE handoff. The proof added no production subsystem and did not transfer Human, Brain, Runtime, Reviewer or Publisher authority.
 
-A newer explicit Human priority may prospectively supersede this track, but future generic continuation may rely on that change only after it is canonicalized.
+There is no canonical successor commitment after RA v2.5 closure. Future generic continuation must perform fresh Brain Sync and surface the no-NEXT state. A new track, milestone or TASK requires a new explicit Human priority and Human/Brain planning canonicalization before execution can rely on it.
