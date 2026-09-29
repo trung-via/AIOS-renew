@@ -1,7 +1,7 @@
 version: 1
-active_track: research-assurance
-active_track_status: DONE
-planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+active_track: verification-performance-rebaseline-v2
+active_track_status: ACTIVE
+planning_document: docs/AIOS-BRAIN-PORTABILITY.md
 planning_baseline:
   id: bp-0-architecture-baseline
   status: HUMAN_APPROVED
@@ -67,7 +67,8 @@ human_priority_side_track:
     gpt-6-sol/high repository default before BP9 downstream adoption. This task must
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
-next_items: []
+next_items:
+  - verification-performance-rebaseline-v2-precondition-correction
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1502,6 +1503,31 @@ sequence:
       including valid-record reuse, relevant invalidation, bounded refresh with unaffected
       evidence reuse, audited fresh ARCHITECTURE handoff, and no automatic roadmap/TASK
       progression.
+
+
+  - id: verification-performance-rebaseline-v2-precondition-correction
+    status: NEXT
+    task_id: TASK-229
+    task_revision: 1
+    authored_commit_sha: "815a3385c6047c2a56835546af8dae8f28118efc"
+    task_blob_sha: "ba09ff592964ff97aed0c9752e26fdc18800584c"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_basis:
+      - POST_RA_WINDOWS_PARALLEL_PERFORMANCE_AUDIT_2026_09_29
+      - TASK-156
+      - TASK-157
+      - TASK-176
+      - "37437be4e43d07d5c818022cb20d19d9c347da7c"
+    objective: >-
+      Restore the deterministic correctness/conformance preconditions required
+      before any current-suite parallel-worker or Windows Git-invocation
+      rebaseline: align the stale detached Brain Sync scratch assertion with the
+      published isolated .git/aios contract and prevent operational Git ancestry
+      observation failure from being misreported as semantic roadmap lineage
+      conflict. Preserve the existing workers=4 profile and defer worker/Git
+      performance policy changes until focused follow-up evidence exists.
+    return_to: verification-performance-rebaseline-v2
 
 
 research_assurance:
