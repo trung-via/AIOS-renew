@@ -1,0 +1,189 @@
+task_id: TASK-230
+revision: 1
+
+goal: >
+  Add a separate bounded Verification Performance Rebaseline v2 measurement
+  capability for the current Windows self-host class so Human/Brain can compare
+  the currently selected four-worker full-suite profile against explicit workers
+  8, 12 and 16 on one exact Runtime verification subject, with the same collection,
+  exact-subject, worker-isolation and bounded failure-observation guarantees as
+  BP-V4, without altering the historical BP-V4 v1 probe, selecting a winner,
+  changing the canonical workers=4 profile, or changing Git executable policy.
+
+problem: >
+  TASK-229 restored deterministic Brain Sync correctness preconditions and was
+  reviewed/published at db66b9712e1b3ccaa83ae10ea6b835927003d382.
+  Human exploratory measurements on the current machine showed substantial
+  full-suite improvement from 4 to 12 workers and publication-suite saturation
+  near 12, but those shell timings are planning evidence only. Historical BP-V4
+  measurement version 1 deliberately authorizes only workers 2/3/4 and must remain
+  immutable. Current suite identity has also changed materially since RUN-159-008.
+  AIOS therefore needs a new additive measurement family that can produce
+  canonical same-subject evidence for explicit candidates 4/8/12/16 while
+  preserving authority separation and preventing Runtime or tooling from choosing
+  a worker count.
+
+assumptions:
+  - >
+    Canonical main at authoring is db66b9712e1b3ccaa83ae10ea6b835927003d382. TASK-229 / RUN-229-001 /
+    REVIEW-229-001 PRIMARY PASS is published at this exact SHA.
+  - >
+    Historical TASK-157 and AIOS_BP_V4_MEASUREMENT v1 remain authoritative and
+    unchanged for their explicit worker grammar 2/3/4. This TASK introduces an
+    additive rebaseline family rather than widening or reinterpreting v1.
+  - >
+    TASK-176 keeps bounded-parallel-full-suite-v1 with workers=4,
+    distribution=load and max_worker_restart=0 as the current selected canonical
+    ordinary full-suite profile until a later explicit Human/Brain decision.
+  - >
+    Existing parallel_verification primitives and BP-V4 pytest plugin provide
+    canonical collection identity, exact subject identity, worker collection
+    agreement, isolated temporary roots, isolated process-local Git fixture cache
+    roots, distinct worker processes and bounded identity-only failure diagnostics.
+  - >
+    Human exploratory timings for 4/8/12/16/20 and direct Git are noncanonical
+    planning evidence. They justify measuring 4/8/12/16 but do not authorize
+    worker selection, a performance threshold, Git fast-path adoption or profile
+    mutation.
+  - >
+    Runtime owns canonical verification/EVIDENCE, Reviewer owns semantic verdict,
+    Human/Brain own interpretation and later selection, and Publisher owns
+    publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-157.yaml
+    - .ai/tasks/TASK-159.yaml
+    - .ai/tasks/TASK-161.yaml
+    - .ai/tasks/TASK-176.yaml
+    - .ai/verification-profiles.yaml
+    - scripts/bp_v4_parallel_probe.py
+    - scripts/aios_parallel_full_suite.py
+    - src/aios_renew/parallel_verification.py
+    - src/aios_renew/verification_contract.py
+    - tests/bp_v4_probe_plugin.py
+    - tests/test_bp_v4_parallel_probe.py
+    - tests/test_parallel_verification.py
+    - tests/test_verification_contract.py
+  modify:
+    - scripts/bp_v4_parallel_rebaseline.py
+    - src/aios_renew/parallel_verification.py
+    - src/aios_renew/verification_contract.py
+    - tests/test_bp_v4_parallel_rebaseline.py
+    - tests/test_parallel_verification.py
+    - tests/test_verification_contract.py
+
+non_goals:
+  - >
+    Modify scripts/bp_v4_parallel_probe.py, its historical 2/3/4 grammar,
+    AIOS_BP_V4_MEASUREMENT v1 evidence, RUN-159-008, TASK-176 or any historical
+    measurement/review lineage.
+  - >
+    Change .ai/verification-profiles.yaml, canonical workers=4, distribution=load,
+    max_worker_restart=0, performance threshold or ordinary full-suite command.
+  - >
+    Run the real 4/8/12/16 full-suite matrix as part of Executor implementation;
+    real measurement belongs to a later zero-delta Runtime-owned TASK.
+  - >
+    Select, rank, recommend or persist a worker count, infer workers from CPU count,
+    auto-tune, retry, fallback, short-circuit, randomize, dynamically add profiles
+    or create a scheduler/router.
+  - >
+    Add or select a direct Git executable, modify PATH, Git config, host settings,
+    Defender settings, Runtime verification subject lifecycle, Git fixture
+    semantics or Windows temporary-directory policy.
+  - >
+    Change Runtime lifecycle state, RepositoryLock, Unified State, Reviewer,
+    Publisher, transport, Research Assurance, frozen Kernel or roadmap authority.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The rebaseline surface must be a new explicitly named command family. Existing
+      BP-V4 v1 command parsing and accepted worker values 2/3/4 remain behaviorally
+      unchanged.
+    - >
+      The new command accepts exactly one explicit ascending candidate sequence
+      4 8 12 16 and rejects omitted, partial, reordered, duplicate, additional,
+      auto, CPU-derived, malformed or injection-bearing worker input before
+      measurement execution. Worker 4 is the current canonical control; no serial
+      profile is required by this rebaseline family.
+    - >
+      One valid rebaseline invocation performs exactly one canonical collection and
+      each of workers 4, 8, 12 and 16 exactly once, in that order, using
+      distribution=load and max_worker_restart=0. No retry, fallback,
+      result-dependent scheduling, hidden profile or extra benchmark is allowed.
+    - >
+      The output is one bounded versioned machine-readable rebaseline measurement
+      envelope containing exact subject identity, bounded toolchain/platform
+      identity, deterministic collection identity and one result per explicit
+      profile with elapsed time, exit status, correctness/conformance and existing
+      bounded failure identities when nonzero. It contains no selected, winner,
+      recommended, best, score or adaptive-policy field.
+    - >
+      Each parallel profile must fail closed on collection disagreement, missing
+      workers, shared mutable temporary roots, shared process-local Git fixture
+      cache roots, duplicate worker process identity, malformed structured
+      observation or pytest failure, using the same semantic guarantees already
+      proven by BP-V4 primitives.
+    - >
+      Timing remains observational and never changes correctness outcome. A slower
+      conformant profile remains valid evidence; a faster profile grants no
+      selection/adoption authority.
+    - >
+      verification_contract must recognize only the exact new rebaseline family as
+      full-suite measurement coverage requiring full_suite_reason, fail closed on
+      malformed family invocations rather than degrading them to opaque commands,
+      and preserve all existing BP-V4 v1 and ordinary pytest coverage relationships.
+    - >
+      Focused tests must exercise exact command grammar, one-collection/four-profile
+      topology, subject/toolchain/collection binding, conformance failure,
+      bounded-failure compatibility, timing neutrality and minimum-sufficient
+      verification relationships without running the real full suite.
+    - >
+      No file outside scope.modify may change, and implementation must add no
+      worker-selection authority, Git-path policy or canonical profile mutation.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A new additive rebaseline command family exists for exactly workers 4/8/12/16
+      while the historical BP-V4 v1 2/3/4 command family remains unchanged.
+  - id: AC2
+    condition: >
+      One valid rebaseline execution performs one canonical collection followed by
+      workers 4, 8, 12 and 16 exactly once in authored order with load distribution,
+      zero worker restart and no hidden retry/fallback/extra profile.
+  - id: AC3
+    condition: >
+      The rebaseline envelope binds exact subject, toolchain and canonical
+      collection identity and exposes per-profile correctness, conformance, timing
+      and bounded failure identities without any worker-selection/recommendation
+      field or timing-based semantic verdict.
+  - id: AC4
+    condition: >
+      Worker collection mismatch, missing/malformed worker facts, shared mutable
+      worker roots, duplicate worker process identity or pytest failure remains
+      fail-closed evidence rather than being hidden by timing or fallback.
+  - id: AC5
+    condition: >
+      Minimum-sufficient verification recognizes exactly the new command family as
+      justified full-suite measurement coverage and preserves historical BP-V4 v1,
+      selected-wrapper and ordinary pytest command semantics.
+  - id: AC6
+    condition: >
+      The change neither mutates the current workers=4 canonical profile nor adds
+      automatic worker selection, direct-Git/PATH policy, retry/fallback, Runtime,
+      Reviewer, Publisher, roadmap or lifecycle authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_bp_v4_parallel_rebaseline.py tests/test_parallel_verification.py tests/test_verification_contract.py tests/test_bp_v4_parallel_probe.py
+    - git diff --check
