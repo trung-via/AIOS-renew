@@ -9280,6 +9280,16 @@ def _source_repair_bootstrap_intent(bootstrap: dict, target_sha: str) -> dict:
     }
 
 
+@pytest.fixture
+def source_successor_short_root():
+    # Git copies commit-graph files beneath the migration bundle. Keep that
+    # checkout independent of pytest's deeply nested Windows verification root.
+    short_parent = (Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "Temp"
+                    if sys.platform == "win32" else None)
+    with tempfile.TemporaryDirectory(prefix="a220-", dir=short_parent) as directory:
+        yield Path(directory)
+
+
 def _source_successor_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, dict, dict]:
     installed_sha = "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
     prior_target = "44eee353eda376c9db8cd88d97184d3122651bf5"
@@ -9372,9 +9382,9 @@ def _source_successor_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_source_successor_production_activation_and_exact_lineage(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_successor_short_root: Path,
 ) -> None:
-    repo, bootstrap, intent = _source_successor_fixture(tmp_path, monkeypatch)
+    repo, bootstrap, intent = _source_successor_fixture(source_successor_short_root, monkeypatch)
     path = tmp_path / "successor.json"
     path.write_text(json.dumps(intent), encoding="utf-8")
     published = None
@@ -9455,9 +9465,9 @@ def test_source_successor_production_activation_and_exact_lineage(
 
 
 def test_source_successor_stage_replay_and_conflict(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_successor_short_root: Path,
 ) -> None:
-    repo, _, intent = _source_successor_fixture(tmp_path, monkeypatch)
+    repo, _, intent = _source_successor_fixture(source_successor_short_root, monkeypatch)
     intent["successor_delivery_id"] = "successor-" + "x" * 118
     # A future published source is represented by the exact test checkout.
     monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA",
@@ -9491,9 +9501,9 @@ def test_source_successor_stage_replay_and_conflict(
 
 
 def test_source_successor_isolated_installed_provenance_rejects_before_run(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_successor_short_root: Path,
 ) -> None:
-    repo, _, intent = _source_successor_fixture(tmp_path, monkeypatch)
+    repo, _, intent = _source_successor_fixture(source_successor_short_root, monkeypatch)
     assert intent["legacy_generation_sha"] == "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
     assert intent["prior_target_generation_sha"] == "44eee353eda376c9db8cd88d97184d3122651bf5"
     assert intent["task_commit_sha"] != intent["current_control_sha"]
@@ -9561,9 +9571,9 @@ def test_source_successor_isolated_installed_provenance_rejects_before_run(
 
 
 def test_source_successor_published_target_consumes_without_activation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_successor_short_root: Path,
 ) -> None:
-    repo, _, intent = _source_successor_fixture(tmp_path, monkeypatch)
+    repo, _, intent = _source_successor_fixture(source_successor_short_root, monkeypatch)
     published = intent["target_generation_sha"]
     monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA", published)
     path = tmp_path / "successor.json"
