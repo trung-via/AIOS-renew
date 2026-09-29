@@ -1419,11 +1419,13 @@ sequence:
         - FRESH_ARCHITECTURE_HANDOFF_ONLY
         - NO_RUNTIME_REVIEWER_PUBLISHER_OR_ROADMAP_AUTHORITY
         - REAL_SOURCE_PROOF_DEFERRED_TO_RA7
-    task_id: null
+    task_id: TASK-227
+    task_revision: 1
+    authored_commit_sha: "a05006a0b13b73e7b314b4be683601f849386039"
+    task_blob_sha: "81bf580f8c97e36c0ce76dab8266b46d1c478856"
     objective: >-
-      Author one exact RA-6 TASK that integrates explicit-only RESEARCH Flow/Card/context,
-      a dedicated Research Packet and separate ResearchProvider invocation surface, then
-      proves fresh-context and reuse/invalidation continuity without changing lifecycle truth.
+      Execute the exact authored RA-6 integration/conformance TASK only after fresh Brain
+      Sync confirms TASK-227 revision 1 as the unique canonical NEXT.
 
 research_assurance:
   id: research-assurance
@@ -1578,9 +1580,13 @@ research_assurance:
         expansion, fallback or failover.
     - id: RA-6
       name: AIOS Integration & Continuity Conformance
-      status: NEXT_UNAUTHORED
+      status: AUTHORED_UNEXECUTED
       architecture_audit: PASS_WITH_MANDATORY_INTEGRATION_BOUNDARIES
       planning_document_commit: "781d4d633de457ca759689d05f9b32ffe9069996"
+      task_id: TASK-227
+      task_revision: 1
+      authored_commit_sha: "a05006a0b13b73e7b314b4be683601f849386039"
+      task_blob_sha: "81bf580f8c97e36c0ce76dab8266b46d1c478856"
       objective: >-
         Integrate an explicit-only first-class RESEARCH Flow/Card/context with a dedicated
         Research Packet and separate ResearchProvider surface, and prove fresh-context,
@@ -1596,10 +1602,9 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only RA-6 — AIOS Integration & Continuity Conformance. Its architecture
-    audit is closed; the next action is to author and canonically bind one exact RA-6
-    TASK. Do not invoke an Executor before fresh Brain Sync selects that exact authored
-    TASK, and do not widen into RA-7 real-project proof.
+    Continue only exact TASK-227 revision 1 for RA-6 — AIOS Integration & Continuity
+    Conformance after fresh Brain Sync reconciles that authored TASK against current
+    canonical lineage. Do not widen into RA-7 real-project proof.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1609,9 +1614,10 @@ research_assurance:
   ra_implementation_gate: >-
     RA-1 through RA-5 are reviewed/published, with RA-5 published at exact SHA
     73b4e23227dee9a046c8b2b5a1b06751a61c745a after REVIEW-226-001 PASS. RA-6
-    architecture audit is closed and exact TASK authoring is now permitted. RA-6
-    execution remains forbidden until that TASK revision is canonicalized and fresh
-    Brain Sync selects it under normal Runtime admission. RA-7 remains gated.
+    architecture audit is closed and TASK-227 revision 1 is canonically authored at
+    a05006a0b13b73e7b314b4be683601f849386039. RA-6 execution may proceed only after
+    fresh Brain Sync selects that exact TASK and normal Runtime admission applies.
+    RA-7 remains gated.
 
 authority:
   purpose: Human/Brain planning state only
