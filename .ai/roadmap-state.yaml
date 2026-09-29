@@ -1300,10 +1300,13 @@ sequence:
         - RA4_PROCEDURE_DEFERRED
         - NO_PERSISTENCE_OR_LATEST_RESOLVER
         - SOURCE_ASSESSMENTS_REMAIN_BRAIN_CLAIMS
-    task_id: null
+    task_id: TASK-224
+    task_revision: 1
+    authored_commit_sha: "2244be9681a2d8b83db1eefacd762e7018e27117"
+    task_blob_sha: "a363bf22668a8412d9842a70c4f688493a3a6463"
     objective: >-
-      Author the exact RA-3 Research Record and research-audit-profile contract TASK from
-      the audited Research Assurance v2.3 baseline before any Executor invocation.
+      Execute the exact authored RA-3 Research Record and audit-profile contract TASK only
+      after fresh Brain Sync confirms TASK-224 revision 1 as the unique canonical NEXT.
 
 research_assurance:
   id: research-assurance
@@ -1402,8 +1405,11 @@ research_assurance:
         failure semantics. Concrete source-tool invocation is deferred to RA-5.
     - id: RA-3
       name: Research Evidence Record & Audit Profile
-      status: NEXT_UNAUTHORED
+      status: AUTHORED_UNEXECUTED
       architecture_audit: PASS_WITH_MANDATORY_BOUNDARY_REFINEMENTS
+      task_id: TASK-224
+      task_revision: 1
+      authored_commit_sha: "2244be9681a2d8b83db1eefacd762e7018e27117"
       objective: >-
         Define a pure immutable/content-addressed Research Record, exact predecessor refresh
         lineage, claim/source-binding and uncertainty grammar, source assessment grammar,
@@ -1443,10 +1449,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only RA-3 — Research Evidence Record & Audit Profile. Its architecture audit
-    is closed on Research Assurance v2.3; the next action is to author and bind one exact
-    RA-3 TASK. Do not invoke an Executor before exact TASK authoring/Brain Sync and do not
-    implement RA-4 two-pass orchestration.
+    Continue only exact TASK-224 revision 1 for RA-3 — Research Evidence Record & Audit
+    Profile after fresh Brain Sync reconciles that authored TASK against current canonical
+    lineage. Do not implement persistence, RA-4 two-pass orchestration or first-class
+    RESEARCH Flow semantics outside TASK-224 scope.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1456,9 +1462,10 @@ research_assurance:
   ra_implementation_gate: >-
     RA-1 and RA-2 are reviewed/published at exact SHAs
     1eed373ce0b8b53aa12b024d66b339fe16454384 and
-    6c128fafacbdadc174909bcd2ec28afa16cf3247. RA-3 architecture audit is closed on v2.3
-    and exact TASK authoring is now permitted. Execution remains forbidden until that TASK
-    revision is canonicalized and fresh Brain Sync selects it. RA-4 through RA-7 remain gated.
+    6c128fafacbdadc174909bcd2ec28afa16cf3247. RA-3 architecture audit is closed and
+    TASK-224 revision 1 is canonically authored. RA-3 execution may proceed only after
+    fresh Brain Sync selects that exact TASK and normal Runtime admission applies.
+    RA-4 through RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
