@@ -1172,22 +1172,19 @@ sequence:
       approved_against_main_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
       authority: HUMAN_BRAIN_PLANNING
       reason: >-
-        TASK-219 is REVIEW-219-001 PASS and published exactly at
-        6a82c3f6eeddb32b4b5f7ad18d674536a82887b1, and downstream TASK-259 r2 is
-        canonically authored at Python Agent main
-        1468d2b26f2d1f5ed6acb6f152f512a39c4c52ec with no RUN-259-002 terminal
-        artifact. The first Human-local successor attempt failed pre-RUN because the
-        successor transport incorrectly requires legacy-only installed provenance for
-        lineage-bound generation 31fd2482..., which is migration-capable. Human approved
-        Plan A after two Brain audit rounds: one bounded correction TASK followed by one
-        exact activation TASK, with production-shaped proof and no third narrow patch.
+        TASK-220 completed through RUN-220-002, REVIEW-220-001 PASS and exact
+        publication-effective SHA 5d8ac589cbb4f611816d2926cff1989eda4eb74d.
+        TASK-221 is the second and final Plan-A upstream TASK id and must bind only that
+        SHA and pass the production-default three-source proof before any downstream retry.
       predecessor_completed:
-        task_id: TASK-219
+        task_id: TASK-220
         task_revision: 1
-        run_id: RUN-219-002
-        review_id: REVIEW-219-001
-        reviewed_sha: "6a82c3f6eeddb32b4b5f7ad18d674536a82887b1"
-        published_sha: "6a82c3f6eeddb32b4b5f7ad18d674536a82887b1"
+        failed_run_id: RUN-220-001
+        repair_id: REPAIR-220-001
+        run_id: RUN-220-002
+        review_id: REVIEW-220-001
+        reviewed_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
+        published_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
       downstream_blocked_state:
         repository: trung-via/python_complete_agent
         main_sha: "1468d2b26f2d1f5ed6acb6f152f512a39c4c52ec"
@@ -1196,12 +1193,10 @@ sequence:
         failed_predecessor_run: RUN-259-001
         next_run: NONE_YET
       follow_on: >-
-        Review/publish exact TASK-220 first. Then author only the planned TASK-221 exact
-        activation against the published TASK-220 SHA and require its final composed
-        three-source topology proof. Only after TASK-221 review/publication may Brain
-        fresh-sync Python Agent, reconcile the successor target planning metadata,
-        construct a new exact successor delivery identity and re-attempt TASK-259 r2.
-        TASK-207 r9 remains publication-gated after TASK-259 r2.
+        Only after exact TASK-221 review/publication may Brain fresh-sync Python Agent,
+        reconcile successor target planning metadata, construct a new exact successor
+        delivery identity and re-attempt the already-authored TASK-259 r2. TASK-207 r9
+        remains publication-gated after TASK-259 r2.
 previous_track:
   id: control-plane-closure
   status: COMPLETE
