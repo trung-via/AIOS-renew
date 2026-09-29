@@ -5063,7 +5063,7 @@ def _source_repair_bootstrap_record(root: Path, intent: Mapping[str, Any]) -> tu
         raise OperatorError("source-REPAIR bootstrap transport is partial or invalid") from exc
     if (stored != intent or bundle.is_symlink() or target.is_symlink()
             or record_path.is_symlink() or not target.is_dir()
-            or {path.name for path in bundle.iterdir()} != {"source", "intent.json"}
+            or {path.name for path in bundle.iterdir()} != {"s", "intent.json"}
             or _git(target, "rev-parse", "HEAD") != intent["target_generation_sha"]
             or _git(target, "remote", "get-url", "origin") != intent["target_url"]
             or _git(target, "status", "--porcelain")
