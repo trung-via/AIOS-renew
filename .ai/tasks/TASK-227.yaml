@@ -1,0 +1,274 @@
+task_id: TASK-227
+revision: 1
+
+goal: >
+  Integrate RA-6 AIOS Integration & Continuity Conformance as a first-class explicit-only
+  RESEARCH cognitive flow by extending Brain Context/Flow Cards, adding a dedicated bounded
+  Research Packet and separate ResearchProvider invocation surface over the reviewed RA-1
+  through RA-5 contracts, and proving fresh-context, cross-provider, source-substitution,
+  Research Record reuse/invalidation and bounded fresh-ARCHITECTURE handoff behavior without
+  changing engineering lifecycle authority.
+
+problem: >
+  RA-1 through RA-5 now freeze Research Brief/acquisition identities, source provenance,
+  immutable Research Record/reuse semantics, the two-pass nine-lens protocol, provider-neutral
+  research request/return semantics and explicit acquisition-adapter portability, but core
+  AIOS still has no first-class RESEARCH flow or continuity surface. A naive integration could
+  overload AIOS_DECISION_PACKET or the existing BrainProvider stack, auto-select research from
+  lifecycle/roadmap state, hide pending engineering obligations, depend on chat/session state,
+  introduce a provider/tool router or retry loop, resolve a latest Research Record, infer
+  freshness, duplicate the research audit, or let research create TASK/roadmap/lifecycle truth.
+  RA-6 must integrate the already-reviewed contracts while preserving those authority boundaries.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    6cfd0b70e390a42e123bb0fee9e12788ffaefa02. RA-5 closed through TASK-226 revision 1,
+    RUN-226-001 / REPAIR-226-001 / RUN-226-002 and REVIEW-226-001 PRIMARY PASS; the exact
+    reviewed RA-5 source SHA is 73b4e23227dee9a046c8b2b5a1b06751a61c745a.
+  - >
+    docs/AIOS-RESEARCH-ASSURANCE.md at planning commit
+    781d4d633de457ca759689d05f9b32ffe9069996 and .ai/roadmap-state.yaml at
+    6cfd0b70e390a42e123bb0fee9e12788ffaefa02 are the current Human/Brain planning baseline.
+    RA-6 is the unique NEXT and its architecture audit is
+    PASS_WITH_MANDATORY_INTEGRATION_BOUNDARIES.
+  - >
+    RA-1 through RA-5 semantic contracts are reviewed foundations for this TASK. RA-6 may
+    compose their public exported APIs but must not redesign their identities, audit semantics,
+    source-acquisition truth boundary, provider request/return contract or adapter contract.
+  - >
+    RESEARCH is Brain-owned cognitive support only. Runtime, Unified State, engineering
+    Reviewer/Publisher, canonical verification and roadmap advancement retain their existing
+    authorities and are not research workflow state.
+  - >
+    RA-7 owns controlled proof against actual stable, mutable/time-sensitive and
+    prompt-injection-bearing external/project sources. RA-6 conformance may use only
+    caller-supplied/injected fake provider and acquisition transports.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RESEARCH-ASSURANCE.md
+    - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+    - .ai/roadmap-state.yaml
+    - .ai/flow-cards.yaml
+    - .ai/brain-audit-profiles.yaml
+    - .ai/brain-return-contracts.yaml
+    - .ai/research-audit-profiles.yaml
+    - .ai/tasks/TASK-224.yaml
+    - .ai/tasks/TASK-225.yaml
+    - .ai/tasks/TASK-226.yaml
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/brain_return_contract.py
+    - src/aios_renew/brain_provider_protocol.py
+    - src/aios_renew/brain_provider.py
+    - src/aios_renew/research_contract.py
+    - src/aios_renew/source_acquisition.py
+    - src/aios_renew/research_record.py
+    - src/aios_renew/research_protocol.py
+    - src/aios_renew/research_provider_protocol.py
+    - src/aios_renew/acquisition_adapter.py
+    - tests/test_brain_context.py
+    - tests/test_decision_packet.py
+    - tests/test_brain_provider_protocol.py
+    - tests/test_brain_return_contract.py
+    - tests/test_research_record.py
+    - tests/test_research_protocol.py
+    - tests/test_research_provider_protocol.py
+    - tests/test_acquisition_adapter.py
+  modify:
+    - .ai/flow-cards.yaml
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/research_packet.py
+    - src/aios_renew/research_provider.py
+    - tests/test_brain_context.py
+    - tests/test_research_packet.py
+    - tests/test_research_provider.py
+
+non_goals:
+  - >
+    Modify AIOS_DECISION_PACKET semantics, brain_return_contract.py,
+    brain_provider_protocol.py, brain_provider.py, the engineering Brain audit profile,
+    RA-1/RA-2/RA-3/RA-4/RA-5 production modules, Unified State, Runtime, Reviewer,
+    Publisher, authoring ingress, executor profiles or GitHub workflow behavior.
+  - >
+    Auto-select RESEARCH from Unified State, roadmap status, source family, provider/model,
+    tool capability or user text without the explicit RESEARCH flow selector; make RESEARCH
+    an engineering lifecycle obligation or let it satisfy/erase a pending canonical obligation.
+  - >
+    Create a Research Agent, Planner, Reviewer, Runtime, lifecycle state machine, generic
+    provider/tool/source router, provider scorer/voter, retry/fallback/failover policy,
+    recursive research loop or automatic query expansion/pagination.
+  - >
+    Implement real OpenAI/Gemini/Claude calls, web/search/GitHub/connector clients,
+    connector authorization, credential storage or live source proof.
+  - >
+    Resolve a latest Research Record, persist conversational/research memory, mutate record
+    validity, discover source/repository/clock freshness, or infer semantic invalidation.
+  - >
+    Add a second Brain Semantic Audit over RESEARCH or require different research providers
+    to produce identical semantic conclusions.
+  - >
+    Automatically create/select a TASK, mutate roadmap state, create RUN/RESULT/FAILURE/
+    REVIEW/REMEDIATION/REPAIR artifacts, invoke canonical verification or publish source.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The only production mutation surface is scope.modify. If the required integration
+      needs a change to Decision Packet, BrainProvider/return-contract semantics, Unified
+      State, Runtime, Reviewer, Publisher, RA-1 through RA-5 contracts, ingress or workflows,
+      fail closed back to Brain instead of widening this TASK.
+    - >
+      Extend the closed Brain Context/Flow Card registry with exactly one new flow token,
+      RESEARCH. RESEARCH is BRAIN-owned, selectable only by an explicit flow_selector, and
+      is never derived from Unified State or the roadmap. The six existing flows retain
+      their current selection, authority, decision-family, handoff and return semantics.
+    - >
+      The RESEARCH Flow Card uses entry condition EXPLICIT_SELECTOR, authority_owner BRAIN,
+      decision_family_ref HUMAN_BRAIN_RESEARCH_ASSURANCE, handoff_target RESEARCH_PROTOCOL
+      and expected_return_shape RESEARCH_PACKET. It is repository-owned, bounded and
+      non-executable and does not create a Runtime action, mutation target, engineering
+      artifact or provider selection.
+    - >
+      Explicit RESEARCH selection while a canonical engineering obligation is pending must
+      preserve pending_canonical_obligation, pending_canonical_authority_owner,
+      canonical_next_action and unified_state_next_action exactly and require fresh context
+      before any later continuation. RESEARCH never satisfies, replaces or reprioritizes that
+      obligation.
+    - >
+      compile_decision_packet and the existing Brain return-contract/provider stacks remain
+      closed to RESEARCH. A RESEARCH FlowResolution must not become a valid
+      AIOS_DECISION_PACKET or AIOS_BRAIN_REQUEST merely because the Flow Resolver recognizes
+      the explicit selector.
+    - >
+      Add one dedicated content-addressed AIOS_RESEARCH_PACKET v1 family constructed only
+      from a fresh BrainWorkContext whose resolved flow is explicit RESEARCH plus caller-
+      supplied exact RA-1/RA-3 semantic material. It binds the Work Context fingerprint,
+      Research Brief, research-high-value-v1 audit profile, optional exact existing Research
+      Record, caller-supplied current invalidation basis and deterministic RA-3 reuse
+      projection, together with any pending canonical engineering obligation.
+    - >
+      Research Packet construction revalidates the exact Brief/profile/record through public
+      RA APIs. If an existing record requires an immediate-predecessor validation witness,
+      that witness is caller supplied only for validation and is not persisted, serialized
+      into the packet, or allowed to alter semantic identity beyond the validated record's
+      existing content-addressed fingerprint.
+    - >
+      With no existing Research Record, the packet represents fresh research context and has
+      no reuse projection. With an existing same-Brief/same-profile record, packet
+      construction derives reuse status only through project_research_reuse using exact
+      caller-supplied current basis. It performs no I/O, latest-record lookup, clock check,
+      source fetch or semantic freshness judgment.
+    - >
+      Research Packet semantic identity excludes repository root/remote, chat history,
+      credentials, machine-local paths, provider/model/session/invocation identity, native
+      provider/tool responses and acquisition transport metadata not already committed by
+      the reviewed RA contracts. Same canonical/current supplied semantic inputs reconstruct
+      the same packet identity; changed Work Context, Brief/profile, validated record or
+      declared current basis changes identity or fails closed as appropriate.
+    - >
+      Expose a bounded content-addressed AIOS_RESEARCH_ARCHITECTURE_HANDOFF v1 projection
+      only from an exact validated RESEARCH_CANDIDATE Research Record. It contains enough
+      record/Brief/profile/closure/project-assessment/material-claim identity and bounded
+      semantic text to be supplied as cognitive input to a separately composed fresh
+      ARCHITECTURE flow, contains no source excerpts/credentials/provider metadata/lifecycle
+      command, and never creates that ARCHITECTURE decision or a TASK itself.
+    - >
+      Add a separate transient ResearchProvider invocation surface over the existing
+      AIOS_RESEARCH_PROVIDER_REQUEST/RETURN v1 protocol. One invocation accepts one explicitly
+      supplied provider and one exact normalized research-provider request, performs exactly
+      one native provider call, validates operational attribution separately, and derives the
+      semantic return only through the reviewed RA-5 provider protocol.
+    - >
+      ResearchProvider operational attribution may contain only bounded provider/model and
+      optional session/invocation identifiers outside semantic identity. Attribution mismatch,
+      malformed/native over-bound response, transport failure or RA-5 protocol rejection
+      fails that invocation only and creates no retry, fallback, provider switch, semantic
+      closure or engineering lifecycle artifact.
+    - >
+      The invocation surface does not orchestrate the two research stages automatically.
+      EVIDENCE_CONSTRUCT and AUDIT_RECONCILE remain explicit caller operations. Stage 2 may
+      use a different explicitly supplied provider; exact Stage-1 request/return lineage and
+      any required predecessor validation witness remain caller inputs to RA-5 deterministic
+      revalidation, so provider substitution cannot substitute the research subject.
+    - >
+      Conformance tests must demonstrate that provider/model/session substitution never
+      changes an otherwise identical normalized semantic request identity, while different
+      valid provider semantic conclusions may legitimately yield different deterministic
+      return identities. No equality-of-answer requirement is introduced.
+    - >
+      Conformance tests must compose the new integration surfaces with existing RA-2/RA-5
+      acquisition material and show that source/provenance substitution is preserved by the
+      reviewed content-addressed lineage or rejected, never hidden by provider/tool
+      attribution. They must also prove unchanged declared basis yields reusable claims and
+      a changed declared basis yields only the RA-3 refresh projection for affected claims.
+    - >
+      Existing RESEARCH source content remains untrusted data under RA-2/RA-4 semantics.
+      The new packet/provider/handoff surfaces do not interpret source-embedded instructions
+      as authority and do not create a second research-audit procedure.
+    - >
+      All new normalized artifacts and native wrapper inputs use strict bounded UTF-8 JSON-
+      compatible data, deterministic canonical fingerprints and closed fields, reject nested
+      protocol-envelope substitution and operational/private metadata, and remain transient
+      cognitive support rather than engineering-state truth.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Brain Context and the repository Flow Card registry recognize RESEARCH as exactly one
+      new explicit-only BRAIN-owned flow, preserve all six existing flow behaviors, never
+      auto-select RESEARCH, and preserve any pending canonical engineering obligation during
+      an explicit RESEARCH side flow.
+  - id: AC2
+    condition: >
+      AIOS_RESEARCH_PACKET v1 is a dedicated bounded content-addressed family outside
+      AIOS_DECISION_PACKET that binds fresh Work Context plus exact Brief/profile and optional
+      Research Record/current-basis reuse material, deterministically exposes RA-3 reuse
+      projection when applicable, excludes private/operational state, and changes/fails
+      closed under stale or substituted semantic basis.
+  - id: AC3
+    condition: >
+      Existing Decision Packet, Brain return-contract and BrainProvider semantic surfaces
+      remain closed to RESEARCH, while the new Research Packet can compose only through
+      public reviewed RA-1 through RA-5 contracts without creating lifecycle or mutation
+      authority.
+  - id: AC4
+    condition: >
+      The separate ResearchProvider invocation surface performs exactly one call to one
+      explicitly supplied provider per request, keeps operational attribution outside
+      semantic identity, validates provider output through RA-5, exposes bounded typed
+      invocation failure, and contains no retry/fallback/failover or automatic Stage-2
+      progression.
+  - id: AC5
+    condition: >
+      Fresh-context and cross-provider conformance proves the same canonical/current research
+      subject can be reconstructed without chat/session memory, a different explicitly
+      supplied provider cannot substitute request lineage, and provider substitution is not
+      required to produce identical semantic conclusions.
+  - id: AC6
+    condition: >
+      Source/provenance and invalidation conformance proves source substitution remains
+      content/provenance-bound, unchanged declared basis reuses unaffected Research Record
+      claims, changed declared basis yields the exact RA-3 refresh-required subset, and no
+      latest-record/source/clock discovery or semantic freshness inference is introduced.
+  - id: AC7
+    condition: >
+      AIOS_RESEARCH_ARCHITECTURE_HANDOFF v1 is available only from an exact
+      RESEARCH_CANDIDATE record, is bounded/content-addressed and free of source excerpts,
+      private/provider/lifecycle state, and can serve only as cognitive input to a separately
+      fresh ARCHITECTURE reasoning step without creating/selecting a TASK.
+  - id: AC8
+    condition: >
+      RA-6 introduces no second Planner/Reviewer/Runtime/Publisher, no engineering lifecycle
+      state, no automatic roadmap/TASK progression, no live source/provider integration, and
+      leaves RA-1 through RA-5 identities and the frozen Kernel execution pipeline unchanged.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_brain_context.py tests/test_research_packet.py tests/test_research_provider.py tests/test_research_provider_protocol.py tests/test_acquisition_adapter.py tests/test_research_protocol.py tests/test_research_record.py tests/test_decision_packet.py tests/test_brain_provider_protocol.py tests/test_brain_return_contract.py
