@@ -1312,7 +1312,7 @@ research_assurance:
   approved_on: "2026-09-29"
   approved_against_main_sha: "6538f2762620c510e594e7c1842319bc4a783ccf"
   canonical_planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
-  planning_document_commit: "c46f19eb4492c07af27a5e3aa017d039c66faf76"
+  planning_document_commit: "dfaab9c43b7e5e1796db9f7c0223348c58be3030"
   authority: HUMAN_BRAIN_PLANNING
   activation_basis:
     bp9_status: DONE
