@@ -1483,6 +1483,10 @@ sequence:
         live_source_or_provider_call_in_verification: false
         deterministic_replay_required: true
         semantic_verdict_owner: REVIEWER
+    task_id: TASK-228
+    task_revision: 1
+    authored_commit_sha: "7564cac019d8e1426ea3256e33aa807ec601c15f"
+    task_blob_sha: "84ae3a8c394800b46543a76f53cb8a8438116fec"
     objective: >-
       Prove the complete Research Assurance architecture on controlled stable/immutable,
       mutable/time-sensitive, and adversarial/prompt-injection-bearing real-project sources,
@@ -1672,6 +1676,10 @@ research_assurance:
       architecture_audit: PASS_WITH_MANDATORY_PROOF_BOUNDARIES
       audit_main_sha: "42247614faefe04342b5c23755c552cc7afc5d16"
       implementation_shape: PROOF_ONLY_NO_PRODUCTION_CODE
+      task_id: TASK-228
+      task_revision: 1
+      authored_commit_sha: "7564cac019d8e1426ea3256e33aa807ec601c15f"
+      task_blob_sha: "84ae3a8c394800b46543a76f53cb8a8438116fec"
       objective: >-
         Prove the complete architecture on stable/immutable, mutable/time-sensitive, and
         adversarial/prompt-injection-bearing source research, including instruction
@@ -1679,11 +1687,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue RA-7 — Real Project Proof & Closure as the unique Human/Brain planning NEXT.
-    Its architecture/threat-model audit is closed PASS_WITH_MANDATORY_PROOF_BOUNDARIES.
-    Author and canonically bind one exact proof-only RA-7 engineering TASK using the prebound
-    real-project proof corpus. Do not execute RA-7 before that exact TASK is authored and
-    fresh Brain Sync selects it under normal Runtime admission.
+    Continue only exact TASK-228 revision 1 for RA-7 — Real Project Proof & Closure after
+    fresh Brain Sync reconciles authored commit 7564cac019d8e1426ea3256e33aa807ec601c15f and task blob 84ae3a8c394800b46543a76f53cb8a8438116fec
+    against current canonical lineage. Normal Runtime admission and one explicit Human-selected
+    Executor are still required before execution.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1694,12 +1701,11 @@ research_assurance:
     RA-1 through RA-6 are reviewed and published. RA-6 closed through RUN-227-002 /
     REVIEW-227-002 DELTA PASS at exact published SHA
     dd78b6cb54674e0a564ecbe1215d7918d81f6a1e after F-227-001 remediation, with
-    RUN-227-002-V001 focused verification evidence. RA-7 is the unique planning NEXT and its
-    architecture/threat-model audit is closed against main
-    42247614faefe04342b5c23755c552cc7afc5d16 with mandatory proof boundaries and exact
-    prebound project-source blobs. RA-7 remains non-executable until one exact proof-only
-    engineering TASK is canonically authored and bound, fresh Brain Sync selects that TASK,
-    and normal Runtime admission applies.
+    RUN-227-002-V001 focused verification evidence. RA-7 architecture/threat-model audit is
+    closed PASS_WITH_MANDATORY_PROOF_BOUNDARIES and exact TASK-228 revision 1 is canonically
+    authored at 7564cac019d8e1426ea3256e33aa807ec601c15f with task blob 84ae3a8c394800b46543a76f53cb8a8438116fec. RA-7 execution remains gated on fresh
+    Brain Sync selecting that exact TASK, normal Runtime admission, and one explicit
+    Human-selected Executor.
 
 authority:
   purpose: Human/Brain planning state only
