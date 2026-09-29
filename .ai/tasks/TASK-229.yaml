@@ -1,0 +1,165 @@
+task_id: TASK-229
+revision: 1
+
+goal: >
+  Restore deterministic Brain Sync verification preconditions exposed by the
+  post-Research-Assurance Windows/parallel performance audit: align the detached
+  verification-subject scratch assertions with the already-published isolated
+  .git/aios scratch-root contract and preserve a strict distinction between a
+  genuine roadmap ancestry contradiction and an operational inability to execute
+  the Git ancestry observation, without changing the selected parallel profile,
+  Git executable policy, Runtime lifecycle authority, or roadmap semantics.
+
+problem: >
+  Current main creates an empty isolated .git/aios directory when
+  materialize_verification_subject yields a verification subject, but
+  tests/test_brain_sync.py still contains an older assertion that the directory
+  does not exist. Current observe_brain_sync also catches OperatorError from the
+  Git merge-base ancestry observation and converts it to is_ancestor=False, which
+  can report ROADMAP_LINEAGE_CONFLICT even when Git could not complete the
+  observation. Exploratory full-suite runs under parallel load exposed both the
+  stale assertion and a transient ROADMAP_LINEAGE_CONFLICT, while a focused serial
+  observation on the same repository returned SELECTED with no blocker. Before
+  any worker-count or Windows Git invocation rebaseline, the correctness gate
+  must distinguish contract drift from true lineage conflict and fail closed
+  without inventing semantic roadmap facts.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is cbcdd4f15422806e35bfa7c9154b5848bbf86eea; Research Assurance v2.5 is
+    canonically DONE with no roadmap NEXT item.
+  - >
+    TASK-156 verification-subject isolation remains authoritative: a materialized
+    verification subject has its own mutable Git directory and an isolated
+    repository-local .git/aios scratch root before verification.
+  - >
+    Canonical commit 37437be4e43d07d5c818022cb20d19d9c347da7c already aligned
+    equivalent operator tests with the current scratch-root contract by requiring
+    the subject .git/aios directory to exist, be distinct from the control
+    repository state root, and initially be empty.
+  - >
+    Current selected canonical full-suite profile remains
+    bounded-parallel-full-suite-v1 with workers=4, distribution=load and
+    max-worker-restart=0. This TASK does not reinterpret RUN-159-008 or select a
+    replacement profile.
+  - >
+    The Human-provided timing experiments and direct-Git measurements are
+    exploratory planning evidence only, not Runtime verification truth. A later
+    bounded rebaseline must establish canonical current-subject performance and
+    conformance separately.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-156.yaml
+    - .ai/tasks/TASK-157.yaml
+    - .ai/tasks/TASK-176.yaml
+    - .ai/verification-profiles.yaml
+    - src/aios_renew/verification.py
+    - src/aios_renew/operator.py
+    - src/aios_renew/brain_sync.py
+    - tests/test_verification.py
+    - tests/test_operator.py
+    - tests/test_brain_sync.py
+  modify:
+    - src/aios_renew/brain_sync.py
+    - tests/test_brain_sync.py
+
+non_goals:
+  - >
+    Change the canonical selected worker count, xdist distribution mode, worker
+    candidate set, performance baseline, attention threshold or verification
+    profile policy.
+  - >
+    Add, discover, hard-code or prefer a Windows Git executable, prepend Git
+    installation directories to PATH, mutate host/system/user Git configuration
+    or introduce a Git process pool/broker.
+  - >
+    Change materialize_verification_subject production behavior, Runtime
+    verification execution, Unified State, Reviewer, Publisher, lifecycle,
+    transport, repository locking or frozen Kernel semantics.
+  - >
+    Modify tests/test_hot_swap_conformance.py or weaken its reviewed BP-7 pre-AIOS
+    operational-failure proof before the PowerShell/parallel interaction has
+    separate cause evidence.
+  - >
+    Treat timing improvement, parallel success, exploratory shell output or Human
+    benchmark observations as canonical verification evidence or as automatic
+    authorization to select workers=12.
+  - >
+    Add retry, fallback, auto-tuning, CPU-count heuristics, scheduler selection,
+    performance routing, skip, xfail, deselection or timeout inflation.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Align the detached Brain Sync verification-subject regression with the
+      published scratch-root contract: the subject .git/aios root exists before
+      observe_brain_sync, is distinct from the control repository .git/aios root,
+      is initially empty, and remains free of Brain Sync mutation after the
+      observation.
+    - >
+      Preserve the existing detached-subject guarantees for exact HEAD, detached
+      branch state, clean worktree, refs, remote refs, Git config, index, selected
+      TASK, lifecycle state, next action and authority.
+    - >
+      A real Git ancestry result proving that a roadmap DONE published_sha is not
+      an ancestor of canonical main must continue to produce
+      ROADMAP_LINEAGE_CONFLICT with the exact conflicting item/SHA facts.
+    - >
+      An OperatorError while attempting the Git ancestry observation must not be
+      converted into ROADMAP_LINEAGE_CONFLICT or another claim that ancestry is
+      false. It must fail closed through the existing BrainSyncError exception
+      family with bounded diagnostic context, without creating a new lifecycle,
+      roadmap or semantic status.
+    - >
+      Add focused regression coverage that independently proves the true
+      non-ancestor path and the operational-observation-error path cannot be
+      conflated. Tests may monkeypatch the narrow ancestry observation boundary
+      but must not broadly intercept subprocess/Git behavior.
+    - >
+      Preserve observe_brain_sync as mutation-free: no RUN, RESULT, FAILURE,
+      REVIEW, remediation/repair, Git ref, roadmap, Runtime state or working-tree
+      mutation may be created by these corrections.
+    - >
+      No file outside scope.modify may change. In particular verification.py,
+      operator.py, verification profile policy, workflow/carrier files and
+      Research Assurance artifacts remain byte-identical.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The detached exact-candidate Brain Sync regression reflects the published
+      isolated scratch-root contract and proves that observe_brain_sync does not
+      mutate the initially empty subject-local Runtime scratch state.
+  - id: AC2
+    condition: >
+      A genuine non-ancestor result still yields ROADMAP_LINEAGE_CONFLICT with the
+      relevant roadmap item, published SHA and canonical main SHA.
+  - id: AC3
+    condition: >
+      An operational failure of the ancestry observation fails closed as
+      BrainSyncError and cannot be represented as ROADMAP_LINEAGE_CONFLICT,
+      preserving the distinction between inability to observe and observed
+      semantic contradiction.
+  - id: AC4
+    condition: >
+      Existing successful live/detached Brain Sync selection, exact-subject
+      identity, no-mutation and detached-remote ambiguity behavior remain
+      compatible.
+  - id: AC5
+    condition: >
+      The correction changes only src/aios_renew/brain_sync.py and
+      tests/test_brain_sync.py and introduces no worker/Git-performance policy,
+      retry/fallback, Runtime authority or Research Assurance change.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_brain_sync.py tests/test_verification.py
+    - git diff --check
