@@ -1,6 +1,6 @@
-# AIOS Research Assurance Architecture and Roadmap v2.2
+# AIOS Research Assurance Architecture and Roadmap v2.3
 
-Status: HUMAN-APPROVED PLANNING BASELINE — RA-0 / RA-2 ARCHITECTURE AUDITED  
+Status: HUMAN-APPROVED PLANNING BASELINE — RA-0 / RA-2 / RA-3 ARCHITECTURE AUDITED  
 Approved by Human: 2026-09-29  
 RA-0 architecture audit closed: 2026-09-29  
 Scope: reproducible, source-grounded, adversarially audited research support under existing Brain authority
@@ -181,35 +181,62 @@ Acquisition operational failure is not a research conclusion. Transport/network/
 
 ## 7. Research Evidence Record
 
-A durable Research Record exists so a fresh Brain context does not need chat memory or repeated research to recover still-valid knowledge.
+A durable Research Record exists so a fresh Brain context can reuse still-valid audited research without depending on chat memory or repeating acquisition ceremonially.
 
-The record must remain bounded and content-addressable and should represent:
+RA-3 freezes the record grammar and reuse/invalidation semantics only. It does not create a storage service, knowledge database, latest-record resolver, repository writer, background refresher, or research lifecycle.
 
-- exact Research Brief identity;
-- project/source snapshot basis;
-- source registry;
-- material claims;
-- exact claim-to-source bindings;
-- source authority and independence classification;
-- uncertainty/assumption state;
-- contradiction/counter-evidence findings;
-- project applicability and novelty assessment;
-- final closure outcome;
-- freshness and invalidation rules;
-- record fingerprint/content identity.
+The canonical Research Record is immutable and content-addressed. It must preserve at least:
 
-Permitted lifecycle-like validity labels are planning-evidence validity only, for example:
+- the exact normalized Research Brief and its fingerprint;
+- the exact research-audit-profile reference;
+- a bounded source registry derived from exact RA-2 Source Observation identities;
+- material Brain claims with per-claim fingerprints;
+- exact claim-to-source bindings and support/contradiction/limitation/context roles;
+- explicit source-authority, independence and freshness assessments as Brain semantic claims rather than deterministic truth;
+- explicit claim uncertainty and assumptions;
+- project applicability/novelty assessment;
+- final research closure outcome supplied by the later RA-4 protocol;
+- claim-scoped invalidation basis;
+- exact predecessor refresh lineage when the record is a refresh;
+- record-level access scope and record fingerprint.
 
-```text
-VALID
-REFRESH_REQUIRED
-```
+### 7.1 Source retention boundary
 
-They are not Runtime lifecycle states.
+A Research Record must not silently archive full RA-2 Source Observation bodies.
 
-Relevant source or project changes may invalidate only affected claims. Unaffected claims and source observations should be reused until their own basis changes.
+The source registry preserves bounded provenance, Source Observation fingerprint, request fingerprint/source family, representation kind, access scope, content digest and the Brain's bounded source assessments.
 
-Research Record identity must be immutable/content-addressed. A refresh creates a new record bound to the exact predecessor record and exact invalidated claim/source basis; it does not rewrite historical research. There is no automatic "latest research" resolver with semantic authority. A fresh Brain context receives an exact Research Record reference or explicitly starts a fresh Research Brief.
+For PUBLIC source material, a record may retain only a bounded exact evidence excerpt needed for later reasoning. For AUTHORIZED_PRIVATE source material, durable retained excerpt text is null; the record keeps only bounded provenance/identity/digest plus derived Brain claims. If any registered source is AUTHORIZED_PRIVATE, the whole Research Record access scope becomes AUTHORIZED_PRIVATE.
+
+This access scope is a handling constraint, not an authorization grant. RA-3 performs no persistence. Any future storage/transport layer must separately honor the record's scope.
+
+### 7.2 Claim identity and source binding
+
+Each material claim has its own content-addressed fingerprint. Claim bindings reference exact Source Observation fingerprints and use a closed role grammar such as SUPPORT, CONTRADICT, LIMIT, or CONTEXT.
+
+Source-authority, independence and freshness labels are stored as bounded Brain assessments with rationale. Deterministic code validates their closed grammar and source references only; it does not infer that a source is truly authoritative, independent, current, correct, or decisive.
+
+Claim uncertainty remains explicit. Structural conformance must not convert uncertainty labels into confidence scores, rankings, votes, Reviewer findings, Runtime evidence, or lifecycle state.
+
+### 7.3 Immutable refresh lineage
+
+A refresh never mutates or overwrites its predecessor.
+
+A refreshed record binds one exact predecessor record fingerprint plus exact predecessor-claim sets classified as retained or invalidated. Retained claims must remain byte/content identical through the same claim fingerprint. Changed or replacement claims receive new identities.
+
+Refresh is allowed only within the same exact Research Brief and exact research-audit-profile identity. A changed Brief or changed audit profile starts a fresh record lineage rather than pretending to be an in-place refresh.
+
+There is no automatic latest research resolver. A fresh Brain receives an exact Research Record reference or starts a fresh Research Brief.
+
+### 7.4 Reuse and validity projection
+
+VALID and REFRESH_REQUIRED are not mutable fields inside an immutable Research Record.
+
+RA-3 instead permits a pure transient reuse projection from one exact Research Record plus caller-supplied current invalidation basis to VALID or REFRESH_REQUIRED plus exact affected claim fingerprints.
+
+The projection performs no repository, network, connector or clock discovery. Missing current basis fails closed for the affected claim. A movement of repository main does not invalidate unrelated claims unless those claims explicitly bind a relevant component identity.
+
+The projection is planning support only. It is not Runtime state, a REVIEW verdict, a publication decision, or semantic proof that an unchanged claim remains substantively true.
 
 ## 8. Two-pass Research Assurance protocol
 
@@ -251,36 +278,25 @@ INSUFFICIENT_EVIDENCE
 
 These outcomes exist only after valid acquisition and the required audit procedure. Acquisition/transport/protocol failures remain separate operational outcomes and do not imply either semantic result.
 
-## 9. Research Audit Profile v2.1 lenses
+## 9. Research Audit Profile v1
 
-The planned research-specific lenses are:
+RA-3 freezes one dedicated repository-owned research audit profile, separate from the existing BP-4A Brain Semantic Audit profile.
 
-1. **SOURCE_AUTHORITY_PROVENANCE**  
-   Verify source class, provenance and whether a source actually has authority for the claim being made.
+The research profile is content-addressed procedural policy for research semantics only. It is not added to the existing Flow Resolver, does not modify .ai/brain-audit-profiles.yaml, and does not imply that first-class RESEARCH Flow integration already exists.
 
-2. **SOURCE_FRESHNESS_VERSION**  
-   Verify version, date, commit/tag/API generation and current-as-of applicability.
+The fixed ordered lenses are:
 
-3. **CLAIM_EVIDENCE_BINDING**  
-   Require each material claim to bind to appropriate evidence rather than unsupported synthesis.
+1. SOURCE_AUTHORITY_PROVENANCE — verify source class, provenance and whether a source actually has authority for the claim being made.
+2. SOURCE_FRESHNESS_VERSION — verify version, date, commit/tag/API generation and current-as-of applicability.
+3. CLAIM_EVIDENCE_BINDING — require each material claim to bind to appropriate evidence rather than unsupported synthesis.
+4. COVERAGE_INDEPENDENCE — detect duplicated reporting or sources derived from the same underlying source.
+5. CONTRADICTION_COUNTEREVIDENCE — test for disconfirming, limiting, exception, failure-mode or materially conflicting evidence.
+6. PROJECT_APPLICABILITY_NOVELTY — test project applicability and whether equivalent capability already exists.
+7. ASSUMPTION_UNCERTAINTY — keep observations, assumptions, inference, unknowns and uncertainty boundaries explicit.
+8. UNTRUSTED_CONTENT_INSTRUCTION_ISOLATION — verify retrieved content remains data-only regardless of source authority.
+9. AUTHORITY_HANDOFF_BOUNDARY — ensure research remains evidence for Brain reasoning rather than roadmap, TASK, Runtime, Executor, Reviewer, Publisher or policy authority.
 
-4. **COVERAGE_INDEPENDENCE**  
-   Detect duplicated reporting or multiple sources that derive from the same underlying source and therefore do not provide independent corroboration.
-
-5. **CONTRADICTION_COUNTEREVIDENCE**  
-   Actively test the construct for disconfirming, limiting, exception, failure-mode, or materially conflicting evidence.
-
-6. **PROJECT_APPLICABILITY_NOVELTY**  
-   Determine whether an external capability meaningfully applies to AIOS, whether an equivalent capability already exists, and whether the proper disposition is reuse, adapt, reject, or unresolved.
-
-7. **ASSUMPTION_UNCERTAINTY**  
-   Keep observations, assumptions, inference, unknowns and uncertainty boundaries explicit.
-
-8. **UNTRUSTED_CONTENT_INSTRUCTION_ISOLATION**  
-   Verify that all retrieved content remains data-only regardless of source authority, and that embedded prompt/instruction/tool/control text cannot alter Brain, provider, adapter, roadmap, TASK, Runtime, Reviewer, Publisher, or policy authority.
-
-9. **AUTHORITY_HANDOFF_BOUNDARY**  
-   Ensure research supplies evidence to Brain reasoning without becoming roadmap, TASK, Runtime, Executor, Reviewer, Publisher, or policy authority.
+RA-3 freezes profile identity, lens order, lens text bounds and deterministic profile digest only. The Pass-1 / counter-evidence / Pass-2 procedure, audit-output grammar and final closure semantics remain RA-4. This avoids prematurely encoding the wrong protocol into the profile registry.
 
 ## 10. Provider and tool portability
 
@@ -313,24 +329,15 @@ RESEARCH should be an **explicit Brain-owned flow only**; it must not be auto-se
 
 ## 12. Reuse and invalidation
 
-The default rule is:
+The default rule remains: reuse exact unchanged claims until relevant declared basis requires refresh.
 
-```text
-reuse valid research until relevant state invalidates it
-```
+Claim-scoped invalidation basis uses bounded portable identity records compatible with the RA-1 basis model: a kind, locator and exact expected identity. Typical bases may represent a source observation/content identity, a relevant project component/blob identity, a specification/version identity, or another explicitly named dependency.
 
-Possible invalidators include:
+Deterministic support may compare caller-supplied current basis against those exact declared identities and identify the affected claim fingerprints. It must fail closed when required current basis is missing. It must not search the repository, resolve latest, fetch a URL, inspect a connector, infer source freshness, or decide that a contradiction is semantically decisive.
 
-- source version/content change;
-- relevant project component/content fingerprint change;
-- current-as-of boundary expiry;
-- claim/source provenance break;
-- Research Brief semantic change;
-- newly discovered material contradiction.
+Possible semantic reasons for Brain to author or refresh invalidation basis include source version/content change, relevant project component/content fingerprint change, currentness boundary change, claim/source provenance break, or newly discovered material contradiction.
 
-Invalidation must be claim- or record-scoped where possible. A movement of repository `main` alone is not sufficient to invalidate unrelated claims. Claims must bind to the narrow relevant source/project component fingerprints when deterministically available. It must not force full re-research when unchanged evidence remains valid.
-
-Deterministic software may validate schema, identity, digests, structural bounds, provenance presence, predecessor continuity and declared invalidation relationships. It must not decide whether a material research claim is substantively true or whether conflicting evidence is semantically decisive; those remain Brain judgments.
+A changed Research Brief or changed research-audit profile starts a fresh record lineage. It is not represented as a partial refresh of a different semantic subject.
 
 ## 13. Handoff
 
@@ -389,7 +396,13 @@ Concrete replaceable adapter invocation and tool-specific access/safety enforcem
 
 ### RA-3 — Research Evidence Record & Audit Profile
 
-Define the immutable/content-addressed bounded Research Record, exact predecessor refresh lineage, claim/source/independence/freshness/uncertainty grammar, component-scoped invalidation semantics, and freeze the nine-lens research-specific audit profile.
+Architecture audit: DONE — PASS WITH MANDATORY BOUNDARY REFINEMENTS.
+
+RA-3 freezes a pure immutable/content-addressed Research Record contract, exact predecessor refresh lineage, claim/source-binding and uncertainty grammar, source authority/independence/freshness assessment grammar, project applicability/novelty assessment, claim-scoped invalidation basis and a transient deterministic reuse projection.
+
+RA-3 also freezes a separate content-addressed research-high-value-v1 audit-profile registry with the nine ordered research lenses. The registry contains profile/lens identity only; the actual two-pass research procedure and closure-output protocol remain RA-4.
+
+RA-3 must not persist records, auto-resolve a latest record, mutate record validity, perform source/repository/clock discovery, retain private source excerpts, infer source authority/freshness/independence, run the two-pass audit, create research conclusions, add a RESEARCH Flow, or create Runtime/Reviewer/Publisher authority.
 
 ### RA-4 — Two-Pass Research Assurance Protocol
 
@@ -419,7 +432,7 @@ RA closes only after Reviewer-quality semantic assessment confirms the proof pre
 
 ## 15. Non-goals
 
-RA v2.2 does not:
+RA v2.3 does not:
 
 - replace Brain Sync;
 - replace BP-4A Brain Semantic Audit;
@@ -437,8 +450,8 @@ RA v2.2 does not:
 
 Brain Portability BP-9 downstream adoption is complete based on downstream exact-pin migration and fresh current-pin conformance publication evidence.
 
-RA v2.2 is the active Human/Brain planning baseline after RA-0 and RA-2 architecture audits.
+RA v2.3 is the active Human/Brain planning baseline after RA-0, RA-2 and RA-3 architecture audits.
 
-RA-1 through RA-7 remain gated milestones and do not become executable merely because this planning baseline exists. The immediate post-RA-0 action is to author the exact RA-1 Research Contract Foundation TASK under explicit Human/Brain authority, then bind canonical roadmap NEXT to that exact authored TASK before execution.
+RA-1 and RA-2 are reviewed/published. RA-3 architecture semantics are now audited but remain non-executable until one exact canonical RA-3 TASK is authored and bound by Human/Brain planning authority. RA-4 through RA-7 remain gated.
 
 A newer explicit Human priority may prospectively supersede this track, but future generic continuation may rely on that change only after it is canonicalized.
