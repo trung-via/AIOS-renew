@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-serial-context-diagnostic
+  - verification-performance-rebaseline-v2-stable-failure-cause-probe
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1605,7 +1605,7 @@ sequence:
         correctness still reported 36 failures. Canonical failure diagnostics
         expose only the bounded lowest 20 identities, so a separate bounded
         contention diagnostic is required before another TASK-231 attempt.
-    blocked_by: verification-performance-rebaseline-v2-serial-context-diagnostic
+    blocked_by: verification-performance-rebaseline-v2-stable-failure-cause-probe
     prerequisite_resolution:
       roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
       task_id: TASK-232
@@ -1729,7 +1729,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-serial-context-diagnostic
 
   - id: verification-performance-rebaseline-v2-serial-context-diagnostic
-    status: NEXT
+    status: DONE
     task_id: TASK-234
     task_revision: 1
     authored_commit_sha: "149d45c2424227cf2ae2a16548d398ef00833459"
@@ -1745,6 +1745,27 @@ sequence:
       full_n12_failure_count: 36
       serial_reproduction_count: 35
       n4_reproduction_count: 36
+    completed_by:
+      run_id: RUN-234-001
+      result_artifact_sha: "b17e54d9878fd5ea7b2a5e43acebbbb6d275ddfb"
+      review_id: REVIEW-234-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-234-001-V001
+        - RUN-234-001-V002
+        - RUN-234-001-V003
+      review_decision_sha: "7deba20a92fb1b314003c4107515b8f8d1125b21"
+      reviewed_sha: "38c94bcf0a6eb70f35b6a99e2e88dc5b22b1f552"
+      published_sha: "38c94bcf0a6eb70f35b6a99e2e88dc5b22b1f552"
+      classification: SERIAL_STABLE_FAILURE
+      target_count: 35
+      cold_target_failure_count: 3
+      file_context_target_failure_count: 3
+      file_context_non_target_failure_count: 0
+      stable_targets:
+        - tests/test_hot_swap_conformance.py::test_scenario_2_fresh_correction_accepts_only_current_finding
+        - tests/test_operator.py::test_source_repair_bootstrap_closed_and_exact_replay
+        - tests/test_operator.py::test_source_repair_bound_target_consumes_without_matching_activation
     objective: >-
       Distinguish intrinsic serial failure from missing predecessor/file context
       or prior-phase contamination for the exact 35 RUN-233-002 serial-reproduced
@@ -1757,6 +1778,34 @@ sequence:
       note: >-
         Defender remains a separate host-performance hypothesis and is not a
         causal assumption or mutation target of TASK-234.
+    return_to: verification-performance-rebaseline-v2-stable-failure-cause-probe
+
+  - id: verification-performance-rebaseline-v2-stable-failure-cause-probe
+    status: NEXT
+    task_id: TASK-235
+    task_revision: 1
+    authored_commit_sha: "1a8dd934450eec1791f232e63cc2bc19e93bfe26"
+    task_blob_sha: "2192f3716810f39dcb717cff6a17da68b898bba8"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-234
+      run_id: RUN-234-001
+      review_id: REVIEW-234-001
+      published_sha: "38c94bcf0a6eb70f35b6a99e2e88dc5b22b1f552"
+      classification: SERIAL_STABLE_FAILURE
+      stable_failure_count: 3
+    objective: >-
+      Identify the exact fail-closed guard categories for the three stable serial
+      failures using isolated cold subprocesses and privacy-safe typed cause facts,
+      without changing production, fixtures, worker policy or selecting a fix.
+    task232_regression_hypothesis:
+      authority: BRAIN_PLANNING_HYPOTHESIS_ONLY
+      state: UNVERIFIED
+      note: >-
+        All three tests use shared Git fixture machinery and TASK-232 changed
+        packed-object fixture inspection, but exception classes alone do not prove
+        causal linkage. TASK-235 must resolve the exact guards before any fix.
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
