@@ -97,7 +97,7 @@ def _pairs(raw: Any, brief: dict[str, Any], phase: str, targets: dict[str, Any],
 
 
 def _request(material: Any, stage1_request: Any, stage1_return: Any,
-             validate: bool) -> dict[str, Any]:
+             validate: bool, predecessor_validation_witness: Any) -> dict[str, Any]:
     item = _fields(material, _REQUEST if validate else _REQUEST - {"request_fingerprint"},
                    "research provider request")
     _json(item, 16777216)
@@ -110,8 +110,15 @@ def _request(material: Any, stage1_request: Any, stage1_return: Any,
         raise ResearchContractError("invalid research provider mode")
     brief = validate_research_brief(item["research_brief"])
     profile = normalize_research_audit_profile(item["audit_profile"])
-    predecessor = (None if item["predecessor_record"] is None else
-                   validate_research_record(item["predecessor_record"], profile))
+    if item["predecessor_record"] is None:
+        if predecessor_validation_witness is not None:
+            raise ResearchContractError("unexpected predecessor validation witness")
+        predecessor = None
+    else:
+        # The witness is caller-supplied validation context, never provider
+        # request material or part of its content-addressed identity.
+        predecessor = validate_research_record(
+            item["predecessor_record"], profile, predecessor_validation_witness)
     if predecessor is not None and (predecessor["research_brief"] != brief):
         raise ResearchContractError("predecessor Brief substitution")
     baseline = _pairs(item["baseline_acquisitions"], brief, "BASELINE", {},
@@ -123,7 +130,7 @@ def _request(material: Any, stage1_request: Any, stage1_return: Any,
     else:
         if stage1_request is None or stage1_return is None:
             raise ResearchContractError("Stage-2 requires exact Stage-1 request and return")
-        prior = _request(stage1_request, None, None, True)
+        prior = _request(stage1_request, None, None, True, predecessor_validation_witness)
         returned = _return(stage1_return, prior, True)
         if prior["request_mode"] != "EVIDENCE_CONSTRUCT" or any(
             prior[name] != value for name, value in (("research_brief", brief),
@@ -158,13 +165,17 @@ def _request(material: Any, stage1_request: Any, stage1_return: Any,
 
 
 def construct_research_provider_request(material: Any, *, stage1_request: Any = None,
-                                        stage1_return: Any = None) -> dict[str, Any]:
-    return _request(material, stage1_request, stage1_return, False)
+                                        stage1_return: Any = None,
+                                        predecessor_validation_witness: Any = None) -> dict[str, Any]:
+    return _request(material, stage1_request, stage1_return, False,
+                    predecessor_validation_witness)
 
 
 def validate_research_provider_request(material: Any, *, stage1_request: Any = None,
-                                       stage1_return: Any = None) -> dict[str, Any]:
-    return _request(material, stage1_request, stage1_return, True)
+                                       stage1_return: Any = None,
+                                       predecessor_validation_witness: Any = None) -> dict[str, Any]:
+    return _request(material, stage1_request, stage1_return, True,
+                    predecessor_validation_witness)
 
 
 def _return(material: Any, request: Any, validate: bool) -> dict[str, Any]:
@@ -218,17 +229,21 @@ def _return(material: Any, request: Any, validate: bool) -> dict[str, Any]:
 
 def construct_research_provider_return(raw_response: Any, request: Any, *,
                                        stage1_request: Any = None,
-                                       stage1_return: Any = None) -> dict[str, Any]:
+                                       stage1_return: Any = None,
+                                       predecessor_validation_witness: Any = None) -> dict[str, Any]:
     bound = validate_research_provider_request(request, stage1_request=stage1_request,
-                                               stage1_return=stage1_return)
+                                               stage1_return=stage1_return,
+                                               predecessor_validation_witness=predecessor_validation_witness)
     return _return(raw_response, bound, False)
 
 
 def validate_research_provider_return(material: Any, request: Any, *,
                                       stage1_request: Any = None,
-                                      stage1_return: Any = None) -> dict[str, Any]:
+                                      stage1_return: Any = None,
+                                      predecessor_validation_witness: Any = None) -> dict[str, Any]:
     bound = validate_research_provider_request(request, stage1_request=stage1_request,
-                                               stage1_return=stage1_return)
+                                               stage1_return=stage1_return,
+                                               predecessor_validation_witness=predecessor_validation_witness)
     return _return(material, bound, True)
 
 
