@@ -147,6 +147,86 @@ def test_fast_materialization_supports_real_git_and_immutable_object_reuse(
     assert destination_path.read_bytes() == b"not a Git object"
 
 
+def test_packed_fixture_objects_remain_readable_and_committable(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path / "packed-sandbox")
+    packed_file = repo / "nested" / "packed.txt"
+    packed_file.parent.mkdir()
+    packed_file.write_text("packed content\n", encoding="utf-8")
+    git(repo, "add", "nested/packed.txt")
+    git(repo, "commit", "--quiet", "-m", "state to pack")
+    packed_head = git(repo, "rev-parse", "HEAD")
+    packed_tree = git(repo, "rev-parse", "HEAD^{tree}")
+    packed_blob = git(repo, "rev-parse", "HEAD:nested/packed.txt")
+
+    git(repo, "repack", "-a", "-d", "--quiet")
+    objects = repo / ".git" / "objects"
+    assert list((objects / "pack").glob("*.pack"))
+    for object_id in (packed_head, packed_tree, packed_blob):
+        assert not (objects / object_id[:2] / object_id[2:]).exists()
+    assert git_fixture_support._read_object(repo, packed_blob) == (
+        "blob", b"packed content\n"
+    )
+    assert git_fixture_support._head_files(repo)[0] == packed_head
+    assert git_fixture_support._head_files(repo)[1]["nested/packed.txt"] == (
+        b"packed content\n"
+    )
+
+    packed_file.write_text("updated content\n", encoding="utf-8")
+    new_head = git_fixture_support.commit_fixture_state(
+        repo,
+        paths=("nested/packed.txt",),
+        message="state after packing",
+        user_name="AIOS Operator Test",
+        user_email="operator@example.invalid",
+    )
+    assert git(repo, "rev-parse", "HEAD") == new_head
+    assert git(repo, "rev-parse", "HEAD^") == packed_head
+    assert git(repo, "show", "HEAD:nested/packed.txt") == "updated content"
+    assert git(repo, "status", "--porcelain") == ""
+
+
+def test_fixture_object_inspection_rejects_missing_corrupt_and_wrong_type(
+    tmp_path: Path,
+) -> None:
+    repo = make_repo(tmp_path / "invalid-sandbox")
+    with pytest.raises(ValueError, match="^missing Git object: 0{40}$"):
+        git_fixture_support._read_object(repo, "0" * 40)
+
+    objects = repo / ".git" / "objects"
+    corrupt_id = git_fixture_support._write_object(objects, "blob", b"corrupt me")
+    (objects / corrupt_id[:2] / corrupt_id[2:]).write_bytes(b"not a Git object")
+    with pytest.raises(ValueError, match=f"^corrupt Git object: {corrupt_id}$"):
+        git_fixture_support._read_object(repo, corrupt_id)
+
+    blob_id = git_fixture_support._write_object(objects, "blob", b"not a commit")
+    (repo / ".git" / "refs" / "heads" / "main").write_text(
+        f"{blob_id}\n", encoding="ascii"
+    )
+    with pytest.raises(ValueError, match=f"^fixture HEAD is not a commit: {blob_id}$"):
+        git_fixture_support._head_files(repo)
+
+    wrong_tree_id = git_fixture_support._write_object(
+        objects, "commit", f"tree {blob_id}\n\nwrong tree\n".encode("ascii")
+    )
+    (repo / ".git" / "refs" / "heads" / "main").write_text(
+        f"{wrong_tree_id}\n", encoding="ascii"
+    )
+    with pytest.raises(ValueError, match="^expected tree object, got blob$"):
+        git_fixture_support._head_files(repo)
+
+    tree_id = git_fixture_support._write_object(
+        objects, "tree", b"100644 wrong-blob\0" + bytes.fromhex(wrong_tree_id)
+    )
+    wrong_blob_id = git_fixture_support._write_object(
+        objects, "commit", f"tree {tree_id}\n\nwrong blob\n".encode("ascii")
+    )
+    (repo / ".git" / "refs" / "heads" / "main").write_text(
+        f"{wrong_blob_id}\n", encoding="ascii"
+    )
+    with pytest.raises(ValueError, match="^expected blob object, got commit$"):
+        git_fixture_support._head_files(repo)
+
+
 def test_depth_amplified_sandboxes_push_and_resolve_full_aios_refs(
     tmp_path: Path,
 ) -> None:

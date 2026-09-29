@@ -9,6 +9,7 @@ from __future__ import annotations
 import atexit
 import hashlib
 import itertools
+import os
 from pathlib import Path
 import shutil
 import struct
@@ -312,15 +313,53 @@ def _object_roots(repo: Path) -> tuple[Path, ...]:
 
 
 def _read_object(repo: Path, object_id: str) -> tuple[str, bytes]:
+    if len(object_id) != 40 or any(char not in "0123456789abcdef" for char in object_id):
+        raise ValueError(f"invalid fixture object id: {object_id}")
     for objects in _object_roots(repo):
         path = objects / object_id[:2] / object_id[2:]
         if not path.is_file():
             continue
-        payload = zlib.decompress(path.read_bytes())
+        payload = _validated_loose_object(path, object_id)
         header, body = payload.split(b"\0", 1)
-        kind, _size = header.decode("ascii").split(" ", 1)
-        return kind, body
-    raise ValueError(f"fixture object is not loose: {object_id}")
+        return header.split(b" ", 1)[0].decode("ascii"), body
+
+    # Git owns pack decoding, including packs in alternate object directories.
+    # --batch returns the object's raw bytes; verify them independently so a
+    # missing or damaged object cannot become fixture content.
+    environment = dict(os.environ)
+    environment["GIT_NO_REPLACE_OBJECTS"] = "1"
+    try:
+        result = subprocess.run(
+            ("git", "-C", str(repo), "cat-file", "--batch"),
+            input=f"{object_id}\n".encode("ascii"),
+            capture_output=True,
+            check=False,
+            env=environment,
+        )
+    except OSError as exc:
+        raise ValueError(f"cannot read Git object: {object_id}") from exc
+    header, separator, remainder = result.stdout.partition(b"\n")
+    if result.returncode == 0 and header == f"{object_id} missing".encode("ascii"):
+        raise ValueError(f"missing Git object: {object_id}")
+    fields = header.split(b" ")
+    if result.returncode != 0 or separator != b"\n" or len(fields) != 3:
+        raise ValueError(f"corrupt Git object: {object_id}")
+    reported_id, kind, encoded_size = fields
+    try:
+        size = int(encoded_size)
+    except ValueError as exc:
+        raise ValueError(f"corrupt Git object: {object_id}") from exc
+    if (
+        reported_id != object_id.encode("ascii")
+        or kind not in {b"blob", b"tree", b"commit", b"tag"}
+        or size < 0
+        or len(remainder) != size + 1
+        or remainder[-1:] != b"\n"
+        or hashlib.sha1(kind + b" " + encoded_size + b"\0" + remainder[:-1]).hexdigest()
+        != object_id
+    ):
+        raise ValueError(f"corrupt Git object: {object_id}")
+    return kind.decode("ascii"), remainder[:-1]
 
 
 def _tree_files(repo: Path, tree_sha: str, prefix: str = "") -> dict[str, bytes]:
@@ -330,17 +369,29 @@ def _tree_files(repo: Path, tree_sha: str, prefix: str = "") -> dict[str, bytes]
     files: dict[str, bytes] = {}
     offset = 0
     while offset < len(body):
-        header_end = body.index(b"\0", offset)
-        mode, encoded_name = body[offset:header_end].split(b" ", 1)
+        header_end = body.find(b"\0", offset)
+        if header_end < 0 or header_end + 21 > len(body):
+            raise ValueError(f"corrupt fixture tree: {tree_sha}")
+        entry = body[offset:header_end].split(b" ", 1)
+        if len(entry) != 2 or entry[0] not in {b"40000", b"100644", b"100755", b"120000"}:
+            raise ValueError(f"corrupt fixture tree: {tree_sha}")
+        mode, encoded_name = entry
+        if not encoded_name or b"/" in encoded_name or encoded_name in {b".", b".."}:
+            raise ValueError(f"corrupt fixture tree: {tree_sha}")
         object_id = body[header_end + 1:header_end + 21].hex()
         offset = header_end + 21
-        name = f"{prefix}{encoded_name.decode('utf-8')}"
+        try:
+            name = f"{prefix}{encoded_name.decode('utf-8')}"
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"corrupt fixture tree: {tree_sha}") from exc
         if mode == b"40000":
             files.update(_tree_files(repo, object_id, f"{name}/"))
         else:
             blob_kind, content = _read_object(repo, object_id)
             if blob_kind != "blob":
                 raise ValueError(f"expected blob object, got {blob_kind}")
+            if name in files:
+                raise ValueError(f"duplicate fixture tree entry: {name}")
             files[name] = content
     return files
 

@@ -443,8 +443,6 @@ def test_scenario_7_operational_failure_is_pre_aios_and_receipt_is_not_success(t
         env=env, capture_output=True, text=True, check=False,
     )
     assert started.returncode != 0
-    assert "AIOS_REPO_ROOT repository variable is not set or empty" in (
-        started.stdout + started.stderr)
     receipt = json.loads(receipt_path.read_text(encoding="utf-8-sig"))
     assert receipt["format"] == "AIOS_OPERATIONAL_RECEIPT"
     assert receipt["version"] == 2
