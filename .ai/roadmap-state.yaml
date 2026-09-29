@@ -1336,10 +1336,13 @@ sequence:
         - GLOBAL_SOURCE_CORPUS_BOUND
         - BRAIN_DECLARED_BLOCKER_CLOSURE_CONSISTENCY
         - NO_RECURSIVE_RESEARCH_LOOP
-    task_id: null
+    task_id: TASK-225
+    task_revision: 1
+    authored_commit_sha: "f885f4184d9a20ae29cc620c7e5b5aaa03acb7b0"
+    task_blob_sha: "99e3540e540ea6ac760a4a39b744e06e1c0137a2"
     objective: >-
-      Author the exact RA-4 pure two-pass protocol TASK from the audited Research
-      Assurance v2.4 baseline before any Executor invocation.
+      Execute the exact authored RA-4 two-pass protocol TASK only after fresh Brain Sync
+      confirms TASK-225 revision 1 as the unique canonical NEXT.
 
 research_assurance:
   id: research-assurance
@@ -1456,8 +1459,11 @@ research_assurance:
         two-pass procedure remain deferred.
     - id: RA-4
       name: Two-Pass Research Assurance Protocol
-      status: NEXT_UNAUTHORED
+      status: AUTHORED_UNEXECUTED
       architecture_audit: PASS_WITH_MANDATORY_PROTOCOL_REFINEMENTS
+      task_id: TASK-225
+      task_revision: 1
+      authored_commit_sha: "f885f4184d9a20ae29cc620c7e5b5aaa03acb7b0"
       objective: >-
         Define a pure content-addressed Evidence Construct plus one exact Pass-2
         reconciliation/closure contract. Pass 1 precommits all Challenge Targets and
@@ -1490,10 +1496,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only RA-4 — Two-Pass Research Assurance Protocol. Its architecture audit
-    is closed on Research Assurance v2.4; the next action is to author and bind one exact
-    RA-4 TASK. Do not invoke an Executor before exact TASK authoring/Brain Sync and do not
-    widen into RA-5 provider/tool portability or RA-6 RESEARCH Flow integration.
+    Continue only exact TASK-225 revision 1 for RA-4 — Two-Pass Research Assurance
+    Protocol after fresh Brain Sync reconciles that authored TASK against current canonical
+    lineage. Do not widen into RA-5 provider/tool portability or RA-6 RESEARCH Flow
+    integration outside TASK-225 scope.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1502,9 +1508,10 @@ research_assurance:
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
     RA-1 through RA-3 are reviewed/published, with RA-3 published at exact SHA
-    222ce1e8e9405c624c1f8573b8af477a4f28f6db. RA-4 architecture audit is closed on v2.4
-    and exact TASK authoring is now permitted. Execution remains forbidden until that TASK
-    revision is canonicalized and fresh Brain Sync selects it. RA-5 through RA-7 remain gated.
+    222ce1e8e9405c624c1f8573b8af477a4f28f6db. RA-4 architecture audit is closed and
+    TASK-225 revision 1 is canonically authored. RA-4 execution may proceed only after
+    fresh Brain Sync selects that exact TASK and normal Runtime admission applies.
+    RA-5 through RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
