@@ -1,0 +1,42 @@
+review_id: REVIEW-228-001
+reviewed_sha: 01a83cab8db15f585eb8fca2a473dbf794fde04d
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- 'The candidate changes exactly the five TASK-228-authorized proof files. The four
+  fixture blobs exactly match the Brain-prebound Git blob identities: Constitution
+  a4e33646c6ec7573cadeb2b10379b1606eac9322, roadmap pre-RA6 3ec4e92d204bc66f0537dbe804071adc0154df30,
+  roadmap post-RA6 c55a4ef0f88e1b256e34925f1fe110052b5eb4d0, and adversarial provider-protocol
+  9536758685a750bbfea4366902ea0588ab34b57e.'
+- RUN-228-001 Runtime verification on exact subject 01a83cab8db15f585eb8fca2a473dbf794fde04d
+  passed 191 tests in 8.32s using the exact required offline command; unresolved is
+  empty and there is no RUN failure.
+- Stable proof composes the existing one-shot acquisition and two-pass ResearchProvider/RA-4
+  contracts into a RESEARCH_CANDIDATE and proves explicit unchanged-basis VALID reuse
+  without source discovery or clock inference.
+- Mutable proof keeps one fixed Brief/profile, changes only the caller-supplied roadmap
+  basis, projects exactly the roadmap-dependent predecessor claim as refresh-required,
+  retains the exact Constitution claim/source fingerprint, acquires only replacement
+  roadmap evidence, and validates the refreshed record only with its exact immediate
+  predecessor.
+- Adversarial proof uses the exact prebound project source containing prompt-like
+  text, keeps the normalized observation instruction_trust=UNTRUSTED, leaves control/provider
+  semantics unchanged, excludes the retained excerpt from the architecture handoff,
+  and confirms the existing RA-6 guard fails closed when that excerpt is placed in
+  either a material claim statement or uncertainty.summary.
+- Fresh explicit RESEARCH and separately fresh ARCHITECTURE contexts preserve the
+  pending SEMANTIC_REVIEW obligation and all mutation/execution flags remain false.
+  The tests verify deterministic structure/lineage rather than establishing research
+  conclusions as canonical truth; Reviewer authority is preserved.
+- No production Python, governance, roadmap, workflow, provider/router, persistence,
+  lifecycle, Runtime, Reviewer or Publisher authority is added or modified.
