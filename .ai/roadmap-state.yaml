@@ -1217,6 +1217,102 @@ sequence:
         control source and exact successor runtime target. After TASK-259 r2 review and
         publication, fresh TASK-207 r9 is the unique BP9 conformance successor.
 
+
+future_tracks:
+  - id: research-assurance
+    status: HUMAN_APPROVED_FOLLOW_ON
+    approved_on: "2026-09-29"
+    approved_against_main_sha: "71c1c60c8875b70b11430e60ff3463a8f7fd19a7"
+    authority: HUMAN_BRAIN_PLANNING
+    activation_gate: AFTER_BP9_CLOSURE_AND_FRESH_BRAIN_SYNC
+    objective: >-
+      Make high-value external and project research reproducible, source-grounded,
+      adversarially audited, provider-portable and usable as bounded Brain decision
+      support without depending on chat memory or a Human remembering to request a
+      second research audit.
+    architecture_rule: >-
+      Research Assurance is cognitive support inside existing Brain authority. It must
+      not create a Research Agent, Planner, Reviewer, lifecycle router, persistent
+      reasoning/memory database, automatic roadmap authority, automatic TASK author,
+      or a second source of engineering truth.
+    target_flow: RESEARCH
+    assurance_shape:
+      - EVIDENCE_CONSTRUCT
+      - ADVERSARIAL_RESEARCH_AUDIT_AND_RECONCILE
+      - FINAL_RESEARCH_CLOSURE
+    outcomes:
+      - RESEARCH_CANDIDATE
+      - INSUFFICIENT_EVIDENCE
+    proposed_audit_lenses:
+      - SOURCE_AUTHORITY
+      - SOURCE_RECENCY_VERSION
+      - CLAIM_EVIDENCE_BINDING
+      - CONTRADICTION_COUNTEREVIDENCE
+      - PROJECT_APPLICABILITY
+      - NOVELTY_DUPLICATION
+      - ASSUMPTION_UNCERTAINTY
+      - ACTIONABILITY_BOUNDARY
+    milestones:
+      - id: RA-0
+        name: Research Architecture Audit
+        status: PLANNED
+        objective: >-
+          Audit the current research gap, derive the minimum authority-safe architecture,
+          evidence basis, source taxonomy, invalidation rules and bounded protocol before
+          any implementation TASK is authored.
+      - id: RA-1
+        name: Research Flow and Context
+        status: PLANNED
+        objective: >-
+          Define one repository-owned RESEARCH flow and transient bounded research context
+          without turning Flow Resolver into a generic planner or lifecycle router.
+      - id: RA-2
+        name: Research Evidence Packet
+        status: PLANNED
+        objective: >-
+          Define deterministic bounded research-question, source, claim, version/freshness,
+          uncertainty and project-context packaging with exact provenance and invalidation.
+      - id: RA-3
+        name: Research Audit Profile
+        status: PLANNED
+        objective: >-
+          Canonicalize a content-addressed research-audit profile with fixed source,
+          evidence, contradiction, applicability, novelty and uncertainty lenses.
+      - id: RA-4
+        name: Two-Stage Research Audit Protocol
+        status: PLANNED
+        objective: >-
+          Reproducibly perform Evidence Construct followed by adversarial audit,
+          reconciliation and final closure over the same bounded research subject,
+          yielding RESEARCH_CANDIDATE or INSUFFICIENT_EVIDENCE with no recursive loop.
+      - id: RA-5
+        name: Provider-Neutral Research Contract
+        status: PLANNED
+        objective: >-
+          Define bounded provider-neutral research request/return contracts so a fresh
+          provider can perform the protocol without chat memory or direct repository
+          authority and without becoming canonical truth.
+      - id: RA-6
+        name: Cross-Provider Research Conformance
+        status: PLANNED
+        objective: >-
+          Prove equivalent research-protocol identity, source/claim binding and closure
+          behavior across replaceable providers without voting, model scoring, automatic
+          retry, fallback or failover authority.
+      - id: RA-7
+        name: Real Project Research Proof
+        status: PLANNED
+        objective: >-
+          Run one controlled real project/technology research case end to end and prove
+          that audited research can feed a subsequent Brain architecture decision without
+          itself selecting roadmap work or authoring an implementation TASK.
+    activation_rule: >-
+      This track is not NEXT and must not compete with BP-9. After BP-9 reaches canonical
+      closure, perform a fresh Brain Sync and explicitly activate RA-0 before any RA
+      implementation TASK is authored. A newer explicit Human priority may supersede this
+      follow-on prospectively and must be canonicalized before generic continuation relies on it.
+    planning_document_status: NOT_AUTHORED_YET
+
 previous_track:
   id: control-plane-closure
   status: COMPLETE
@@ -1262,6 +1358,10 @@ sequencing_rule:
   task_gate: >-
     A NEXT milestone with a task_id is not executable until that exact TASK revision is
     canonically authored and Brain Sync reconciles it against current engineering lineage.
+  future_track_gate: >-
+    research-assurance is Human-approved follow-on planning only. Generic continuation
+    must not enter RA while BP-9 remains NEXT. RA may become active only after BP-9
+    canonical closure plus a fresh Brain Sync and explicit activation of RA-0.
 authority:
   purpose: Human/Brain planning state only
   engineering_truth: >-
