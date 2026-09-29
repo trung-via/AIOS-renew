@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-adopt-workers-12
+  - verification-performance-rebaseline-v2-full-suite-contention-diagnostic
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1566,7 +1566,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2
 
   - id: verification-performance-rebaseline-v2-adopt-workers-12
-    status: NEXT
+    status: ACTIVE
     task_id: TASK-231
     task_revision: 2
     authored_commit_sha: "b5b454e3573498a717f66861ad70adb518d96133"
@@ -1586,19 +1586,26 @@ sequence:
         intent and implementation semantics while making every acceptance
         criterion claimable before Runtime verification.
     latest_attempt:
-      run_id: RUN-231-002
+      run_id: RUN-231-003
       terminal_kind: FAILURE
       phase: VERIFICATION
-      failure_artifact_sha: "70067af710b8930c7c6532554b0f7632e0c94227"
-      failed_head_sha: "bc5a7604ee5473ab0ad6fdee8095394a065d0f3a"
+      failure_artifact_sha: "694a02c4acb4ab865df7df928e5590af3f5b1203"
+      failed_head_sha: "fa9d87df08e0346fff4a13d8dc891d3ed0480104"
       selected_workers: 12
+      collection_count: 2435
       pytest_failure_count: 36
+      pytest_elapsed_seconds: 362.322714
+      verification_seconds: 437.786348
       wrapper_conformance_passed: true
+      diagnostic_identity_limit: 20
+      diagnostic_truncated: true
       reason: >-
-        Runtime reached the selected 12-worker suite and all wrapper/worker
-        conformance facts passed, but pytest correctness failed. The failure
-        triggered bounded test-hermeticity hardening and is not reinterpreted as
-        a Human worker-selection reversal.
+        After TASK-232 published, Runtime again reached the selected 12-worker
+        full suite and all wrapper/worker conformance facts passed, but pytest
+        correctness still reported 36 failures. Canonical failure diagnostics
+        expose only the bounded lowest 20 identities, so a separate bounded
+        contention diagnostic is required before another TASK-231 attempt.
+    blocked_by: verification-performance-rebaseline-v2-full-suite-contention-diagnostic
     prerequisite_resolution:
       roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
       task_id: TASK-232
@@ -1668,6 +1675,40 @@ sequence:
       rather than exact PowerShell stderr wording, and Git fixture object access
       remains correct for valid loose or packed object storage.
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
+
+  - id: verification-performance-rebaseline-v2-full-suite-contention-diagnostic
+    status: NEXT
+    task_id: TASK-233
+    task_revision: 1
+    authored_commit_sha: "31af3189eef49612890f15c7b25e3eecb180de3b"
+    task_blob_sha: "38db310280efd32bc04cba4b20da4ace9469a2f0"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      run_id: RUN-231-003
+      terminal_kind: FAILURE
+      phase: VERIFICATION
+      failure_artifact_sha: "694a02c4acb4ab865df7df928e5590af3f5b1203"
+      failed_head_sha: "fa9d87df08e0346fff4a13d8dc891d3ed0480104"
+      selected_workers: 12
+      pytest_failure_count: 36
+      wrapper_conformance_passed: true
+      diagnostic_truncated: true
+    objective: >-
+      Add and execute one bounded observational diagnostic: one full-suite n12
+      run captures the complete failure identity set up to 64 with sanitized
+      typed causes, then only those exact failed nodeids are replayed once
+      serially and once at n4. The result classifies reproduction topology
+      without changing worker policy, production semantics, host security, or
+      selecting a remediation.
+    defender_hypothesis:
+      authority: HUMAN_PLANNING_EVIDENCE_ONLY
+      state: UNVERIFIED
+      note: >-
+        Human observed Windows Defender activity during an n12 run. TASK-233
+        neither attributes causality nor changes Defender configuration.
+    return_to: verification-performance-rebaseline-v2-adopt-workers-12
+
 
 
 research_assurance:
