@@ -1129,31 +1129,78 @@ sequence:
     objective: >-
       Adopt the reviewed capability downstream only through an explicit exact-pin,
       repository-owned migration after BP-8 evidence exists.
+    closure_policy:
+      id: BP9_PLAN_A_STOP_LINE_TWO_TASK_CLOSURE
+      status: HUMAN_APPROVED
+      approved_on: "2026-09-29"
+      authority: HUMAN_BRAIN_PLANNING
+      observed_blocker: >-
+        The first real TASK-259 r2 successor carrier attempt failed before RUN creation
+        with legacy installed generation attestation failed. Canonical audit found that
+        TASK-218/219 successor code applies a legacy-only capability classifier to exact
+        installed generation 31fd2482..., even though that generation is deliberately
+        migration-capable.
+      max_new_upstream_task_ids: 2
+      correction_task:
+        task_id: TASK-220
+        task_revision: 1
+        status: AUTHORED_NEXT
+        objective: >-
+          Correct successor installed-generation attestation, close production successor
+          activation again, and prove the real control-source / installed-distribution /
+          target-source topology before publication.
+      activation_task:
+        planned_task_id: TASK-221
+        expected_revision: 1
+        status: PLANNED_UNAUTHORED
+        gate: AFTER_EXACT_TASK_220_REVIEW_AND_PUBLICATION
+        objective: >-
+          Bind only the exact reviewed/published TASK-220 consumer SHA and prove the full
+          production-shaped composed successor path under production defaults before any
+          new real downstream attempt.
+      hard_stop: >-
+        No third narrow upstream bootstrap/correction task is authorized for this corridor.
+        If the exact TASK-220 correction plus TASK-221 activation both review/publish and
+        the next real downstream successor attempt still exposes a new architecture-level
+        pre-RUN bootstrap defect, Plan A terminates and the corridor returns to structural
+        redesign rather than TASK-222-style patch continuation.
     current_prerequisite:
-      task_id: TASK-219
+      task_id: TASK-220
       task_revision: 1
       approved_on: "2026-09-29"
-      approved_against_main_sha: "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
+      approved_against_main_sha: "6a82c3f6eeddb32b4b5f7ad18d674536a82887b1"
       authority: HUMAN_BRAIN_PLANNING
       reason: >-
-        TASK-218 successor-revision capability is now REVIEW-218-001 PASS and published
-        exactly at 8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29, but its production successor
-        activation remains intentionally closed. TASK-219 binds the single exact production
-        successor target to that published source and documents one explicit Human-local
-        subordinate carrier for the demonstrated Python Agent TASK-259 continuation without
-        widening lifecycle or automation authority.
+        TASK-219 is REVIEW-219-001 PASS and published exactly at
+        6a82c3f6eeddb32b4b5f7ad18d674536a82887b1, and downstream TASK-259 r2 is
+        canonically authored at Python Agent main
+        1468d2b26f2d1f5ed6acb6f152f512a39c4c52ec with no RUN-259-002 terminal
+        artifact. The first Human-local successor attempt failed pre-RUN because the
+        successor transport incorrectly requires legacy-only installed provenance for
+        lineage-bound generation 31fd2482..., which is migration-capable. Human approved
+        Plan A after two Brain audit rounds: one bounded correction TASK followed by one
+        exact activation TASK, with production-shaped proof and no third narrow patch.
       predecessor_completed:
-        task_id: TASK-218
+        task_id: TASK-219
         task_revision: 1
-        run_id: RUN-218-003
-        review_id: REVIEW-218-001
-        reviewed_sha: "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
-        published_sha: "8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29"
+        run_id: RUN-219-002
+        review_id: REVIEW-219-001
+        reviewed_sha: "6a82c3f6eeddb32b4b5f7ad18d674536a82887b1"
+        published_sha: "6a82c3f6eeddb32b4b5f7ad18d674536a82887b1"
+      downstream_blocked_state:
+        repository: trung-via/python_complete_agent
+        main_sha: "1468d2b26f2d1f5ed6acb6f152f512a39c4c52ec"
+        task_id: TASK-259
+        task_revision: 2
+        failed_predecessor_run: RUN-259-001
+        next_run: NONE_YET
       follow_on: >-
-        After TASK-219 is reviewed and source-published, perform a fresh downstream Brain
-        Sync, author exact TASK-259 r2, construct one exact successor intent under current
-        downstream identities, execute it through the bounded Human-local successor carrier,
-        review/publish the resulting candidate, and only then proceed to fresh TASK-207 r9.
+        Review/publish exact TASK-220 first. Then author only the planned TASK-221 exact
+        activation against the published TASK-220 SHA and require its final composed
+        three-source topology proof. Only after TASK-221 review/publication may Brain
+        fresh-sync Python Agent, reconcile the successor target planning metadata,
+        construct a new exact successor delivery identity and re-attempt TASK-259 r2.
+        TASK-207 r9 remains publication-gated after TASK-259 r2.
 previous_track:
   id: control-plane-closure
   status: COMPLETE
@@ -1179,16 +1226,19 @@ parallel_work:
       published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
 sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item, BP-9 downstream adoption. TASK-218 r1
-    capability is now reviewed and published exactly at
-    8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29. Current explicit Human/Brain planning makes
-    TASK-219 r1 the bounded activation prerequisite: activate only that exact TASK-218
-    successor consumer and document the one-time Human-local successor carrier; then
-    fresh-sync downstream, author exact TASK-259 r2, execute that newer revision through
-    the bounded successor transport, review/publish it, and only then author/execute fresh
-    TASK-207 r9. Do not replace this sequence with REPAIR-259, source-REPAIR reuse,
-    migration-state rewriting, automatic revision selection, generic retry/failover,
-    reusable unreviewed shell automation, or product work.
+    Continue only the unique canonical NEXT item, BP-9 downstream adoption under the
+    Human-approved Plan A STOP-LINE closure. TASK-219 is already reviewed/published, and
+    the first real TASK-259 r2 successor attempt failed pre-RUN at installed-generation
+    attestation. The unique current prerequisite is TASK-220 r1. After exact TASK-220
+    review/publication, author only the planned TASK-221 r1 exact activation and require
+    its full production-shaped composed proof; only then fresh-sync downstream and
+    re-attempt the already-authored TASK-259 r2 with a new exact successor delivery.
+    At most two new upstream TASK ids, TASK-220 and TASK-221, are authorized for this
+    corridor. If another architecture-level pre-RUN bootstrap defect appears after both,
+    do not create a third narrow patch; return to structural redesign. Do not substitute
+    REPAIR-259, source-REPAIR reuse, migration-history rewriting, automatic revision
+    selection, generic retry/failover, reusable unreviewed shell automation or product
+    work.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.

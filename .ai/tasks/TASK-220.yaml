@@ -1,0 +1,236 @@
+task_id: TASK-220
+revision: 1
+
+goal: >
+  Correct the post-terminal source-bootstrap successor installed-generation
+  attestation boundary exposed by the first real Python Agent TASK-259 revision-2
+  continuation attempt. The successor transport must attest the exact installed
+  aios-renew distribution bound by immutable failed-bootstrap lineage without
+  classifying that installed generation as legacy-only, so the exact migration-capable
+  generation 31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 can validly witness the
+  demonstrated successor case. Preserve legacy bootstrap, source-upgrade, migration,
+  source-REPAIR, PRIMARY Runtime, Reviewer, Publisher and frozen-Kernel authority
+  boundaries. Reset production successor activation to closed in this correction
+  candidate and prove the corrected three-source topology before a separately reviewed
+  activation successor is allowed.
+
+problem: >
+  TASK-218 introduced the bounded post-terminal same-TASK strictly-newer revision
+  successor transport and TASK-219 activated its exact published consumer
+  8a8e4331bf3dd3b70c6900b016a2200e9d3ffc29. Fresh downstream TASK-259 revision 2
+  continuation then failed before RUN creation with
+  "AIOS ERROR: legacy installed generation attestation failed". Canonical source audit
+  shows bootstrap_source_successor_primary() calls _legacy_installed_generation_sha()
+  in both staging and target-side consumption. That helper intentionally rejects any
+  installed source containing migrate-primary. But the immutable completed v2 lineage
+  motivating TASK-218 binds source_generation_sha / successor legacy_generation_sha to
+  exact 31fd2482cd87d97fd818e05eb5b4dcec69ffeee6, and canonical source at that
+  generation is deliberately migration-capable. TASK-216 already established the
+  required architectural distinction between reviewed control source and the actually
+  installed migration-capable distribution. TASK-218/219 regressions did not catch this
+  contradiction because successor tests monkeypatched the installed-generation
+  attestation boundary. The missing correction is therefore an identity/provenance
+  correction, not a new retry, migration reset, source-REPAIR path, revision selector
+  or downstream semantic change.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is exactly
+    6a82c3f6eeddb32b4b5f7ad18d674536a82887b1, the exact TASK-219 reviewed and
+    published activation source.
+  - >
+    Python Agent canonical main observed for this planning decision is exactly
+    1468d2b26f2d1f5ed6acb6f152f512a39c4c52ec and contains canonical TASK-259
+    revision 2. No RUN-259-002 RESULT or FAILURE artifact exists at authoring.
+  - >
+    RUN-259-001 and its completed source-bootstrap-v2 handoff remain immutable
+    engineering history. That lineage binds exact source generation
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6, exact prior target generation
+    44eee353eda376c9db8cd88d97184d3122651bf5, TASK-259 revision 1 and terminal
+    FAILURE. TASK-220 does not reopen, rewrite, supersede or reinterpret that history.
+  - >
+    TASK-216's isolated installed-distribution witness demonstrates the correct
+    provenance topology for a migration-capable installed generation: immutable VCS
+    identity, non-editable distribution, installed/operator path consistency inside
+    that distribution, and a reviewed control source that may reside elsewhere.
+  - >
+    The current Human-approved BP-9 closure policy is STOP-LINE / Plan A with a hard
+    budget of at most two new upstream TASK ids for this corridor: TASK-220 correction
+    and, only after exact review/publication, one separately authored TASK-221 exact
+    activation. A further narrow bootstrap patch is not authorized by this TASK.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+    - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+    - docs/AIOS-BRAIN-PORTABILITY.md
+    - .ai/roadmap-state.yaml
+    - .ai/brain-audit-profiles.yaml
+    - .ai/tasks/TASK-216.yaml
+    - .ai/tasks/TASK-218.yaml
+    - .ai/tasks/TASK-219.yaml
+    - src/aios_renew/operator.py
+    - scripts/aios_control_entry.py
+    - tests/test_operator.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - docs/AIOS-BRAIN-PORTABILITY.md
+
+non_goals:
+  - >
+    Modify Python Agent, TASK-259 revision 2, RUN-259-001, downstream dependency pins,
+    TASK-207 revision 9, TASK-254, downstream roadmap/adoption/conformance state or any
+    downstream lifecycle artifact.
+  - >
+    Add a new bootstrap command, handoff schema, generic migration primitive, retry,
+    fallback, failover, router, Planner, correction selector, Runtime, Reviewer,
+    Publisher, workflow or reusable carrier.
+  - >
+    Reuse _upgrade_installed_generation_sha as the successor policy authority or
+    hard-code successor semantics to one Python Agent generation. Source-upgrade remains
+    its existing exact 31fd2482... migration-capable staging family; successor remains a
+    lineage-bound generic capability.
+  - >
+    Relax legacy bootstrap semantics. bootstrap-primary and legacy
+    bootstrap-source-primary must continue to reject already migration-capable installed
+    sources wherever their existing contracts require legacy-only provenance.
+  - >
+    Redesign the activation mechanism or remove the separate exact post-publication
+    activation boundary. Plan A deliberately preserves the existing two-step
+    capability/publication then exact activation architecture for this closure.
+  - >
+    Execute downstream successor transport, create RUN-259-002, review/publish TASK-259,
+    certify TASK-207 r9, resume product work or claim BP-9 completion.
+
+constraints:
+  hard:
+    - >
+      Separate installed-distribution identity/provenance attestation from
+      caller-specific capability classification. The corrected successor path must prove
+      the actually installed aios-renew distribution from an isolated interpreter using
+      immutable VCS identity, non-editable provenance and installed/operator path
+      consistency, then require that exact witnessed generation to equal the generation
+      bound by successor lineage. Presence or absence of migrate-primary must not by
+      itself admit or reject successor identity.
+    - >
+      Do not weaken or globally reinterpret _legacy_installed_generation_sha,
+      _upgrade_installed_generation_sha, _installed_generation_sha or ordinary callers.
+      Executor may factor shared low-level witness mechanics only if legacy-only and
+      source-upgrade-specific policy outcomes remain byte-for-byte equivalent in
+      observable behavior for their existing callers.
+    - >
+      bootstrap_source_successor_primary must use the corrected exact installed
+      distribution witness on both staging and bound-target consumption where installed
+      provenance is checked. Wrong SHA, editable distribution, malformed VCS metadata,
+      installed/operator path mismatch or ambiguous provenance must reject before fresh
+      successor RUN admission or Executor invocation.
+    - >
+      The successor lineage itself remains authoritative for what installed generation is
+      expected. Existing exact completed v2 edge, failed RUN, repository, prior target,
+      pin, TASK id/revision, Executor, clean fast-forward current control, exact newer
+      TASK blob/commit, target source, replay and at-most-once checks remain unchanged.
+    - >
+      Production _SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA in the TASK-220 candidate must be
+      reset to None. TASK-220 may not leave the defective TASK-218 target activated, point
+      activation at its own candidate, infer mutable main, or activate any future SHA.
+      _BOOTSTRAP_TARGET_SHA, _SOURCE_BOOTSTRAP_TARGET_SHA,
+      _SOURCE_UPGRADE_SOURCE_SHA, _SOURCE_UPGRADE_TARGET_SHA and
+      _SOURCE_REPAIR_BOOTSTRAP_TARGET_SHA remain unchanged.
+    - >
+      Add a production-shaped successor regression using three genuinely distinct
+      identities: reviewed activation/control source, an isolated installed
+      migration-capable distribution representing exact 31fd2482..., and an exact staged
+      successor target source. The installed operator path must differ from both control
+      and target source paths, and control and target source commits/paths must also be
+      distinct where the composed activation proof requires them.
+    - >
+      The production-shaped regression must exercise the real isolated
+      installed-distribution attestation and must not monkeypatch
+      _legacy_installed_generation_sha, _upgrade_installed_generation_sha, the corrected
+      successor installed-generation witness, target __file__ identity, or migration
+      history validation to force success. It may replace the final run_task/Executor call
+      only after all successor staging, target-source, installed-provenance, lineage and
+      PRIMARY-admission checks have passed.
+    - >
+      The composed proof must model one completed source-bootstrap-v2 lineage whose source
+      generation is 31fd2482..., prior target is 44eee353..., bound RUN is terminal
+      FAILURE, and successor TASK has the same TASK id at a strictly newer revision. It
+      must also prove a clean current control commit may be a fast-forward descendant of
+      the successor TASK authoring commit while the exact TASK blob remains unchanged and
+      the legacy pin content remains unchanged.
+    - >
+      Negative regression coverage must include at least: alternate installed SHA,
+      editable installed distribution, installed/operator path mismatch, wrong target
+      source/HEAD, non-FAILURE or mismatched failed lineage, changed pin authority,
+      same/older or different TASK revision/id, different Executor, dirty/detached or
+      non-fast-forward control, conflicting successor delivery/evidence, replay
+      at-most-once, and the existing Windows successor transport path-budget invariant.
+    - >
+      Existing TASK-216 production-shaped source-upgrade witness tests remain valid and
+      successor correction must not convert source-upgrade or legacy-bootstrap policy into
+      a generic capability-neutral admission path.
+    - >
+      Documentation must record the observed pre-RUN TASK-259 r2 successor rejection,
+      the corrected distinction among control source, installed distribution witness and
+      target source, the closed TASK-220 activation, and the mandatory separately reviewed
+      TASK-221 exact activation plus final composed proof before another real downstream
+      attempt.
+    - >
+      Runtime owns canonical verification. Executor changes only the three authorized
+      paths, returns one clean candidate with zero unresolved implementation items and
+      does not review, publish, mutate roadmap state, dispatch downstream or perform any
+      real Python Agent migration.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Successor installed-generation admission is capability-neutral and
+      provenance-exact: a real isolated non-editable installed distribution whose exact
+      SHA equals the lineage-bound generation is accepted even when migrate-primary is
+      present, while alternate/malformed/editable/path-mismatched distributions reject
+      before successor RUN admission.
+  - id: AC2
+    condition: >
+      Legacy-bootstrap and source-upgrade families retain their existing semantic
+      classifications and rejection boundaries; no caller outside successor gains broader
+      installed-generation authority.
+  - id: AC3
+    condition: >
+      TASK-220 production successor activation is exactly closed
+      (_SOURCE_BOOTSTRAP_SUCCESSOR_TARGET_SHA = None) and every other existing activation
+      or fixed source/target constant remains unchanged.
+  - id: AC4
+    condition: >
+      Deterministic production-shaped coverage proves the distinct control-source /
+      installed-distribution / target-source topology with real isolated installed
+      attestation, exact completed failed-v2 lineage and same-TASK newer-revision PRIMARY
+      admission, without monkeypatching the attestation or topology boundaries identified
+      by the TASK-218/219 miss.
+  - id: AC5
+    condition: >
+      Successor exact lineage, pin continuity, current-control descendant allowance,
+      exact unchanged TASK blob, target identity, replay, conflict rejection, at-most-once
+      RUN/Executor admission and Windows path-budget semantics remain fail-closed and
+      regression-safe.
+  - id: AC6
+    condition: >
+      Only src/aios_renew/operator.py, tests/test_operator.py and
+      docs/AIOS-BRAIN-PORTABILITY.md change; no downstream state, workflow, schema,
+      Runtime/Reviewer/Publisher authority, frozen Kernel semantic or roadmap state is
+      changed by the Executor.
+  - id: AC7
+    condition: >
+      The implementation leaves zero unresolved Executor-owned work and leaves real
+      downstream execution blocked until TASK-220 is reviewed/published and one separately
+      authored TASK-221 exact activation passes its mandatory final composed topology
+      proof.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest tests/test_operator.py -q -k "source_successor or source_upgrade or source_bootstrap_production_allowlist_rejects_other_targets_before_edge or source_repair_bootstrap_requires_completed_failed_v2_lineage"
+    - git diff --check
