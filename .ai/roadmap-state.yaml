@@ -1256,7 +1256,7 @@ sequence:
       status: DONE
       outcome: PASS_WITH_BOUNDARY_REFINEMENT
       completed_on: "2026-09-29"
-      planning_document_commit: "c46f19eb4492c07af27a5e3aa017d039c66faf76"
+      planning_document_commit: "dfaab9c43b7e5e1796db9f7c0223348c58be3030"
       findings:
         - RA2_RA5_ADAPTER_BOUNDARY_SEPARATION
         - SOURCE_REPRESENTATION_CLASS_DISTINCTION
@@ -1284,14 +1284,30 @@ sequence:
     status: NEXT
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_MANDATORY_BOUNDARY_REFINEMENTS
+      completed_on: "2026-09-29"
+      planning_document_commit: "dfaab9c43b7e5e1796db9f7c0223348c58be3030"
+      findings:
+        - IMMUTABLE_RECORD_TRANSIENT_VALIDITY
+        - PRIVATE_RETENTION_SCOPE_PROPAGATION
+        - CLAIM_CONTENT_ADDRESSING_AND_EXACT_BINDING
+        - CLAIM_SCOPED_DECLARATIVE_INVALIDATION
+        - EXACT_PREDECESSOR_REFRESH_LINEAGE
+        - CHANGED_BRIEF_OR_PROFILE_STARTS_FRESH_LINEAGE
+        - DEDICATED_RESEARCH_AUDIT_PROFILE_REGISTRY
+        - RA4_PROCEDURE_DEFERRED
+        - NO_PERSISTENCE_OR_LATEST_RESOLVER
+        - SOURCE_ASSESSMENTS_REMAIN_BRAIN_CLAIMS
     task_id: null
     objective: >-
-      Audit and freeze the RA-3 Research Evidence Record & Audit Profile semantics before
-      authoring any implementation TASK.
+      Author the exact RA-3 Research Record and research-audit-profile contract TASK from
+      the audited Research Assurance v2.3 baseline before any Executor invocation.
 
 research_assurance:
   id: research-assurance
-  version: 2.2
+  version: 2.3
   status: ACTIVE
   approved_on: "2026-09-29"
   approved_against_main_sha: "6538f2762620c510e594e7c1842319bc4a783ccf"
@@ -1387,10 +1403,13 @@ research_assurance:
     - id: RA-3
       name: Research Evidence Record & Audit Profile
       status: NEXT_UNAUTHORED
+      architecture_audit: PASS_WITH_MANDATORY_BOUNDARY_REFINEMENTS
       objective: >-
-        Define the immutable/content-addressed bounded Research Record, exact predecessor
-        refresh lineage, claim/source/independence/freshness/uncertainty grammar,
-        component-scoped invalidation semantics and the fixed nine-lens research audit profile.
+        Define a pure immutable/content-addressed Research Record, exact predecessor refresh
+        lineage, claim/source-binding and uncertainty grammar, source assessment grammar,
+        claim-scoped invalidation and transient reuse projection, plus the dedicated
+        research-high-value-v1 nine-lens audit-profile registry. Persistence and the
+        two-pass procedure remain deferred.
     - id: RA-4
       name: Two-Pass Research Assurance Protocol
       status: PLANNED
@@ -1424,10 +1443,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only RA-3 — Research Evidence Record & Audit Profile as a Human/Brain
-    architecture audit and TASK-authoring step. RA-2 is reviewed and published. Until
-    RA-3 is audited and an exact TASK is authored, do not invoke an Executor or implement
-    the two-pass research protocol.
+    Continue only RA-3 — Research Evidence Record & Audit Profile. Its architecture audit
+    is closed on Research Assurance v2.3; the next action is to author and bind one exact
+    RA-3 TASK. Do not invoke an Executor before exact TASK authoring/Brain Sync and do not
+    implement RA-4 two-pass orchestration.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1437,9 +1456,9 @@ research_assurance:
   ra_implementation_gate: >-
     RA-1 and RA-2 are reviewed/published at exact SHAs
     1eed373ce0b8b53aa12b024d66b339fe16454384 and
-    6c128fafacbdadc174909bcd2ec28afa16cf3247. RA-3 is now the unique planning NEXT but
-    remains unauthored. RA-3 TASK authoring is permitted only after its architecture audit
-    closes; RA-4 through RA-7 remain gated.
+    6c128fafacbdadc174909bcd2ec28afa16cf3247. RA-3 architecture audit is closed on v2.3
+    and exact TASK authoring is now permitted. Execution remains forbidden until that TASK
+    revision is canonicalized and fresh Brain Sync selects it. RA-4 through RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
