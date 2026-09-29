@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-test-hermeticity-hardening
+  - verification-performance-rebaseline-v2-adopt-workers-12
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1566,7 +1566,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2
 
   - id: verification-performance-rebaseline-v2-adopt-workers-12
-    status: ACTIVE
+    status: NEXT
     task_id: TASK-231
     task_revision: 2
     authored_commit_sha: "b5b454e3573498a717f66861ad70adb518d96133"
@@ -1596,11 +1596,24 @@ sequence:
       wrapper_conformance_passed: true
       reason: >-
         Runtime reached the selected 12-worker suite and all wrapper/worker
-        conformance facts passed, but pytest correctness failed. The current
-        planning response is bounded test-hermeticity hardening before resuming
-        adoption; the failure is not reinterpreted as a Human worker-selection
-        reversal.
-    blocked_by: verification-performance-rebaseline-v2-test-hermeticity-hardening
+        conformance facts passed, but pytest correctness failed. The failure
+        triggered bounded test-hermeticity hardening and is not reinterpreted as
+        a Human worker-selection reversal.
+    prerequisite_resolution:
+      roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
+      task_id: TASK-232
+      run_id: RUN-232-001
+      review_id: REVIEW-232-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-232-001-V001
+        - RUN-232-001-V002
+      review_decision_sha: "ffef3d8433fb055876f2dc771587d7a025735d3b"
+      published_sha: "7f91c19b5a0035b9c1eef3a284e6bd7c0b4364d5"
+      reason: >-
+        The parallel-sensitive test infrastructure exposed by RUN-231-002 was
+        hardened and published without changing production semantics or worker
+        policy, so TASK-231 r2 may resume as a fresh PRIMARY RUN on current main.
     human_selection:
       selected_workers: 12
       selected_on: "2026-09-29"
@@ -1620,7 +1633,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2
 
   - id: verification-performance-rebaseline-v2-test-hermeticity-hardening
-    status: NEXT
+    status: DONE
     task_id: TASK-232
     task_revision: 1
     authored_commit_sha: "a1ccbeee3255ecfedfb68436f00a23aeb828b00d"
@@ -1637,13 +1650,23 @@ sequence:
       n4_subset: "1 failed, 374 passed"
       n12_subset: "2 failed, 373 passed"
       note: >-
-        These manual observations guide bounded diagnosis only and are not
+        These manual observations guided bounded diagnosis only and are not
         canonical Runtime verification evidence.
+    completed_by:
+      run_id: RUN-232-001
+      review_id: REVIEW-232-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-232-001-V001
+        - RUN-232-001-V002
+      review_decision_sha: "ffef3d8433fb055876f2dc771587d7a025735d3b"
+      reviewed_sha: "7f91c19b5a0035b9c1eef3a284e6bd7c0b4364d5"
+      published_sha: "7f91c19b5a0035b9c1eef3a284e6bd7c0b4364d5"
     objective: >-
       Harden the two parallel-sensitive test-infrastructure contracts exposed
-      during TASK-231: Scenario 7 must bind structured PRE_AIOS receipt semantics
+      during TASK-231: Scenario 7 binds structured PRE_AIOS receipt semantics
       rather than exact PowerShell stderr wording, and Git fixture object access
-      must remain correct for valid loose or packed object storage.
+      remains correct for valid loose or packed object storage.
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
