@@ -1,0 +1,164 @@
+task_id: TASK-235
+revision: 1
+
+goal: >
+  Add one bounded stable-failure cause probe for the three RUN-234-001
+  SERIAL_STABLE_FAILURE tests. Run each exact test independently from a fresh
+  serial process and expose only deterministic guard categories, typed cause-chain
+  facts and sanitized fingerprints so Brain can distinguish test-fixture defects
+  from production contract defects before authoring any fix.
+
+problem: >
+  RUN-234-001 proved that only three of the prior 35 target failures remain stable
+  when execution starts cold and when the complete two-file serial context is run:
+  test_scenario_2_fresh_correction_accepts_only_current_finding,
+  test_source_repair_bootstrap_closed_and_exact_replay, and
+  test_source_repair_bound_target_consumes_without_matching_activation. Current
+  durable evidence records only exception classes and message fingerprints. The
+  first fails with AuthoringIngressError and the other two with OperatorError, but
+  those exception classes cover many fail-closed guards. Choosing a production or
+  fixture fix without identifying the exact guard would be guesswork.
+
+assumptions:
+  - >
+    Canonical main at authoring is 38c94bcf0a6eb70f35b6a99e2e88dc5b22b1f552, the reviewed and published
+    RUN-234-001 candidate.
+  - >
+    RUN-234-001 RESULT artifact is
+    b17e54d9878fd5ea7b2a5e43acebbbb6d275ddfb and REVIEW-234-001 PASS decision is
+    7deba20a92fb1b314003c4107515b8f8d1125b21.
+  - >
+    RUN-234-001-V002 classified SERIAL_STABLE_FAILURE with exactly three Phase-A
+    and three Phase-B target failures and zero Phase-B non-target failures.
+  - >
+    TASK-232 changed test-only Git fixture object inspection for packed storage,
+    but present evidence does not establish TASK-232 as the cause of any of the
+    three stable failures. This remains a hypothesis only.
+  - >
+    Defender is outside this cause probe. No host-wide mutation or attribution is
+    permitted.
+
+scope:
+  inspect:
+    - .ai/tasks/TASK-232.yaml
+    - .ai/tasks/TASK-234.yaml
+    - scripts/aios_serial_context_diagnostic.py
+    - tests/git_fixture_support.py
+    - tests/operator_test_support.py
+    - tests/test_hot_swap_conformance.py
+    - tests/test_operator.py
+    - src/aios_renew/authoring_ingress.py
+    - src/aios_renew/operator.py
+  modify:
+    - scripts/aios_stable_failure_cause_diagnostic.py
+    - tests/aios_stable_failure_probe_plugin.py
+    - tests/test_aios_stable_failure_cause_diagnostic.py
+
+non_goals:
+  - >
+    Modify production code, existing tests or fixture support under diagnosis,
+    TASK-231/232/233/234, worker policy, frozen Kernel semantics, roadmap from
+    Executor execution, Reviewer/Publisher behavior, or workflows.
+  - >
+    Fix, skip, xfail, reorder or weaken any failing test.
+  - >
+    Run full-suite, n4/n12, performance benchmarks, retries, fallback profiles, or
+    automatic correction.
+  - >
+    Persist raw exception messages, raw stdout/stderr, arbitrary paths, URLs,
+    credentials, environment values or private host details.
+  - >
+    Change Defender, PATH, Git executable policy or any host-wide setting.
+
+constraints:
+  hard:
+    - >
+      Add one fixed no-argument command:
+      'python scripts/aios_stable_failure_cause_diagnostic.py'. Reject all
+      positional/options input before test execution.
+    - >
+      Bind exactly these three non-parameterized test selectors and no others:
+      tests/test_hot_swap_conformance.py::test_scenario_2_fresh_correction_accepts_only_current_finding;
+      tests/test_operator.py::test_source_repair_bootstrap_closed_and_exact_replay;
+      tests/test_operator.py::test_source_repair_bound_target_consumes_without_matching_activation.
+    - >
+      Perform one collection-only identity check first, then execute each target
+      exactly once in its own fresh serial subprocess with independent pytest
+      basetemp and process-local Git fixture cache. No target process may execute a
+      different test or share mutable roots with another target.
+    - >
+      Capture the uncaught call-phase exception through a dedicated pytest probe
+      plugin. Durable output may include only safe test identity, exception type,
+      SHA-256 message fingerprint, sanitized source locus, cause-chain exception
+      type sequence, errno/winerror/return-code style integer facts where present,
+      and one allowlisted guard_category.
+    - >
+      guard_category must be derived by matching the exception against a fixed,
+      source-auditable mapping of known AuthoringIngressError/OperatorError guard
+      families relevant to these three call paths. Categories must be semantic
+      constants such as CANONICAL_REVIEW_DECISION_MISSING,
+      EXPECTED_REVIEWED_SHA_MISMATCH, FINDING_NOT_OUTSTANDING,
+      GIT_COMMAND_FAILED, SOURCE_REPAIR_TARGET_NOT_ACTIVATED,
+      SOURCE_REPAIR_LEGACY_GENERATION_MISMATCH,
+      SOURCE_REPAIR_LINEAGE_MISMATCH, SOURCE_REPAIR_TARGET_SOURCE_MISMATCH,
+      SOURCE_REPAIR_TRANSPORT_IDENTITY_MISMATCH, or another equally bounded
+      source-derived enum. Do not emit the raw matched text.
+    - >
+      UNKNOWN guard_category is permitted only as an observational outcome, never
+      as an integrity failure or guessed remediation. If UNKNOWN occurs, retain
+      only exception type/fingerprint/cause types and do not leak message text.
+    - >
+      Verify exact Git subject SHA and clean worktree before and after collection
+      and every target subprocess. Any subject mutation fails closed.
+    - >
+      Verify each subprocess reports exactly one collected and one executed target,
+      a distinct process id, distinct temporary root and distinct Git fixture cache
+      root. Missing, duplicate, malformed or inconsistent observations fail closed.
+    - >
+      The diagnostic exits zero when the bounded experiment completes faithfully
+      regardless of whether the three tests pass or fail. Integrity failures exit
+      nonzero.
+    - >
+      Final JSON must expose one record per target and a mechanical aggregate only:
+      PASS, KNOWN_GUARDS, MIXED_KNOWN_UNKNOWN, or ALL_UNKNOWN. It must not declare
+      fixture or production causality and must not select a remediation.
+    - >
+      No file outside the three scope.modify files may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The command binds and executes exactly the three RUN-234 stable-failure
+      targets once each in independent cold serial subprocesses after one bounded
+      collection identity check.
+  - id: AC2
+    condition: >
+      The probe records exception type, message fingerprint, safe source locus,
+      cause-chain types and bounded typed integer facts without durable raw
+      messages/stdout/stderr/private paths.
+  - id: AC3
+    condition: >
+      Known ingress/operator fail-closed messages on the three call paths map to
+      explicit source-auditable guard categories while unmatched messages remain
+      UNKNOWN without guessing.
+  - id: AC4
+    condition: >
+      Subject stability, exact execution identity, process/root/cache isolation and
+      malformed/duplicate observation checks fail closed.
+  - id: AC5
+    condition: >
+      Final JSON contains exactly three target records plus one allowed aggregate
+      classification and makes no remediation, production-defect, fixture-defect,
+      worker or Defender judgment.
+  - id: AC6
+    condition: >
+      Regression tests cover known guard mapping, UNKNOWN handling, raw-message
+      privacy, cause-chain sanitization, exact three-target binding, distinct
+      subprocess/root/cache enforcement, subject mutation and argument rejection.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_aios_stable_failure_cause_diagnostic.py
+    - python scripts/aios_stable_failure_cause_diagnostic.py
+    - git diff --check
