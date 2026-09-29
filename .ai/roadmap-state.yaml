@@ -1152,9 +1152,20 @@ sequence:
       activation_task:
         task_id: TASK-221
         task_revision: 1
-        status: AUTHORED_NEXT
+        status: DONE
         target_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
         gate: AFTER_EXACT_TASK_220_REVIEW_AND_PUBLICATION
+        completed_by:
+          failed_run_id: RUN-221-001
+          repair_id: REPAIR-221-001
+          run_id: RUN-221-002
+          operation: REPAIR
+          review_id: REVIEW-221-001
+          reviewed_sha: "6fbb19db9eb5af3adc55cca570f775d223841ae6"
+          published_sha: "6fbb19db9eb5af3adc55cca570f775d223841ae6"
+          verification_evidence:
+            - RUN-221-002-V001
+            - RUN-221-002-V002
         objective: >-
           Bind only the exact reviewed/published TASK-220 consumer SHA and prove the full
           production-shaped composed successor path under production defaults before any
@@ -1166,37 +1177,46 @@ sequence:
         pre-RUN bootstrap defect, Plan A terminates and the corridor returns to structural
         redesign rather than TASK-222-style patch continuation.
     current_prerequisite:
-      task_id: TASK-221
-      task_revision: 1
+      repository: trung-via/python_complete_agent
+      task_id: TASK-259
+      task_revision: 2
       approved_on: "2026-09-29"
-      approved_against_main_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
+      approved_against_main_sha: "fab729b16889a78427d4fb1107bf67be7e0a9c35"
       authority: HUMAN_BRAIN_PLANNING
       reason: >-
-        TASK-220 completed through RUN-220-002, REVIEW-220-001 PASS and exact
-        publication-effective SHA 5d8ac589cbb4f611816d2926cff1989eda4eb74d.
-        TASK-221 is the second and final Plan-A upstream TASK id and must bind only that
-        SHA and pass the production-default three-source proof before any downstream retry.
-      predecessor_completed:
-        task_id: TASK-220
+        TASK-221 completed through RUN-221-002, REVIEW-221-001 PRIMARY PASS and exact
+        publication-effective SHA 6fbb19db9eb5af3adc55cca570f775d223841ae6. Fresh
+        downstream Brain Sync confirms Python Agent TASK-259 revision 2 remains the
+        unique BP9 continuation, RUN-259-001 remains the immutable failed predecessor,
+        and no RUN-259-002 exists.
+      upstream_completed:
+        task_id: TASK-221
         task_revision: 1
-        failed_run_id: RUN-220-001
-        repair_id: REPAIR-220-001
-        run_id: RUN-220-002
-        review_id: REVIEW-220-001
-        reviewed_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
-        published_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
-      downstream_blocked_state:
+        failed_run_id: RUN-221-001
+        repair_id: REPAIR-221-001
+        run_id: RUN-221-002
+        review_id: REVIEW-221-001
+        reviewed_sha: "6fbb19db9eb5af3adc55cca570f775d223841ae6"
+        published_sha: "6fbb19db9eb5af3adc55cca570f775d223841ae6"
+        successor_runtime_target_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
+      downstream_state:
         repository: trung-via/python_complete_agent
-        main_sha: "1468d2b26f2d1f5ed6acb6f152f512a39c4c52ec"
+        main_sha: "fab729b16889a78427d4fb1107bf67be7e0a9c35"
         task_id: TASK-259
         task_revision: 2
+        task_blob_sha: "af61fa253d51f8662bc7cbd03fd679f646aa2c29"
+        task_commit_sha: "1468d2b26f2d1f5ed6acb6f152f512a39c4c52ec"
         failed_predecessor_run: RUN-259-001
         next_run: NONE_YET
+        active_pin_sha: "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
+        intended_task_pin_sha: "44eee353eda376c9db8cd88d97184d3122651bf5"
+        successor_runtime_target_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
       follow_on: >-
-        Only after exact TASK-221 review/publication may Brain fresh-sync Python Agent,
-        reconcile successor target planning metadata, construct a new exact successor
-        delivery identity and re-attempt the already-authored TASK-259 r2. TASK-207 r9
-        remains publication-gated after TASK-259 r2.
+        Construct one exact Human-authorized post-terminal successor delivery from
+        RUN-259-001 into already-authored TASK-259 revision 2 using the reviewed TASK-221
+        control source and exact successor runtime target. After TASK-259 r2 review and
+        publication, fresh TASK-207 r9 is the unique BP9 conformance successor.
+
 previous_track:
   id: control-plane-closure
   status: COMPLETE
@@ -1223,15 +1243,19 @@ parallel_work:
 sequencing_rule:
   generic_continuation: >-
     Continue only the unique canonical NEXT item, BP-9 downstream adoption under the
-    Human-approved Plan A STOP-LINE closure. TASK-219 is already reviewed/published, and
-    the first real TASK-259 r2 successor attempt failed pre-RUN at installed-generation
-    attestation. TASK-220 is REVIEW-220-001 PASS and publication-effective at exact 5d8ac589cbb4f611816d2926cff1989eda4eb74d. The unique current prerequisite is authored TASK-221 r1, which must bind only that SHA and pass the production-default composed proof before any downstream retry.
-    At most two new upstream TASK ids, TASK-220 and TASK-221, are authorized for this
-    corridor. If another architecture-level pre-RUN bootstrap defect appears after both,
-    do not create a third narrow patch; return to structural redesign. Do not substitute
-    REPAIR-259, source-REPAIR reuse, migration-history rewriting, automatic revision
-    selection, generic retry/failover, reusable unreviewed shell automation or product
-    work.
+    Human-approved Plan A STOP-LINE closure. TASK-220 and TASK-221 are both reviewed and
+    publication-effective; exact TASK-221 publication is
+    6fbb19db9eb5af3adc55cca570f775d223841ae6 and activates exact successor consumer
+    5d8ac589cbb4f611816d2926cff1989eda4eb74d. Fresh downstream Brain Sync identifies
+    already-authored Python Agent TASK-259 revision 2 at downstream main
+    fab729b16889a78427d4fb1107bf67be7e0a9c35 as the unique continuation, with
+    RUN-259-001 immutable and no RUN-259-002 yet. At most two new upstream TASK ids,
+    TASK-220 and TASK-221, were authorized and both are consumed. If another
+    architecture-level pre-RUN bootstrap defect appears on the next exact downstream
+    successor attempt, do not create TASK-222; return to structural redesign. Do not
+    substitute REPAIR-259, source-REPAIR reuse, migration-history rewriting, automatic
+    revision selection, generic retry/failover, reusable unreviewed shell automation or
+    product work.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
