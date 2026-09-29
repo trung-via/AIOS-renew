@@ -174,8 +174,8 @@ def _profile_ref(value: Any, expected: dict[str, Any]) -> dict[str, Any]:
     return dict(expected)
 
 
-def _basis(value: Any, name: str, *, required: bool) -> list[dict[str, str]]:
-    if type(value) is not list or len(value) > 16 or (required and not value):
+def _basis(value: Any, name: str, *, required: bool, limit: int) -> list[dict[str, str]]:
+    if type(value) is not list or len(value) > limit or (required and not value):
         raise ResearchContractError(f"{name} must be a bounded non-empty list")
     result = []
     keys = set()
@@ -287,7 +287,8 @@ def _claim(value: Any, source_ids: set[str], *, validate: bool) -> dict[str, Any
         "uncertainty": {"status": _choice(uncertainty["status"],
             {"NO_MATERIAL_UNCERTAINTY", "BOUNDED_UNCERTAINTY", "UNRESOLVED_UNCERTAINTY"}, "uncertainty status"),
             "summary": _semantic(uncertainty["summary"], "uncertainty summary", 4096)},
-        "invalidation_basis": _basis(item["invalidation_basis"], "invalidation basis", required=True)}
+        "invalidation_basis": _basis(item["invalidation_basis"], "invalidation basis",
+                                     required=True, limit=16)}
     result = dict(body, claim_fingerprint=_digest(body))
     if validate:
         _literal(item["claim_fingerprint"], result["claim_fingerprint"], "claim fingerprint")
@@ -419,8 +420,12 @@ def project_research_reuse(record: Any, profile: Any, current_basis: Any,
                            predecessor_record: Any = None) -> dict[str, Any]:
     """Compare caller-supplied basis identities; make no freshness judgment."""
     bound = validate_research_record(record, profile, predecessor_record)
-    current = _basis(current_basis, "current basis", required=False)
+    declared_keys = {(basis["kind"], basis["locator"])
+                     for claim in bound["claims"] for basis in claim["invalidation_basis"]}
+    current = _basis(current_basis, "current basis", required=False, limit=len(declared_keys))
     lookup = {(item["kind"], item["locator"]): item["identity"] for item in current}
+    if not lookup.keys() <= declared_keys:
+        raise ResearchContractError("current basis contains undeclared key")
     valid, refresh = [], []
     for claim in bound["claims"]:
         reusable = all(lookup.get((basis["kind"], basis["locator"])) == basis["identity"]

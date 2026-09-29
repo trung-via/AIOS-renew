@@ -208,6 +208,50 @@ def test_claim_normalization_references_and_reuse():
     rejects(project_research_reuse, record, p, current + current)
 
 
+def test_reuse_projects_record_wide_basis_union():
+    p = profile()
+    brief, request = brief_request()
+    entry, supplied = source(brief, request)
+    sid = entry["observation_fingerprint"]
+    claims = []
+    for index in range(17):
+        body = {key: deepcopy(value) for key, value in
+                claim([sid], f"Claim {index}").items() if key != "claim_fingerprint"}
+        body["invalidation_basis"][0]["locator"] = f"https://example.org/docs/{index}"
+        claims.append(construct_research_claim(body, [sid]))
+    record = construct_research_record(material(brief, p, [entry], claims), p,
+                                       observations=supplied)
+    current = [deepcopy(item) for claim_item in record["claims"]
+               for item in claim_item["invalidation_basis"]]
+    assert len(current) == 17
+    projection = project_research_reuse(record, p, current)
+    assert projection["status"] == "VALID"
+    assert projection["valid_claim_fingerprints"] == [
+        item["claim_fingerprint"] for item in record["claims"]]
+    assert projection["refresh_required_claim_fingerprints"] == []
+
+    changed = deepcopy(current)
+    changed[0]["identity"] = "v2"
+    projection = project_research_reuse(record, p, changed)
+    affected = next(item["claim_fingerprint"] for item in record["claims"]
+                    if item["invalidation_basis"][0]["locator"] == changed[0]["locator"])
+    assert projection["status"] == "REFRESH_REQUIRED"
+    assert projection["refresh_required_claim_fingerprints"] == [affected]
+    assert projection["valid_claim_fingerprints"] == [
+        item["claim_fingerprint"] for item in record["claims"]
+        if item["claim_fingerprint"] != affected]
+
+    rejects(project_research_reuse, record, p, current[:-1] + current[:1])
+    foreign = deepcopy(current)
+    foreign[0]["locator"] = "https://example.org/undeclared"
+    rejects(project_research_reuse, record, p, foreign)
+    rejects(project_research_reuse, record, p, current + foreign[:1])
+    oversized_claim = {key: deepcopy(value) for key, value in claims[0].items()
+                       if key != "claim_fingerprint"}
+    oversized_claim["invalidation_basis"] = current
+    rejects(construct_research_claim, oversized_claim, [sid])
+
+
 def test_exact_predecessor_partition_and_brief_lineage():
     p = profile()
     brief, request = brief_request()
