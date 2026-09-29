@@ -77,12 +77,12 @@ def test_unique_unauthored_next_and_other_blockers():
 
 
 def test_human_text_does_not_infer_a_flow():
-    context = compose_brain_work_context(snapshot(), {"human_input": "please review and repair"})
+    context = compose_brain_work_context(snapshot(), {"human_input": "please research, review and repair"})
     assert resolve_flow(context).selected_flow == "NONE"
     assert resolve_flow(context).requires_fresh_context_for_continuation is False
 
 
-@pytest.mark.parametrize("selector", ["ARCHITECTURE", "TASK_AUTHORING", "DIAGNOSTIC"])
+@pytest.mark.parametrize("selector", ["ARCHITECTURE", "TASK_AUTHORING", "DIAGNOSTIC", "RESEARCH"])
 def test_explicit_side_flow_preserves_pending_obligation(selector):
     blocker = {"code": "CANONICAL_BLOCKER", "message": "preserve exactly"}
     source = snapshot("SEMANTIC_REVIEW", blocker=blocker)
@@ -93,6 +93,8 @@ def test_explicit_side_flow_preserves_pending_obligation(selector):
     assert result.card["authority_owner"] == "BRAIN"
     assert result.pending_canonical_obligation == "SEMANTIC_REVIEW"
     assert result.pending_canonical_authority_owner == "REVIEWER"
+    assert result.canonical_next_action == "SEMANTIC_REVIEW"
+    assert result.unified_state_next_action == "SEMANTIC_REVIEW"
     assert result.canonical_blocker == blocker
     assert result.requires_fresh_context_for_continuation is True
     assert context.current_request == {"flow_selector": selector, "human_input": "current priority"}
@@ -208,10 +210,14 @@ def test_composition_and_resolution_have_no_mutating_call_path(monkeypatch):
     assert resolve_flow(context).selected_flow == "SEMANTIC_REVIEW"
 
 
-def test_registry_exact_six_and_contracts():
+def test_registry_exact_seven_and_contracts():
     cards = load_flow_cards()
     assert set(cards) == {"ARCHITECTURE", "TASK_AUTHORING", "SEMANTIC_REVIEW",
-                          "REMEDIATION_AUTHORING", "REPAIR_AUTHORING", "DIAGNOSTIC"}
+                          "REMEDIATION_AUTHORING", "REPAIR_AUTHORING", "DIAGNOSTIC", "RESEARCH"}
+    assert cards["RESEARCH"]["entry_conditions"] == ["EXPLICIT_SELECTOR"]
+    assert cards["RESEARCH"]["decision_family_ref"] == "HUMAN_BRAIN_RESEARCH_ASSURANCE"
+    assert cards["RESEARCH"]["handoff_target"] == "RESEARCH_PROTOCOL"
+    assert cards["RESEARCH"]["expected_return_shape"] == "RESEARCH_PACKET"
     assert cards["SEMANTIC_REVIEW"]["authority_owner"] == "REVIEWER"
     assert cards["SEMANTIC_REVIEW"]["decision_family_ref"] == "review.validate_review"
     assert cards["REPAIR_AUTHORING"]["decision_family_ref"] == "publication._validate_repair_authorization"

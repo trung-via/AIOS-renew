@@ -61,3 +61,13 @@ cards:
     handoff_target: HUMAN_BRAIN_PLANNING
     expected_return_shape: BOUNDED_DIAGNOSTIC_PROPOSAL
     invalidation_rules: [WORK_CONTEXT_FINGERPRINT_CHANGE, FRESH_COMPOSITION_FOR_CONTINUATION]
+  - id: RESEARCH
+    entry_conditions: [EXPLICIT_SELECTOR]
+    required_context: [canonical_observation.repository, canonical_observation.main_sha, current_request.flow_selector]
+    optional_context: [canonical_observation.roadmap, canonical_observation.blocker, current_request.human_input]
+    forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
+    authority_owner: BRAIN
+    decision_family_ref: HUMAN_BRAIN_RESEARCH_ASSURANCE
+    handoff_target: RESEARCH_PROTOCOL
+    expected_return_shape: RESEARCH_PACKET
+    invalidation_rules: [WORK_CONTEXT_FINGERPRINT_CHANGE, FRESH_COMPOSITION_FOR_CONTINUATION]

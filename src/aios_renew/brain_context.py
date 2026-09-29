@@ -23,9 +23,9 @@ class BrainContextError(ValueError):
 
 _FLOWS = frozenset({
     "ARCHITECTURE", "TASK_AUTHORING", "SEMANTIC_REVIEW",
-    "REMEDIATION_AUTHORING", "REPAIR_AUTHORING", "DIAGNOSTIC",
+    "REMEDIATION_AUTHORING", "REPAIR_AUTHORING", "DIAGNOSTIC", "RESEARCH",
 })
-_EXPLICIT = frozenset({"ARCHITECTURE", "TASK_AUTHORING", "DIAGNOSTIC"})
+_EXPLICIT = frozenset({"ARCHITECTURE", "TASK_AUTHORING", "DIAGNOSTIC", "RESEARCH"})
 _OBLIGATIONS = {
     "SEMANTIC_REVIEW": "SEMANTIC_REVIEW",
     "AUTHOR_REMEDIATION": "REMEDIATION_AUTHORING",
@@ -40,6 +40,7 @@ _FAMILIES = {
     "REMEDIATION_AUTHORING": "review.validate_remediation",
     "REPAIR_AUTHORING": "publication._validate_repair_authorization",
     "DIAGNOSTIC": "HUMAN_BRAIN_DIAGNOSTIC",
+    "RESEARCH": "HUMAN_BRAIN_RESEARCH_ASSURANCE",
 }
 _HANDOFFS = {
     "ARCHITECTURE": "HUMAN_BRAIN_PLANNING",
@@ -48,6 +49,7 @@ _HANDOFFS = {
     "REMEDIATION_AUTHORING": "AUTHORING_INGRESS",
     "REPAIR_AUTHORING": "AUTHORING_INGRESS",
     "DIAGNOSTIC": "HUMAN_BRAIN_PLANNING",
+    "RESEARCH": "RESEARCH_PROTOCOL",
 }
 _RETURNS = {
     "ARCHITECTURE": "BOUNDED_SEMANTIC_PROPOSAL",
@@ -56,6 +58,7 @@ _RETURNS = {
     "REMEDIATION_AUTHORING": "REMEDIATION_CONTRACT_PROPOSAL",
     "REPAIR_AUTHORING": "REPAIR_AUTHORIZATION_PROPOSAL",
     "DIAGNOSTIC": "BOUNDED_DIAGNOSTIC_PROPOSAL",
+    "RESEARCH": "RESEARCH_PACKET",
 }
 _ENTRIES = {
     "ARCHITECTURE": frozenset({"EXPLICIT_SELECTOR"}),
@@ -64,6 +67,7 @@ _ENTRIES = {
     "REMEDIATION_AUTHORING": frozenset({"UNIFIED_STATE_AUTHOR_REMEDIATION"}),
     "REPAIR_AUTHORING": frozenset({"UNIFIED_STATE_AUTHOR_REPAIR"}),
     "DIAGNOSTIC": frozenset({"EXPLICIT_SELECTOR"}),
+    "RESEARCH": frozenset({"EXPLICIT_SELECTOR"}),
 }
 _CONTEXT_PATHS = frozenset({
     "canonical_observation.repository", "canonical_observation.main_sha",
@@ -79,6 +83,7 @@ _REQUIRED_CONTEXT = {
     "REMEDIATION_AUTHORING": frozenset({"canonical_observation.repository", "canonical_observation.main_sha", "canonical_observation.selected_task", "canonical_observation.unified_state"}),
     "REPAIR_AUTHORING": frozenset({"canonical_observation.repository", "canonical_observation.main_sha", "canonical_observation.selected_task", "canonical_observation.unified_state"}),
     "DIAGNOSTIC": frozenset({"canonical_observation.repository", "canonical_observation.main_sha", "canonical_observation.blocker", "current_request.flow_selector"}),
+    "RESEARCH": frozenset({"canonical_observation.repository", "canonical_observation.main_sha", "current_request.flow_selector"}),
 }
 _FORBIDDEN = frozenset({
     "chat_history", "credentials", "raw_logs", "unbounded_repository_content",
@@ -241,7 +246,7 @@ def load_flow_cards(path: str | Path | None = None, *, repo: str | Path | None =
         raise BrainContextError("cannot load Flow Cards") from exc
     if not isinstance(raw, dict) or set(raw) != {"format", "version", "cards"} or \
             raw["format"] != "AIOS_FLOW_CARDS" or type(raw["version"]) is not int or \
-            raw["version"] != 1 or not isinstance(raw["cards"], list) or len(raw["cards"]) != 6:
+            raw["version"] != 1 or not isinstance(raw["cards"], list) or len(raw["cards"]) != 7:
         raise BrainContextError("invalid Flow Card registry")
     cards: dict[str, dict[str, Any]] = {}
     for card in raw["cards"]:
