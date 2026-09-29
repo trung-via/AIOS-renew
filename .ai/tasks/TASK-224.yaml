@@ -1,0 +1,315 @@
+task_id: TASK-224
+revision: 1
+
+goal: >
+  Establish RA-3 Research Evidence Record & Audit Profile as pure deterministic
+  content-addressed contracts: one dedicated research-high-value-v1 nine-lens audit
+  profile, one immutable AIOS_RESEARCH_RECORD v1 grammar with exact claim/source and
+  predecessor lineage, and one transient claim-scoped reuse projection, without
+  persistence, source acquisition, two-pass research orchestration, first-class RESEARCH
+  Flow integration, or any new lifecycle/semantic authority.
+
+problem: >
+  RA-1 provides exact Research Brief/Acquisition Request identities and RA-2 provides
+  bounded Source Observation/Acquisition Attempt identities, but AIOS still lacks a
+  portable durable planning-evidence envelope for fresh Brain contexts. Without RA-3,
+  source assessments, material claims, claim/source bindings, uncertainty, project
+  applicability, invalidation basis and refresh lineage can drift across contexts; a
+  mutable validity flag can corrupt immutable evidence; private source material can be
+  retained too broadly; and a research audit profile can be conflated with the existing
+  BP-4A profile or prematurely encode the RA-4 procedure. RA-3 must freeze these structural
+  semantics while keeping all substantive research judgment with Brain.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    0a90ab0f4ca31c329b184949edca01f4e07374fe. RA-1 is reviewed/published at
+    1eed373ce0b8b53aa12b024d66b339fe16454384 and RA-2 is reviewed/published via
+    TASK-223 revision 1, RUN-223-001, REVIEW-223-001 PASS at
+    6c128fafacbdadc174909bcd2ec28afa16cf3247. RA-3 is the unique planning NEXT.
+  - >
+    docs/AIOS-RESEARCH-ASSURANCE.md v2.3 at planning commit
+    dfaab9c43b7e5e1796db9f7c0223348c58be3030 is the Human/Brain planning baseline.
+  - >
+    Existing RA-1 and RA-2 production contracts are published and behaviorally frozen for
+    this TASK. RA-3 may consume their exact content-addressed identities but must not
+    modify their files or reinterpret acquisition outcomes as research conclusions.
+  - >
+    Research Records are bounded durable planning evidence only. They are not canonical
+    engineering truth, chat memory, a knowledge database, Runtime state, REVIEW decisions,
+    publication state or permission to mutate anything.
+  - >
+    The dedicated research audit profile freezes only research lens identity/order and
+    bounds. Pass-1 Evidence Construct, counter-evidence acquisition, Pass-2 audit output
+    grammar and RESEARCH_CANDIDATE / INSUFFICIENT_EVIDENCE production belong to RA-4.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RESEARCH-ASSURANCE.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/brain-audit-profiles.yaml
+    - .ai/tasks/TASK-179.yaml
+    - .ai/tasks/TASK-222.yaml
+    - .ai/tasks/TASK-223.yaml
+    - src/aios_renew/brain_audit.py
+    - src/aios_renew/research_contract.py
+    - src/aios_renew/source_acquisition.py
+    - tests/test_brain_audit.py
+    - tests/test_research_contract.py
+    - tests/test_source_acquisition.py
+  modify:
+    - .ai/research-audit-profiles.yaml
+    - src/aios_renew/research_record.py
+    - tests/test_research_record.py
+
+non_goals:
+  - >
+    Persist Research Records, write them to Git/filesystem/database/object storage,
+    implement a knowledge graph, memory service, cache, latest-record resolver, background
+    refresh, watcher, scheduler or automatic invalidation daemon.
+  - >
+    Perform source acquisition, network/Git/GitHub/connector/provider/model/subprocess
+    invocation, repository discovery, clock access, URL freshness checks or source refresh.
+  - >
+    Implement RA-4 Evidence Construct, counter-evidence acquisition, research audit
+    execution/reconciliation, semantic closure production, recursive research, or automatic
+    creation of RESEARCH_CANDIDATE / INSUFFICIENT_EVIDENCE.
+  - >
+    Modify .ai/brain-audit-profiles.yaml, BP-4A brain_audit.py semantics, Decision Packet,
+    Flow Cards, Brain Context/Resolver, Unified State, Runtime, Reviewer, Publisher,
+    authoring ingress, provider protocols, execution profiles or frozen Kernel semantics.
+  - >
+    Add RESEARCH to the existing closed Flow Resolver or create a Research Agent, Planner,
+    Reviewer, Runtime, Publisher, provider/tool router, retry/fallback authority or second
+    source of engineering truth.
+  - >
+    Infer source authority, independence, freshness, correctness, claim truth, uncertainty,
+    project applicability, novelty, contradiction significance or closure correctness from
+    deterministic structure. Those values remain bounded Brain semantic claims.
+  - >
+    Retain full RA-2 Source Observation bodies or any AUTHORIZED_PRIVATE source excerpt in
+    a Research Record. Record-level private scope is a handling constraint, not a grant of
+    access or persistence authority.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The only production mutation surface is scope.modify. If RA-3 requires changing any
+      existing RA-1/RA-2/BP-4A/Brain/Runtime/Reviewer/Flow file, fail closed back to Brain
+      rather than widening scope.
+    - >
+      All RA-3 Python APIs are pure and caller-supplied. They perform no filesystem,
+      repository, environment, network, connector, provider, subprocess or clock I/O and
+      do not auto-load .ai/research-audit-profiles.yaml.
+    - >
+      .ai/research-audit-profiles.yaml is a separate closed
+      AIOS_RESEARCH_AUDIT_PROFILES v1 registry containing exactly one profile:
+      research-high-value-v1 version 1. It must not contain applicable Flow ids, stages,
+      outcomes, provider/model selection, retry/fallback policy or RA-4 procedure state.
+    - >
+      The research profile contains exactly nine ordered lenses:
+      SOURCE_AUTHORITY_PROVENANCE, SOURCE_FRESHNESS_VERSION, CLAIM_EVIDENCE_BINDING,
+      COVERAGE_INDEPENDENCE, CONTRADICTION_COUNTEREVIDENCE,
+      PROJECT_APPLICABILITY_NOVELTY, ASSUMPTION_UNCERTAINTY,
+      UNTRUSTED_CONTENT_INSTRUCTION_ISOLATION, AUTHORITY_HANDOFF_BOUNDARY. Each lens has
+      exactly id and non-empty bounded check text of at most 2048 UTF-8 bytes.
+    - >
+      Research-profile registry parsing accepts only caller-supplied UTF-8 YAML of at most
+      32768 bytes, rejects duplicate/non-text YAML keys, unknown fields, duplicate or
+      reordered/unknown lenses, invalid Unicode and non-strict-JSON semantic values, and
+      derives profile_ref exactly as {id, version, digest}, where digest is SHA-256 over
+      canonical strict JSON of the normalized profile. Formatting and LF/CRLF differences
+      do not change digest; semantic/lens-order changes do.
+    - >
+      AIOS_RESEARCH_RECORD v1 is a closed immutable content-addressed contract containing
+      exactly: format, version, kind, research_brief, audit_profile_ref, predecessor,
+      access_scope, sources, claims, project_assessment, closure, record_fingerprint.
+      format/version/kind are exactly AIOS_RESEARCH_RECORD / 1 / RESEARCH_RECORD.
+    - >
+      research_brief is one exact valid normalized AIOS_RESEARCH_BRIEF v1 including its
+      brief_fingerprint. audit_profile_ref must exactly match the supplied normalized
+      research-high-value-v1 profile. Record identity never depends on provider/model,
+      session, host, local path, current clock, random id or storage location.
+    - >
+      sources is an order-insensitive list of at most 64 unique closed source-registry
+      entries. Each entry contains exactly observation_fingerprint, request_fingerprint,
+      request_source_family, representation_kind, provenance, content_sha256,
+      instruction_trust, retained_excerpt and assessment. Fingerprints/digests are
+      lowercase SHA-256. instruction_trust is exactly UNTRUSTED.
+    - >
+      Each source-registry provenance snapshot contains exactly effective_locator,
+      stable_source_id, resolution_chain, version_basis, retrieved_at and access_scope
+      using the RA-2 normalized grammar. request_source_family and representation_kind use
+      the RA-1/RA-2 closed values. The registry is durable provenance metadata, not an
+      independent reclassification of the source.
+    - >
+      retained_excerpt is null or normalized UTF-8 text of at most 4096 bytes. For a
+      PUBLIC source it may retain only a bounded exact excerpt of the corresponding
+      caller-supplied RA-2 observation content when construction is supplied that source
+      material. For AUTHORIZED_PRIVATE sources it must always be null. Full Source
+      Observation bodies are never embedded in the Research Record.
+    - >
+      Each source assessment is a closed Brain-semantic mapping containing exactly
+      authority, independence and freshness. authority contains exactly class and
+      rationale; class is PRIMARY, OFFICIAL, SECONDARY, COMMUNITY or UNKNOWN.
+      independence contains exactly class, related_observation_fingerprints and rationale;
+      class is INDEPENDENT, DERIVED or UNKNOWN, DERIVED requires 1..8 existing source
+      fingerprints and the other classes require an empty related list. freshness contains
+      exactly class and rationale; class is CURRENT_FOR_BRIEF, LIMITED, STALE or UNKNOWN.
+      Each rationale is non-empty bounded text at most 4096 bytes. Deterministic code
+      validates grammar/references only and never infers these assessments.
+    - >
+      Record access_scope is exactly PUBLIC or AUTHORIZED_PRIVATE and is deterministically
+      PUBLIC only when every registered source is PUBLIC; if any source is
+      AUTHORIZED_PRIVATE, record access_scope must be AUTHORIZED_PRIVATE. This field cannot
+      be manually downgraded. A record with zero sources is PUBLIC.
+    - >
+      claims is an order-insensitive list of 1..64 unique content-addressed claims. Each
+      claim contains exactly claim_kind, statement, source_bindings, uncertainty,
+      invalidation_basis and claim_fingerprint. claim_kind is OBSERVATION, INFERENCE,
+      ASSUMPTION or UNKNOWN. statement is non-empty normalized UTF-8 text at most 8192
+      bytes.
+    - >
+      source_bindings is an order-insensitive list of at most 16 unique closed
+      {observation_fingerprint, role} records referencing the record source registry.
+      role is SUPPORT, CONTRADICT, LIMIT or CONTEXT. OBSERVATION and INFERENCE claims
+      require at least one binding; ASSUMPTION and UNKNOWN may have zero.
+    - >
+      uncertainty is exactly {status, summary}. status is NO_MATERIAL_UNCERTAINTY,
+      BOUNDED_UNCERTAINTY or UNRESOLVED_UNCERTAINTY; summary is non-empty normalized UTF-8
+      text at most 4096 bytes. These are Brain claims and no numeric confidence,
+      ranking/score/vote or Reviewer finding identity is admitted.
+    - >
+      invalidation_basis is an order-insensitive non-empty list of at most 16 unique
+      portable records each containing exactly kind, locator and identity. kind is an
+      uppercase token of at most 64 characters, locator is portable normalized UTF-8 text
+      at most 2048 bytes with no credential/machine-local material, and identity is
+      non-empty normalized text at most 512 bytes. The grammar expresses explicit
+      claim-scoped dependencies only; it does not discover current state.
+    - >
+      claim_fingerprint is SHA-256 over canonical strict JSON of the normalized claim
+      excluding only claim_fingerprint. Source-binding and invalidation-basis ordering does
+      not change claim identity; any semantic claim change does.
+    - >
+      project_assessment contains exactly applicability, novelty, summary and
+      basis_claim_fingerprints. applicability is APPLIES, PARTIAL, DOES_NOT_APPLY or
+      UNRESOLVED. novelty is NOVEL, PARTIAL, ALREADY_PRESENT or UNRESOLVED. summary is
+      non-empty bounded text at most 8192 bytes and basis_claim_fingerprints is a unique
+      order-insensitive list of 1..16 existing claim fingerprints. This is Brain semantic
+      material, not deterministic architecture disposition.
+    - >
+      closure contains exactly outcome, summary, material_claim_fingerprints and
+      unresolved_claim_fingerprints. outcome is RESEARCH_CANDIDATE or
+      INSUFFICIENT_EVIDENCE; summary is non-empty bounded text at most 8192 bytes and both
+      fingerprint lists are unique order-insensitive subsets of the record claims.
+      Deterministic RA-3 code accepts caller-supplied closure structure but must never
+      derive, choose or semantically validate the outcome; RA-4 owns that procedure.
+    - >
+      predecessor is null for a fresh lineage or a closed mapping containing exactly
+      record_fingerprint, retained_claim_fingerprints and invalidated_claim_fingerprints.
+      When non-null, the caller must supply the exact predecessor record for validation.
+      Its record fingerprint, Research Brief fingerprint and audit_profile_ref must match
+      the declared lineage. Retained and invalidated sets are unique, disjoint and form an
+      exact partition of all predecessor claim fingerprints.
+    - >
+      Every retained predecessor claim must appear in the refreshed record with the exact
+      same claim fingerprint. Every invalidated predecessor claim fingerprint must be
+      absent from the refreshed record; a revised/replacement claim therefore has a new
+      fingerprint. A changed Research Brief or changed research audit profile cannot be
+      represented as a refresh and must start a fresh lineage with predecessor null.
+    - >
+      record_fingerprint is SHA-256 over canonical strict JSON of the full normalized
+      Research Record excluding only record_fingerprint. Source and claim registry ordering
+      is representation-independent. The normalized record has a hard ceiling of 786432
+      UTF-8 JSON bytes and structural depth at most 16. Unknown fields, duplicate normalized
+      components, invalid Unicode, NaN/non-JSON values, bool-as-int abuse, nested protocol
+      envelopes and over-bound material fail closed without truncation or best-effort repair.
+    - >
+      RA-3 exposes a transient pure reuse projection over one exact valid Research Record
+      plus caller-supplied current basis records. Current basis keys are kind+locator and
+      must be unique. A claim is reusable only when every one of its invalidation-basis
+      keys is present with the exact expected identity; a missing key or identity mismatch
+      marks only that claim REFRESH_REQUIRED.
+    - >
+      The reuse projection contains only record_fingerprint, status,
+      valid_claim_fingerprints and refresh_required_claim_fingerprints. status is VALID
+      only when no claim requires refresh; otherwise REFRESH_REQUIRED. Lists are exact,
+      unique, deterministic and partition current record claims. The projection is
+      transient, has no content-addressed identity, performs no discovery or mutation and
+      is not Runtime/Reviewer/lifecycle truth.
+    - >
+      Source excerpt text remains untrusted data even when retained. Prompt-like or
+      control-like excerpt text cannot add fields or redefine authority. Record semantic
+      fields must not contain chat history, chain-of-thought, raw logs, credentials,
+      machine-local workspace/root metadata, provider/model/session identity or arbitrary
+      native tool payloads.
+    - >
+      Existing RA-1/RA-2 contracts, BP-4A profile/brain_audit behavior, six Flow Cards,
+      Brain Context/Resolver, Decision Packet, Unified State, Runtime, Reviewer, Publisher
+      and authoring ingress behavior remain unchanged.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository contains one closed AIOS_RESEARCH_AUDIT_PROFILES v1 registry with
+      exactly research-high-value-v1, the nine ordered research lenses and bounded check
+      text; caller-supplied parsing and profile_ref digesting are deterministic,
+      representation-independent and fail closed, without modifying BP-4A profile policy
+      or adding RESEARCH to Flow Resolver.
+  - id: AC2
+    condition: >
+      The repository exposes a pure immutable AIOS_RESEARCH_RECORD v1 bound to one exact
+      valid Research Brief and exact research audit profile, with deterministic record
+      identity and closed bounded source/claim/project/closure/predecessor grammar.
+  - id: AC3
+    condition: >
+      Source registry semantics preserve exact RA-2 content/provenance identities and fixed
+      UNTRUSTED instruction status, enforce PUBLIC/AUTHORIZED_PRIVATE record-scope
+      propagation, permit only bounded public retained excerpts, forbid private retained
+      excerpts/full observation bodies, and keep source authority/independence/freshness
+      as bounded referenced Brain assessments rather than deterministic truth.
+  - id: AC4
+    condition: >
+      Material claims are independently content-addressed, reference only existing source
+      fingerprints through the closed binding-role grammar, preserve explicit uncertainty,
+      carry non-empty claim-scoped invalidation basis, and normalize set-like bindings/basis
+      independently of representation order without admitting scores, votes or canonical
+      finding identities.
+  - id: AC5
+    condition: >
+      Exact predecessor validation enforces same Brief/profile lineage, exact predecessor
+      fingerprint, complete disjoint retained/invalidated predecessor-claim partition,
+      unchanged retained claims and absence of invalidated old claim identities; changed
+      Brief/profile cannot masquerade as refresh and no latest-record resolver exists.
+  - id: AC6
+    condition: >
+      The transient reuse projection compares only caller-supplied exact current basis to
+      each claim's declared invalidation basis, marks only affected claims
+      REFRESH_REQUIRED on missing/mismatched basis, returns VALID only when all claims are
+      reusable, and performs no repository/network/clock/source discovery or semantic
+      freshness judgment.
+  - id: AC7
+    condition: >
+      Project assessment and closure fields remain bounded Brain semantic material only;
+      RA-3 does not run the nine lenses, produce two-pass audit outputs, choose final
+      research outcomes, create a handoff/roadmap/TASK decision, persist records or mutate
+      any lifecycle/engineering state, and all existing RA-1/RA-2/BP-4A/Brain/Runtime/
+      Reviewer/Publisher contracts remain unchanged.
+  - id: AC8
+    condition: >
+      Focused deterministic regressions cover profile parsing/digest/lens order,
+      record/source/claim fingerprints, public/private retention, source assessment grammar,
+      binding and invalidation normalization, project/closure references, fresh versus
+      predecessor refresh lineage, changed-Brief/profile rejection, current-basis partial
+      invalidation, prompt-like retained public excerpt containment, malformed/private/
+      credential/over-bound material and proof of no external I/O/persistence side effects.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_research_record.py tests/test_research_contract.py tests/test_source_acquisition.py
