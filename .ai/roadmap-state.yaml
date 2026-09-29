@@ -1268,10 +1268,13 @@ sequence:
         - PORTABLE_LOCATOR_NOT_NETWORK_SAFETY_PROOF
         - PRIVATE_CONNECTED_SOURCE_SCOPE
         - NO_HIDDEN_ACQUISITION_EXPANSION
-    task_id: null
+    task_id: TASK-223
+    task_revision: 1
+    authored_commit_sha: "b4a746eb65889e25477be076369e869f6052bbaf"
+    task_blob_sha: "b1346a09ecb3c71d519c7ced50cac844bd76f302"
     objective: >-
-      Author the exact RA-2 normalized acquisition-airlock TASK from the audited
-      Research Assurance v2.2 baseline before any Executor invocation.
+      Execute the exact authored RA-2 normalized acquisition-airlock TASK only after
+      fresh Brain Sync confirms TASK-223 revision 1 as the unique canonical NEXT.
 
 research_assurance:
   id: research-assurance
@@ -1354,8 +1357,11 @@ research_assurance:
         Pass-1 challenge-target semantics without adding RESEARCH to core Flow Resolver yet.
     - id: RA-2
       name: Source Acquisition & Provenance Boundary
-      status: NEXT_UNAUTHORED
+      status: AUTHORED_UNEXECUTED
       architecture_audit: PASS_WITH_BOUNDARY_REFINEMENT
+      task_id: TASK-223
+      task_revision: 1
+      authored_commit_sha: "b4a746eb65889e25477be076369e869f6052bbaf"
       objective: >-
         Define the pure normalized acquisition airlock: content-addressed Source Observation
         and Acquisition Attempt contracts with exact Brief/Request binding, representation
@@ -1402,10 +1408,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only RA-2 — Source Acquisition & Provenance Boundary. Its architecture audit
-    is closed on Research Assurance v2.2; the next action is to author and bind one exact
-    RA-2 TASK. Do not invoke an Executor before exact TASK authoring/Brain Sync, and do
-    not add concrete source-tool invocation or first-class RESEARCH Flow semantics.
+    Continue only exact TASK-223 revision 1 for RA-2 — Source Acquisition & Provenance
+    Boundary after fresh Brain Sync reconciles that authored TASK against current canonical
+    lineage. Do not add concrete source-tool invocation or first-class RESEARCH Flow
+    semantics outside TASK-223 scope.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1414,9 +1420,9 @@ research_assurance:
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
     RA-1 is reviewed/published at exact SHA 1eed373ce0b8b53aa12b024d66b339fe16454384.
-    RA-2 architecture audit is closed on v2.2 and exact TASK authoring is now permitted.
-    Execution remains forbidden until that TASK revision is canonicalized and fresh Brain
-    Sync selects it. RA-3 through RA-7 remain gated.
+    RA-2 architecture audit is closed and TASK-223 revision 1 is canonically authored.
+    RA-2 execution may proceed only after fresh Brain Sync selects that exact TASK and
+    normal Runtime admission applies. RA-3 through RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
