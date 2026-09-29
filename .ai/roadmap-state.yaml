@@ -1256,7 +1256,7 @@ sequence:
       status: DONE
       outcome: PASS_WITH_BOUNDARY_REFINEMENT
       completed_on: "2026-09-29"
-      planning_document_commit: "7c77c342f9d150103acf26dfd8480f075ca791a2"
+      planning_document_commit: "0eeda1d4524ccda26333e94727b32db40ea63615"
       findings:
         - RA2_RA5_ADAPTER_BOUNDARY_SEPARATION
         - SOURCE_REPRESENTATION_CLASS_DISTINCTION
@@ -1355,14 +1355,36 @@ sequence:
     status: NEXT
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
+    architecture_audit:
+      status: DONE
+      outcome: PASS_WITH_MANDATORY_PORTABILITY_BOUNDARIES
+      completed_on: "2026-09-29"
+      planning_document_commit: "0eeda1d4524ccda26333e94727b32db40ea63615"
+      findings:
+        - RESEARCH_PROVIDER_PROTOCOL_SEPARATE_FROM_CORE_BRAIN_PROVIDER
+        - TWO_INDEPENDENT_PORTABILITY_PLANES
+        - PROVIDER_METADATA_EXCLUDED_FROM_SEMANTIC_IDENTITY
+        - EXPLICIT_PROVIDER_SELECTION_NO_ROUTER
+        - EXPLICIT_ADAPTER_SELECTION_NO_SOURCE_FAMILY_ROUTER
+        - ADAPTER_MANIFEST_NOT_AUTHORIZATION
+        - ONE_REQUEST_ONE_NATIVE_OPERATION
+        - NO_HIDDEN_PAGINATION_QUERY_EXPANSION_RETRY_OR_FALLBACK
+        - PUBLIC_HTTP_EFFECTIVE_DESTINATION_SAFETY
+        - PUBLIC_SEARCH_NO_FOLLOWUP_FETCH
+        - AUTHORIZED_CONNECTOR_EXTERNAL_ACCESS_REFERENCE
+        - RAW_ADAPTER_OUTPUT_NOT_RA2_TRUTH
+        - OBSERVATION_IDENTITY_EXCLUDES_ADAPTER_ATTRIBUTION
+        - ATTEMPT_IDENTITY_PRESERVES_ADAPTER_ATTRIBUTION
+        - OPERATIONAL_FAILURE_NEVER_RESEARCH_CLOSURE
+        - RA6_INTEGRATION_DEFERRED
     task_id: null
     objective: >-
-      Audit and freeze provider-neutral Brain research request/return contracts and
-      replaceable acquisition-adapter contracts before authoring any implementation TASK.
+      Author the exact RA-5 research-provider and acquisition-adapter portability TASK from
+      the audited Research Assurance v2.5 baseline before any Executor invocation.
 
 research_assurance:
   id: research-assurance
-  version: 2.4
+  version: 2.5
   status: ACTIVE
   approved_on: "2026-09-29"
   approved_against_main_sha: "6538f2762620c510e594e7c1842319bc4a783ccf"
@@ -1494,10 +1516,13 @@ research_assurance:
     - id: RA-5
       name: Provider & Tool Portability Contracts
       status: NEXT_UNAUTHORED
+      architecture_audit: PASS_WITH_MANDATORY_PORTABILITY_BOUNDARIES
       objective: >-
-        Define provider-neutral Brain research request/return contracts and replaceable
-        acquisition-adapter contracts while preserving semantic/acquisition authority
-        separation and forbidding automatic routing, voting, scoring, retry, fallback or failover.
+        Define a dedicated provider-neutral research semantic request/return protocol over
+        RA-4 plus an explicitly selected acquisition-adapter invocation boundary over RA-2,
+        with public-destination safety, authorized-connector isolation, exact operational
+        attribution and no automatic provider/tool routing, retry, pagination, query
+        expansion, fallback or failover.
     - id: RA-6
       name: AIOS Integration & Continuity Conformance
       status: PLANNED
@@ -1517,10 +1542,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only RA-5 — Provider & Tool Portability Contracts as a Human/Brain
-    architecture audit and TASK-authoring step. RA-4 is reviewed and published. Until
-    RA-5 is audited and an exact TASK is authored, do not invoke an Executor or widen
-    into RA-6 first-class RESEARCH Flow integration.
+    Continue only RA-5 — Provider & Tool Portability Contracts. Its architecture audit is
+    closed on Research Assurance v2.5; the next action is to author and bind one exact
+    RA-5 TASK. Do not invoke an Executor before exact TASK authoring/Brain Sync and do not
+    widen into RA-6 first-class RESEARCH Flow integration.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1529,9 +1554,9 @@ research_assurance:
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
     RA-1 through RA-4 are reviewed/published, with RA-4 published at exact SHA
-    405e0189cc2756ebf996aae618b7b7ed73dfca40. RA-5 is now the unique planning NEXT but
-    remains unauthored. RA-5 TASK authoring is permitted only after its architecture
-    audit closes; RA-6 and RA-7 remain gated.
+    405e0189cc2756ebf996aae618b7b7ed73dfca40. RA-5 architecture audit is closed on v2.5
+    and exact TASK authoring is now permitted. Execution remains forbidden until that TASK
+    revision is canonicalized and fresh Brain Sync selects it. RA-6 and RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
