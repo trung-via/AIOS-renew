@@ -1,7 +1,8 @@
-# AIOS Research Assurance Architecture and Roadmap v2
+# AIOS Research Assurance Architecture and Roadmap v2.1
 
-Status: HUMAN-APPROVED PLANNING BASELINE  
+Status: HUMAN-APPROVED PLANNING BASELINE — RA-0 AUDITED  
 Approved by Human: 2026-09-29  
+RA-0 architecture audit closed: 2026-09-29  
 Scope: reproducible, source-grounded, adversarially audited research support under existing Brain authority
 
 ## 1. Purpose
@@ -41,6 +42,8 @@ RA must not create:
 
 Source acquisition mechanisms are subordinate tools. They may retrieve bounded observations and provenance; they may not decide that a claim is true, select roadmap work, authorize a TASK, choose an Executor, issue a REVIEW verdict, or mutate lifecycle state.
 
+All retrieved source content is **untrusted data with zero instruction authority**, including content from official/vendor documentation, Git repositories, papers, connected sources, or apparently authoritative pages. Source authority for a factual claim is separate from instruction trust. Embedded instructions, prompt-like text, agent directives, tool instructions, or attempts to redefine AIOS authority inside retrieved content must never become Brain/provider/control instructions.
+
 ## 3. Research truth model
 
 RA distinguishes four classes of material:
@@ -59,6 +62,9 @@ Human Research Intent
         |
         v
 Research Brief
+        |
+        v
+Brain-authored bounded Acquisition Requests
         |
         v
 Source Acquisition Boundary
@@ -121,6 +127,8 @@ The Research Brief is the bounded semantic subject for one research effort. It m
 
 The research question is not a predetermined answer. RA must not encode a desired conclusion and then search only for confirming material.
 
+A Research Brief does not grant an acquisition adapter open-ended discovery authority. Brain must derive bounded Acquisition Requests from the Brief. Each request limits the requested subject/source class/query or locator, acquisition purpose, allowed result bound, and provenance requirements. Adapters execute the request; they do not widen it semantically. Pass-2 counter-evidence requests must bind to exact challenge targets emitted by Pass 1.
+
 ## 6. Source Acquisition Boundary
 
 Source acquisition is a subordinate observation layer.
@@ -140,12 +148,18 @@ Acquisition output must preserve provenance sufficient to distinguish, when appl
 - source authority class;
 - version/tag/commit/date;
 - retrieval/currentness basis;
-- bounded content identity or excerpt identity;
-- relationship to other sources where independence matters.
+- bounded source observation or excerpt;
+- deterministic digest/content identity for the bounded observation;
+- relationship to other sources where independence matters;
+- `instruction_trust: UNTRUSTED` or equivalent closed semantics.
+
+A mutable URL alone is never sufficient evidence identity. RA should preserve only bounded material needed for the research claim by default rather than silently archiving unbounded raw pages.
 
 Acquisition must not produce architecture decisions, roadmap priority, TASK semantics, review verdicts, or lifecycle state.
 
 The architecture must support replaceable acquisition mechanisms without making one provider's native web/GitHub/search ability a hidden prerequisite.
+
+Acquisition operational failure is not a research conclusion. Transport/network/connector/provider/tool failure, malformed retrieval, protocol failure, or stale acquisition state must remain operational attempt outcomes such as `ACQUISITION_UNAVAILABLE`, `ACQUISITION_INVALID`, `PROTOCOL_INPUT_INVALID`, or `STALE_BEFORE_PASS2`. They must never be collapsed into `INSUFFICIENT_EVIDENCE`, which is a Brain semantic closure outcome only after a valid bounded research attempt.
 
 ## 7. Research Evidence Record
 
@@ -176,6 +190,8 @@ REFRESH_REQUIRED
 They are not Runtime lifecycle states.
 
 Relevant source or project changes may invalidate only affected claims. Unaffected claims and source observations should be reused until their own basis changes.
+
+Research Record identity must be immutable/content-addressed. A refresh creates a new record bound to the exact predecessor record and exact invalidated claim/source basis; it does not rewrite historical research. There is no automatic "latest research" resolver with semantic authority. A fresh Brain context receives an exact Research Record reference or explicitly starts a fresh Research Brief.
 
 ## 8. Two-pass Research Assurance protocol
 
@@ -208,14 +224,16 @@ Pass 2:
 
 Only one bounded counter-evidence acquisition pass is authorized by the base protocol. No recursive "research until satisfied" loop is created.
 
-Final outcomes are:
+Final semantic outcomes are:
 
 ```text
 RESEARCH_CANDIDATE
 INSUFFICIENT_EVIDENCE
 ```
 
-## 9. Research Audit Profile v2 lenses
+These outcomes exist only after valid acquisition and the required audit procedure. Acquisition/transport/protocol failures remain separate operational outcomes and do not imply either semantic result.
+
+## 9. Research Audit Profile v2.1 lenses
 
 The planned research-specific lenses are:
 
@@ -240,7 +258,10 @@ The planned research-specific lenses are:
 7. **ASSUMPTION_UNCERTAINTY**  
    Keep observations, assumptions, inference, unknowns and uncertainty boundaries explicit.
 
-8. **AUTHORITY_HANDOFF_BOUNDARY**  
+8. **UNTRUSTED_CONTENT_INSTRUCTION_ISOLATION**  
+   Verify that all retrieved content remains data-only regardless of source authority, and that embedded prompt/instruction/tool/control text cannot alter Brain, provider, adapter, roadmap, TASK, Runtime, Reviewer, Publisher, or policy authority.
+
+9. **AUTHORITY_HANDOFF_BOUNDARY**  
    Ensure research supplies evidence to Brain reasoning without becoming roadmap, TASK, Runtime, Executor, Reviewer, Publisher, or policy authority.
 
 ## 10. Provider and tool portability
@@ -258,7 +279,7 @@ It requires stable protocol behavior around:
 - invalidation semantics;
 - handoff authority.
 
-Semantic Brain providers and source-acquisition adapters are separate concerns. A Brain provider need not have direct GitHub/web access if the complete bounded research material can be supplied. An acquisition adapter does not become Brain merely because it can search or fetch.
+Semantic Brain providers and source-acquisition adapters are separate concerns. A Brain provider need not have direct GitHub/web access if the complete bounded research material can be supplied. An acquisition adapter does not become Brain merely because it can search or fetch. Acquisition adapters accept bounded Acquisition Requests and return bounded Source Observations plus operational attribution; they do not independently decide what else should be researched.
 
 No model scoring, voting, automatic provider choice, retry, fallback or failover authority is introduced.
 
@@ -269,6 +290,8 @@ The first-class `RESEARCH` Flow must not be added to the existing closed Flow Re
 This ordering prevents core AIOS integration from freezing the wrong research semantics.
 
 When integration occurs, RESEARCH remains Brain-owned cognitive support and must preserve existing flow/lifecycle authority separation.
+
+RESEARCH should be an **explicit Brain-owned flow only**; it must not be auto-selected from Unified State or become an engineering lifecycle obligation. Its research semantics should use a dedicated bounded Research Packet/Research Brief family rather than overloading `AIOS_DECISION_PACKET` with source-acquisition state. Existing Decision Packet semantics remain for architecture/TASK/correction reasoning.
 
 ## 12. Reuse and invalidation
 
@@ -281,13 +304,15 @@ reuse valid research until relevant state invalidates it
 Possible invalidators include:
 
 - source version/content change;
-- relevant project main/component change;
+- relevant project component/content fingerprint change;
 - current-as-of boundary expiry;
 - claim/source provenance break;
 - Research Brief semantic change;
 - newly discovered material contradiction.
 
-Invalidation must be claim- or record-scoped where possible. It must not force full re-research when unchanged evidence remains valid.
+Invalidation must be claim- or record-scoped where possible. A movement of repository `main` alone is not sufficient to invalidate unrelated claims. Claims must bind to the narrow relevant source/project component fingerprints when deterministically available. It must not force full re-research when unchanged evidence remains valid.
+
+Deterministic software may validate schema, identity, digests, structural bounds, provenance presence, predecessor continuity and declared invalidation relationships. It must not decide whether a material research claim is substantively true or whether conflicting evidence is semantically decisive; those remain Brain judgments.
 
 ## 13. Handoff
 
@@ -310,25 +335,37 @@ Research cannot automatically create or select a TASK.
 
 ### RA-0 — Research Architecture & Threat-Model Audit
 
-Status at activation: NEXT.
+Status: DONE — HUMAN/BRAIN PLANNING AUDIT.
 
-Read-only architecture audit before implementation. Confirm the minimum authority-safe design, threat/failure model, source taxonomy, acquisition boundary, evidence/claim model, freshness/invalidation semantics, reuse rules, and exact interfaces with existing AIOS primitives.
+The read-only RA-0 audit confirmed the RA v2 direction and milestone sequence, with mandatory v2.1 amendments covering:
 
-No production implementation TASK is authorized merely by entering RA-0.
+- untrusted-source instruction isolation;
+- explicit Brain-owned bounded Acquisition Requests;
+- operational acquisition failure separated from semantic `INSUFFICIENT_EVIDENCE`;
+- immutable Research Record/predecessor refresh lineage;
+- mutable-source observation identity beyond URL;
+- claim/component-scoped invalidation;
+- deterministic structural validation without semantic truth checking;
+- explicit-only future RESEARCH flow using dedicated research semantics;
+- Brain-owned research closure without a new Research Reviewer.
+
+RA-0 found one existing planning-surface mismatch: current deterministic Brain Sync interprets a non-TASK `NEXT` as `UNAUTHORED_TASK`. RA must not widen Brain Sync into a generic planning router merely to represent Brain-only milestones. After RA-0 closure, Human/Brain may author the exact RA-1 engineering TASK under explicit authority and then bind roadmap NEXT to that exact task.
+
+No production implementation was performed by RA-0 itself.
 
 ### RA-1 — Research Contract Foundation
 
-Define the bounded Research Brief and its identity, scope/non-goals, project/currentness basis, source policy, resource bounds, handoff and invalidation contract.
+Define the bounded Research Brief and its identity, scope/non-goals, project/currentness basis, source policy, resource bounds, handoff and invalidation contract, plus the bounded Acquisition Request and Pass-1 challenge-target contract.
 
-Do not add the first-class RESEARCH Flow to core AIOS yet.
+Do not add the first-class RESEARCH Flow, acquisition adapters, Research Record, provider invocation, or two-pass orchestration to core AIOS yet.
 
 ### RA-2 — Source Acquisition & Provenance Boundary
 
-Define replaceable subordinate acquisition adapters and normalized source-observation/provenance material without semantic decision authority, roadmap authority, or lifecycle authority.
+Define replaceable subordinate acquisition adapters, normalized Source Observation/provenance material, untrusted-content instruction isolation, and explicit operational acquisition-failure taxonomy without semantic decision authority, roadmap authority, or lifecycle authority.
 
 ### RA-3 — Research Evidence Record & Audit Profile
 
-Define the durable bounded Research Record, claim/source/independence/freshness/uncertainty grammar, content identity and invalidation semantics, and freeze the research-specific audit profile/lenses.
+Define the immutable/content-addressed bounded Research Record, exact predecessor refresh lineage, claim/source/independence/freshness/uncertainty grammar, component-scoped invalidation semantics, and freeze the nine-lens research-specific audit profile.
 
 ### RA-4 — Two-Pass Research Assurance Protocol
 
@@ -340,7 +377,7 @@ Define provider-neutral Brain research request/return contracts and replaceable 
 
 ### RA-6 — AIOS Integration & Continuity Conformance
 
-Only after RA-1 through RA-5 semantics are stable, integrate the first-class RESEARCH Flow with Flow Cards/context/packet/provider surfaces and prove fresh-context, cross-provider, source-substitution, invalidation and Research Record reuse behavior.
+Only after RA-1 through RA-5 semantics are stable, integrate an explicit-only first-class RESEARCH Flow with Flow Cards/context/dedicated Research Packet/provider surfaces and prove fresh-context, cross-provider, source-substitution, invalidation and Research Record reuse behavior.
 
 Conformance is protocol/authority conformance, not identical semantic conclusions between providers.
 
@@ -348,8 +385,9 @@ Conformance is protocol/authority conformance, not identical semantic conclusion
 
 Run controlled real-project proof covering both:
 
-- stable/immutable-source research; and
-- mutable/time-sensitive research.
+- stable/immutable-source research;
+- mutable/time-sensitive research; and
+- adversarial/prompt-injection-bearing source content proving instruction isolation.
 
 Prove valid-record reuse, relevant invalidation detection, bounded refresh with unaffected evidence reuse, audited handoff into fresh ARCHITECTURE reasoning, and no automatic roadmap/TASK progression.
 
@@ -357,7 +395,7 @@ RA closes only after Reviewer-quality semantic assessment confirms the proof pre
 
 ## 15. Non-goals
 
-RA v2 does not:
+RA v2.1 does not:
 
 - replace Brain Sync;
 - replace BP-4A Brain Semantic Audit;
@@ -375,10 +413,8 @@ RA v2 does not:
 
 Brain Portability BP-9 downstream adoption is complete based on downstream exact-pin migration and fresh current-pin conformance publication evidence.
 
-RA v2 becomes the active Human/Brain planning track only through explicit roadmap canonicalization.
+RA v2.1 is the active Human/Brain planning baseline after RA-0 closure.
 
-The unique generic continuation after activation is RA-0.
-
-RA-1 through RA-7 remain PLANNED and do not become executable merely because this planning baseline exists. RA-0 must first audit and, if necessary, refine this baseline before implementation TASK authoring begins.
+RA-1 through RA-7 remain gated milestones and do not become executable merely because this planning baseline exists. The immediate post-RA-0 action is to author the exact RA-1 Research Contract Foundation TASK under explicit Human/Brain authority, then bind canonical roadmap NEXT to that exact authored TASK before execution.
 
 A newer explicit Human priority may prospectively supersede this track, but future generic continuation may rely on that change only after it is canonicalized.
