@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - ra-3-research-evidence-record-audit-profile
+  - ra-4-two-pass-research-assurance-protocol
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1281,7 +1281,7 @@ sequence:
       Establish the pure normalized acquisition airlock for exact Source Observation and
       Acquisition Attempt material without introducing source I/O or adapter routing.
   - id: ra-3-research-evidence-record-audit-profile
-    status: NEXT
+    status: DONE
     planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
     architecture_audit:
@@ -1300,13 +1300,29 @@ sequence:
         - RA4_PROCEDURE_DEFERRED
         - NO_PERSISTENCE_OR_LATEST_RESOLVER
         - SOURCE_ASSESSMENTS_REMAIN_BRAIN_CLAIMS
-    task_id: TASK-224
-    task_revision: 1
-    authored_commit_sha: "2244be9681a2d8b83db1eefacd762e7018e27117"
-    task_blob_sha: "a363bf22668a8412d9842a70c4f688493a3a6463"
+    completed_by:
+      task_id: TASK-224
+      task_revision: 1
+      primary_run_id: RUN-224-001
+      remediation_run_id: RUN-224-002
+      primary_review_id: REVIEW-224-001
+      delta_review_id: REVIEW-224-002
+      verdict: PASS
+      reviewed_sha: "222ce1e8e9405c624c1f8573b8af477a4f28f6db"
+      published_sha: "222ce1e8e9405c624c1f8573b8af477a4f28f6db"
+      evidence_id: RUN-224-002-V001
+      resolved_finding_id: FINDING-224-001
     objective: >-
-      Execute the exact authored RA-3 Research Record and audit-profile contract TASK only
-      after fresh Brain Sync confirms TASK-224 revision 1 as the unique canonical NEXT.
+      Establish immutable Research Record, dedicated research audit profile and transient
+      claim-scoped reuse projection without persistence or two-pass orchestration.
+  - id: ra-4-two-pass-research-assurance-protocol
+    status: NEXT
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+    authority: HUMAN_BRAIN_PLANNING
+    task_id: null
+    objective: >-
+      Audit and freeze the exact bounded two-pass Research Assurance protocol before
+      authoring any implementation TASK.
 
 research_assurance:
   id: research-assurance
@@ -1405,11 +1421,16 @@ research_assurance:
         failure semantics. Concrete source-tool invocation is deferred to RA-5.
     - id: RA-3
       name: Research Evidence Record & Audit Profile
-      status: AUTHORED_UNEXECUTED
+      status: DONE
       architecture_audit: PASS_WITH_MANDATORY_BOUNDARY_REFINEMENTS
       task_id: TASK-224
       task_revision: 1
-      authored_commit_sha: "2244be9681a2d8b83db1eefacd762e7018e27117"
+      primary_run_id: RUN-224-001
+      remediation_run_id: RUN-224-002
+      primary_review_id: REVIEW-224-001
+      delta_review_id: REVIEW-224-002
+      reviewed_sha: "222ce1e8e9405c624c1f8573b8af477a4f28f6db"
+      published_sha: "222ce1e8e9405c624c1f8573b8af477a4f28f6db"
       objective: >-
         Define a pure immutable/content-addressed Research Record, exact predecessor refresh
         lineage, claim/source-binding and uncertainty grammar, source assessment grammar,
@@ -1418,7 +1439,7 @@ research_assurance:
         two-pass procedure remain deferred.
     - id: RA-4
       name: Two-Pass Research Assurance Protocol
-      status: PLANNED
+      status: NEXT_UNAUTHORED
       objective: >-
         Implement Evidence Construct followed by exactly one bounded counter-evidence
         acquisition and adversarial audit/reconciliation/final closure pass, with no
@@ -1449,10 +1470,10 @@ research_assurance:
         unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
   sequencing_rule:
   generic_continuation: >-
-    Continue only exact TASK-224 revision 1 for RA-3 — Research Evidence Record & Audit
-    Profile after fresh Brain Sync reconciles that authored TASK against current canonical
-    lineage. Do not implement persistence, RA-4 two-pass orchestration or first-class
-    RESEARCH Flow semantics outside TASK-224 scope.
+    Continue only RA-4 — Two-Pass Research Assurance Protocol as a Human/Brain
+    architecture audit and TASK-authoring step. RA-3 is reviewed and published. Until
+    RA-4 is audited and an exact TASK is authored, do not invoke an Executor or widen
+    into provider/tool portability or first-class RESEARCH Flow integration.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
@@ -1460,12 +1481,10 @@ research_assurance:
     A NEXT milestone with a task_id is not executable until that exact TASK revision is
     canonically authored and Brain Sync reconciles it against current engineering lineage.
   ra_implementation_gate: >-
-    RA-1 and RA-2 are reviewed/published at exact SHAs
-    1eed373ce0b8b53aa12b024d66b339fe16454384 and
-    6c128fafacbdadc174909bcd2ec28afa16cf3247. RA-3 architecture audit is closed and
-    TASK-224 revision 1 is canonically authored. RA-3 execution may proceed only after
-    fresh Brain Sync selects that exact TASK and normal Runtime admission applies.
-    RA-4 through RA-7 remain gated.
+    RA-1 through RA-3 are reviewed/published, with RA-3 published at exact SHA
+    222ce1e8e9405c624c1f8573b8af477a4f28f6db. RA-4 is now the unique planning NEXT but
+    remains unauthored. RA-4 TASK authoring is permitted only after its architecture
+    audit closes; RA-5 through RA-7 remain gated.
 
 authority:
   purpose: Human/Brain planning state only
