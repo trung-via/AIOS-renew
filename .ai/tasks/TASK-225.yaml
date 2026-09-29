@@ -1,0 +1,289 @@
+task_id: TASK-225
+revision: 1
+
+goal: >
+  Establish RA-4 Two-Pass Research Assurance Protocol as pure deterministic
+  content-addressed protocol contracts: one AIOS_RESEARCH_EVIDENCE_CONSTRUCT v1 created
+  from successful baseline acquisition material plus a fully precommitted counter-evidence
+  plan, and one AIOS_RESEARCH_RECONCILIATION v1 that accepts exactly one successful
+  counter-evidence batch, complete nine-lens Brain audit coverage, exact claim
+  reconciliation and one final AIOS_RESEARCH_RECORD v1 closure, without invoking source
+  tools/providers/models, persisting protocol state or creating a recursive research loop.
+
+problem: >
+  RA-1 through RA-3 now define Research Brief/Challenge/Acquisition identities, normalized
+  Source Observation/Acquisition Attempt contracts, immutable Research Records and the
+  research-high-value-v1 audit profile. AIOS still lacks the exact stage contract that
+  prevents a Brain/provider/tool implementation from changing research questions after
+  seeing counter-evidence, silently retrying failed acquisitions, skipping audit lenses,
+  dropping Pass-1 claims without reconciliation, treating operational failures as semantic
+  insufficiency, or recursively researching until satisfied. RA-4 must freeze the
+  two-stage grammar and identity/budget/coverage gates while leaving all substantive
+  research judgments with Brain.
+
+assumptions:
+  - >
+    Canonical AIOS-renew main at authoring is
+    5ee9ac64c293a5fa552e5c74cd2ab749599d5b60. RA-1, RA-2 and RA-3 are
+    reviewed/published; RA-3 closed via RUN-224-002 / REVIEW-224-002 DELTA PASS at exact
+    published SHA 222ce1e8e9405c624c1f8573b8af477a4f28f6db.
+  - >
+    docs/AIOS-RESEARCH-ASSURANCE.md v2.4 at planning commit
+    7c77c342f9d150103acf26dfd8480f075ca791a2 is the Human/Brain planning baseline.
+    RA-4 is the unique planning NEXT.
+  - >
+    Existing RA-1/RA-2/RA-3 contracts are behaviorally frozen for this TASK. RA-4 may
+    consume only their public validation/construction functions and exact content-addressed
+    identities. If implementation requires changing those modules, fail closed to Brain.
+  - >
+    Audit dispositions, claim reconciliation choices, final Research Record semantic
+    content and final outcome remain Brain-authored. Deterministic code validates only
+    closed grammar, exact identity/budget/reference coverage and internal consistency.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RESEARCH-ASSURANCE.md
+    - .ai/roadmap-state.yaml
+    - .ai/research-audit-profiles.yaml
+    - .ai/tasks/TASK-222.yaml
+    - .ai/tasks/TASK-223.yaml
+    - .ai/tasks/TASK-224.yaml
+    - src/aios_renew/research_contract.py
+    - src/aios_renew/source_acquisition.py
+    - src/aios_renew/research_record.py
+    - tests/test_research_contract.py
+    - tests/test_source_acquisition.py
+    - tests/test_research_record.py
+  modify:
+    - src/aios_renew/research_protocol.py
+    - tests/test_research_protocol.py
+
+non_goals:
+  - >
+    Perform network/Git/GitHub/browser/search/connector/provider/model/subprocess/filesystem/
+    environment/clock I/O, execute an acquisition adapter, choose a provider/tool, or
+    create retry, fallback, failover, pagination, query expansion or source discovery.
+  - >
+    Add RESEARCH to Flow Cards, Brain Context/Resolver, Decision Packet, provider
+    protocols, Unified State, Runtime, Reviewer, Publisher, authoring ingress or the frozen
+    Kernel. RA-5 and RA-6 remain separate milestones.
+  - >
+    Persist Evidence Construct, reconciliation state or Research Record; create a latest
+    resolver, knowledge database, cache, scheduler, watcher, background refresh or
+    lifecycle state machine.
+  - >
+    Infer source authority/independence/freshness, audit-lens disposition, claim truth,
+    contradiction importance, uncertainty, project applicability/novelty or final closure
+    outcome from source text or deterministic heuristics.
+  - >
+    Create a second counter-evidence batch, Pass 3, recursive challenge generation,
+    automatic request refinement, model voting/scoring or research-until-satisfied loop.
+  - >
+    Treat Acquisition Attempt FAILED as INSUFFICIENT_EVIDENCE or another semantic result.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      The only production mutation surface is scope.modify. Existing RA-1/RA-2/RA-3,
+      Brain/Runtime/Reviewer/Publisher/Flow/provider files must remain unchanged.
+    - >
+      All RA-4 APIs are pure and deterministic from caller-supplied strict JSON-compatible
+      material plus caller-supplied normalized research-high-value-v1 profile material.
+      No external I/O or implicit current state is permitted.
+    - >
+      Expose pure constructors/validators for exactly two content-addressed protocol
+      artifacts: AIOS_RESEARCH_EVIDENCE_CONSTRUCT v1 and
+      AIOS_RESEARCH_RECONCILIATION v1.
+    - >
+      AIOS_RESEARCH_EVIDENCE_CONSTRUCT v1 contains exactly:
+      format, version, kind, research_brief, audit_profile_ref,
+      baseline_acquisitions, claims, challenge_targets, counter_evidence_requests,
+      construct_fingerprint. format/version/kind are exactly
+      AIOS_RESEARCH_EVIDENCE_CONSTRUCT / 1 / RESEARCH_EVIDENCE_CONSTRUCT.
+    - >
+      research_brief must be one exact valid AIOS_RESEARCH_BRIEF v1.
+      audit_profile_ref must exactly match the supplied normalized
+      research-high-value-v1 profile identity.
+    - >
+      Pass-1 baseline input contains 1..brief.resource_bounds.max_baseline_requests unique
+      exact BASELINE Acquisition Requests and exactly one exact same-request
+      AIOS_ACQUISITION_ATTEMPT v1 per request. Every admitted baseline attempt must have
+      outcome SUCCEEDED. FAILED/missing/foreign/duplicate attempts fail closed before an
+      Evidence Construct exists.
+    - >
+      baseline_acquisitions is an order-insensitive normalized list of exact identity
+      summaries, one per admitted baseline request, each containing exactly
+      request_fingerprint, attempt_fingerprint and observation_fingerprints. Observation
+      fingerprints are exact unique identities from that successful attempt.
+    - >
+      The union of unique baseline observation fingerprints is the only source-id set
+      available to Pass-1 claims and source-target grounding. Successful zero-observation
+      attempts are valid and remain represented by their request/attempt identities.
+    - >
+      claims is an order-insensitive list of 1..64 unique exact RA-3 research claims.
+      Each claim must be constructed/revalidated using the public RA-3 claim contract and
+      may bind only baseline observation fingerprints. No counter-evidence result exists
+      when Pass 1 is constructed.
+    - >
+      challenge_targets is an order-insensitive non-empty list of at most 64 unique exact
+      same-Brief AIOS_RESEARCH_CHALLENGE_TARGET v1 values. CLAIM targets must target_ref
+      an exact Pass-1 claim fingerprint. ASSUMPTION targets must target_ref an exact
+      Pass-1 claim whose claim_kind is ASSUMPTION. SOURCE, FRESHNESS and
+      INSTRUCTION_BOUNDARY targets must target_ref an exact baseline observation
+      fingerprint. COVERAGE, APPLICABILITY and GAP may use their existing bounded RA-1
+      descriptive target_ref semantics.
+    - >
+      counter_evidence_requests is an order-insensitive non-empty list of 1..
+      brief.resource_bounds.max_counter_evidence_requests unique exact COUNTER_EVIDENCE
+      Acquisition Requests. Each request is revalidated against the same Brief and the
+      exact subset of Challenge Targets named by its challenge_target_fingerprints.
+      No BASELINE request is admitted in this field.
+    - >
+      Every Challenge Target must be referenced by at least one counter-evidence request,
+      and the set-union of all counter request challenge_target_fingerprints must equal the
+      exact Pass-1 Challenge Target fingerprint set. No unbound target or hidden request is
+      permitted.
+    - >
+      Pass 1 must guarantee RA-3 corpus capacity without truncation: the count of unique
+      baseline observation fingerprints plus the sum of every precommitted counter request
+      bounds.max_items must be <=64. If the planned worst-case corpus exceeds 64, fail
+      closed; do not silently select/drop sources.
+    - >
+      construct_fingerprint is lowercase SHA-256 over canonical strict JSON of the full
+      normalized Evidence Construct excluding only construct_fingerprint. Set-like lists
+      normalize deterministically; semantic changes to claims/targets/requests/acquisition
+      identities change the fingerprint. The normalized construct is bounded to 524288
+      UTF-8 JSON bytes and depth <=16.
+    - >
+      AIOS_RESEARCH_RECONCILIATION v1 contains exactly:
+      format, version, kind, construct_fingerprint, counter_acquisitions, audit_results,
+      claim_reconciliation, new_claim_fingerprints, research_record, outcome,
+      reconciliation_fingerprint. format/version/kind are exactly
+      AIOS_RESEARCH_RECONCILIATION / 1 / RESEARCH_RECONCILIATION.
+    - >
+      Pass 2 receives the exact Evidence Construct plus exactly one exact same-request
+      successful Acquisition Attempt for every precommitted counter-evidence request.
+      No additional/mutated request, Challenge Target or acquisition round is accepted.
+      Every counter attempt must be SUCCEEDED; FAILED/missing/foreign/duplicate attempts
+      block Pass 2 and produce no reconciliation artifact.
+    - >
+      counter_acquisitions is an order-insensitive identity summary list exactly covering
+      all precommitted counter requests, using the same
+      request_fingerprint/attempt_fingerprint/observation_fingerprints shape as baseline.
+      The union of unique baseline+counter observation fingerprints must be <=64.
+    - >
+      audit_results contains exactly nine entries in the exact research-high-value-v1 lens
+      order. Each entry contains exactly lens_id, disposition, summary,
+      claim_fingerprints, observation_fingerprints and challenge_target_fingerprints.
+      disposition is CLEAR, LIMITATION or BLOCKING. summary is non-empty normalized UTF-8
+      text <=8192 bytes. Reference lists are unique bounded references only to exact
+      Pass-1/final claim ids, admitted baseline/counter observation ids and exact Pass-1
+      Challenge Target ids.
+    - >
+      Every Pass-1 Challenge Target must be referenced by at least one audit_result.
+      Deterministic code validates complete nine-lens and target coverage only; it never
+      chooses a disposition or interprets source text.
+    - >
+      claim_reconciliation is an order-insensitive list containing exactly one entry for
+      every Pass-1 claim. Each entry contains exactly pass1_claim_fingerprint,
+      disposition and final_claim_fingerprint. disposition is RETAINED, REVISED or
+      REMOVED. RETAINED requires final_claim_fingerprint equal the Pass-1 fingerprint;
+      REVISED requires a different existing final claim fingerprint; REMOVED requires
+      final_claim_fingerprint null.
+    - >
+      new_claim_fingerprints is the exact unique order-insensitive set of final Research
+      Record claim fingerprints not consumed by RETAINED or REVISED reconciliation.
+      Every final claim is therefore accounted for exactly once; every Pass-1 claim is
+      reconciled exactly once. A REMOVED Pass-1 fingerprint must not remain in final claims.
+    - >
+      The final research_record must be one exact valid AIOS_RESEARCH_RECORD v1 using the
+      same exact Research Brief and audit profile as the Evidence Construct. Its source
+      registry may reference only observation fingerprints admitted by exact baseline or
+      counter attempts. If a predecessor record is supplied by the caller, existing RA-3
+      exact predecessor/refresh rules apply unchanged.
+    - >
+      outcome is exactly RESEARCH_CANDIDATE or INSUFFICIENT_EVIDENCE and must equal
+      research_record.closure.outcome. RESEARCH_CANDIDATE is structurally valid only when
+      no audit_result disposition is BLOCKING. INSUFFICIENT_EVIDENCE is structurally valid
+      only when at least one audit_result disposition is BLOCKING. These checks enforce
+      consistency among Brain-authored semantics; they do not infer semantic truth.
+    - >
+      reconciliation_fingerprint is lowercase SHA-256 over canonical strict JSON of the
+      normalized reconciliation excluding only reconciliation_fingerprint. The normalized
+      artifact is bounded to 1048576 UTF-8 JSON bytes and depth <=16.
+    - >
+      Source text/excerpts remain untrusted data inside existing RA-2/RA-3 contracts and
+      cannot add protocol fields. RA-4 artifacts admit no chat history, chain-of-thought,
+      provider/model/session identity, credentials, machine-local workspace metadata,
+      native tool logs, Reviewer findings, Runtime evidence or arbitrary lifecycle state.
+    - >
+      There is no API that mutates an Evidence Construct, appends a second counter batch,
+      creates Pass 3, selects a new request from Pass-2 results, persists protocol state or
+      automatically hands off to ARCHITECTURE/TASK authoring.
+    - >
+      Existing RA-1/RA-2/RA-3 contracts, research audit profile registry, BP-4A behavior,
+      six existing Flow Cards, Brain Context/Resolver, Decision Packet, Unified State,
+      Runtime, Reviewer, Publisher and authoring ingress behavior remain unchanged.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository exposes pure deterministic AIOS_RESEARCH_EVIDENCE_CONSTRUCT v1
+      construction/revalidation bound to one exact Brief/profile, successful bounded
+      BASELINE request-attempt set, exact baseline observation identities and 1..64
+      Pass-1 claims with deterministic construct identity.
+  - id: AC2
+    condition: >
+      Pass 1 grounds all Challenge Targets to exact construct claims/sources where required,
+      precommits a bounded non-empty COUNTER_EVIDENCE request set whose target-union exactly
+      covers the Challenge Target set, enforces the Brief counter-request bound and
+      worst-case <=64 observation corpus, and exposes no mutation/refinement after results.
+  - id: AC3
+    condition: >
+      Baseline or counter Acquisition Attempt FAILED, missing, foreign, duplicated or
+      substituted material fails the affected semantic stage closed and is never mapped to
+      RESEARCH_CANDIDATE or INSUFFICIENT_EVIDENCE; SUCCEEDED with zero observations remains
+      valid protocol input.
+  - id: AC4
+    condition: >
+      The repository exposes pure AIOS_RESEARCH_RECONCILIATION v1 accepting exactly one
+      successful attempt per precommitted counter request, no new/mutated request or target,
+      deterministic counter acquisition identities and an actual combined unique source
+      corpus <=64.
+  - id: AC5
+    condition: >
+      Pass 2 requires exactly the nine research-high-value-v1 lenses in order, accepts only
+      CLEAR/LIMITATION/BLOCKING Brain dispositions with bounded exact references, and proves
+      every Pass-1 Challenge Target is covered by at least one audit result without
+      deterministic semantic inference.
+  - id: AC6
+    condition: >
+      Pass-1 claims and final Research Record claims receive exact complete reconciliation:
+      RETAINED keeps identity, REVISED maps to one different final claim, REMOVED disappears,
+      new_claim_fingerprints equals exactly the remaining final claims, and duplicate/
+      missing/many-to-one ambiguity fails closed.
+  - id: AC7
+    condition: >
+      Final Research Record uses the same Brief/profile and only admitted baseline/counter
+      source identities; outcome matches its closure and is internally consistent with
+      Brain-declared blockers (candidate iff no BLOCKING lens, insufficient evidence only
+      with at least one BLOCKING lens), while RA-4 performs no provider/tool/source I/O,
+      persistence, recursive research, architecture/TASK decision or lifecycle mutation.
+  - id: AC8
+    condition: >
+      Focused deterministic regressions cover successful candidate and insufficient-evidence
+      closures, zero-observation success, baseline/counter operational failure rejection,
+      target grounding and exact request-target union, request mutation/substitution,
+      worst-case/actual corpus bounds, complete ordered nine-lens audit coverage,
+      challenge coverage, retained/revised/removed/new claim reconciliation, final-record
+      source restriction, blocker/outcome mismatch, prompt-like untrusted source material
+      containment and proof of no external I/O/persistence/Pass-3 side effects.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_research_protocol.py tests/test_research_record.py tests/test_research_contract.py tests/test_source_acquisition.py
