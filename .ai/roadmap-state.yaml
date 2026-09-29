@@ -1,7 +1,7 @@
 version: 1
-active_track: brain-portability
+active_track: research-assurance
 active_track_status: ACTIVE
-planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
 planning_baseline:
   id: bp-0-architecture-baseline
   status: HUMAN_APPROVED
@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - bp-9-downstream-adoption
+  - ra-0-research-architecture-threat-model-audit
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1124,7 +1124,7 @@ sequence:
       exact Human override precedence, immutable bound profiles, no retry/fallback,
       provider-neutral lifecycle semantics, and Antigravity policy unchanged.
   - id: bp-9-downstream-adoption
-    status: NEXT
+    status: DONE
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Adopt the reviewed capability downstream only through an explicit exact-pin,
@@ -1176,192 +1176,176 @@ sequence:
         the next real downstream successor attempt still exposes a new architecture-level
         pre-RUN bootstrap defect, Plan A terminates and the corridor returns to structural
         redesign rather than TASK-222-style patch continuation.
-    current_prerequisite:
-      repository: trung-via/python_complete_agent
-      task_id: TASK-259
-      task_revision: 2
-      approved_on: "2026-09-29"
-      approved_against_main_sha: "fab729b16889a78427d4fb1107bf67be7e0a9c35"
+    completion_evidence:
       authority: HUMAN_BRAIN_PLANNING
-      reason: >-
-        TASK-221 completed through RUN-221-002, REVIEW-221-001 PRIMARY PASS and exact
-        publication-effective SHA 6fbb19db9eb5af3adc55cca570f775d223841ae6. Fresh
-        downstream Brain Sync confirms Python Agent TASK-259 revision 2 remains the
-        unique BP9 continuation, RUN-259-001 remains the immutable failed predecessor,
-        and no RUN-259-002 exists.
-      upstream_completed:
-        task_id: TASK-221
-        task_revision: 1
-        failed_run_id: RUN-221-001
-        repair_id: REPAIR-221-001
-        run_id: RUN-221-002
-        review_id: REVIEW-221-001
-        reviewed_sha: "6fbb19db9eb5af3adc55cca570f775d223841ae6"
-        published_sha: "6fbb19db9eb5af3adc55cca570f775d223841ae6"
-        successor_runtime_target_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
-      downstream_state:
-        repository: trung-via/python_complete_agent
-        main_sha: "fab729b16889a78427d4fb1107bf67be7e0a9c35"
+      reconciled_on: "2026-09-29"
+      downstream_repository: trung-via/python_complete_agent
+      downstream_current_main_at_reconciliation: "59272cec5a77db4f71a181a56875f11b94497936"
+      exact_pin_migration:
         task_id: TASK-259
         task_revision: 2
-        task_blob_sha: "af61fa253d51f8662bc7cbd03fd679f646aa2c29"
-        task_commit_sha: "1468d2b26f2d1f5ed6acb6f152f512a39c4c52ec"
         failed_predecessor_run: RUN-259-001
-        next_run: NONE_YET
-        active_pin_sha: "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
-        intended_task_pin_sha: "44eee353eda376c9db8cd88d97184d3122651bf5"
-        successor_runtime_target_sha: "5d8ac589cbb4f611816d2926cff1989eda4eb74d"
-      follow_on: >-
-        Construct one exact Human-authorized post-terminal successor delivery from
-        RUN-259-001 into already-authored TASK-259 revision 2 using the reviewed TASK-221
-        control source and exact successor runtime target. After TASK-259 r2 review and
-        publication, fresh TASK-207 r9 is the unique BP9 conformance successor.
+        successful_run_id: RUN-259-002
+        review_id: REVIEW-259-001
+        published_sha: "6c9cfcd258c492a5f2301936324379c5e862a2ce"
+        prior_pin_sha: "31fd2482cd87d97fd818e05eb5b4dcec69ffeee6"
+        active_pin_sha: "44eee353eda376c9db8cd88d97184d3122651bf5"
+      fresh_downstream_conformance:
+        task_id: TASK-207
+        task_revision: 14
+        run_id: RUN-207-014
+        review_id: REVIEW-207-005
+        verdict: PASS
+        reviewed_sha: "6ba6c108e6a14bbeaa337769170975aab74560b6"
+        review_findings: 0
+        publication_effective: true
+        current_main_descends_from_reviewed_sha: true
+        downstream_pin_sha: "44eee353eda376c9db8cd88d97184d3122651bf5"
+      closure_note: >-
+        Fresh downstream canonical state proves TASK-259 revision 2 exact-pin migration
+        completed and TASK-207 revision 14 achieved PRIMARY PASS with exact reviewed source
+        6ba6c108e6a14bbeaa337769170975aab74560b6 publication-effective on canonical main.
+        The later downstream main 59272cec5a77db4f71a181a56875f11b94497936 descends from
+        that reviewed source. BP-9 is therefore closed as Human/Brain planning state without
+        importing downstream product priority into AIOS-renew.
 
-
-future_tracks:
-  - id: research-assurance
-    status: HUMAN_APPROVED_FOLLOW_ON
-    approved_on: "2026-09-29"
-    approved_against_main_sha: "71c1c60c8875b70b11430e60ff3463a8f7fd19a7"
+  - id: ra-0-research-architecture-threat-model-audit
+    status: NEXT
+    planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
     authority: HUMAN_BRAIN_PLANNING
-    activation_gate: AFTER_BP9_CLOSURE_AND_FRESH_BRAIN_SYNC
     objective: >-
-      Make high-value external and project research reproducible, source-grounded,
-      adversarially audited, provider-portable and usable as bounded Brain decision
-      support without depending on chat memory or a Human remembering to request a
-      second research audit.
-    architecture_rule: >-
-      Research Assurance is cognitive support inside existing Brain authority. It must
-      not create a Research Agent, Planner, Reviewer, lifecycle router, persistent
-      reasoning/memory database, automatic roadmap authority, automatic TASK author,
-      or a second source of engineering truth.
-    target_flow: RESEARCH
-    assurance_shape:
-      - EVIDENCE_CONSTRUCT
-      - ADVERSARIAL_RESEARCH_AUDIT_AND_RECONCILE
-      - FINAL_RESEARCH_CLOSURE
-    outcomes:
-      - RESEARCH_CANDIDATE
-      - INSUFFICIENT_EVIDENCE
-    proposed_audit_lenses:
-      - SOURCE_AUTHORITY
-      - SOURCE_RECENCY_VERSION
-      - CLAIM_EVIDENCE_BINDING
-      - CONTRADICTION_COUNTEREVIDENCE
-      - PROJECT_APPLICABILITY
-      - NOVELTY_DUPLICATION
-      - ASSUMPTION_UNCERTAINTY
-      - ACTIONABILITY_BOUNDARY
-    milestones:
-      - id: RA-0
-        name: Research Architecture Audit
-        status: PLANNED
-        objective: >-
-          Audit the current research gap, derive the minimum authority-safe architecture,
-          evidence basis, source taxonomy, invalidation rules and bounded protocol before
-          any implementation TASK is authored.
-      - id: RA-1
-        name: Research Flow and Context
-        status: PLANNED
-        objective: >-
-          Define one repository-owned RESEARCH flow and transient bounded research context
-          without turning Flow Resolver into a generic planner or lifecycle router.
-      - id: RA-2
-        name: Research Evidence Packet
-        status: PLANNED
-        objective: >-
-          Define deterministic bounded research-question, source, claim, version/freshness,
-          uncertainty and project-context packaging with exact provenance and invalidation.
-      - id: RA-3
-        name: Research Audit Profile
-        status: PLANNED
-        objective: >-
-          Canonicalize a content-addressed research-audit profile with fixed source,
-          evidence, contradiction, applicability, novelty and uncertainty lenses.
-      - id: RA-4
-        name: Two-Stage Research Audit Protocol
-        status: PLANNED
-        objective: >-
-          Reproducibly perform Evidence Construct followed by adversarial audit,
-          reconciliation and final closure over the same bounded research subject,
-          yielding RESEARCH_CANDIDATE or INSUFFICIENT_EVIDENCE with no recursive loop.
-      - id: RA-5
-        name: Provider-Neutral Research Contract
-        status: PLANNED
-        objective: >-
-          Define bounded provider-neutral research request/return contracts so a fresh
-          provider can perform the protocol without chat memory or direct repository
-          authority and without becoming canonical truth.
-      - id: RA-6
-        name: Cross-Provider Research Conformance
-        status: PLANNED
-        objective: >-
-          Prove equivalent research-protocol identity, source/claim binding and closure
-          behavior across replaceable providers without voting, model scoring, automatic
-          retry, fallback or failover authority.
-      - id: RA-7
-        name: Real Project Research Proof
-        status: PLANNED
-        objective: >-
-          Run one controlled real project/technology research case end to end and prove
-          that audited research can feed a subsequent Brain architecture decision without
-          itself selecting roadmap work or authoring an implementation TASK.
-    activation_rule: >-
-      This track is not NEXT and must not compete with BP-9. After BP-9 reaches canonical
-      closure, perform a fresh Brain Sync and explicitly activate RA-0 before any RA
-      implementation TASK is authored. A newer explicit Human priority may supersede this
-      follow-on prospectively and must be canonicalized before generic continuation relies on it.
-    planning_document_status: NOT_AUTHORED_YET
+      Perform the read-only RA-0 architecture and threat-model audit before any
+      Research Assurance implementation TASK is authored.
 
-previous_track:
-  id: control-plane-closure
-  status: COMPLETE
-  handoff_main_sha: "c96eb8b52acd865b9453409e6598e08a8bd4e48e"
-  note: >-
-    The completed control-plane-closure engineering lineage remains immutable historical
-    truth. Opening Brain Portability is an explicit current Human priority change and
-    does not reopen or reinterpret that completed track.
-post_closure_human_priority:
-  id: downstream-control-plane-portability-policy
-  status: SUPERSEDED_FOR_CURRENT_PLANNING
-  task_id: TASK-114
-  superseded_by: brain-portability
-  note: >-
-    Historical TASK-114 policy/lineage remains evidence. The current Human-approved
-    Brain Portability track prospectively supersedes it as the active planning priority.
-parallel_work:
-  - id: approved-remediation-wakeup
-    milestone: A6
-    status: DONE
-    completed_by:
-      task_id: TASK-084
-      published_sha: "93cc833e03c15bd1c57a53093476af671c5f6027"
-sequencing_rule:
+research_assurance:
+  id: research-assurance
+  version: 2
+  status: ACTIVE
+  approved_on: "2026-09-29"
+  approved_against_main_sha: "6538f2762620c510e594e7c1842319bc4a783ccf"
+  canonical_planning_document: docs/AIOS-RESEARCH-ASSURANCE.md
+  planning_document_commit: "7457bede2d0e2465a31196a90bd2d59eeb264e10"
+  authority: HUMAN_BRAIN_PLANNING
+  activation_basis:
+    bp9_status: DONE
+    fresh_brain_sync: SATISFIED
+    human_final_approval: true
+  objective: >-
+    Make high-value external and project research reproducible, source-grounded,
+    adversarially audited, provider/tool-portable, reusable until invalidated, and
+    safely usable as bounded Brain decision support without depending on chat memory.
+  architecture_rule: >-
+    Research Assurance remains cognitive support inside existing Brain authority.
+    It must not create a Research Agent, Planner, Reviewer, Runtime, lifecycle router,
+    persistent reasoning/chat-memory database, automatic roadmap authority, automatic
+    TASK author, automatic provider/tool router, or second source of engineering truth.
+  target_architecture:
+    - RESEARCH_BRIEF
+    - SOURCE_ACQUISITION_BOUNDARY
+    - BASELINE_SOURCE_CORPUS
+    - EVIDENCE_CONSTRUCT
+    - BOUNDED_COUNTER_EVIDENCE_ACQUISITION
+    - ADVERSARIAL_RESEARCH_AUDIT_AND_RECONCILE
+    - FINAL_RESEARCH_CLOSURE
+    - RESEARCH_RECORD
+    - FRESH_ARCHITECTURE_HANDOFF
+  final_outcomes:
+    - RESEARCH_CANDIDATE
+    - INSUFFICIENT_EVIDENCE
+  research_record:
+    classification: BOUNDED_DURABLE_PLANNING_EVIDENCE
+    engineering_truth: false
+    memory_database: false
+    reuse_policy: REUSE_UNTIL_RELEVANT_INVALIDATION
+  audit_lenses:
+    - SOURCE_AUTHORITY_PROVENANCE
+    - SOURCE_FRESHNESS_VERSION
+    - CLAIM_EVIDENCE_BINDING
+    - COVERAGE_INDEPENDENCE
+    - CONTRADICTION_COUNTEREVIDENCE
+    - PROJECT_APPLICABILITY_NOVELTY
+    - ASSUMPTION_UNCERTAINTY
+    - AUTHORITY_HANDOFF_BOUNDARY
+  milestones:
+    - id: RA-0
+      roadmap_id: ra-0-research-architecture-threat-model-audit
+      name: Research Architecture & Threat-Model Audit
+      status: NEXT
+      classification: READ_ONLY_ARCHITECTURE_AUDIT
+      objective: >-
+        Audit and freeze the minimum authority-safe RA architecture, threat/failure model,
+        source taxonomy, acquisition boundary, evidence/claim model, freshness/invalidation
+        semantics, reuse rules, and exact integration boundaries before implementation.
+      gate: >-
+        RA-0 does not itself authorize a production implementation TASK. Any RA-1
+        implementation authoring requires RA-0 closure plus fresh Brain reconciliation.
+    - id: RA-1
+      name: Research Contract Foundation
+      status: PLANNED
+      objective: >-
+        Define the bounded Research Brief identity, question, decision context,
+        scope/non-goals, project/currentness basis, source policy, resource bounds,
+        handoff and invalidation contract without adding RESEARCH to core Flow Resolver yet.
+    - id: RA-2
+      name: Source Acquisition & Provenance Boundary
+      status: PLANNED
+      objective: >-
+        Define replaceable subordinate acquisition adapters and normalized source
+        observations/provenance while granting no semantic, roadmap, TASK, review,
+        lifecycle or publication authority.
+    - id: RA-3
+      name: Research Evidence Record & Audit Profile
+      status: PLANNED
+      objective: >-
+        Define the bounded durable Research Record, claim/source/independence/freshness/
+        uncertainty grammar, content identity, claim-scoped invalidation semantics and
+        the fixed research-specific adversarial audit profile.
+    - id: RA-4
+      name: Two-Pass Research Assurance Protocol
+      status: PLANNED
+      objective: >-
+        Implement Evidence Construct followed by exactly one bounded counter-evidence
+        acquisition and adversarial audit/reconciliation/final closure pass, with no
+        recursive research loop, yielding RESEARCH_CANDIDATE or INSUFFICIENT_EVIDENCE.
+    - id: RA-5
+      name: Provider & Tool Portability Contracts
+      status: PLANNED
+      objective: >-
+        Define provider-neutral Brain research request/return contracts and replaceable
+        acquisition-adapter contracts while preserving semantic/acquisition authority
+        separation and forbidding automatic routing, voting, scoring, retry, fallback or failover.
+    - id: RA-6
+      name: AIOS Integration & Continuity Conformance
+      status: PLANNED
+      objective: >-
+        Only after RA-1 through RA-5 semantics stabilize, integrate first-class RESEARCH
+        Flow/Card/context/packet/provider surfaces and prove fresh-context, cross-provider,
+        source-substitution, invalidation and Research Record reuse behavior. Conformance
+        concerns protocol/authority behavior, not identical semantic conclusions.
+    - id: RA-7
+      name: Real Project Proof & Closure
+      status: PLANNED
+      objective: >-
+        Prove the complete architecture on both stable/immutable and mutable/time-sensitive
+        research, including valid-record reuse, relevant invalidation, bounded refresh with
+        unaffected evidence reuse, audited ARCHITECTURE handoff, and no automatic roadmap/TASK progression.
+  sequencing_rule:
   generic_continuation: >-
-    Continue only the unique canonical NEXT item, BP-9 downstream adoption under the
-    Human-approved Plan A STOP-LINE closure. TASK-220 and TASK-221 are both reviewed and
-    publication-effective; exact TASK-221 publication is
-    6fbb19db9eb5af3adc55cca570f775d223841ae6 and activates exact successor consumer
-    5d8ac589cbb4f611816d2926cff1989eda4eb74d. Fresh downstream Brain Sync identifies
-    already-authored Python Agent TASK-259 revision 2 at downstream main
-    fab729b16889a78427d4fb1107bf67be7e0a9c35 as the unique continuation, with
-    RUN-259-001 immutable and no RUN-259-002 yet. At most two new upstream TASK ids,
-    TASK-220 and TASK-221, were authorized and both are consumed. If another
-    architecture-level pre-RUN bootstrap defect appears on the next exact downstream
-    successor attempt, do not create TASK-222; return to structural redesign. Do not
-    substitute REPAIR-259, source-REPAIR reuse, migration-history rewriting, automatic
-    revision selection, generic retry/failover, reusable unreviewed shell automation or
-    product work.
+    Continue only the unique canonical NEXT item RA-0 — Research Architecture &
+    Threat-Model Audit under docs/AIOS-RESEARCH-ASSURANCE.md. RA-0 is read-only
+    architecture/planning work and must not be skipped by directly adding RESEARCH to
+    core Flow Resolver, creating a Research Agent, or authoring RA-1 implementation.
   human_override: >-
     A newer explicit Human track or priority change outranks this pointer prospectively
     and must be canonicalized before later generic continuation relies on it.
   task_gate: >-
     A NEXT milestone with a task_id is not executable until that exact TASK revision is
     canonically authored and Brain Sync reconciles it against current engineering lineage.
-  future_track_gate: >-
-    research-assurance is Human-approved follow-on planning only. Generic continuation
-    must not enter RA while BP-9 remains NEXT. RA may become active only after BP-9
-    canonical closure plus a fresh Brain Sync and explicit activation of RA-0.
+  ra_implementation_gate: >-
+    RA-0 has no automatic implementation authority. RA-1 through RA-7 remain PLANNED;
+    implementation TASK authoring begins only after RA-0 architecture closure and fresh
+    Human/Brain reconciliation.
+
 authority:
   purpose: Human/Brain planning state only
   engineering_truth: >-
