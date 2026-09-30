@@ -158,22 +158,31 @@ sequence:
       pull_request: 1200
       branch: aios-brain-wake-bus-v1
       head_sha: "0d9bd2d4e802ad64c58bb143d326c1f5b1647760"
-      state: DUPLICATE_AND_FRESH_PAIR_EMITTED_AWAITING_RESULT
+      state: DUPLICATE_AND_FRESH_PAIR_PASS
       paired_probe:
         duplicate_event:
           event_id: wake-probe-1200-001
           github_comment_id: 5916258520
-          expected: NO_NEW_ACK
+          emitted_at_utc: "2026-09-30T17:24:10Z"
+          result: NO_NEW_ACK
+          existing_ack_only: 5916131140
         fresh_event:
           event_id: wake-probe-1200-002
           github_comment_id: 5916259295
-          expected: EXACTLY_ONE_ACK
-        interpretation_rule: >-
-          Treat the pair as PASS only if wake-probe-1200-002 receives exactly one
-          valid ACK after fresh Brain Sync while wake-probe-1200-001 receives no
-          additional ACK beyond the already existing acknowledgement 5916131140.
-          Absence of both ACKs is transport-ambiguous, not a dedupe PASS.
-      previous_state: ACK_PROBE_PASS_MORE_CONFORMANCE_REQUIRED
+          emitted_at_utc: "2026-09-30T17:24:13Z"
+          acknowledgement:
+            github_comment_id: 5916332958
+            acked_at_utc: "2026-09-30T17:28:54Z"
+            latency_seconds: 281
+            main_sha: "aa816f2caf7f3320b426102eba29846069052325"
+            fresh_brain_sync: true
+        observed_result: >-
+          PASS. The already-resolved duplicate event_id produced no additional ACK,
+          while the adjacent fresh event produced exactly one ACK after 281 seconds
+          and carried the exact canonical main SHA written after both wake comments.
+          This jointly supports webhook delivery, fresh-state reread, idempotent
+          duplicate suppression and loop safety for the current ACK probe.
+      previous_state: DUPLICATE_AND_FRESH_PAIR_EMITTED_AWAITING_RESULT
       probe_event:
         event_id: wake-probe-1200-001
         github_comment_id: 5916029012
