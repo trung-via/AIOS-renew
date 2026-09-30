@@ -1,0 +1,46 @@
+review_id: REVIEW-245-001
+reviewed_sha: f36b7aa83c550e6551530f2c099176ad6899ad98
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+findings: []
+notes:
+  - >-
+    RUN-245-002 is the canonical REPAIR result continuing from RUN-245-001 through
+    REPAIR-245-001 FINALIZE_CANDIDATE. The repair preserved the exact clean candidate
+    f36b7aa83c550e6551530f2c099176ad6899ad98 and corrected only the missing/invalid
+    structural completion signal; no repository mutation was authorized by the repair.
+  - >-
+    Runtime verification passed the exact TASK-245 contract on reviewed subject
+    f36b7aa83c550e6551530f2c099176ad6899ad98: the focused operator selection passed
+    21 tests with 405 deselected, and git diff --check passed. Result changed_files is
+    exactly tests/test_operator.py and unresolved is empty.
+  - >-
+    The candidate changes only the test-owned construction of
+    test_source_bootstrap_recovery_preserves_completed_migration_history. Its pytest
+    test name remains unchanged, so the historical nodeid identity remains stable.
+    The original scenario ordering is preserved: consumed source-bootstrap edge,
+    distinct active historical v1 migration edge, recovery blocked until historical
+    completion, then successful recovery with historical marker/intent bytes preserved
+    and no fabricated RUN.
+  - >-
+    The corrected fixture explicitly reproduces the prior failing geometry with
+    repository cwd length 184 and reader-visible historical bundle/source length at
+    least 220. It retains a real Git worktree at bundle/source while placing Git
+    internals in bounded owner-validated storage through --separate-git-dir, then
+    validates the resulting historical bundle through the existing production reader.
+  - >-
+    The cumulative implementation delta is one file only: tests/test_operator.py.
+    No production Operator, Runtime, migration/source-bootstrap behavior, TASK-243
+    storage semantics, Git-fixture PUSH residual, worker policy, host/global Git
+    configuration, retry/fallback, skip/xfail/deselection, rename, parameterization,
+    Reviewer, Publisher or roadmap authority is changed.
+  - >-
+    This PASS closes TASK-245 only. It does not itself resolve the separate
+    Git-fixture PUSH/REPOSITORY_STATE residual or authorize TASK-231 continuation;
+    those remain subject to canonical planning after publication.
