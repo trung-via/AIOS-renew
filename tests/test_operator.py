@@ -11360,9 +11360,17 @@ def test_source_bootstrap_recovery_exact_replay_and_history(
 
 
 def test_source_bootstrap_recovery_preserves_completed_migration_history(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, migration_storage_root: Path,
 ) -> None:
-    repo, target_source, old = _source_bootstrap_fixture(tmp_path)
+    # Cover RUN-244-003's cwd/CLONE depth without inheriting pytest/TEMP depth
+    # for the real Git storage. The existing fixture owns the short profile.
+    padding = 184 - len(str(migration_storage_root / "control" / "repo")) - 1
+    assert 1 <= padding <= 200
+    depth = migration_storage_root / ("d" * padding)
+    depth.mkdir()
+    repo, target_source, old = _source_bootstrap_fixture(depth)
+    assert len(str(repo)) == 184
+    assert len(str(target_source)) >= 184
     monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", old["target_generation_sha"])
     monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha",
                         lambda **kwargs: old["source_generation_sha"])
@@ -11389,9 +11397,23 @@ def test_source_bootstrap_recovery_preserves_completed_migration_history(
     bundle = runtime_state_root(repo) / "m" / f"{historical_fp[:12]}-historical"
     bundle.mkdir()
     (bundle / "intent.json").write_text(json.dumps(historical), encoding="utf-8")
-    git(target_source, "clone", str(target_source), str(bundle / "source"))
+    # Keep the historical reader-visible worktree, but bound Git's internal
+    # paths using the same owner-validated layout already accepted by readers.
+    storage = operator_module._migration_target_storage(
+        historical_marker, historical, bundle, create=True,
+    )
+    assert len(str(bundle / "source")) >= 220
+    assert len(str(storage / "g")) + 99 < 260
+    git(target_source, "clone", "--no-local", "--no-checkout", "--no-tags",
+        "--separate-git-dir", str(storage / "g"),
+        str(target_source), str(bundle / "source"))
+    git(bundle / "source", "checkout", "--detach", historical["target_generation_sha"])
     historical_marker.write_text(json.dumps(operator_module._migration_record(
         historical, historical_fp, bundle.name)), encoding="utf-8")
+    assert operator_module._migration_bundle(
+        historical_marker, json.loads(historical_marker.read_text(encoding="utf-8")),
+        historical,
+    ) == (bundle / "intent.json", bundle / "source")
     historical_marker.with_suffix(".consumed").write_text(historical_fp, encoding="utf-8")
 
     new = dict(old)
