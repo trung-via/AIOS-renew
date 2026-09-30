@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-post-residual-corrections-proof
+  - verification-performance-rebaseline-v2-reconciliation-ignored-collision-fixture-hardening
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1621,7 +1621,7 @@ sequence:
         ordered prefix, but current transport truncation does not prove the
         complete 33-identity population. A bounded residual-context attribution
         diagnostic is required before any further TASK-231 attempt or correction.
-    blocked_by: verification-performance-rebaseline-v2-post-residual-corrections-proof
+    blocked_by: verification-performance-rebaseline-v2-post-population-drift-proof
     prior_blocker_resolution:
       roadmap_id: verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
       task_id: TASK-240
@@ -2694,7 +2694,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-post-residual-corrections-proof
 
   - id: verification-performance-rebaseline-v2-post-residual-corrections-proof
-    status: NEXT
+    status: DONE
     task_id: TASK-251
     task_revision: 1
     authored_commit_sha: "4ca458303560f9c33d0d34ac7b27d756e0977b27"
@@ -2712,19 +2712,79 @@ sequence:
         - RUN-250-001-V002
       review_decision_sha: "a0fcf8eea2d210e887e0b15edc30c33ccd2e2b8b"
       published_sha: "b7a6c55532ea83c009eb2dda0ff70b43bcf6d68d"
+    completed_by:
+      task_id: TASK-251
+      task_revision: 1
+      run_id: RUN-251-001
+      review_id: REVIEW-251-001
+      verdict: PASS
+      evidence_id: RUN-251-001-V001
+      review_decision_sha: "30e183ee843bf5d320e0f55c564e6639f69645ea"
+      reviewed_sha: "02eff62754209943d734719e1834e1a486f395b5"
+      published_sha: "02eff62754209943d734719e1834e1a486f395b5"
+      classification: FULL_SUITE_POPULATION_DRIFT
+      residual_phase:
+        workers: 12
+        historical_identity_count: 33
+        failure_count: 0
+      conditional_full_n12:
+        collection_count: 3153
+        failure_count: 1
+        failure_identity: tests/test_operator.py::test_human_reconciliation_proof_gates_preserve_repository
+        failure_parameter: ignored-collision
+        failure_type: FileNotFoundError
+        errno: 2
+        source_line: 12931
     objective: >-
       Re-run the exact historical 33-residual workers=12 proof on the post-TASK-250
-      canonical subject. Permit the existing diagnostic's one conditional full-n12
-      phase only if all 33 Phase-A identities pass, then return the bounded
-      classification to Human/Brain for the explicit TASK-231 decision.
+      canonical subject and permit one conditional full-n12 phase only after all
+      historical residuals pass.
     architecture_rule: >-
-      Evidence only. Use the already-reviewed residual-context diagnostic unchanged;
-      no correction selection, retry/fallback, worker-policy change, TASK-231
-      execution or automatic roadmap advancement inside the proof.
+      Evidence only. The historical 33-residual population is now clean, but the
+      conditional current full-suite n12 proof exposed one new test-owned
+      reconciliation fixture failure outside that population. No automatic TASK-231
+      continuation follows from this proof.
     decision_gate:
-      residual_phase_all_pass_required_for_full_n12: true
+      historical_residual_population: CLEAN
+      full_n12_current_suite: NOT_GREEN
       automatic_task231_resume: false
-      brain_decision_required_after_result: true
+    return_to: verification-performance-rebaseline-v2-reconciliation-ignored-collision-fixture-hardening
+
+  - id: verification-performance-rebaseline-v2-reconciliation-ignored-collision-fixture-hardening
+    status: NEXT
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-251
+      task_revision: 1
+      run_id: RUN-251-001
+      review_id: REVIEW-251-001
+      verdict: PASS
+      evidence_id: RUN-251-001-V001
+      classification: FULL_SUITE_POPULATION_DRIFT
+      published_sha: "02eff62754209943d734719e1834e1a486f395b5"
+    objective: >-
+      Correct only the test-owned ignored-collision setup in the Human
+      reconciliation proof-gate regression so it explicitly materializes the
+      repository-local exclude surface it intends to exercise, without changing
+      production reconciliation semantics or the shared accelerated Git fixture.
+    architecture_rule: >-
+      Test-harness-only correction. Preserve the exact parameterized proof-gate
+      population and production behavior; no shared fixture broadening, skip/xfail,
+      retry/fallback, worker-policy change or TASK-231 execution.
+    return_to: verification-performance-rebaseline-v2-post-population-drift-proof
+
+  - id: verification-performance-rebaseline-v2-post-population-drift-proof
+    status: BLOCKED
+    authority: HUMAN_BRAIN_PLANNING
+    blocked_by: verification-performance-rebaseline-v2-reconciliation-ignored-collision-fixture-hardening
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Re-run one exact current workers=12 full-suite proof after the ignored-collision
+      fixture correction is reviewed and published. TASK-231 may resume only after a
+      green proof and a subsequent explicit Human/Brain decision.
+    architecture_rule: >-
+      Evidence only; no automatic worker-policy or TASK-231 advancement.
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 research_assurance:
