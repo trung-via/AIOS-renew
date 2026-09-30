@@ -1,5 +1,5 @@
 task_id: TASK-244
-revision: 1
+revision: 2
 
 goal: >
   Execute the already-reviewed TASK-241 residual-context attribution diagnostic
@@ -32,9 +32,11 @@ problem: >
 
 assumptions:
   - >
-    Canonical main at authoring is
-    c0042b5749b7adb4acc5cc897f87dbd8d41752ce, the exact reviewed and published
-    RUN-243-002 candidate.
+    Canonical main at TASK-244 revision-2 authoring is
+    e98b5f504b16a3c513e83ea3c0cd426782c64147. The post-TASK-243 source candidate
+    c0042b5749b7adb4acc5cc897f87dbd8d41752ce remains the exact reviewed and
+    published RUN-243-002 source; the newer main delta is Human/Brain roadmap
+    canonicalization only.
   - >
     TASK-243 revision 1 closed through RUN-243-001 FAILURE,
     REPAIR-243-001 authorization
@@ -67,6 +69,23 @@ assumptions:
     proof executed faithfully against the authorized subject. Human/Brain own
     interpretation of the observed classification and the next planning decision.
     Publisher owns publication. No observed outcome automatically resumes TASK-231.
+  - >
+    RUN-244-001 is an immutable revision-1 COMPLETION_GATE FAILURE caused by an
+    invalid structural ResultPackage claim-to-acceptance binding. Its candidate
+    was clean, zero-delta, transportable and repairable; Runtime verification was
+    not invoked.
+  - >
+    REPAIR-244-001 / RUN-244-002 is an immutable revision-1 COMPLETION_GATE
+    FAILURE with error RESULT does not satisfy acceptance criteria: AC2, AC3.
+    The repair corrected the malformed claim syntax but proved r1 acceptance
+    ordering unsatisfiable because AC2/AC3 depended on Runtime verification that
+    can only occur after Completion Gate. Its candidate also remained clean and
+    zero-delta with verification_seconds null.
+  - >
+    TASK-167 revision 3 is the reviewed repository precedent for this exact
+    evidence-only ordering pattern: native Executor acceptance remains limited to
+    zero-delta structural handoff and authority preservation, while Runtime-owned
+    diagnostic execution occurs only after Completion Gate.
 
 scope:
   inspect: []
@@ -88,7 +107,7 @@ non_goals:
 constraints:
   hard:
     - >
-      TASK-244 r1 is a zero-delta read-only PRIMARY with empty scope.inspect and
+      TASK-244 r2 is a zero-delta read-only PRIMARY with empty scope.inspect and
       scope.modify. The native Executor must not invoke shell, Git, repository
       file-read, search, pytest, diagnostic or other workspace commands/tools.
     - >
@@ -139,26 +158,29 @@ constraints:
 acceptance:
   - id: AC1
     condition: >
-      The Executor returns a complete zero-delta structural ResultPackage from
-      supplied admitted context only, with admitted base SHA as result.head_sha,
-      empty changed_files, empty unresolved, empty root evidence and no
-      Executor-created verification evidence.
+      The Executor returns a complete zero-delta structural ResultPackage from the
+      supplied admitted TASK/RUN context only: result.head_sha equals the admitted
+      RUN base SHA, changed_files is empty, unresolved is empty, root evidence is
+      empty, and every claim evidence list is empty.
   - id: AC2
     condition: >
-      Runtime executes exactly the existing TASK-241 residual-context diagnostic
-      once against the exact clean canonical post-TASK-243 subject and attaches
-      canonical evidence for its bounded classification.
+      The Executor performs no repository, shell, Git, file-read, search, pytest,
+      diagnostic or other workspace command/tool invocation and makes no claim
+      about a Runtime verification or residual/full-suite outcome.
   - id: AC3
     condition: >
-      The proof preserves the diagnostic's exact historical 33-identity binding,
-      workers=12/load/restart0 execution geometry and conditional Phase-B gate,
-      with no retry, alternate worker profile, extra full-suite run or substituted
-      target population.
+      The structural ResultPackage preserves the exact canonical verification
+      contract as Runtime-owned work only: python
+      scripts/aios_residual_context_attribution_diagnostic.py, with no
+      Executor-created substitute verification/evidence path and no change to the
+      existing diagnostic semantics.
   - id: AC4
     condition: >
-      The resulting evidence remains observational only: it neither selects a
-      correction nor changes worker policy, TASK-231 state, lifecycle authority,
-      roadmap authority or host configuration.
+      The structural handoff preserves all existing authority limits: Runtime owns
+      verification/EVIDENCE, Reviewer owns semantic verdict, Human/Brain own
+      residual interpretation, correction selection, TASK-231/worker and roadmap
+      decisions, Publisher owns publication, and no observed outcome is claimed or
+      used by the Executor to advance planning.
 
 verification:
   policy: minimum-sufficient-v1
