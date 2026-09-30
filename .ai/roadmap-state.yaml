@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-operator-historical-fixture-path-hardening
+  - verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-primitive
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -2419,7 +2419,7 @@ sequence:
       Proof only. No observed outcome automatically advances TASK-231.
 
   - id: verification-performance-rebaseline-v2-operator-historical-fixture-path-hardening
-    status: NEXT
+    status: DONE
     task_id: TASK-245
     task_revision: 1
     authored_commit_sha: "6a508b44181dcd0d27bd398c8f2cd7b77763b097"
@@ -2433,6 +2433,30 @@ sequence:
       review_id: REVIEW-244-001
       verdict: PASS
       evidence_id: RUN-244-003-V001
+    completed_by:
+      primary_run_id: RUN-245-001
+      primary_terminal_kind: FAILURE
+      primary_failure_phase: COMPLETION_GATE
+      failed_candidate_sha: "f36b7aa83c550e6551530f2c099176ad6899ad98"
+      repair_id: REPAIR-245-001
+      repair_action: FINALIZE_CANDIDATE
+      repair_authorization_sha: "3f8e4eaf6e3708a0d2e6e6f2ac53fd17a5d0f4e7"
+      repair_run_id: RUN-245-002
+      review_id: REVIEW-245-001
+      verdict: PASS
+      verification_evidence:
+        - RUN-245-002-V001
+        - RUN-245-002-V002
+      focused_tests_passed: 21
+      focused_tests_deselected: 405
+      review_decision_sha: "27a08033de6a06e09e31635d239b59a80c821566"
+      reviewed_sha: "f36b7aa83c550e6551530f2c099176ad6899ad98"
+      published_sha: "f36b7aa83c550e6551530f2c099176ad6899ad98"
+      outcome: >-
+        The final historical Operator residual was confirmed as test-owned fixture
+        construction and corrected only in tests/test_operator.py. Exact nodeid,
+        real-Git historical semantics, production Operator behavior and TASK-243
+        bounded storage semantics remain unchanged.
     objective: >-
       Correct only the test-owned historical v1 migration fixture construction
       responsible for the final Operator CLONE/PATH_OR_FILENAME residual while
@@ -2441,26 +2465,69 @@ sequence:
     architecture_rule: >-
       Test-harness correction only. Production operator.py, the Git-fixture PUSH
       residual, workers=12 policy and TASK-231 remain out of scope.
-    return_to: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic
+    return_to: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-primitive
 
-  - id: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic
+  - id: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-primitive
+    status: NEXT
+    task_id: TASK-246
+    task_revision: 1
+    authored_commit_sha: "8b7df9e03cc3824b19879a5c7ac74a56dbbaf76a"
+    task_blob_sha: "aaae90c6c4709fd022f8d24f6008e630b7a130f5"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-245
+      task_revision: 1
+      run_id: RUN-245-002
+      review_id: REVIEW-245-001
+      verdict: PASS
+      published_sha: "f36b7aa83c550e6551530f2c099176ad6899ad98"
+    evidence_basis:
+      run_240_002:
+        classification: PASS_DRIFT
+        n4_integration_lock_path_length: 320
+        n4_admission_failure_lock_path_length: 326
+        outcome: PASS
+      run_244_003:
+        family: integration
+        lock_path_length: 328
+        stderr_category: REPOSITORY_STATE
+        outcome: FAIL
+    objective: >-
+      Establish and regression-test one repository-owned real-Git diagnostic
+      primitive that compares both canonical ref families at exact lock-path
+      lengths 326, 327 and 328 without changing the target fixture or selecting a
+      correction.
+    architecture_rule: >-
+      Primitive only. Preserve TASK-240 semantics and historical evidence;
+      current-main threshold execution requires a separate reviewed TASK.
+    return_to: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-execution
+
+  - id: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-execution
     status: BLOCKED
     authority: HUMAN_BRAIN_PLANNING
-    blocked_by: verification-performance-rebaseline-v2-operator-historical-fixture-path-hardening
+    blocked_by: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-primitive
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
-      Run one bounded evidence-only real-Git diagnostic around the observed
-      successful 326 and failing 328 remote-lock-path geometry before selecting any
-      correction for the remaining PUSH/REPOSITORY_STATE residual.
+      Execute the reviewed TASK-246 primitive exactly once as Runtime-owned
+      evidence on a fresh exact canonical subject, then return the six fixed
+      family/geometry observations to Brain for causal interpretation.
     architecture_rule: >-
-      Evidence only. Preserve exact PUSH/ref behavior, use no full-suite/n12 retry
-      matrix, change no global/system Git or Windows configuration, and do not
-      select a correction inside the diagnostic.
+      Zero-delta evidence only. No correction selection, retry, adaptive geometry,
+      full suite, n12 run, worker adoption or TASK-231 continuation inside the
+      execution task.
+    decision_gate:
+      all_geometries_pass: BRAIN_AUDIT_REQUIRED
+      monotonic_failure_boundary: BRAIN_AUDIT_REQUIRED
+      family_divergence: BRAIN_AUDIT_REQUIRED
+      non_monotonic_observation: BRAIN_AUDIT_REQUIRED
+      automatic_correction: false
+      automatic_task231_resume: false
 
   - id: verification-performance-rebaseline-v2-post-residual-corrections-proof
     status: BLOCKED
     authority: HUMAN_BRAIN_PLANNING
-    blocked_by: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic
+    blocked_by: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-execution
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Re-run the bounded exact historical residual proof only after the selected
