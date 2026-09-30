@@ -153,10 +153,10 @@ sequence:
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
     status: ACTIVE
     task_id: TASK-255
-    task_revision: 2
-    task_author_commit_sha: "07b640edfe974c49eeb98f250bbf4828ca9eefd5"
-    task_blob_sha: "28a0fb28db7127768584a24259a9d1f997ef5a94"
-    implementation_phase: WAKE_BRIDGE
+    task_revision: 3
+    task_author_commit_sha: "04f734da8fcc97cf5f074c982c2ef5fe9da63b14"
+    task_blob_sha: "09c016477ca322f5162fc81e94c418414c83414e"
+    implementation_phase: WAKE_LAST_MILE_TRANSPORT
     authority: HUMAN_BRAIN_PLANNING
     r1_failure:
       run_id: RUN-255-001
@@ -180,6 +180,47 @@ sequence:
         bridge, which re-reads the GitHub Issue/comment and retains all semantic mapping,
         dedupe and Wake Bus emission authority. This avoids GITHUB_TOKEN recursive-event
         suppression, PAT/App secrets, polling and wake authority duplication.
+    r3_architecture_audit:
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      selected_transport: SECRETLESS_PR_HEAD_COMMIT_UPDATE_V1
+      rationale: >-
+        Live P1 proved the r2 source-pointer/projector path through an exact
+        INGRESS_REJECTED wake, but the github-actions[bot] wake comment was not
+        delivered to ChatGPT Work. P1b isolated the actor variable: an otherwise
+        qualifying user-attributed comment on the same PR was ACKed after 185 seconds.
+        R3 therefore preserves r2 projection and revises only the last-mile Wake Bus
+        emission to one bounded commit update on the dedicated PR #1200 head branch,
+        with global serialization and a PENDING/EMITTED transport ledger. No
+        credential-bearing fallback is authorized.
+    r3_live_evidence:
+      p1:
+        issue_number: 1215
+        ingress_receipt_comment_id: 5921442341
+        bridge_run_id: 36790617018
+        wake_comment_id: 5921447869
+        wake_actor: "github-actions[bot]"
+        event_id: github-v1-1bc20ed173c240e093272dc5be034cec9eb50b3f9d11ad851bafb9dde8244e6a
+        attention_family: INGRESS_REJECTED
+        github_bridge_result: PASS
+        chatgpt_ack_result: NO_ACK_OBSERVED
+      p1b:
+        wake_comment_id: 5921558759
+        wake_actor: trung-via
+        event_id: wake-p1b-actor-discrimination-20261001-001
+        acknowledgement_comment_id: 5921598459
+        acknowledgement_main_sha: "524b7eacb13d51867135f4589b19cb3c3d95d258"
+        fresh_brain_sync: true
+        latency_seconds: 185
+        result: PASS
+      implication: >-
+        Current evidence strongly localizes the unresolved conformance gap to the
+        bot-authored PR-comment last mile. TASK-255 r3 is canonicalized for a
+        secretless PR commit-update candidate. Real Work invocation remains a
+        post-publication gate and cannot be claimed by Executor or Runtime.
     probe:
       repository: trung-via/AIOS-renew
       pull_request: 1200
