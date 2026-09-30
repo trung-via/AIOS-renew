@@ -1977,11 +1977,43 @@ sequence:
   - id: verification-performance-rebaseline-v2-ingress-production-readback-hardening
     status: NEXT
     task_id: TASK-239
-    task_revision: 1
-    authored_commit_sha: "f7d688a910d6cbe4e0d67599faed990ff4db247d"
-    task_blob_sha: "00f4b45812268b70fc8470962668348ef4545944"
+    task_revision: 2
+    authored_commit_sha: "c0f06a869203ac217f1971bc70cb4e07dd45bcd5"
+    task_blob_sha: "45ab88c9f0098aac25cbd4ae8c20ca78fbc24c20"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    supersedes_revision:
+      task_revision: 1
+      authored_commit_sha: "f7d688a910d6cbe4e0d67599faed990ff4db247d"
+      task_blob_sha: "00f4b45812268b70fc8470962668348ef4545944"
+      failed_runs:
+        - run_id: RUN-239-001
+          phase: COMPLETION_GATE
+          failed_head_sha: "3d38a681b0d9c59307cfe40f8067ec27653761a8"
+          missing_acceptance:
+            - AC1
+        - run_id: RUN-239-002
+          phase: COMPLETION_GATE
+          failed_head_sha: "3d38a681b0d9c59307cfe40f8067ec27653761a8"
+          missing_acceptance:
+            - AC1
+            - AC3
+            - AC4
+        - run_id: RUN-239-003
+          phase: COMPLETION_GATE
+          failed_head_sha: "3d38a681b0d9c59307cfe40f8067ec27653761a8"
+          missing_acceptance:
+            - AC1
+            - AC2
+            - AC3
+            - AC4
+            - AC5
+      reason: >-
+        Revision 1 incorrectly required Executor acceptance coverage for a future
+        Runtime verification outcome. All three r1 attempts stopped before Runtime
+        verification, so they do not prove implementation-test failure. Revision 2
+        preserves the production objective and verification commands while making every
+        acceptance criterion claimable as an implementation property before verification.
     triggered_by:
       task_id: TASK-238
       run_id: RUN-238-002
