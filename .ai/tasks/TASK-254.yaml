@@ -1,0 +1,201 @@
+task_id: TASK-254
+revision: 1
+
+goal: >
+  Harden canonical Brain authoring ingress so every prospective new
+  AUTHOR_TASK, AUTHOR_REMEDIATION and AUTHOR_REPAIR mutation is admitted only from
+  one fresh Decision-Packet-bound BP-4A two-stage audited CANDIDATE whose final
+  handoff candidate exactly matches the canonical payload being written, while
+  preserving existing family validators, non-mutating idempotent replay, Reviewer
+  independence and Runtime/Publisher authority.
+
+problem: >
+  AIOS already implements brain-high-value-v2 with CONSTRUCT followed by
+  ADVERSARIAL_AUDIT_AND_RECONCILE, and BP-5 can bind audited semantic attempts to
+  exact Decision Packets. However current authoring_ingress can still canonicalize
+  a directly supplied TASK/REMEDIATION/REPAIR payload without any validated
+  two-stage audit handoff. Python Agent has independently recorded this exact gap
+  as AIOS_BRAIN_TWO_STAGE_AUDIT_AUTHORING_ENFORCEMENT_GAP after TASK-269.
+
+  The reviewed architecture baseline
+  docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md selects a prospective,
+  carrier-neutral fix: ingress accepts transient BP-4A semantic handoff material,
+  reconstructs the current semantic subject from canonical repository state,
+  compiles a fresh Decision Packet through existing Brain Sync / Flow Resolution /
+  Decision Packet machinery, validates Stage 1 and Stage 2 with the repository-owned
+  audit profile, requires Stage-2 CANDIDATE, and requires exact normalized equality
+  between the audited handoff candidate and the family payload. The handoff is
+  discarded after validation and does not become a new canonical semantic state
+  store.
+
+assumptions:
+  - >
+    Canonical main at TASK-254 r1 authoring is
+    13cea1b905a401f83dba93d86b0f822aba18cd8d, where the H0 architecture
+    milestone is DONE and the unique roadmap NEXT is the audited-authoring gate.
+  - >
+    docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md at planning
+    commit 5b5971611ace96b236ac8f3c69ab417ad6b0a8ba is the Human/Brain
+    planning baseline for this task.
+  - >
+    .ai/brain-audit-profiles.yaml::brain-high-value-v2 is the single audit-policy
+    authority. Its applicable flows include TASK_AUTHORING,
+    REMEDIATION_AUTHORING and REPAIR_AUTHORING and its required stages are
+    CONSTRUCT then ADVERSARIAL_AUDIT_AND_RECONCILE.
+  - >
+    src/aios_renew/brain_context.py and src/aios_renew/decision_packet.py already
+    provide mutation-free Brain Sync / Work Context / Flow Resolution /
+    Decision Packet composition. This task must reuse those authorities rather than
+    duplicate them.
+  - >
+    src/aios_renew/brain_audit.py already provides deterministic Stage-1 and
+    Stage-2 structural validation. This task must reuse it rather than reimplement
+    audit semantics in ingress.
+  - >
+    Existing TASK, REMEDIATION and REPAIR family validators remain authoritative
+    for the final canonical artifact body. The audited handoff is an additional
+    pre-mutation semantic provenance gate, not a replacement validator.
+  - >
+    The GitHub Issue carrier delegates the admitted Issue body opaquely to canonical
+    ingress, so a carrier-neutral ingress-envelope extension does not require GitHub
+    transport to become a semantic authority.
+  - >
+    Kernel v0.1 TASK/RUN/RESULT/EVIDENCE/REVIEW schemas remain frozen. This task
+    changes no frozen artifact-family schema.
+  - >
+    H1 is the one prospective bootstrap task authored under the pre-H1 ingress
+    contract after a completed manual brain-high-value-v2 two-stage audit. New
+    enforcement applies only after exact reviewed H1 source publication; historical
+    canonical artifacts remain valid immutable lineage.
+
+scope:
+  inspect:
+    - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+    - .ai/brain-audit-profiles.yaml
+    - .ai/flow-cards.yaml
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/brain_audit.py
+    - src/aios_renew/brain_provider_protocol.py
+    - src/aios_renew/task.py
+    - src/aios_renew/review.py
+    - src/aios_renew/publication.py
+    - src/aios_renew/github_issue_ingress.py
+  modify:
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_authoring_ingress.py
+    - tests/test_github_issue_ingress.py
+
+non_goals:
+  - Change the frozen TASK, RUN, RESULT, EVIDENCE or REVIEW schemas.
+  - Change Runtime verification, execution admission, Reviewer verdict or Publisher
+    publication semantics.
+  - Require BP-4A audit proof for SUBMIT_REVIEW; Reviewer authority remains separate.
+  - Add a Planner, lifecycle router, model router, correction selector, retry/failover
+    controller, persistent semantic-decision database or reasoning store.
+  - Persist Stage-1/Stage-2 reasoning, risk ledgers or provider metadata as canonical
+    engineering truth.
+  - Bind authoring validity to provider/model/session identity.
+  - Implement H2 REPAIR strategy facts, H3 acceptance proof-phase ledger, H4 Brain
+    attention handshake, VPRC performance work or downstream Python Agent adoption.
+  - Rewrite, invalidate or reinterpret any historical TASK/REMEDIATION/REPAIR
+    canonical artifact.
+  - Make the GitHub Issue carrier parse or judge semantic audit content.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      Introduce exactly one carrier-neutral transient audited-authoring handoff
+      surface at canonical ingress for the three Brain-owned mutation operations:
+      AUTHOR_TASK -> TASK_AUTHORING, AUTHOR_REMEDIATION ->
+      REMEDIATION_AUTHORING, and AUTHOR_REPAIR -> REPAIR_AUTHORING.
+    - >
+      The transient handoff must contain only bounded semantic material needed to
+      reconstruct/validate BP-4A Stage 1 and Stage 2. It must not contain or depend
+      on provider/model/session identity, raw reasoning, chat history, credentials,
+      arbitrary repository commands, mutation destinations or lifecycle overrides.
+    - >
+      For every genuinely new canonical mutation, ingress must reconstruct fresh
+      canonical Brain context and exact selected flow from current repository state,
+      compile the Decision Packet through existing reviewed Brain context/flow/
+      packet functions, and validate the handoff through existing
+      brain-high-value-v2 Stage-1 and Stage-2 validators. A caller-supplied packet,
+      audit fingerprint or claimed current state must not substitute for the fresh
+      reconstruction.
+    - >
+      New mutation admission must require Stage-2 closure outcome CANDIDATE and exact
+      normalized semantic equality between the validated handoff candidate and the
+      supplied TASK/REMEDIATION/REPAIR family payload. Stage-1-only, NO_DECISION,
+      blocker closure, stale/mismatched flow, candidate substitution, missing lens,
+      changed reconciliation or wrong profile must fail closed before mutation.
+    - >
+      The existing family parser/validator and existing operation-specific
+      currentness, revision, lineage, scope and CAS checks remain independently
+      required after audited-handoff validation. Audit proof must never bypass a
+      family validator.
+    - >
+      Identical idempotent replay that performs no new canonical mutation may remain
+      admissible under existing exact replay semantics without forcing creation of a
+      new audit attempt. Any changed body, new task revision or new correction
+      authorization is a mutation and requires a valid audited handoff.
+    - >
+      SUBMIT_REVIEW behavior must remain unchanged and Reviewer-owned. An audited
+      Brain handoff must not be accepted as a substitute for a canonical REVIEW.
+    - >
+      The handoff is transient input only. Successful ingress persists only the
+      existing canonical artifact/ref family and normal ingress result; it must not
+      persist a second Brain decision/audit state family or expose audit material as
+      Runtime evidence.
+    - >
+      GitHub Issue delivery remains opaque carrier transport. No workflow or carrier
+      receipt may claim that transport acceptance itself proves audit success,
+      lifecycle execution, review or publication.
+    - >
+      Existing direct-authoring regression fixtures that create a genuinely new
+      Brain-owned mutation must be updated to supply valid audited handoff material
+      or explicitly test fail-closed rejection. Historical family-validation tests
+      must not be weakened to make the gate pass.
+    - >
+      No file outside scope.modify may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A genuinely new AUTHOR_TASK mutation without a complete valid two-stage
+      brain-high-value-v2 handoff is rejected before canonical TASK mutation, while
+      an exactly audited TASK_AUTHORING CANDIDATE matching the payload reaches the
+      existing TASK validator and canonicalization path.
+  - id: AC2
+    condition: >
+      AUTHOR_REMEDIATION and AUTHOR_REPAIR enforce the same fresh
+      Decision-Packet-bound two-stage audited CANDIDATE gate for new mutations,
+      without merging their existing exact lineage/family validation or correction
+      authority into the audit layer.
+  - id: AC3
+    condition: >
+      Candidate substitution, Stage-1-only input, Stage-2 NO_DECISION/blocker,
+      malformed/incomplete/out-of-order lenses, stale or wrong selected flow, and
+      reconciled-candidate mismatch all fail closed before canonical mutation.
+  - id: AC4
+    condition: >
+      Existing exact idempotent replay remains non-mutating and compatible, while any
+      changed body, new revision or new correction authorization cannot use replay to
+      bypass audited authoring.
+  - id: AC5
+    condition: >
+      SUBMIT_REVIEW remains Reviewer-owned and unchanged, and the audited handoff is
+      neither persisted as canonical lifecycle/evidence state nor used to alter
+      Runtime verification or Publisher behavior.
+  - id: AC6
+    condition: >
+      The implementation delta is confined to authoring ingress and its focused
+      ingress tests, reuses existing Brain context/Decision Packet/BP-4A validators,
+      and introduces no duplicate Planner, semantic validator, provider authority,
+      retry/failover or canonical decision database.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_authoring_ingress.py tests/test_github_issue_ingress.py
+    - git diff --check
