@@ -1,0 +1,43 @@
+review_id: REVIEW-250-001
+reviewed_sha: b7a6c55532ea83c009eb2dda0ff70b43bcf6d68d
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+findings: []
+notes:
+  - >-
+    RUN-250-001 is the canonical TASK-250 r1 PRIMARY result from base
+    f83eccf88b7b92c11ae4b8cc3d1ce863aa0498fd with exact candidate
+    b7a6c55532ea83c009eb2dda0ff70b43bcf6d68d. changed_files contains only
+    tests/test_git_fixture_isolation.py, unresolved is empty, and the execution
+    profile is explicit codex / gpt-6.1-sol / high.
+  - >-
+    Runtime verification executed the two TASK-declared commands on the exact
+    candidate: python -m pytest -q tests/test_git_fixture_isolation.py passed
+    5 tests in 4.44 seconds, and git diff --check passed.
+  - >-
+    The correction removes the target's dependency on pytest tmp_path and creates
+    disposable test-owned physical storage with tempfile.TemporaryDirectory. It
+    derives padding from the resolved physical base, fails closed when that base
+    cannot fit the authored budget, and mechanically asserts each actual local
+    bare-remote root is exactly 224 characters.
+  - >-
+    The historical target name is unchanged and has no parameterization, skip,
+    xfail or deselection. Both canonical integration and admission-failure
+    64-hex ref shapes remain unchanged. For each sandbox/family the test retains
+    real update-ref, one checked PUSH, exact bare-remote show-ref, origin
+    ls-remote, greater-than-260 lock-path assertion and cross-sandbox absence.
+  - >-
+    The implementation changes no shared Git fixture helper or production code,
+    preserves TASK-170 repository-local longpaths behavior and TASK-154 sandbox
+    isolation/object-reuse semantics, and introduces no retry, fallback, link,
+    mock transport, host/global configuration mutation or new lifecycle authority.
+  - >-
+    This PASS reviews the bounded TASK-250 implementation and its focused Runtime
+    verification only. It does not claim the historical 33-residual n12 proof has
+    passed, does not establish worker-12 safety, and does not authorize TASK-231.
