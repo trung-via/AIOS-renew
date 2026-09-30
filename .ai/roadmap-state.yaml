@@ -1,6 +1,6 @@
 version: 1
 active_track: verification-performance-rebaseline-v2
-active_track_status: ACTIVE
+active_track_status: COMPLETE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
 planning_baseline:
   id: bp-0-architecture-baseline
@@ -67,8 +67,7 @@ human_priority_side_track:
     gpt-6-sol/high repository default before BP9 downstream adoption. This task must
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
-next_items:
-  - verification-performance-rebaseline-v2-adopt-workers-12
+next_items: []
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1566,11 +1565,30 @@ sequence:
     return_to: verification-performance-rebaseline-v2
 
   - id: verification-performance-rebaseline-v2-adopt-workers-12
-    status: ACTIVE
+    status: DONE
     task_id: TASK-231
     task_revision: 2
     authored_commit_sha: "b5b454e3573498a717f66861ad70adb518d96133"
     task_blob_sha: "afaea313e95df9b9454daa0df8bfce9ec3c1163b"
+    completed_by:
+      task_id: TASK-231
+      task_revision: 2
+      run_id: RUN-231-005
+      review_id: REVIEW-231-005
+      verdict: PASS
+      evidence_ids:
+        - RUN-231-005-V001
+        - RUN-231-005-V002
+      result_artifact_sha: "1879ef90e60590b0edeefbfb8a43084f5e4cfc55"
+      review_decision_sha: "422207ef29d9d70d626f8b45b84486a389e23ce9"
+      reviewed_sha: "6ca0ea4bceef9224cb59172b84c31ad30c116b31"
+      published_sha: "6ca0ea4bceef9224cb59172b84c31ad30c116b31"
+      selected_workers: 12
+      collection_count: 3187
+      pytest_failure_count: 0
+      pytest_elapsed_seconds: 1207.24234
+      wrapper_conformance_passed: true
+      performance_guard: NOT_COMPARABLE
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     supersedes_revision:
