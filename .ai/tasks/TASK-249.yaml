@@ -1,0 +1,150 @@
+task_id: TASK-249
+revision: 1
+
+goal: >
+  Execute the reviewed and published TASK-248 Git-fixture PUSH root-decomposition
+  diagnostic exactly once as Runtime-owned canonical verification on the exact
+  current canonical subject. Return the fixed four real-Git observations for
+  Human/Brain causal interpretation while keeping the native Executor as a
+  zero-delta structural handoff only.
+
+problem: >
+  RUN-247-001 disproved a simple total-lock-path threshold but left ref-family
+  shape confounded with bare-remote root depth. TASK-248 established, reviewed and
+  published a purpose-built primitive that removes that confounding by crossing
+  both canonical ref families with the same exact bare-remote root lengths 224 and
+  228. TASK-248 intentionally did not execute the live current-subject experiment.
+  Correction selection therefore remains unauthorized until one fresh canonical
+  Runtime-owned invocation supplies the four fixed same-root observations. This
+  TASK authorizes exactly that evidence collection and no correction.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    3fef5f802217c7ef107b2ba33d26ca059d7884af, the exact reviewed and published
+    RUN-248-001 candidate.
+  - >
+    TASK-248 revision 1 is engineering-complete through RUN-248-001 RESULT,
+    REVIEW-248-001 PRIMARY PASS, review-decision
+    00d5e06a6a815e129efdfe5f9cd5cee90ae63e44, and publication of exact source
+    3fef5f802217c7ef107b2ba33d26ca059d7884af.
+  - >
+    RUN-248-001 Runtime verification passed 163 focused primitive regression tests
+    plus git diff --check, changed exactly the three authorized new diagnostic
+    files, and reported no unresolved item.
+  - >
+    The reviewed primitive binds exactly four fresh independent real-Git cases in
+    deterministic order: integration at roots 224 and 228, then
+    admission-failure at roots 224 and 228. The derived total lock lengths are
+    mechanically 322, 326, 328 and 332 respectively, with one checked PUSH per
+    case, no retry and no adaptive geometry.
+  - >
+    The primitive's durable result is observational only. An inner PUSH failure may
+    be represented by a valid zero-exit diagnostic result and does not itself mean
+    TASK-249 execution failure. Diagnostic-integrity failure remains nonzero.
+  - >
+    TASK-231 remains blocked. Runtime owns canonical verification/EVIDENCE;
+    Reviewer owns semantic verdict; Human/Brain own causal interpretation,
+    correction selection, worker policy and roadmap planning; Publisher owns
+    publication.
+  - >
+    TASK-247 revision 1 is the reviewed precedent for this zero-delta
+    evidence-only ordering: Executor acceptance is strictly pre-verification
+    structural and Runtime-owned diagnostic execution occurs only after Completion
+    Gate.
+
+scope:
+  inspect: []
+  modify: []
+
+non_goals:
+  - Modify any repository file or create an implementation commit.
+  - Modify, wrap, replace or reimplement the reviewed TASK-248 diagnostic, probe or tests.
+  - Modify prior TASK/RUN/RESULT/REVIEW evidence or the Git fixture, production code, Runtime, workflows, carriers, Reviewer or Publisher.
+  - Select or implement a fixture-path, Git, Windows, TEMP, Defender, runner, ref-family, object-storage or host correction.
+  - Execute a broader geometry search, retry, fallback, adaptive search, full suite, xdist/n12 residual proof, TASK-231 or worker-policy experiment.
+  - Change global/system/user Git configuration, Windows registry, long-path policy or Human/runner machine state.
+  - Treat any four-case pattern as automatic root-cause proof, correction authorization, TASK-231 readiness or roadmap advancement.
+  - Add Planner, Reviewer, Publisher, retry/failover, lifecycle, correction-selection or roadmap authority.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      TASK-249 r1 is a zero-delta read-only PRIMARY with empty scope.inspect and
+      scope.modify. The native Executor must not invoke shell, Git, repository
+      file-read, search, pytest, diagnostic or any other workspace command/tool.
+    - >
+      The Executor must construct the structural ResultPackage solely from the
+      immutable admitted TASK/RUN context. result.head_sha must equal the admitted
+      RUN base SHA, changed_files must be empty, unresolved must be empty, root
+      evidence must be empty and every claim.evidence list must be empty.
+    - >
+      The structural ResultPackage must contain exactly four affirmative claims
+      with exact acceptance bindings only: C1 satisfies [AC1], C2 satisfies [AC2],
+      C3 satisfies [AC3], and C4 satisfies [AC4]. No alias, range, combined token
+      or invented acceptance ID may appear inside claim.satisfies.
+    - >
+      Executor claims may describe only pre-verification structural handoff and
+      authority preservation. They must not claim any live four-case PUSH outcome,
+      family/root causal interpretation, first-failed root, selected correction,
+      worker safety or TASK-231 readiness.
+    - >
+      Runtime independently owns actual HEAD/cleanliness validation, zero-delta
+      truth, scope validation, verification-subject materialization, execution of
+      the sole canonical verification declared below, post-verification subject
+      checks, evidence attachment, terminal persistence and transport.
+    - >
+      The reviewed TASK-248 primitive is immutable for this execution. Runtime
+      verification must execute its exact fixed four-case matrix: integration and
+      admission-failure crossed with exact bare-remote root lengths 224 and 228,
+      using fresh real-Git state, full production-shaped 64-hex refs,
+      repository-local longpaths settings and exactly one checked PUSH per case.
+    - >
+      A valid outer-zero diagnostic result may contain successful or failed PUSH
+      observations. Those inner outcomes are evidence only. Subject mutation,
+      dirty state, geometry mismatch, missing/duplicate case, Git-resolution
+      contradiction, schema/privacy/instrumentation failure or any nonzero outer
+      diagnostic outcome fails closed.
+    - >
+      Runtime evidence may expose only the reviewed primitive's bounded typed
+      output and mechanically defined relationships. Raw paths, refs, URLs,
+      stdout/stderr beyond the bounded diagnostic output, object IDs, environment
+      contents and host-private details must not become semantic decision inputs.
+    - >
+      No observed outcome may automatically select a correction, unblock or retry
+      TASK-231, alter worker policy, or advance roadmap state.
+    - >
+      No repository file may change and no push or publication may be performed by
+      Executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The Executor returns a complete zero-delta structural ResultPackage from the
+      admitted context only: result.head_sha equals the admitted RUN base SHA,
+      changed_files is empty, unresolved is empty, root evidence is empty and every
+      claim evidence list is empty.
+  - id: AC2
+    condition: >
+      The Executor performs no repository, shell, Git, file-read, search, pytest,
+      diagnostic or other workspace command/tool invocation and makes no claim
+      about a Runtime diagnostic outcome.
+  - id: AC3
+    condition: >
+      The structural handoff preserves exactly the sole Runtime-owned canonical
+      verification declared by this TASK, with no Executor-created substitute
+      verification/evidence path and no change to the reviewed TASK-248 primitive
+      semantics.
+  - id: AC4
+    condition: >
+      The structural handoff preserves all authority limits: Runtime owns
+      verification/EVIDENCE, Reviewer owns semantic verdict, Human/Brain own causal
+      interpretation, correction selection, worker/TASK-231 and roadmap decisions,
+      Publisher owns publication, and no observed root-decomposition outcome is
+      used by the Executor to advance planning.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python scripts/aios_git_fixture_push_root_decomposition_diagnostic.py
