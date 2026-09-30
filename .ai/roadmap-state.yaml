@@ -33,22 +33,6 @@ human_priority_side_track:
   authority: HUMAN_BRAIN_PLANNING
   planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
   sequence:
-  - id: brain-runtime-semantic-handoff-hardening-v1-architecture-contract
-    status: NEXT
-    authority: HUMAN_BRAIN_PLANNING
-    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
-    audit_profile: brain-high-value-v2
-    objective: >-
-      Produce the bounded architecture/contract baseline for the approved hardening
-      track before implementation: define exact audited-authoring proof binding,
-      deterministic REPAIR eligibility projections, acceptance proof-phase ownership,
-      and Brain-attention handshake boundaries; reconcile interactions with existing
-      BP-4A/BP-5/Correction Preflight/Runtime/Reviewer/Publisher authority and the
-      three downstream-deferred Python Agent gaps without implementing production code.
-    successor_policy: >-
-      Human/Brain may advance only to the first implementation milestone after this
-      architecture item is canonicalized, independently reviewed where applicable,
-      and its reconciled boundaries leave no unresolved authority conflict.
     - TASK-195
   return_to: bp-9-downstream-adoption
   target:
@@ -149,6 +133,22 @@ human_priority_sequence:
 next_items:
   - brain-runtime-semantic-handoff-hardening-v1-architecture-contract
 sequence:
+  - id: brain-runtime-semantic-handoff-hardening-v1-architecture-contract
+    status: NEXT
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_profile: brain-high-value-v2
+    objective: >-
+      Produce the bounded architecture/contract baseline for the approved hardening
+      track before implementation: define exact audited-authoring proof binding,
+      deterministic REPAIR eligibility projections, acceptance proof-phase ownership,
+      and Brain-attention handshake boundaries; reconcile interactions with existing
+      BP-4A/BP-5/Correction Preflight/Runtime/Reviewer/Publisher authority and the
+      three downstream-deferred Python Agent gaps without implementing production code.
+    successor_policy: >-
+      Human/Brain may advance only to the first implementation milestone after this
+      architecture item is canonicalized, independently reviewed where applicable,
+      and its reconciled boundaries leave no unresolved authority conflict.
   - id: admission-failure-v2
     status: DONE
     completed_by:
