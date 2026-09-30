@@ -1,0 +1,137 @@
+task_id: TASK-239
+revision: 1
+
+goal: >
+  Correct the production Authoring Ingress commit-blob readback boundary proven by
+  TASK-238 so exact metadata committed in a fresh-clone topology is read back as the
+  exact blob bytes, without weakening metadata validation, changing fixture behavior,
+  or broadening lifecycle authority.
+
+problem: >
+  RUN-238-002 resolved the previously stable Scenario 2 metadata-content failure to
+  PRODUCTION_READBACK_MISMATCH. In the failing fresh-clone context the expected metadata
+  bytes, expected Git blob object id, committed tree-entry blob id, and native binary Git
+  blob bytes are all exact, while the production _read_commit_blob path is invoked once
+  and returns no bytes. The ordinary same-repository AUTHOR_REMEDIATION control remains
+  PASS_EXACT. Production validation therefore rejects correct committed metadata because
+  its readback boundary is topology-sensitive even though the committed Git object is
+  correct.
+
+assumptions:
+  - >
+    Canonical main at authoring is f591999ed8d54b96b7f36ff13b48a4c6f9e2a290, the reviewed and published TASK-238
+    remediation candidate from RUN-238-002 / REVIEW-238-002.
+  - >
+    RUN-238-002-V002 classified the fresh-clone context as
+    PRODUCTION_READBACK_MISMATCH and aggregate
+    FRESH_CLONE_ONLY_MISMATCH_RESOLVED_BOUNDARY.
+  - >
+    The failing fresh-clone observation proves the expected/tree/native Git object
+    identities are exact; this task must not reopen those boundaries without new evidence.
+  - >
+    TASK-237 already resolved the separate source-REPAIR CLONE/PATH_OR_FILENAME failures.
+  - >
+    The independent parallel-only Git fixture failure from RUN-233 remains deferred until
+    this stable production failure is corrected.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-238.yaml
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_authoring_ingress.py
+    - tests/test_hot_swap_conformance.py
+    - scripts/aios_ingress_metadata_identity_diagnostic.py
+    - tests/test_aios_ingress_metadata_identity_diagnostic.py
+  modify:
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_authoring_ingress.py
+    - tests/test_hot_swap_conformance.py
+
+non_goals:
+  - >
+    Change metadata payload bytes, normalize line endings/BOM, weaken byte-exact
+    _validate_metadata_commit semantics, skip validation, or reinterpret the TASK-238
+    diagnostic evidence.
+  - >
+    Change Git fixture support, hot-swap semantics, remediation/review authority,
+    Runtime/Reviewer/Publisher behavior, remote selection, workflow/carrier behavior,
+    worker policy, or roadmap state from Executor execution.
+  - >
+    Correct or diagnose the separate parallel-only Git fixture failure, rerun TASK-231,
+    run a full suite, or select a new worker count.
+  - >
+    Add retries, fallback Git commands selected by heuristics, lifecycle routing, or any
+    new semantic authority.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve the contract that production commit-blob readback returns the exact bytes
+      stored for one exact commit and repository-relative path, and returns no content when
+      that exact object/path cannot be resolved. Do not normalize, decode/re-encode, trim,
+      or otherwise transform the blob bytes used by metadata validation.
+    - >
+      The readback must be binary-safe and topology-stable for the exact fresh-clone
+      Scenario 2 topology proven by TASK-238. It must not depend on human-readable Git
+      rendering or path syntax that can make an existing exact tree/blob appear absent.
+    - >
+      _validate_metadata_commit must continue to require the exact authorized parent,
+      exact changed path, exact 100644 metadata blob, and exact metadata byte equality.
+      The correction must not bypass or soften any structural or content guard.
+    - >
+      Existing Authoring Ingress callers of the shared commit-blob read boundary must
+      remain behaviorally compatible for present/missing content, including AUTHOR_TASK,
+      SUBMIT_REVIEW, AUTHOR_REMEDIATION, and AUTHOR_REPAIR paths.
+    - >
+      Add focused regression coverage that proves the exact Scenario 2 fresh-clone target
+      now succeeds and that ordinary same-repository AUTHOR_REMEDIATION exact-byte behavior
+      remains intact. Include a direct readback regression if needed to lock the
+      binary-exact/missing-path contract.
+    - >
+      Modify only the three scope.modify files. Do not modify TASK-238 diagnostic files;
+      their published evidence remains historical diagnostic truth.
+    - >
+      Use minimum-sufficient focused verification only. No full suite and no workers=12
+      run are authorized by this task.
+    - >
+      Executor does not mutate roadmap, review decisions, publication state, fixture
+      policy, or worker policy.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The exact fresh-clone Scenario 2 target
+      tests/test_hot_swap_conformance.py::test_scenario_2_fresh_correction_accepts_only_current_finding
+      passes without changing that scenario's semantic expectations or fixture behavior.
+  - id: AC2
+    condition: >
+      Production commit-blob readback yields exact untransformed bytes for an existing
+      exact commit/path in both ordinary same-repository and fresh-clone topology, while
+      preserving the existing missing/unresolvable-content fail-closed result.
+  - id: AC3
+    condition: >
+      _validate_metadata_commit retains all parent, changed-path, 100644-blob and byte-exact
+      content guards; no normalization, skip, bypass, retry/fallback authority or semantic
+      weakening is introduced.
+  - id: AC4
+    condition: >
+      Existing focused AUTHOR_REMEDIATION/Authoring Ingress behavior remains compatible,
+      including the ordinary exact metadata delta and missing/conflicting rejection paths.
+  - id: AC5
+    condition: >
+      The implementation delta is confined to src/aios_renew/authoring_ingress.py,
+      tests/test_authoring_ingress.py, and tests/test_hot_swap_conformance.py and changes no
+      fixture, worker, Runtime, Reviewer, Publisher, workflow, carrier, or roadmap semantics.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_hot_swap_conformance.py::test_scenario_2_fresh_correction_accepts_only_current_finding
+    - python -m pytest -q tests/test_authoring_ingress.py -k "author_remediation or read_commit_blob"
+    - git diff --check
