@@ -619,6 +619,37 @@ change to the syntax and authority of the existing low-level commands.
 Downstream repositories receive this presentation only through a separate explicit
 migration to a reviewed and source-published AIOS revision that contains it.
 
+### Explicit Human control-main reconciliation
+
+Clean stale-behind `main` may automatically fast-forward during PRIMARY or
+CONTINUE. A diverged `main` remains fail-closed, even when its HEAD is a transported
+failed candidate. Only a Human's explicit command can reconcile that narrow case:
+
+```powershell
+aios reconcile-control-main RUN-231-004 --expected-failed-head 8908a7be6f190eeba0dff7d8fce03f9e892a4ecb --expected-canonical-main 86df498a1317b085496a362c18c89be80497b8a4 --repo C:\TOOL\AIOS-Runtime\AIOS-renew
+```
+
+The example SHAs are historical selectors; supply the exact failed HEAD and
+current canonical main you intend to reconcile. Under the existing repository
+mutation lock, the command requires attached `main`, completely clean tracked and
+untracked status, exact local HEAD, and one configured upstream main. It fetches
+proofs in an isolated observer and requires the exact canonical failure candidate
+and failure-artifact refs to agree with the RUN and clean, transportable FAILURE.
+Competing RESULT transport fails closed. Both failed candidate and target must
+descend from the recorded failure base and diverge from each other; the failed
+candidate need not be an ancestor of newer main. Missing, malformed, conflicting
+or drifting proofs, ahead-only state, and an occupied mutation lock reject the
+operation before moving local refs, index or worktree.
+
+After those proofs pass, one native `git reset --hard` restores local main, index
+and tracked worktree to the exact fetched target. There is no merge, rebase,
+cherry-pick, stash, clean, new commit or remote publication. Canonical remote failure
+refs and `.git/aios` Runtime evidence remain intact. The JSON summary contains only
+`failed_run_id`, `prior_head`, `restored_head` and `status` (`SUCCESS` or `FAILURE`).
+The command creates no RUN, RESULT, FAILURE or REVIEW and invokes no Executor or
+verification. PRIMARY, CONTINUE, failure handling and transport never call it;
+reconciliation grants no delivery retry or roadmap authority.
+
 ### Admission Failure v2 and outcome boundaries
 
 Admission Failure v2 covers every execution-capable pre-RUN boundary: PRIMARY
@@ -641,6 +672,28 @@ publishes the byte-identical artifact under
 same content-addressed identity, while changed bounded observations create a new
 immutable record. Diagnostic persistence or transport failure never replaces the
 original admission error.
+
+Every v2 diagnostic with a valid PRIMARY `dispatch_id`, REMEDIATION
+`correction_dispatch_id` or REPAIR `repair_dispatch_id` also gains an immutable
+alias at `refs/heads/aios/admission-failure-delivery/<family-lowercase>/<sha256>`.
+The digest is SHA-256 of the exact ASCII delivery id, and the alias points to the
+same diagnostic commit as the existing content-addressed ref. Exact replay
+preserves both refs; changed content, a delivery collision or differing commits
+fails transport closed. New refs are created atomically with absent-ref leases.
+Legacy content-addressed diagnostics remain readable; a replay of a delivery-bound
+diagnostic can add its missing alias without replacing its original commit.
+
+Status clients can call
+`resolve_admission_failure_delivery(repo, family="PRIMARY", delivery_id="...")`
+from `aios_renew.review_transport`. The read-only resolver computes that one alias,
+validates the v2 schema, exact family/delivery binding and matching content ref,
+and returns only `authority`, `phase` and `reason_code`, or `None` when the alias
+is absent. Invalid transport raises an error rather than reporting absence. It
+fetches into a disposable observer, scans no unrelated refs and uses no timestamps.
+`project_delivery_receipt(..., remote_repo=repo)` opts into the same lookup for
+Operational Receipt v2; exact local journal/RUN attribution and local rejection
+facts take precedence. The alias is observability only: it cannot assert RUN
+creation, Executor success, verification, review, publication or lifecycle truth.
 
 Admission diagnostics are operational forensic facts only. They are not RESULT,
 EVIDENCE, semantic review, proof that a finding was fixed, automatic recovery

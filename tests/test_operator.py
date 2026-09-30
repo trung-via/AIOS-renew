@@ -20,6 +20,7 @@ import pytest
 import aios_renew.operator as operator_module
 import aios_renew.publication as publication_module
 import aios_renew.runtime as runtime_module
+import aios_renew.review_transport as transport_module
 from aios_renew.codex_adapter import CodexAdapter
 from aios_renew.review_transport import (
     RemoteFailureArtifacts,
@@ -12383,3 +12384,330 @@ def test_operator_reusing_preexisting_sidecar_preserves_bound_profile_values(tmp
     assert persisted["reasoning_effort"] == "medium"
     assert persisted["effort_source"] == "REPOSITORY_DEFAULT"
 
+
+
+# TASK-242: explicit Human reconciliation is separate from automatic synchronization.
+def _transported_diverged_failure(root: Path) -> tuple[Path, Path, str, str, dict]:
+    repo = make_repo(root)
+    remote = root / "upstream.git"
+    base = git(repo, "rev-parse", "HEAD")
+    target = publish_upstream(repo, {"NEW_MAIN.txt": "new canonical main\n"})
+    (repo / "FAILED_CANDIDATE.txt").write_text("failed candidate\n", encoding="utf-8")
+    failed = commit_setup_state(repo, "FAILED_CANDIDATE.txt", message="failed candidate")
+    run = {
+        "run_id": "RUN-231-004", "task": {"id": "TASK-231", "revision": 2},
+        "executor": "codex", "base_sha": base, "workspace": str(repo),
+        "head_sha": None, "status": "ACTIVE",
+    }
+    failure = {
+        "kind": "FAILURE", "run_id": "RUN-231-004", "task": run["task"],
+        "executor": "codex", "base_sha": base, "failed_head_sha": failed,
+        "candidate": {
+            "transportable": True, "repairable": True, "dirty": False,
+            "descends_from_base": True, "changed_files": ["FAILED_CANDIDATE.txt"],
+            "outside_task_scope": [],
+        },
+    }
+    state = runtime_paths(repo)
+    run_path = state.runs / "RUN-231-004.json"
+    failure_path = state.failures / "RUN-231-004.json"
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    failure_path.write_text(json.dumps(failure), encoding="utf-8")
+    _publish_reconciliation_artifact(repo)
+    git(repo, "push", "--quiet", "origin", f"{failed}:refs/heads/aios/failure/RUN-231-004")
+    (state.root / "runtime-evidence.bin").write_bytes(b"immutable Runtime evidence")
+    with RepositoryLock(state.lock):
+        pass
+    return repo, remote, failed, target, failure
+
+
+def _publish_reconciliation_artifact(repo: Path) -> str:
+    state = runtime_paths(repo)
+    commit = transport_module._create_named_artifacts_commit(
+        repo, run_path=state.runs / "RUN-231-004.json",
+        artifact_path=state.failures / "RUN-231-004.json",
+        artifact_name="failure.json", run_id="RUN-231-004",
+    )
+    git(repo, "push", "--quiet", "--force", "origin",
+        f"{commit}:refs/heads/aios/failure-artifacts/RUN-231-004")
+    return commit
+
+
+def _reconciliation_snapshot(repo: Path) -> tuple:
+    state = runtime_paths(repo)
+    git_dir = Path(git(repo, "rev-parse", "--absolute-git-dir"))
+    return (
+        git(repo, "symbolic-ref", "--quiet", "HEAD") if git(repo, "rev-parse", "--abbrev-ref", "HEAD") != "HEAD" else "DETACHED",
+        git(repo, "rev-parse", "HEAD"),
+        git(repo, "for-each-ref", "--format=%(refname) %(objectname)"),
+        git(repo, "status", "--porcelain", "--untracked-files=all"),
+        (git_dir / "index").read_bytes(),
+        (git_dir / "FETCH_HEAD").read_bytes() if (git_dir / "FETCH_HEAD").exists() else None,
+        {str(p.relative_to(repo)): p.read_bytes() for p in repo.rglob("*")
+         if p.is_file() and ".git" not in p.relative_to(repo).parts},
+        {str(p.relative_to(state.root)): p.read_bytes() for p in state.root.rglob("*")
+         if p.is_file()},
+    )
+
+
+def test_human_reconciliation_restores_diverged_main_and_preserves_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, remote, failed, target, _ = _transported_diverged_failure(tmp_path)
+    remote_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    evidence_before = _reconciliation_snapshot(repo)[-1]
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("reconciliation must not invoke lifecycle authority")
+
+    for name in ("run_task", "run_repair", "run_remediation", "retry_transport"):
+        monkeypatch.setattr(operator_module, name, forbidden)
+    calls = []
+    real_git = operator_module._git
+
+    def record_git(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_git", record_git)
+    summary = operator_module.reconcile_control_main(
+        "RUN-231-004", repo=repo, expected_failed_head=failed,
+        expected_canonical_main=target,
+    )
+    assert summary == {
+        "failed_run_id": "RUN-231-004", "prior_head": failed,
+        "restored_head": target, "status": "SUCCESS",
+    }
+    assert git(repo, "symbolic-ref", "HEAD") == "refs/heads/main"
+    assert git(repo, "rev-parse", "HEAD") == target
+    assert git(repo, "status", "--porcelain") == ""
+    assert _reconciliation_snapshot(repo)[-1] == evidence_before
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == remote_before
+    assert not (repo / "FAILED_CANDIDATE.txt").exists()
+    assert (repo / "NEW_MAIN.txt").read_text() == "new canonical main\n"
+    control_mutations = [args for root, args in calls if root == repo
+                         and args[0] in {"reset", "merge", "rebase", "cherry-pick", "stash", "clean", "commit", "push"}]
+    assert control_mutations == [("reset", "--hard", target)]
+
+
+@pytest.mark.parametrize("gate", [
+    "dirty", "staged", "untracked", "ignored-collision", "detached", "non-main", "head-drift",
+    "upstream-drift", "missing-upstream", "ambiguous-upstream", "wrong-upstream",
+    "fetch-failure", "missing-candidate", "missing-artifact", "candidate-mismatch",
+    "competing-result", "competing-review", "missing-content", "malformed-json",
+    "wrong-run", "wrong-head", "dirty-record", "untransportable-record",
+    "malformed-flags", "missing-base", "unrelated-base", "ahead-only", "equal",
+    "wrong-task", "wrong-run-status", "malformed-run-json", "artifact-head-drift",
+])
+def test_human_reconciliation_proof_gates_preserve_repository(
+    tmp_path: Path, gate: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, remote, failed, target, failure = _transported_diverged_failure(tmp_path)
+    state = runtime_paths(repo)
+    expected_failed, expected_target = failed, target
+    if gate == "dirty":
+        (repo / "README.md").write_text("dirty\n", encoding="utf-8")
+    elif gate == "staged":
+        (repo / "README.md").write_text("staged\n", encoding="utf-8")
+        git(repo, "add", "README.md")
+    elif gate == "untracked":
+        (repo / "UNTRACKED.txt").write_text("untracked\n", encoding="utf-8")
+    elif gate == "ignored-collision":
+        exclude = Path(git(repo, "rev-parse", "--absolute-git-dir")) / "info" / "exclude"
+        exclude.write_text(exclude.read_text() + "\nNEW_MAIN.txt\n", encoding="utf-8")
+        (repo / "NEW_MAIN.txt").write_text("ignored content must survive\n", encoding="utf-8")
+    elif gate == "detached":
+        git(repo, "checkout", "--quiet", "--detach")
+    elif gate == "non-main":
+        git(repo, "checkout", "--quiet", "-b", "feature")
+    elif gate == "head-drift":
+        expected_failed = failure["base_sha"]
+    elif gate == "upstream-drift":
+        expected_target = failure["base_sha"]
+    elif gate == "missing-upstream":
+        git(repo, "branch", "--unset-upstream")
+    elif gate == "ambiguous-upstream":
+        git(repo, "config", "--add", "branch.main.remote", "other")
+    elif gate == "wrong-upstream":
+        git(repo, "config", "branch.main.merge", "refs/heads/other")
+    elif gate == "fetch-failure":
+        git(repo, "remote", "set-url", "origin", str(tmp_path / "unavailable.git"))
+    elif gate in {"missing-candidate", "missing-artifact"}:
+        namespace = "failure" if gate == "missing-candidate" else "failure-artifacts"
+        git(remote, "update-ref", "-d", f"refs/heads/aios/{namespace}/RUN-231-004")
+    elif gate == "candidate-mismatch":
+        git(remote, "update-ref", "refs/heads/aios/failure/RUN-231-004", failure["base_sha"])
+    elif gate in {"competing-result", "competing-review", "missing-content"}:
+        namespace = {"competing-result": "artifacts", "competing-review": "review",
+                     "missing-content": "failure-artifacts"}[gate]
+        git(remote, "update-ref", f"refs/heads/aios/{namespace}/RUN-231-004", failure["base_sha"])
+    elif gate in {"ahead-only", "equal"}:
+        expected_target = failure["base_sha"] if gate == "ahead-only" else failed
+        git(remote, "update-ref", "refs/heads/main", expected_target)
+    else:
+        if gate in {"wrong-task", "wrong-run-status", "malformed-run-json", "artifact-head-drift"}:
+            run_path = state.runs / "RUN-231-004.json"
+            run = json.loads(run_path.read_text())
+            if gate == "wrong-task":
+                run["task"]["id"] = "TASK-242"
+            elif gate == "wrong-run-status":
+                run["status"] = "FAILURE"
+            elif gate == "artifact-head-drift":
+                run["head_sha"] = target
+            run_path.write_text("{" if gate == "malformed-run-json" else json.dumps(run), encoding="utf-8")
+        if gate == "wrong-run":
+            failure["run_id"] = "RUN-231-005"
+        elif gate == "wrong-head":
+            failure["failed_head_sha"] = target
+        elif gate == "dirty-record":
+            failure["candidate"].update(dirty=True, repairable=False, transportable=False)
+        elif gate == "untransportable-record":
+            failure["candidate"].update(transportable=False, outside_task_scope=["FAILED_CANDIDATE.txt"])
+        elif gate == "malformed-flags":
+            failure["candidate"]["dirty"] = "false"
+        elif gate in {"missing-base", "unrelated-base"}:
+            failure["base_sha"] = "f" * 40 if gate == "missing-base" else target
+            run_path = state.runs / "RUN-231-004.json"
+            run = json.loads(run_path.read_text())
+            run["base_sha"] = failure["base_sha"]
+            run_path.write_text(json.dumps(run), encoding="utf-8")
+        (state.failures / "RUN-231-004.json").write_text(
+            "{" if gate == "malformed-json" else json.dumps(failure), encoding="utf-8",
+        )
+        _publish_reconciliation_artifact(repo)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("proof rejection must not invoke lifecycle authority")
+
+    monkeypatch.setattr(operator_module, "run_task", forbidden)
+    before = _reconciliation_snapshot(repo)
+    remote_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    with pytest.raises(OperatorError):
+        operator_module.reconcile_control_main(
+            "RUN-231-004", repo=repo, expected_failed_head=expected_failed,
+            expected_canonical_main=expected_target,
+        )
+    assert _reconciliation_snapshot(repo) == before
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == remote_before
+
+
+def test_human_reconciliation_conflicting_lock_preserves_repository(tmp_path: Path) -> None:
+    repo, _, failed, target, _ = _transported_diverged_failure(tmp_path)
+    before = _reconciliation_snapshot(repo)
+    with RepositoryLock(runtime_paths(repo).lock):
+        with pytest.raises(OperatorError, match="active"):
+            operator_module.reconcile_control_main(
+                "RUN-231-004", repo=repo, expected_failed_head=failed,
+                expected_canonical_main=target,
+            )
+    assert _reconciliation_snapshot(repo) == before
+
+
+def test_automatic_sync_never_reconciles_transported_diverged_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _, failed, _, _ = _transported_diverged_failure(tmp_path)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("automatic synchronization has no Human reconciliation authority")
+
+    monkeypatch.setattr(operator_module, "reconcile_control_main", forbidden)
+    monkeypatch.setattr(operator_module, "run_task", forbidden)
+    with pytest.raises(OperatorError, match="diverged"):
+        operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+    outcome = operator_module._preflight_continue_sync(repo, argv=["continue", "TASK-101"])
+    assert outcome.restart_code is None
+    assert git(repo, "rev-parse", "HEAD") == failed
+    assert list(runtime_paths(repo).runs.glob("*.json")) == [
+        runtime_paths(repo).runs / "RUN-231-004.json"
+    ]
+
+
+def test_reconciliation_cli_requires_exact_selectors_and_emits_bounded_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, _, failed, target, _ = _transported_diverged_failure(tmp_path)
+    with pytest.raises(SystemExit):
+        operator_module._parser().parse_args(["reconcile-control-main", "RUN-231-004"])
+    capsys.readouterr()
+    code = operator_module.main([
+        "reconcile-control-main", "RUN-231-004", "--repo", str(repo),
+        "--expected-failed-head", failed, "--expected-canonical-main", target,
+    ])
+    assert code == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert set(summary) == {"failed_run_id", "prior_head", "restored_head", "status"}
+    assert summary["status"] == "SUCCESS"
+    code = operator_module.main([
+        "reconcile-control-main", "RUN-231-004", "--repo", str(repo),
+        "--expected-failed-head", failed, "--expected-canonical-main", target,
+    ])
+    assert code == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "failed_run_id": "RUN-231-004", "prior_head": target,
+        "restored_head": None, "status": "FAILURE",
+    }
+
+
+def test_reconciliation_has_only_the_explicit_cli_call_path() -> None:
+    source = ast.parse(inspect.getsource(operator_module))
+    owners = []
+
+    class Calls(ast.NodeVisitor):
+        def __init__(self):
+            self.owner = None
+
+        def visit_FunctionDef(self, node):
+            previous = self.owner
+            self.owner = node.name
+            self.generic_visit(node)
+            self.owner = previous
+
+        def visit_Call(self, node):
+            if isinstance(node.func, ast.Name) and node.func.id == "reconcile_control_main":
+                owners.append(self.owner)
+            self.generic_visit(node)
+
+    Calls().visit(source)
+    assert owners == ["main"]
+
+
+@pytest.mark.parametrize("drift", ["head", "upstream", "remote-proof"])
+def test_reconciliation_rechecks_proofs_before_any_reset(
+    tmp_path: Path, drift: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _, failed, target, failure = _transported_diverged_failure(tmp_path)
+    real_query = operator_module._exact_remote_refs
+    calls = []
+    fired = False
+
+    def drifting_query(observer, remote, *patterns):
+        nonlocal fired
+        refs = real_query(observer, remote, *patterns)
+        if not fired and "refs/heads/main" in patterns and len(patterns) > 1:
+            fired = True
+            if drift == "head":
+                git(repo, "reset", "--hard", failure["base_sha"])
+            elif drift == "upstream":
+                git(repo, "config", "branch.main.merge", "refs/heads/other")
+            else:
+                refs["refs/heads/main"] = failure["base_sha"]
+        return refs
+
+    real_git = operator_module._git
+
+    def recording_git(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_exact_remote_refs", drifting_query)
+    monkeypatch.setattr(operator_module, "_git", recording_git)
+    with pytest.raises(OperatorError):
+        operator_module.reconcile_control_main(
+            "RUN-231-004", repo=repo, expected_failed_head=failed,
+            expected_canonical_main=target,
+        )
+    assert fired
+    assert not any(root == repo and args[0] in {"reset", "merge", "rebase", "clean", "push"}
+                   for root, args in calls)
+    assert git(repo, "rev-parse", "HEAD") == (failure["base_sha"] if drift == "head" else failed)

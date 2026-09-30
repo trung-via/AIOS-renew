@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import subprocess
+import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -2180,6 +2181,175 @@ def transport_failure(
         ) from exc
 
 
+_ADMISSION_DELIVERY_FIELDS = {
+    "PRIMARY": "dispatch_id",
+    "REMEDIATION": "correction_dispatch_id",
+    "REPAIR": "repair_dispatch_id",
+}
+
+
+def admission_failure_delivery_ref(family: str, delivery_id: str) -> str:
+    """Address one delivery without time ordering or unrelated ref discovery."""
+    if not isinstance(family, str) or family not in _ADMISSION_DELIVERY_FIELDS or not isinstance(delivery_id, str) or (
+        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", delivery_id) is None
+    ):
+        raise ReviewTransportError("invalid admission delivery identity")
+    key = hashlib.sha256(delivery_id.encode("ascii")).hexdigest()
+    return f"refs/heads/aios/admission-failure-delivery/{family.lower()}/{key}"
+
+
+def _admission_delivery_cause(
+    content: bytes, *, family: str, delivery_id: str
+) -> dict[str, str]:
+    if len(content) > 65536:
+        raise ReviewTransportError("admission diagnostic exceeds bound")
+    record = _performance_json_mapping(content, "Admission Failure")
+    field = _ADMISSION_DELIVERY_FIELDS[family]
+    phase, reason = record.get("phase"), record.get("reason_code")
+    error = record.get("error")
+    if (
+        record.get("format") != "AIOS_ADMISSION_FAILURE"
+        or type(record.get("version")) is not int or record["version"] != 2
+        or record.get("kind") != "ADMISSION_FAILURE"
+        or record.get("operation") != family
+        or record.get(field) != delivery_id
+        or any(name in record for name in _ADMISSION_DELIVERY_FIELDS.values() if name != field)
+        or record.get("executor_invoked") is not False
+        or any(name in record for name in (
+            "run_id", "run_created", "result", "evidence", "terminal_pointer",
+            "verification", "review", "publication", "executor_success",
+        ))
+        or not isinstance(phase, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", phase)
+        or not isinstance(reason, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,127}", reason)
+        or not isinstance(error, Mapping) or set(error) != {"type", "message"}
+        or not isinstance(error.get("type"), str) or not 0 < len(error["type"]) <= 128
+        or not isinstance(error.get("message"), str) or len(error["message"]) > 2048
+    ):
+        raise ReviewTransportError("invalid delivery-bound Admission Failure schema")
+    allowed = {
+        "format", "version", "kind", "operation", "executor_invoked", "phase",
+        "reason_code", "error", "requested_executor", "task", "requested_task_id",
+        "finding_id", "review_id", "reviewed_sha", "failed_head_sha", "current_head_sha",
+        "control_head_sha", "failed_run_id", "source_run_id", "dispatch_id",
+        "correction_dispatch_id", "repair_dispatch_id", "task_blob_sha", "task_commit_sha",
+        "current_task_blob_sha", "observed_ref", "observed_sha", "observed_snapshot_sha256",
+        "requested_task_revision", "observed_ref_count", "observed_refs", "remote_query",
+    }
+    if set(record).difference(allowed):
+        raise ReviewTransportError("unknown Admission Failure schema fields")
+    string_fields = allowed - {
+        "version", "executor_invoked", "error", "task", "requested_task_revision",
+        "observed_ref_count", "observed_refs", "remote_query",
+    }
+    if any(not isinstance(record[name], str) or len(record[name]) > 256
+           for name in string_fields if name in record):
+        raise ReviewTransportError("invalid bounded Admission Failure identity")
+    if "requested_executor" in record and record["requested_executor"] not in {
+        "codex", "antigravity", "antigravity-minimax"
+    }:
+        raise ReviewTransportError("invalid Admission Failure requested Executor")
+    task = record.get("task")
+    if "task" in record and (
+        not isinstance(task, Mapping) or set(task) != {"id", "revision"}
+        or not isinstance(task.get("id"), str) or not 0 < len(task["id"]) <= 256
+        or type(task.get("revision")) is not int or task["revision"] < 1
+    ):
+        raise ReviewTransportError("invalid Admission Failure task identity")
+    for name, minimum in (("requested_task_revision", 1), ("observed_ref_count", 0)):
+        if name in record and (type(record[name]) is not int or record[name] < minimum):
+            raise ReviewTransportError("invalid Admission Failure observation count")
+    observed = record.get("observed_refs")
+    if "observed_refs" in record and (
+        not isinstance(observed, list) or len(observed) > 8
+        or any(not isinstance(item, Mapping) or set(item) != {"ref", "sha"}
+               or not isinstance(item.get("ref"), str) or len(item["ref"]) > 256
+               or not isinstance(item.get("sha"), str) or len(item["sha"]) > 64
+               for item in observed)
+    ):
+        raise ReviewTransportError("invalid bounded Admission Failure ref observations")
+    query = record.get("remote_query")
+    if "remote_query" in record and (
+        not isinstance(query, Mapping) or set(query) != {"operation", "outcome", "category"}
+        or query.get("operation") != "LS_REMOTE" or query.get("outcome") != "UNAVAILABLE"
+        or not isinstance(query.get("category"), str)
+        or query.get("category") not in {"AUTH", "DNS", "TLS", "TIMEOUT", "CONNECTIVITY", "UNKNOWN"}
+    ):
+        raise ReviewTransportError("invalid Admission Failure remote query facts")
+    return {"authority": "AIOS_ADMISSION_FAILURE", "phase": phase, "reason_code": reason}
+
+
+def resolve_admission_failure_delivery(
+    repo: Path, *, family: str, delivery_id: str
+) -> dict[str, str] | None:
+    """Read only one remote delivery diagnostic; never infer RUN/lifecycle truth.
+
+    All fetching happens in a disposable object store, leaving the caller's refs,
+    FETCH_HEAD, index, worktree and Runtime evidence unchanged.
+    """
+    alias = admission_failure_delivery_ref(family, delivery_id)
+    remote = resolve_transport_remote(repo)
+    url = str(repo.resolve()) if remote == "." else _git_cmd(repo, "remote", "get-url", remote)[1]
+    with tempfile.TemporaryDirectory(prefix="aios-admission-observer-") as raw:
+        observer = Path(raw)
+        _git_cmd(observer, "init", "--quiet")
+        _git_cmd(observer, "remote", "add", "canonical", url)
+        refs = _exact_remote_refs(observer, "canonical", alias)
+        if not refs:
+            return None
+        if set(refs) != {alias}:
+            raise ReviewTransportError("unexpected admission delivery refs")
+        commit = refs[alias]
+        _git_cmd(observer, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=", "canonical", commit)
+        content = _read_local_blob(observer, commit, ".ai/transport/admission-failure.json")
+        if content is None:
+            raise ReviewTransportError("admission delivery content missing")
+        cause = _admission_delivery_cause(content, family=family, delivery_id=delivery_id)
+        identity = hashlib.sha256(content).hexdigest()
+        ref = f"refs/heads/aios/admission-failure/{identity}"
+        if _exact_remote_refs(observer, "canonical", ref, alias) != {ref: commit, alias: commit}:
+            raise ReviewTransportError("admission delivery content identity conflict")
+        return cause
+
+
+def prove_remote_failed_candidate(
+    repo: Path, *, failed_run_id: str, failed_head_sha: str
+) -> tuple[str, dict[str, str]]:
+    """Validate exact transported FAILURE in an isolated caller-owned observer."""
+    if re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", failed_run_id) is None:
+        raise ReviewTransportError("invalid failed RUN identity")
+    remote = resolve_transport_remote(repo)
+    candidate_ref = f"refs/heads/aios/failure/{failed_run_id}"
+    artifact_ref = f"refs/heads/aios/failure-artifacts/{failed_run_id}"
+    patterns = (candidate_ref, artifact_ref,
+                f"refs/heads/aios/review/{failed_run_id}",
+                f"refs/heads/aios/artifacts/{failed_run_id}")
+    refs = _exact_remote_refs(repo, remote, *patterns)
+    if set(refs) != {candidate_ref, artifact_ref} or refs.get(candidate_ref) != failed_head_sha:
+        raise ReviewTransportError("missing or conflicting canonical FAILURE transport")
+    for commit in refs.values():
+        _git_cmd(repo, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=", remote, commit)
+    run = _read_local_blob(repo, refs[artifact_ref], ".ai/transport/run.json")
+    failure = _read_local_blob(repo, refs[artifact_ref], ".ai/transport/failure.json")
+    if run is None or failure is None or len(run) > 65536 or len(failure) > 1048576:
+        raise ReviewTransportError("missing or unbounded canonical FAILURE content")
+    task_id = "TASK-" + _run_task_prefix(failed_run_id)[4:-1]
+    _, _, base_sha, candidate_sha = _bind_performance_terminal_identity(
+        run, failure, ref=artifact_ref, run_id=failed_run_id,
+        task_id=task_id, terminal_kind="FAILURE",
+    )
+    run_document = _performance_json_mapping(run, "RUN")
+    if run_document.get("kind") == "REMEDIATION":
+        run_document = run_document["execution"]["run"]
+    if run_document.get("head_sha") not in (None, failed_head_sha):
+        raise ReviewTransportError("canonical RUN failed-head binding conflicts")
+    record = _performance_json_mapping(failure, "FAILURE")
+    if candidate_sha != failed_head_sha or record["candidate"]["transportable"] is not True:
+        raise ReviewTransportError("canonical FAILURE is not the clean transportable candidate")
+    if _exact_remote_refs(repo, remote, *patterns) != refs:
+        raise ReviewTransportError("canonical FAILURE transport drift")
+    return base_sha, refs
+
+
 def transport_admission_failure(
     repo: Path, *, identity: str, diagnostic_path: Path
 ) -> None:
@@ -2193,42 +2363,46 @@ def transport_admission_failure(
         raise ReviewTransportError(
             f"persisted admission-failure JSON missing: {diagnostic_path}"
         )
-    if hashlib.sha256(diagnostic_path.read_bytes()).hexdigest() != identity:
+    content = diagnostic_path.read_bytes()
+    if hashlib.sha256(content).hexdigest() != identity:
         raise ReviewTransportError(
             "admission-failure identity does not match diagnostic content"
         )
+    record = _json_mapping(content, "Admission Failure")
+    family = record.get("operation")
+    field = _ADMISSION_DELIVERY_FIELDS.get(family) if isinstance(family, str) else None
+    delivery = record.get(field) if field else None
+    alias = None
+    if isinstance(delivery, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", delivery):
+        alias = admission_failure_delivery_ref(family, delivery)
+        _admission_delivery_cause(content, family=family, delivery_id=delivery)
     remote = resolve_transport_remote(repo)
     ref = f"refs/heads/aios/admission-failure/{identity}"
-    code, output, _ = _git_cmd(
-        repo, "ls-remote", "--refs", remote, ref, allow_fail=True
-    )
-    if code:
-        raise ReviewTransportError(f"failed to query remote refs from {remote}")
-    lines = [line.split() for line in output.splitlines() if line.strip()]
-    if lines:
-        if len(lines) != 1 or len(lines[0]) != 2 or lines[0][1] != ref:
-            raise ReviewTransportError("malformed admission-failure ref result")
-        remote_content = _read_remote_blob(
-            repo,
-            remote,
-            lines[0][0],
-            ".ai/transport/admission-failure.json",
-        )
-        if remote_content != diagnostic_path.read_bytes():
-            raise ReviewTransportError(
-                f"remote admission-failure ref {ref} exists with different content"
-            )
+    expected_refs = (ref, alias) if alias else (ref,)
+    refs = _exact_remote_refs(repo, remote, *expected_refs)
+    if set(refs).difference(expected_refs):
+        raise ReviewTransportError("unexpected admission-failure ref result")
+    for existing_ref, sha in refs.items():
+        if _read_remote_blob(repo, remote, sha, ".ai/transport/admission-failure.json") != content:
+            raise ReviewTransportError(f"remote admission-failure ref {existing_ref} exists with different content")
+    if len(set(refs.values())) > 1:
+        raise ReviewTransportError("admission alias and content ref commit conflict")
+    missing = [name for name in expected_refs if name not in refs]
+    if not missing:
         return
-
-    commit = _create_admission_failure_commit(
-        repo, identity=identity, diagnostic_path=diagnostic_path
-    )
+    commit = next(iter(refs.values()), None)
+    if commit is None:
+        commit = _create_admission_failure_commit(
+            repo, identity=identity, diagnostic_path=diagnostic_path, content=content
+        )
     code, _, stderr = _git_cmd(
         repo,
         "push",
         "--no-tags",
+        *(("--atomic",) if alias else ()),
+        *(f"--force-with-lease={name}:" for name in missing),
         remote,
-        f"{commit}:{ref}",
+        *(f"{commit}:{name}" for name in missing),
         allow_fail=True,
     )
     if code:
@@ -2238,14 +2412,14 @@ def transport_admission_failure(
 
 
 def _create_admission_failure_commit(
-    repo: Path, *, identity: str, diagnostic_path: Path
+    repo: Path, *, identity: str, diagnostic_path: Path, content: bytes | None = None
 ) -> str:
     """Create an isolated diagnostic commit without touching the worktree."""
 
     try:
         blob = subprocess.run(
             ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
-            input=diagnostic_path.read_bytes(),
+            input=diagnostic_path.read_bytes() if content is None else content,
             capture_output=True,
             check=True,
         ).stdout.decode("utf-8", errors="strict").strip()

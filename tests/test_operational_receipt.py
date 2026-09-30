@@ -218,3 +218,119 @@ def test_human_blocker_uses_only_new_exact_diagnostic(tmp_path: Path) -> None:
         "reason_code": "TASK_CONTRACT_REJECTED",
         "source": "AIOS_ADMISSION_FAILURE",
     }
+
+
+@pytest.mark.parametrize("family", ["PRIMARY", "REMEDIATION", "REPAIR"])
+def test_receipt_remote_delivery_lookup_reports_only_pre_run_rejection(
+    tmp_path: Path, family: str,
+) -> None:
+    from aios_renew.review_transport import transport_admission_failure
+    from tests.operator_test_support import make_repo, git
+
+    repo = make_repo(tmp_path)
+    delivery = "task241-r1-primary-codex61-001"
+    field = {
+        "PRIMARY": "dispatch_id", "REMEDIATION": "correction_dispatch_id",
+        "REPAIR": "repair_dispatch_id",
+    }[family]
+    diagnostic = {
+        "format": "AIOS_ADMISSION_FAILURE", "version": 2, "kind": "ADMISSION_FAILURE",
+        "operation": family, field: delivery, "executor_invoked": False,
+        "phase": "PRIMARY_SYNCHRONIZATION", "reason_code": "PRIMARY_SYNCHRONIZATION_REJECTED",
+        "error": {"type": "OperatorError", "message": "local branch has diverged from upstream"},
+    }
+    content = json.dumps(diagnostic).encode()
+    identity = hashlib.sha256(content).hexdigest()
+    path = tmp_path / "diagnostic.json"
+    path.write_bytes(content)
+    transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    head_before = git(repo, "rev-parse", "HEAD")
+    refs_before = git(repo, "for-each-ref", "--format=%(refname) %(objectname)")
+    root = tmp_path / "absent-runtime-state"
+    receipt = project_delivery_receipt(
+        root, family=family, delivery_id=delivery, remote_repo=repo,
+    ).as_dict()
+    assert receipt["boundary"] == "ADMISSION_REJECTED"
+    assert receipt["cause"] == {
+        "authority": "AIOS_ADMISSION_FAILURE", "phase": "PRIMARY_SYNCHRONIZATION",
+        "reason_code": "PRIMARY_SYNCHRONIZATION_REJECTED",
+    }
+    assert receipt["run_created"] is False
+    assert receipt["executor_invoked"] is False
+    assert not {"run_id", "terminal_pointer", "verification", "review", "publication"} & receipt.keys()
+    assert "local branch has diverged" not in json.dumps(receipt)
+    assert not root.exists()
+    assert git(repo, "rev-parse", "HEAD") == head_before
+    assert git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before
+    absent = project_delivery_receipt(
+        root, family=family, delivery_id="absent", remote_repo=repo,
+    ).as_dict()
+    assert absent["boundary"] == "AIOS_INVOKED"
+    assert absent["run_created"] is False
+
+
+@pytest.mark.parametrize("terminal", [False, True])
+def test_receipt_local_run_attribution_precedes_remote_admission_diagnostic(
+    tmp_path: Path, terminal: bool, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import aios_renew.operational_receipt as receipts
+
+    root = tmp_path / "aios"
+    _journal(root, "dispatches", "exact", {"dispatch_id": "exact", "run_id": "RUN-242-001"})
+    if terminal:
+        artifact = root / "failures" / "RUN-242-001.json"
+        artifact.parent.mkdir(parents=True)
+        artifact.write_text("{}", encoding="utf-8")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("exact journal/RUN attribution must take precedence")
+
+    monkeypatch.setattr(receipts, "resolve_admission_failure_delivery", forbidden)
+    payload = project_delivery_receipt(
+        root, family="PRIMARY", delivery_id="exact", remote_repo=tmp_path,
+    ).as_dict()
+    assert payload["boundary"] == ("TERMINAL_POINTER" if terminal else "RUN_ATTRIBUTED")
+    assert payload["run_created"] is True
+    assert payload["executor_invoked"] is False
+    assert "cause" not in payload
+
+
+def test_receipt_local_admission_precedes_remote_lookup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import aios_renew.operational_receipt as receipts
+
+    _journal(tmp_path, "dispatches", "exact", {"dispatch_id": "exact", "run_id": None})
+    directory = tmp_path / "admission-failures"
+    directory.mkdir()
+    (directory / "local.json").write_text(json.dumps({
+        "format": "AIOS_ADMISSION_FAILURE", "version": 2, "operation": "PRIMARY",
+        "dispatch_id": "exact", "phase": "TASK_ADMISSION", "reason_code": "TASK_CONTRACT_REJECTED",
+    }), encoding="utf-8")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("exact local diagnostic takes precedence")
+
+    monkeypatch.setattr(receipts, "resolve_admission_failure_delivery", forbidden)
+    payload = project_delivery_receipt(
+        tmp_path, family="PRIMARY", delivery_id="exact", remote_repo=tmp_path,
+    ).as_dict()
+    assert payload["cause"]["phase"] == "TASK_ADMISSION"
+    assert payload["run_created"] is False
+
+
+def test_receipt_remote_invalid_diagnostic_is_not_absence_or_run_truth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import aios_renew.operational_receipt as receipts
+    from aios_renew.review_transport import ReviewTransportError
+
+    def reject(*args, **kwargs):
+        raise ReviewTransportError("admission delivery content identity conflict")
+
+    monkeypatch.setattr(receipts, "resolve_admission_failure_delivery", reject)
+    with pytest.raises(receipts.OperationalReceiptError, match="identity conflict"):
+        project_delivery_receipt(
+            tmp_path, family="PRIMARY", delivery_id="exact", remote_repo=tmp_path,
+        )
+    assert list(tmp_path.iterdir()) == []

@@ -14,6 +14,8 @@ from pathlib import Path
 import re
 from typing import Any, Iterable, Mapping
 
+from .review_transport import ReviewTransportError, resolve_admission_failure_delivery
+
 
 FAMILIES = frozenset({"PRIMARY", "REMEDIATION", "REPAIR"})
 BOUNDARIES = frozenset({
@@ -213,6 +215,7 @@ def project_delivery_receipt(
     family: str,
     delivery_id: str,
     selectors: Mapping[str, Any] | None = None,
+    remote_repo: Path | None = None,
 ) -> OperationalReceipt:
     """Read the exact family journal and project its strongest proven fact.
 
@@ -223,9 +226,30 @@ def project_delivery_receipt(
     _validate_family_delivery(family, delivery_id)
     bounded = _bounded_selectors(selectors or {})
     delivery_field, directory = _DELIVERY_FIELDS[family]
+
+    def rejection_or_invoked() -> OperationalReceipt:
+        cause = _exact_admission_cause(
+            state_root / "admission-failures", family, delivery_field, delivery_id
+        )
+        if cause is None and remote_repo is not None:
+            try:
+                cause = resolve_admission_failure_delivery(
+                    remote_repo, family=family, delivery_id=delivery_id
+                )
+            except ReviewTransportError as exc:
+                raise OperationalReceiptError(str(exc)) from exc
+        if cause is None:
+            return invoked_receipt(family, delivery_id, selectors=bounded)
+        return OperationalReceipt(
+            family=family, delivery_id=delivery_id, boundary="ADMISSION_REJECTED",
+            selectors=bounded, cause=cause,
+        )
+
     key = hashlib.sha256(delivery_id.encode("ascii")).hexdigest()
     path = state_root / directory / f"{key}.json"
     if not path.is_file():
+        if remote_repo is not None:
+            return rejection_or_invoked()
         return invoked_receipt(family, delivery_id, selectors=bounded)
     record = _read_mapping(path, "dispatch journal")
     if record.get(delivery_field) != delivery_id:
@@ -236,18 +260,7 @@ def project_delivery_receipt(
 
     run_id = record.get("run_id")
     if run_id is None:
-        cause = _exact_admission_cause(
-            state_root / "admission-failures", family, delivery_field, delivery_id
-        )
-        if cause is not None:
-            return OperationalReceipt(
-                family=family,
-                delivery_id=delivery_id,
-                boundary="ADMISSION_REJECTED",
-                selectors=bounded,
-                cause=cause,
-            )
-        return invoked_receipt(family, delivery_id, selectors=bounded)
+        return rejection_or_invoked()
     if not isinstance(run_id, str) or not _RUN_PATTERN.fullmatch(run_id):
         raise OperationalReceiptError("dispatch journal has invalid RUN attribution")
 

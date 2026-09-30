@@ -102,6 +102,8 @@ from .review_transport import (
     transport_failure,
     transport_post_pass,
     validate_runtime_failure_binding,
+    prove_remote_failed_candidate,
+    _exact_remote_refs,
 )
 from .run import Run, RunLeaseRegistry, RunTaskReference
 from .run_observation import (
@@ -3471,6 +3473,109 @@ def _is_kernel_source_or_task_state(path: str) -> bool:
         _is_kernel_source(normalized)
         or normalized.startswith(".ai/tasks/")
     )
+
+
+def reconcile_control_main(
+    failed_run_id: str, *, expected_failed_head: str,
+    expected_canonical_main: str, repo: str | Path | None = None,
+) -> dict[str, Any]:
+    """Explicit Human operation; no admission, Executor or lifecycle delegation."""
+    if (
+        not isinstance(failed_run_id, str) or len(failed_run_id) > 128
+        or re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", failed_run_id) is None
+        or not isinstance(expected_failed_head, str)
+        or re.fullmatch(r"[0-9a-f]{40}", expected_failed_head) is None
+        or not isinstance(expected_canonical_main, str)
+        or re.fullmatch(r"[0-9a-f]{40}", expected_canonical_main) is None
+    ):
+        raise OperatorError("reconciliation requires exact RUN and commit identities")
+    root = resolve_repository(repo)
+
+    def require_subject() -> None:
+        if _git(root, "symbolic-ref", "--quiet", "HEAD") != "refs/heads/main":
+            raise OperatorError("reconciliation requires attached main")
+        if _git(root, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all"):
+            raise OperatorError("reconciliation requires completely clean status")
+        if _git(root, "rev-parse", "HEAD") != expected_failed_head:
+            raise OperatorError("reconciliation failed-head drift")
+
+    with RepositoryLock(_runtime_paths_readonly(root).lock):
+        require_subject()
+        remotes = _git(root, "config", "--get-all", "branch.main.remote").splitlines()
+        merges = _git(root, "config", "--get-all", "branch.main.merge").splitlines()
+        if len(remotes) != 1 or not remotes[0] or remotes[0] == "." or merges != ["refs/heads/main"]:
+            raise OperatorError("missing or ambiguous upstream main")
+        remote = remotes[0]
+        remote_url = _git(root, "remote", "get-url", remote)
+        # Resolve the configured tracking binding without fetching into control refs.
+        upstream = _git(root, "rev-parse", "--symbolic-full-name", "@{upstream}")
+        if not upstream.startswith("refs/remotes/") or not upstream.endswith("/main"):
+            raise OperatorError("configured upstream does not resolve to main")
+
+        def require_upstream() -> None:
+            if (
+                _git(root, "config", "--get-all", "branch.main.remote").splitlines() != remotes
+                or _git(root, "config", "--get-all", "branch.main.merge").splitlines() != merges
+                or _git(root, "rev-parse", "--symbolic-full-name", "@{upstream}") != upstream
+                or _git(root, "remote", "get-url", remote) != remote_url
+            ):
+                raise OperatorError("configured upstream drift")
+
+        try:
+            with _remote_observation_repository(root) as observer:
+                target_refs = _exact_remote_refs(observer, remote, "refs/heads/main")
+                if target_refs != {"refs/heads/main": expected_canonical_main}:
+                    raise OperatorError("canonical main target drift")
+                _git(observer, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=", remote, expected_canonical_main)
+                base, failure_refs = prove_remote_failed_candidate(
+                    observer, failed_run_id=failed_run_id, failed_head_sha=expected_failed_head,
+                )
+                if (
+                    not _git_is_ancestor(observer, base, expected_failed_head)
+                    or not _git_is_ancestor(observer, base, expected_canonical_main)
+                    or _git_is_ancestor(observer, expected_canonical_main, expected_failed_head)
+                    or _git_is_ancestor(observer, expected_failed_head, expected_canonical_main)
+                ):
+                    raise OperatorError("reconciliation requires diverged common failure-base lineage")
+                # Submodule worktrees have their own mutation authority.
+                trees = (
+                    _git(observer, "ls-tree", "-r", sha).splitlines()
+                    for sha in (expected_failed_head, expected_canonical_main)
+                )
+                if any(line.startswith("160000 ") for tree in trees for line in tree):
+                    raise OperatorError("reconciliation does not mutate submodule worktrees")
+                ignored = _git(root, "ls-files", "--others", "--ignored", "--exclude-standard", "-z", strip_stdout=False).split("\0")
+                target_paths = _git(observer, "ls-tree", "-r", "--name-only", "-z", expected_canonical_main, strip_stdout=False).split("\0")
+                if any(
+                    path and target and (path == target or path.startswith(target + "/") or target.startswith(path + "/"))
+                    for path in ignored for target in target_paths
+                ):
+                    raise OperatorError("reconciliation would overwrite ignored worktree content")
+                patterns = (*failure_refs, f"refs/heads/aios/review/{failed_run_id}",
+                            f"refs/heads/aios/artifacts/{failed_run_id}", "refs/heads/main")
+                if _exact_remote_refs(observer, remote, *patterns) != {**failure_refs, **target_refs}:
+                    raise OperatorError("canonical reconciliation proof drift")
+                require_subject()
+                require_upstream()
+                # Only after every proof succeeds import the target objects. No
+                # tracking refs or FETCH_HEAD are written in the control repository.
+                _git(observer, "update-ref", "refs/heads/main", expected_canonical_main)
+                _git(root, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=", str(observer), expected_canonical_main)
+                require_subject()
+                require_upstream()
+                if _exact_remote_refs(observer, remote, *patterns) != {**failure_refs, **target_refs}:
+                    raise OperatorError("canonical reconciliation proof drift")
+                _git(root, "reset", "--hard", expected_canonical_main)
+        except ReviewTransportError as exc:
+            raise OperatorError(str(exc)) from exc
+        if (
+            _git(root, "symbolic-ref", "--quiet", "HEAD") != "refs/heads/main"
+            or _git(root, "rev-parse", "HEAD") != expected_canonical_main
+            or _git(root, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all")
+        ):
+            raise OperatorError("repository-integrity BLOCKED: reconciliation postconditions failed")
+    return {"failed_run_id": failed_run_id, "prior_head": expected_failed_head,
+            "restored_head": expected_canonical_main, "status": "SUCCESS"}
 
 
 def _synchronize_primary_branch(
@@ -7606,6 +7711,14 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aios")
     commands = parser.add_subparsers(dest="command", required=True)
 
+    reconcile_parser = commands.add_parser(
+        "reconcile-control-main", help="Human reconciliation of an exact transported failed candidate"
+    )
+    reconcile_parser.add_argument("failed_run_id")
+    reconcile_parser.add_argument("--expected-failed-head", required=True)
+    reconcile_parser.add_argument("--expected-canonical-main", required=True)
+    reconcile_parser.add_argument("--repo")
+
     task_parser = commands.add_parser("task", help="Show a stored canonical TASK")
     task_parser.add_argument("task_id")
     task_parser.add_argument("--repo")
@@ -7947,6 +8060,21 @@ def main(
     monotonic_clock: MonotonicClock = time.monotonic,
 ) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "reconcile-control-main":
+        prior_head = None
+        try:
+            prior_head = _git(resolve_repository(args.repo), "rev-parse", "HEAD")
+            summary = reconcile_control_main(
+                args.failed_run_id, expected_failed_head=args.expected_failed_head,
+                expected_canonical_main=args.expected_canonical_main, repo=args.repo,
+            )
+        except (OperatorError, OSError):
+            print(json.dumps({"failed_run_id": args.failed_run_id[:128],
+                              "prior_head": prior_head, "restored_head": None,
+                              "status": "FAILURE"}, sort_keys=True))
+            return 1
+        print(json.dumps(summary, sort_keys=True))
+        return 0
     try:
         if args.command == "task":
             print(describe_task(args.task_id, repo=args.repo).render())

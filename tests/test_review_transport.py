@@ -1659,3 +1659,264 @@ def test_transport_failure_missing_remote_profile_fails_when_expected(tmp_path: 
             execution_profile_path=profile_path,
         )
 
+
+
+# TASK-242 delivery aliases remain subordinate to immutable Admission Failure content.
+def _delivery_diagnostic(
+    root: Path, family: str = "PRIMARY", delivery_id: str = "task241-r1-primary-codex61-001",
+    **changes,
+) -> tuple[Path, str, dict]:
+    import hashlib
+
+    field = {
+        "PRIMARY": "dispatch_id", "REMEDIATION": "correction_dispatch_id",
+        "REPAIR": "repair_dispatch_id",
+    }[family]
+    payload = {
+        "format": "AIOS_ADMISSION_FAILURE", "version": 2, "kind": "ADMISSION_FAILURE",
+        "operation": family, field: delivery_id, "executor_invoked": False,
+        "phase": "PRIMARY_SYNCHRONIZATION" if family == "PRIMARY" else "REPOSITORY_ADMISSION",
+        "reason_code": "PRIMARY_SYNCHRONIZATION_REJECTED" if family == "PRIMARY" else "REPOSITORY_STATE_REJECTED",
+        "error": {"type": "OperatorError", "message": "local branch has diverged from upstream"},
+    }
+    payload.update(changes)
+    content = json.dumps(payload, sort_keys=True).encode()
+    identity = hashlib.sha256(content).hexdigest()
+    path = root / f"{identity}.json"
+    path.write_bytes(content)
+    return path, identity, payload
+
+
+def _reader_snapshot(repo: Path) -> dict[str, bytes]:
+    return {str(p.relative_to(repo)): p.read_bytes() for p in repo.rglob("*") if p.is_file()}
+
+
+@pytest.mark.parametrize("family", ["PRIMARY", "REMEDIATION", "REPAIR"])
+def test_delivery_alias_publish_replay_and_read_only_resolution(
+    tmp_path: Path, family: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hashlib
+
+    repo, remote = make_repo(tmp_path)
+    delivery = "task241-r1-primary-codex61-001"
+    path, identity, payload = _delivery_diagnostic(tmp_path, family, delivery)
+    alias = review_transport.admission_failure_delivery_ref(family, delivery)
+    assert alias == (
+        f"refs/heads/aios/admission-failure-delivery/{family.lower()}/"
+        + hashlib.sha256(delivery.encode("ascii")).hexdigest()
+    )
+    content_ref = f"refs/heads/aios/admission-failure/{identity}"
+    review_transport.transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    commit = git(remote, "rev-parse", content_ref)
+    assert git(remote, "rev-parse", alias) == commit
+    assert json.loads(git(remote, "show", f"{commit}:.ai/transport/admission-failure.json")) == payload
+    remote_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    calls = []
+    real_git = review_transport._git_cmd
+
+    def record_git(repo_path, *args, **kwargs):
+        calls.append(args)
+        return real_git(repo_path, *args, **kwargs)
+
+    monkeypatch.setattr(review_transport, "_git_cmd", record_git)
+    review_transport.transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    assert not any(args[0] == "push" for args in calls)
+    before = _reader_snapshot(repo)
+    calls.clear()
+    cause = review_transport.resolve_admission_failure_delivery(
+        repo, family=family, delivery_id=delivery,
+    )
+    assert cause == {
+        "authority": "AIOS_ADMISSION_FAILURE", "phase": payload["phase"],
+        "reason_code": payload["reason_code"],
+    }
+    assert _reader_snapshot(repo) == before
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == remote_before
+    queries = [args for args in calls if args[0] == "ls-remote"]
+    assert queries == [
+        ("ls-remote", "--refs", "canonical", alias),
+        ("ls-remote", "--refs", "canonical", content_ref, alias),
+    ]
+    assert not any("run_created" in key or "run_id" == key for key in cause)
+
+
+def test_delivery_alias_backfills_exact_legacy_content_commit(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path)
+    path, identity, _ = _delivery_diagnostic(tmp_path)
+    ref = f"refs/heads/aios/admission-failure/{identity}"
+    commit = review_transport._create_admission_failure_commit(repo, identity=identity, diagnostic_path=path)
+    git(repo, "push", "--quiet", "origin", f"{commit}:{ref}")
+    review_transport.transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    assert git(remote, "rev-parse", ref) == commit
+    alias = review_transport.admission_failure_delivery_ref("PRIMARY", "task241-r1-primary-codex61-001")
+    assert git(remote, "rev-parse", alias) == commit
+
+    old_path, old_identity, _ = _delivery_diagnostic(
+        tmp_path, version=1, dispatch_id=None,
+    )
+    review_transport.transport_admission_failure(repo, identity=old_identity, diagnostic_path=old_path)
+    legacy_commit = git(remote, "rev-parse", f"refs/heads/aios/admission-failure/{old_identity}")
+    review_transport.transport_admission_failure(repo, identity=old_identity, diagnostic_path=old_path)
+    assert git(remote, "rev-parse", f"refs/heads/aios/admission-failure/{old_identity}") == legacy_commit
+    assert git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/admission-failure-delivery/") == alias
+
+
+@pytest.mark.parametrize("family", ["PRIMARY", "REMEDIATION", "REPAIR"])
+def test_delivery_alias_rejects_changed_content_without_publishing_either_ref(
+    tmp_path: Path, family: str,
+) -> None:
+    repo, remote = make_repo(tmp_path)
+    path, identity, _ = _delivery_diagnostic(tmp_path, family)
+    review_transport.transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    different_path, different_identity, _ = _delivery_diagnostic(
+        tmp_path, family, reason_code="DIFFERENT_REJECTION",
+    )
+    with pytest.raises(ReviewTransportError, match="different content"):
+        review_transport.transport_admission_failure(repo, identity=different_identity, diagnostic_path=different_path)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+def test_delivery_alias_rejects_foreign_delivery_collision(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path)
+    foreign, foreign_identity, _ = _delivery_diagnostic(tmp_path, delivery_id="other-delivery")
+    commit = review_transport._create_admission_failure_commit(repo, identity=foreign_identity, diagnostic_path=foreign)
+    alias = review_transport.admission_failure_delivery_ref("PRIMARY", "task241-r1-primary-codex61-001")
+    git(repo, "push", "--quiet", "origin", f"{commit}:{alias}")
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    path, identity, _ = _delivery_diagnostic(tmp_path)
+    with pytest.raises(ReviewTransportError, match="different content"):
+        review_transport.transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
+
+
+def test_delivery_alias_atomic_creation_rejects_concurrent_collision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, remote = make_repo(tmp_path)
+    foreign, foreign_identity, _ = _delivery_diagnostic(tmp_path, delivery_id="rival-delivery")
+    rival = review_transport._create_admission_failure_commit(repo, identity=foreign_identity, diagnostic_path=foreign)
+    path, identity, _ = _delivery_diagnostic(tmp_path)
+    alias = review_transport.admission_failure_delivery_ref("PRIMARY", "task241-r1-primary-codex61-001")
+    real_git = review_transport._git_cmd
+
+    def race(repo_path, *args, **kwargs):
+        if args[0] == "push":
+            git(repo, "push", "--quiet", "origin", f"{rival}:{alias}")
+        return real_git(repo_path, *args, **kwargs)
+
+    monkeypatch.setattr(review_transport, "_git_cmd", race)
+    with pytest.raises(ReviewTransportError, match="failed to push"):
+        review_transport.transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    assert git(remote, "rev-parse", alias) == rival
+    assert git(remote, "for-each-ref", "--format=%(refname)", f"refs/heads/aios/admission-failure/{identity}") == ""
+
+
+@pytest.mark.parametrize("invalid", [
+    "family", "delivery", "field", "format", "version", "kind", "executor",
+    "run", "verification", "review", "publication", "phase", "reason", "unknown",
+    "missing-content-ref", "wrong-content-ref", "malformed-json", "duplicate-key",
+])
+def test_delivery_resolver_fails_closed_on_invalid_remote_diagnostic(
+    tmp_path: Path, invalid: str,
+) -> None:
+    import hashlib
+
+    repo, remote = make_repo(tmp_path)
+    path, identity, payload = _delivery_diagnostic(tmp_path)
+    changes = {
+        "family": {"operation": "REPAIR"}, "delivery": {"dispatch_id": "other"},
+        "field": {"repair_dispatch_id": payload["dispatch_id"]},
+        "format": {"format": "FAILURE"}, "version": {"version": True},
+        "kind": {"kind": "FAILURE"}, "executor": {"executor_invoked": True},
+        "run": {"run_created": True}, "verification": {"verification": "PASS"},
+        "review": {"review": "PASS"}, "publication": {"publication": "main"},
+        "phase": {"phase": "X" * 65}, "reason": {"reason_code": "X" * 129},
+        "unknown": {"success": True},
+    }
+    payload.update(changes.get(invalid, {}))
+    content = json.dumps(payload).encode()
+    if invalid == "malformed-json":
+        content = b"{"
+    elif invalid == "duplicate-key":
+        content = content[:-1] + b', "executor_invoked": false}'
+    path.write_bytes(content)
+    identity = hashlib.sha256(content).hexdigest()
+    commit = review_transport._create_admission_failure_commit(repo, identity=identity, diagnostic_path=path)
+    alias = review_transport.admission_failure_delivery_ref("PRIMARY", "task241-r1-primary-codex61-001")
+    specs = [f"{commit}:{alias}"]
+    if invalid != "missing-content-ref":
+        ref_identity = "a" * 64 if invalid == "wrong-content-ref" else identity
+        specs.append(f"{commit}:refs/heads/aios/admission-failure/{ref_identity}")
+    git(repo, "push", "--quiet", "origin", *specs)
+    before = _reader_snapshot(repo)
+    remote_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    with pytest.raises(ReviewTransportError):
+        review_transport.resolve_admission_failure_delivery(
+            repo, family="PRIMARY", delivery_id="task241-r1-primary-codex61-001",
+        )
+    assert _reader_snapshot(repo) == before
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == remote_before
+
+
+def test_delivery_resolver_absence_does_not_scan_unrelated_admissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _ = make_repo(tmp_path)
+    path, identity, _ = _delivery_diagnostic(tmp_path, delivery_id="unrelated")
+    review_transport.transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    calls = []
+    real_git = review_transport._git_cmd
+
+    def record(repo_path, *args, **kwargs):
+        calls.append(args)
+        return real_git(repo_path, *args, **kwargs)
+
+    monkeypatch.setattr(review_transport, "_git_cmd", record)
+    before = _reader_snapshot(repo)
+    assert review_transport.resolve_admission_failure_delivery(
+        repo, family="PRIMARY", delivery_id="absent",
+    ) is None
+    assert _reader_snapshot(repo) == before
+    assert [args for args in calls if args[0] == "ls-remote"] == [
+        ("ls-remote", "--refs", "canonical",
+         review_transport.admission_failure_delivery_ref("PRIMARY", "absent")),
+    ]
+    assert len({review_transport.admission_failure_delivery_ref(family, "same-delivery")
+                for family in ("PRIMARY", "REMEDIATION", "REPAIR")}) == 3
+
+def test_delivery_alias_preserves_remote_query_failure_diagnostic(tmp_path: Path) -> None:
+    repo, _ = make_repo(tmp_path)
+    path, identity, payload = _delivery_diagnostic(
+        tmp_path, reason_code="REMOTE_TRANSPORT_UNAVAILABLE",
+        remote_query={"operation": "LS_REMOTE", "outcome": "UNAVAILABLE", "category": "DNS"},
+        observed_ref_count=1, observed_refs=[{"ref": "refs/heads/main", "sha": "a" * 40}],
+    )
+    review_transport.transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    assert review_transport.resolve_admission_failure_delivery(
+        repo, family="PRIMARY", delivery_id=payload["dispatch_id"],
+    ) == {
+        "authority": "AIOS_ADMISSION_FAILURE", "phase": payload["phase"],
+        "reason_code": "REMOTE_TRANSPORT_UNAVAILABLE",
+    }
+
+
+def test_delivery_alias_rejects_identical_bytes_at_conflicting_commits(tmp_path: Path) -> None:
+    repo, remote = make_repo(tmp_path)
+    path, identity, payload = _delivery_diagnostic(tmp_path)
+    review_transport.transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    content_ref = f"refs/heads/aios/admission-failure/{identity}"
+    original = git(remote, "rev-parse", content_ref)
+    # A child with the same tree is a distinct commit despite identical diagnostic bytes.
+    tree = git(repo, "rev-parse", f"{original}^{{tree}}")
+    different = git(repo, "commit-tree", tree, "-p", original, "-m", "conflicting alias commit")
+    alias = review_transport.admission_failure_delivery_ref("PRIMARY", payload["dispatch_id"])
+    git(repo, "push", "--quiet", "--force", "origin", f"{different}:{alias}")
+    before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    with pytest.raises(ReviewTransportError, match="commit conflict"):
+        review_transport.transport_admission_failure(repo, identity=identity, diagnostic_path=path)
+    with pytest.raises(ReviewTransportError, match="identity conflict"):
+        review_transport.resolve_admission_failure_delivery(
+            repo, family="PRIMARY", delivery_id=payload["dispatch_id"],
+        )
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == before
