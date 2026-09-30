@@ -1,0 +1,166 @@
+task_id: TASK-253
+revision: 1
+
+goal: >
+  Execute the already-reviewed full-suite contention diagnostic exactly once as
+  Runtime-owned canonical verification on the post-TASK-252 published subject, so
+  Human/Brain can determine whether the current exact full suite is green at
+  workers=12 before any TASK-231 retry. Keep the native Executor as a zero-delta
+  structural handoff only.
+
+problem: >
+  RUN-251-001 proved the exact historical 33-residual population clean under
+  workers=12, then its single conditional current full-suite n12 phase exposed one
+  new failure outside that population:
+  test_human_reconciliation_proof_gates_preserve_repository[ignored-collision].
+  TASK-252 corrected only that test-owned setup defect and is now
+  engineering-complete through RUN-252-001, REVIEW-252-001 PRIMARY PASS and
+  publication of exact reviewed source
+  a2f80e2aa93fe9ec46958d83574ea7f98cec65a8. Focused Runtime verification passed
+  all 39 reconciliation-selected tests plus git diff --check.
+
+  The remaining roadmap gate is therefore one fresh exact-subject full-suite
+  workers=12 proof before Brain may decide whether TASK-231 can resume. The
+  repository already contains the reviewed TASK-233
+  scripts/aios_full_suite_contention_diagnostic.py primitive. It performs one
+  canonical collection followed by exactly one full-suite workers=12/load/
+  max-worker-restart=0 execution; when that full-n12 phase is green it stops and
+  reports FULL_N12_PASS. Reimplementing a new proof wrapper would duplicate
+  reviewed authority and add unnecessary uncertainty.
+
+assumptions:
+  - >
+    Canonical main at TASK-253 r1 authoring is
+    9ac1fe77e1db7e20b4ec85b0aedbeb07854e3f4e, the Human/Brain roadmap
+    canonicalization after TASK-252 completion. Its source parent
+    a2f80e2aa93fe9ec46958d83574ea7f98cec65a8 is the exact reviewed and
+    published TASK-252 candidate.
+  - >
+    TASK-252 revision 1 is engineering-complete through RUN-252-001 RESULT,
+    REVIEW-252-001 PRIMARY PASS, review-decision
+    391b61405fc54adb3d5f45e90943e8ff90bc78e7, publication of
+    a2f80e2aa93fe9ec46958d83574ea7f98cec65a8, and Runtime evidence
+    RUN-252-001-V001 / RUN-252-001-V002.
+  - >
+    RUN-252-001 changed only tests/test_operator.py, left unresolved empty, and
+    Runtime verification passed 39 tests selected by -k reconciliation plus
+    git diff --check. The reviewed correction preserved production reconciliation
+    semantics and the exact parameterized proof-gate population.
+  - >
+    TASK-233's full-suite contention diagnostic is already reviewed/published and
+    is the authoritative bounded current-suite n12 observation primitive. Its
+    full-n12 phase uses workers=12, distribution=load and max_worker_restart=0 on
+    one exact clean subject with canonical collection and mutable-root isolation.
+  - >
+    If full-n12 passes, the diagnostic stops without replay and reports
+    FULL_N12_PASS. If one through 64 failures are observed, its existing bounded
+    serial/n4 replay and mechanical classification remain diagnostic evidence only;
+    they do not select a correction or worker policy.
+  - >
+    The exact historical 33-residual population was already freshly proven clean
+    by RUN-251-001 and is not rerun by this TASK.
+  - >
+    TASK-231 r2 remains blocked. Runtime owns canonical verification/EVIDENCE;
+    Reviewer owns semantic verdict; Human/Brain own interpretation, TASK-231
+    authorization and roadmap planning; Publisher owns publication.
+
+scope:
+  inspect: []
+  modify: []
+
+non_goals:
+  - Modify any repository file or create an implementation commit.
+  - Modify, wrap, replace or reimplement scripts/aios_full_suite_contention_diagnostic.py
+    or its observer/tests.
+  - Rerun the exact historical 33-residual Phase-A proof already supplied by
+    RUN-251-001.
+  - Execute TASK-231, change workers=12 Human planning intent, adopt another worker
+    count or mutate .ai/verification-profiles.yaml.
+  - Run a 4/8/12/16 matrix, an additional full suite, retry, fallback or adaptive
+    rerun outside the existing diagnostic's bounded failure-replay semantics.
+  - Select or implement a correction from any observed failure.
+  - Change Git/Windows/runner/Defender/TEMP/global/user/system configuration or
+    host state.
+  - Add Planner, lifecycle router, Reviewer, Publisher, retry/failover,
+    correction-selection or roadmap authority.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      TASK-253 r1 is a zero-delta read-only PRIMARY with empty scope.inspect and
+      scope.modify. The native Executor must not invoke shell, Git, repository
+      file-read, search, pytest, diagnostic or any other workspace command/tool.
+    - >
+      The Executor must construct its structural ResultPackage solely from the
+      immutable admitted TASK/RUN context. result.head_sha must equal the admitted
+      RUN base SHA, changed_files must be empty, unresolved must be empty, root
+      evidence must be empty, and every claim.evidence list must be empty.
+    - >
+      The structural ResultPackage must contain exactly four affirmative claims
+      with exact acceptance bindings only: C1 satisfies [AC1], C2 satisfies [AC2],
+      C3 satisfies [AC3], and C4 satisfies [AC4]. No alias, range, combined token
+      or invented acceptance ID may appear in claim.satisfies.
+    - >
+      Executor claims may describe only pre-verification structural handoff and
+      authority preservation. They must not claim any full-suite outcome, worker
+      safety, TASK-252 correction success, TASK-231 readiness, Reviewer verdict or
+      publication state.
+    - >
+      Runtime independently owns actual HEAD/cleanliness validation, zero-delta
+      truth, verification-subject materialization, execution of the sole canonical
+      verification command, post-verification subject checks, evidence attachment,
+      terminal persistence and transport.
+    - >
+      Canonical verification contains exactly one Runtime-owned command:
+      python scripts/aios_full_suite_contention_diagnostic.py
+    - >
+      The existing TASK-233 diagnostic semantics are immutable for this proof. It
+      must perform one canonical collection followed by exactly one current
+      full-suite workers=12/load/max-worker-restart=0 phase on the exact clean
+      subject. A green full-n12 phase must stop immediately with FULL_N12_PASS.
+    - >
+      If the full-n12 phase observes one through 64 failures, the diagnostic's
+      already-reviewed bounded serial and n4 replay behavior may execute exactly as
+      defined by TASK-233. Those observations are diagnostic evidence only and must
+      not select a correction, resume TASK-231 or change worker policy.
+    - >
+      The diagnostic outer exit code is authoritative for proof integrity.
+      Faithfully observed pytest failures represented by a valid zero-exit
+      diagnostic are evidence, not TASK execution failure. Malformed, over-bound,
+      inconsistent, unsafe, subject-mutating or instrumentation failures return
+      nonzero and fail closed.
+    - >
+      No repository file may change and no push or publication may be performed by
+      Executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The Executor returns a complete zero-delta structural ResultPackage from the
+      admitted context only: result.head_sha equals the admitted RUN base SHA,
+      changed_files is empty, unresolved is empty, root evidence is empty and every
+      claim evidence list is empty.
+  - id: AC2
+    condition: >
+      The Executor performs no repository, shell, Git, file-read, search, pytest,
+      diagnostic or other workspace command/tool invocation and makes no claim
+      about a Runtime full-suite or replay outcome.
+  - id: AC3
+    condition: >
+      The structural handoff preserves exactly the sole Runtime-owned canonical
+      verification command declared by this TASK, with no Executor-created
+      substitute verification/evidence path and no change to the reviewed TASK-233
+      diagnostic semantics.
+  - id: AC4
+    condition: >
+      The structural handoff preserves all authority limits: Runtime owns
+      verification/EVIDENCE, Reviewer owns semantic verdict, Human/Brain own proof
+      interpretation, correction selection, TASK-231/worker and roadmap decisions,
+      Publisher owns publication, and no observed outcome is used by the Executor
+      to advance planning.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python scripts/aios_full_suite_contention_diagnostic.py
