@@ -1,0 +1,189 @@
+task_id: TASK-255
+revision: 1
+
+goal: >
+  Implement one bounded repository-owned GitHub -> ChatGPT Brain wake bridge that
+  projects existing AIOS operational/canonical checkpoints into the already-proven
+  PR #1200 wake surface without creating lifecycle truth, semantic routing, automatic
+  correction selection, or a second attention state store.
+
+problem: >
+  Native ChatGPT Work webhook delivery has now been proven end-to-end on PR #1200:
+  wake-probe-1200-001 produced one autonomous ACK after a fresh canonical reread,
+  and the paired duplicate/fresh probe suppressed a resolved duplicate while
+  acknowledging wake-probe-1200-002 exactly once. The remaining continuity gap is
+  inside GitHub: current AIOS workflows create terminal-attention Issues, bounded
+  ingress/wakeup receipts, and publication/self-hosted workflow outcomes, but none
+  of those existing checkpoints are deterministically projected into the proven wake
+  PR surface.
+
+  The reconciled planning baseline in
+  docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md selects one central
+  wake bridge rather than modifying every lifecycle workflow independently. The
+  bridge observes fixed GitHub event families, validates repository-owned carrier
+  policy, emits only a bounded wake family plus source selectors, deduplicates by
+  deterministic source-event identity, and relies on the woken Brain to perform
+  fresh Brain Sync before any semantic action.
+
+assumptions:
+  - >
+    Canonical main at TASK-255 r1 authoring is
+    18286438af547ca93de5db9cb392035730b4c14e.
+  - >
+    PR #1200 is an operational wake carrier only and must remain outside canonical
+    lifecycle/roadmap truth.
+  - >
+    The ChatGPT Work automation keyed by comments beginning exactly with
+    [AIOS BRAIN WAKE] is enabled and has already proven autonomous ACK delivery and
+    duplicate suppression behavior at the Brain side.
+  - >
+    Existing AIOS terminal-attention, ingress receipt, PRIMARY/REPAIR carrier
+    receipt, publication, and self-hosted workflow semantics remain authoritative
+    for their own bounded operational outputs. This task must observe them, not
+    redefine them.
+  - >
+    A wake comment is an untrusted bell. Its attention family and selectors may help
+    reconstruct context but cannot replace canonical TASK/RUN/RESULT/FAILURE/REVIEW/
+    publication state.
+  - >
+    Pre-AIOS operational failure must remain operational only and must never fabricate
+    RUN or canonical FAILURE lineage.
+
+scope:
+  inspect:
+    - docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md
+    - .github/workflows/aios-brain-ingress.yml
+    - .github/workflows/aios-terminal-attention.yml
+    - .github/workflows/aios-brain-wakeup.yml
+    - .github/workflows/aios-brain-repair-wakeup.yml
+    - .github/workflows/aios-auto-publish.yml
+    - .github/workflows/aios-self-hosted-wakeup.yml
+    - .github/workflows/aios-self-hosted-repair-wakeup.yml
+    - .github/workflows/aios-approved-remediation-wakeup.yml
+    - src/aios_renew/github_issue_ingress.py
+    - src/aios_renew/terminal_attention.py
+  modify:
+    - .ai/brain-wake-carriers.yaml
+    - .github/workflows/aios-brain-wake-bridge.yml
+    - src/aios_renew/brain_wake_bridge.py
+    - tests/test_brain_wake_bridge.py
+    - tests/test_brain_wake_bridge_workflow.py
+
+non_goals:
+  - Modify TASK/RUN/RESULT/EVIDENCE/REVIEW schemas or Runtime verification.
+  - Modify Reviewer verdict or Publisher mutation authority.
+  - Modify the existing lifecycle workflows listed under scope.inspect.
+  - Add a Planner, generic lifecycle router, correction selector, retry/failover
+    controller, model router, persistent wake database, queue, broker or semantic
+    state store.
+  - Make PR #1200 or its comments canonical engineering truth.
+  - Encode authoritative next_action, remediation strategy, roadmap successor,
+    semantic verdict, or publication truth in a wake payload.
+  - Wake Brain for dispatch accepted, RUNNER_STARTED, in-progress, ordinary ingress
+    success, successful self-hosted bookkeeping, or other deterministic progress that
+    requires no semantic decision.
+  - Implement TASK-254, H2/H3 hardening, VPRC or Python Agent downstream adoption.
+  - Add polling, Slack, email, OpenAI API daemon, or any external relay.
+  - Merge or repurpose the Wake Bus PR.
+
+constraints:
+  hard:
+    - >
+      Introduce one strict repository-owned carrier policy that binds the exact
+      repository, exact Wake Bus PR number, exact wake marker, bounded maximum comment
+      size, trusted GitHub Actions source identity, and the exact workflow names
+      eligible for workflow_run attention.
+    - >
+      Implement one deterministic event projector that accepts only the supported
+      GitHub event families issues.opened, issue_comment.created and
+      workflow_run.completed, and returns either NO_WAKE or one bounded WAKE
+      projection containing event_id, attention_family and selectors.
+    - >
+      The event projector must fail closed on malformed event shape, wrong repository,
+      wrong trusted source identity, unsupported issue/comment/workflow family,
+      oversized/unbounded selector content, ambiguous receipt grammar, or unknown
+      configured workflow identity.
+    - >
+      Required first-generation issue_comment mappings are: failed
+      [AIOS BRAIN INGRESS] receipt -> INGRESS_REJECTED; canonicalized
+      CHANGES_REQUIRED SUBMIT_REVIEW receipt -> REVIEW_CHANGES_REQUIRED; rejected
+      PRIMARY wakeup carrier -> PRIMARY_DISPATCH_REJECTED; rejected REPAIR wakeup
+      carrier -> REPAIR_DISPATCH_REJECTED; and rejected publication/repair dispatch
+      recorded by Brain ingress -> corresponding bounded rejection family.
+    - >
+      An opened [AIOS TERMINAL ATTENTION] Issue created by the trusted GitHub Actions
+      source must project TERMINAL_ATTENTION using only bounded GitHub source
+      selectors. The bridge must not restate RESULT/FAILURE as truth from the Issue
+      body; the woken Brain must re-acquire canonical lineage.
+    - >
+      Completed auto-publish workflow_run events must project
+      PUBLICATION_WORKFLOW_COMPLETED with workflow-run identity and conclusion only.
+      Failed self-hosted PRIMARY, REPAIR, and approved-remediation workflow_run events
+      must project PRE_AIOS_OPERATIONAL_FAILURE. Successful self-hosted execution must
+      project NO_WAKE because canonical terminal attention is the semantic checkpoint.
+    - >
+      No workflow_run conclusion may be translated into canonical RESULT, FAILURE,
+      REVIEW, publication success, task completion, or roadmap state by the bridge.
+    - >
+      event_id must be deterministic from immutable GitHub source-event identity plus
+      attention family and must not depend on wall-clock time, random values, chat
+      state or model output.
+    - >
+      Before posting a wake, the workflow must inspect PR #1200 for an exact existing
+      wake event_id and perform a NOOP on exact replay. It must post at most one
+      bounded top-level comment for one new projected event.
+    - >
+      Every wake body must begin exactly with [AIOS BRAIN WAKE], declare version 1,
+      include the deterministic event_id, attention_family, repository, bounded source
+      selector fields, and fresh_brain_sync_required: true. It must contain no
+      next_action or semantic recommendation.
+    - >
+      The bridge workflow must ignore its own Wake Bus wake/ACK comments and all
+      unrelated Issue/PR activity, preventing recursive loops.
+    - >
+      Workflow permissions must be minimum sufficient for reading source metadata and
+      posting one PR comment. The bridge must not obtain contents:write, actions:write,
+      workflow:write, pull-request merge, or other unrelated mutation authority.
+    - >
+      No file outside scope.modify may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The repository-owned wake policy strictly binds AIOS-renew and PR #1200, and
+      malformed or unauthorized source events fail closed without a wake comment.
+  - id: AC2
+    condition: >
+      Supported ingress/wakeup receipt events deterministically project only the
+      required rejection or CHANGES_REQUIRED attention families, while ordinary PASS/
+      accepted/in-progress events project NO_WAKE.
+  - id: AC3
+    condition: >
+      A trusted [AIOS TERMINAL ATTENTION] Issue projects TERMINAL_ATTENTION without
+      treating Issue content as canonical terminal truth.
+  - id: AC4
+    condition: >
+      auto-publish workflow completion projects publication attention, failed
+      self-hosted PRIMARY/REPAIR/approved-remediation completion projects pre-AIOS
+      operational attention, and successful self-hosted completion produces NO_WAKE.
+  - id: AC5
+    condition: >
+      Identical replay of the same projected source event cannot create a second wake
+      comment, and Wake Bus wake/ACK comments do not recursively produce new wakes.
+  - id: AC6
+    condition: >
+      Wake payloads contain only deterministic event identity, attention family,
+      repository/source selectors and fresh_brain_sync_required=true, with no
+      authoritative next action, semantic decision, fabricated lifecycle state or
+      roadmap mutation.
+  - id: AC7
+    condition: >
+      The implementation delta is confined to one policy, one bridge workflow, one
+      deterministic projector and focused tests, without modifying existing lifecycle
+      workflows or introducing another semantic authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_brain_wake_bridge.py tests/test_brain_wake_bridge_workflow.py
+    - git diff --check
