@@ -1,0 +1,154 @@
+task_id: TASK-247
+revision: 1
+
+goal: >
+  Execute the reviewed and published TASK-246 Git-fixture PUSH threshold diagnostic
+  exactly once as Runtime-owned canonical verification on the exact current
+  canonical subject. Return the fixed six real-Git observations for Human/Brain
+  causal interpretation while keeping the native Executor as a zero-delta
+  structural handoff only.
+
+problem: >
+  TASK-246 established, reviewed and published a purpose-built diagnostic primitive
+  that compares both canonical AIOS ref families at exact remote-lock-path lengths
+  326, 327 and 328. TASK-246 intentionally did not run the live current-subject
+  threshold experiment. Historical evidence remains insufficient for correction
+  selection because RUN-240-002 observed successful PUSH at admission-failure
+  lock-path length 326 under n4 while RUN-244-003 observed an integration PUSH
+  failure at lock-path length 328 under a different execution context. The reviewed
+  TASK-246 primitive now provides an apples-to-apples same-family/same-length
+  experiment. This TASK authorizes exactly one Runtime-owned invocation of that
+  primitive and no correction.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    2d066807bc1ed36bb5e5a662184dfd1ef01d9665, the exact reviewed and published
+    RUN-246-001 candidate.
+  - >
+    TASK-246 revision 1 is engineering-complete through RUN-246-001 RESULT,
+    REVIEW-246-001 PRIMARY PASS, review-decision
+    75e3d1c0eae0a5aa7e587f9352a7ea89d105c228, and publication of exact source
+    2d066807bc1ed36bb5e5a662184dfd1ef01d9665.
+  - >
+    RUN-246-001 Runtime verification passed 196 primitive regression tests plus
+    git diff --check and changed only the three authorized new diagnostic files.
+  - >
+    The reviewed primitive binds exactly integration and admission-failure crossed
+    with exact authored remote-lock-path lengths 326, 327 and 328, six fresh
+    independent real-Git cases total, one checked PUSH per case, no retry and no
+    adaptive geometry.
+  - >
+    The primitive's durable result is observational only. PUSH failure may be
+    represented by a valid zero-exit diagnostic result and does not itself mean
+    TASK-247 execution failure. Diagnostic integrity failure remains nonzero.
+  - >
+    TASK-231 remains blocked. Runtime owns canonical verification/EVIDENCE;
+    Reviewer owns semantic verdict; Human/Brain own causal interpretation,
+    correction selection, worker policy and roadmap planning; Publisher owns
+    publication.
+  - >
+    TASK-167 r3 and TASK-244 r2 are reviewed precedents for this exact zero-delta
+    evidence-only ordering: Executor acceptance is strictly pre-verification
+    structural; Runtime-owned diagnostic execution occurs only after Completion
+    Gate.
+
+scope:
+  inspect: []
+  modify: []
+
+non_goals:
+  - Modify any repository file or create a commit.
+  - Modify, wrap, replace or reimplement scripts/aios_git_fixture_push_threshold_diagnostic.py.
+  - Modify the TASK-246 probe/tests, TASK-240 diagnostic, Git fixture, production code or Runtime.
+  - Select or implement a path, Git, fixture, concurrency, Windows, Defender, TEMP, runner or host correction.
+  - Execute a full suite, n12 residual proof, TASK-231, worker matrix, serial/n4 replay, retry, fallback or adaptive geometry.
+  - Change global/system/user Git configuration, Windows registry, long-path policy or runner configuration.
+  - Treat any observed 326/327/328 pattern as automatic causal proof or automatic correction authorization.
+  - Add Planner, Reviewer, Publisher, retry/failover, lifecycle or roadmap authority.
+  - Advance roadmap state from Executor, Runtime, Reviewer or Publisher.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      TASK-247 r1 is a zero-delta read-only PRIMARY with empty scope.inspect and
+      scope.modify. The native Executor must not invoke shell, Git, repository
+      file-read, search, pytest, diagnostic or any other workspace command/tool.
+    - >
+      The Executor must construct the structural ResultPackage solely from the
+      immutable admitted TASK/RUN context. result.head_sha must equal the admitted
+      RUN base SHA, changed_files must be empty, unresolved must be empty, root
+      evidence must be empty and every claim.evidence list must be empty.
+    - >
+      The structural ResultPackage must contain exactly four affirmative claims
+      with exact acceptance bindings only: C1 satisfies [AC1], C2 satisfies [AC2],
+      C3 satisfies [AC3], and C4 satisfies [AC4]. No punctuation, list delimiter,
+      alias, range, combined token or invented acceptance ID may appear inside any
+      claim.satisfies value.
+    - >
+      Executor claims may describe only pre-verification structural handoff and
+      authority preservation. They must not claim any 326/327/328 PUSH outcome,
+      first-failed length, monotonicity, family agreement/divergence, root cause,
+      selected correction, worker safety or TASK-231 readiness.
+    - >
+      Runtime independently owns actual HEAD/cleanliness validation, zero-delta
+      truth, scope validation, verification-subject materialization, command
+      execution, post-verification subject checks, evidence attachment, terminal
+      persistence and transport.
+    - >
+      Canonical verification contains exactly one Runtime-owned command:
+      python scripts/aios_git_fixture_push_threshold_diagnostic.py
+    - >
+      The reviewed TASK-246 primitive is immutable for this execution. Runtime must
+      execute its exact fixed six-case matrix: integration and admission-failure,
+      each at exact lock-path lengths 326, 327 and 328, with fresh real-Git state,
+      full production-shaped 64-hex refs, repository-local longpaths settings and
+      one checked PUSH per case.
+    - >
+      A valid outer-zero diagnostic result may contain successful or failed PUSH
+      observations. Those inner outcomes are evidence only. Subject mutation,
+      dirty state, geometry mismatch, missing/duplicate case, Git-resolution
+      contradiction, schema/privacy/instrumentation failure or any nonzero outer
+      diagnostic outcome fails closed.
+    - >
+      Runtime evidence may expose only the reviewed primitive's bounded typed
+      output. Raw paths, refs, URLs, stdout/stderr, object IDs, environment contents
+      and host-private details must not become semantic decision inputs.
+    - >
+      No observed outcome may automatically select a correction, unblock or retry
+      TASK-231, alter worker policy, or advance roadmap state.
+    - >
+      No repository file may change and no push or publication may be performed by
+      Executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The Executor returns a complete zero-delta structural ResultPackage from the
+      admitted context only: result.head_sha equals the admitted RUN base SHA,
+      changed_files is empty, unresolved is empty, root evidence is empty and every
+      claim evidence list is empty.
+  - id: AC2
+    condition: >
+      The Executor performs no repository, shell, Git, file-read, search, pytest,
+      diagnostic or other workspace command/tool invocation and makes no claim
+      about a Runtime diagnostic outcome.
+  - id: AC3
+    condition: >
+      The structural ResultPackage preserves exactly one Runtime-owned verification
+      command, python scripts/aios_git_fixture_push_threshold_diagnostic.py, with no
+      Executor-created substitute verification/evidence path and no change to the
+      reviewed TASK-246 primitive semantics.
+  - id: AC4
+    condition: >
+      The structural handoff preserves all authority limits: Runtime owns
+      verification/EVIDENCE, Reviewer owns semantic verdict, Human/Brain own causal
+      interpretation, correction selection, worker/TASK-231 and roadmap decisions,
+      Publisher owns publication, and no observed threshold outcome is used by the
+      Executor to advance planning.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python scripts/aios_git_fixture_push_threshold_diagnostic.py
