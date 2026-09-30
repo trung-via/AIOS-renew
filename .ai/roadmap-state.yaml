@@ -1,6 +1,6 @@
 version: 1
-active_track: verification-performance-rebaseline-v2
-active_track_status: COMPLETE
+active_track: brain-runtime-semantic-handoff-hardening-v1
+active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
 planning_baseline:
   id: bp-0-architecture-baseline
@@ -33,6 +33,22 @@ human_priority_side_track:
   authority: HUMAN_BRAIN_PLANNING
   planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
   sequence:
+  - id: brain-runtime-semantic-handoff-hardening-v1-architecture-contract
+    status: NEXT
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    audit_profile: brain-high-value-v2
+    objective: >-
+      Produce the bounded architecture/contract baseline for the approved hardening
+      track before implementation: define exact audited-authoring proof binding,
+      deterministic REPAIR eligibility projections, acceptance proof-phase ownership,
+      and Brain-attention handshake boundaries; reconcile interactions with existing
+      BP-4A/BP-5/Correction Preflight/Runtime/Reviewer/Publisher authority and the
+      three downstream-deferred Python Agent gaps without implementing production code.
+    successor_policy: >-
+      Human/Brain may advance only to the first implementation milestone after this
+      architecture item is canonicalized, independently reviewed where applicable,
+      and its reconciled boundaries leave no unresolved authority conflict.
     - TASK-195
   return_to: bp-9-downstream-adoption
   target:
@@ -67,7 +83,71 @@ human_priority_side_track:
     gpt-6-sol/high repository default before BP9 downstream adoption. This task must
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
-next_items: []
+human_priority_sequence:
+  approved_on: "2026-09-30"
+  authority: HUMAN
+  ordering_policy: STRICT_SEQUENTIAL_NO_AUTOMATIC_CROSS_TRACK_ADVANCE
+  order:
+    - track: brain-runtime-semantic-handoff-hardening-v1
+      status: ACTIVE
+      objective: >-
+        Close the demonstrated Brain-to-canonical-mutation continuity gaps before
+        further performance work: enforce validated two-stage Brain audit handoff at
+        applicable authoring mutation boundaries, expose deterministic pre-Brain REPAIR
+        eligibility facts without selecting correction strategy, separate structural
+        acceptance claims from Runtime-owned verification truth, and make GitHub-to-Brain
+        attention handoff explicit and reconstructible without chat memory.
+      milestones:
+        - BSH-H0-ARCHITECTURE-CONTRACT
+        - BSH-H1-AUDITED-AUTHORING-GATE
+        - BSH-H2-REPAIR-STRATEGY-FACT-PROJECTION
+        - BSH-H3-ACCEPTANCE-PROOF-PHASE-CONTRACT
+        - BSH-H4-BRAIN-ATTENTION-HANDSHAKE
+        - BSH-H5-INTEGRATION-CONFORMANCE-CLOSURE
+      constraints:
+        - NO_AUTOMATIC_CORRECTION_SELECTION
+        - NO_NEW_PLANNER_OR_ROUTER
+        - NO_CHAT_MEMORY_AUTHORITY
+        - RUNTIME_RETAINS_CANONICAL_VERIFICATION
+        - REVIEWER_RETAINS_SEMANTIC_VERDICT
+        - PUBLISHER_RETAINS_EXACT_REVIEWED_SOURCE_PUBLICATION
+    - track: verification-performance-residual-cost-v3
+      status: QUEUED_AFTER_HARDENING
+      objective: >-
+        Reduce residual verification cost only after semantic-handoff hardening closes,
+        beginning with a read-only Residual Git Startup Audit and a stop-gate before any
+        setup-only Git correction, then measuring Windows process/Git/filesystem cost,
+        conditionally attributing Defender only when evidence warrants it, and finally
+        establishing a stable workers=12 performance baseline.
+      stop_gate: >-
+        If the residual Git audit shows insufficient safely removable setup-only process
+        startup, skip that correction and proceed directly to host-cost decomposition.
+      defender_policy: MEASURE_BEFORE_ANY_SECURITY_CONFIGURATION_CHANGE
+    - track: python-agent-full-downstream-adoption-post-hardening-vprc
+      status: QUEUED_AFTER_VPRC
+      target_repository: trung-via/python_complete_agent
+      objective: >-
+        After both upstream tracks close, perform a fresh downstream Brain Sync and adopt
+        one exact reviewed/source-published AIOS-renew pin carrying the complete intended
+        upstream capability generation, including Research Assurance and the new Brain
+        handoff hardening, with exact downstream conformance and repository bindings where
+        required.
+      required_capability_scope:
+        - RESEARCH_ASSURANCE
+        - BRAIN_TWO_STAGE_AUDIT_AUTHORING_ENFORCEMENT
+        - REPAIR_STRATEGY_FACT_PROJECTION
+        - ACCEPTANCE_PROOF_PHASE_CONTRACT
+        - BRAIN_ATTENTION_HANDSHAKE
+        - LATEST_REVIEWED_PUBLISHED_UPSTREAM_PIN
+      boundaries:
+        - NO_SILENT_PIN_RETARGET
+        - NO_AUTOMATIC_DOWNSTREAM_ACTIVATION
+        - NO_LOCAL_DOWNSTREAM_CONTROL_PLANE_FORK
+        - DOWNSTREAM_BRAIN_SYNC_REQUIRED
+        - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
+
+next_items:
+  - brain-runtime-semantic-handoff-hardening-v1-architecture-contract
 sequence:
   - id: admission-failure-v2
     status: DONE
