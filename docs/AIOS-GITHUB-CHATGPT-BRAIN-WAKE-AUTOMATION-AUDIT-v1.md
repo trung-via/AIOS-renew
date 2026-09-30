@@ -304,3 +304,126 @@ returns promptly to a fresh Brain.
 
 After the hardening track closes, continue VPRC, then perform full downstream
 adoption to Python Agent as already approved.
+
+
+## 14. Post-probe architecture reconciliation
+
+Real conformance changed the implementation choice from hypothetical transport to a
+proven native path:
+
+- `wake-probe-1200-001` produced one autonomous ACK after 404 seconds.
+- A paired duplicate/fresh probe then produced no second ACK for the already-resolved
+  `wake-probe-1200-001` and exactly one ACK for `wake-probe-1200-002` after
+  281 seconds.
+- Both ACKs carried the canonical `main` SHA observed after the wake comments were
+  emitted, which is consistent with fresh repository reread rather than setup-time
+  state reuse.
+- GitHub comments created through the connected ChatGPT GitHub app are eligible
+  trigger events; ACK comments do not recurse because they do not begin with the
+  wake marker.
+
+The remaining problem is therefore not GitHub -> ChatGPT delivery. It is the
+deterministic bridge from existing AIOS operational/canonical checkpoints into the
+already-proven wake PR surface.
+
+### 14.1 Selected minimal bridge
+
+Use **one repository-owned wake bridge**, not one bespoke wake implementation per
+lifecycle workflow.
+
+The bridge observes existing GitHub operational surfaces and emits only a bounded
+wake comment. It does not mutate TASK/RUN/REVIEW/publication state and does not choose
+semantic continuation.
+
+Selected source event families:
+
+1. `issues.opened` for the already-admitted `[AIOS TERMINAL ATTENTION]` Issue.
+2. `issue_comment.created` for bounded receipts produced by existing AIOS carrier
+   workflows.
+3. `workflow_run.completed` for publication completion/failure and pre-AIOS
+   operational workflow failure where no canonical RUN/FAILURE may be fabricated.
+
+The bridge writes only to the configured Wake Bus PR.
+
+### 14.2 Repository-owned transport policy
+
+Add one small repository-owned policy binding:
+
+- exact repository identity;
+- exact wake PR number;
+- wake marker;
+- maximum comment size;
+- exact trusted GitHub Actions bot identity for AIOS-generated receipt/attention
+  sources;
+- exact workflow names eligible for `workflow_run` attention.
+
+This policy is operational transport configuration only. It does not select a
+lifecycle action or encode roadmap state.
+
+### 14.3 Deterministic event projection
+
+A small deterministic projector converts one admitted GitHub event into either:
+
+```text
+NO_WAKE
+```
+
+or:
+
+```text
+WAKE
+event_id
+attention_family
+bounded selectors
+```
+
+The projector must never claim semantic truth from the source receipt. It may only
+classify a fixed operational boundary and preserve source selectors that let a fresh
+Brain reconstruct truth.
+
+Required first-generation mappings:
+
+- failed Brain ingress receipt -> `INGRESS_REJECTED`;
+- canonicalized `CHANGES_REQUIRED` review receipt -> `REVIEW_CHANGES_REQUIRED`;
+- rejected PRIMARY/REPAIR/remediation carrier dispatch -> corresponding operational
+  rejection family;
+- `[AIOS TERMINAL ATTENTION]` Issue -> `TERMINAL_ATTENTION`;
+- completed auto-publish workflow -> `PUBLICATION_WORKFLOW_COMPLETED` with
+  conclusion and workflow-run selector;
+- failed self-hosted PRIMARY/REPAIR/approved-remediation workflow ->
+  `PRE_AIOS_OPERATIONAL_FAILURE`.
+
+No wake is emitted for dispatch accepted, runner started, in-progress, successful
+self-hosted execution bookkeeping, or ordinary ingress success.
+
+### 14.4 Idempotency
+
+The bridge derives one deterministic event id from the immutable GitHub source event
+identity and attention family. Before posting, it scans the Wake Bus PR for an exact
+existing wake event id. Existing exact events are reused as NOOP.
+
+No persistent wake database is introduced.
+
+### 14.5 Stage-2 adversarial reconciliation
+
+The mandatory second audit rejected several simpler-looking variants:
+
+- **Modify every existing workflow to post directly to PR #1200:** rejected because
+  duplicated event grammar and dedupe logic would drift across workflows.
+- **Treat existing receipts as lifecycle truth:** rejected. Receipts are source
+  signals only; the woken Brain must fresh-sync canonical state.
+- **Use `workflow_run` failure as canonical FAILURE:** rejected. Pre-AIOS
+  operational failure remains operational and must never fabricate RUN lineage.
+- **Wake on every workflow completion:** rejected because it would waste Brain calls
+  and blur deterministic progress with semantic checkpoints.
+- **Add a persistent attention database:** rejected; GitHub source event identity plus
+  the Wake Bus comment history is sufficient for transport idempotency.
+- **Allow bridge payload to carry `next_action`:** rejected because that would create
+  a lifecycle router. The bridge emits family + selectors only.
+- **Hard-code semantic downstream actions in the ChatGPT automation prompt:** rejected.
+  The final Brain task must fresh-sync and resolve the repository-owned flow at wake
+  time.
+
+Reconciled outcome: **CLEAR / CANDIDATE** for one bounded wake-bridge implementation
+task, followed by real ingress/terminal/publication conformance before TASK-254
+resumes.
