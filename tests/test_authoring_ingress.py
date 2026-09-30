@@ -161,6 +161,69 @@ def setup_test_repo(root: Path) -> tuple[Path, Path, str]:
     )
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [b"", b"\xef\xbb\xbffinding_id: F1\r\nraw: \x00\xff\nlast: no newline "],
+    ids=["empty", "binary-bom-mixed-newlines"],
+)
+def test_read_commit_blob_is_binary_exact_in_source_and_fresh_clone(tmp_path, payload):
+    repo, remote, parent_sha = setup_test_repo(tmp_path / "source")
+    metadata_path = ".ai/remediations/REMEDIATION-RUN-105-001-F1.yaml"
+    blob = subprocess.run(
+        ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
+        input=payload,
+        capture_output=True,
+        check=True,
+    ).stdout.decode("ascii").strip()
+    git(repo, "update-index", "--add", "--cacheinfo", f"100644,{blob},{metadata_path}")
+    git(repo, "commit", "--quiet", "-m", "exact metadata blob")
+    commit_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    fresh = tmp_path / "fresh"
+    subprocess.run(
+        ("git", "clone", "--quiet", str(remote), str(fresh)),
+        capture_output=True,
+        check=True,
+    )
+    for checkout in (repo, fresh):
+        assert authoring_ingress_module._read_commit_blob(
+            checkout, commit_sha, metadata_path
+        ) == payload
+        assert authoring_ingress_module._read_commit_blob(
+            checkout, commit_sha, metadata_path + ".missing"
+        ) is None
+        assert authoring_ingress_module._read_commit_blob(
+            checkout, parent_sha, metadata_path
+        ) is None
+        assert authoring_ingress_module._read_commit_blob(
+            checkout, "0" * 40, metadata_path
+        ) is None
+        assert authoring_ingress_module._read_commit_blob(
+            checkout, blob, metadata_path
+        ) is None
+        assert authoring_ingress_module._read_commit_blob(
+            checkout, commit_sha, ".ai/remediations"
+        ) is None
+        authoring_ingress_module._validate_metadata_commit(
+            checkout,
+            commit_sha,
+            expected_parent_sha=parent_sha,
+            metadata_path=metadata_path,
+            metadata_bytes=payload,
+            operation="AUTHOR_REMEDIATION",
+        )
+        with pytest.raises(AuthoringIngressError, match="metadata content mismatch"):
+            authoring_ingress_module._validate_metadata_commit(
+                checkout,
+                commit_sha,
+                expected_parent_sha=parent_sha,
+                metadata_path=metadata_path,
+                metadata_bytes=payload + b"\n",
+                operation="AUTHOR_REMEDIATION",
+            )
+
+
 def setup_candidate_lineage(
     root: Path,
     *,
@@ -1369,6 +1432,11 @@ constraints:
     result = execute_ingress(rem_env, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == f"refs/heads/aios/remediation/{run_id}-F1"
+    assert authoring_ingress_module._read_commit_blob(
+        repo,
+        result.canonical_sha,
+        f".ai/remediations/REMEDIATION-{run_id}-F1.yaml",
+    ) == remediation_payload.encode("utf-8")
     assert_exact_metadata_delta(
         repo,
         result.canonical_sha,
