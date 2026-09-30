@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - maintenance-self-host-diverged-failed-candidate-reconciliation
+  - verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -2158,7 +2158,7 @@ sequence:
 
 
   - id: maintenance-self-host-diverged-failed-candidate-reconciliation
-    status: NEXT
+    status: DONE
     task_id: TASK-242
     task_revision: 1
     authored_commit_sha: "50f2489fc69d14f9bf47c957ba5b8ff2ba621d32"
@@ -2200,31 +2200,53 @@ sequence:
       main before dispatching TASK-242. This one-time recovery is not evidence that
       TASK-242 is implemented; TASK-242 exists to make the same future recovery bounded,
       reusable and deterministic.
+    completed_by:
+      run_id: RUN-242-001
+      review_id: REVIEW-242-001
+      verdict: PASS
+      result_artifact_sha: "28990ad215711f405cd92a3265319ec93b1c3c63"
+      review_decision_sha: "a93c0ccdbd109ee83afb8bede2c6898cdd8d234a"
+      reviewed_sha: "4af0374faafd9248a4af2bffabd75788d28fcf76"
+      published_sha: "4af0374faafd9248a4af2bffabd75788d28fcf76"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      verification:
+        - evidence_id: RUN-242-001-V001
+          result: PASS
+        - evidence_id: RUN-242-001-V002
+          result: PASS
+        - evidence_id: RUN-242-001-V003
+          result: PASS
+        - evidence_id: RUN-242-001-V004
+          result: PASS
+      outcome: >-
+        Explicit Human-only failed-candidate control-main reconciliation and
+        deterministic delivery-addressable Admission Failure observability are
+        reviewed and published without weakening automatic fail-closed
+        PRIMARY/CONTINUE synchronization or creating lifecycle/retry authority.
     return_to: verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
   - id: verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
-    status: ACTIVE
+    status: NEXT
     task_id: TASK-241
     task_revision: 1
     authored_commit_sha: "0a611122b0f5495402f93f951d983d42b2218456"
     task_blob_sha: "5ac4fce77c72696026eafdd0fcaab98caca00874"
-    blocked_by: maintenance-self-host-diverged-failed-candidate-reconciliation
-    operational_blocker:
+    resolved_operational_blocker:
       dispatch_id: task241-r1-primary-codex61-001
-      carrier_issue: 1128
-      boundary: ADMISSION_REJECTED
-      run_created: false
-      executor_invoked: false
-      phase: PRIMARY_SYNCHRONIZATION
-      reason_code: PRIMARY_SYNCHRONIZATION_REJECTED
-      exact_error: local branch has diverged from upstream
+      prior_boundary: ADMISSION_REJECTED
+      prior_phase: PRIMARY_SYNCHRONIZATION
+      prior_reason_code: PRIMARY_SYNCHRONIZATION_REJECTED
+      prior_error: local branch has diverged from upstream
       admission_failure_ref: refs/heads/aios/admission-failure/b056ed9be08c3f0b574c9f21e6874ee9b9e8f76b4305f7f1b266602cb2917dcc
-      admission_failure_commit_sha: "8cf57965f02afed10cf0a40040af20cf4e453b84"
-      local_failed_candidate_sha: "8908a7be6f190eeba0dff7d8fce03f9e892a4ecb"
-      divergence_common_base_sha: "623a22fbfda38e6e751c9f10066cec9b57db8c90"
+      resolved_by_task_id: TASK-242
+      resolved_by_run_id: RUN-242-001
+      resolved_by_review_id: REVIEW-242-001
+      published_sha: "4af0374faafd9248a4af2bffabd75788d28fcf76"
       decision: >-
-        Preserve TASK-241 semantics and do not reinterpret this pre-RUN rejection
-        as a TASK/RUN failure. Resume only after explicit Human-authorized workspace
-        reconciliation and TASK-242 closure establish reusable operational continuity.
+        Operational continuity gap is closed. The rejected TASK-241 dispatch
+        remains historical pre-RUN evidence and is not replayed. TASK-241 may now
+        receive one fresh PRIMARY dispatch on current canonical main.
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     triggered_by:
