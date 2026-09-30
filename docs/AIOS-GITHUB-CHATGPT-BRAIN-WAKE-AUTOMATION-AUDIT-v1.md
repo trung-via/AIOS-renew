@@ -427,3 +427,49 @@ The mandatory second audit rejected several simpler-looking variants:
 Reconciled outcome: **CLEAR / CANDIDATE** for one bounded wake-bridge implementation
 task, followed by real ingress/terminal/publication conformance before TASK-254
 resumes.
+
+## 15. Post-publication actor discrimination and TASK-255 r3
+
+TASK-255 r2 reached reviewed publication, then live post-publication P1 exercised the
+actual bridge rather than a synthetic comment-only probe. The repository side behaved
+as designed: Issue #1215 produced a rejected ingress receipt, source pointer, exact
+`workflow_run` bridge projection, and one `INGRESS_REJECTED` wake on PR #1200.
+However, wake comment 5921447869 was authored by `github-actions[bot]` and received no
+ChatGPT Work ACK after the prior successful-probe latency window had been exceeded by
+hours.
+
+A bounded actor-discrimination P1b then posted an otherwise qualifying wake on the same
+PR through the authorized GitHub connector as user actor `trung-via`. Event
+`wake-p1b-actor-discrimination-20261001-001` was ACKed autonomously after 185 seconds
+by comment 5921598459, carrying exact canonical main
+`524b7eacb13d51867135f4589b19cb3c3d95d258` and `fresh_brain_sync: true`.
+
+These observations are operational conformance evidence, not a newly invented GitHub or
+OpenAI platform contract. They establish that the remaining blocker is the r2
+last-mile bot-authored PR-comment delivery path strongly enough to revise the transport
+contract, while preserving all r2 source handoff and deterministic projection semantics.
+
+The Stage-1 construction selected a secretless PR-head commit-update transport because
+current ChatGPT Work documentation includes PR commit updates among supported GitHub
+pull-request activity. Stage-2 adversarial reconciliation added the following mandatory
+boundaries before implementation:
+
+- preserve one central projector and change only post-projection delivery;
+- keep PR #1200 and `aios-brain-wake-bus-v1` operational-only and never merge them as
+  engineering truth;
+- bind one exact marker path and permit `contents:write` only in the bridge delivery
+  job;
+- serialize the Wake Bus globally;
+- use a non-trigger PENDING/EMITTED ledger on PR #1200 so replay and partial
+  write/ledger failure can be reconciled without semantic choice;
+- block an unrelated wake from overtaking unresolved PENDING delivery;
+- never fall back silently to a PAT, GitHub App credential, external relay, polling or
+  another wake surface;
+- keep real ChatGPT Work commit-update invocation outside Executor claims and require a
+  fresh post-publication conformance probe.
+
+Reconciled outcome: **CLEAR / CANDIDATE** for TASK-255 r3,
+`SECRETLESS_PR_HEAD_COMMIT_UPDATE_V1`. If the later real commit-update Work probe
+fails, return to Human/Brain architecture review. Credential-bearing user-attributed
+comment transport is not authorized by r3 and requires a separate Human decision.
+
