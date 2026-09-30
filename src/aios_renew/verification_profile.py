@@ -30,24 +30,36 @@ def load_policy(repository: Path) -> dict[str, Any]:
     if not isinstance(selected, dict) or any((
         selected.get("profile") != PROFILE,
         selected.get("command") != "python scripts/aios_parallel_full_suite.py",
-        selected.get("workers") != 4,
+        selected.get("workers") != 12,
         selected.get("distribution") != "load",
         selected.get("max_worker_restart") != 0,
     )):
         raise ProbeError("incompatible selected verification profile")
-    provenance = selected.get("selection_provenance")
-    if not isinstance(provenance, dict) or provenance != {
-        "run_id": "RUN-159-008",
-        "evidence_id": "RUN-159-008-V001",
-        "subject_sha": "2ed725df2a965d4f1def4750678672bcef4f0b4f",
+    if selected.get("selection_provenance") != {
+        "authority": "HUMAN", "task_id": "TASK-231",
     }:
         raise ProbeError("incompatible selected verification provenance")
-    baseline = selected.get("baseline")
+    if "baseline" not in selected or selected["baseline"] is not None:
+        raise ProbeError("selected workers=12 has no bound canonical performance baseline")
+    historical = data.get("historical_workers_4")
+    if not isinstance(historical, dict) or any((
+        historical.get("historical_context_only") is not True,
+        historical.get("workers") != 4,
+        historical.get("distribution") != "load",
+        historical.get("max_worker_restart") != 0,
+        historical.get("provenance") != {
+            "run_id": "RUN-159-008",
+            "evidence_id": "RUN-159-008-V001",
+            "subject_sha": "2ed725df2a965d4f1def4750678672bcef4f0b4f",
+        },
+    )):
+        raise ProbeError("incompatible historical workers=4 context")
+    baseline = historical.get("baseline")
     if not isinstance(baseline, dict) or not isinstance(baseline.get("canonical_collection"), dict):
-        raise ProbeError("missing selected verification baseline")
+        raise ProbeError("missing historical verification baseline")
     for key in COMPARABLE_TOOLCHAIN_KEYS:
         if not isinstance(baseline.get(key), str):
-            raise ProbeError("malformed selected verification baseline identity")
+            raise ProbeError("malformed historical verification baseline identity")
     if {key: baseline[key] for key in COMPARABLE_TOOLCHAIN_KEYS} != {
         "platform_system": "Windows",
         "platform_machine": "AMD64",
@@ -56,13 +68,13 @@ def load_policy(repository: Path) -> dict[str, Any]:
         "pytest_version": "8.4.2",
         "pytest_xdist_version": "3.8.0",
     }:
-        raise ProbeError("incompatible selected verification baseline identity")
+        raise ProbeError("incompatible historical verification baseline identity")
     for key in ("serial_seconds", "selected_parallel_seconds", "attention_threshold_seconds"):
         value = baseline.get(key)
         if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
-            raise ProbeError("malformed selected verification baseline timing")
+            raise ProbeError("malformed historical verification baseline timing")
     if baseline.get("rule") != "HALF_MEASURED_GAIN_LOST":
-        raise ProbeError("incompatible selected verification attention rule")
+        raise ProbeError("incompatible historical verification attention rule")
     if (
         baseline["serial_seconds"] != 1594.934653
         or baseline["selected_parallel_seconds"] != 1097.184058
@@ -73,7 +85,7 @@ def load_policy(repository: Path) -> dict[str, Any]:
             "digest": "2e40a04acedcf9869e3961718337744761ee0a29f55258d2313b0a50d5fd66bb",
         }
     ):
-        raise ProbeError("incompatible selected verification baseline")
+        raise ProbeError("incompatible historical verification baseline")
     return selected
 
 
@@ -81,23 +93,12 @@ def performance_guard(
     profile: dict[str, Any], collection: dict[str, Any],
     toolchain: dict[str, str], elapsed_seconds: float,
 ) -> dict[str, Any]:
-    baseline = profile["baseline"]
-    comparable = (
-        collection == baseline["canonical_collection"]
-        and all(toolchain.get(key) == baseline[key] for key in COMPARABLE_TOOLCHAIN_KEYS)
-        and profile["workers"] == 4
-        and profile["distribution"] == "load"
-        and profile["max_worker_restart"] == 0
-    )
-    status = (
-        "NOT_COMPARABLE" if not comparable else
-        "ATTENTION" if elapsed_seconds > baseline["attention_threshold_seconds"] else
-        "WITHIN"
-    )
+    # TASK-231 binds a Human policy decision, not a Runtime timing baseline.
+    # Historical workers=4 data cannot establish comparability for workers=12.
     return {
-        "status": status,
-        "rule": baseline["rule"],
-        "attention_threshold_seconds": baseline["attention_threshold_seconds"],
-        "baseline_run_id": profile["selection_provenance"]["run_id"],
-        "baseline_evidence_id": profile["selection_provenance"]["evidence_id"],
+        "status": "NOT_COMPARABLE",
+        "rule": "HALF_MEASURED_GAIN_LOST",
+        "attention_threshold_seconds": None,
+        "baseline_run_id": None,
+        "baseline_evidence_id": None,
     }

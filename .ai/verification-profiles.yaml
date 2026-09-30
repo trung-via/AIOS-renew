@@ -3,10 +3,20 @@ version: 1
 ordinary_canonical_full_suite:
   profile: bounded-parallel-full-suite-v1
   command: python scripts/aios_parallel_full_suite.py
-  workers: 4
+  workers: 12
   distribution: load
   max_worker_restart: 0
   selection_provenance:
+    authority: HUMAN
+    task_id: TASK-231
+  baseline: null
+# Immutable workers=4 measurement context; never a selected workers=12 baseline.
+historical_workers_4:
+  historical_context_only: true
+  workers: 4
+  distribution: load
+  max_worker_restart: 0
+  provenance:
     run_id: RUN-159-008
     evidence_id: RUN-159-008-V001
     subject_sha: 2ed725df2a965d4f1def4750678672bcef4f0b4f
