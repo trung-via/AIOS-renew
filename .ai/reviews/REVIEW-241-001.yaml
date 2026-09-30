@@ -1,0 +1,42 @@
+review_id: REVIEW-241-001
+reviewed_sha: d69d35eed3eb39fb87e68c79f095012f3cf92ba2
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+  - >-
+    RUN-241-002 is the canonical REPAIR result for failed RUN-241-001. Runtime
+    verification passed all three TASK-241 commands on exact subject
+    d69d35eed3eb39fb87e68c79f095012f3cf92ba2: 61 focused regression tests,
+    the live residual-context diagnostic, and git diff --check.
+  - >-
+    The repair resolves the observed installed-provenance baseline integrity
+    mismatch without weakening the diagnostic contract. Coherent missing,
+    ambiguous, exact and bounded-unavailable installed states remain read-only
+    observations, while malformed, inconsistent or genuinely unusable snapshots
+    still fail closed. No installed Python state, private path/content, raw
+    environment value or dynamic Git operand is persisted.
+  - >-
+    The live diagnostic classified RESIDUAL_SET_N12_REPRODUCED. It resolved the
+    exact 33 historical residual identities with no identity drift and all 33
+    failed in the single cold residual-only workers=12/load phase. Per TASK-241,
+    Phase B full-suite execution was therefore not run. The bounded observations
+    recorded 32 OperatorError failures alongside CLONE return code 128 classified
+    PATH_OR_FILENAME, plus the Git fixture PUSH failure classified
+    REPOSITORY_STATE with derived remote lock-path length 328. These are
+    observational facts only and do not establish a causal explanation or select
+    a remediation.
+  - >-
+    The cumulative TASK-241 delta remains confined to the three authorized
+    diagnostic files. Exact subject identity, 12-worker/process separation,
+    pytest basetemp and Git-fixture cache isolation, Git exact-once delegation,
+    failure-population bounds and privacy/schema invariants are all enforced
+    fail-closed. Production code, worker policy, Runtime, Reviewer/Publisher,
+    workflows, carriers and roadmap semantics remain unchanged.
