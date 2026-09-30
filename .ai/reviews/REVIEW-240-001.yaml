@@ -1,0 +1,35 @@
+review_id: REVIEW-240-001
+reviewed_sha: 345a2ffd7634d1b80b080475bef80fbe67d4f4b0
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+  - >-
+    RUN-240-002 is the canonical REPAIR result for failed RUN-240-001. Runtime
+    verification passed all three TASK-240 commands on exact subject
+    345a2ffd7634d1b80b080475bef80fbe67d4f4b0: 92 focused regression tests,
+    the live two-phase diagnostic, and git diff --check.
+  - >-
+    The repair resolves the observed integrity mismatch without weakening the
+    isolation contract: pytest-xdist workers remove process-local cache directories
+    during shutdown before controller sessionfinish, so cache existence is now
+    affirmatively observed inside each owning process and transported only as a
+    typed boolean while controller-side path/process isolation checks remain.
+  - >-
+    The live diagnostic classified PASS_DRIFT. The exact target passed once
+    serially and once under n4/load, non-target failure count was zero, and all
+    eight observed real Git PUSH operations succeeded with >260 lock-path lengths.
+    This is bounded current-state evidence only; it does not establish a causal
+    explanation for the historical RUN-233-002 failure and does not select a fix.
+  - >-
+    The cumulative TASK-240 delta remains confined to the three authorized
+    diagnostic files and leaves the existing Git fixture/test semantics,
+    production code, worker policy, lifecycle authority, workflows, carriers and
+    roadmap unchanged.
