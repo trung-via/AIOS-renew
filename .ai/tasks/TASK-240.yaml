@@ -1,0 +1,184 @@
+task_id: TASK-240
+revision: 1
+
+goal: >
+  Add one bounded current-state diagnostic for the sole RUN-233-002 parallel-only
+  Git fixture failure so Brain can determine whether the long-path AIOS-ref push
+  still reproduces after TASK-237 through TASK-239 and, when it does, resolve the
+  failing Git push only to privacy-safe typed cause facts before selecting any fix.
+
+problem: >
+  RUN-233-002 classified the workers=12 failure set as MIXED. Exactly one target,
+  tests/test_git_fixture_isolation.py::test_depth_amplified_sandboxes_push_and_resolve_full_aios_refs,
+  was absent from the serial reproduction set but reproduced at n4 and n12. Its
+  durable failure was a CalledProcessError at the real Git push on line 254 with
+  return code 1, while the prior diagnostic retained only the generic sanitized
+  stderr excerpt "repository-error". The test deliberately exercises full 64-hex
+  AIOS refs whose remote lock path exceeds 260 characters. Later TASK-237 through
+  TASK-239 corrected the independent stable failures but did not diagnose or change
+  this parallel-only fixture path. Choosing a path, fixture, Git, host, Defender,
+  or concurrency fix from the current evidence would therefore be guesswork.
+
+assumptions:
+  - >
+    Canonical main at authoring is 6f3079e0db9b4643b9e75dde7d3ef25dd1226eb4, the reviewed and published
+    RUN-239-004 candidate from TASK-239 r2 / REVIEW-239-004.
+  - >
+    RUN-233-002-V002 is historical Runtime evidence on subject
+    191d489a2f6cd5ddfd7151eb68f850d85c4c139d. It observed this target in the
+    full n12 and n4 failure sets but not in the serial reproduction set.
+  - >
+    The historical failure locus is the unchanged real-Git push in
+    tests/test_git_fixture_isolation.py; current source still asserts a >260
+    remote lock-path length and performs update-ref, push, show-ref and ls-remote.
+  - >
+    TASK-237, TASK-238 and TASK-239 resolved the three serial-stable blockers.
+    They do not establish whether this parallel-only failure still reproduces on
+    current main.
+  - >
+    Defender activity remains Human planning context only. This task must neither
+    attribute causality to Defender nor change host security configuration.
+  - >
+    Runtime owns canonical verification/evidence. This diagnostic is observational
+    and must not choose a remediation or unblock TASK-231 automatically.
+
+scope:
+  inspect:
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-231.yaml
+    - .ai/tasks/TASK-232.yaml
+    - .ai/tasks/TASK-233.yaml
+    - .ai/tasks/TASK-239.yaml
+    - tests/test_git_fixture_isolation.py
+    - tests/git_fixture_support.py
+    - tests/operator_test_support.py
+    - scripts/aios_full_suite_contention_diagnostic.py
+    - tests/test_aios_full_suite_contention_diagnostic.py
+  modify:
+    - scripts/aios_parallel_git_fixture_push_diagnostic.py
+    - tests/aios_parallel_git_fixture_push_probe_plugin.py
+    - tests/test_aios_parallel_git_fixture_push_diagnostic.py
+
+non_goals:
+  - >
+    Modify tests/test_git_fixture_isolation.py, tests/git_fixture_support.py,
+    tests/operator_test_support.py, production code, worker selection, selected
+    workers=12 policy, Runtime/Reviewer/Publisher, workflows, carriers, roadmap
+    from Executor execution, or host configuration.
+  - >
+    Fix, skip, xfail, shorten, reorder or weaken the >260-character AIOS-ref path
+    test or alter its Git semantics.
+  - >
+    Run a full suite, rerun TASK-231, benchmark worker counts, retry a failed Git
+    push, select a fallback path/profile, or perform automatic correction.
+  - >
+    Persist raw stderr/stdout, repository paths, remote URLs, ref values, object
+    ids, environment contents, credentials or other private host details.
+  - >
+    Declare Defender, Windows long-path handling, antivirus, filesystem locking,
+    Git configuration, fixture design or any other hypothesis causal without the
+    bounded evidence this task is designed to collect.
+
+constraints:
+  hard:
+    - >
+      Add one fixed no-argument command:
+      'python scripts/aios_parallel_git_fixture_push_diagnostic.py'. Reject all
+      positional/options input before test execution.
+    - >
+      Bind exactly the target
+      tests/test_git_fixture_isolation.py::test_depth_amplified_sandboxes_push_and_resolve_full_aios_refs
+      for target-specific observations. Do not substitute a synthetic equivalent.
+    - >
+      Phase A executes that exact target once serially in a fresh subprocess with
+      an isolated pytest basetemp and process-local Git fixture cache.
+    - >
+      Phase B executes exactly tests/test_git_fixture_isolation.py once with
+      pytest-xdist workers=4 and distribution=load in a fresh independent basetemp.
+      This is the minimum bounded parallel context because RUN-233-002 already
+      reproduced the target at n4; no n12 or full-suite phase is authorized.
+    - >
+      Diagnostic instrumentation may observe only real Git PUSH invocations made
+      while the exact target is active. It must delegate each original subprocess
+      invocation exactly once with unchanged argv, cwd, environment and check/text
+      semantics; it must not retry, suppress, replace or repair the command.
+    - >
+      For each observed target PUSH, persist only: phase, ordinal, success/failure,
+      integer return code, one allowlisted stderr_category when failed, and bounded
+      integer path-shape facts such as remote-root length, ref length and derived
+      remote-lock-path length. Never persist the actual path, ref, URL, stderr,
+      stdout or dynamic Git operands.
+    - >
+      stderr_category must be derived transiently from source-auditable bounded
+      patterns and be exactly one of LOCK_OR_REF_UPDATE, PATH_OR_FILENAME,
+      ACCESS_OR_PERMISSION, REPOSITORY_STATE, TRANSPORT_OR_REMOTE,
+      UNKNOWN_REVISION_OR_OBJECT, or OTHER. Raw message text must never become
+      durable output.
+    - >
+      The probe must also record the exact target outcome and bounded non-target
+      failure count for Phase B without persisting non-target nodeids or failure
+      messages. Worker/process identifiers may be represented only as bounded
+      opaque labels needed to prove the target actually executed under xdist.
+    - >
+      Verify exact Git subject SHA and clean worktree before Phase A, between
+      phases, and after Phase B. Any subject mutation or dirty state fails closed.
+    - >
+      Require Phase A target observation to be internally consistent with its test
+      outcome and require all target PUSH observations to have lock-path length
+      greater than 260, matching the unchanged test contract. Missing, malformed,
+      duplicate, over-bound or contradictory observations fail closed.
+    - >
+      Final JSON must use exactly one observational classification:
+      PARALLEL_ONLY_REPRODUCED when Phase A target passes and Phase B target fails;
+      PASS_DRIFT when the target passes in both phases;
+      SERIAL_FAILURE when Phase A target fails;
+      CONTEXT_FAILURE_TARGET_PASS when Phase A target passes, Phase B target passes,
+      but other Phase B tests fail; or MIXED_OBSERVATION for any other faithful
+      bounded outcome. Classification must not select a fix or assert causality.
+    - >
+      The diagnostic exits zero when both phases completed faithfully regardless
+      of target pass/fail classification. Integrity, privacy, identity, subject or
+      instrumentation failures exit nonzero.
+    - >
+      No file outside the three scope.modify files may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The diagnostic exposes a fixed two-phase observation surface: one exact
+      serial target run followed by one independent n4/load run of
+      tests/test_git_fixture_isolation.py, with no n12/full-suite/retry/fallback
+      execution path.
+  - id: AC2
+    condition: >
+      The probe transparently delegates each target Git PUSH exactly once and
+      emits only bounded typed push outcome, return-code, stderr-category and
+      path-length facts without durable dynamic paths/refs/URLs/output.
+  - id: AC3
+    condition: >
+      The diagnostic mechanically distinguishes target serial outcome, target n4
+      outcome and n4 non-target failure count and maps them to exactly one allowed
+      observational classification without remediation or causal attribution.
+  - id: AC4
+    condition: >
+      Exact-subject cleanliness, target identity, xdist execution identity,
+      >260 lock-path contract, observation bounds and schema/privacy invariants
+      fail closed on malformed, missing, contradictory or mutating observations.
+  - id: AC5
+    condition: >
+      Regression coverage exercises all allowed classifications, every stderr
+      category used by the implementation, exact-once PUSH delegation, dynamic
+      operand redaction, argument rejection, observation bounds and subject
+      mutation rejection.
+  - id: AC6
+    condition: >
+      The implementation is confined to the three diagnostic files and changes no
+      existing fixture/test semantics, production behavior, worker policy,
+      lifecycle authority, workflows, carriers or roadmap semantics.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_aios_parallel_git_fixture_push_diagnostic.py
+    - python scripts/aios_parallel_git_fixture_push_diagnostic.py
+    - git diff --check
