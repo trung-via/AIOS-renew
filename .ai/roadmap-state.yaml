@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-migration-source-bootstrap-path-budget-hardening-v2
+  - verification-performance-rebaseline-v2-post-path-hardening-residual-proof
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -2309,7 +2309,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-migration-source-bootstrap-path-budget-hardening-v2
 
   - id: verification-performance-rebaseline-v2-migration-source-bootstrap-path-budget-hardening-v2
-    status: NEXT
+    status: DONE
     task_id: TASK-243
     task_revision: 1
     authored_commit_sha: "d7a6cee79ca10da29cb5191702c805f8f40cb754"
@@ -2339,6 +2339,29 @@ sequence:
       stderr_category: REPOSITORY_STATE
       derived_remote_lock_path_length: 328
       decision: NO_CORRECTION_SELECTED
+    completed_by:
+      primary_run_id: RUN-243-001
+      primary_terminal_kind: FAILURE
+      primary_failure_phase: COMPLETION_GATE
+      failed_candidate_sha: "50dd29ca5db4bc23edebeb387309466496fa8dde"
+      repair_id: REPAIR-243-001
+      repair_authorization_sha: "135227774a1c0c85b657196fe4a1e4b6fa232954"
+      repair_run_id: RUN-243-002
+      review_id: REVIEW-243-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-243-002-V001
+        - RUN-243-002-V002
+      focused_tests_passed: 93
+      focused_tests_deselected: 333
+      review_decision_sha: "c5ba62e54014d6256445285f81808d27b6ffa873"
+      reviewed_sha: "c0042b5749b7adb4acc5cc897f87dbd8d41752ce"
+      published_sha: "c0042b5749b7adb4acc5cc897f87dbd8d41752ce"
+      outcome: >-
+        Bounded migration/source-bootstrap control and durable target Git storage
+        now preserve existing reader-visible bundle/source locators while moving
+        Git-internal path amplification to exact-owner-bound short storage. Focused
+        real-Git regressions and immutable historical readers passed.
     objective: >-
       Harden only the shared migration/source-bootstrap real-Git staging/recovery
       checkout boundary for the current Windows path geometry while preserving
@@ -2356,22 +2379,46 @@ sequence:
     return_to: verification-performance-rebaseline-v2-post-path-hardening-residual-proof
 
   - id: verification-performance-rebaseline-v2-post-path-hardening-residual-proof
-    status: BLOCKED
-    blocked_by: verification-performance-rebaseline-v2-migration-source-bootstrap-path-budget-hardening-v2
+    status: NEXT
+    task_id: TASK-244
+    task_revision: 1
+    authored_commit_sha: "441a570bc26384efbbfa7a6679135f070b861ed9"
+    task_blob_sha: "b9d8d87fc1b0312c50237ce1bbee8ca16a9437a5"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-243
+      task_revision: 1
+      run_id: RUN-243-002
+      review_id: REVIEW-243-001
+      verdict: PASS
+      published_sha: "c0042b5749b7adb4acc5cc897f87dbd8d41752ce"
     objective: >-
-      After TASK-243 is reviewed and published, obtain one fresh bounded
-      current-main proof using the existing TASK-241 residual-context diagnostic
-      semantics before any TASK-231 retry. Re-resolve the exact historical 33
-      identities, run the cold residual-only n12 phase with selected-wrapper-
-      equivalent geometry, and permit the diagnostic's single conditional full-n12
-      phase only when Phase A passes.
+      Execute one fresh bounded current-main proof using the existing TASK-241
+      residual-context diagnostic semantics before any TASK-231 retry. Re-resolve
+      the exact historical 33 identities, run the cold residual-only n12 phase with
+      selected-wrapper-equivalent geometry, and permit the diagnostic's single
+      conditional full-n12 phase only when Phase A passes.
+    execution_shape:
+      implementation: ZERO_DELTA_READ_ONLY_PRIMARY
+      executor_repository_commands: FORBIDDEN
+      runtime_verification:
+        - python scripts/aios_residual_context_attribution_diagnostic.py
+      phase_a:
+        targets: 33
+        workers: 12
+        distribution: load
+        max_worker_restart: 0
+      phase_b: CONDITIONAL_SINGLE_FULL_N12_ONLY_IF_PHASE_A_ALL_PASS
     architecture_rule: >-
       Proof only. Do not modify production/tests/fixtures or select a correction
       inside the proof. A remaining PUSH/REPOSITORY_STATE residual must be audited
       separately; a green residual/full-suite observation is evidence for a later
       Brain decision and never automatically advances TASK-231.
+    decision_gate:
+      residual_failure: BRAIN_AUDIT_REQUIRED
+      phase_a_pass_phase_b_observed: BRAIN_AUDIT_REQUIRED
+      automatic_task231_resume: false
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 research_assurance:
