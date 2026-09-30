@@ -1,0 +1,166 @@
+task_id: TASK-244
+revision: 1
+
+goal: >
+  Execute the already-reviewed TASK-241 residual-context attribution diagnostic
+  exactly once as Runtime-owned canonical verification on the post-TASK-243
+  published main subject, so Brain can determine whether the 32
+  migration/source-bootstrap CLONE/PATH_OR_FILENAME residuals are gone, whether
+  the separate Git-fixture PUSH residual remains, and whether the diagnostic is
+  permitted to advance to its single conditional full-suite n12 observation.
+  Keep the native Executor as a zero-delta structural handoff only.
+
+problem: >
+  TASK-243 is now engineering-complete through failed RUN-243-001,
+  REPAIR-243-001, successful RUN-243-002, REVIEW-243-001 PRIMARY PASS, and
+  publication of exact reviewed source
+  c0042b5749b7adb4acc5cc897f87dbd8d41752ce. Its focused verification proves the
+  bounded migration/source-bootstrap checkout correction and historical-reader
+  compatibility, but it does not prove that the exact historical 33 residual
+  identities now pass under the selected workers=12 geometry. Canonical roadmap
+  therefore requires one fresh post-path-hardening residual proof before any
+  TASK-231 retry.
+
+  The required diagnostic already exists, was reviewed and published by TASK-241,
+  and deterministically re-resolves the exact historical 33 identities from
+  canonical RUN-233-002 evidence. It runs exactly one cold residual-only n12 phase
+  with selected-wrapper-equivalent geometry and runs at most one full-suite n12
+  phase only if all 33 residuals pass. Reimplementing, modifying or wrapping that
+  diagnostic would add unnecessary uncertainty. This TASK therefore authorizes
+  only a zero-delta structural handoff followed by Runtime execution of the exact
+  existing diagnostic.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    c0042b5749b7adb4acc5cc897f87dbd8d41752ce, the exact reviewed and published
+    RUN-243-002 candidate.
+  - >
+    TASK-243 revision 1 closed through RUN-243-001 FAILURE,
+    REPAIR-243-001 authorization
+    135227774a1c0c85b657196fe4a1e4b6fa232954, RUN-243-002 RESULT,
+    REVIEW-243-001 PRIMARY PASS, review-decision commit
+    c5ba62e54014d6256445285f81808d27b6ffa873, and publication of exact source
+    c0042b5749b7adb4acc5cc897f87dbd8d41752ce.
+  - >
+    RUN-243-002 Runtime verification passed 93 focused migration/bootstrap tests
+    with 333 deselected and git diff --check on exact subject
+    c0042b5749b7adb4acc5cc897f87dbd8d41752ce, with unresolved empty.
+  - >
+    TASK-241's published diagnostic remains the authoritative observation
+    mechanism. Its semantics include exact reconstruction/resolution of the
+    historical 33 residual identities, one residual-only workers=12/load phase,
+    selected-wrapper-equivalent temporary geometry, and at most one conditional
+    full-suite workers=12/load phase only after all 33 residual targets pass.
+  - >
+    RUN-241-002 previously classified RESIDUAL_SET_N12_REPRODUCED with 33/33
+    failures: 32 Operator CLONE/PATH_OR_FILENAME observations and one distinct
+    Git-fixture PUSH/REPOSITORY_STATE observation. TASK-243 selected and corrected
+    only the 32 Operator path-budget class.
+  - >
+    The separate Git-fixture PUSH residual remains unresolved. TASK-240 observed
+    PASS_DRIFT in isolated serial/n4 context, while RUN-241-002 observed the n12
+    residual failure with derived remote lock-path length 328. This TASK does not
+    select a fix for it.
+  - >
+    Runtime owns canonical verification and evidence. Reviewer judges whether the
+    proof executed faithfully against the authorized subject. Human/Brain own
+    interpretation of the observed classification and the next planning decision.
+    Publisher owns publication. No observed outcome automatically resumes TASK-231.
+
+scope:
+  inspect: []
+  modify: []
+
+non_goals:
+  - Modify any repository file or create a production/test/diagnostic commit.
+  - Modify or replace scripts/aios_residual_context_attribution_diagnostic.py.
+  - Modify tests/aios_residual_context_attribution_plugin.py or its regression suite.
+  - Modify TASK-243, source-REPAIR storage, migration/source-bootstrap storage, or Git-fixture semantics.
+  - Rerun TASK-231 or modify its selected workers=12 policy or implementation candidate.
+  - Select, implement or recommend a correction for any residual observed by this proof.
+  - Run an additional full suite, worker matrix, serial replay, n4 probe, retry, fallback or adaptive diagnostic.
+  - Change Git/Windows/runner/Defender/TEMP configuration or any host-wide setting.
+  - Add lifecycle, Planner, Reviewer, Publisher, retry/failover or roadmap authority.
+  - Advance roadmap state from Executor, Runtime, Reviewer or Publisher.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      TASK-244 r1 is a zero-delta read-only PRIMARY with empty scope.inspect and
+      scope.modify. The native Executor must not invoke shell, Git, repository
+      file-read, search, pytest, diagnostic or other workspace commands/tools.
+    - >
+      The Executor must construct the structural ResultPackage solely from the
+      immutable canonical TASK/RUN context supplied by the admitted native adapter.
+      result.head_sha must equal the admitted RUN base SHA, changed_files must be
+      empty, unresolved must be empty, root evidence must be empty, and every
+      claim.evidence list must be empty.
+    - >
+      Executor claims may cover only the pre-verification structural handoff and
+      authority boundary. They must not claim that Runtime verification ran, that
+      any residual passed or failed, that TASK-243 fixed the historical population,
+      that the Git-fixture residual remains, or that workers=12 is safe.
+    - >
+      Runtime independently owns actual HEAD/cleanliness validation, zero-delta
+      truth, verification-subject materialization, command execution,
+      post-verification subject checks, canonical evidence attachment, terminal
+      persistence and transport.
+    - >
+      Canonical verification contains exactly one Runtime-owned command:
+      python scripts/aios_residual_context_attribution_diagnostic.py
+    - >
+      The existing TASK-241 diagnostic semantics are immutable for this proof. It
+      must re-resolve exactly the historical 33 identities; execute exactly one
+      cold residual-only workers=12/load/max-worker-restart=0 phase with
+      selected-wrapper-equivalent aios-parallel-full-suite-/parallel-12-tmp
+      geometry; stop immediately on any residual failure; and only after all 33
+      residuals pass execute at most one independent full-suite n12 phase.
+    - >
+      The diagnostic outer exit code is authoritative for proof integrity.
+      Observed pytest failures represented by a valid zero-exit diagnostic are
+      evidence, not TASK execution failure. Identity drift, subject mutation,
+      privacy/schema failure, instrumentation failure or any other nonzero outer
+      diagnostic outcome fails closed.
+    - >
+      A faithful RESIDUAL_SET_N12_REPRODUCED observation must not trigger an
+      automatic fix. Brain must inspect the new typed residual population before
+      selecting any successor correction.
+    - >
+      If Phase A passes and the diagnostic reaches Phase B, a
+      FULL_SUITE_PASS_DRIFT, FULL_SUITE_CONTEXT_REPRODUCED or
+      FULL_SUITE_POPULATION_DRIFT observation remains evidence only. It does not
+      automatically unblock, retry or complete TASK-231.
+    - >
+      No repository file may change and no push or publication may be performed by
+      Executor execution.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The Executor returns a complete zero-delta structural ResultPackage from
+      supplied admitted context only, with admitted base SHA as result.head_sha,
+      empty changed_files, empty unresolved, empty root evidence and no
+      Executor-created verification evidence.
+  - id: AC2
+    condition: >
+      Runtime executes exactly the existing TASK-241 residual-context diagnostic
+      once against the exact clean canonical post-TASK-243 subject and attaches
+      canonical evidence for its bounded classification.
+  - id: AC3
+    condition: >
+      The proof preserves the diagnostic's exact historical 33-identity binding,
+      workers=12/load/restart0 execution geometry and conditional Phase-B gate,
+      with no retry, alternate worker profile, extra full-suite run or substituted
+      target population.
+  - id: AC4
+    condition: >
+      The resulting evidence remains observational only: it neither selects a
+      correction nor changes worker policy, TASK-231 state, lifecycle authority,
+      roadmap authority or host configuration.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python scripts/aios_residual_context_attribution_diagnostic.py
