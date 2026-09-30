@@ -1,0 +1,228 @@
+task_id: TASK-246
+revision: 1
+
+goal: >
+  Establish one repository-owned, bounded real-Git threshold diagnostic primitive
+  for the sole remaining Git-fixture PUSH/REPOSITORY_STATE residual, so a later
+  Runtime-owned execution can compare the same canonical AIOS ref families at
+  exact remote-lock-path lengths 326, 327 and 328 without changing the fixture,
+  production behavior, worker policy, host configuration, lifecycle authority or
+  roadmap semantics. TASK-246 builds and tests the primitive only; it does not run
+  the current-main threshold experiment or select a correction.
+
+problem: >
+  RUN-240-002 executed the reviewed serial/n4 Git-fixture PUSH diagnostic and
+  observed PASS_DRIFT. In its n4 phase, real pushes succeeded with remote-root
+  length 222 and lock-path lengths 320 for the integration ref family and 326 for
+  the admission-failure ref family. RUN-244-003 later re-resolved the exact
+  historical 33-residual population under the selected n12 geometry and observed
+  one remaining Git-fixture failure on the first integration PUSH with return code
+  1, stderr_category REPOSITORY_STATE, remote-root length 230 and derived
+  lock-path length 328. TASK-245 corrected the independent final Operator
+  historical-fixture CLONE residual and did not modify this Git-fixture target.
+
+  The 326-success / 328-failure correlation is strong but is not yet causal proof:
+  the successful 326 observation used the admission-failure family while the
+  failing 328 observation used the integration family, and the historical
+  observations were collected under different execution contexts. The existing
+  TASK-240 primitive controls serial versus n4 context but does not control exact
+  same-family lock-path geometry. A new narrow diagnostic is therefore required
+  before any path, Git, fixture, concurrency or host correction can be selected.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    f36b7aa83c550e6551530f2c099176ad6899ad98, the exact reviewed and published
+    TASK-245 candidate.
+  - >
+    TASK-245 is engineering-complete through RUN-245-001 COMPLETION_GATE FAILURE,
+    REPAIR-245-001 FINALIZE_CANDIDATE authorization
+    3f8e4eaf6e3708a0d2e6e6f2ac53fd17a5d0f4e7, RUN-245-002 RESULT,
+    REVIEW-245-001 PRIMARY PASS, review-decision
+    27a08033de6a06e09e31635d239b59a80c821566, and publication of exact source
+    f36b7aa83c550e6551530f2c099176ad6899ad98.
+  - >
+    RUN-245-002 Runtime verification passed 21 focused Operator tests with 405
+    deselected plus git diff --check on exact subject
+    f36b7aa83c550e6551530f2c099176ad6899ad98. TASK-245 modified only
+    tests/test_operator.py and did not modify the Git-fixture PUSH target,
+    tests/git_fixture_support.py, or TASK-240 diagnostic surfaces.
+  - >
+    RUN-240-002-V002 is canonical historical evidence that the unchanged real-Git
+    fixture pushed both canonical 64-character ref families successfully under
+    serial and n4 observations, including a successful admission-failure lock-path
+    length of 326.
+  - >
+    RUN-244-003-V001 is canonical historical evidence that the exact residual
+    population later reproduced one Git-fixture PUSH failure at integration
+    lock-path length 328 with stderr_category REPOSITORY_STATE. Raw stderr is not
+    canonical and no more specific causal claim is justified from that category.
+  - >
+    TASK-170 already established fixture-local core.longpaths=true and preserved
+    real Git push/ref/remote semantics. This task neither reopens TASK-170 nor
+    treats core.longpaths as sufficient causal explanation.
+  - >
+    Runtime owns canonical verification/evidence; Reviewer owns semantic verdict;
+    Human/Brain own interpretation, correction selection, worker policy and roadmap
+    planning; Publisher owns publication.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-170.yaml
+    - .ai/tasks/TASK-240.yaml
+    - .ai/tasks/TASK-241.yaml
+    - .ai/tasks/TASK-244.yaml
+    - .ai/tasks/TASK-245.yaml
+    - scripts/aios_parallel_git_fixture_push_diagnostic.py
+    - tests/aios_parallel_git_fixture_push_probe_plugin.py
+    - tests/test_aios_parallel_git_fixture_push_diagnostic.py
+    - tests/test_git_fixture_isolation.py
+    - tests/git_fixture_support.py
+  modify:
+    - scripts/aios_git_fixture_push_threshold_diagnostic.py
+    - tests/aios_git_fixture_push_threshold_probe.py
+    - tests/test_aios_git_fixture_push_threshold_diagnostic.py
+
+non_goals:
+  - Execute the current-main threshold experiment or claim a present 326/327/328 outcome in TASK-246.
+  - Modify the existing TASK-240 diagnostic, probe, or historical evidence semantics.
+  - Modify tests/test_git_fixture_isolation.py, tests/git_fixture_support.py, production code, Runtime, verification, lifecycle, Reviewer, Publisher, workflows or carriers.
+  - Modify, shorten, alias, hash-truncate, reorder or substitute either canonical AIOS ref family or its 64-character identity.
+  - Select or implement a path, Git, fixture, concurrency, xdist, Defender, Windows, TEMP, runner or host correction.
+  - Change global/system/user Git configuration, Windows registry, long-path policy, runner configuration or Human machine state.
+  - Run pytest-xdist, n12, a full suite, TASK-231, a worker matrix, retries, fallback, reruns or adaptive geometry.
+  - Mock or bypass Git push, local bare remote transport, ref locking, update-ref, show-ref or ls-remote semantics.
+  - Persist raw stderr/stdout, repository paths, remote URLs, ref strings, object IDs, environment contents, credentials or other private host details.
+  - Advance TASK-231 or roadmap state from Executor execution.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      Add a purpose-built no-argument diagnostic command:
+      python scripts/aios_git_fixture_push_threshold_diagnostic.py
+      Unsupported arguments must fail before any Git experiment.
+    - >
+      The primitive must define exactly two canonical ref families, integration
+      and admission-failure, with the same production-shaped
+      refs/heads/aios/<family>/<64-hex-identity> form exercised by the existing
+      fixture. Ref identities must remain full 64-character hex values.
+    - >
+      The primitive must define exactly three ordered target
+      remote-lock-path lengths: 326, 327 and 328. There is no caller-selected
+      length, range, dynamic expansion, retry, binary search or adaptive geometry.
+    - >
+      A later diagnostic invocation must execute exactly one fresh isolated real-Git
+      case for every family/length pair, six cases total. Each case receives its own
+      writable worktree, index, refs, local repository config, object-write paths
+      and local bare upstream remote. Reuse, if any, is limited to immutable fixture
+      baseline/object material already permitted by TASK-154.
+    - >
+      For each case, the actual derived remote-lock-path length must equal the
+      authored target length exactly before PUSH. Geometry construction that cannot
+      prove the exact target length fails closed; it must not silently approximate,
+      retry or choose another path.
+    - >
+      Each case must preserve real Git semantics: exact local update-ref, exactly
+      one checked git push --quiet origin <ref>:<ref>, and, on successful push,
+      exact remote show-ref plus origin ls-remote resolution of the same full ref.
+      A failed push is an observation and must not be retried, suppressed, repaired
+      or followed by a substitute transport.
+    - >
+      The diagnostic must verify repository-local core.longpaths=true on both the
+      worktree repository and bare remote without modifying host/global Git config.
+      The primitive must not infer that core.longpaths guarantees success.
+    - >
+      For each PUSH persist only bounded typed facts: family, authored
+      lock-path length, observed exact lock-path length, success/failure, integer
+      return code, and allowlisted stderr category/signature facts. Never persist
+      the actual path, ref, URL, raw stderr/stdout or dynamic Git operand.
+    - >
+      Preserve the TASK-240 stderr categories. Additionally the new primitive may
+      expose only source-auditable bounded signature enums needed to distinguish
+      overlapping client/remote surfaces such as REMOTE_UNPACK_FAILED,
+      CANNOT_LOCK_REF, UNABLE_TO_CREATE, FILENAME_TOO_LONG,
+      FAILED_TO_PUSH_REFS, ACCESS_DENIED and OTHER. Multiple matched signatures may
+      be recorded as a bounded sorted set; raw text remains transient only.
+    - >
+      Signature matching must remove/redact dynamic operands before bounded pattern
+      matching and must never leak a path/ref substring or arbitrary message text.
+    - >
+      The diagnostic result may report factual per-family outcome vectors,
+      first_failed_length when mechanically defined, monotonic/non-monotonic
+      relationship, and cross-family same-length agreement. It must not contain a
+      root_cause, recommended_fix, selected_correction, safe_worker, winner, score,
+      path_threshold_causal or equivalent semantic-decision field.
+    - >
+      Exact Git subject SHA and clean worktree must be verified before and after the
+      six-case experiment. Subject mutation, malformed geometry, missing cases,
+      duplicate cases, inconsistent Git resolution, schema/privacy failure or
+      diagnostic-internal failure must fail closed.
+    - >
+      Inner PUSH failure is observational and does not make the diagnostic outer
+      command fail when all six fixed cases execute faithfully. Diagnostic-integrity
+      failure is nonzero.
+    - >
+      TASK-246 establishes and regression-tests only the primitive. Runtime
+      verification for TASK-246 must not invoke the live threshold diagnostic
+      against the current candidate. A separate Human/Brain-authored TASK is
+      required to execute the reviewed primitive after publication.
+    - >
+      No file outside the three scope.modify files may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A distinct repository-owned threshold diagnostic primitive exists without
+      modifying TASK-240 or any production/fixture behavior, and its invocation
+      surface accepts no user-selected geometry or target.
+  - id: AC2
+    condition: >
+      The primitive binds exactly integration and admission-failure full 64-hex ref
+      families crossed with exact lock-path lengths 326, 327 and 328, producing six
+      fresh independent real-Git cases with no retry or adaptive expansion.
+  - id: AC3
+    condition: >
+      Every case proves its exact authored lock-path length before PUSH and
+      preserves actual update-ref, checked PUSH, and successful show-ref/ls-remote
+      resolution semantics with repository-local longpaths configuration only.
+  - id: AC4
+    condition: >
+      Failure observations expose only bounded typed return-code/category/signature
+      and geometry facts; raw dynamic paths, refs, URLs, stdout/stderr, object
+      identities, environment data and secrets cannot enter durable output.
+  - id: AC5
+    condition: >
+      The envelope reports only factual family/geometry relationships and fails
+      closed on subject mutation, dirty state, geometry mismatch, duplicate/missing
+      cases, Git-resolution contradiction, schema/privacy error or instrumentation
+      failure, without selecting a correction or causal root cause.
+  - id: AC6
+    condition: >
+      Regression coverage exercises argument rejection, exact six-case binding,
+      exact geometry validation, both success and failed checked-PUSH paths,
+      same-length cross-family comparison, monotonic and non-monotonic outcome
+      vectors, every implemented stderr signature/category path, redaction/privacy,
+      subject mutation and malformed/missing/duplicate case rejection.
+  - id: AC7
+    condition: >
+      The implementation is confined to the three authorized new diagnostic files
+      and introduces no mock Git result substitution, retry/fallback, host/global
+      config mutation, production semantic change, worker selection or new
+      lifecycle/planning authority.
+  - id: AC8
+    condition: >
+      TASK-246 tests the primitive only; it records no current-main 326/327/328
+      experiment outcome and creates no automatic continuation, correction
+      selection or TASK-231 authorization.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_aios_git_fixture_push_threshold_diagnostic.py
+    - git diff --check
