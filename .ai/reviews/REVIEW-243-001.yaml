@@ -1,0 +1,55 @@
+review_id: REVIEW-243-001
+reviewed_sha: c0042b5749b7adb4acc5cc897f87dbd8d41752ce
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+  - >-
+    RUN-243-002 is the canonical REPAIR result continuing from failed
+    RUN-243-001 / failed candidate 50dd29ca5db4bc23edebeb387309466496fa8dde.
+    Runtime verification passed the exact TASK-243 contract on reviewed subject
+    c0042b5749b7adb4acc5cc897f87dbd8d41752ce: 93 focused migration/bootstrap
+    tests passed with 333 deselected, and git diff --check passed.
+  - >-
+    The repair closes the sole RUN-243-001 Completion Gate unresolved item without
+    changing the immutable reader-visible migration handoff locator. Existing
+    full-fingerprint and TASK-197 short-name bundle formats still resolve the same
+    bundle/source and intent.json semantics, while real Git metadata for newly
+    staged target worktrees is placed in bounded subordinate storage through
+    --separate-git-dir. The worktree remains an exact detached real-Git checkout
+    at the existing bundle/source path.
+  - >-
+    The bounded target storage grants no semantic authority. Its owner record binds
+    the full runtime state path, full migration fingerprint, exact bundle path and
+    complete intent; truncated locator material is used only for storage addressing.
+    Reader validation additionally checks the gitfile target, absolute git-dir,
+    toplevel, exact HEAD, clean status and expected source file. Partial, malformed,
+    mismatched, colliding, stale, linked or ambiguous target storage fails closed.
+  - >-
+    Focused real-Git regressions reproduce TASK-241 representative deep Windows
+    geometry for both control and durable target paths, cover ordinary
+    migration/source-bootstrap staging and source-bootstrap recovery, exercise
+    interruption/cleanup and non-reuse of stale storage, and execute the exact
+    historical migration readers from generations
+    83115b26df85a7ad6643f317833e18b18586bdbe,
+    31fd2482cd87d97fd818e05eb5b4dcec69ffeee6 and
+    44eee353eda376c9db8cd88d97184d3122651bf5 against the new separate-git-dir
+    target shape.
+  - >-
+    The cumulative TASK-243 delta remains confined to src/aios_renew/operator.py
+    and tests/test_operator.py. It does not modify source-REPAIR storage, the
+    separate Git-fixture PUSH/REPOSITORY_STATE residual, workers=12 selection,
+    Runtime, Reviewer, Publisher, workflows, carriers, roadmap semantics or
+    TASK-231 implementation, and introduces no retry, fallback, skip/xfail or
+    alternate lifecycle authority.
+  - >-
+    This PASS closes only TASK-243 path-budget hardening. Per canonical roadmap,
+    it does not authorize a TASK-231 retry by itself; a fresh post-path-hardening
+    residual proof remains required before any TASK-231 resume decision.
