@@ -5,8 +5,10 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -344,9 +346,9 @@ def test_unknown_worker_and_reordered_report_fail_closed():
 
 def test_process_cache_and_basetemp_isolation_bounds(tmp_path):
     profile = tmp_path.resolve()
-    facts = {"serial": {"pid": 100, "temp": str(profile / "pytest"), "cache": str(profile / "aios-git-fixtures-controller")}}
+    facts = {"serial": {"pid": 100, "temp": str(profile / "pytest"), "cache": str(profile / "aios-git-fixtures-controller"), "cache_present": True}}
     for index in range(4):
-        facts[f"gw{index}"] = {"pid": 200 + index, "temp": str(profile / "pytest" / f"popen-gw{index}"), "cache": str(profile / f"aios-git-fixtures-{index}")}
+        facts[f"gw{index}"] = {"pid": 200 + index, "temp": str(profile / "pytest" / f"popen-gw{index}"), "cache": str(profile / f"aios-git-fixtures-{index}"), "cache_present": True}
     for process in facts.values():
         Path(process["cache"]).mkdir()
     assert probe._isolated(facts, profile)
@@ -354,6 +356,85 @@ def test_process_cache_and_basetemp_isolation_bounds(tmp_path):
         broken = deepcopy(facts)
         broken["gw1"][field] = broken["gw0"][field]
         assert not probe._isolated(broken, profile)
+    # Existence must be affirmatively observed while the owner is alive.
+    for invalid in (False, None, 1, "true"):
+        broken = deepcopy(facts)
+        broken["gw1"]["cache_present"] = invalid
+        assert not probe._isolated(broken, profile)
+    broken = deepcopy(facts)
+    broken["gw1"].pop("cache_present")
+    assert not probe._isolated(broken, profile)
+    broken = deepcopy(facts)
+    broken["gw1"]["cache"] = str(profile.parent / "aios-git-fixtures-outside")
+    assert not probe._isolated(broken, profile)
+
+
+def test_real_xdist_cache_cleanup_preserves_owner_observed_isolation(tmp_path):
+    """Exercise actual worker shutdown/atexit, without running diagnostic phases."""
+    profile = tmp_path.resolve()
+    helper = profile / "cache_cleanup_probe.py"
+    helper.write_text('''
+import json
+import os
+from pathlib import Path
+import aios_parallel_git_fixture_push_probe_plugin as probe
+
+processes = {}
+node_integrity = True
+
+def pytest_testnodedown(node, error):
+    global node_integrity
+    label = node.gateway.id
+    if error is not None or label in processes:
+        node_integrity = False
+    processes[label] = node.workeroutput.get("cache_process")
+
+def pytest_sessionfinish(session, exitstatus):
+    config = session.config
+    process = probe._process(config)
+    if hasattr(config, "workerinput"):
+        config.workeroutput["cache_process"] = process
+        return
+    profile = Path(os.environ["AIOS_PARALLEL_GIT_PUSH_ROOT"]).resolve()
+    workers_complete = set(processes) == {f"gw{i}" for i in range(4)}
+    owners_saw_cache = all(p["cache_present"] is True for p in processes.values())
+    worker_caches_removed = all(not Path(p["cache"]).exists() for p in processes.values())
+    processes["serial"] = process
+    # Only typed facts leave this process; paths/PIDs stay in transient IPC.
+    (profile / "cleanup-facts.json").write_text(json.dumps({
+        "node_integrity": node_integrity,
+        "workers_complete": workers_complete,
+        "owners_saw_cache": owners_saw_cache,
+        "worker_caches_removed": worker_caches_removed,
+        "controller_cache_present": Path(process["cache"]).is_dir(),
+        "isolated": probe._isolated(processes, profile),
+    }))
+''', encoding="utf-8")
+    target = profile / "test_cache_cleanup.py"
+    target.write_text("def test_worker_lifecycle():\n    pass\n", encoding="utf-8")
+    repository = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    for key in ("PYTEST_ADDOPTS", "PYTEST_PLUGINS"):
+        env.pop(key, None)
+    env.update({
+        "PYTHONDONTWRITEBYTECODE": "1", "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONPATH": os.pathsep.join(map(str, (profile, repository / "tests", repository))),
+        "TMP": str(profile), "TEMP": str(profile), "TMPDIR": str(profile),
+        diagnostic.ROOT_ENV: str(profile),
+    })
+    result = subprocess.run([
+        sys.executable, "-m", "pytest", "-p", "xdist.plugin", "-p", "cache_cleanup_probe",
+        "-p", "no:cacheprovider", "-o", "addopts=", "-o", "log_file=",
+        "--confcutdir", str(profile), "--basetemp", str(profile / "pytest"),
+        "-n", "4", "--dist", "load", "--max-worker-restart", "0", "-q", str(target),
+    ], cwd=repository, env=env, check=False,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    assert result.returncode == 0
+    facts = json.loads((profile / "cleanup-facts.json").read_text())
+    assert facts == {
+        "node_integrity": True, "workers_complete": True, "owners_saw_cache": True,
+        "worker_caches_removed": True, "controller_cache_present": True, "isolated": True,
+    }
 
 
 def test_instrumentation_is_active_only_for_exact_target_and_restores_run(monkeypatch):
@@ -376,7 +457,7 @@ def test_instrumentation_is_active_only_for_exact_target_and_restores_run(monkey
     assert not recorder.integrity and subprocess.run is original
 
 
-@pytest.mark.parametrize("defect", [None, "missing-worker", "missing-collection", "shared-pid", "worker-outcome", "raw-operand", "bool-count"])
+@pytest.mark.parametrize("defect", [None, "missing-worker", "missing-collection", "shared-pid", "worker-outcome", "raw-operand", "bool-count", "missing-cache", "cache-bool"])
 def test_n4_controller_checks_worker_execution_and_discards_raw_process_facts(monkeypatch, tmp_path, defect):
     profile = tmp_path.resolve()
     controller = probe.Recorder("n4", "serial")
@@ -390,12 +471,13 @@ def test_n4_controller_checks_worker_execution_and_discards_raw_process_facts(mo
             controller.record_report(report)
             locals_by_worker[worker].record_report(report)
     locals_by_worker["gw2"].pushes = observation("n4")["pushes"]
-    process = {"pid": 100, "temp": str(profile / "pytest"), "cache": str(profile / "aios-git-fixtures-controller")}
+    process = {"pid": 100, "temp": str(profile / "pytest"), "cache": str(profile / "aios-git-fixtures-controller"), "cache_present": True}
     workers = {}
     for index, (worker, local) in enumerate(locals_by_worker.items()):
         workers[worker] = {"summary": local.summary(), "process": {
             "pid": 200 + index, "temp": str(profile / "pytest" / f"popen-{worker}"),
             "cache": str(profile / f"aios-git-fixtures-private-{worker}"),
+            "cache_present": True,
         }}
     for fact in [process] + [value["process"] for value in workers.values()]:
         Path(fact["cache"]).mkdir()
@@ -406,6 +488,8 @@ def test_n4_controller_checks_worker_execution_and_discards_raw_process_facts(mo
     elif defect == "worker-outcome": workers["gw2"]["summary"]["target_reports"]["call"] = "failed"
     elif defect == "raw-operand": workers["gw2"]["summary"]["pushes"][0]["stderr"] = "private-output"
     elif defect == "bool-count": workers["gw3"]["summary"]["executed_count"] = False
+    elif defect == "missing-cache": workers["gw3"]["process"]["cache_present"] = False
+    elif defect == "cache-bool": workers["gw3"]["process"]["cache_present"] = 1
     monkeypatch.setattr(probe, "_recorder", controller)
     monkeypatch.setattr(probe, "_workers", workers)
     monkeypatch.setattr(probe, "_collections", collections)

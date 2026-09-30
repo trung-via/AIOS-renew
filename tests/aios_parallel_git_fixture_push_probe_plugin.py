@@ -241,6 +241,9 @@ def _process(config) -> dict:
         "pid": os.getpid(),
         "temp": str(config._tmp_path_factory.getbasetemp().resolve()),
         "cache": str(git_fixture_support._cache_root.resolve()),
+        # Workers remove their process-local caches at exit, before the
+        # controller's sessionfinish. Check existence in the owning process.
+        "cache_present": git_fixture_support._cache_root.is_dir(),
     }
 
 
@@ -268,7 +271,8 @@ def pytest_testnodedown(node, error) -> None:
 
 def _isolated(processes: dict[str, dict], profile: Path) -> bool:
     # These dynamic facts are consumed here and never enter durable JSON.
-    if any(not isinstance(process, dict) or set(process) != {"pid", "temp", "cache"}
+    if any(not isinstance(process, dict) or set(process) != {"pid", "temp", "cache", "cache_present"}
+           or process["cache_present"] is not True
            or any(not isinstance(process[key], str) or not 0 < len(process[key]) <= contract.MAX_LENGTH
                   for key in ("temp", "cache")) for process in processes.values()):
         return False
@@ -282,7 +286,7 @@ def _isolated(processes: dict[str, dict], profile: Path) -> bool:
         cache = Path(process["cache"])
         if (not contract.integer(process["pid"], 1, 2**32 - 1)
                 or Path(process["temp"]) != expected
-                or cache.parent != profile or not cache.is_dir()
+                or cache.parent != profile
                 or not cache.name.startswith("aios-git-fixtures-")):
             return False
     return True
