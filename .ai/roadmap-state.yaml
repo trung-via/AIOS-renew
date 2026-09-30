@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-reconciliation-ignored-collision-fixture-hardening
+  - verification-performance-rebaseline-v2-post-population-drift-proof
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -2751,7 +2751,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-reconciliation-ignored-collision-fixture-hardening
 
   - id: verification-performance-rebaseline-v2-reconciliation-ignored-collision-fixture-hardening
-    status: NEXT
+    status: DONE
     task_id: TASK-252
     task_revision: 1
     authored_commit_sha: "8309e9f5aef86ab81aab332050cbc565bbd8a7d0"
@@ -2767,6 +2767,19 @@ sequence:
       evidence_id: RUN-251-001-V001
       classification: FULL_SUITE_POPULATION_DRIFT
       published_sha: "02eff62754209943d734719e1834e1a486f395b5"
+    completed_by:
+      task_id: TASK-252
+      task_revision: 1
+      run_id: RUN-252-001
+      review_id: REVIEW-252-001
+      verdict: PASS
+      verification_evidence:
+        - RUN-252-001-V001
+        - RUN-252-001-V002
+      result_artifact_sha: "7af84e72e82c34b872262b219aa1d8d1b4d0d0e4"
+      review_decision_sha: "391b61405fc54adb3d5f45e90943e8ff90bc78e7"
+      reviewed_sha: "a2f80e2aa93fe9ec46958d83574ea7f98cec65a8"
+      published_sha: "a2f80e2aa93fe9ec46958d83574ea7f98cec65a8"
     objective: >-
       Correct only the test-owned ignored-collision setup in the Human
       reconciliation proof-gate regression so it explicitly materializes the
@@ -2779,16 +2792,34 @@ sequence:
     return_to: verification-performance-rebaseline-v2-post-population-drift-proof
 
   - id: verification-performance-rebaseline-v2-post-population-drift-proof
-    status: BLOCKED
+    status: NEXT
     authority: HUMAN_BRAIN_PLANNING
-    blocked_by: verification-performance-rebaseline-v2-reconciliation-ignored-collision-fixture-hardening
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-252
+      task_revision: 1
+      run_id: RUN-252-001
+      review_id: REVIEW-252-001
+      verdict: PASS
+      verification_evidence:
+        - RUN-252-001-V001
+        - RUN-252-001-V002
+      review_decision_sha: "391b61405fc54adb3d5f45e90943e8ff90bc78e7"
+      published_sha: "a2f80e2aa93fe9ec46958d83574ea7f98cec65a8"
     objective: >-
-      Re-run one exact current workers=12 full-suite proof after the ignored-collision
-      fixture correction is reviewed and published. TASK-231 may resume only after a
-      green proof and a subsequent explicit Human/Brain decision.
+      Execute one fresh exact-subject current workers=12 full-suite proof after
+      the ignored-collision fixture correction. Reuse the already-reviewed
+      full-suite contention diagnostic unchanged so a green n12 observation stops
+      immediately, while any bounded failure can retain its existing diagnostic
+      context without selecting a correction.
     architecture_rule: >-
-      Evidence only; no automatic worker-policy or TASK-231 advancement.
+      Evidence only. No historical 33-residual replay, diagnostic modification,
+      worker-policy mutation, retry/fallback, TASK-231 execution or automatic
+      roadmap advancement inside the proof.
+    decision_gate:
+      full_n12_green_required_for_task231: true
+      automatic_task231_resume: false
+      brain_decision_required_after_result: true
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 research_assurance:
