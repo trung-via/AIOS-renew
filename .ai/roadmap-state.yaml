@@ -153,11 +153,33 @@ sequence:
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
     status: ACTIVE
     task_id: TASK-255
-    task_revision: 1
-    task_author_commit_sha: "2a599e4187e8f40e4d087ad5dbb82d425fba750a"
-    task_blob_sha: "aed0c7041cd34bff9a8ee5f4e80e2c0db785b176"
+    task_revision: 2
+    task_author_commit_sha: "07b640edfe974c49eeb98f250bbf4828ca9eefd5"
+    task_blob_sha: "28a0fb28db7127768584a24259a9d1f997ef5a94"
     implementation_phase: WAKE_BRIDGE
     authority: HUMAN_BRAIN_PLANNING
+    r1_failure:
+      run_id: RUN-255-001
+      failure_artifact_sha: "a52f1378b41146b96574746d177c36e39597f391"
+      failed_candidate_sha: "9c8fbc5fafc89a809f98f9a92c3c9fe05b0f6053"
+      phase: COMPLETION_GATE
+      disposition: TASK_CONTRACT_REVISION_REQUIRED
+      note: >-
+        GITHUB_TOKEN-created Issue/comment events do not start the r1 bridge workflow;
+        r1 also forbids the source-workflow changes needed to establish a deliverable
+        handoff, and canonical REPAIR authority cannot widen that TASK contract.
+    r2_architecture_audit:
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      selected_transport: WORKFLOW_RUN_BOUNDED_SOURCE_POINTER_V1
+      rationale: >-
+        Exact source workflows persist selectors only; workflow_run wakes one central
+        bridge, which re-reads the GitHub Issue/comment and retains all semantic mapping,
+        dedupe and Wake Bus emission authority. This avoids GITHUB_TOKEN recursive-event
+        suppression, PAT/App secrets, polling and wake authority duplication.
     probe:
       repository: trung-via/AIOS-renew
       pull_request: 1200
