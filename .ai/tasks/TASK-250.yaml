@@ -1,0 +1,174 @@
+task_id: TASK-250
+revision: 1
+
+goal: >
+  Remove the remaining historical Git-fixture PUSH residual by correcting only the
+  test-owned path geometry of
+  test_depth_amplified_sandboxes_push_and_resolve_full_aios_refs so its bare local
+  remotes no longer inherit unbounded outer pytest/xdist wrapper depth, while
+  preserving the exact historical pytest identity, full production-shaped AIOS
+  refs, a greater-than-260 remote lock-path exercise, real Git semantics,
+  repository-local longpaths capability and sandbox isolation.
+
+problem: >
+  RUN-249-001 executed the reviewed TASK-248 root-decomposition primitive on the
+  exact canonical subject and removed the remaining family/root-depth confounding.
+  At bare-remote root length 224, both integration and admission-failure PUSHes
+  succeeded. At root length 228, both families failed with return code 1,
+  REPOSITORY_STATE and signatures FAILED_TO_PUSH_REFS plus REMOTE_UNPACK_FAILED.
+  The corresponding derived lock-path lengths were 322/328 at root 224 and
+  326/332 at root 228, so the observed outcome aligns with bare-remote root depth
+  rather than ref family or a simple total lock-path threshold.
+
+  The sole Git-fixture residual from RUN-244-003 is the deliberately
+  depth-amplified test introduced by TASK-170. Its current geometry starts beneath
+  pytest tmp_path and only enforces a minimum nested-path depth. Under the later
+  n12 wrapper that ambient prefix was already deeper than the intended test
+  geometry, producing a bare-remote root length 230 and a failing integration
+  PUSH. The test therefore allows outer harness depth to change the experimental
+  subject. The minimum correction is to bound this test's own real-Git storage
+  geometry independently of ambient wrapper depth while retaining the original
+  long-ref/long-lock-path behavior. No production or shared fixture-helper
+  correction is justified by the current evidence.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    0aa10e7eab7932b25b984f829f11f6e5c8e35023, the Human/Brain roadmap
+    canonicalization after TASK-249 completion.
+  - >
+    TASK-249 revision 1 is engineering-complete through RUN-249-001 RESULT,
+    REVIEW-249-001 PRIMARY PASS, review-decision
+    cbb63ce3ed060fbe9f1b8fd6395c5dce8b987389, successful zero-delta publication,
+    and canonical evidence RUN-249-001-V001 on subject
+    cf7b1af738ba259ffb31dba9c6f173169410b33c.
+  - >
+    RUN-249-001-V001 observed same-root agreement for both canonical ref families:
+    success at bare-remote root 224 and failure at root 228. Both failed cases
+    reported the same bounded REPOSITORY_STATE / FAILED_TO_PUSH_REFS /
+    REMOTE_UNPACK_FAILED signature set.
+  - >
+    RUN-247-001 previously showed that equal total lock-path lengths do not produce
+    equal family outcomes, while RUN-249-001 showed admission-failure succeeds with
+    derived lock-path length 328 at root 224 even though integration fails with
+    derived lock-path length 326 at root 228. A simple total lock-path threshold is
+    therefore not an adequate correction basis.
+  - >
+    RUN-244-003-V001 observed the historical target failure at bare-remote root
+    length 230 and derived lock-path length 328. The distinct Operator
+    CLONE/PATH_OR_FILENAME residual from the same run was already corrected by
+    TASK-245 and is outside this TASK.
+  - >
+    TASK-170 remains authoritative for repository-local core.longpaths=true in the
+    working fixture repository and local bare remote, full 64-character canonical
+    ref identities, real Git transport and independently writable sandbox state.
+    TASK-250 does not reopen those semantics.
+  - >
+    The residual diagnostic's safe historical identity fingerprints the pytest
+    nodeid string. Preserving the exact test name and parameterization preserves
+    the historical identity even when the test body changes.
+  - >
+    Runtime owns canonical verification/EVIDENCE; Reviewer owns semantic verdict;
+    Human/Brain own residual interpretation, worker/TASK-231 and roadmap decisions;
+    Publisher owns publication.
+
+scope:
+  inspect:
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-170.yaml
+    - .ai/tasks/TASK-240.yaml
+    - .ai/tasks/TASK-244.yaml
+    - .ai/tasks/TASK-245.yaml
+    - .ai/tasks/TASK-248.yaml
+    - .ai/tasks/TASK-249.yaml
+    - scripts/aios_residual_context_attribution_diagnostic.py
+    - scripts/aios_full_suite_contention_diagnostic.py
+    - tests/git_fixture_support.py
+    - tests/operator_test_support.py
+    - tests/test_git_fixture_isolation.py
+  modify:
+    - tests/test_git_fixture_isolation.py
+
+non_goals:
+  - Modify tests/git_fixture_support.py, tests/operator_test_support.py, production code, Runtime, verification, Reviewer, Publisher, workflows, carriers or diagnostics.
+  - Modify, shorten, alias, hash-truncate, reorder or substitute either canonical full 64-character AIOS ref family.
+  - Remove or weaken the greater-than-260 remote lock-path coverage established by TASK-170.
+  - Change repository-local core.longpaths semantics or mutate global/system/user Git configuration, Windows registry, TEMP policy, runner configuration or Human machine state.
+  - Use a symlink, junction, SUBST drive, filesystem link, fake bare remote, mock Git transport or copied metadata substitute to hide the physical remote-root geometry.
+  - Retry, fallback, rerun or adapt after a failed PUSH.
+  - Rename, re-parameterize, skip, xfail, deselect or otherwise change the historical target nodeid.
+  - Execute the historical 33-residual proof, a full suite, worker benchmark, TASK-231 or worker-policy adoption inside this correction.
+  - Treat this correction or a focused green test as automatic TASK-231 authorization or roadmap completion.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Preserve the exact pytest nodeid
+      tests/test_git_fixture_isolation.py::test_depth_amplified_sandboxes_push_and_resolve_full_aios_refs
+      with no new parameterization so its historical safe identity remains stable.
+    - >
+      Replace the target's dependence on unbounded ambient pytest tmp_path depth
+      with test-owned disposable physical storage whose actual bare-remote root
+      length is mechanically bounded at or below 224 characters on the supported
+      Windows self-host class. If the test cannot establish that bound, it must
+      fail closed rather than silently weaken or skip the scenario.
+    - >
+      The bounded geometry must still make the actual remote <ref>.lock path
+      greater than 260 characters for both canonical ref families using the
+      unchanged refs/heads/aios/integration/<64-hex> and
+      refs/heads/aios/admission-failure/<64-hex> shapes.
+    - >
+      Preserve ordinary physical local repositories and bare remotes with real
+      update-ref, exactly one checked PUSH for each family per sandbox, exact
+      remote show-ref resolution and origin ls-remote resolution. No retry,
+      fallback, mock, synthetic result or alternate transport is allowed.
+    - >
+      Preserve both sandboxes as independently writable and isolated: a ref pushed
+      into one sandbox's bare remote must remain absent from the other sandbox's
+      remote, and existing TASK-154 immutable-object reuse plus TASK-170
+      repository-local longpaths behavior must remain unchanged.
+    - >
+      Test-owned storage must be disposable and cleaned up without mutating or
+      requiring host/global configuration. Ambient wrapper depth must not be able
+      to increase the physical bare-remote root beyond the authored bound.
+    - >
+      No file outside tests/test_git_fixture_isolation.py may change.
+    - >
+      Executor RESULT must describe implementation properties only and must not
+      claim Runtime verification completion, historical residual-proof outcome,
+      Reviewer verdict, publication, worker safety or TASK-231 readiness.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The unchanged historical target test uses disposable test-owned physical
+      storage whose actual bare-remote roots are bounded at or below 224
+      characters instead of inheriting unbounded pytest/xdist wrapper depth.
+  - id: AC2
+    condition: >
+      Both unchanged production-shaped 64-hex ref families still produce actual
+      remote lock paths greater than 260 characters and exercise real update-ref,
+      checked PUSH, show-ref and ls-remote behavior successfully with no
+      retry/fallback or transport substitution.
+  - id: AC3
+    condition: >
+      The two real-Git sandboxes remain independently writable and remote-isolated,
+      while TASK-154 immutable-object reuse and TASK-170 repository-local
+      longpaths semantics are not changed.
+  - id: AC4
+    condition: >
+      The exact pytest nodeid and historical residual identity remain stable, with
+      no rename, parameterization change, skip, xfail or deselection.
+  - id: AC5
+    condition: >
+      The correction is confined to tests/test_git_fixture_isolation.py and adds
+      no production/helper/diagnostic mutation, host configuration dependency,
+      filesystem-link shortcut, mock Git, automatic correction authority,
+      worker-policy change or TASK-231 continuation.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_git_fixture_isolation.py
+    - git diff --check
