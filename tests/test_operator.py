@@ -12928,7 +12928,9 @@ def test_human_reconciliation_proof_gates_preserve_repository(
         (repo / "UNTRACKED.txt").write_text("untracked\n", encoding="utf-8")
     elif gate == "ignored-collision":
         exclude = Path(git(repo, "rev-parse", "--absolute-git-dir")) / "info" / "exclude"
-        exclude.write_text(exclude.read_text() + "\nNEW_MAIN.txt\n", encoding="utf-8")
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        with exclude.open("ab") as exclude_file:
+            exclude_file.write(b"\nNEW_MAIN.txt\n")
         (repo / "NEW_MAIN.txt").write_text("ignored content must survive\n", encoding="utf-8")
     elif gate == "detached":
         git(repo, "checkout", "--quiet", "--detach")
