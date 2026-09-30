@@ -1,0 +1,156 @@
+task_id: TASK-245
+revision: 1
+
+goal: >
+  Remove the one remaining Operator CLONE/PATH_OR_FILENAME residual observed by
+  RUN-244-003 by hardening only the test-owned construction of the historical v1
+  migration fixture used by
+  test_source_bootstrap_recovery_preserves_completed_migration_history, while
+  preserving the exact pytest nodeid identity, real-Git behavior, historical
+  migration semantics, production Operator behavior, and all lifecycle authority
+  boundaries.
+
+problem: >
+  TASK-243 corrected the production migration/source-bootstrap trusted checkout
+  path boundary and RUN-244-003 subsequently re-executed the exact historical
+  33-residual population under workers=12. Thirty-one of the thirty-two historical
+  Operator residual identities passed. The sole remaining Operator failure was
+  tests/test_operator.py::test_source_bootstrap_recovery_preserves_completed_migration_history
+  with one real-Git CLONE failure, return code 128, PATH_OR_FILENAME,
+  cwd_length 184 and max_operand_length 220.
+
+  Source audit shows this remaining CLONE is fixture construction, not production
+  migration/source-bootstrap materialization. The target test manually creates a
+  valid historical v1 migration bundle and directly clones target_source into the
+  depth-amplified reader-visible bundle/source path before invoking recovery. That
+  direct test-owned clone bypasses the bounded control/target Git storage introduced
+  by TASK-243. RUN-244-003 therefore supports a narrow test-harness correction,
+  not another production Operator correction.
+
+  A second audit confirmed that the residual identity fingerprint is SHA-256 of
+  the pytest nodeid string only. Changing fixture construction does not alter the
+  historical identity as long as the target test name and parameterization remain
+  unchanged.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    e87f1e30229b9839491e4134884c43fc5042c419.
+  - >
+    TASK-243 is engineering-complete through RUN-243-002, REVIEW-243-001 PASS and
+    publication of c0042b5749b7adb4acc5cc897f87dbd8d41752ce. Its production
+    path-hardening implementation must not be reopened by this TASK.
+  - >
+    TASK-244 revision 2 completed through RUN-244-003 RESULT and
+    REVIEW-244-001 PRIMARY PASS on exact subject
+    e87f1e30229b9839491e4134884c43fc5042c419. Runtime evidence
+    RUN-244-003-V001 resolved all 33 historical identities with no identity drift.
+  - >
+    RUN-244-003 Phase A observed exactly two failures: the target Operator
+    historical-fixture CLONE/PATH_OR_FILENAME failure and the distinct Git-fixture
+    PUSH/REPOSITORY_STATE failure. The PUSH residual is not part of this correction.
+  - >
+    The target historical identity
+    tests/test_operator.py::test_source_bootstrap_recovery_preserves_completed_migration_history#sha256:4bb046fc913874cd49d4508a5c7f1c99975c476e780cb0d4a6cfdb5fea61dee7
+    is derived from the unchanged pytest nodeid. Test body changes alone do not
+    change that identity.
+  - >
+    Runtime owns canonical verification/evidence; Reviewer owns semantic verdict;
+    Human/Brain own residual interpretation, worker policy and roadmap planning;
+    Publisher owns publication.
+
+scope:
+  inspect:
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-170.yaml
+    - .ai/tasks/TASK-241.yaml
+    - .ai/tasks/TASK-243.yaml
+    - .ai/tasks/TASK-244.yaml
+    - scripts/aios_full_suite_contention_diagnostic.py
+    - scripts/aios_residual_context_attribution_diagnostic.py
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - tests/operator_test_support.py
+    - tests/git_fixture_support.py
+  modify:
+    - tests/test_operator.py
+
+non_goals:
+  - Modify src/aios_renew/operator.py or any production Runtime/Operator behavior.
+  - Modify tests/operator_test_support.py, tests/git_fixture_support.py, or the residual diagnostic.
+  - Modify or correct the separate Git-fixture PUSH/REPOSITORY_STATE residual.
+  - Change TASK-231, workers=12 selection, xdist scheduling, retry/fallback behavior, or full-suite policy.
+  - Change Git system/global/user configuration, Windows registry, TEMP policy, runner configuration, or host setup.
+  - Rename, re-parameterize, skip, xfail, deselect, weaken, or replace the historical target test.
+  - Replace real Git semantics with a mock, synthetic repository, or non-Git copy.
+  - Change historical migration record formats, reader semantics, canonical identities, or lifecycle authorities.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      Preserve the exact pytest nodeid of
+      test_source_bootstrap_recovery_preserves_completed_migration_history so the
+      historical safe identity and TASK-241/TASK-244 residual binding remain
+      unchanged.
+    - >
+      Preserve the target test's semantic scenario: one source-bootstrap edge is
+      consumed; a distinct valid v1 historical migration bundle exists; that
+      historical edge initially remains active and blocks recovery; after exact
+      completion of that historical edge, source-bootstrap recovery succeeds; the
+      completed historical marker, consumed marker, completed marker and bound
+      intent remain byte-stable; and no RUN is fabricated.
+    - >
+      Historical bundle/source remains a real Git checkout with the exact intended
+      target generation and reader-visible historical migration format. The
+      correction may alter only test-owned storage/path geometry needed to construct
+      that valid historical fixture.
+    - >
+      The test-owned construction must remain valid under a deliberately
+      depth-amplified Windows-equivalent geometry covering at least the
+      RUN-244-003 observed cwd_length 184 / CLONE operand 220 regime, without
+      relying on global/system Git or Windows configuration.
+    - >
+      Do not route the test through a production behavior change merely to make the
+      test pass. Production migration/source-bootstrap and TASK-243 storage
+      semantics remain unchanged.
+    - >
+      Preserve real Git clone/readback semantics and fail-closed validation of the
+      resulting historical bundle. No filesystem links, fake repository metadata,
+      copied worktree substitute, retry, fallback, skip or xfail is allowed.
+    - >
+      No file outside scope.modify may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The unchanged historical target test can construct its valid v1 migration
+      bundle and complete its original recovery scenario under path geometry at
+      least as deep as the RUN-244-003 failing CLONE regime without
+      PATH_OR_FILENAME failure.
+  - id: AC2
+    condition: >
+      The exact pytest nodeid, historical safe identity, scenario ordering and
+      assertions of test_source_bootstrap_recovery_preserves_completed_migration_history
+      remain semantically unchanged.
+  - id: AC3
+    condition: >
+      The historical bundle remains a reader-visible real-Git bundle/source bound
+      to the exact v1 intent and target generation, and completed historical state
+      remains immutable across the successful recovery.
+  - id: AC4
+    condition: >
+      Production Operator/migration/source-bootstrap behavior, TASK-243 bounded
+      storage semantics, the separate Git-fixture residual, worker policy and
+      lifecycle authorities are unchanged.
+  - id: AC5
+    condition: >
+      The implementation is confined to tests/test_operator.py and introduces no
+      mock Git, synthetic checkout, global/host configuration dependency,
+      retry/fallback, skip/xfail/deselection, test rename or parameterization change.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_operator.py -k "source_bootstrap_recovery or migration_historical"
+    - git diff --check
