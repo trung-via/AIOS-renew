@@ -152,6 +152,11 @@ sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
     status: ACTIVE
+    task_id: TASK-255
+    task_revision: 1
+    task_author_commit_sha: "2a599e4187e8f40e4d087ad5dbb82d425fba750a"
+    task_blob_sha: "aed0c7041cd34bff9a8ee5f4e80e2c0db785b176"
+    implementation_phase: WAKE_BRIDGE
     authority: HUMAN_BRAIN_PLANNING
     probe:
       repository: trung-via/AIOS-renew
