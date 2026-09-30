@@ -1,0 +1,274 @@
+task_id: TASK-242
+revision: 1
+
+goal: >
+  Close the self-hosted PRIMARY operational-continuity gap exposed by the
+  TASK-241 wakeup rejection without weakening fail-closed synchronization.
+  Add one explicit Human-authorized control-main reconciliation surface for the
+  narrow case where a clean persistent local main is exactly a canonically
+  transported failed candidate that has diverged from newer canonical main, and
+  make each dispatch-bound Admission Failure deterministically discoverable from
+  its delivery identity while preserving the existing immutable
+  content-addressed diagnostic ref.
+
+problem: >
+  RUN-231-004 is a canonical VERIFICATION FAILURE whose clean transportable
+  failed candidate is 8908a7be6f190eeba0dff7d8fce03f9e892a4ecb. The persistent
+  self-host workspace remained on that committed candidate after failure.
+  Human/Brain then authored TASK-241 and advanced canonical main through
+  0a611122b0f5495402f93f951d983d42b2218456 and roadmap commit
+  86df498a1317b085496a362c18c89be80497b8a4. The failed candidate and current
+  canonical main therefore diverge from common base
+  623a22fbfda38e6e751c9f10066cec9b57db8c90. TASK-241 dispatch
+  task241-r1-primary-codex61-001 correctly failed before RUN creation with
+  AIOS_ADMISSION_FAILURE v2 phase PRIMARY_SYNCHRONIZATION, reason
+  PRIMARY_SYNCHRONIZATION_REJECTED, exact error 'local branch has diverged from
+  upstream', executor_invoked=false.
+
+  Existing TASK-062/TASK-102 semantics correctly prohibit automatic reset,
+  merge, rebase, stash or discard of a diverged local candidate. The missing
+  operational surface is an explicit Human-authorized way to prove that the
+  local candidate has already been immutably transported as the exact canonical
+  failed RUN candidate and then restore only that clean persistent control
+  checkout to exact canonical upstream main. Separately, the Admission Failure
+  itself is already transported, but only under
+  refs/heads/aios/admission-failure/<content-sha256>. A Brain/status client that
+  knows the dispatch id cannot deterministically address that ref and may
+  incorrectly report 'no RUN yet' unless it scans unrelated admission refs or
+  inspects Actions UI. The existing local Operational Receipt projector already
+  understands exact dispatch-bound Admission Failure; remote discoverability
+  should expose the same subordinate fact without creating lifecycle truth.
+
+assumptions:
+  - >
+    Canonical main at authoring is 86df498a1317b085496a362c18c89be80497b8a4; TASK-241 r1 is canonical and remains
+    the intended residual-context diagnostic once this operational blocker is
+    removed.
+  - >
+    Exact current pre-RUN rejection is transported at
+    refs/heads/aios/admission-failure/b056ed9be08c3f0b574c9f21e6874ee9b9e8f76b4305f7f1b266602cb2917dcc
+    and contains dispatch_id task241-r1-primary-codex61-001,
+    requested_task_id TASK-241, requested_executor codex,
+    phase PRIMARY_SYNCHRONIZATION, reason
+    PRIMARY_SYNCHRONIZATION_REJECTED and error message
+    'local branch has diverged from upstream'.
+  - >
+    Exact RUN-231-004 failed candidate is
+    8908a7be6f190eeba0dff7d8fce03f9e892a4ecb and exact failure artifact is
+    1fdc02eb8e44893b65209663ae58d4cbce6ae55f. Its failure record marks the
+    candidate clean, transportable and repairable and canonical refs preserve
+    both failed candidate and failure artifacts.
+  - >
+    TASK-062/TASK-102 fail-closed synchronization is correct: automatic PRIMARY
+    or CONTINUE may fast-forward only a proven clean stale-behind main and must
+    not destructively reconcile ahead/diverged/dirty/detached/non-main state.
+    TASK-242 adds no automatic exception.
+  - >
+    Operational Receipt v2 and Admission Failure v2 are subordinate operational
+    evidence. They do not create a RUN, FAILURE lifecycle terminal, Reviewer
+    verdict, publication state, retry authority or roadmap advancement.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - README.md
+    - .ai/tasks/TASK-062.yaml
+    - .ai/tasks/TASK-081.yaml
+    - .ai/tasks/TASK-102.yaml
+    - .ai/tasks/TASK-175.yaml
+    - .ai/tasks/TASK-231.yaml
+    - .ai/tasks/TASK-241.yaml
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operational_receipt.py
+    - src/aios_renew/dispatch_reconciliation.py
+    - src/aios_renew/remote_surface.py
+    - tests/test_operator.py
+    - tests/test_review_transport.py
+    - tests/test_operational_receipt.py
+  modify:
+    - src/aios_renew/operator.py
+    - src/aios_renew/review_transport.py
+    - src/aios_renew/operational_receipt.py
+    - tests/test_operator.py
+    - tests/test_review_transport.py
+    - tests/test_operational_receipt.py
+    - README.md
+
+non_goals:
+  - >
+    Automatically reset, merge, rebase, stash, checkout, clean or otherwise
+    discard a diverged workspace during PRIMARY wakeup, CONTINUE, Runtime
+    failure handling, transport, carrier execution or background activity.
+  - >
+    Automatically invoke workspace reconciliation after any RUN terminal or
+    Admission Failure; infer Human approval from a prior Executor selection; add
+    retry/fallback/reroute behavior; re-deliver a failed dispatch automatically.
+  - >
+    Delete or rewrite RUN-231-004, its failed candidate, failure artifact,
+    Admission Failure, dispatch journal or any other canonical/history artifact.
+  - >
+    Make Operational Receipt or Admission Failure a lifecycle state store,
+    Unified State input, TASK truth, completion proof, semantic verdict or
+    publication authority.
+  - >
+    Replace the immutable content-addressed admission-failure ref or derive
+    diagnostic identity solely from dispatch id.
+  - >
+    Reconcile dirty, detached, non-main, ahead-only, untransported,
+    ambiguous-terminal or unrelated local commits.
+  - >
+    Modify TASK-241 semantics, workers policy, verification behavior,
+    Reviewer/Publisher, GitHub workflows/carriers, roadmap from Executor
+    execution, frozen Kernel semantics or downstream repositories.
+  - Push or publish from Executor implementation.
+
+constraints:
+  hard:
+    - >
+      Expose one explicit Human-operated CLI surface for control-main
+      reconciliation. It must require an exact failed_run_id, exact expected
+      local failed-head SHA and exact expected canonical-main SHA. Merely calling
+      PRIMARY/CONTINUE or observing a failure must never invoke this operation.
+    - >
+      The reconciliation command must acquire the existing repository mutation
+      lock and fail closed unless the repository is an attached main branch with
+      a completely clean status and HEAD exactly equal to the supplied failed
+      head. Dirty/untracked, detached, non-main, HEAD drift or an active
+      conflicting mutation fails without changing refs/index/worktree.
+    - >
+      Before any destructive move, resolve the unique configured upstream main
+      and fetch it read-only. The exact current upstream main must equal the
+      supplied expected canonical-main SHA. Missing/ambiguous upstream, fetch
+      failure or target drift fails closed.
+    - >
+      Prove from canonical remote transport that the supplied failed_run_id has
+      exactly one FAILURE candidate ref at refs/heads/aios/failure/<RUN> whose
+      SHA equals both the supplied failed head and the failure artifact's
+      failed_head_sha, and exactly one corresponding
+      refs/heads/aios/failure-artifacts/<RUN> whose bounded failure record marks
+      the candidate clean and transportable. Missing, conflicting, malformed or
+      mismatched terminal transport fails closed.
+    - >
+      Prove the failed candidate and target canonical main share the failure
+      base lineage: the failed candidate descends from the canonical failure
+      base_sha, the target canonical main descends from that same base_sha, and
+      the operation is actually a reconciliation away from the failed candidate.
+      Do not require the failed candidate itself to be an ancestor of target
+      main.
+    - >
+      After all proof gates pass, restore only the current local main/index/
+      tracked worktree to the exact fetched canonical-main commit. Do not merge,
+      rebase, cherry-pick, stash, clean, synthesize a new commit or delete
+      repository-local .git/aios evidence. Postconditions require attached main,
+      exact target HEAD and clean status.
+    - >
+      The reconciliation operation creates no RUN/RESULT/FAILURE/REVIEW,
+      invokes no coding Executor or Runtime verification, publishes no branch
+      and changes no roadmap. Its output is a bounded operational summary of
+      failed_run_id, prior_head, restored_head and success/failure only.
+    - >
+      Preserve the existing immutable content-addressed admission-failure ref
+      exactly. When an Admission Failure contains a valid family delivery
+      identity (PRIMARY dispatch_id, REMEDIATION correction_dispatch_id or
+      REPAIR repair_dispatch_id), additionally publish one deterministic
+      delivery-addressable alias ref whose name is derived only from family plus
+      SHA-256 of that delivery id and whose commit is the exact same immutable
+      diagnostic commit/content.
+    - >
+      A delivery alias is immutable and one-to-one: if the deterministic alias
+      already exists it must resolve to byte-identical Admission Failure content
+      bound to the same delivery id/family. Any collision or different content
+      fails transport closed without rewriting either alias or content-addressed
+      ref.
+    - >
+      Provide a pure/read-only resolver that, given family and exact delivery id,
+      computes the deterministic alias, validates the remote diagnostic schema,
+      family-specific delivery field/value and content identity, and returns only
+      bounded operational cause facts sufficient to distinguish
+      ADMISSION_REJECTED from no admission diagnostic. It must not scan by
+      timestamp/newest ref or reconcile lifecycle state.
+    - >
+      Operational Receipt projection may reuse this deterministic resolver only
+      as subordinate evidence. It must continue to prefer exact local dispatch
+      journal/RUN terminal attribution where applicable and must never infer a
+      RUN or terminal from an Admission Failure alias.
+    - >
+      Regression coverage must reproduce the RUN-231-004-shaped topology:
+      transported clean failed candidate on local main, newer canonical main
+      diverged from the same base, explicit Human reconciliation succeeds and
+      preserves remote failure evidence; the same topology without exact remote
+      failure proof must fail closed.
+    - >
+      Regression coverage must prove automatic PRIMARY synchronization still
+      rejects the diverged topology before RUN/Executor and does not call the
+      new reconciliation surface.
+    - >
+      Regression coverage must prove deterministic admission alias publication,
+      replay, collision rejection, PRIMARY/REMEDIATION/REPAIR delivery binding
+      and read-only resolution, while existing legacy content-addressed
+      admission refs remain compatible.
+    - >
+      README must document the distinction: stale-behind clean main may
+      auto-fast-forward; diverged failed-candidate main remains fail-closed until
+      explicit Human reconciliation proves canonical failure preservation; the
+      delivery-addressable Admission Failure alias is observability only.
+
+acceptance:
+  - id: AC1
+    condition: >
+      An explicit Human reconciliation of a clean attached main exactly equal to
+      a canonically transported failed candidate can restore the workspace to an
+      exact newer diverged canonical main only after all failure-ref,
+      failure-artifact and common-base proofs pass.
+  - id: AC2
+    condition: >
+      Dirty/untracked, detached, non-main, HEAD-drift, upstream-drift,
+      untransported/malformed/conflicting failure lineage and missing common-base
+      cases fail closed with zero repository mutation and zero RUN/Executor
+      invocation.
+  - id: AC3
+    condition: >
+      Successful reconciliation preserves all canonical remote failure lineage
+      and repository-local Runtime evidence, creates no lifecycle artifact, and
+      ends with exact target main plus clean worktree without merge/rebase/new
+      commit/clean behavior.
+  - id: AC4
+    condition: >
+      Existing automatic PRIMARY/CONTINUE synchronization semantics remain
+      unchanged and still reject diverged state; no automatic call path reaches
+      the Human reconciliation operation.
+  - id: AC5
+    condition: >
+      Every delivery-bound Admission Failure retains its current immutable
+      content-addressed ref and gains one deterministic immutable alias derived
+      from family plus SHA-256(delivery id), with exact replay and collision
+      checks.
+  - id: AC6
+    condition: >
+      A read-only resolver can deterministically answer whether one exact
+      delivery has a valid Admission Failure and return its bounded phase/reason
+      without scanning unrelated refs, ordering by time or treating the
+      diagnostic as RUN/lifecycle truth.
+  - id: AC7
+    condition: >
+      Existing Operational Receipt v2 behavior remains compatible while status
+      clients can resolve pre-RUN rejection from delivery identity; no alias or
+      receipt can assert run_created, executor success, verification, review or
+      publication.
+  - id: AC8
+    condition: >
+      Focused tests cover the RUN-231-004/TASK-241 regression, all destructive
+      fail-closed gates, legacy admission-ref compatibility, deterministic alias
+      behavior and authority separation; implementation changes only authorized
+      files and adds no retry/router/lifecycle authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_operator.py -k "synchronization or reconcile"
+    - python -m pytest -q tests/test_review_transport.py -k "admission"
+    - python -m pytest -q tests/test_operational_receipt.py
+    - git diff --check
