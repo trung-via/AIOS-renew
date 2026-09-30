@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-git-fixture-bounded-root-harness-correction
+  - verification-performance-rebaseline-v2-post-residual-corrections-proof
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1621,7 +1621,7 @@ sequence:
         ordered prefix, but current transport truncation does not prove the
         complete 33-identity population. A bounded residual-context attribution
         diagnostic is required before any further TASK-231 attempt or correction.
-    blocked_by: verification-performance-rebaseline-v2-post-path-hardening-residual-proof
+    blocked_by: verification-performance-rebaseline-v2-post-residual-corrections-proof
     prior_blocker_resolution:
       roadmap_id: verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
       task_id: TASK-240
@@ -2653,7 +2653,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-git-fixture-bounded-root-harness-correction
 
   - id: verification-performance-rebaseline-v2-git-fixture-bounded-root-harness-correction
-    status: NEXT
+    status: DONE
     task_id: TASK-250
     task_revision: 1
     authored_commit_sha: "3fd2a592c627ca003ea0236bc2eb2cb77d1105b6"
@@ -2668,6 +2668,18 @@ sequence:
       verdict: PASS
       evidence_id: RUN-249-001-V001
       published_sha: "cf7b1af738ba259ffb31dba9c6f173169410b33c"
+    completed_by:
+      task_id: TASK-250
+      task_revision: 1
+      run_id: RUN-250-001
+      review_id: REVIEW-250-001
+      verdict: PASS
+      verification_evidence:
+        - RUN-250-001-V001
+        - RUN-250-001-V002
+      review_decision_sha: "a0fcf8eea2d210e887e0b15edc30c33ccd2e2b8b"
+      reviewed_sha: "b7a6c55532ea83c009eb2dda0ff70b43bcf6d68d"
+      published_sha: "b7a6c55532ea83c009eb2dda0ff70b43bcf6d68d"
     objective: >-
       Correct only the historical depth-amplified Git-fixture regression so its
       test-owned bare remote no longer inherits unbounded outer pytest/wrapper
@@ -2682,18 +2694,33 @@ sequence:
     return_to: verification-performance-rebaseline-v2-post-residual-corrections-proof
 
   - id: verification-performance-rebaseline-v2-post-residual-corrections-proof
-    status: BLOCKED
+    status: NEXT
     authority: HUMAN_BRAIN_PLANNING
-    blocked_by: verification-performance-rebaseline-v2-git-fixture-bounded-root-harness-correction
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-250
+      task_revision: 1
+      run_id: RUN-250-001
+      review_id: REVIEW-250-001
+      verdict: PASS
+      verification_evidence:
+        - RUN-250-001-V001
+        - RUN-250-001-V002
+      review_decision_sha: "a0fcf8eea2d210e887e0b15edc30c33ccd2e2b8b"
+      published_sha: "b7a6c55532ea83c009eb2dda0ff70b43bcf6d68d"
     objective: >-
-      Re-run the bounded exact historical residual proof only after the selected
-      Operator-harness and Git-fixture evidence/correction sequence is complete.
-      Permit the existing diagnostic's single conditional full-n12 phase only if
-      all 33 Phase-A identities pass.
+      Re-run the exact historical 33-residual workers=12 proof on the post-TASK-250
+      canonical subject. Permit the existing diagnostic's one conditional full-n12
+      phase only if all 33 Phase-A identities pass, then return the bounded
+      classification to Human/Brain for the explicit TASK-231 decision.
     architecture_rule: >-
-      TASK-231 remains blocked until this proof and a subsequent Human/Brain
-      decision explicitly authorize any retry.
+      Evidence only. Use the already-reviewed residual-context diagnostic unchanged;
+      no correction selection, retry/fallback, worker-policy change, TASK-231
+      execution or automatic roadmap advancement inside the proof.
+    decision_gate:
+      residual_phase_all_pass_required_for_full_n12: true
+      automatic_task231_resume: false
+      brain_decision_required_after_result: true
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 research_assurance:
