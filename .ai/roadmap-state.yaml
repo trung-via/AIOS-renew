@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-execution
+  - verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-primitive
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -2520,7 +2520,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-execution
 
   - id: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-execution
-    status: NEXT
+    status: DONE
     task_id: TASK-247
     task_revision: 1
     authored_commit_sha: "35cd7db8fa07242a3e91392e259d9bb047018dc4"
@@ -2534,40 +2534,87 @@ sequence:
       review_id: REVIEW-246-001
       verdict: PASS
       published_sha: "2d066807bc1ed36bb5e5a662184dfd1ef01d9665"
+    completed_by:
+      run_id: RUN-247-001
+      review_id: REVIEW-247-001
+      verdict: PASS
+      evidence_id: RUN-247-001-V001
+      review_decision_sha: "2bc93b867ea0c1fbc8bb83791d9317f8155f02de"
+      reviewed_sha: "47847c0b294ec96bc0382d2057f15bccbbee37c2"
+      published_sha: "47847c0b294ec96bc0382d2057f15bccbbee37c2"
+      threshold_observation:
+        integration:
+          326: FAILURE
+          327: FAILURE
+          328: FAILURE
+        admission_failure:
+          326: SUCCESS
+          327: SUCCESS
+          328: SUCCESS
+        same_length_family_agreement: false
+      interpretation: >-
+        The simple total-lock-path threshold hypothesis is rejected by fresh
+        same-length evidence. Because canonical ref-family lengths differ by six
+        characters, the TASK-246 geometry confounds family shape with bare-remote
+        root depth; correction selection remains unauthorized.
     objective: >-
       Execute the reviewed TASK-246 primitive exactly once as Runtime-owned
       evidence on a fresh exact canonical subject, then return the six fixed
       family/geometry observations to Brain for causal interpretation.
-    execution_shape:
-      implementation: ZERO_DELTA_READ_ONLY_PRIMARY
-      executor_repository_commands: FORBIDDEN
-      runtime_verification:
-        - python scripts/aios_git_fixture_push_threshold_diagnostic.py
-      fixed_cases:
-        families:
-          - integration
-          - admission-failure
-        lock_path_lengths:
-          - 326
-          - 327
-          - 328
-        total_cases: 6
     architecture_rule: >-
       Zero-delta evidence only. No correction selection, retry, adaptive geometry,
       full suite, n12 run, worker adoption or TASK-231 continuation inside the
       execution task.
+
+  - id: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-primitive
+    status: NEXT
+    task_id: TASK-248
+    task_revision: 1
+    authored_commit_sha: "68ef828da98dff785c41634f3781f23f8b554b17"
+    task_blob_sha: "e5f441efb4b43a6c44b360ae0b52dbc7d73b6c34"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-247
+      task_revision: 1
+      run_id: RUN-247-001
+      review_id: REVIEW-247-001
+      verdict: PASS
+      evidence_id: RUN-247-001-V001
+      published_sha: "47847c0b294ec96bc0382d2057f15bccbbee37c2"
+    objective: >-
+      Establish and regression-test one bounded real-Git primitive crossing both
+      canonical ref families with the same exact bare-remote root lengths 224 and
+      228, removing the family/root-depth confounding without selecting a fix.
+    architecture_rule: >-
+      Primitive only. Exactly four fixed cases, no live current-main experiment,
+      retry, adaptive geometry, fixture/production mutation, correction selection
+      or TASK-231 continuation.
+    return_to: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-execution
+
+  - id: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-execution
+    status: BLOCKED
+    authority: HUMAN_BRAIN_PLANNING
+    blocked_by: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-primitive
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Execute the reviewed TASK-248 four-case primitive exactly once as
+      Runtime-owned zero-delta evidence on a fresh canonical subject, then return
+      same-root family observations to Brain for causal interpretation.
+    architecture_rule: >-
+      Evidence only. No correction selection, broader geometry search, full suite,
+      residual n12 proof, worker adoption or TASK-231 continuation inside execution.
     decision_gate:
-      all_geometries_pass: BRAIN_AUDIT_REQUIRED
-      monotonic_failure_boundary: BRAIN_AUDIT_REQUIRED
-      family_divergence: BRAIN_AUDIT_REQUIRED
-      non_monotonic_observation: BRAIN_AUDIT_REQUIRED
+      root_aligned_outcomes: BRAIN_AUDIT_REQUIRED
+      family_aligned_outcomes: BRAIN_AUDIT_REQUIRED
+      interaction_or_mixed_outcome: BRAIN_AUDIT_REQUIRED
       automatic_correction: false
       automatic_task231_resume: false
 
   - id: verification-performance-rebaseline-v2-post-residual-corrections-proof
     status: BLOCKED
     authority: HUMAN_BRAIN_PLANNING
-    blocked_by: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic-execution
+    blocked_by: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-execution
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Re-run the bounded exact historical residual proof only after the selected
