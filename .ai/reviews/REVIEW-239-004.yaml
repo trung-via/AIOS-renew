@@ -1,0 +1,26 @@
+review_id: REVIEW-239-004
+reviewed_sha: 6f3079e0db9b4643b9e75dde7d3ef25dd1226eb4
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+findings: []
+notes:
+  - >-
+    RUN-239-004 reached Runtime verification on exact candidate
+    6f3079e0db9b4643b9e75dde7d3ef25dd1226eb4. V001 passed the unchanged
+    fresh-clone Scenario 2 target, V002 passed the focused AUTHOR_REMEDIATION/readback
+    suite, and V003 passed git diff --check; unresolved is empty.
+  - >-
+    The implementation replaces text/revision-path commit blob rendering with an exact
+    commit type check, NUL-delimited full-tree entry resolution, and raw blob-object
+    byte read. _validate_metadata_commit itself is unchanged, so exact parent,
+    changed-path, 100644 blob and byte-equality guards remain in force.
+  - >-
+    The candidate changes only src/aios_renew/authoring_ingress.py and
+    tests/test_authoring_ingress.py. No fixture policy, worker policy, Runtime,
+    Reviewer, Publisher, workflow, carrier, or roadmap semantics are changed.
