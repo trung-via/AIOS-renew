@@ -2695,6 +2695,10 @@ sequence:
 
   - id: verification-performance-rebaseline-v2-post-residual-corrections-proof
     status: NEXT
+    task_id: TASK-251
+    task_revision: 1
+    authored_commit_sha: "4ca458303560f9c33d0d34ac7b27d756e0977b27"
+    task_blob_sha: "7c536b9022d6f48bb9b00e25b07b922b9334dc72"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     triggered_by:
