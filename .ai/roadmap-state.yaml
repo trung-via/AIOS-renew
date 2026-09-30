@@ -131,24 +131,42 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-architecture-contract
+  - brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
 sequence:
   - id: brain-runtime-semantic-handoff-hardening-v1-architecture-contract
-    status: NEXT
+    status: DONE
     authority: HUMAN_BRAIN_PLANNING
-    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
+    completed_by:
+      planning_commit_sha: "5b5971611ace96b236ac8f3c69ab417ad6b0a8ba"
+      audit_stage1: CONSTRUCT
+      audit_stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
     objective: >-
       Produce the bounded architecture/contract baseline for the approved hardening
       track before implementation: define exact audited-authoring proof binding,
       deterministic REPAIR eligibility projections, acceptance proof-phase ownership,
       and Brain-attention handshake boundaries; reconcile interactions with existing
       BP-4A/BP-5/Correction Preflight/Runtime/Reviewer/Publisher authority and the
-      three downstream-deferred Python Agent gaps without implementing production code.
+      downstream-deferred Python Agent gaps without implementing production code.
     successor_policy: >-
-      Human/Brain may advance only to the first implementation milestone after this
-      architecture item is canonicalized, independently reviewed where applicable,
-      and its reconciled boundaries leave no unresolved authority conflict.
+      Proceed to the audited-authoring gate as the first prospective implementation
+      milestone. Historical artifacts remain immutable and H1 enforcement begins only
+      after exact reviewed H1 source publication.
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
+    status: NEXT
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+    audit_profile: brain-high-value-v2
+    objective: >-
+      Prospectively require one fresh Decision Packet-bound BP-4A two-stage audited
+      CANDIDATE handoff before any new AUTHOR_TASK, AUTHOR_REMEDIATION or AUTHOR_REPAIR
+      canonical mutation, while preserving existing family validators, idempotent
+      non-mutating replay, Reviewer independence and all Runtime/Publisher boundaries.
+    return_to: brain-runtime-semantic-handoff-hardening-v1-repair-strategy-facts
   - id: admission-failure-v2
     status: DONE
     completed_by:
