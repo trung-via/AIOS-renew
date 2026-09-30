@@ -151,8 +151,20 @@ next_items:
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
-    status: NEXT
+    status: ACTIVE
     authority: HUMAN_BRAIN_PLANNING
+    probe:
+      repository: trung-via/AIOS-renew
+      pull_request: 1200
+      branch: aios-brain-wake-bus-v1
+      head_sha: "0d9bd2d4e802ad64c58bb143d326c1f5b1647760"
+      state: AWAITING_CHATGPT_WORK_EVENT_TRIGGER
+      first_probe_goal: >-
+        A PR-comment event wakes ChatGPT Work without a Human chat message; the
+        woken Brain performs fresh canonical Brain Sync and writes one bounded ACK
+        comment containing the observed canonical main SHA and event id, with no
+        lifecycle or roadmap mutation.
+    
     planning_document: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md
     objective: >-
       Prove the lowest-complexity native wake loop using one dedicated GitHub PR
