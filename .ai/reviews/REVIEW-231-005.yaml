@@ -1,0 +1,56 @@
+review_id: REVIEW-231-005
+reviewed_sha: 6ca0ea4bceef9224cb59172b84c31ad30c116b31
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+  - >-
+    RUN-231-005 is the canonical TASK-231 r2 PRIMARY result from exact base
+    50217dd0e3b0f6dfefc8fa55947f34ad07880ec6 with exact candidate
+    6ca0ea4bceef9224cb59172b84c31ad30c116b31. changed_files contains exactly
+    the five TASK-authorized paths, unresolved is empty, and the execution profile
+    is explicit codex / gpt-6.1-sol / high.
+  - >-
+    Runtime executed the two TASK-declared verification commands on the exact
+    candidate. python scripts/aios_parallel_full_suite.py returned exit code 0
+    after collecting 3187 tests and executing the selected workers=12/load/
+    max-worker-restart=0 full suite with pytest exit status 0, zero correctness
+    failures and every reported conformance fact true. git diff --check also
+    passed. Runtime verification consumed 1300.38 seconds and stayed within the
+    1800-second soft budget.
+  - >-
+    The selected policy now records exactly workers=12, distribution=load and
+    max_worker_restart=0 with Human/TASK-231 selection provenance and no Runtime
+    evidence identity masquerading as selection authority. The selected command
+    remains exactly python scripts/aios_parallel_full_suite.py.
+  - >-
+    The wrapper remains structurally fixed to one canonical collection followed
+    by one parallel-12 execution. Success requires zero process and pytest exit
+    status plus all collection, subject, temporary-root, Git-fixture-cache and
+    worker-process conformance facts. The implementation adds no retry, fallback,
+    alternate worker profile, adaptive selection, skip, xfail or remediation path.
+  - >-
+    RUN-159-008 workers=4 provenance and baseline values are preserved explicitly
+    as historical context only. The selected workers=12 baseline is null and the
+    performance guard reports NOT_COMPARABLE with no baseline run/evidence binding;
+    the observed 1207.24-second n12 execution is therefore not promoted into a
+    canonical performance baseline by this review.
+  - >-
+    The implementation is confined to .ai/verification-profiles.yaml,
+    scripts/aios_parallel_full_suite.py, src/aios_renew/verification_profile.py,
+    tests/test_verification_profile.py and tests/test_parallel_verification.py.
+    BP-V4/TASK-230 measurement families, Runtime lifecycle, Reviewer/Publisher,
+    frozen Kernel and downstream semantics are not modified.
+  - >-
+    Adversarial audit across authority, scope, provenance, failure modes,
+    acceptance completeness, verification ordering, portability/boundedness and
+    duplicate-authority lenses found no remaining blocker. REVIEW-231-005 PASS
+    judges the workers=12 adoption candidate against TASK-231 r2 only; publication
+    remains Publisher authority.
