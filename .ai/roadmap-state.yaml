@@ -158,19 +158,30 @@ sequence:
       pull_request: 1200
       branch: aios-brain-wake-bus-v1
       head_sha: "0d9bd2d4e802ad64c58bb143d326c1f5b1647760"
-      state: WAKE_EVENT_EMITTED_AWAITING_DELIVERY
+      state: ACK_PROBE_PASS_MORE_CONFORMANCE_REQUIRED
       probe_event:
         event_id: wake-probe-1200-001
         github_comment_id: 5916029012
+        emitted_at_utc: "2026-09-30T17:09:05Z"
         emitted_after_main_sha: "a42ce9313c09825ba480fecdbf0b97df9fdbdbe3"
-        observed_ack_comments: 0
-        automation_last_run_time: null
-        observation: >-
-          After the first bounded wake comment was emitted, no ACK was present and
-          the ChatGPT automation still reported no run during the immediate probe
-          window. This does not yet prove webhook failure; it proves only that
-          delivery/execution was not observed within the bounded check window.
-      previous_state: NATIVE_WEBHOOK_TASK_ENABLED_READY_FOR_PROBE
+        acknowledgement:
+          github_comment_id: 5916131140
+          acked_at_utc: "2026-09-30T17:15:49Z"
+          latency_seconds: 404
+          event_id: wake-probe-1200-001
+          main_sha: "b373d9e638c604192d51877408a8b47f53470570"
+          fresh_brain_sync: true
+          performed_via_github_app: chatgpt-codex-connector
+        observed_result: >-
+          PASS for the minimal wake/ACK path. A qualifying PR comment created by the
+          connected ChatGPT GitHub app triggered the Work automation, the woken task
+          re-read canonical state after main advanced to b373d9e..., and wrote exactly
+          one bounded ACK carrying that fresh main SHA. No TASK/RUN/review/publish/code
+          mutation occurred. The automation metadata surface still reported
+          last_run_time: null, so that field is not accepted as execution truth for
+          webhook conformance; the GitHub ACK plus exact canonical SHA is the stronger
+          observed evidence.
+      previous_state: WAKE_EVENT_EMITTED_AWAITING_DELIVERY
       observed_on: "2026-09-30"
       observed_main_sha: "3ff72c354e7bad81a8cca2ad6152a280def17cdb"
       observed_pr_state:
