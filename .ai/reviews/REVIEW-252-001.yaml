@@ -1,0 +1,43 @@
+review_id: REVIEW-252-001
+reviewed_sha: a2f80e2aa93fe9ec46958d83574ea7f98cec65a8
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+findings: []
+notes:
+  - >-
+    RUN-252-001 is the canonical TASK-252 r1 PRIMARY result from exact base
+    cb5a5f4e77ea6ec240796c552906d04a701d3684 with exact candidate
+    a2f80e2aa93fe9ec46958d83574ea7f98cec65a8. changed_files contains only
+    tests/test_operator.py, unresolved is empty, and the execution profile is
+    explicit codex / gpt-6.1-sol / high.
+  - >-
+    Runtime verification executed the two TASK-declared commands on the exact
+    candidate. python -m pytest -q tests/test_operator.py -k "reconciliation"
+    passed 39 tests with 387 deselected in 145.38 seconds, and git diff --check
+    passed.
+  - >-
+    The implementation is the bounded test-harness correction authorized by
+    TASK-252: for the ignored-collision parameter only, it creates the local
+    .git/info parent when absent and opens .git/info/exclude in binary append
+    mode so existing bytes are preserved while the NEW_MAIN.txt ignore rule is
+    added. No shared fixture or production file is changed.
+  - >-
+    The real ignored-file collision semantics remain intact. NEW_MAIN.txt is
+    still materialized with sentinel content before reconcile_control_main is
+    invoked, the production call is still required to reject, and the existing
+    repository/remote preservation assertions remain unchanged.
+  - >-
+    The test name, parameter list, neighboring proof-gate semantics and
+    production reconciliation implementation are unchanged. The candidate adds
+    no skip, xfail, deselection, retry, fallback, mock Git, host/global Git
+    configuration mutation or new lifecycle authority.
+  - >-
+    This PASS reviews only the focused TASK-252 correction and its Runtime
+    verification. It does not establish current full-suite n12 green status and
+    does not authorize TASK-231; the canonical roadmap still requires the
+    post-population-drift proof and a subsequent Human/Brain decision.
