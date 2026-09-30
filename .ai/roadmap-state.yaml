@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-ingress-metadata-identity-diagnostic
+  - verification-performance-rebaseline-v2-ingress-production-readback-hardening
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1605,7 +1605,7 @@ sequence:
         correctness still reported 36 failures. Canonical failure diagnostics
         expose only the bounded lowest 20 identities, so a separate bounded
         contention diagnostic is required before another TASK-231 attempt.
-    blocked_by: verification-performance-rebaseline-v2-ingress-metadata-identity-diagnostic
+    blocked_by: verification-performance-rebaseline-v2-ingress-production-readback-hardening
     prerequisite_resolution:
       roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
       task_id: TASK-232
@@ -1909,7 +1909,7 @@ sequence:
       content and all source-REPAIR lineage/activation/REPAIR semantics remain
       unchanged.
     remaining_followups:
-      ingress_metadata_content_mismatch: ACTIVE_TASK_238_DIAGNOSTIC
+      ingress_metadata_content_mismatch: RESOLVED_BOUNDARY_TASK_238_CORRECTION_TASK_239_ACTIVE
       parallel_only_git_fixture_failure: PENDING_AFTER_STABLE_FAILURE_CORRECTIONS
     defender_hypothesis:
       authority: HUMAN_PLANNING_EVIDENCE_ONLY
@@ -1929,7 +1929,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-ingress-metadata-identity-diagnostic
 
   - id: verification-performance-rebaseline-v2-ingress-metadata-identity-diagnostic
-    status: NEXT
+    status: DONE
     task_id: TASK-238
     task_revision: 1
     authored_commit_sha: "55647dc4b3353320155e753155444c64c60bb313"
@@ -1950,14 +1950,59 @@ sequence:
       run_id: RUN-237-003
       review_id: REVIEW-237-001
       published_sha: "3687fa06e12e22933e7184eba95fd0a6be4fae03"
+    completed_by:
+      primary_run_id: RUN-238-001
+      remediation_run_id: RUN-238-002
+      primary_review_id: REVIEW-238-001
+      delta_review_id: REVIEW-238-002
+      resolved_finding_id: F-238-001
+      result_artifact_sha: "83e7001c52730ff9c36ea4c4e5152881eaf1450e"
+      review_decision_sha: "a154dfe0837399ec31489bc3faff83aefb38f5c2"
+      reviewed_sha: "f591999ed8d54b96b7f36ff13b48a4c6f9e2a290"
+      published_sha: "f591999ed8d54b96b7f36ff13b48a4c6f9e2a290"
+      classification: FRESH_CLONE_ONLY_MISMATCH_RESOLVED_BOUNDARY
+      detail:
+        control: PASS_EXACT
+        fresh_clone: PRODUCTION_READBACK_MISMATCH
     objective: >-
       Resolve the remaining stable fresh-clone AUTHOR_REMEDIATION metadata-content
       mismatch to a bounded exact byte/object identity boundary without changing
       production behavior or selecting a remediation.
     post_completion_commitment:
-      ingress_metadata_content_correction: REQUIRED_IF_MISMATCH_REMAINS_AND_BOUNDARY_IS_RESOLVED
+      ingress_metadata_content_correction: ACTIVE_TASK_239
       parallel_only_git_fixture_failure: AFTER_STABLE_FAILURE_CORRECTION
       task231_workers_12: AFTER_BOTH_PRE_TASK231_BLOCKERS
+    return_to: verification-performance-rebaseline-v2-ingress-production-readback-hardening
+
+  - id: verification-performance-rebaseline-v2-ingress-production-readback-hardening
+    status: NEXT
+    task_id: TASK-239
+    task_revision: 1
+    authored_commit_sha: "f7d688a910d6cbe4e0d67599faed990ff4db247d"
+    task_blob_sha: "00f4b45812268b70fc8470962668348ef4545944"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-238
+      run_id: RUN-238-002
+      review_id: REVIEW-238-002
+      published_sha: "f591999ed8d54b96b7f36ff13b48a4c6f9e2a290"
+      classification: FRESH_CLONE_ONLY_MISMATCH_RESOLVED_BOUNDARY
+      detail:
+        fresh_clone: PRODUCTION_READBACK_MISMATCH
+        exact_prior_boundaries:
+          - EXPECTED_METADATA_BYTES
+          - EXPECTED_GIT_BLOB_OBJECT
+          - COMMITTED_TREE_ENTRY
+          - NATIVE_BINARY_GIT_BLOB
+    objective: >-
+      Correct the production Authoring Ingress commit-blob readback boundary so exact
+      metadata committed in fresh-clone topology is returned as exact untransformed bytes,
+      while preserving fail-closed structural/content validation and all lifecycle
+      authority boundaries.
+    post_completion_commitment:
+      parallel_only_git_fixture_failure: NEXT_AFTER_TASK_239
+      task231_workers_12: AFTER_PARALLEL_ONLY_GIT_FIXTURE_FAILURE
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
