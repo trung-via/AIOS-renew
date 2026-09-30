@@ -1,0 +1,220 @@
+task_id: TASK-248
+revision: 1
+
+goal: >
+  Establish one repository-owned bounded real-Git causal-decomposition diagnostic
+  primitive for the remaining Git-fixture PUSH residual by crossing both canonical
+  AIOS ref families with the same exact bare-remote root lengths 224 and 228.
+  This removes the family/root-length confounding exposed by RUN-247-001 while
+  preserving production-shaped refs, real Git PUSH semantics, fixture isolation,
+  privacy boundaries and all lifecycle authorities. TASK-248 builds and tests the
+  primitive only; it does not execute the live current-main experiment or select a
+  correction.
+
+problem: >
+  RUN-247-001 faithfully executed the TASK-246 threshold primitive and disproved a
+  simple total lock-path threshold. At exact total lock-path lengths 326, 327 and
+  328, the integration family failed all three PUSHes with return code 1,
+  stderr_category REPOSITORY_STATE and signatures REMOTE_UNPACK_FAILED plus
+  FAILED_TO_PUSH_REFS, while admission-failure succeeded at all three lengths.
+
+  Source audit shows the two canonical ref families differ in length by six
+  characters: the integration ref is 92 characters and admission-failure is 98.
+  The TASK-246 primitive held total lock-path length constant, so the integration
+  cases necessarily used bare-remote roots six characters longer than the
+  admission-failure cases. For the observed matrix this corresponds to integration
+  bare-remote root lengths 228, 229 and 230 versus admission-failure roots 222,
+  223 and 224. Therefore ref-family shape and bare-remote root depth remain
+  confounded.
+
+  A minimum-sufficient fresh factorial comparison is both families at exact
+  bare-remote root lengths 224 and 228. At each root length the family changes
+  while root depth is fixed; within each family the root changes while ref shape is
+  fixed. Four fresh cases are sufficient to expose whether the observed divergence
+  follows family, follows root depth, or remains an interaction requiring further
+  audit. No wider geometry search is justified before this bounded evidence.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    47847c0b294ec96bc0382d2057f15bccbbee37c2, the exact zero-delta reviewed and
+    published TASK-247 subject.
+  - >
+    TASK-247 revision 1 is engineering-complete through RUN-247-001 RESULT,
+    REVIEW-247-001 PRIMARY PASS, review-decision
+    2bc93b867ea0c1fbc8bb83791d9317f8155f02de, and successful zero-delta
+    publication of exact subject 47847c0b294ec96bc0382d2057f15bccbbee37c2.
+  - >
+    RUN-247-001-V001 is canonical evidence that integration failed at authored and
+    observed lock-path lengths 326, 327 and 328 with return code 1,
+    REPOSITORY_STATE and signatures FAILED_TO_PUSH_REFS plus
+    REMOTE_UNPACK_FAILED, while admission-failure succeeded at all three exact
+    lengths. Subject remained unchanged and clean.
+  - >
+    The reviewed TASK-246 primitive constructs production-shaped refs as
+    refs/heads/aios/integration/<64-hex> and
+    refs/heads/aios/admission-failure/<64-hex>. Their exact ref-string lengths are
+    92 and 98 respectively, a six-character difference. In the current Windows
+    path composition the suffix from bare-remote root to <ref>.lock therefore also
+    differs by six characters.
+  - >
+    TASK-170 remains authoritative for fixture-local core.longpaths=true and real
+    Git semantics. TASK-248 does not reopen or reinterpret TASK-170 as a root-cause
+    verdict.
+  - >
+    TASK-246 and TASK-247 remain immutable evidence. This task must not modify
+    their primitive, result, review or publication state.
+  - >
+    Runtime owns canonical verification/evidence; Reviewer owns semantic verdict;
+    Human/Brain own causal interpretation, correction selection, worker/TASK-231
+    policy and roadmap planning; Publisher owns publication.
+
+scope:
+  inspect:
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-170.yaml
+    - .ai/tasks/TASK-240.yaml
+    - .ai/tasks/TASK-246.yaml
+    - .ai/tasks/TASK-247.yaml
+    - scripts/aios_git_fixture_push_threshold_diagnostic.py
+    - tests/aios_git_fixture_push_threshold_probe.py
+    - tests/test_aios_git_fixture_push_threshold_diagnostic.py
+    - tests/git_fixture_support.py
+  modify:
+    - scripts/aios_git_fixture_push_root_decomposition_diagnostic.py
+    - tests/aios_git_fixture_push_root_decomposition_probe.py
+    - tests/test_aios_git_fixture_push_root_decomposition_diagnostic.py
+
+non_goals:
+  - Execute the live current-main root-decomposition experiment in TASK-248.
+  - Modify TASK-246/TASK-247 diagnostic code, evidence or semantics.
+  - Modify tests/git_fixture_support.py, tests/test_git_fixture_isolation.py,
+    production code, Runtime, workflows, carriers, Reviewer or Publisher.
+  - Select or implement a fixture path, Git, Windows, TEMP, Defender, runner,
+    ref-family, object-storage or host correction.
+  - Change, shorten, pad, alias, hash-truncate or otherwise alter either canonical
+    production-shaped ref family or its full 64-character identity.
+  - Run xdist, n12, the historical 33-residual proof, a full suite, TASK-231,
+    retries, fallback, adaptive geometry, binary search or a broader root-length
+    matrix.
+  - Change global/system/user Git configuration, Windows registry, long-path policy
+    or Human/runner machine state.
+  - Persist raw stderr/stdout, paths, refs, URLs, object IDs, environment contents
+    or other host-private operands.
+  - Add automatic root-cause, correction, worker, lifecycle or roadmap authority.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Add a no-argument diagnostic command:
+      python scripts/aios_git_fixture_push_root_decomposition_diagnostic.py
+      Unsupported arguments fail before any Git experiment.
+    - >
+      Bind exactly two canonical ref families, integration and admission-failure,
+      using the same production-shaped full 64-hex identities as the reviewed
+      TASK-246 primitive.
+    - >
+      Bind exactly two authored bare-remote root-string lengths: 224 and 228.
+      There is no caller-selected root length, range, retry, adaptive search,
+      fallback or dynamic expansion.
+    - >
+      A later invocation executes exactly four fresh independent real-Git cases:
+      integration@224, integration@228, admission-failure@224 and
+      admission-failure@228. Each receives independent writable worktree, index,
+      refs, config, object-write paths and local bare upstream remote.
+    - >
+      Before PUSH, every case must prove that the actual resolved bare-remote root
+      string length equals its authored root length exactly. It must also record
+      the derived total <remote>/<ref>.lock length as a bounded integer fact.
+      Geometry that cannot meet the exact root length fails closed rather than
+      approximating or selecting another path.
+    - >
+      Preserve one real local update-ref and exactly one checked
+      git push --quiet origin <ref>:<ref> per case. Successful pushes must resolve
+      the exact full ref through both bare-remote show-ref and origin ls-remote.
+      Failed pushes are observations and receive no retry, repair or substitute
+      transport.
+    - >
+      Verify repository-local core.longpaths=true on both the worktree repository
+      and bare remote. Never modify or depend on global/system Git configuration.
+    - >
+      Reuse the reviewed TASK-246 bounded stderr taxonomy/signature semantics or an
+      exactly compatible closed subset. Durable failure facts may contain only
+      family, authored/observed remote-root length, derived lock-path length,
+      outcome, integer return code, allowlisted stderr category and sorted bounded
+      signatures. Raw dynamic strings never enter output.
+    - >
+      Durable relationships may report only factual comparisons: per-family outcome
+      vectors across root lengths 224/228, same-root cross-family agreement, and
+      mechanically defined first_failed_root_length. The envelope must reject
+      root_cause, selected_correction, path_threshold_causal, family_causal,
+      recommended_fix, worker or equivalent semantic-decision fields.
+    - >
+      Exact Git subject SHA and clean worktree must be verified before, during and
+      after the four-case experiment. Subject mutation, dirty state, malformed
+      geometry, missing/duplicate case, Git-resolution contradiction, schema/privacy
+      failure or instrumentation failure is nonzero/fail-closed.
+    - >
+      Inner PUSH failure is observational and does not make the diagnostic outer
+      process fail when all four fixed cases execute faithfully.
+    - >
+      TASK-248 establishes and regression-tests the primitive only. Runtime
+      verification for TASK-248 must not execute the live four-case experiment on
+      the reviewed candidate. A separate Human/Brain-authored zero-delta TASK is
+      required after publication.
+    - >
+      No file outside the three scope.modify files may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      A distinct repository-owned causal-decomposition primitive exists without
+      modifying prior diagnostics or fixture/production behavior, and its invocation
+      surface accepts no user-selected geometry.
+  - id: AC2
+    condition: >
+      The primitive binds exactly both canonical ref families crossed with exact
+      bare-remote root lengths 224 and 228, producing four fresh independent
+      real-Git cases with no retry or adaptive expansion.
+  - id: AC3
+    condition: >
+      Every case proves its exact authored bare-remote root length before PUSH,
+      records the derived total lock-path length, and preserves real update-ref,
+      checked PUSH, successful show-ref/ls-remote and repository-local longpaths
+      semantics.
+  - id: AC4
+    condition: >
+      Failure observations expose only bounded typed geometry/return-code/category/
+      signature facts; raw paths, refs, URLs, stdout/stderr, object identities,
+      environment data and secrets cannot enter durable output.
+  - id: AC5
+    condition: >
+      The result exposes only factual per-family and same-root relationships and
+      fails closed on subject mutation, geometry mismatch, missing/duplicate cases,
+      Git-resolution contradiction, schema/privacy or instrumentation failure,
+      without selecting a causal root or correction.
+  - id: AC6
+    condition: >
+      Regression coverage exercises argument rejection, exact four-case binding,
+      exact root-geometry validation, derived lock-length reporting, success and
+      failed checked-PUSH paths, same-root family agreement/divergence, each
+      implemented stderr category/signature path, privacy/redaction, subject
+      mutation and malformed/missing/duplicate case rejection.
+  - id: AC7
+    condition: >
+      Implementation is confined to the three authorized new diagnostic files and
+      introduces no Git-result mock substitution, retry/fallback, host/global config
+      mutation, production semantic change, worker selection or lifecycle/planning
+      authority.
+  - id: AC8
+    condition: >
+      TASK-248 tests the primitive only and records no current-main live
+      integration/admission-failure @ 224/228 outcome or automatic TASK-231
+      continuation.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_aios_git_fixture_push_root_decomposition_diagnostic.py
+    - git diff --check
