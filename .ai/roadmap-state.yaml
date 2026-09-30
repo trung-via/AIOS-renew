@@ -158,6 +158,10 @@ sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
     status: NEXT
+    task_id: TASK-254
+    task_revision: 1
+    authored_commit_sha: "2ea52d8237bbb1a569a8c707b638d2c8ef755f85"
+    task_blob_sha: "5b3a2c26faa3ac31e5a0f350f12f67dea99c68f4"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
