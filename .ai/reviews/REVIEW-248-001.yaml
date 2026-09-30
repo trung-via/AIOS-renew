@@ -1,0 +1,49 @@
+review_id: REVIEW-248-001
+reviewed_sha: 3fef5f802217c7ef107b2ba33d26ca059d7884af
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+  - >-
+    RUN-248-001 is the canonical TASK-248 r1 PRIMARY result on base
+    45053df1a82112afb6851c8da202c4d0be5e5bb2 with reviewed candidate
+    3fef5f802217c7ef107b2ba33d26ca059d7884af. Execution profile is explicit
+    codex / gpt-6.1-sol / high.
+  - >-
+    Runtime verification passed the exact TASK-248 contract: 163 primitive
+    regression tests passed and git diff --check passed. The cumulative delta is
+    exactly the three authorized new diagnostic files and unresolved is empty.
+  - >-
+    The primitive binds exactly four fixed cases in deterministic order:
+    integration@224, integration@228, admission-failure@224 and
+    admission-failure@228. Each case requires exact resolved bare-remote root
+    geometry before PUSH and reports only bounded integer geometry, outcome,
+    return-code and allowlisted failure facts.
+  - >-
+    The derived total lock lengths are mechanically 322 and 326 for integration
+    at roots 224/228, and 328 and 332 for admission-failure at roots 224/228.
+    This removes the family/root-depth confounding from TASK-247 while preserving
+    full production-shaped refs and real Git semantics.
+  - >-
+    The implementation preserves repository-local core.longpaths, exact
+    update-ref, exactly one checked PUSH, successful show-ref and ls-remote
+    resolution, no retry/fallback/adaptive geometry, and fail-closed subject,
+    geometry, schema, privacy and instrumentation boundaries.
+  - >-
+    TASK-248 verification intentionally does not execute the live four-case
+    current-main root-decomposition experiment. Regression coverage uses protocol
+    fixtures and short disposable real-Git transport checks only. Therefore this
+    PASS establishes the reviewed primitive, not a present causal verdict or
+    correction.
+  - >-
+    TASK-231 remains blocked. Live 224/228 decomposition execution requires a
+    separate Human/Brain-authored zero-delta evidence TASK after publication.
