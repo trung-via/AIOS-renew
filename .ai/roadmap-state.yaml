@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-ingress-production-readback-hardening
+  - verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1605,7 +1605,7 @@ sequence:
         correctness still reported 36 failures. Canonical failure diagnostics
         expose only the bounded lowest 20 identities, so a separate bounded
         contention diagnostic is required before another TASK-231 attempt.
-    blocked_by: verification-performance-rebaseline-v2-ingress-production-readback-hardening
+    blocked_by: verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
     prerequisite_resolution:
       roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
       task_id: TASK-232
@@ -1975,13 +1975,28 @@ sequence:
     return_to: verification-performance-rebaseline-v2-ingress-production-readback-hardening
 
   - id: verification-performance-rebaseline-v2-ingress-production-readback-hardening
-    status: NEXT
+    status: DONE
     task_id: TASK-239
     task_revision: 2
     authored_commit_sha: "c0f06a869203ac217f1971bc70cb4e07dd45bcd5"
     task_blob_sha: "45ab88c9f0098aac25cbd4ae8c20ca78fbc24c20"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    completed_by:
+      run_id: RUN-239-004
+      review_id: REVIEW-239-004
+      verdict: PASS
+      evidence_ids:
+        - RUN-239-004-V001
+        - RUN-239-004-V002
+        - RUN-239-004-V003
+      result_artifact_sha: "a9b92174d7835addbb6e094b6af53903d4977e2d"
+      review_decision_sha: "97e10b2eb11133ee94a4e5a98ba9e400f45b7c9e"
+      reviewed_sha: "6f3079e0db9b4643b9e75dde7d3ef25dd1226eb4"
+      published_sha: "6f3079e0db9b4643b9e75dde7d3ef25dd1226eb4"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
     supersedes_revision:
       task_revision: 1
       authored_commit_sha: "f7d688a910d6cbe4e0d67599faed990ff4db247d"
@@ -2033,8 +2048,49 @@ sequence:
       while preserving fail-closed structural/content validation and all lifecycle
       authority boundaries.
     post_completion_commitment:
-      parallel_only_git_fixture_failure: NEXT_AFTER_TASK_239
-      task231_workers_12: AFTER_PARALLEL_ONLY_GIT_FIXTURE_FAILURE
+      parallel_only_git_fixture_failure: ACTIVE_TASK_240_DIAGNOSTIC
+      task231_workers_12: AFTER_PARALLEL_ONLY_GIT_FIXTURE_RESOLUTION
+    return_to: verification-performance-rebaseline-v2-adopt-workers-12
+
+  - id: verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
+    status: NEXT
+    task_id: TASK-240
+    task_revision: 1
+    authored_commit_sha: "633690fd94ef87d9bdc7abc5abb9d9ec9ef8cfbe"
+    task_blob_sha: "42b2fe22099bc8e835e3d37d3dd0ffe1aa4a68ae"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-233
+      run_id: RUN-233-002
+      review_id: REVIEW-233-001
+      published_sha: "191d489a2f6cd5ddfd7151eb68f850d85c4c139d"
+      classification: MIXED
+      parallel_only_target: tests/test_git_fixture_isolation.py::test_depth_amplified_sandboxes_push_and_resolve_full_aios_refs
+      historical_detail:
+        full_n12: FAILED
+        n4: FAILED
+        serial: PASSED
+        command_family: PUSH
+        return_code: 1
+        stderr_detail: INSUFFICIENT_FOR_FIX_SELECTION
+    current_basis:
+      task_id: TASK-239
+      run_id: RUN-239-004
+      review_id: REVIEW-239-004
+      published_sha: "6f3079e0db9b4643b9e75dde7d3ef25dd1226eb4"
+      note: >-
+        The three serial-stable blockers are now resolved on current main. TASK-240
+        rechecks the remaining parallel-only target on the current subject before
+        any fixture/path/host correction is selected.
+    objective: >-
+      Reproduce or falsify the historical parallel-only long-path Git PUSH failure
+      on current main using one serial target control and one bounded n4 file-context
+      run, and expose only privacy-safe typed push cause facts without changing the
+      fixture, worker policy or host configuration.
+    post_completion_commitment:
+      parallel_git_fixture_correction: ONLY_IF_CURRENT_EVIDENCE_SELECTS_ONE
+      task231_workers_12: AFTER_PARALLEL_ONLY_GIT_FIXTURE_RESOLUTION
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
