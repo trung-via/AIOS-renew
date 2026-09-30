@@ -1,0 +1,49 @@
+review_id: REVIEW-251-001
+reviewed_sha: 02eff62754209943d734719e1834e1a486f395b5
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+findings: []
+notes:
+  - >-
+    RUN-251-001 is the canonical TASK-251 r1 PRIMARY zero-delta result on exact
+    subject 02eff62754209943d734719e1834e1a486f395b5. changed_files is empty,
+    unresolved is empty, and the execution profile is explicit codex /
+    gpt-6.1-sol / high.
+  - >-
+    Runtime executed the sole TASK-declared verification command,
+    python scripts/aios_residual_context_attribution_diagnostic.py, with outer
+    exit code 0 on the exact clean subject. Runtime verification consumed
+    1444.49 seconds and stayed within the 1800-second soft budget.
+  - >-
+    Phase A re-resolved the exact historical 33 identities and all 33 passed under
+    workers=12/load/max-worker-restart=0. The historical Git-fixture target
+    completed all four real PUSH observations successfully with bare-remote root
+    length 224 and derived lock lengths 322/328 for the two canonical ref families.
+  - >-
+    Because all 33 historical residual identities passed, the reviewed diagnostic
+    correctly advanced to its single conditional full-suite n12 phase. That phase
+    collected 3153 tests and observed exactly one failure:
+    tests/test_operator.py::test_human_reconciliation_proof_gates_preserve_repository
+    in call phase on gw1, with FileNotFoundError errno 2 at
+    tests/test_operator.py line 12931. This identity is outside the historical
+    33-residual target population.
+  - >-
+    The resulting bounded classification is FULL_SUITE_POPULATION_DRIFT. This is
+    a valid evidence classification, not a TASK-251 execution failure. It proves
+    the historical 33-residual population is clean on the reviewed subject, while
+    also showing that the conditional current full-suite n12 proof is not green.
+  - >-
+    Runtime-attached evidence in the terminal ResultPackage does not contradict the
+    TASK's pre-verification Executor structural-handoff requirement: the Executor
+    handoff was zero-delta and Runtime subsequently attached canonical verification
+    evidence under its own authority, consistent with the reviewed zero-delta
+    evidence-only ordering precedent.
+  - >-
+    REVIEW-251-001 PASS means the authorized post-corrections proof executed
+    faithfully. It does not authorize TASK-231, select a correction for the newly
+    observed full-suite failure, change worker policy, or advance roadmap planning.
