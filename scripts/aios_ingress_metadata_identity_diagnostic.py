@@ -114,13 +114,15 @@ def _facts(value: Any) -> None:
         raise DiagnosticError("inconsistent native/readback identity")
     if value["native_readback_equal"] is False and value["native"] == value["readback"]:
         raise DiagnosticError("inconsistent native/readback difference")
-    if value["readback"] is None and value["read_count"] == 1:
-        # A production read may legitimately return None, so this remains incomplete.
-        pass
 
 
 def classify(facts: dict[str, Any] | None, *, status: int) -> str:
-    if facts is None or facts["tree_object"] is None or facts["native"] is None or facts["readback"] is None or facts["read_count"] != 1:
+    if facts is None or facts["tree_object"] is None or facts["native"] is None or facts["read_count"] != 1:
+        return "OBSERVATION_INCOMPLETE"
+    if facts["readback"] is None:
+        if (status == 1 and facts["expected_object"] == facts["tree_object"]
+                and facts["native_object_valid"] is True and facts["native_relation"] == "EXACT"):
+            return "PRODUCTION_READBACK_MISMATCH"
         return "OBSERVATION_INCOMPLETE"
     if (facts["expected_object"] == facts["tree_object"] and facts["native_object_valid"] is True
             and facts["native_relation"] == "EXACT" and facts["readback_relation"] == "EXACT"

@@ -1,5 +1,7 @@
 """Fixed same-repository control and local contracts for the identity probe."""
 
+import hashlib
+import os
 from copy import deepcopy
 
 from aios_renew.authoring_ingress import IngressEnvelope, execute_ingress
@@ -61,6 +63,55 @@ def test_classification_uses_bounded_identity_facts():
     changed["readback_relation"] = "OTHER"
     assert diagnostic.classify(changed, status=1) == "PRODUCTION_READBACK_MISMATCH"
     assert diagnostic.classify(None, status=1) == "OBSERVATION_INCOMPLETE"
+
+
+def test_observed_null_readback_resolves_fresh_clone_boundary(tmp_path, monkeypatch):
+    byte = {"length": 2, "sha256": "a" * 64,
+            "signature": {"bom": False, "crlf": 0, "lf": 1, "cr": 0, "trailing": "LF"}}
+    fresh_facts = {"expected": byte, "expected_object": "1" * 40, "tree_object": "1" * 40,
+                   "native": byte, "native_object_valid": True, "readback": None,
+                   "read_count": 1, "native_relation": "EXACT", "readback_relation": None,
+                   "native_readback_equal": None}
+    diagnostic._facts(fresh_facts)
+    assert diagnostic.classify(fresh_facts, status=1) == "PRODUCTION_READBACK_MISMATCH"
+
+    unobserved = deepcopy(fresh_facts)
+    unobserved["read_count"] = 0
+    assert diagnostic.classify(unobserved, status=1) == "OBSERVATION_INCOMPLETE"
+    unbound = deepcopy(fresh_facts)
+    unbound["tree_object"] = "2" * 40
+    assert diagnostic.classify(unbound, status=1) == "OBSERVATION_INCOMPLETE"
+    assert diagnostic.classify(fresh_facts, status=0) == "OBSERVATION_INCOMPLETE"
+
+    control_facts = deepcopy(fresh_facts)
+    control_facts.update(readback=byte, readback_relation="EXACT", native_readback_equal=True)
+
+    def observed_run(_repo, root, label):
+        status = 0 if label == "control" else 1
+        profile = root / label
+        facts = control_facts if label == "control" else fresh_facts
+        target = diagnostic.TARGETS[label]
+        observation = {
+            "schema": diagnostic.SCHEMA, "version": 1, "status": status,
+            "collection": [target], "executed": [target],
+            "failures": [] if status == 0 else [{"nodeid": target, "phase": "call",
+                "type": "AuthoringIngressError", "message_sha256": "b" * 64}],
+            "attempts": [{"delegations": 1, "operation": "AUTHOR_REMEDIATION", "facts": facts}],
+            "pid": 100 + status,
+            "basetemp_sha256": hashlib.sha256(
+                os.path.normcase(str((profile / "pytest").resolve())).encode()).hexdigest(),
+            "cache_sha256": ("c" if status == 0 else "d") * 64,
+            "cache_in_profile": True,
+        }
+        return status, observation
+
+    monkeypatch.setattr(diagnostic, "subject_identity", lambda _repo: {
+        "kind": "git-commit", "head_sha": "1" * 40, "worktree_clean": True})
+    monkeypatch.setattr(diagnostic, "_run", observed_run)
+    result = diagnostic.diagnose(tmp_path)
+    assert [item["classification"] for item in result["contexts"]] == [
+        "PASS_EXACT", "PRODUCTION_READBACK_MISMATCH"]
+    assert result["classification"] == "FRESH_CLONE_ONLY_MISMATCH_RESOLVED_BOUNDARY"
 
 
 def test_fixed_command_rejects_arguments_before_execution(monkeypatch):
