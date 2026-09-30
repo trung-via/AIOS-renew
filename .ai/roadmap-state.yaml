@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
+  - verification-performance-rebaseline-v2-adopt-workers-12
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1566,7 +1566,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2
 
   - id: verification-performance-rebaseline-v2-adopt-workers-12
-    status: ACTIVE
+    status: NEXT
     task_id: TASK-231
     task_revision: 2
     authored_commit_sha: "b5b454e3573498a717f66861ad70adb518d96133"
@@ -1605,7 +1605,23 @@ sequence:
         correctness still reported 36 failures. Canonical failure diagnostics
         expose only the bounded lowest 20 identities, so a separate bounded
         contention diagnostic is required before another TASK-231 attempt.
-    blocked_by: verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
+    blocker_resolution:
+      roadmap_id: verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
+      task_id: TASK-240
+      primary_run_id: RUN-240-001
+      repair_run_id: RUN-240-002
+      review_id: REVIEW-240-001
+      verdict: PASS
+      published_sha: "345a2ffd7634d1b80b080475bef80fbe67d4f4b0"
+      classification: PASS_DRIFT
+      decision: RESUME_ONE_FRESH_PRIMARY
+      reason: >-
+        Current bounded serial+n4 evidence shows the sole historical parallel-only
+        target and all observed long-path Git PUSH operations passing with zero
+        non-target failures. No Git-fixture correction is selected. TASK-231 may
+        resume once on current main so Runtime can determine current full-suite
+        workers=12 correctness; any new failure remains canonical evidence and must
+        be diagnosed from that fresh run.
     prerequisite_resolution:
       roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
       task_id: TASK-232
@@ -2053,13 +2069,45 @@ sequence:
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
   - id: verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
-    status: NEXT
+    status: DONE
     task_id: TASK-240
     task_revision: 1
     authored_commit_sha: "633690fd94ef87d9bdc7abc5abb9d9ec9ef8cfbe"
     task_blob_sha: "42b2fe22099bc8e835e3d37d3dd0ffe1aa4a68ae"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    completed_by:
+      primary_run_id: RUN-240-001
+      primary_terminal_kind: FAILURE
+      primary_failure_phase: VERIFICATION
+      primary_failed_head_sha: "86a7d72a19ad21a4c45d95e8502c14b68c361710"
+      repair_id: REPAIR-240-001
+      repair_run_id: RUN-240-002
+      review_id: REVIEW-240-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-240-002-V001
+        - RUN-240-002-V002
+        - RUN-240-002-V003
+      result_artifact_sha: "5958457552030e21f972d2eee44c2f9dbd09524f"
+      review_decision_sha: "acfa02b577ac7dade0e214ebf03b12c5a6dd661d"
+      reviewed_sha: "345a2ffd7634d1b80b080475bef80fbe67d4f4b0"
+      published_sha: "345a2ffd7634d1b80b080475bef80fbe67d4f4b0"
+      classification: PASS_DRIFT
+      current_target_serial: PASS
+      current_target_n4: PASS
+      current_n4_non_target_failure_count: 0
+      observed_pushes:
+        total: 8
+        successful: 8
+        failed: 0
+        remote_lock_path_length_min: 314
+        remote_lock_path_length_max: 326
+      interpretation: >-
+        The historical parallel-only Git PUSH failure did not reproduce in the
+        bounded current-state serial+n4 experiment. This releases it as a current
+        blocker for one fresh TASK-231 Runtime proof, but does not establish the
+        historical cause and does not authorize a fixture/path/Defender correction.
     triggered_by:
       task_id: TASK-233
       run_id: RUN-233-002
@@ -2089,8 +2137,8 @@ sequence:
       run, and expose only privacy-safe typed push cause facts without changing the
       fixture, worker policy or host configuration.
     post_completion_commitment:
-      parallel_git_fixture_correction: ONLY_IF_CURRENT_EVIDENCE_SELECTS_ONE
-      task231_workers_12: AFTER_PARALLEL_ONLY_GIT_FIXTURE_RESOLUTION
+      parallel_git_fixture_correction: NOT_AUTHORIZED_BY_PASS_DRIFT
+      task231_workers_12: RESUME_ONE_FRESH_PRIMARY
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
