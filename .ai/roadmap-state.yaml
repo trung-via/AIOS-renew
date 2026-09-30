@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-primitive
+  - verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-execution
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -2567,7 +2567,7 @@ sequence:
       execution task.
 
   - id: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-primitive
-    status: NEXT
+    status: DONE
     task_id: TASK-248
     task_revision: 1
     authored_commit_sha: "68ef828da98dff785c41634f3781f23f8b554b17"
@@ -2582,6 +2582,18 @@ sequence:
       verdict: PASS
       evidence_id: RUN-247-001-V001
       published_sha: "47847c0b294ec96bc0382d2057f15bccbbee37c2"
+    completed_by:
+      task_id: TASK-248
+      task_revision: 1
+      run_id: RUN-248-001
+      review_id: REVIEW-248-001
+      verdict: PASS
+      verification_evidence:
+        - RUN-248-001-V001
+        - RUN-248-001-V002
+      review_decision_sha: "00d5e06a6a815e129efdfe5f9cd5cee90ae63e44"
+      reviewed_sha: "3fef5f802217c7ef107b2ba33d26ca059d7884af"
+      published_sha: "3fef5f802217c7ef107b2ba33d26ca059d7884af"
     objective: >-
       Establish and regression-test one bounded real-Git primitive crossing both
       canonical ref families with the same exact bare-remote root lengths 224 and
@@ -2593,10 +2605,24 @@ sequence:
     return_to: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-execution
 
   - id: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-execution
-    status: BLOCKED
+    status: NEXT
+    task_id: TASK-249
+    task_revision: 1
+    authored_commit_sha: "6298ccebaead0e0304a55c578f91fc9368fd86c3"
+    task_blob_sha: "b32581d35c0a4e661a6d0441285a48e831a4c986"
     authority: HUMAN_BRAIN_PLANNING
-    blocked_by: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-primitive
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-248
+      task_revision: 1
+      run_id: RUN-248-001
+      review_id: REVIEW-248-001
+      verdict: PASS
+      verification_evidence:
+        - RUN-248-001-V001
+        - RUN-248-001-V002
+      review_decision_sha: "00d5e06a6a815e129efdfe5f9cd5cee90ae63e44"
+      published_sha: "3fef5f802217c7ef107b2ba33d26ca059d7884af"
     objective: >-
       Execute the reviewed TASK-248 four-case primitive exactly once as
       Runtime-owned zero-delta evidence on a fresh canonical subject, then return
@@ -2610,6 +2636,7 @@ sequence:
       interaction_or_mixed_outcome: BRAIN_AUDIT_REQUIRED
       automatic_correction: false
       automatic_task231_resume: false
+    return_to: verification-performance-rebaseline-v2-post-residual-corrections-proof
 
   - id: verification-performance-rebaseline-v2-post-residual-corrections-proof
     status: BLOCKED
