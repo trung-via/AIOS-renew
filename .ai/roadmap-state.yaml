@@ -158,7 +158,19 @@ sequence:
       pull_request: 1200
       branch: aios-brain-wake-bus-v1
       head_sha: "0d9bd2d4e802ad64c58bb143d326c1f5b1647760"
-      state: NATIVE_WEBHOOK_TASK_ENABLED_READY_FOR_PROBE
+      state: WAKE_EVENT_EMITTED_AWAITING_DELIVERY
+      probe_event:
+        event_id: wake-probe-1200-001
+        github_comment_id: 5916029012
+        emitted_after_main_sha: "a42ce9313c09825ba480fecdbf0b97df9fdbdbe3"
+        observed_ack_comments: 0
+        automation_last_run_time: null
+        observation: >-
+          After the first bounded wake comment was emitted, no ACK was present and
+          the ChatGPT automation still reported no run during the immediate probe
+          window. This does not yet prove webhook failure; it proves only that
+          delivery/execution was not observed within the bounded check window.
+      previous_state: NATIVE_WEBHOOK_TASK_ENABLED_READY_FOR_PROBE
       observed_on: "2026-09-30"
       observed_main_sha: "3ff72c354e7bad81a8cca2ad6152a280def17cdb"
       observed_pr_state:
