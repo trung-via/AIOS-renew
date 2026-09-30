@@ -1,0 +1,222 @@
+task_id: TASK-243
+revision: 1
+
+goal: >
+  Harden the migration/source-bootstrap real-Git staging boundary against the
+  Windows path-budget defect exposed by TASK-241 so the exact migration and
+  source-bootstrap staging/recovery flows can create and consume their trusted
+  control/target checkouts under the current selected n12 verification geometry,
+  while preserving exact handoff identity, replay/re-entry semantics, historical
+  handoff compatibility, and all existing lifecycle authorities.
+
+problem: >
+  RUN-241-002 completed the bounded residual-context diagnostic on exact subject
+  d69d35eed3eb39fb87e68c79f095012f3cf92ba2 and classified
+  RESIDUAL_SET_N12_REPRODUCED. All 33 exact historical residual identities failed
+  in the cold residual-only workers=12 phase, so broader full-suite interaction is
+  not required for reproduction. The failure population separates cleanly: 32
+  tests/test_operator.py cases each failed in call phase through exactly one real
+  Git CLONE with return code 128, stderr category PATH_OR_FILENAME, cwd length
+  177-178 and maximum dynamic operand length 218-219; the remaining
+  tests/test_git_fixture_isolation.py case failed on PUSH with category
+  REPOSITORY_STATE and is a separate unresolved class.
+
+  Source audit shows the 32 Operator cases span legacy bootstrap, migrate-primary,
+  source-bootstrap staging and source-bootstrap recovery, but share the same
+  migration/source-bootstrap trusted checkout family in operator.py. TASK-197
+  already hardened this family once by replacing the former depth-amplifying full
+  fingerprint migration-handoff bundle locator with a shorter bounded locator.
+  That correction preserved exact intent/marker authority but its regression
+  modeled a shallower Windows geometry than the one now observed by TASK-241.
+  TASK-237 separately hardened source-REPAIR storage and must not be reopened.
+  The current evidence therefore supports one bounded second hardening of the
+  migration/source-bootstrap checkout path budget, not a worker-policy change,
+  host configuration change, Git-fixture correction, or TASK-231 retry.
+
+assumptions:
+  - >
+    Canonical main at authoring is
+    d69d35eed3eb39fb87e68c79f095012f3cf92ba2, the exact reviewed/published
+    RUN-241-002 candidate.
+  - >
+    TASK-241 revision 1 completed through RUN-241-001 FAILURE,
+    REPAIR-241-001, RUN-241-002 RESULT and semantic PASS. Canonical
+    review-decision ref refs/heads/aios/review-decision/RUN-241-002 points to
+    3a7b9f9457954a27a530000e6238dd9d70425516 and reviewed/published source is
+    d69d35eed3eb39fb87e68c79f095012f3cf92ba2.
+  - >
+    RUN-241-002-V002 resolved and executed exactly the historical 33 residual
+    identities under workers=12, distribution=load and max_worker_restart=0 with
+    selected-wrapper-equivalent temporary geometry. All 33 failed and Phase B did
+    not run by contract.
+  - >
+    The 32 Operator residual failures are homogeneous bounded observations:
+    call-phase failure, exactly one observed Git failure each, command family
+    CLONE, return code 128, stderr category PATH_OR_FILENAME, cwd length 177-178
+    and maximum operand length 218-219. This is current reproduction evidence for
+    a shared path-budget correction hypothesis; it does not retroactively add
+    typed cause fields to RUN-231-004.
+  - >
+    TASK-197 published migration handoff path hardening at exact generation
+    83115b26df85a7ad6643f317833e18b18586bdbe. Its compatibility reader accepts
+    both historical full-fingerprint handoff bundle names and the later bounded
+    short-name form; this compatibility remains required.
+  - >
+    TASK-237 and its reviewed successors own the separate source-REPAIR bounded
+    locator. TASK-243 must not change source-REPAIR storage, activation, lineage,
+    target consumption or tests merely because one TASK-241 residual test reaches
+    source-REPAIR setup after source-bootstrap staging.
+  - >
+    TASK-240 observed the exact Git-fixture target passing isolated serial and n4
+    PUSHes with derived lock paths up to 326 characters. TASK-241 later observed
+    its first PUSH failing at derived lock-path length 328 with category
+    REPOSITORY_STATE, not PATH_OR_FILENAME. That evidence is insufficient for a
+    Git-fixture/path correction and remains deferred.
+  - >
+    Runtime owns verification/evidence; Reviewer owns semantic verdict; Human
+    retains the workers=12 selection; Publisher owns publication. This task does
+    not resume or complete TASK-231.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-197.yaml
+    - .ai/tasks/TASK-198.yaml
+    - .ai/tasks/TASK-199.yaml
+    - .ai/tasks/TASK-231.yaml
+    - .ai/tasks/TASK-237.yaml
+    - .ai/tasks/TASK-240.yaml
+    - .ai/tasks/TASK-241.yaml
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+    - tests/operator_test_support.py
+  modify:
+    - src/aios_renew/operator.py
+    - tests/test_operator.py
+
+non_goals:
+  - >
+    Modify TASK-231 implementation or selected workers=12 policy; rerun TASK-231;
+    run a full suite, worker matrix or residual diagnostic; choose another worker
+    count; add retry/fallback/failover or suppress/skip/xfail any failing test.
+  - >
+    Modify tests/test_git_fixture_isolation.py, tests/git_fixture_support.py,
+    tests/operator_test_support.py or select any correction for the separate
+    TASK-241 PUSH/REPOSITORY_STATE residual.
+  - >
+    Modify source-REPAIR bounded storage/locator semantics introduced by TASK-237,
+    source-REPAIR activation, lineage, target-side consumption or repair authority.
+  - >
+    Change Git system/global/user configuration, core.longpaths, Windows registry,
+    PATH, TEMP policy, Defender, runner configuration or any host-wide setting as a
+    prerequisite.
+  - >
+    Change migration/source-bootstrap TASK/RUN semantics, intent semantic identity,
+    activation targets, exact generation/control/TASK binding, Runtime, Reviewer,
+    Publisher, workflows, carriers, frozen Kernel semantics or downstream
+    repositories.
+  - >
+    Shorten, hash-truncate or otherwise alter canonical semantic identities merely
+    to fit a filesystem path. Any bounded storage locator remains subordinate to
+    the full exact identity retained in durable authoritative content.
+  - >
+    Delete, rewrite or invalidate historical migration/source-bootstrap handoffs
+    that are valid under the existing full-fingerprint or TASK-197 bounded bundle
+    formats.
+  - Push or publish from Executor implementation execution.
+
+constraints:
+  hard:
+    - >
+      Correct the shared migration/source-bootstrap trusted checkout boundary so
+      both staging and recovery paths that create real-Git control or target
+      checkouts have bounded path amplification suitable for the TASK-241 Windows
+      geometry. The correction must cover the currently observed 177-178-character
+      repository cwd and 218-219-character CLONE operand regime rather than merely
+      repeating TASK-197's shallower modeled path assumption.
+    - >
+      Preserve real Git semantics for all affected control/target materialization.
+      Do not replace clone/fetch/checkout/ancestry checks with copied files,
+      synthetic repositories, in-memory substitutes or mocks at the production
+      boundary.
+    - >
+      Any shortened or relocated storage address is only a storage locator. Full
+      migration/source-bootstrap fingerprint, intent fields, exact source/target
+      generation, repository, control SHAs, pin identities, TASK identity and
+      Executor binding remain authoritative in existing durable records and
+      validation.
+    - >
+      Preserve exact replay, re-entry, interruption and target-ownership behavior.
+      A pre-existing partial, mismatched, colliding, symlinked, stale or ambiguous
+      checkout/bundle must continue to fail closed rather than being silently
+      reused, overwritten or reinterpreted.
+    - >
+      Preserve compatibility for already-valid historical migration handoff
+      records using the pre-TASK-197 full-fingerprint form and the current
+      TASK-197 bounded short-name form. A new bounded locator must not make those
+      records unreadable or ambiguous.
+    - >
+      Preserve repository-local mutation locking, clean/control checks,
+      source-bootstrap activation rules, exact target-source proof and all
+      pre-RUN/no-fabricated-RUN guarantees. Path hardening must not create a second
+      migration or bootstrap authority.
+    - >
+      Add focused regression coverage that exercises real Git under a deliberately
+      depth-amplified Windows-equivalent geometry representative of TASK-241. The
+      regression must demonstrate that the previously authorized semantic flow can
+      stage and resolve its control/target checkout without changing semantic
+      identities, and must include a deterministic assertion showing the legacy
+      storage geometry would exceed the intended Windows path budget.
+    - >
+      Regression coverage must include ordinary migrate-primary/legacy-bootstrap
+      staging and source-bootstrap recovery or an equivalent shared-boundary proof
+      that mechanically covers both call paths. Existing replay/re-entry and
+      historical-format compatibility checks must remain green.
+    - >
+      No file outside scope.modify may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      Migration/source-bootstrap staging and recovery use a bounded trusted
+      checkout/storage boundary whose path amplification covers the current
+      TASK-241 Windows geometry for real Git control and target materialization.
+  - id: AC2
+    condition: >
+      Full semantic handoff identity remains authoritative and unchanged: the
+      correction alters only subordinate storage addressing/path geometry and does
+      not weaken exact generation, repository, control, pin, TASK, Executor,
+      activation or target-source validation.
+  - id: AC3
+    condition: >
+      Existing full-fingerprint and TASK-197 bounded handoff bundle records remain
+      exactly consumable when otherwise valid, while malformed, partial,
+      mismatched, colliding, symlinked, stale or ambiguous storage state remains
+      fail-closed.
+  - id: AC4
+    condition: >
+      Focused real-Git regressions cover depth-amplified migration/source-bootstrap
+      staging/recovery at geometry representative of TASK-241 and preserve replay,
+      re-entry, interruption and target-ownership semantics without host-wide path
+      configuration changes.
+  - id: AC5
+    condition: >
+      The implementation leaves source-REPAIR storage, the Git-fixture residual,
+      workers=12 selection, Runtime/Reviewer/Publisher, workflows, carriers and
+      roadmap semantics unchanged and introduces no retry, fallback, skip/xfail or
+      alternate lifecycle authority.
+  - id: AC6
+    condition: >
+      The implementation delta is confined to src/aios_renew/operator.py and
+      tests/test_operator.py and preserves existing migration/source-bootstrap
+      behavior outside the bounded path correction.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_operator.py -k "migration or bootstrap"
+    - git diff --check
