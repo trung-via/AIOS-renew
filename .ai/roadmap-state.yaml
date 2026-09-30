@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-adopt-workers-12
+  - verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1566,7 +1566,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2
 
   - id: verification-performance-rebaseline-v2-adopt-workers-12
-    status: NEXT
+    status: ACTIVE
     task_id: TASK-231
     task_revision: 2
     authored_commit_sha: "b5b454e3573498a717f66861ad70adb518d96133"
@@ -1585,7 +1585,7 @@ sequence:
         Runtime verification outcome. Revision 2 preserves the Human workers=12
         intent and implementation semantics while making every acceptance
         criterion claimable before Runtime verification.
-    latest_attempt:
+    prior_attempt:
       run_id: RUN-231-003
       terminal_kind: FAILURE
       phase: VERIFICATION
@@ -1597,15 +1597,32 @@ sequence:
       pytest_elapsed_seconds: 362.322714
       verification_seconds: 437.786348
       wrapper_conformance_passed: true
+    latest_attempt:
+      run_id: RUN-231-004
+      terminal_kind: FAILURE
+      phase: VERIFICATION
+      failure_artifact_sha: "1fdc02eb8e44893b65209663ae58d4cbce6ae55f"
+      failed_head_sha: "8908a7be6f190eeba0dff7d8fce03f9e892a4ecb"
+      selected_workers: 12
+      collection_count: 2666
+      pytest_failure_count: 33
+      pytest_elapsed_seconds: 381.491056
+      verification_seconds: 458.499932
+      wrapper_conformance_passed: true
       diagnostic_identity_limit: 20
       diagnostic_truncated: true
       reason: >-
-        After TASK-232 published, Runtime again reached the selected 12-worker
-        full suite and all wrapper/worker conformance facts passed, but pytest
-        correctness still reported 36 failures. Canonical failure diagnostics
-        expose only the bounded lowest 20 identities, so a separate bounded
-        contention diagnostic is required before another TASK-231 attempt.
-    blocker_resolution:
+        After TASK-237 through TASK-240 resolved the three serial-stable failures
+        and rechecked the historical parallel-only Git target, one fresh TASK-231
+        Runtime proof still reported 33 n12 full-suite failures while every
+        selected-wrapper conformance fact remained true. The count equals the
+        exact historical RUN-233-002 residual population after subtracting the
+        three fixed stable failures, and the bounded first 20 identities match its
+        ordered prefix, but current transport truncation does not prove the
+        complete 33-identity population. A bounded residual-context attribution
+        diagnostic is required before any further TASK-231 attempt or correction.
+    blocked_by: verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
+    prior_blocker_resolution:
       roadmap_id: verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
       task_id: TASK-240
       primary_run_id: RUN-240-001
@@ -1614,14 +1631,12 @@ sequence:
       verdict: PASS
       published_sha: "345a2ffd7634d1b80b080475bef80fbe67d4f4b0"
       classification: PASS_DRIFT
-      decision: RESUME_ONE_FRESH_PRIMARY
+      decision: ONE_FRESH_PRIMARY_COMPLETED_AS_RUN_231_004
       reason: >-
-        Current bounded serial+n4 evidence shows the sole historical parallel-only
-        target and all observed long-path Git PUSH operations passing with zero
-        non-target failures. No Git-fixture correction is selected. TASK-231 may
-        resume once on current main so Runtime can determine current full-suite
-        workers=12 correctness; any new failure remains canonical evidence and must
-        be diagnosed from that fresh run.
+        TASK-240 legitimately released the historical isolated Git target blocker,
+        permitting one fresh TASK-231 proof. RUN-231-004 then supplied new
+        canonical evidence that the broader residual context remains unresolved,
+        so TASK-240 is not re-opened.
     prerequisite_resolution:
       roadmap_id: verification-performance-rebaseline-v2-test-hermeticity-hardening
       task_id: TASK-232
@@ -2139,6 +2154,48 @@ sequence:
     post_completion_commitment:
       parallel_git_fixture_correction: NOT_AUTHORIZED_BY_PASS_DRIFT
       task231_workers_12: RESUME_ONE_FRESH_PRIMARY
+    return_to: verification-performance-rebaseline-v2-adopt-workers-12
+
+  - id: verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
+    status: NEXT
+    task_id: TASK-241
+    task_revision: 1
+    authored_commit_sha: "0a611122b0f5495402f93f951d983d42b2218456"
+    task_blob_sha: "5ac4fce77c72696026eafdd0fcaab98caca00874"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-231
+      task_revision: 2
+      run_id: RUN-231-004
+      terminal_kind: FAILURE
+      phase: VERIFICATION
+      failure_artifact_sha: "1fdc02eb8e44893b65209663ae58d4cbce6ae55f"
+      failed_head_sha: "8908a7be6f190eeba0dff7d8fce03f9e892a4ecb"
+      selected_workers: 12
+      collection_count: 2666
+      pytest_failure_count: 33
+      wrapper_conformance_passed: true
+    historical_basis:
+      run_id: RUN-233-002
+      original_full_n12_failure_count: 36
+      serial_stable_failures_later_fixed: 3
+      derived_residual_count: 33
+      residual_files:
+        tests/test_operator.py: 32
+        tests/test_git_fixture_isolation.py: 1
+      task234_fact: COLD_SERIAL_RESIDUALS_PASS_EXCEPT_THREE_STABLE
+      task240_fact: ISOLATED_GIT_TARGET_SERIAL_AND_N4_PASS_DRIFT
+    objective: >-
+      Determine whether the exact historical 33-residual population reproduces
+      when run cold by itself at n12 with selected-wrapper-equivalent path geometry;
+      only if it passes, run at most one full-suite n12 observation and capture
+      bounded worker-local predecessor, co-active, installed-provenance relation
+      and typed Git/path cause facts sufficient for the next Brain decision.
+    architecture_rule: >-
+      Diagnostic evidence only. It must not repair tests/production, alter worker
+      selection, mutate shared installed state, attribute Defender/site-packages/
+      path/locking causality without evidence, or automatically resume TASK-231.
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 
