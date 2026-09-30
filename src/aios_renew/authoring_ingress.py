@@ -1766,12 +1766,42 @@ def _fetch_if_remote(repo: Path, remote: str | None, sha: str) -> None:
 
 
 def _read_commit_blob(repo: Path, commit_sha: str, rel_path: str) -> bytes | None:
-    code, output, _ = _git(
-        repo, "show", f"{commit_sha}:{rel_path}", strip_stdout=False, allow_fail=True
-    )
-    if code == 0:
-        return output.encode("utf-8") if isinstance(output, str) else output
-    return None
+    # Resolve the exact repository-relative tree entry before reading its object.
+    # `git show <commit>:<path>` uses revision/path parsing and `_git` decodes
+    # stdout as text, neither of which is suitable for an exact blob read.
+    code, kind, _ = _git(repo, "cat-file", "-t", commit_sha, allow_fail=True)
+    if code != 0 or kind != "commit":
+        return None
+    try:
+        tree = subprocess.run(
+            ("git", "-C", str(repo), "ls-tree", "-r", "-z", "--full-tree", commit_sha),
+            capture_output=True,
+            check=False,
+        )
+        if tree.returncode != 0:
+            return None
+        path_bytes = rel_path.encode("utf-8")
+        blob_sha = None
+        for entry in tree.stdout.split(b"\0"):
+            if not entry:
+                continue
+            header, separator, entry_path = entry.partition(b"\t")
+            if separator and entry_path == path_bytes:
+                fields = header.split(b" ")
+                if len(fields) != 3 or fields[1] != b"blob":
+                    return None
+                blob_sha = fields[2].decode("ascii")
+                break
+        if blob_sha is None:
+            return None
+        blob = subprocess.run(
+            ("git", "-C", str(repo), "cat-file", "blob", blob_sha),
+            capture_output=True,
+            check=False,
+        )
+        return blob.stdout if blob.returncode == 0 else None
+    except (OSError, UnicodeError):
+        return None
 
 
 def _ls_tree(repo: Path, commit_sha: str, prefix: str) -> list[str]:

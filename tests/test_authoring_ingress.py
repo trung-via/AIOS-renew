@@ -161,6 +161,50 @@ def setup_test_repo(root: Path) -> tuple[Path, Path, str]:
     )
 
 
+def test_commit_blob_readback_is_binary_exact_in_source_and_fresh_clone(tmp_path):
+    repo, remote, parent_sha = setup_test_repo(tmp_path / "source")
+    metadata_path = ".ai/remediations/REMEDIATION-RUN-105-001-F1.yaml"
+    payload = b"finding_id: F1\r\nraw: \x00\xff\r\n"
+    blob = subprocess.run(
+        ("git", "-C", str(repo), "hash-object", "-w", "--stdin"),
+        input=payload,
+        capture_output=True,
+        check=True,
+    ).stdout.decode("ascii").strip()
+    git(repo, "update-index", "--add", "--cacheinfo", f"100644,{blob},{metadata_path}")
+    git(repo, "commit", "--quiet", "-m", "exact metadata blob")
+    commit_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+
+    fresh = tmp_path / "fresh"
+    subprocess.run(
+        ("git", "clone", "--quiet", str(remote), str(fresh)),
+        capture_output=True,
+        check=True,
+    )
+    for checkout in (repo, fresh):
+        assert authoring_ingress_module._read_commit_blob(checkout, commit_sha, metadata_path) == payload
+        assert authoring_ingress_module._read_commit_blob(checkout, commit_sha, metadata_path + ".missing") is None
+        assert authoring_ingress_module._read_commit_blob(checkout, "0" * 40, metadata_path) is None
+        authoring_ingress_module._validate_metadata_commit(
+            checkout,
+            commit_sha,
+            expected_parent_sha=parent_sha,
+            metadata_path=metadata_path,
+            metadata_bytes=payload,
+            operation="AUTHOR_REMEDIATION",
+        )
+        with pytest.raises(AuthoringIngressError, match="metadata content mismatch"):
+            authoring_ingress_module._validate_metadata_commit(
+                checkout,
+                commit_sha,
+                expected_parent_sha=parent_sha,
+                metadata_path=metadata_path,
+                metadata_bytes=payload.replace(b"\xff", b"\xfe"),
+                operation="AUTHOR_REMEDIATION",
+            )
+
+
 def setup_candidate_lineage(
     root: Path,
     *,
