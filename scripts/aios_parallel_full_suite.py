@@ -1,4 +1,4 @@
-"""Run the explicitly selected four-worker canonical full-suite profile once."""
+"""Run the Human-selected twelve-worker canonical full-suite profile once."""
 
 from __future__ import annotations
 
@@ -42,14 +42,14 @@ def execute(
         if subject_identity(repository) != subject:
             raise ProbeError("canonical collection changed the verification subject")
         status, elapsed, observation = runner(
-            repository, root, label="parallel-4", workers=4, collect_only=False,
+            repository, root, label="parallel-12", workers=12, collect_only=False,
         )
-        facts = _parallel_conformance(observation, canonical, 4)
+        facts = _parallel_conformance(observation, canonical, 12)
         if subject_identity(repository) != subject:
             raise ProbeError("selected profile changed the verification subject")
         facts["subject_unchanged"] = True
         result = _profile_result(
-            mode="parallel", workers=4, elapsed=elapsed, status=status,
+            mode="parallel", workers=12, elapsed=elapsed, status=status,
             observation=observation, conformance=facts,
         )
     success = (
@@ -64,7 +64,7 @@ def execute(
         "toolchain": toolchain,
         "collection": canonical,
         "selected_profile": {
-            "profile": profile["profile"], "workers": 4,
+            "profile": profile["profile"], "workers": 12,
             "distribution": "load", "max_worker_restart": 0,
             "selection_provenance": profile["selection_provenance"],
         },
