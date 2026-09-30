@@ -1,0 +1,266 @@
+task_id: TASK-241
+revision: 1
+
+goal: >
+  Add one bounded residual-context attribution diagnostic for the RUN-231-004
+  workers=12 correctness failure. Determine first whether the exact historical
+  33-residual population reproduces under a clean cold n12 execution by itself,
+  and only when that population passes in isolation, perform at most one full-suite
+  n12 observation that captures enough privacy-safe worker-local and shared-context
+  facts to distinguish residual-set parallel sensitivity from broader full-suite
+  interaction without selecting or applying a remediation.
+
+problem: >
+  RUN-231-004 reached Runtime verification on the TASK-231 r2 adoption candidate
+  8908a7be6f190eeba0dff7d8fce03f9e892a4ecb with every selected-wrapper
+  conformance fact true, but the n12 full suite reported 33 failures. Historical
+  RUN-233-002 had reported 36 failures: 35 reproduced after that full-suite run in
+  serial replay and all 36 at n4. TASK-234 then started from a fresh cold serial
+  context and proved that only three of those 35 were serial-stable; the other 32
+  operator failures passed both target-only cold serial and complete two-file
+  serial context. TASK-237 fixed two stable source-REPAIR failures and TASK-239
+  fixed the stable hot-swap Scenario 2 failure. Subtracting those three stable
+  failures from the exact RUN-233-002 full-n12 set leaves exactly 33 historical
+  residual identities: 32 tests/test_operator.py cases and one
+  tests/test_git_fixture_isolation.py long-path PUSH case. RUN-231-004 reports the
+  same failure count and its bounded first 20 identities match the ordered prefix
+  of that historical residual set, but its transport surface truncates at 20 and
+  therefore does not prove the complete current failure population. TASK-240 later
+  observed the Git fixture target passing both serially and at n4 in isolation, so
+  neither per-test production fixes nor a Git-path correction are currently
+  justified. The missing evidence is whether the 33 residuals fail when they alone
+  share an n12 process set, and, if they do not, what full-suite worker-local or
+  shared external context is present when they fail.
+
+assumptions:
+  - >
+    Canonical main at authoring is 623a22fbfda38e6e751c9f10066cec9b57db8c90. It contains the reviewed/published
+    TASK-237 through TASK-240 fixes and diagnostics, but it does not contain the
+    unpublished TASK-231 workers=12 adoption candidate.
+  - >
+    RUN-231-004 is canonical FAILURE at VERIFICATION with failure artifact
+    1fdc02eb8e44893b65209663ae58d4cbce6ae55f and failed candidate
+    8908a7be6f190eeba0dff7d8fce03f9e892a4ecb. Its selected profile was workers=12,
+    distribution=load, max_worker_restart=0; collection count was 2666; reported
+    failure count was 33; pytest elapsed was 381.491056 seconds; and all worker,
+    collection, subject, temporary-root and Git-fixture-cache conformance facts
+    were true.
+  - >
+    The TASK-231 failed candidate changes only verification profile/wrapper policy
+    and their focused tests. It does not modify any of the historical 33 residual
+    target tests or their production code. TASK-241 therefore runs an explicit n12
+    diagnostic from canonical main rather than publishing or treating that failed
+    candidate as engineering truth.
+  - >
+    The exact historical residual target set is deterministically derivable from
+    RUN-233-002-V002 by removing only the three now-fixed serial-stable identities:
+    hot-swap Scenario 2, source_repair_bootstrap_closed_and_exact_replay, and
+    source_repair_bound_target_consumes_without_matching_activation.
+  - >
+    TASK-234 is evidence that the 32 historical operator residuals are not
+    serial-stable in a clean process/file context. TASK-240 is evidence that the
+    historical Git residual passes in isolated serial and n4 contexts on a later
+    current subject. Neither establishes cold residual-set n12 behavior.
+  - >
+    Source audit exposes a concrete shared-resource hypothesis: three
+    tests/test_operator.py successor tests mutate the real installed Python
+    provenance surface used by sys.executable, including direct_url.json, and one
+    also temporarily creates sitecustomize.py and a duplicate aios-renew dist-info
+    directory. Those tests are not among the 33 residual targets. This is a
+    hypothesis to observe, not a proven cause and not authority to change installed
+    state or weaken those tests.
+  - >
+    Windows path geometry and real Git filesystem contention remain separate
+    hypotheses. TASK-237 proved one genuine Windows path-budget defect historically,
+    while TASK-240 proved the isolated long-path PUSH can currently succeed above
+    260 characters. TASK-241 must retain bounded path-shape and typed Git failure
+    facts without attributing cause in advance.
+  - >
+    Runtime owns verification/evidence; Reviewer owns semantic verdict; Human owns
+    worker selection and remediation risk acceptance. Diagnostic output cannot
+    automatically unblock TASK-231 or choose a correction.
+
+scope:
+  inspect:
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-231.yaml
+    - .ai/tasks/TASK-232.yaml
+    - .ai/tasks/TASK-233.yaml
+    - .ai/tasks/TASK-234.yaml
+    - .ai/tasks/TASK-235.yaml
+    - .ai/tasks/TASK-236.yaml
+    - .ai/tasks/TASK-237.yaml
+    - .ai/tasks/TASK-239.yaml
+    - .ai/tasks/TASK-240.yaml
+    - scripts/aios_parallel_full_suite.py
+    - src/aios_renew/parallel_verification.py
+    - scripts/aios_full_suite_contention_diagnostic.py
+    - tests/aios_full_suite_contention_plugin.py
+    - tests/aios_stable_failure_detail_probe_plugin.py
+    - tests/aios_parallel_git_fixture_push_probe_plugin.py
+    - tests/test_operator.py
+    - tests/operator_test_support.py
+    - tests/git_fixture_support.py
+    - tests/test_git_fixture_isolation.py
+    - tests/conftest.py
+  modify:
+    - scripts/aios_residual_context_attribution_diagnostic.py
+    - tests/aios_residual_context_attribution_plugin.py
+    - tests/test_aios_residual_context_attribution_diagnostic.py
+
+non_goals:
+  - >
+    Modify TASK-231 implementation, verification-profile policy, production
+    Operator/Runtime/Authoring Ingress, any test or fixture under diagnosis,
+    Reviewer/Publisher, workflows, carriers, frozen Kernel semantics or roadmap
+    from Executor execution.
+  - >
+    Publish, bless, repair or reuse the failed TASK-231 candidate as a successful
+    implementation candidate.
+  - >
+    Rerun TASK-231, select another worker count, run a 4/8/12/16 matrix, retry a
+    failed phase, fall back to serial/n4, suppress/skip/xfail failures, inflate
+    timeouts or automatically remediate any observed cause.
+  - >
+    Change Microsoft Defender, global Git configuration, PATH, Python installation,
+    site-packages, installed provenance metadata or host security settings.
+  - >
+    Treat the three audited installed-provenance mutator tests, Windows path length,
+    antivirus, Git locking, predecessor order or resource pressure as causal merely
+    because they are plausible.
+  - >
+    Persist raw stdout/stderr, exception messages, repository/private paths, Git
+    operands, environment contents, site-packages contents, credentials, URLs or
+    unbounded execution histories.
+
+constraints:
+  hard:
+    - >
+      Add one fixed no-argument command:
+      'python scripts/aios_residual_context_attribution_diagnostic.py'. Reject all
+      positional/options input before test execution.
+    - >
+      Require one clean exact canonical-main subject and prove its SHA remains
+      unchanged before and after every phase. Any subject mutation or dirty state
+      fails closed.
+    - >
+      Perform one canonical collection-only phase first. Reconstruct the exact 33
+      historical residual selectors from the RUN-233-002-V002 safe
+      identity/fingerprint algorithm and resolve them one-to-one against current
+      collection. Missing, duplicate, ambiguous or changed identities must produce
+      a bounded HISTORICAL_IDENTITY_DRIFT observation and stop before test
+      execution; do not silently substitute current failures.
+    - >
+      Phase A must execute exactly those 33 resolved residual selectors once at
+      workers=12, distribution=load and max_worker_restart=0 in a fresh subprocess.
+      Use the same TemporaryDirectory prefix 'aios-parallel-full-suite-' and the
+      same 'parallel-12-tmp' basetemp label geometry as the TASK-231 selected
+      full-suite wrapper so path-length evidence is not shortened by a diagnostic
+      naming accident. No unrelated tests may execute in Phase A.
+    - >
+      If Phase A reports any residual test failure, stop after Phase A and classify
+      RESIDUAL_SET_N12_REPRODUCED. Do not run a full suite merely for additional
+      ceremony.
+    - >
+      Only if all 33 Phase A residual targets pass, Phase B may execute exactly one
+      ordinary full-suite workers=12 run with distribution=load and
+      max_worker_restart=0 in a separate fresh subprocess and independent
+      'aios-parallel-full-suite-' temporary root using the same 'parallel-12-tmp'
+      basetemp geometry. No second full-suite execution is permitted.
+    - >
+      Phase B must retain every unique failure identity up to a hard bound of 64.
+      Zero failures classify FULL_SUITE_PASS_DRIFT. An exact failure set equal to
+      the resolved historical 33 residual identities classifies
+      FULL_SUITE_CONTEXT_REPRODUCED. Any nonempty different bounded failure set
+      classifies FULL_SUITE_POPULATION_DRIFT. These classifications are
+      observational only and must not choose a remediation.
+    - >
+      For each residual target failure observed in either execution phase, retain
+      only bounded safe facts: safe nodeid/fingerprint, pytest phase, worker label,
+      exception type, stable message fingerprint, allowlisted repository-relative
+      source locus, and bounded errno/winerror where applicable.
+    - >
+      While an exact residual target protocol is active, transparently observe
+      failing real Git subprocess operations by delegating each original invocation
+      exactly once with unchanged argv/cwd/environment/check/text semantics. Persist
+      only command family, integer return code, an allowlisted stderr category and
+      bounded path-length facts derivable without exposing operands. Never retry,
+      suppress, replace or repair a Git command.
+    - >
+      For the exact Git fixture residual target, preserve TASK-240's specialized
+      PUSH observation semantics: bounded ordinal/outcome/return-code,
+      stderr-category on failure, ref length, remote-root length and derived
+      remote-lock-path length, with no raw ref/path/URL/stderr/stdout.
+    - >
+      Maintain a diagnostic-owned per-worker current-test registry containing only
+      safe identities. For each residual failure in Phase B, persist a bounded
+      snapshot of at most the other 11 co-active safe identities and at most four
+      immediately preceding safe identities from the same worker. Registry
+      instrumentation must not alter scheduling, insert barriers or delay tests.
+    - >
+      Observe the real installed-provenance surface only as a read-only relation to
+      a clean pre-execution baseline. Durable facts may state only
+      BASELINE_EXACT, CHANGED, MISSING, AMBIGUOUS or UNAVAILABLE for the installed
+      direct-url provenance, sitecustomize presence and aios-renew distribution
+      multiplicity. Never persist their path or content. The diagnostic must make
+      no writes to installed Python state.
+    - >
+      The three source-audited global installed-provenance mutator nodeids may be
+      exposed only as safe identities when they are present in a co-active snapshot.
+      Their mere presence or overlap is evidence, not causality.
+    - >
+      Validate exact collection/execution identity, all 12 worker identities,
+      distinct process identities, isolated pytest basetemps, isolated process-local
+      Git fixture cache roots and unchanged subject for every executed phase.
+      Missing, malformed, contradictory, over-bound, privacy-unsafe or nonisolated
+      observations fail closed.
+    - >
+      The command exits zero when the bounded diagnostic completed faithfully,
+      regardless of whether Phase A or Phase B observed pytest failures. Integrity,
+      privacy, identity, subject or instrumentation failure exits nonzero.
+    - >
+      No file outside the three scope.modify files may change.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The diagnostic deterministically derives and resolves exactly the historical
+      33-residual population from canonical RUN-233-002 evidence and exposes
+      explicit identity-drift handling without substituting another target set.
+  - id: AC2
+    condition: >
+      The execution surface is fixed to one cold residual-only n12 phase and,
+      only after a clean residual pass, at most one full-suite n12 phase, both with
+      selected-wrapper-equivalent temporary path geometry and no retry, fallback or
+      alternate worker path.
+  - id: AC3
+    condition: >
+      The observer captures complete bounded failure identity/cause facts for the
+      executed phase and transparent typed Git failure/PUSH details for residual
+      targets without persisting dynamic operands or private output.
+  - id: AC4
+    condition: >
+      Full-suite residual failures can be correlated with bounded same-worker
+      predecessor identities, co-active safe identities and read-only installed-
+      provenance relation facts while instrumentation remains non-blocking and does
+      not alter test scheduling or shared installed state.
+  - id: AC5
+    condition: >
+      Exact-subject stability, collection/execution identity, 12-worker process and
+      mutable-root isolation, observation bounds and privacy/schema invariants all
+      fail closed.
+  - id: AC6
+    condition: >
+      Regression coverage exercises historical identity drift, residual n12
+      reproduction, conditional full-suite execution, exact-context reproduction,
+      population drift, full-suite pass drift, predecessor/co-active bounds,
+      installed-provenance relation handling, Git cause redaction/delegation and
+      subject/isolation failure, while the implementation remains confined to the
+      three diagnostic files.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_aios_residual_context_attribution_diagnostic.py
+    - python scripts/aios_residual_context_attribution_diagnostic.py
+    - git diff --check
