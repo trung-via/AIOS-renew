@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
+  - maintenance-self-host-diverged-failed-candidate-reconciliation
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -2156,12 +2156,75 @@ sequence:
       task231_workers_12: RESUME_ONE_FRESH_PRIMARY
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
-  - id: verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
+
+  - id: maintenance-self-host-diverged-failed-candidate-reconciliation
     status: NEXT
+    task_id: TASK-242
+    task_revision: 1
+    authored_commit_sha: "50f2489fc69d14f9bf47c957ba5b8ff2ba621d32"
+    task_blob_sha: "df4d8aa1296fbb69474f1e6735f42fffd2f3a93d"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-241
+      task_revision: 1
+      dispatch_id: task241-r1-primary-codex61-001
+      carrier_issue: 1128
+      boundary: ADMISSION_REJECTED
+      run_created: false
+      executor_invoked: false
+      phase: PRIMARY_SYNCHRONIZATION
+      reason_code: PRIMARY_SYNCHRONIZATION_REJECTED
+      exact_error: local branch has diverged from upstream
+      admission_failure_ref: refs/heads/aios/admission-failure/b056ed9be08c3f0b574c9f21e6874ee9b9e8f76b4305f7f1b266602cb2917dcc
+    lineage_basis:
+      failed_run_id: RUN-231-004
+      failed_candidate_sha: "8908a7be6f190eeba0dff7d8fce03f9e892a4ecb"
+      failure_artifact_sha: "1fdc02eb8e44893b65209663ae58d4cbce6ae55f"
+      failure_base_sha: "623a22fbfda38e6e751c9f10066cec9b57db8c90"
+      canonical_failure_candidate_ref: refs/heads/aios/failure/RUN-231-004
+      canonical_failure_artifacts_ref: refs/heads/aios/failure-artifacts/RUN-231-004
+    objective: >-
+      Add an explicit Human-authorized, exact-lineage control-main reconciliation
+      surface for a transported clean failed candidate, and make delivery-bound
+      Admission Failure remotely addressable from exact delivery identity while
+      retaining immutable content-addressed diagnostics and zero lifecycle authority.
+    architecture_rule: >-
+      Automatic PRIMARY/CONTINUE remains fail-closed on diverged state. Reconciliation
+      is Human-invoked only after exact canonical failure preservation proof. Admission
+      aliases and Operational Receipts remain subordinate operational observability,
+      never RUN/lifecycle truth or retry authority.
+    current_environment_prerequisite: >-
+      The present self-host workspace is already diverged before TASK-242 can execute.
+      Human must perform one evidence-checked manual reconciliation to current canonical
+      main before dispatching TASK-242. This one-time recovery is not evidence that
+      TASK-242 is implemented; TASK-242 exists to make the same future recovery bounded,
+      reusable and deterministic.
+    return_to: verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
+  - id: verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
+    status: ACTIVE
     task_id: TASK-241
     task_revision: 1
     authored_commit_sha: "0a611122b0f5495402f93f951d983d42b2218456"
     task_blob_sha: "5ac4fce77c72696026eafdd0fcaab98caca00874"
+    blocked_by: maintenance-self-host-diverged-failed-candidate-reconciliation
+    operational_blocker:
+      dispatch_id: task241-r1-primary-codex61-001
+      carrier_issue: 1128
+      boundary: ADMISSION_REJECTED
+      run_created: false
+      executor_invoked: false
+      phase: PRIMARY_SYNCHRONIZATION
+      reason_code: PRIMARY_SYNCHRONIZATION_REJECTED
+      exact_error: local branch has diverged from upstream
+      admission_failure_ref: refs/heads/aios/admission-failure/b056ed9be08c3f0b574c9f21e6874ee9b9e8f76b4305f7f1b266602cb2917dcc
+      admission_failure_commit_sha: "8cf57965f02afed10cf0a40040af20cf4e453b84"
+      local_failed_candidate_sha: "8908a7be6f190eeba0dff7d8fce03f9e892a4ecb"
+      divergence_common_base_sha: "623a22fbfda38e6e751c9f10066cec9b57db8c90"
+      decision: >-
+        Preserve TASK-241 semantics and do not reinterpret this pre-RUN rejection
+        as a TASK/RUN failure. Resume only after explicit Human-authorized workspace
+        reconciliation and TASK-242 closure establish reusable operational continuity.
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     triggered_by:
