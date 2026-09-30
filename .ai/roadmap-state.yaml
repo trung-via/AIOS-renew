@@ -2381,9 +2381,9 @@ sequence:
   - id: verification-performance-rebaseline-v2-post-path-hardening-residual-proof
     status: NEXT
     task_id: TASK-244
-    task_revision: 1
-    authored_commit_sha: "441a570bc26384efbbfa7a6679135f070b861ed9"
-    task_blob_sha: "b9d8d87fc1b0312c50237ce1bbee8ca16a9437a5"
+    task_revision: 2
+    authored_commit_sha: "4df04293aa2bda9d45e07fbaed4d09181473e552"
+    task_blob_sha: "cf8e4d43a89ac030f8652a0a034f274cf3257212"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     triggered_by:
@@ -2419,6 +2419,18 @@ sequence:
       residual_failure: BRAIN_AUDIT_REQUIRED
       phase_a_pass_phase_b_observed: BRAIN_AUDIT_REQUIRED
       automatic_task231_resume: false
+    revision_2_ordering_correction:
+      prior_primary_run_id: RUN-244-001
+      prior_repair_id: REPAIR-244-001
+      prior_repair_run_id: RUN-244-002
+      prior_terminal_phase: COMPLETION_GATE
+      runtime_verification_invoked: false
+      reason: >-
+        Revision 1 incorrectly placed Runtime-owned verification outcomes inside
+        pre-verification acceptance criteria. Revision 2 follows the established
+        zero-delta evidence-only ordering: Executor acceptance is structural only,
+        while the unchanged diagnostic remains Runtime verification after
+        Completion Gate.
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 research_assurance:
