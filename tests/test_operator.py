@@ -78,13 +78,23 @@ from tests.operator_test_support import (
     TASK_SOURCE,
     canonical_result_payload,
     commit_setup_state,
-    git,
+    git as fixture_git,
     make_repo,
     publish_test_remediation_lineage,
     publish_upstream,
     repair_contract,
     static_payload,
 )
+
+def git(repo: Path, *args: str) -> str:
+    # The shared fixture's HEAD shortcut assumes an inline .git directory.
+    # Separate migration Git storage must be read through real Git instead.
+    if args == ("rev-parse", "HEAD") and (repo / ".git").is_file():
+        return subprocess.check_output(
+            ["git", "-C", str(repo), *args], text=True, encoding="utf-8",
+        ).strip()
+    return fixture_git(repo, *args)
+
 
 def result_payload(
     run_id: str,
@@ -9304,10 +9314,10 @@ def migration_depth_root(migration_storage_root: Path, monkeypatch: pytest.Monke
 
 @pytest.mark.parametrize("version", [1, 2])
 def test_migration_control_checkout_at_task241_depth(
-    migration_depth_root: Path, version: int,
+    migration_depth_root: Path, monkeypatch: pytest.MonkeyPatch, version: int,
 ) -> None:
     fixture = _migration_fixture if version == 1 else _source_bootstrap_fixture
-    repo, _, intent = fixture(migration_depth_root)
+    repo, source, intent = fixture(migration_depth_root)
     fingerprint = operator_module._migration_fingerprint(intent)
     marker = operator_module._migration_marker(repo, fingerprint)
     before = (git(repo, "rev-parse", "HEAD"), git(repo, "rev-parse", "origin/main"))
@@ -9322,11 +9332,12 @@ def test_migration_control_checkout_at_task241_depth(
     former_control = Path(tempfile.gettempdir()) / ("aios-target-generation-" + "0" * 8) / "control"
     assert 218 <= len(str(former_control)) <= 219
     assert len(str(former_control / graph)) > 260
-    # The historical durable target locator still exceeds this budget. Its
-    # reader belongs to the immutable activated target, outside this correction.
+    # Preserve this locator, but move Git internals out of its amplified depth.
     former_target = runtime_state_root(repo) / "m" / (fingerprint[:12] + "-abcdefgh") / "source"
     assert len(str(former_target / graph)) > 260
     with RepositoryLock(runtime_paths(repo).lock), operator_module._migration_control_checkout(repo, marker) as control:
+        git(control, "commit-graph", "write", "--reachable", "--split=replace")
+        graph = next((control / graphs).glob("graph-*.graph")).relative_to(control)
         assert len(str(control / graph)) < 260
         assert len(str(control / graph.with_suffix(".graph.lock"))) < 260
         assert (control / graph).is_file()
@@ -9345,6 +9356,238 @@ def test_migration_control_checkout_at_task241_depth(
         assert "_migration_control_checkout(" in inspect.getsource(caller)
         assert "aios-target-generation-" not in inspect.getsource(caller)
         assert "aios-recovery-control-" not in inspect.getsource(caller)
+
+    target_seed = Path.home() / "h"
+    git(repo, "clone", "--no-hardlinks", "--no-checkout", str(source), str(target_seed))
+    git(target_seed, "commit-graph", "write", "--reachable", "--split=replace")
+    shutil.copytree(target_seed / graphs, source / graphs, dirs_exist_ok=True)
+    target_graph = next((source / graphs).glob("graph-*.graph")).relative_to(source / ".git")
+    assert len(str(former_target / ".git" / target_graph)) > 260
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: intent["source_generation_sha"])
+    bound, target = operator_module._stage_migration_handoff(repo, intent, marker)
+    record = json.loads(marker.read_text(encoding="utf-8"))
+    assert target == runtime_state_root(repo) / "m" / record["bundle"] / "source"
+    assert record["bundle"].startswith(fingerprint[:12] + "-")
+    assert json.loads(bound.read_text(encoding="utf-8")) == intent
+    git_dir = Path(git(target, "rev-parse", "--absolute-git-dir"))
+    assert list((git_dir / "objects/pack").glob("pack-*.pack"))
+    git(target, "commit-graph", "write", "--reachable", "--split=replace")
+    target_graph = next((git_dir / "objects/info/commit-graphs").glob("graph-*.graph")).relative_to(git_dir)
+    assert len(str(git_dir / target_graph.with_suffix(".graph.lock"))) < 260
+    assert (git_dir / target_graph).read_bytes() == (source / ".git" / target_graph).read_bytes()
+    assert (target / ".git").is_file() and not (target / ".git").is_symlink()
+    assert git(target, "rev-parse", "HEAD") == intent["target_generation_sha"]
+    assert git(target, "status", "--porcelain") == ""
+    assert git(target, "show", "HEAD:src/aios_renew/operator.py") == (target / "src/aios_renew/operator.py").read_text().strip()
+    owner = git_dir.parent / "owner.json"
+    before_read = (marker.read_bytes(), bound.read_bytes(), owner.read_bytes())
+    assert operator_module._migration_bundle(marker, record, intent) == (bound, target)
+    assert operator_module._migration_bundle(marker, record, intent) == (bound, target)
+    assert before_read == (marker.read_bytes(), bound.read_bytes(), owner.read_bytes())
+    assert before == (git(repo, "rev-parse", "HEAD"), git(repo, "rev-parse", "origin/main"))
+    assert operator_module._migration_fingerprint(intent) == fingerprint
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_source_bootstrap_recovery_target_checkout_at_task241_depth(
+    migration_depth_root: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, source, old = _source_bootstrap_fixture(migration_depth_root)
+    old_fp = operator_module._migration_fingerprint(old)
+    old_marker = operator_module._migration_marker(repo, old_fp)
+    operator_module._stage_migration_handoff(repo, old, old_marker)
+    old_marker.with_suffix(".consumed").write_text(old_fp, encoding="utf-8")
+    old_record = json.loads(old_marker.read_text(encoding="utf-8"))
+    old_bound, old_target = operator_module._migration_bundle(old_marker, old_record, old)
+    old_storage = operator_module._migration_target_storage(old_marker, old, old_bound.parent)
+    old_bytes = (old_marker.read_bytes(), old_bound.read_bytes(), (old_storage / "owner.json").read_bytes())
+    (source / "src/aios_renew/operator.py").write_text("# activated replacement\n", encoding="utf-8")
+    git(source, "add", ".")
+    git(source, "commit", "-m", "activated replacement")
+    new = dict(old, target_generation_sha=git(source, "rev-parse", "HEAD"))
+    seed = Path.home() / "g"
+    git(repo, "clone", "--no-hardlinks", "--no-checkout", str(source), str(seed))
+    git(seed, "commit-graph", "write", "--reachable", "--split=replace")
+    graphs = Path("objects/info/commit-graphs")
+    shutil.copytree(seed / ".git" / graphs, source / ".git" / graphs, dirs_exist_ok=True)
+    graph = next((source / ".git" / graphs).glob("graph-*.graph")).relative_to(source / ".git")
+    old_path, new_path = migration_depth_root / "old.json", migration_depth_root / "new.json"
+    old_path.write_text(json.dumps(old), encoding="utf-8")
+    new_path.write_text(json.dumps(new), encoding="utf-8")
+    monkeypatch.setattr(operator_module, "_SOURCE_BOOTSTRAP_TARGET_SHA", new["target_generation_sha"])
+    monkeypatch.setattr(operator_module, "_legacy_installed_generation_sha", lambda **kwargs: old["source_generation_sha"])
+    assert operator_module.recover_source_bootstrap(old_path, new_path) == 0
+    new_marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(new))
+    record = json.loads(new_marker.read_text(encoding="utf-8"))
+    bound, target = operator_module._migration_bundle(new_marker, record, new)
+    git_dir = Path(git(target, "rev-parse", "--absolute-git-dir"))
+    assert list((git_dir / "objects/pack").glob("pack-*.pack"))
+    git(target, "commit-graph", "write", "--reachable", "--split=replace")
+    graph = next((git_dir / graphs).glob("graph-*.graph")).relative_to(git_dir)
+    assert len(str(target / ".git" / graph)) > 260
+    assert len(str(git_dir / graph.with_suffix(".graph.lock"))) < 260
+    assert (git_dir / graph).read_bytes() == (source / ".git" / graph).read_bytes()
+    assert target == runtime_state_root(repo) / "m" / record["bundle"] / "source"
+    assert git(target, "rev-parse", "HEAD") == new["target_generation_sha"]
+    assert git(target, "status", "--porcelain") == ""
+    assert operator_module.recover_source_bootstrap(old_path, new_path) == 0
+    assert old_bytes == (old_marker.read_bytes(), old_bound.read_bytes(), (old_storage / "owner.json").read_bytes())
+    assert git(old_target, "rev-parse", "HEAD") == old["target_generation_sha"]
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+@pytest.mark.parametrize("generation,version", [
+    ("83115b26df85a7ad6643f317833e18b18586bdbe", 1),
+    ("31fd2482cd87d97fd818e05eb5b4dcec69ffeee6", 1),
+    ("44eee353eda376c9db8cd88d97184d3122651bf5", 2),
+])
+def test_migration_separate_git_dir_is_consumable_by_immutable_readers(
+    migration_storage_root: Path, generation: str, version: int,
+) -> None:
+    fixture = _migration_fixture if version == 1 else _source_bootstrap_fixture
+    repo, _, intent = fixture(migration_storage_root)
+    marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(intent))
+    bound, target = operator_module._stage_migration_handoff(repo, intent, marker)
+    record = json.loads(marker.read_text(encoding="utf-8"))
+    repository = Path(operator_module.__file__).resolve().parents[2]
+    source = git(repository, "show", f"{generation}:src/aios_renew/operator.py")
+    # Run the exact historical reader and its identity/parser helpers. Only
+    # unrelated lifecycle functions are omitted; no old reader is rewritten.
+    names = {"_migration_bundle", "_migration_bundle_path", "_migration_record",
+             "_migration_fingerprint", "_exact_migration_intent",
+             "_exact_source_bootstrap_intent", "_source_bootstrap_record", "_git"}
+    definitions = [node for node in ast.parse(source).body
+                   if isinstance(node, ast.FunctionDef) and node.name in names]
+    namespace = dict(vars(operator_module))
+    exec(compile(ast.Module(body=definitions, type_ignores=[]), generation, "exec"), namespace)
+    before = (marker.read_bytes(), bound.read_bytes())
+    assert namespace["_migration_bundle"](marker, record, intent) == (bound, target)
+    assert before == (marker.read_bytes(), bound.read_bytes())
+
+
+@pytest.mark.parametrize("state", ["partial", "malformed", "owner", "gitfile", "ambiguous"])
+def test_migration_target_storage_rejects_substituted_state_without_mutation(
+    migration_storage_root: Path, state: str,
+) -> None:
+    repo, _, intent = _migration_fixture(migration_storage_root)
+    marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(intent))
+    bound, target = operator_module._stage_migration_handoff(repo, intent, marker)
+    record = json.loads(marker.read_text(encoding="utf-8"))
+    storage = operator_module._migration_target_storage(marker, intent, bound.parent)
+    owner = storage / "owner.json"
+    if state == "partial":
+        owner.unlink()
+    elif state == "malformed":
+        owner.write_text("{", encoding="utf-8")
+    elif state == "owner":
+        document = json.loads(owner.read_text(encoding="utf-8"))
+        document["state_root"] += "-other"
+        owner.write_text(json.dumps(document), encoding="utf-8")
+    elif state == "gitfile":
+        unrelated = migration_storage_root / "unrelated"
+        git(repo, "clone", "--no-checkout", intent["target_url"], str(unrelated))
+        # Git marks the gitfile hidden on Windows; update the existing file
+        # instead of asking CREATE_ALWAYS to replace a hidden file.
+        with (target / ".git").open("r+", encoding="utf-8") as gitfile:
+            gitfile.write(f"gitdir: {unrelated / '.git'}\n")
+            gitfile.truncate()
+    else:
+        (storage / "g/commondir").write_text(str(repo / ".git"), encoding="utf-8")
+    before = {p: p.read_bytes() for p in storage.rglob("*") if p.is_file()}
+    durable = (marker.read_bytes(), bound.read_bytes(), (target / ".git").read_bytes())
+    with pytest.raises(OperatorError, match="target.*(owner|storage)"):
+        operator_module._migration_bundle(marker, record, intent)
+    with pytest.raises(OperatorError, match="target.*(owner|storage)"):
+        operator_module._remove_migration_target(repo, marker, intent, bound.parent, storage)
+    assert before == {p: p.read_bytes() for p in storage.rglob("*") if p.is_file()}
+    assert durable == (marker.read_bytes(), bound.read_bytes(), (target / ".git").read_bytes())
+    if state == "gitfile":
+        assert git(unrelated, "rev-parse", "HEAD") == intent["target_generation_sha"]
+
+
+@pytest.mark.parametrize("state", ["partial", "stale", "collision"])
+def test_migration_target_allocation_does_not_reuse_or_delete_existing_storage(
+    migration_storage_root: Path, state: str,
+) -> None:
+    repo, _, intent = _migration_fixture(migration_storage_root)
+    fingerprint = operator_module._migration_fingerprint(intent)
+    marker = operator_module._migration_marker(repo, fingerprint)
+    storage = operator_module._migration_storage(marker, create=True) / "t" / fingerprint[:16]
+    storage.mkdir(parents=True)
+    if state != "partial":
+        identity = {"format": "AIOS_MIGRATION_TARGET_STORAGE", "version": 1,
+                    "state_root": str(marker.parent.parent.resolve()),
+                    "fingerprint": fingerprint if state == "stale" else "f" * 64,
+                    "bundle": "unrelated durable bundle", "intent": intent}
+        (storage / "owner.json").write_text(json.dumps(identity), encoding="utf-8")
+    (storage / "retain.txt").write_text("unrelated data", encoding="utf-8")
+    before = {p: p.read_bytes() for p in storage.iterdir() if p.is_file()}
+    with pytest.raises(OperatorError, match="orphaned or colliding migration target storage"):
+        operator_module._stage_migration_handoff(repo, intent, marker)
+    assert before == {p: p.read_bytes() for p in storage.iterdir() if p.is_file()}
+    assert not list((runtime_state_root(repo) / "m").iterdir())
+    assert not marker.exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_migration_target_clone_interruption_cleans_only_new_allocation(
+    migration_storage_root: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _, intent = _migration_fixture(migration_storage_root)
+    marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(intent))
+    storage = operator_module._migration_storage(marker, create=True)
+    unrelated = storage / "t" / ("0" * 16)
+    unrelated.mkdir(parents=True)
+    (unrelated / "retain.txt").write_text("durable", encoding="utf-8")
+    real_git = operator_module._git
+    def interrupt(root, *args, **kwargs):
+        value = real_git(root, *args, **kwargs)
+        if args[0] == "clone" and "--separate-git-dir" in args:
+            raise OSError("interrupted after real target clone")
+        return value
+    monkeypatch.setattr(operator_module, "_git", interrupt)
+    with pytest.raises(OSError, match="interrupted after real target clone"):
+        operator_module._stage_migration_handoff(repo, intent, marker)
+    assert list((storage / "t").iterdir()) == [unrelated]
+    assert (unrelated / "retain.txt").read_text(encoding="utf-8") == "durable"
+    assert not (storage / "c").exists()
+    assert not list((runtime_state_root(repo) / "m").iterdir())
+    assert not marker.exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+def test_migration_target_linked_git_storage_is_rejected_and_retained(
+    migration_storage_root: Path,
+) -> None:
+    repo, _, intent = _migration_fixture(migration_storage_root)
+    marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(intent))
+    bound, target = operator_module._stage_migration_handoff(repo, intent, marker)
+    record = json.loads(marker.read_text(encoding="utf-8"))
+    storage = operator_module._migration_target_storage(marker, intent, bound.parent)
+    backing = storage / "g"
+    unrelated = migration_storage_root / "retain-git"
+    assert backing.resolve().is_relative_to(migration_storage_root.resolve())
+    assert unrelated.resolve().is_relative_to(migration_storage_root.resolve())
+    backing.rename(unrelated)
+    if sys.platform == "win32":
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(backing), str(unrelated)],
+                       check=True, capture_output=True)
+    else:
+        backing.symlink_to(unrelated, target_is_directory=True)
+    try:
+        before = (unrelated / "HEAD").read_bytes()
+        with pytest.raises(OperatorError, match="linked path"):
+            operator_module._migration_bundle(marker, record, intent)
+        with pytest.raises(OperatorError, match="linked path"):
+            operator_module._remove_migration_target(repo, marker, intent, bound.parent, storage)
+        assert (unrelated / "HEAD").read_bytes() == before
+        assert marker.is_file() and bound.is_file() and (target / ".git").is_file()
+    finally:
+        if sys.platform == "win32":
+            backing.rmdir()  # Remove only the junction, leaving its target intact.
+        else:
+            backing.unlink()
+        unrelated.rename(backing)
 
 
 def test_migration_control_interruption_removes_only_owned_checkout(

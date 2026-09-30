@@ -4298,10 +4298,11 @@ def _migration_storage(marker: Path, *, create: bool = False) -> Path:
     """
 
     state = marker.parent.parent
-    _migration_storage_no_links(state)
+    _migration_storage_no_links(marker)
     identity = {"format": "AIOS_MIGRATION_STORAGE", "version": 1,
                 "state_root": str(state.resolve())}
     key = hashlib.sha256(identity["state_root"].encode("utf-8")).hexdigest()[:16]
+    _migration_storage_no_links(Path.home())
     parent = Path.home().resolve() / ".aios-m"
     storage = parent / key
     _migration_storage_no_links(storage)
@@ -4328,9 +4329,101 @@ def _migration_storage(marker: Path, *, create: bool = False) -> Path:
     if (owner != identity or not isinstance(owner, dict)
             or type(owner.get("version")) is not int):
         raise OperatorError("migration storage owner mismatch")
-    if {entry.name for entry in storage.iterdir()} - {"owner.json", "c"}:
+    if {entry.name for entry in storage.iterdir()} - {"owner.json", "c", "t"}:
         raise OperatorError("invalid migration storage entry")
     return storage
+
+
+def _migration_storage_tree_no_links(storage: Path) -> None:
+    pending = [storage]
+    while pending:
+        directory = pending.pop()
+        _migration_storage_no_links(directory)
+        for entry in directory.iterdir():
+            _migration_storage_no_links(entry)
+            if entry.is_dir():
+                pending.append(entry)
+
+
+def _migration_target_storage(
+    marker: Path, intent: Mapping[str, Any], bundle: Path, *, create: bool = False,
+) -> Path:
+    """Back the unchanged bundle/source worktree with a short real Git dir.
+
+    Git's ordinary gitfile is not a filesystem link. Immutable target readers
+    still see the historical bundle, intent and exact detached Git worktree.
+    The truncated address grants no authority: allocation is exclusive and
+    the owner binds the full runtime path, fingerprint, bundle and intent.
+    """
+
+    fingerprint = _migration_fingerprint(intent)
+    _migration_storage_no_links(marker)
+    _migration_storage_no_links(bundle)
+    identity = {"format": "AIOS_MIGRATION_TARGET_STORAGE", "version": 1,
+                "state_root": str(marker.parent.parent.resolve()),
+                "fingerprint": fingerprint, "bundle": str(bundle.resolve()),
+                "intent": dict(intent)}
+    storage = _migration_storage(marker) / "t" / fingerprint[:16]
+    _migration_storage_no_links(storage / "owner.json")
+    if len(str(storage / "g")) > 160:
+        raise OperatorError("migration target exceeds bounded checkout path budget")
+    if create:
+        storage.parent.mkdir(exist_ok=True)
+        try:
+            storage.mkdir()
+        except FileExistsError as exc:
+            raise OperatorError("orphaned or colliding migration target storage") from exc
+        with (storage / "owner.json").open("x", encoding="utf-8") as owner:
+            json.dump(identity, owner, sort_keys=True)
+    try:
+        owner = json.loads((storage / "owner.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise OperatorError("migration target storage owner is partial or invalid") from exc
+    if (not isinstance(owner, dict)
+            or json.dumps(owner, sort_keys=True) != json.dumps(identity, sort_keys=True)):
+        raise OperatorError("migration target storage owner mismatch")
+    if {entry.name for entry in storage.iterdir()} - {"owner.json", "g"}:
+        raise OperatorError("invalid migration target storage entry")
+    _migration_storage_tree_no_links(storage)
+    if any((storage / "g" / name).exists() for name in (
+        "commondir", "objects/info/alternates", "objects/info/http-alternates",
+    )):
+        raise OperatorError("migration target Git storage is ambiguous")
+    return storage
+
+
+def _migration_target_gitfile(target: Path, storage: Path) -> None:
+    """Reject a substituted gitfile before reading or cleaning owned storage."""
+
+    gitfile = target / ".git"
+    _migration_storage_no_links(gitfile)
+    try:
+        locator = gitfile.read_text(encoding="utf-8").splitlines()
+        if len(locator) != 1 or not locator[0].startswith("gitdir: "):
+            raise ValueError("invalid gitfile")
+        git_dir = Path(locator[0][8:])
+        _migration_storage_no_links(git_dir)
+        if not git_dir.is_absolute() or git_dir.resolve() != (storage / "g").resolve():
+            raise ValueError("mismatched gitfile")
+    except (OSError, ValueError) as exc:
+        raise OperatorError("migration target Git storage mismatch") from exc
+
+
+def _remove_migration_target(
+    root: Path, marker: Path, intent: Mapping[str, Any], bundle: Path, storage: Path | None,
+) -> None:
+    """Clean only this allocation, and retain ambiguous or substituted state."""
+
+    _migration_storage_no_links(bundle)
+    if storage is not None:
+        if _migration_target_storage(marker, intent, bundle) != storage:
+            raise OperatorError("migration target cleanup owner mismatch")
+        gitfile = bundle / "source" / ".git"
+        _migration_storage_no_links(gitfile)
+        if gitfile.exists():
+            _migration_target_gitfile(bundle / "source", storage)
+        _remove_historical_workspace(root, storage)
+    _remove_historical_workspace(root, bundle)
 
 
 @contextmanager
@@ -4344,7 +4437,9 @@ def _migration_control_checkout(root: Path, marker: Path) -> Iterator[Path]:
     except FileExistsError as exc:
         raise OperatorError("orphaned migration control requires reconciliation") from exc
     try:
-        _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags",
+        # The normal Git transport avoids stat/copy traversal of depth-amplified
+        # source object metadata as well as keeping destination paths bounded.
+        _git(root, "clone", "--no-local", "--no-checkout", "--no-tags",
              str(root), str(control))
         yield control
     finally:
@@ -4386,6 +4481,7 @@ def _migration_bundle(
         raise OperatorError("migration handoff record mismatch")
     bundle = _migration_bundle_path(marker, fingerprint, bundle_name)
     bound_intent = bundle / "intent.json"
+    _migration_storage_no_links(bound_intent)
     try:
         parser = (_exact_source_bootstrap_intent if intent.get("version") == 2
                   else _exact_migration_intent)
@@ -4395,6 +4491,16 @@ def _migration_bundle(
     if stored_intent != intent:
         raise OperatorError("migration bound intent mismatch")
     target = bundle / "source"
+    _migration_storage_no_links(target / ".git")
+    if (target / ".git").is_file():
+        storage = _migration_target_storage(marker, intent, bundle)
+        _migration_target_gitfile(target, storage)
+        if (not (storage / "g").is_dir()
+                or Path(_git(target, "rev-parse", "--absolute-git-dir")).resolve() != (storage / "g").resolve()
+                or Path(_git(target, "rev-parse", "--show-toplevel")).resolve() != target.resolve()):
+            raise OperatorError("migration target Git storage mismatch")
+    elif not (target / ".git").is_dir():
+        raise OperatorError("migration bound target source mismatch")
     if (_git(target, "rev-parse", "HEAD") != intent["target_generation_sha"]
             or _git(target, "status", "--porcelain")
             or not (target / "src" / "aios_renew" / "operator.py").is_file()):
@@ -4867,9 +4973,12 @@ def _stage_migration_handoff(
         if list(transport_dir.glob(f"{fingerprint[:12]}-*")):
             raise OperatorError("orphaned migration transport requires reconciliation")
         bundle = Path(tempfile.mkdtemp(prefix=f"{fingerprint[:12]}-", dir=transport_dir))
+        target_storage = None
         try:
             target = bundle / "source"
-            _git(root, "clone", "--no-checkout", "--no-tags", intent["target_url"], str(target))
+            target_storage = _migration_target_storage(marker, intent, bundle, create=True)
+            _git(root, "clone", "--no-local", "--no-checkout", "--no-tags",
+                 "--separate-git-dir", str(target_storage / "g"), intent["target_url"], str(target))
             _git(target, "checkout", "--detach", intent["target_generation_sha"])
             if (_git(target, "rev-parse", "HEAD") != intent["target_generation_sha"]
                     or _git(target, "status", "--porcelain")
@@ -4896,7 +5005,7 @@ def _stage_migration_handoff(
             return bound_intent, target
         except BaseException:
             if not marker.exists():
-                _remove_historical_workspace(root, bundle)
+                _remove_migration_target(root, marker, intent, bundle, target_storage)
             raise
 
 
@@ -5152,9 +5261,12 @@ def recover_source_bootstrap(
             if list(transport.glob(f"{new_fp[:12]}-*")):
                 raise OperatorError("orphaned replacement transport")
             bundle = Path(tempfile.mkdtemp(prefix=f"{new_fp[:12]}-", dir=transport))
+            target_storage = None
             try:
                 target = bundle / "source"
-                _git(root, "clone", "--no-checkout", "--no-tags", new["target_url"], str(target))
+                target_storage = _migration_target_storage(new_marker, new, bundle, create=True)
+                _git(root, "clone", "--no-local", "--no-checkout", "--no-tags",
+                     "--separate-git-dir", str(target_storage / "g"), new["target_url"], str(target))
                 _git(target, "checkout", "--detach", new["target_generation_sha"])
                 bound = bundle / "intent.json"
                 _write_migration_atomic(bound, json.dumps(new, sort_keys=True))
@@ -5178,7 +5290,7 @@ def recover_source_bootstrap(
                 _write_migration_atomic(old_marker.with_suffix(".superseded"), json.dumps(link, sort_keys=True))
             except BaseException:
                 if not new_marker.exists() and not new_marker.with_suffix(".predecessor").exists():
-                    _remove_historical_workspace(root, bundle)
+                    _remove_migration_target(root, new_marker, new, bundle, target_storage)
                 raise
     return 0
 
