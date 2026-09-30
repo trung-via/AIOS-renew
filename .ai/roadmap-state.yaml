@@ -158,26 +158,30 @@ sequence:
       pull_request: 1200
       branch: aios-brain-wake-bus-v1
       head_sha: "0d9bd2d4e802ad64c58bb143d326c1f5b1647760"
-      state: NATIVE_TRIGGER_SETUP_NOT_CREATED
+      state: NATIVE_WEBHOOK_TASK_ENABLED_READY_FOR_PROBE
       observed_on: "2026-09-30"
-      observed_main_sha: "27daf2ce8edf320e8ddc65cb2bc864e5bd9302df"
+      observed_main_sha: "3ff72c354e7bad81a8cca2ad6152a280def17cdb"
       observed_pr_state:
         pull_request: 1200
         status: OPEN_DRAFT
         head_sha: "0d9bd2d4e802ad64c58bb143d326c1f5b1647760"
         issue_comments: 0
         review_comments: 0
-      observed_work_result: >-
-        ChatGPT Work opened ChatGPT web and delegated the setup request into a normal
-        ChatGPT prompt, but no event-triggered task was created. The delegated web
-        response reported that the session exposed no GitHub new-PR-comment trigger
-        creation API. Therefore the wake path itself was not exercised and no ACK
-        comment exists on PR #1200.
+      work_automation:
+        title: AIOS Brain Wake ACK
+        automation_id: "6abd40a6f8d881918f2c9e7945cbf54d"
+        enabled: true
+        timing_mode: condition_watch
+        schedule_surface: UNSCHEDULED_EVENT_TRIGGER
+        last_run_time: null
+        trigger_contract: >-
+          Future GitHub pull request comments in trung-via/AIOS-renew PR #1200
+          whose exact body begins with [AIOS BRAIN WAKE].
       implication: >-
-        The PR wake carrier exists, but native webhook-task provisioning is not proven
-        from the current Work execution path. Do not treat PR #1200 creation as wake
-        conformance. Audit/manual one-time trigger provisioning or a lower-complexity
-        supported wake path before emitting the first wake event.
+        Native webhook provisioning is now present. The next step is one real bounded
+        wake comment with an explicit event_id. The probe must verify autonomous Work
+        invocation, fresh Brain Sync, exact ACK write-back, and absence of any other
+        repository mutation.
       first_probe_goal: >-
         A PR-comment event wakes ChatGPT Work without a Human chat message; the
         woken Brain performs fresh canonical Brain Sync and writes one bounded ACK
