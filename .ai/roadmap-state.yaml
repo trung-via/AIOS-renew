@@ -2654,6 +2654,10 @@ sequence:
 
   - id: verification-performance-rebaseline-v2-git-fixture-bounded-root-harness-correction
     status: NEXT
+    task_id: TASK-250
+    task_revision: 1
+    authored_commit_sha: "3fd2a592c627ca003ea0236bc2eb2cb77d1105b6"
+    task_blob_sha: "8b571d7ba4b3e5bba207d038e79a901d196a6402"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     triggered_by:
