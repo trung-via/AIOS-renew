@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-post-path-hardening-residual-proof
+  - verification-performance-rebaseline-v2-operator-historical-fixture-path-hardening
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -2379,7 +2379,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-post-path-hardening-residual-proof
 
   - id: verification-performance-rebaseline-v2-post-path-hardening-residual-proof
-    status: NEXT
+    status: DONE
     task_id: TASK-244
     task_revision: 2
     authored_commit_sha: "4df04293aa2bda9d45e07fbaed4d09181473e552"
@@ -2393,44 +2393,83 @@ sequence:
       review_id: REVIEW-243-001
       verdict: PASS
       published_sha: "c0042b5749b7adb4acc5cc897f87dbd8d41752ce"
+    completed_by:
+      primary_run_id: RUN-244-003
+      review_id: REVIEW-244-001
+      verdict: PASS
+      evidence_id: RUN-244-003-V001
+      review_decision_sha: "269a7bf674a2f579e3bb8e46fde9c92b9a1fab25"
+      reviewed_sha: "e87f1e30229b9839491e4134884c43fc5042c419"
+      published_sha: "e87f1e30229b9839491e4134884c43fc5042c419"
+      classification: RESIDUAL_SET_N12_REPRODUCED
+      phase_a_failure_count: 2
+      operator_clone_failure_count: 1
+      git_fixture_push_failure_count: 1
+      phase_b_executed: false
+      decision: >-
+        TASK-243 removed 31 of 32 historical Operator CLONE residuals. The sole
+        remaining Operator failure is test-owned historical-v1 fixture construction
+        that bypasses the TASK-243 bounded checkout path. The separate Git-fixture
+        PUSH residual remains observationally correlated with deeper path geometry
+        but lacks sufficient causal evidence for correction selection.
     objective: >-
       Execute one fresh bounded current-main proof using the existing TASK-241
-      residual-context diagnostic semantics before any TASK-231 retry. Re-resolve
-      the exact historical 33 identities, run the cold residual-only n12 phase with
-      selected-wrapper-equivalent geometry, and permit the diagnostic's single
-      conditional full-n12 phase only when Phase A passes.
-    execution_shape:
-      implementation: ZERO_DELTA_READ_ONLY_PRIMARY
-      executor_repository_commands: FORBIDDEN
-      runtime_verification:
-        - python scripts/aios_residual_context_attribution_diagnostic.py
-      phase_a:
-        targets: 33
-        workers: 12
-        distribution: load
-        max_worker_restart: 0
-      phase_b: CONDITIONAL_SINGLE_FULL_N12_ONLY_IF_PHASE_A_ALL_PASS
+      residual-context diagnostic semantics before any TASK-231 retry.
     architecture_rule: >-
-      Proof only. Do not modify production/tests/fixtures or select a correction
-      inside the proof. A remaining PUSH/REPOSITORY_STATE residual must be audited
-      separately; a green residual/full-suite observation is evidence for a later
-      Brain decision and never automatically advances TASK-231.
-    decision_gate:
-      residual_failure: BRAIN_AUDIT_REQUIRED
-      phase_a_pass_phase_b_observed: BRAIN_AUDIT_REQUIRED
-      automatic_task231_resume: false
-    revision_2_ordering_correction:
-      prior_primary_run_id: RUN-244-001
-      prior_repair_id: REPAIR-244-001
-      prior_repair_run_id: RUN-244-002
-      prior_terminal_phase: COMPLETION_GATE
-      runtime_verification_invoked: false
-      reason: >-
-        Revision 1 incorrectly placed Runtime-owned verification outcomes inside
-        pre-verification acceptance criteria. Revision 2 follows the established
-        zero-delta evidence-only ordering: Executor acceptance is structural only,
-        while the unchanged diagnostic remains Runtime verification after
-        Completion Gate.
+      Proof only. No observed outcome automatically advances TASK-231.
+
+  - id: verification-performance-rebaseline-v2-operator-historical-fixture-path-hardening
+    status: NEXT
+    task_id: TASK-245
+    task_revision: 1
+    authored_commit_sha: "6a508b44181dcd0d27bd398c8f2cd7b77763b097"
+    task_blob_sha: "7ce85deef604945d8502c962a13d20a9857d5040"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-244
+      task_revision: 2
+      run_id: RUN-244-003
+      review_id: REVIEW-244-001
+      verdict: PASS
+      evidence_id: RUN-244-003-V001
+    objective: >-
+      Correct only the test-owned historical v1 migration fixture construction
+      responsible for the final Operator CLONE/PATH_OR_FILENAME residual while
+      preserving the exact pytest nodeid identity, real-Git historical semantics,
+      production Operator behavior and lifecycle authority boundaries.
+    architecture_rule: >-
+      Test-harness correction only. Production operator.py, the Git-fixture PUSH
+      residual, workers=12 policy and TASK-231 remain out of scope.
+    return_to: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic
+
+  - id: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic
+    status: BLOCKED
+    authority: HUMAN_BRAIN_PLANNING
+    blocked_by: verification-performance-rebaseline-v2-operator-historical-fixture-path-hardening
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Run one bounded evidence-only real-Git diagnostic around the observed
+      successful 326 and failing 328 remote-lock-path geometry before selecting any
+      correction for the remaining PUSH/REPOSITORY_STATE residual.
+    architecture_rule: >-
+      Evidence only. Preserve exact PUSH/ref behavior, use no full-suite/n12 retry
+      matrix, change no global/system Git or Windows configuration, and do not
+      select a correction inside the diagnostic.
+
+  - id: verification-performance-rebaseline-v2-post-residual-corrections-proof
+    status: BLOCKED
+    authority: HUMAN_BRAIN_PLANNING
+    blocked_by: verification-performance-rebaseline-v2-git-fixture-push-threshold-diagnostic
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      Re-run the bounded exact historical residual proof only after the selected
+      Operator-harness and Git-fixture evidence/correction sequence is complete.
+      Permit the existing diagnostic's single conditional full-n12 phase only if
+      all 33 Phase-A identities pass.
+    architecture_rule: >-
+      TASK-231 remains blocked until this proof and a subsequent Human/Brain
+      decision explicitly authorize any retry.
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 research_assurance:
