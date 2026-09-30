@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -251,6 +252,42 @@ def test_read_only_installed_provenance_relations(tmp_path):
     unavailable = plugin.provenance_snapshot(tmp_path / 'missing')
     assert set(plugin.provenance_relation(before, unavailable).values()) == {'UNAVAILABLE'}
     assert 'private' not in json.dumps(relation)
+
+
+def test_missing_installed_distribution_is_valid_across_interpreter_boundary(tmp_path):
+    # The live repair environment has this state. Exercise the real plugin
+    # import and snapshot in a fresh interpreter, with only site discovery
+    # redirected to a controlled empty installed directory.
+    script = '''
+import json, subprocess, sys
+from pathlib import Path
+from types import SimpleNamespace
+from scripts import aios_residual_context_attribution_diagnostic as diagnostic
+from tests.aios_residual_context_attribution_plugin import provenance_relation
+site = Path(sys.argv[1])
+diagnostic.subprocess.run = lambda *args, **kwargs: SimpleNamespace(stdout=json.dumps([str(site)]))
+result = diagnostic.baseline()
+print(json.dumps(provenance_relation(result['snapshot'], result['snapshot']), sort_keys=True))
+'''
+    child = subprocess.run([sys.executable, '-c', script, str(tmp_path)],
+                           capture_output=True, text=True, check=True)
+    assert json.loads(child.stdout) == {
+        'direct_url': 'MISSING', 'distribution_multiplicity': 'MISSING',
+        'sitecustomize': 'BASELINE_EXACT'}
+
+
+def test_valid_nonideal_baselines_and_unusable_baseline(tmp_path):
+    distribution = tmp_path / 'aios_renew-0.0.dist-info'
+    distribution.mkdir()
+    (tmp_path / 'aios_renew-0.1.dist-info').mkdir()
+    ambiguous = plugin.provenance_snapshot(tmp_path)
+    diagnostic.validate_baseline_snapshot(ambiguous)
+    assert plugin.provenance_relation(ambiguous, ambiguous)['direct_url'] == 'AMBIGUOUS'
+    with pytest.raises(diagnostic.DiagnosticError, match='unusable'):
+        diagnostic.validate_baseline_snapshot(plugin.provenance_snapshot(tmp_path / 'unreadable'))
+    with pytest.raises(diagnostic.DiagnosticError, match='inconsistent'):
+        diagnostic.validate_baseline_snapshot({'direct_url': 'AMBIGUOUS',
+            'sitecustomize': False, 'distribution_multiplicity': 0})
 
 
 def test_registry_coactive_and_immediately_preceding_four(tmp_path, monkeypatch, population):

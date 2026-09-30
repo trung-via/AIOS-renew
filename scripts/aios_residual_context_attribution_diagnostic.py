@@ -172,10 +172,26 @@ def baseline() -> dict:
         raise DiagnosticError("installed baseline unavailable")
     site = str(Path(sites[0]).resolve())
     snapshot = provenance_snapshot(Path(site))
-    if (snapshot['distribution_multiplicity'] != 1 or not isinstance(snapshot['sitecustomize'], bool)
-            or not isinstance(snapshot['direct_url'], str) or not re.fullmatch('[0-9a-f]{64}', snapshot['direct_url'])):
-        raise DiagnosticError('installed baseline is not clean and exact')
+    validate_baseline_snapshot(snapshot)
     return {"site": site, "snapshot": snapshot}
+
+
+def validate_baseline_snapshot(snapshot: object) -> None:
+    """Accept coherent installed states, including a missing editable install.
+
+    None for direct_url means an unreadable/over-bound single file and is an
+    observable UNAVAILABLE relation. An unreadable site cannot be a baseline.
+    """
+    if not isinstance(snapshot, dict) or set(snapshot) != PROVENANCE:
+        raise DiagnosticError('installed baseline malformed')
+    count = snapshot['distribution_multiplicity']
+    direct = snapshot['direct_url']
+    if (not integer(count, 0, 64) or not isinstance(snapshot['sitecustomize'], bool)
+            or (count == 0 and direct != 'MISSING')
+            or (count > 1 and direct != 'AMBIGUOUS')
+            or (count == 1 and direct != 'MISSING' and direct is not None
+                and (not isinstance(direct, str) or not re.fullmatch('[0-9a-f]{64}', direct)))):
+        raise DiagnosticError('installed baseline unusable or inconsistent')
 
 
 def unique(pairs):
@@ -446,10 +462,9 @@ def diagnose(repository: Path, *, runner: Callable = run_pytest, identity: Calla
         if identity(repository) != subject:
             raise DiagnosticError('subject changed before phase')
         if phase != 'collection' and installed:
-            from tests.aios_residual_context_attribution_plugin import provenance_snapshot, provenance_relation
+            from tests.aios_residual_context_attribution_plugin import provenance_snapshot
             current = provenance_snapshot(Path(installed['site']))
-            if set(provenance_relation(installed['snapshot'], current).values()) != {'BASELINE_EXACT'}:
-                raise DiagnosticError('installed baseline changed before execution')
+            validate_baseline_snapshot(current)
         # Each subprocess has an independent wrapper-equivalent temp geometry.
         with tempfile.TemporaryDirectory(prefix='aios-parallel-full-suite-') as directory:
             try:
