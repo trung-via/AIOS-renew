@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-execution
+  - verification-performance-rebaseline-v2-git-fixture-bounded-root-harness-correction
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -2605,7 +2605,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-execution
 
   - id: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-execution
-    status: NEXT
+    status: DONE
     task_id: TASK-249
     task_revision: 1
     authored_commit_sha: "6298ccebaead0e0304a55c578f91fc9368fd86c3"
@@ -2623,6 +2623,16 @@ sequence:
         - RUN-248-001-V002
       review_decision_sha: "00d5e06a6a815e129efdfe5f9cd5cee90ae63e44"
       published_sha: "3fef5f802217c7ef107b2ba33d26ca059d7884af"
+    completed_by:
+      task_id: TASK-249
+      task_revision: 1
+      run_id: RUN-249-001
+      review_id: REVIEW-249-001
+      verdict: PASS
+      evidence_id: RUN-249-001-V001
+      review_decision_sha: "cbb63ce3ed060fbe9f1b8fd6395c5dce8b987389"
+      reviewed_sha: "cf7b1af738ba259ffb31dba9c6f173169410b33c"
+      published_sha: "cf7b1af738ba259ffb31dba9c6f173169410b33c"
     objective: >-
       Execute the reviewed TASK-248 four-case primitive exactly once as
       Runtime-owned zero-delta evidence on a fresh canonical subject, then return
@@ -2631,17 +2641,46 @@ sequence:
       Evidence only. No correction selection, broader geometry search, full suite,
       residual n12 proof, worker adoption or TASK-231 continuation inside execution.
     decision_gate:
-      root_aligned_outcomes: BRAIN_AUDIT_REQUIRED
-      family_aligned_outcomes: BRAIN_AUDIT_REQUIRED
-      interaction_or_mixed_outcome: BRAIN_AUDIT_REQUIRED
+      observed_alignment: BARE_REMOTE_ROOT_DEPTH
+      root_224:
+        integration: SUCCESS
+        admission_failure: SUCCESS
+      root_228:
+        integration: FAILURE
+        admission_failure: FAILURE
       automatic_correction: false
       automatic_task231_resume: false
+    return_to: verification-performance-rebaseline-v2-git-fixture-bounded-root-harness-correction
+
+  - id: verification-performance-rebaseline-v2-git-fixture-bounded-root-harness-correction
+    status: NEXT
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-249
+      task_revision: 1
+      run_id: RUN-249-001
+      review_id: REVIEW-249-001
+      verdict: PASS
+      evidence_id: RUN-249-001-V001
+      published_sha: "cf7b1af738ba259ffb31dba9c6f173169410b33c"
+    objective: >-
+      Correct only the historical depth-amplified Git-fixture regression so its
+      test-owned bare remote no longer inherits unbounded outer pytest/wrapper
+      depth, while preserving the exact historical nodeid, full production-shaped
+      refs, a greater-than-260 lock-path exercise, real Git transport and sandbox
+      isolation.
+    architecture_rule: >-
+      Test-harness geometry only. Preserve the TASK-170 repository-local longpaths
+      capability and all production/helper semantics; no ref shortening, mock Git,
+      retry/fallback, host mutation, worker-policy change, broader residual proof or
+      TASK-231 continuation inside the correction.
     return_to: verification-performance-rebaseline-v2-post-residual-corrections-proof
 
   - id: verification-performance-rebaseline-v2-post-residual-corrections-proof
     status: BLOCKED
     authority: HUMAN_BRAIN_PLANNING
-    blocked_by: verification-performance-rebaseline-v2-git-fixture-push-root-decomposition-execution
+    blocked_by: verification-performance-rebaseline-v2-git-fixture-bounded-root-harness-correction
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     objective: >-
       Re-run the bounded exact historical residual proof only after the selected
