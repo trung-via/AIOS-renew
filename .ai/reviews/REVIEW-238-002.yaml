@@ -1,0 +1,27 @@
+review_id: REVIEW-238-002
+reviewed_sha: f591999ed8d54b96b7f36ff13b48a4c6f9e2a290
+mode: DELTA
+verdict: PASS
+acceptance:
+  AC2: PASS
+findings: []
+prior_finding_id: F-238-001
+notes:
+  - >-
+    F-238-001 is resolved on the exact remediation candidate. RUN-238-002-V002
+    reproduces the fresh-clone failure while expected bytes/object, committed tree
+    object, and native binary blob remain exact; one production read is observed
+    returning no bytes, and the diagnostic now mechanically classifies that bounded
+    fact pattern as PRODUCTION_READBACK_MISMATCH with aggregate
+    FRESH_CLONE_ONLY_MISMATCH_RESOLVED_BOUNDARY.
+  - >-
+    The remediation delta is confined to
+    scripts/aios_ingress_metadata_identity_diagnostic.py and
+    tests/test_aios_ingress_metadata_identity_diagnostic.py, matching the canonical
+    remediation scope and adding focused regression coverage for the observed null
+    production-readback pattern.
+  - >-
+    RUN-238-002 focused Runtime verification passed 4 tests and the fixed diagnostic
+    command on exact subject f591999ed8d54b96b7f36ff13b48a4c6f9e2a290;
+    unresolved is empty. No production Authoring Ingress behavior, fixture behavior,
+    worker policy, lifecycle authority, or roadmap state changed.
