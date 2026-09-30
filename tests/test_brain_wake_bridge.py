@@ -305,6 +305,12 @@ class SourceAPI:
         self.event, self.workflow = run_event(key)
         self.event["workflow_run"].update(event="workflow_dispatch" if key == "terminal" else "issues", run_attempt=attempt)
         self.attempt = {**copy.deepcopy(self.event["workflow_run"]), "repository": {"full_name": bridge.REPOSITORY}, "run_started_at": START, "updated_at": END}
+        self.jobs = {"total_count": 1, "jobs": [{
+            "id": 8500, "run_id": 8000, "head_sha": "a" * 40,
+            "run_url": f"https://api.github.com/repos/{bridge.REPOSITORY}/actions/runs/8000",
+            "name": bridge.SOURCE_ENTRY_JOBS.get(key, "publish"),
+            "status": "completed", "conclusion": "success", "steps": [{"name": "Export source pointer"}],
+        }]}
         source = comment("AIOS BRAIN INGRESS RECEIPT\nstatus: FAIL\nreason: rejected envelope", bridge.SOURCE_TITLES[key])
         self.issue = source["issue"]
         self.comment = {**source["comment"], "created_at": CREATED, "updated_at": CREATED}
@@ -322,6 +328,7 @@ class SourceAPI:
         values = {
             f"actions/workflows/{self.workflow['id']}": self.workflow,
             f"actions/runs/8000/attempts/{self.attempt['run_attempt']}": self.attempt,
+            f"actions/runs/8000/attempts/{self.attempt['run_attempt']}/jobs?per_page=100": self.jobs,
             "issues/1210": self.issue,
             "issues/comments/6000": self.comment,
         }
@@ -345,7 +352,7 @@ def test_suppressed_event_topology_reacquires_exact_objects_and_rerun_is_same_be
     first = SourceAPI()
     wake = first.project(policy)
     assert wake["attention_family"] == "INGRESS_REJECTED"
-    assert first.calls == ["actions/runs/8000/attempts/1", "artifacts:8000", "archive:9000", "issues/1210", "issues/comments/6000"]
+    assert first.calls == ["actions/runs/8000/attempts/1", "actions/runs/8000/attempts/1/jobs?per_page=100", "artifacts:8000", "archive:9000", "issues/1210", "issues/comments/6000"]
     assert wake == first.project(policy)
     rerun = SourceAPI(attempt=2)
     assert wake == rerun.project(policy)
@@ -354,6 +361,82 @@ def test_suppressed_event_topology_reacquires_exact_objects_and_rerun_is_same_be
     failure = rerun.project(policy)
     assert failure["attention_family"] == "WAKE_SOURCE_HANDOFF_FAILURE"
     assert failure["event_id"] != wake["event_id"]
+
+
+@pytest.mark.parametrize("target", list(bridge.SOURCE_ENTRY_JOBS))
+@pytest.mark.parametrize("conclusion", ["skipped", "success"])
+@pytest.mark.parametrize("attempt", [1, 2])
+def test_one_ordinary_issue_and_its_skipped_sibling_runs_generate_no_attention(policy, target, conclusion, attempt):
+    bodies = {
+        "ingress": ingress("AUTHOR_TASK", "canonicalized TASK-255 r2"),
+        "primary_carrier": carrier_body(False, "DISPATCH_ACCEPTED"),
+        "repair_carrier": carrier_body(True, "SELF_HOST_COMPLETED"),
+    }
+    for key in bridge.SOURCE_ENTRY_JOBS:
+        source = SourceAPI(key, attempt=attempt)
+        source.issue["title"] = bridge.SOURCE_TITLES[target]
+        source.comment["body"] = bodies[target]
+        if key != target:
+            source.event["workflow_run"]["conclusion"] = conclusion
+            source.attempt["conclusion"] = conclusion
+            source.jobs["jobs"][0].update(conclusion="skipped", steps=[])
+            if key == "repair_carrier":
+                source.jobs["jobs"].append({**source.jobs["jobs"][0], "id": 8501, "name": "dispatch / run"})
+                source.jobs["total_count"] = 2
+            source.items.clear()
+        assert source.project(policy) == bridge.NO_WAKE
+        if key != target:
+            assert source.calls == [f"actions/runs/8000/attempts/{attempt}", f"actions/runs/8000/attempts/{attempt}/jobs?per_page=100"]
+
+
+@pytest.mark.parametrize("key", list(bridge.SOURCE_ENTRY_JOBS))
+@pytest.mark.parametrize("conclusion", ["success", "failure", "skipped"])
+@pytest.mark.parametrize("defect", ["missing", "malformed", "substituted"])
+def test_executed_target_entry_still_requires_handoff_regardless_of_run_conclusion(policy, key, conclusion, defect):
+    source = SourceAPI(key)
+    source.event["workflow_run"]["conclusion"] = conclusion
+    source.attempt["conclusion"] = conclusion
+    if defect == "missing":
+        source.items.clear()
+    elif defect == "malformed":
+        source.raw = archive("not JSON")
+    else:
+        source.raw = archive(json.dumps({**source.pointer, "issue_id": 42}))
+    wake = source.project(policy)
+    assert wake["attention_family"] == "WAKE_SOURCE_HANDOFF_FAILURE"
+    assert set(wake["selectors"]) == {"event_family", "workflow_run_id", "run_attempt", "workflow_id"}
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda s: s.jobs.update(jobs=[]),
+    lambda s: s.jobs.update(total_count=True),
+    lambda s: s.jobs.update(total_count=101),
+    lambda s: s.jobs["jobs"].append(copy.deepcopy(s.jobs["jobs"][0])),
+    lambda s: s.jobs["jobs"][0].update(name="dispatch / run"),
+    lambda s: s.jobs["jobs"][0].update(run_id=42),
+    lambda s: s.jobs["jobs"][0].update(head_sha="b" * 40),
+    lambda s: s.jobs["jobs"][0].update(run_url="https://api.github.com/repos/attacker/fork/actions/runs/8000"),
+    lambda s: s.jobs["jobs"][0].update(status="in_progress"),
+    lambda s: s.jobs["jobs"][0].update(steps=[{"name": "Export source pointer"}]),
+])
+def test_unbound_or_ambiguous_skipped_entry_cannot_suppress_handoff_failure(policy, mutation):
+    source = SourceAPI()
+    source.event["workflow_run"]["conclusion"] = "skipped"
+    source.attempt["conclusion"] = "skipped"
+    source.jobs["jobs"][0].update(conclusion="skipped", steps=[])
+    source.items.clear()
+    mutation(source)
+    assert source.project(policy)["attention_family"] == "WAKE_SOURCE_HANDOFF_FAILURE"
+
+
+@pytest.mark.parametrize("conclusion", sorted(bridge.FAILED_CONCLUSIONS))
+def test_failed_target_with_unstarted_entry_is_not_quiet_bookkeeping(policy, conclusion):
+    source = SourceAPI()
+    source.event["workflow_run"]["conclusion"] = conclusion
+    source.attempt["conclusion"] = conclusion
+    source.jobs["jobs"][0].update(conclusion="skipped", steps=[])
+    source.items.clear()
+    assert source.project(policy)["attention_family"] == "WAKE_SOURCE_HANDOFF_FAILURE"
 
 
 @pytest.mark.parametrize("key", list(bridge.SOURCE_WORKFLOWS))

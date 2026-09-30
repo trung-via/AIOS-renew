@@ -43,6 +43,7 @@ SOURCE_WORKFLOWS = {
     "terminal": {"name": "AIOS terminal attention carrier", "path": ".github/workflows/aios-terminal-attention.yml"},
 }
 SOURCE_TITLES = {"ingress": "[AIOS BRAIN INGRESS]", "primary_carrier": "[AIOS BRAIN WAKEUP]", "repair_carrier": "[AIOS REPAIR WAKEUP]", "terminal": "[AIOS TERMINAL ATTENTION]"}
+SOURCE_ENTRY_JOBS = {"ingress": "deliver", "primary_carrier": "admit-and-dispatch", "repair_carrier": "admit"}
 POINTER_MAX_BYTES = 512
 ARCHIVE_MAX_BYTES = 4096
 ARTIFACT_PREFIX = "aios-wake-source-v1-attempt-"
@@ -433,6 +434,31 @@ def reconcile_attempt(run: Mapping[str, Any], attempt: Mapping[str, Any]) -> Non
         raise WakeBridgeError("attempt repository disagreement")
 
 
+def _source_entry_skipped(key: str, run: Mapping[str, Any], api: Any) -> bool:
+    """A title-gated entry job that never executed owes no source pointer."""
+    data = _mapping(api.get(f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100"))
+    jobs = data.get("jobs")
+    if not isinstance(jobs, list) or not 0 < len(jobs) <= 100 or type(data.get("total_count")) is not int or data["total_count"] != len(jobs):
+        raise WakeBridgeError("missing or incomplete source jobs")
+    matches = [job for job in map(_mapping, jobs) if job.get("name") == SOURCE_ENTRY_JOBS[key]]
+    if len(matches) != 1:
+        raise WakeBridgeError("missing or ambiguous source entry job")
+    job = matches[0]
+    _integer(job.get("id"))
+    if _integer(job.get("run_id")) != run["id"] or job.get("head_sha") != run["head_sha"]:
+        raise WakeBridgeError("source job provenance disagreement")
+    _source_url(job.get("run_url"), f"actions/runs/{run['id']}")
+    if job.get("status") != "completed" or not isinstance(job.get("conclusion"), str) or job["conclusion"] not in CONCLUSIONS:
+        raise WakeBridgeError("incomplete source entry job")
+    if job["conclusion"] != "skipped":
+        return False
+    if job.get("steps") != []:
+        raise WakeBridgeError("skipped source entry job contains steps")
+    # Cancellation/failure can skip a target before it starts; those runs still
+    # owe an operational failure rather than being treated as quiet siblings.
+    return run["conclusion"] in {"success", "skipped"}
+
+
 def consume_handoff(*, event: Mapping[str, Any], workflow: Mapping[str, Any], policy: WakePolicy, api: Any) -> dict[str, Any]:
     key = workflow_identity(event, workflow, policy)
     run = event["workflow_run"]
@@ -445,6 +471,10 @@ def consume_handoff(*, event: Mapping[str, Any], workflow: Mapping[str, Any], po
     try:
         attempt = _mapping(api.get(f"actions/runs/{run['id']}/attempts/{run['run_attempt']}"))
         reconcile_attempt(run, attempt)
+        # Issue triggers are repository-wide; only the title-gated entry job
+        # distinguishes sibling bookkeeping from a source that owes a handoff.
+        if key in SOURCE_ENTRY_JOBS and _source_entry_skipped(key, run, api):
+            return dict(NO_WAKE)
         start, end = _timestamp(attempt.get("run_started_at")), _timestamp(attempt.get("updated_at"))
         if end < start:
             raise WakeBridgeError("invalid attempt interval")
