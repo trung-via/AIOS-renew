@@ -1,5 +1,5 @@
 version: 1
-active_track: brain-runtime-semantic-handoff-hardening-v1
+active_track: github-chatgpt-brain-wake-automation-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
 planning_baseline:
@@ -72,8 +72,24 @@ human_priority_sequence:
   authority: HUMAN
   ordering_policy: STRICT_SEQUENTIAL_NO_AUTOMATIC_CROSS_TRACK_ADVANCE
   order:
-    - track: brain-runtime-semantic-handoff-hardening-v1
+    - track: github-chatgpt-brain-wake-automation-v1
       status: ACTIVE
+      objective: >-
+        Establish and prove a native GitHub-to-ChatGPT Brain wake loop before
+        strengthening fail-close authoring: use GitHub PR activity only as a wake
+        carrier, keep canonical AIOS refs/artifacts as truth, wake only at failures
+        and semantic checkpoints, require fresh Brain Sync on every wake, and prove
+        unattended read/write continuity without chat-memory authority.
+      planning_document: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md
+      constraints:
+        - NO_CUSTOM_BRAIN_DAEMON_FIRST
+        - NO_SLACK_RELAY_FIRST
+        - NO_WAKE_PAYLOAD_SEMANTIC_AUTHORITY
+        - NO_AUTO_CORRECTION_SELECTION
+        - NO_ROADMAP_AUTO_ADVANCE
+        - NO_FAKE_RUN_FOR_PRE_AIOS_FAILURE
+    - track: brain-runtime-semantic-handoff-hardening-v1
+      status: PAUSED_BY_HUMAN_PRIORITY
       objective: >-
         Close the demonstrated Brain-to-canonical-mutation continuity gaps before
         further performance work: enforce validated two-stage Brain audit handoff at
@@ -131,8 +147,36 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
+  - github-chatgpt-brain-wake-automation-v1-real-conformance
 sequence:
+
+  - id: github-chatgpt-brain-wake-automation-v1-real-conformance
+    status: NEXT
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md
+    objective: >-
+      Prove the lowest-complexity native wake loop using one dedicated GitHub PR
+      activity surface and one ChatGPT Work event-triggered task: a bounded wake
+      event must start ChatGPT without a Human chat message, the woken Brain must
+      fresh-sync canonical state, ignore stale/duplicate events, and perform the
+      next authorized GitHub action without treating the PR carrier as lifecycle
+      truth.
+    conformance_focus:
+      - INGRESS_REJECTION_WAKE
+      - RESULT_TO_SEMANTIC_REVIEW_WAKE
+      - FAILURE_TO_CORRECTION_WAKE
+      - CHANGES_REQUIRED_WAKE
+      - PUBLICATION_FAILURE_WAKE
+      - PUBLICATION_SUCCESS_PLANNING_WAKE
+      - NO_WAKE_FOR_IN_PROGRESS
+      - DUPLICATE_AND_STALE_EVENT_NOOP
+      - PRE_AIOS_FAILURE_NO_FAKE_RUN
+      - UNATTENDED_GITHUB_WRITE_PERMISSION
+    successor_policy: >-
+      Resume TASK-254 r1 only after real wake conformance demonstrates a return path
+      to a fresh Brain. If native GitHub PR event delivery cannot satisfy the gates,
+      return to Human/Brain architecture review before adding any external relay or
+      API Brain service.
   - id: brain-runtime-semantic-handoff-hardening-v1-architecture-contract
     status: DONE
     authority: HUMAN_BRAIN_PLANNING
@@ -157,7 +201,8 @@ sequence:
       after exact reviewed H1 source publication.
 
   - id: brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
-    status: NEXT
+    status: PAUSED_BY_HUMAN_PRIORITY
+    blocked_by: github-chatgpt-brain-wake-automation-v1-real-conformance
     task_id: TASK-254
     task_revision: 1
     authored_commit_sha: "2ea52d8237bbb1a569a8c707b638d2c8ef755f85"
