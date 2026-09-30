@@ -1,0 +1,168 @@
+task_id: TASK-252
+revision: 1
+
+goal: >
+  Correct only the test-owned ignored-collision setup in
+  test_human_reconciliation_proof_gates_preserve_repository so the regression
+  explicitly materializes the repository-local Git exclude surface it intends to
+  exercise even when the accelerated minimal real-Git fixture does not precreate
+  .git/info/exclude. Preserve the exact Human reconciliation production semantics,
+  parameter identities, fail-closed proof gates, accelerated shared fixture policy
+  and workers=12 roadmap boundary.
+
+problem: >
+  RUN-251-001 proved that all exact historical 33 residual identities now pass
+  under workers=12 and therefore correctly advanced to the diagnostic's single
+  conditional full-suite n12 phase. That current full-suite collected 3153 tests
+  and observed exactly one failure outside the historical residual population:
+  test_human_reconciliation_proof_gates_preserve_repository with the
+  ignored-collision parameter. The bounded failure is FileNotFoundError errno 2
+  at tests/test_operator.py line 12931, where the test reads
+  .git/info/exclude before writing its repository-local ignore rule.
+
+  The failing parameter's safe identity
+  cfe1601daea66b6ac73846756feff27ae5526c7ad4f98479178db78710c96f9c maps
+  exactly to the pytest nodeid ending in [ignored-collision]. The shared
+  materialize_git_baseline fixture intentionally constructs only the writable
+  real-Git layout required by its accelerated test baseline and does not create a
+  repository-level .git/info/exclude file. The ignored-collision gate is the
+  consumer that specifically needs that local ignore surface, so broadening the
+  shared fixture or changing production reconciliation is not justified.
+
+  TASK-242 originally introduced the reconciliation proof-gate regression.
+  RUN-242-001-V001 reported only 9 selected tests for its
+  'synchronization or reconcile' selector, while this parameterized proof-gate
+  test alone contains 32 cases. The current failure is therefore also a focused
+  historical verification-coverage gap; this task closes it with an exact
+  reconciliation-focused selector rather than modifying immutable TASK-242
+  history.
+
+assumptions:
+  - >
+    Canonical main at TASK-252 r1 authoring is
+    7111cf9a264d7adec8354058319bb9b02285091d, the Human/Brain roadmap
+    classification commit after TASK-251 completion.
+  - >
+    TASK-251 revision 1 is engineering-complete through RUN-251-001 RESULT,
+    REVIEW-251-001 PRIMARY PASS, review-decision
+    30e183ee843bf5d320e0f55c564e6639f69645ea, successful zero-delta
+    publication, and canonical Runtime evidence RUN-251-001-V001.
+  - >
+    RUN-251-001 Phase A resolved and executed the exact historical 33 residual
+    identities with zero failures at workers=12. The historical depth-amplified
+    Git target completed all four real PUSH observations successfully at
+    bare-remote root length 224.
+  - >
+    RUN-251-001 conditional full-n12 classified FULL_SUITE_POPULATION_DRIFT with
+    exactly one failure outside the historical 33: the ignored-collision parameter
+    of test_human_reconciliation_proof_gates_preserve_repository, FileNotFoundError
+    errno 2 at tests/test_operator.py line 12931.
+  - >
+    tests/operator_test_support.py::make_repo delegates to
+    tests/git_fixture_support.py::materialize_git_baseline. The shared accelerated
+    fixture creates a real writable repository layout but intentionally does not
+    precreate .git/info/exclude. Production Git and reconciliation semantics do not
+    require that fixture metadata file to exist.
+  - >
+    TASK-154 remains authoritative for the accelerated setup-only fixture split:
+    shared fixture changes require broader semantic justification, while
+    consumer-specific setup may materialize only the local state required by the
+    test subject.
+  - >
+    TASK-242 production reconciliation semantics remain reviewed and published.
+    This task addresses only the test setup precondition that prevented one
+    ignored-collision proof gate from reaching production behavior.
+  - >
+    Runtime owns canonical verification/EVIDENCE; Reviewer owns semantic verdict;
+    Human/Brain own TASK-231 authorization and roadmap decisions; Publisher owns
+    publication.
+
+scope:
+  inspect:
+    - .ai/roadmap-state.yaml
+    - .ai/tasks/TASK-154.yaml
+    - .ai/tasks/TASK-242.yaml
+    - .ai/tasks/TASK-251.yaml
+    - tests/git_fixture_support.py
+    - tests/operator_test_support.py
+    - tests/test_operator.py
+    - src/aios_renew/operator.py
+  modify:
+    - tests/test_operator.py
+
+non_goals:
+  - Modify src/aios_renew/operator.py or any production reconciliation behavior.
+  - Modify tests/git_fixture_support.py or tests/operator_test_support.py.
+  - Make the accelerated fixture globally create .git/info/exclude for every sandbox.
+  - Change the exact 32 gate parameters, rename the proof-gate test, remove any gate,
+    add skip/xfail/deselection, or weaken fail-closed assertions.
+  - Change Runtime, Reviewer, Publisher, workflows, carriers, worker policy,
+    verification engine, frozen Kernel or downstream repositories.
+  - Run or claim a full-suite n12 proof inside this focused correction.
+  - Execute or authorize TASK-231, select another worker count, or automatically
+    advance roadmap state from Executor execution.
+  - Add retry, fallback, broad mock Git, global/user/system Git configuration, or
+    host filesystem policy changes.
+  - Push or publish from Executor execution.
+
+constraints:
+  hard:
+    - >
+      Preserve the exact pytest test name and the exact 32 gate parameter values of
+      test_human_reconciliation_proof_gates_preserve_repository.
+    - >
+      For the ignored-collision gate only, test setup must explicitly establish the
+      repository-local .git/info/exclude surface before adding the NEW_MAIN.txt
+      ignore rule. It must work both when the parent/file are absent and when an
+      existing local exclude file is present, without discarding existing content.
+    - >
+      The ignored-collision scenario must remain a real Git repository-local ignore
+      case: NEW_MAIN.txt is physically present with sentinel content before
+      reconcile_control_main is called, production must reject reconciliation, and
+      the repository/remote snapshots must remain byte-for-byte unchanged by that
+      rejected production call.
+    - >
+      Do not replace the repository-local exclude rule with global excludes,
+      environment interception, monkeypatched Git ignore results, a fake repository,
+      skip/xfail, or any path that avoids the real production ignored-file collision
+      proof.
+    - >
+      Preserve all other proof-gate setup and assertions unchanged in semantics,
+      including dirty/staged/untracked, branch/upstream drift, remote proof,
+      malformed lineage, ancestry and artifact gates.
+    - >
+      No shared fixture or production file may change. No new lifecycle,
+      verification, retry/fallback, Reviewer, Publisher, worker-selection or roadmap
+      authority may be introduced.
+    - >
+      Executor RESULT may claim only implementation properties and must not claim
+      Runtime verification completion, full-suite n12 success, Reviewer PASS,
+      publication or TASK-231 readiness.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The ignored-collision parameter explicitly materializes and updates only the
+      sandbox repository's local .git/info/exclude surface, preserving any existing
+      exclude content and requiring no shared-fixture or host/global Git change.
+  - id: AC2
+    condition: >
+      The ignored-collision regression still creates NEW_MAIN.txt with sentinel
+      content before invoking the real reconciliation boundary and still requires
+      rejection with exact repository and remote state preservation.
+  - id: AC3
+    condition: >
+      The exact parameterized reconciliation proof-gate population and neighboring
+      Human reconciliation semantics are preserved with no rename, parameter
+      removal, skip, xfail, deselection, retry, fallback or production weakening.
+  - id: AC4
+    condition: >
+      The implementation delta is confined to tests/test_operator.py and changes no
+      shared fixture, production source, Runtime, verification engine, Reviewer,
+      Publisher, workflow, carrier, worker policy or roadmap authority.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_operator.py -k "reconciliation"
+    - git diff --check
