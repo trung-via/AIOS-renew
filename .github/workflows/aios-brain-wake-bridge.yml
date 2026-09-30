@@ -1,0 +1,125 @@
+name: AIOS Brain wake bridge
+
+# Source delivery prerequisite: GitHub suppresses Actions workflow triggers for
+# Issue/comment writes made with GITHUB_TOKEN. Existing carrier token semantics
+# are outside this bridge's scope; these routes project events when delivered.
+# https://docs.github.com/en/actions/concepts/security/github_token
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  workflow_run:
+    workflows:
+      - AIOS auto-publish reviewed candidate
+      - AIOS self-hosted primary wakeup
+      - AIOS self-hosted REPAIR wakeup
+      - AIOS approved remediation wakeup
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+# Serialize replays of one immutable source event. Distinct events never replace
+# each other's pending delivery in GitHub's concurrency group.
+concurrency:
+  group: aios-brain-wake-1200-${{ github.repository }}-${{ github.event_name }}-${{ github.event.comment.id || github.event.issue.id || github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt || 1 }}
+  cancel-in-progress: false
+
+jobs:
+  project-and-ring:
+    if: >-
+      github.repository == 'trung-via/AIOS-renew' &&
+      (github.event_name == 'workflow_run' ||
+       (!github.event.issue.pull_request && github.event.issue.number != 1200 &&
+        ((github.event_name == 'issues' && github.event.issue.title == '[AIOS TERMINAL ATTENTION]') ||
+         (github.event_name == 'issue_comment' &&
+          (github.event.issue.title == '[AIOS BRAIN INGRESS]' ||
+           github.event.issue.title == '[AIOS BRAIN WAKEUP]' ||
+           github.event.issue.title == '[AIOS REPAIR WAKEUP]')))))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out trusted bridge code from canonical main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install only the transport parser dependency
+        run: python -m pip install --disable-pip-version-check 'PyYAML>=6.0,<7'
+
+      - name: Read exact GitHub workflow identity
+        if: github.event_name == 'workflow_run'
+        uses: actions/github-script@v7
+        env:
+          AIOS_WORKFLOW_METADATA: ${{ runner.temp }}/aios-wake-workflow.json
+        with:
+          script: |
+            const fs = require('fs');
+            const run = context.payload.workflow_run;
+            if (context.payload.repository?.full_name !== 'trung-via/AIOS-renew' ||
+                !Number.isSafeInteger(run?.workflow_id) || run.workflow_id <= 0) {
+              throw new Error('Invalid workflow source identity');
+            }
+            const {data} = await github.rest.actions.getWorkflow({
+              owner: 'trung-via', repo: 'AIOS-renew', workflow_id: run.workflow_id,
+            });
+            fs.writeFileSync(process.env.AIOS_WORKFLOW_METADATA, JSON.stringify({
+              id: data.id, name: data.name, path: data.path,
+            }), 'utf8');
+
+      - name: Project one bounded source event
+        env:
+          PYTHONPATH: src
+          AIOS_WORKFLOW_METADATA: ${{ runner.temp }}/aios-wake-workflow.json
+          AIOS_WAKE_PROJECTION: ${{ runner.temp }}/aios-wake-projection.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$GITHUB_EVENT_NAME" == 'workflow_run' ]]; then
+            args+=(--workflow-metadata "$AIOS_WORKFLOW_METADATA")
+          fi
+          python -m aios_renew.brain_wake_bridge --event "$GITHUB_EVENT_PATH" --event-name "$GITHUB_EVENT_NAME" --repository "$GITHUB_REPOSITORY" --policy .ai/brain-wake-carriers.yaml --output "$AIOS_WAKE_PROJECTION" "${args[@]}"
+
+      - name: Ring the fixed Wake Bus once
+        uses: actions/github-script@v7
+        env:
+          AIOS_WAKE_PROJECTION: ${{ runner.temp }}/aios-wake-projection.json
+        with:
+          script: |
+            const fs = require('fs');
+            const wake = JSON.parse(fs.readFileSync(process.env.AIOS_WAKE_PROJECTION, 'utf8'));
+            if (wake.projection === 'NO_WAKE') return;
+            if (wake.projection !== 'WAKE' || wake.version !== 1 ||
+                wake.repository !== 'trung-via/AIOS-renew' || wake.wake_pr_number !== 1200 ||
+                wake.fresh_brain_sync_required !== true || wake.max_comment_bytes !== 2048 ||
+                !/^github-v1-[0-9a-f]{64}$/.test(wake.event_id) ||
+                typeof wake.body !== 'string' || !wake.body.startsWith('[AIOS BRAIN WAKE]\n') ||
+                Buffer.byteLength(wake.body, 'utf8') > wake.max_comment_bytes ||
+                wake.body.split('\n').filter(line => line === `event_id: ${wake.event_id}`).length !== 1) {
+              throw new Error('Invalid bounded wake projection');
+            }
+            const target = {owner: 'trung-via', repo: 'AIOS-renew', issue_number: 1200};
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...target, per_page: 100,
+            });
+            const replay = comments.some(comment => {
+              const body = comment.body || '';
+              return body.startsWith('[AIOS BRAIN WAKE]\n') &&
+                body.split('\n').filter(line => line === `event_id: ${wake.event_id}`).length === 1;
+            });
+            if (replay) {
+              core.info('NOOP: exact wake event_id already exists');
+              return;
+            }
+            await github.rest.issues.createComment({...target, body: wake.body});
