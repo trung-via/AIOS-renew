@@ -116,6 +116,7 @@ jobs:
             if (exact.length === 1) {
               core.setOutput('notification_status', 'REUSED');
               core.setOutput('issue_number', String(exact[0].number));
+              core.setOutput('issue_id', String(exact[0].id));
               return;
             }
             const created = await github.rest.issues.create({
@@ -126,6 +127,7 @@ jobs:
             });
             core.setOutput('notification_status', 'CREATED');
             core.setOutput('issue_number', String(created.data.number));
+            core.setOutput('issue_id', String(created.data.id));
 
       - name: Record operational carrier status only
         env:
@@ -134,3 +136,32 @@ jobs:
         run: |
           echo "notification_status=$AIOS_NOTIFICATION_STATUS"
           echo "attention_issue_number=$AIOS_ISSUE_NUMBER"
+
+      - name: Write exact wake source selectors
+        id: wake_source
+        if: always() && steps.notify.outputs.issue_number != '' && steps.notify.outputs.issue_id != ''
+        uses: actions/github-script@v7
+        env:
+          AIOS_ISSUE_NUMBER: ${{ steps.notify.outputs.issue_number }}
+          AIOS_ISSUE_ID: ${{ steps.notify.outputs.issue_id }}
+          AIOS_WAKE_SOURCE_PATH: ${{ runner.temp }}/aios-wake-source/source.json
+        with:
+          script: |
+            const fs = require('fs');
+            const pointer = {version: 1, source_kind: 'issue', issue_id: Number(process.env.AIOS_ISSUE_ID),
+              issue_number: Number(process.env.AIOS_ISSUE_NUMBER)};
+            if (![pointer.issue_id, pointer.issue_number].every(n => Number.isSafeInteger(n) && n > 0)) {
+              throw new Error('Invalid exact wake source selector');
+            }
+            fs.mkdirSync(require('path').dirname(process.env.AIOS_WAKE_SOURCE_PATH), {recursive: true});
+            fs.writeFileSync(process.env.AIOS_WAKE_SOURCE_PATH, JSON.stringify(pointer), 'utf8');
+            core.setOutput('ready', 'true');
+
+      - name: Export bounded wake source selectors
+        if: always() && steps.wake_source.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-wake-source-v1-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aios-wake-source/source.json
+          if-no-files-found: error
+          retention-days: 1

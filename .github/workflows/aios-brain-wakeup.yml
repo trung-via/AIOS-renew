@@ -87,6 +87,7 @@ jobs:
 
       - name: Post bounded carrier receipt
         if: always()
+        id: wake_source
         uses: actions/github-script@v7
         env:
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-brain-wakeup-receipt.txt
@@ -157,12 +158,15 @@ jobs:
               } catch (_) {}
             }
             receipt = receipt.replaceAll('\0', '?').slice(0, 3500);
-            await github.rest.issues.createComment({
+            const source = await github.rest.issues.createComment({
               owner: 'trung-via',
               repo: 'AIOS-renew',
               issue_number: context.issue.number,
               body: receipt,
             });
+            core.setOutput('issue_id', String(context.payload.issue.id));
+            core.setOutput('issue_number', String(context.issue.number));
+            core.setOutput('comment_id', String(source.data.id));
             if (accepted) {
               await github.rest.issues.update({
                 owner: 'trung-via',
@@ -175,3 +179,33 @@ jobs:
       - name: Preserve rejected carrier outcome
         if: always() && (steps.admission.outcome != 'success' || steps.dispatch.outcome != 'success')
         run: exit 1
+
+      - name: Write exact wake source selectors
+        id: wake_pointer
+        if: always() && steps.wake_source.outputs.comment_id != ''
+        uses: actions/github-script@v7
+        env:
+          AIOS_ISSUE_ID: ${{ steps.wake_source.outputs.issue_id }}
+          AIOS_ISSUE_NUMBER: ${{ steps.wake_source.outputs.issue_number }}
+          AIOS_COMMENT_ID: ${{ steps.wake_source.outputs.comment_id }}
+          AIOS_WAKE_SOURCE_PATH: ${{ runner.temp }}/aios-wake-source/source.json
+        with:
+          script: |
+            const fs = require('fs');
+            const pointer = {version: 1, source_kind: 'comment', issue_id: Number(process.env.AIOS_ISSUE_ID),
+              issue_number: Number(process.env.AIOS_ISSUE_NUMBER), comment_id: Number(process.env.AIOS_COMMENT_ID)};
+            if (![pointer.issue_id, pointer.issue_number, pointer.comment_id].every(n => Number.isSafeInteger(n) && n > 0)) {
+              throw new Error('Invalid exact wake source selector');
+            }
+            fs.mkdirSync(require('path').dirname(process.env.AIOS_WAKE_SOURCE_PATH), {recursive: true});
+            fs.writeFileSync(process.env.AIOS_WAKE_SOURCE_PATH, JSON.stringify(pointer), 'utf8');
+            core.setOutput('ready', 'true');
+
+      - name: Export bounded wake source selectors
+        if: always() && steps.wake_pointer.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-wake-source-v1-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aios-wake-source/source.json
+          if-no-files-found: error
+          retention-days: 1

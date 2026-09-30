@@ -1,0 +1,43 @@
+format: AIOS_BRAIN_WAKE_CARRIERS_POLICY
+version: 1
+repository: trung-via/AIOS-renew
+wake_pr_number: 1200
+wake_marker: '[AIOS BRAIN WAKE]'
+max_comment_bytes: 2048
+trusted_source:
+  login: github-actions[bot]
+  id: 41898282
+  type: Bot
+workflow_sources:
+  publication:
+    name: AIOS auto-publish reviewed candidate
+    path: .github/workflows/aios-auto-publish.yml
+  primary:
+    name: AIOS self-hosted primary wakeup
+    path: .github/workflows/aios-self-hosted-wakeup.yml
+  repair:
+    name: AIOS self-hosted REPAIR wakeup
+    path: .github/workflows/aios-self-hosted-repair-wakeup.yml
+  remediation:
+    name: AIOS approved remediation wakeup
+    path: .github/workflows/aios-approved-remediation-wakeup.yml
+source_workflows:
+  ingress:
+    name: AIOS Brain Issue Ingress
+    path: .github/workflows/aios-brain-ingress.yml
+  primary_carrier:
+    name: AIOS Brain PRIMARY Wakeup Carrier
+    path: .github/workflows/aios-brain-wakeup.yml
+  repair_carrier:
+    name: AIOS Brain REPAIR wakeup carrier
+    path: .github/workflows/aios-brain-repair-wakeup.yml
+  terminal:
+    name: AIOS terminal attention carrier
+    path: .github/workflows/aios-terminal-attention.yml
+source_handoff:
+  version: 1
+  artifact_prefix: aios-wake-source-v1-attempt-
+  filename: source.json
+  max_pointer_bytes: 512
+  max_archive_bytes: 4096
+  retention_days: 1

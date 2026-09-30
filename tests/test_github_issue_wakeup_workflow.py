@@ -195,3 +195,16 @@ def test_hosted_policy_is_from_exact_checked_out_invocation() -> None:
     )
     assert '--profile-policy "$AIOS_PROFILE_POLICY"' in admission["run"]
     assert "--profile-policy .ai/executor-profiles.yaml" not in text
+
+
+def test_wake_pointer_export_preserves_source_lifecycle_and_attempt_binding() -> None:
+    parsed, text = _workflow()
+    steps = parsed["jobs"]["admit-and-dispatch"]["steps"]
+    upload = next(step for step in steps if step.get("name") == "Export bounded wake source selectors")
+    assert upload["uses"] == "actions/upload-artifact@v4"
+    assert upload["if"] == "always() && steps.wake_pointer.outputs.ready == 'true'"
+    assert upload["with"]["name"] == "aios-wake-source-v1-attempt-${{ github.run_attempt }}"
+    assert upload["with"]["retention-days"] == "1"
+    assert text.count("source_kind:") == 1
+    assert "attention_family" not in text
+    assert "[AIOS BRAIN WAKE]" not in text

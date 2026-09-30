@@ -111,7 +111,7 @@ def test_workflow_distinguishes_ingress_success_from_publication_dispatch_accept
 def test_workflow_fails_closed_when_publication_dispatch_is_not_accepted() -> None:
     workflow, _ = _workflow()
     steps = workflow["jobs"]["deliver"]["steps"]
-    fail_step = steps[-1]
+    fail_step = next(step for step in steps if step.get("name") == "Preserve failed delivery outcome")
     assert fail_step["name"] == "Preserve failed delivery outcome"
     assert "steps.dispatch.outcome != 'success'" in fail_step["if"]
     assert "steps.ingress.outputs.publication_run_id != ''" in fail_step["if"]
@@ -237,3 +237,16 @@ def test_reviewed_policy_binds_exact_repository_actor_and_marker() -> None:
             "max_body_bytes": 131072,
         },
     }
+
+
+def test_wake_pointer_export_preserves_source_lifecycle_and_attempt_binding() -> None:
+    parsed, text = _workflow()
+    steps = parsed["jobs"]["deliver"]["steps"]
+    upload = next(step for step in steps if step.get("name") == "Export bounded wake source selectors")
+    assert upload["uses"] == "actions/upload-artifact@v4"
+    assert upload["if"] == "always() && steps.wake_pointer.outputs.ready == 'true'"
+    assert upload["with"]["name"] == "aios-wake-source-v1-attempt-${{ github.run_attempt }}"
+    assert upload["with"]["retention-days"] == "1"
+    assert text.count("source_kind:") == 1
+    assert "attention_family" not in text
+    assert "[AIOS BRAIN WAKE]" not in text

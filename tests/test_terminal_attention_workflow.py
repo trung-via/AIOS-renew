@@ -86,3 +86,16 @@ def test_policy_is_exact_and_dedicated() -> None:
             "title_marker": "[AIOS TERMINAL ATTENTION]",
         },
     }
+
+
+def test_wake_pointer_export_preserves_source_lifecycle_and_attempt_binding() -> None:
+    parsed, text = workflow()
+    steps = parsed["jobs"]["admit-and-notify"]["steps"]
+    upload = next(step for step in steps if step.get("name") == "Export bounded wake source selectors")
+    assert upload["uses"] == "actions/upload-artifact@v4"
+    assert upload["if"] == "always() && steps.wake_source.outputs.ready == 'true'"
+    assert upload["with"]["name"] == "aios-wake-source-v1-attempt-${{ github.run_attempt }}"
+    assert upload["with"]["retention-days"] == "1"
+    assert text.count("source_kind:") == 1
+    assert "attention_family" not in text
+    assert "[AIOS BRAIN WAKE]" not in text
