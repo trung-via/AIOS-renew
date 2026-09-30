@@ -1,0 +1,37 @@
+review_id: REVIEW-247-001
+reviewed_sha: 47847c0b294ec96bc0382d2057f15bccbbee37c2
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+findings: []
+notes:
+  - >-
+    RUN-247-001 is the canonical TASK-247 r1 PRIMARY zero-delta result on exact
+    subject 47847c0b294ec96bc0382d2057f15bccbbee37c2. The review branch is identical
+    to base, changed_files is empty, unresolved is empty, and execution profile is
+    explicit codex / gpt-6.1-sol / high.
+  - >-
+    Runtime verification executed exactly one command,
+    python scripts/aios_git_fixture_push_threshold_diagnostic.py, and completed with
+    outer exit code 0 on the exact subject. The diagnostic reports subject_unchanged
+    true and worktree_clean true.
+  - >-
+    The reviewed TASK-246 primitive executed exactly six fixed real-Git cases:
+    integration and admission-failure each at authored and observed remote-lock-path
+    lengths 326, 327 and 328. There was no missing/duplicate geometry, retry,
+    adaptive expansion or repository mutation.
+  - >-
+    The canonical bounded observations are: integration failed at 326, 327 and 328
+    with return code 1, stderr_category REPOSITORY_STATE, and signatures
+    FAILED_TO_PUSH_REFS plus REMOTE_UNPACK_FAILED; admission-failure succeeded at
+    326, 327 and 328 with return code 0. Same-length family agreement is false at
+    all three lengths.
+  - >-
+    These outcomes are evidence only. REVIEW-247-001 PASS means the bounded
+    experiment faithfully executed the authorized contract; it does not by itself
+    identify a causal root, select a correction, alter worker policy, unblock
+    TASK-231, or advance roadmap planning.
