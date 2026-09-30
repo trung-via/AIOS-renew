@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-post-population-drift-proof
+  - verification-performance-rebaseline-v2-adopt-workers-12
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1621,7 +1621,24 @@ sequence:
         ordered prefix, but current transport truncation does not prove the
         complete 33-identity population. A bounded residual-context attribution
         diagnostic is required before any further TASK-231 attempt or correction.
-    blocked_by: verification-performance-rebaseline-v2-post-population-drift-proof
+    latest_blocker_resolution:
+      roadmap_id: verification-performance-rebaseline-v2-post-population-drift-proof
+      task_id: TASK-253
+      task_revision: 1
+      run_id: RUN-253-001
+      review_id: REVIEW-253-001
+      verdict: PASS
+      evidence_id: RUN-253-001-V001
+      classification: FULL_N12_PASS
+      review_decision_sha: "e3b83adc40bf3f4e128ae7f86ba21affb754c052"
+      published_sha: "ec3c09349c2506a69ef2bd7743c9ded27a38bf5f"
+      decision: ONE_FRESH_PRIMARY_AUTHORIZED_BY_PLANNING_GATE
+      reason: >-
+        The exact current canonical subject passed one fresh full-suite
+        workers=12/load/max-worker-restart=0 proof with 3153 collected tests,
+        zero failures and pytest exit status 0. The post-population-drift blocker
+        is therefore closed. TASK-231 r2 may resume only as a fresh PRIMARY; this
+        planning decision is not execution, review or publication truth.
     prior_blocker_resolution:
       roadmap_id: verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
       task_id: TASK-240
@@ -2792,7 +2809,7 @@ sequence:
     return_to: verification-performance-rebaseline-v2-post-population-drift-proof
 
   - id: verification-performance-rebaseline-v2-post-population-drift-proof
-    status: NEXT
+    status: DONE
     task_id: TASK-253
     task_revision: 1
     authored_commit_sha: "051b42362a17119308df8c379a82f0afcfac21d5"
@@ -2810,20 +2827,38 @@ sequence:
         - RUN-252-001-V002
       review_decision_sha: "391b61405fc54adb3d5f45e90943e8ff90bc78e7"
       published_sha: "a2f80e2aa93fe9ec46958d83574ea7f98cec65a8"
+    completed_by:
+      task_id: TASK-253
+      task_revision: 1
+      run_id: RUN-253-001
+      review_id: REVIEW-253-001
+      verdict: PASS
+      evidence_id: RUN-253-001-V001
+      result_artifact_sha: "f7384731a2e3d29aa8d9d4515975f4009cba86a5"
+      review_decision_sha: "e3b83adc40bf3f4e128ae7f86ba21affb754c052"
+      reviewed_sha: "ec3c09349c2506a69ef2bd7743c9ded27a38bf5f"
+      published_sha: "ec3c09349c2506a69ef2bd7743c9ded27a38bf5f"
+      classification: FULL_N12_PASS
+      full_n12:
+        workers: 12
+        distribution: load
+        max_worker_restart: 0
+        collection_count: 3153
+        failure_count: 0
+        pytest_exit_status: 0
     objective: >-
       Execute one fresh exact-subject current workers=12 full-suite proof after
-      the ignored-collision fixture correction. Reuse the already-reviewed
-      full-suite contention diagnostic unchanged so a green n12 observation stops
-      immediately, while any bounded failure can retain its existing diagnostic
-      context without selecting a correction.
+      the ignored-collision fixture correction.
     architecture_rule: >-
-      Evidence only. No historical 33-residual replay, diagnostic modification,
-      worker-policy mutation, retry/fallback, TASK-231 execution or automatic
-      roadmap advancement inside the proof.
+      Evidence only. The exact current subject passed one canonical full-suite
+      workers=12/load/max-worker-restart=0 observation with zero failures. This
+      closes the blocker but does not itself execute TASK-231.
     decision_gate:
       full_n12_green_required_for_task231: true
+      full_n12_green: true
       automatic_task231_resume: false
       brain_decision_required_after_result: true
+      brain_decision: UNBLOCK_TASK_231_R2_FOR_ONE_FRESH_PRIMARY
     return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 research_assurance:
