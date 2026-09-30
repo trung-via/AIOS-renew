@@ -68,7 +68,7 @@ human_priority_side_track:
     finish through review/publication first so Python Agent adopts one final exact
     reviewed pin rather than migrating an immediately stale medium/three-effort policy.
 next_items:
-  - verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
+  - verification-performance-rebaseline-v2-migration-source-bootstrap-path-budget-hardening-v2
 sequence:
   - id: admission-failure-v2
     status: DONE
@@ -1621,7 +1621,7 @@ sequence:
         ordered prefix, but current transport truncation does not prove the
         complete 33-identity population. A bounded residual-context attribution
         diagnostic is required before any further TASK-231 attempt or correction.
-    blocked_by: verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
+    blocked_by: verification-performance-rebaseline-v2-post-path-hardening-residual-proof
     prior_blocker_resolution:
       roadmap_id: verification-performance-rebaseline-v2-parallel-git-fixture-push-diagnostic
       task_id: TASK-240
@@ -2227,7 +2227,7 @@ sequence:
         PRIMARY/CONTINUE synchronization or creating lifecycle/retry authority.
     return_to: verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
   - id: verification-performance-rebaseline-v2-residual-context-attribution-diagnostic
-    status: NEXT
+    status: DONE
     task_id: TASK-241
     task_revision: 1
     authored_commit_sha: "0a611122b0f5495402f93f951d983d42b2218456"
@@ -2245,8 +2245,7 @@ sequence:
       published_sha: "4af0374faafd9248a4af2bffabd75788d28fcf76"
       decision: >-
         Operational continuity gap is closed. The rejected TASK-241 dispatch
-        remains historical pre-RUN evidence and is not replayed. TASK-241 may now
-        receive one fresh PRIMARY dispatch on current canonical main.
+        remains historical pre-RUN evidence and is not replayed.
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-PORTABILITY.md
     triggered_by:
@@ -2271,6 +2270,32 @@ sequence:
         tests/test_git_fixture_isolation.py: 1
       task234_fact: COLD_SERIAL_RESIDUALS_PASS_EXCEPT_THREE_STABLE
       task240_fact: ISOLATED_GIT_TARGET_SERIAL_AND_N4_PASS_DRIFT
+    completed_by:
+      primary_run_id: RUN-241-001
+      primary_terminal_kind: FAILURE
+      primary_failure_phase: VERIFICATION
+      repair_id: REPAIR-241-001
+      repair_run_id: RUN-241-002
+      review_id: REVIEW-241-001
+      verdict: PASS
+      evidence_ids:
+        - RUN-241-002-V001
+        - RUN-241-002-V002
+        - RUN-241-002-V003
+      review_decision_sha: "3a7b9f9457954a27a530000e6238dd9d70425516"
+      reviewed_sha: "d69d35eed3eb39fb87e68c79f095012f3cf92ba2"
+      published_sha: "d69d35eed3eb39fb87e68c79f095012f3cf92ba2"
+      classification: RESIDUAL_SET_N12_REPRODUCED
+      phase_a_failure_count: 33
+      operator_clone_failure_count: 32
+      git_fixture_push_failure_count: 1
+      decision: >-
+        Broader full-suite context is not required to reproduce the exact residual
+        population. The 32 Operator residuals form one current CLONE/PATH_OR_FILENAME
+        class under common deep Windows geometry and authorize a bounded
+        migration/source-bootstrap path-budget hardening successor. The distinct
+        Git-fixture PUSH/REPOSITORY_STATE residual remains deferred and is not
+        included in that correction.
     objective: >-
       Determine whether the exact historical 33-residual population reproduces
       when run cold by itself at n12 with selected-wrapper-equivalent path geometry;
@@ -2278,11 +2303,76 @@ sequence:
       bounded worker-local predecessor, co-active, installed-provenance relation
       and typed Git/path cause facts sufficient for the next Brain decision.
     architecture_rule: >-
-      Diagnostic evidence only. It must not repair tests/production, alter worker
-      selection, mutate shared installed state, attribute Defender/site-packages/
-      path/locking causality without evidence, or automatically resume TASK-231.
-    return_to: verification-performance-rebaseline-v2-adopt-workers-12
+      Diagnostic evidence only. It does not itself repair tests/production, alter
+      worker selection, mutate shared installed state or automatically resume
+      TASK-231.
+    return_to: verification-performance-rebaseline-v2-migration-source-bootstrap-path-budget-hardening-v2
 
+  - id: verification-performance-rebaseline-v2-migration-source-bootstrap-path-budget-hardening-v2
+    status: NEXT
+    task_id: TASK-243
+    task_revision: 1
+    authored_commit_sha: "d7a6cee79ca10da29cb5191702c805f8f40cb754"
+    task_blob_sha: "85044b27586ba9886e151d9cb723ba218c70afce"
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    triggered_by:
+      task_id: TASK-241
+      task_revision: 1
+      run_id: RUN-241-002
+      review_id: REVIEW-241-001
+      verdict: PASS
+      published_sha: "d69d35eed3eb39fb87e68c79f095012f3cf92ba2"
+      classification: RESIDUAL_SET_N12_REPRODUCED
+    selected_correction_scope:
+      target_class: migration-source-bootstrap-trusted-checkout-path-budget
+      observed_failure_count: 32
+      file: tests/test_operator.py
+      git_command_family: CLONE
+      return_code: 128
+      stderr_category: PATH_OR_FILENAME
+      cwd_length_range: "177-178"
+      max_operand_length_range: "218-219"
+    deferred_residual:
+      target: tests/test_git_fixture_isolation.py::test_depth_amplified_sandboxes_push_and_resolve_full_aios_refs
+      command_family: PUSH
+      stderr_category: REPOSITORY_STATE
+      derived_remote_lock_path_length: 328
+      decision: NO_CORRECTION_SELECTED
+    objective: >-
+      Harden only the shared migration/source-bootstrap real-Git staging/recovery
+      checkout boundary for the current Windows path geometry while preserving
+      exact handoff identity, historical handoff compatibility, replay/re-entry
+      semantics and all lifecycle authority boundaries.
+    architecture_rule: >-
+      This is a bounded storage-locator/path-geometry hardening. It must not modify
+      source-REPAIR storage, the Git-fixture residual, workers=12 policy, host
+      configuration or TASK-231 implementation, and it does not by itself prove
+      workers=12 full-suite correctness.
+    post_completion_commitment:
+      residual_proof: REQUIRED_BEFORE_TASK231
+      git_fixture_push_residual: DEFERRED_UNRESOLVED
+      task231_workers_12: REMAINS_BLOCKED
+    return_to: verification-performance-rebaseline-v2-post-path-hardening-residual-proof
+
+  - id: verification-performance-rebaseline-v2-post-path-hardening-residual-proof
+    status: BLOCKED
+    blocked_by: verification-performance-rebaseline-v2-migration-source-bootstrap-path-budget-hardening-v2
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-PORTABILITY.md
+    objective: >-
+      After TASK-243 is reviewed and published, obtain one fresh bounded
+      current-main proof using the existing TASK-241 residual-context diagnostic
+      semantics before any TASK-231 retry. Re-resolve the exact historical 33
+      identities, run the cold residual-only n12 phase with selected-wrapper-
+      equivalent geometry, and permit the diagnostic's single conditional full-n12
+      phase only when Phase A passes.
+    architecture_rule: >-
+      Proof only. Do not modify production/tests/fixtures or select a correction
+      inside the proof. A remaining PUSH/REPOSITORY_STATE residual must be audited
+      separately; a green residual/full-suite observation is evidence for a later
+      Brain decision and never automatically advances TASK-231.
+    return_to: verification-performance-rebaseline-v2-adopt-workers-12
 
 research_assurance:
   id: research-assurance
