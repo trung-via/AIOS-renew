@@ -4275,6 +4275,83 @@ def _migration_record(
     }
 
 
+def _migration_storage_no_links(path: Path) -> None:
+    """Reject links and Windows junctions, including in storage ancestors."""
+
+    for component in (path, *path.parents):
+        try:
+            mode = component.lstat()
+        except FileNotFoundError:
+            continue
+        if (stat.S_ISLNK(mode.st_mode)
+                or getattr(mode, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+            raise OperatorError("migration transport contains a linked path")
+
+
+def _migration_storage(marker: Path, *, create: bool = False) -> Path:
+    """A profile-local locator, owned by the full repository Git state path.
+
+    Checkout depth must not amplify either the repository cwd or pytest/TEMP
+    depth. The digest addresses storage only; an exclusive owner record binds
+    the complete state path and makes a collision or interrupted allocation
+    fail closed. No environment or Git path configuration is changed.
+    """
+
+    state = marker.parent.parent
+    _migration_storage_no_links(state)
+    identity = {"format": "AIOS_MIGRATION_STORAGE", "version": 1,
+                "state_root": str(state.resolve())}
+    key = hashlib.sha256(identity["state_root"].encode("utf-8")).hexdigest()[:16]
+    parent = Path.home().resolve() / ".aios-m"
+    storage = parent / key
+    _migration_storage_no_links(storage)
+    # Reserve at least 99 characters for real Git internals (including split
+    # commit-graph/pack lock filenames) beneath the control clone.
+    if len(str(storage / "c")) > 160:
+        raise OperatorError("migration transport exceeds bounded checkout path budget")
+    if create:
+        parent.mkdir(exist_ok=True)
+        if not parent.is_dir():
+            raise OperatorError("migration storage parent is not a directory")
+        try:
+            storage.mkdir()
+        except FileExistsError:
+            pass
+        else:
+            with (storage / "owner.json").open("x", encoding="utf-8") as owner:
+                json.dump(identity, owner, sort_keys=True)
+    _migration_storage_no_links(storage / "owner.json")
+    try:
+        owner = json.loads((storage / "owner.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise OperatorError("migration storage owner is partial or invalid") from exc
+    if (owner != identity or not isinstance(owner, dict)
+            or type(owner.get("version")) is not int):
+        raise OperatorError("migration storage owner mismatch")
+    if {entry.name for entry in storage.iterdir()} - {"owner.json", "c"}:
+        raise OperatorError("invalid migration storage entry")
+    return storage
+
+
+@contextmanager
+def _migration_control_checkout(root: Path, marker: Path) -> Iterator[Path]:
+    """Use one short, exclusively created control checkout under the repo lock."""
+
+    control = _migration_storage(marker, create=True) / "c"
+    _migration_storage_no_links(control)
+    try:
+        control.mkdir()
+    except FileExistsError as exc:
+        raise OperatorError("orphaned migration control requires reconciliation") from exc
+    try:
+        _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags",
+             str(root), str(control))
+        yield control
+    finally:
+        _migration_storage_no_links(control)
+        _remove_historical_workspace(root, control)
+
+
 def _migration_bundle_path(marker: Path, fingerprint: str, name: str) -> Path:
     """Keep transport short while retaining the full fingerprint in durable state."""
 
@@ -4779,11 +4856,7 @@ def _stage_migration_handoff(
     source_bootstrap = intent.get("version") == 2
     control_intent = _source_bootstrap_check_control(intent) if source_bootstrap else intent
     _require_no_active_migration(root, installed_generation_sha=installed_generation_sha)
-    with RepositoryLock(runtime_paths(root).lock), tempfile.TemporaryDirectory(
-        prefix="aios-target-generation-"
-    ) as temporary:
-        control = Path(temporary) / "control"
-        _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags", str(root), str(control))
+    with RepositoryLock(runtime_paths(root).lock), _migration_control_checkout(root, marker) as control:
         if source_bootstrap:
             _check_source_bootstrap_control(root, intent, transport=control)
         else:
@@ -5068,9 +5141,7 @@ def recover_source_bootstrap(
             raise OperatorError("replacement control is not a fast-forward of old control")
         if new_marker.exists() or new_marker.with_suffix(".predecessor").exists():
             raise OperatorError("replacement handoff already exists")
-        with tempfile.TemporaryDirectory(prefix="aios-recovery-control-") as temporary:
-            control = Path(temporary) / "control"
-            _git(root, "clone", "--local", "--no-hardlinks", "--no-checkout", "--no-tags", str(root), str(control))
+        with _migration_control_checkout(root, new_marker) as control:
             _check_source_bootstrap_control(root, new, transport=control)
             old_pin = _git(control, "show", f"{old['source_control_sha']}:{old['pin_path']}")
             new_pin = _git(control, "show", f"{new['source_control_sha']}:{new['pin_path']}")

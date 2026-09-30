@@ -9275,6 +9275,155 @@ def _source_bootstrap_fixture(
     return repo, target_source, intent
 
 
+@pytest.fixture
+def migration_storage_root(monkeypatch: pytest.MonkeyPatch):
+    with tempfile.TemporaryDirectory(prefix="a243-", dir=Path.home()) as directory:
+        base = Path(directory).resolve()
+        profile = base / "p"
+        profile.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: profile))
+        yield base
+
+
+@pytest.fixture
+def migration_depth_root(migration_storage_root: Path, monkeypatch: pytest.MonkeyPatch):
+    # Model TASK-241's actual cwd and CLONE operand regime, independently of
+    # pytest's wrapper path. This fixture changes no host or Git configuration.
+    base = migration_storage_root
+    padding = 178 - len(str(base / "control" / "repo")) - 1
+    assert 1 <= padding <= 200
+    depth = base / ("d" * padding)
+    depth.mkdir()
+    temporary = depth / ("t" * 12)
+    temporary.mkdir()
+    assert len(str(depth / "control" / "repo")) == 178
+    assert len(str(temporary)) == 178
+    monkeypatch.setattr(tempfile, "tempdir", str(temporary))
+    return depth
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_migration_control_checkout_at_task241_depth(
+    migration_depth_root: Path, version: int,
+) -> None:
+    fixture = _migration_fixture if version == 1 else _source_bootstrap_fixture
+    repo, _, intent = fixture(migration_depth_root)
+    fingerprint = operator_module._migration_fingerprint(intent)
+    marker = operator_module._migration_marker(repo, fingerprint)
+    before = (git(repo, "rev-parse", "HEAD"), git(repo, "rev-parse", "origin/main"))
+    # Write a real split commit-graph in a short Git checkout, then retain its
+    # immutable files in the depth-amplified source (Python supports long paths).
+    seed = Path.home() / "g"
+    git(repo, "clone", "--local", "--no-hardlinks", str(repo), str(seed))
+    git(seed, "commit-graph", "write", "--reachable", "--split=replace")
+    graphs = Path(".git/objects/info/commit-graphs")
+    shutil.copytree(seed / graphs, repo / graphs, dirs_exist_ok=True)
+    graph = next((repo / graphs).glob("graph-*.graph")).relative_to(repo)
+    former_control = Path(tempfile.gettempdir()) / ("aios-target-generation-" + "0" * 8) / "control"
+    assert 218 <= len(str(former_control)) <= 219
+    assert len(str(former_control / graph)) > 260
+    # The historical durable target locator still exceeds this budget. Its
+    # reader belongs to the immutable activated target, outside this correction.
+    former_target = runtime_state_root(repo) / "m" / (fingerprint[:12] + "-abcdefgh") / "source"
+    assert len(str(former_target / graph)) > 260
+    with RepositoryLock(runtime_paths(repo).lock), operator_module._migration_control_checkout(repo, marker) as control:
+        assert len(str(control / graph)) < 260
+        assert len(str(control / graph.with_suffix(".graph.lock"))) < 260
+        assert (control / graph).is_file()
+        if version == 1:
+            operator_module._check_migration_control(repo, intent, transport=control)
+        else:
+            operator_module._check_source_bootstrap_control(repo, intent, transport=control)
+        assert git(control, "rev-parse", "HEAD") == intent["source_control_sha"]
+    assert not control.exists()
+    assert before == (git(repo, "rev-parse", "HEAD"), git(repo, "rev-parse", "origin/main"))
+    assert operator_module._migration_fingerprint(intent) == fingerprint
+    assert not marker.exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+    # Mechanically cover both production callers of this real-Git boundary.
+    for caller in (operator_module._stage_migration_handoff, operator_module.recover_source_bootstrap):
+        assert "_migration_control_checkout(" in inspect.getsource(caller)
+        assert "aios-target-generation-" not in inspect.getsource(caller)
+        assert "aios-recovery-control-" not in inspect.getsource(caller)
+
+
+def test_migration_control_interruption_removes_only_owned_checkout(
+    migration_storage_root: Path,
+) -> None:
+    repo, _, intent = _migration_fixture(migration_storage_root)
+    marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(intent))
+    with pytest.raises(OSError, match="control interruption"):
+        with RepositoryLock(runtime_paths(repo).lock), operator_module._migration_control_checkout(repo, marker) as control:
+            assert git(control, "rev-parse", "HEAD") == intent["source_control_sha"]
+            raise OSError("control interruption")
+    assert not control.exists()
+    owner = operator_module._migration_storage(marker) / "owner.json"
+    assert json.loads(owner.read_text(encoding="utf-8"))["state_root"] == str(runtime_state_root(repo))
+    assert not marker.exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
+@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("historical_format", ["full", "task197"])
+def test_migration_historical_bundle_formats_remain_exactly_consumable(
+    migration_storage_root: Path, version: int, historical_format: str,
+) -> None:
+    fixture = _migration_fixture if version == 1 else _source_bootstrap_fixture
+    repo, source, intent = fixture(migration_storage_root)
+    fingerprint = operator_module._migration_fingerprint(intent)
+    marker = operator_module._migration_marker(repo, fingerprint)
+    marker.parent.mkdir(parents=True)
+    parent = marker.parent if historical_format == "full" else marker.parent.parent / "m"
+    name = f"{fingerprint if historical_format == 'full' else fingerprint[:12]}-historical"
+    bundle = parent / name
+    bundle.mkdir(parents=True)
+    bound = bundle / "intent.json"
+    bound.write_text(json.dumps(intent), encoding="utf-8")
+    git(repo, "clone", "--no-checkout", "--no-tags", str(source), str(bundle / "source"))
+    git(bundle / "source", "checkout", "--detach", intent["target_generation_sha"])
+    record = (operator_module._migration_record if version == 1 else
+              operator_module._source_bootstrap_record)(intent, fingerprint, name)
+    marker.write_text(json.dumps(record), encoding="utf-8")
+    before = (marker.read_bytes(), bound.read_bytes())
+    assert operator_module._migration_bundle(marker, record, intent) == (bound, bundle / "source")
+    edges, superseded, pending = operator_module._migration_history(repo)
+    assert edges == {fingerprint: (marker, record, intent)}
+    assert not superseded and not pending
+    assert before == (marker.read_bytes(), bound.read_bytes())
+    # Historical reading does not require allocating a new storage namespace.
+    assert not (Path.home() / ".aios-m").exists()
+
+
+@pytest.mark.parametrize("state", ["partial_owner", "malformed_owner", "owner_collision", "control"])
+def test_migration_storage_rejects_partial_colliding_and_stale_control(
+    migration_storage_root: Path, monkeypatch: pytest.MonkeyPatch, state: str,
+) -> None:
+    repo, _, intent = _migration_fixture(migration_storage_root)
+    marker = operator_module._migration_marker(repo, operator_module._migration_fingerprint(intent))
+    storage = operator_module._migration_storage(marker, create=True)
+    owner = storage / "owner.json"
+    if state == "partial_owner":
+        owner.unlink()
+    elif state == "malformed_owner":
+        owner.write_text("{", encoding="utf-8")
+    elif state == "owner_collision":
+        document = json.loads(owner.read_text(encoding="utf-8"))
+        document["state_root"] += "-other-repository"
+        owner.write_text(json.dumps(document), encoding="utf-8")
+    else:
+        (storage / "c").mkdir()
+        (storage / "c" / "partial.txt").write_text("retain", encoding="utf-8")
+    before = {path: path.read_bytes() for path in storage.rglob("*") if path.is_file()}
+    path = migration_storage_root / "intent.json"
+    path.write_text(json.dumps(intent), encoding="utf-8")
+    monkeypatch.setattr(operator_module, "_installed_generation_sha", lambda: intent["source_generation_sha"])
+    with pytest.raises(OperatorError, match="storage owner|orphaned migration control"):
+        operator_module.migrate_primary(path, runner=lambda *a, **k: pytest.fail("target launched"))
+    assert before == {path: path.read_bytes() for path in storage.rglob("*") if path.is_file()}
+    assert not marker.exists()
+    assert not list(runtime_paths(repo).runs.glob("*.json"))
+
+
 def _source_repair_bootstrap_intent(bootstrap: dict, target_sha: str) -> dict:
     return {
         "format": "AIOS_SOURCE_REPAIR_BOOTSTRAP_INTENT", "version": 1,
