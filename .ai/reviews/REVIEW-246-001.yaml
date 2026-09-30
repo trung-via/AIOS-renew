@@ -1,0 +1,51 @@
+review_id: REVIEW-246-001
+reviewed_sha: 2d066807bc1ed36bb5e5a662184dfd1ef01d9665
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+  - >-
+    RUN-246-001 is the canonical TASK-246 r1 PRIMARY result on base
+    51155170c96a1c00e524359f72b13f1513224761 with candidate
+    2d066807bc1ed36bb5e5a662184dfd1ef01d9665. Execution profile is explicit
+    codex / gpt-6.1-sol / high.
+  - >-
+    Runtime verification passed the exact TASK-246 contract: 196 primitive
+    regression tests passed and git diff --check passed on the reviewed subject.
+    The cumulative delta is exactly the three authorized new diagnostic files and
+    unresolved is empty.
+  - >-
+    The primitive binds exactly integration and admission-failure crossed with
+    exact authored lock-path lengths 326, 327 and 328. Geometry is validated
+    before materialization/PUSH; each case uses fresh writable Git state and one
+    checked real PUSH with no retry or adaptive expansion.
+  - >-
+    The primitive preserves full production-shaped 64-hex refs, repository-local
+    core.longpaths=true, local bare remote transport, update-ref, PUSH, show-ref
+    and ls-remote semantics. Host/global Git and Windows configuration are not
+    mutated.
+  - >-
+    Durable output is closed to bounded family/geometry/outcome/return-code and
+    allowlisted category/signature facts. Dynamic operands are redacted before
+    bounded matching; raw paths, refs, URLs, streams, object identities and
+    environment data are excluded. The envelope rejects causal or correction
+    fields and exposes only factual outcome relationships.
+  - >-
+    TASK-246 verification intentionally did not execute the live six-case
+    threshold experiment against the current reviewed candidate. Tests exercise
+    orchestration via protocol fixtures and real PUSH mechanics only in short
+    disposable repositories. Therefore this PASS establishes only the reviewed
+    diagnostic primitive, not a present threshold outcome or a correction.
+  - >-
+    TASK-231 remains blocked. Current-main threshold execution requires a separate
+    Human/Brain-authored zero-delta evidence TASK after publication of this exact
+    primitive.
