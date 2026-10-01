@@ -731,6 +731,10 @@ sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-safe-local-main-reconciliation
     status: ACTIVE
+    task_id: TASK-257
+    task_revision: 1
+    authored_commit_sha: "853452ac565a6966af47e8965cd0ce6c3ea434c3"
+    task_blob_sha: "c17e6e022144f872660bbf32ef3252f9f2e964ed"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
