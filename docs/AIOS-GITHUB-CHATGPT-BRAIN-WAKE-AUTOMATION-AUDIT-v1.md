@@ -823,3 +823,29 @@ do not duplicate historical ACKs. This closes the remaining real-conformance gat
 the GitHub -> ChatGPT Brain Wake Automation v1. It does not grant semantic continuation
 authority to the ACK task; its authority remains wake validation + fresh Brain Sync + ACK
 only.
+
+
+## 20. Production disposition — Work retired from AIOS wake
+
+The GitHub -> ChatGPT Work path remains valid historical transport-conformance
+evidence. It is no longer the selected production wake mechanism.
+
+During live TASK-254 operation, the Human observed that Work activity continued after
+Executor activity had stopped. Product documentation confirms that ChatGPT Work and
+Codex draw from the same included allowance. The active commit-update ACK task also
+caused a second comment-trigger Work task to run on the resulting ACK comment; that
+second invocation could return NOOP but still represented unnecessary Work activity.
+
+Human decision on 2026-10-01:
+
+- disable the event-triggered `AIOS Commit Wake ACK` automation;
+- disable the event-triggered `AIOS Brain Wake ACK` automation;
+- do not use ChatGPT Work as the production AIOS wake, ACK, progress-monitoring or
+  semantic-continuation surface;
+- preserve all prior Work wake probes and ACKs as immutable conformance evidence only;
+- continue H4 under `HUMAN_WAKE_RELAY_V1`: deterministic GitHub/AIOS Human
+  notification followed by explicit regular-Chat resume and fresh Brain Sync.
+
+This is a cost/operational architecture decision, not evidence that the Work transport
+was technically non-conformant. Re-enabling Work for production wake requires a new
+explicit Human decision and fresh audit.
