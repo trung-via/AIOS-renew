@@ -578,9 +578,9 @@ sequence:
   - id: brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
     status: ACTIVE
     task_id: TASK-254
-    task_revision: 2
-    authored_commit_sha: "52cc11eaf41c56a3bd4a11fd2d0aa5706f142a92"
-    task_blob_sha: "6810c152240c027e86d2595eb41006687e5c8103"
+    task_revision: 3
+    authored_commit_sha: "9c3765d91aaf237dbfc30f69c9638dea53c8e6db"
+    task_blob_sha: "e8f1ef01af471e2e7e7b3dbeff9e71f1f33d6114"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
@@ -599,11 +599,41 @@ sequence:
         - EXISTING_SEMANTIC_EQUALITY_AUTHORITY
         - MUTATION_EDGE_FRESHNESS
         - IDEMPOTENT_REPLAY_ORDERING
+    r2_execution:
+      run_id: RUN-254-001
+      terminal_kind: FAILURE
+      failure_artifacts_sha: "f5c5582b857ad9bb488d50a0ecaed24051ca19c0"
+      failed_candidate_sha: "e5eb94205c7d5f9032f61b5e511361f7325699e4"
+      phase: COMPLETION_GATE
+      disposition: TASK_CONTRACT_REVISION_REQUIRED
+      basis: >-
+        The r2 contract required fresh audited handoff for superseding REPAIR
+        authoring but excluded the Flow Resolution / Decision Packet authorities
+        needed to make REPAIR_AUTHORING reachable after a current authorization
+        changes Unified State to EXECUTE_REPAIR.
+    r3_task_audit:
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      predecessor_revision: 2
+      predecessor_disposition: FAILED_TASK_CONTRACT_SCOPE
+      reconciled_risks:
+        - EXPLICIT_REPAIR_AUTHORING_MUST_NOT_BECOME_GENERIC_OVERRIDE
+        - SUPERSESSION_PACKET_MUST_BIND_CURRENT_AUTHORIZATION
+        - UNIFIED_STATE_REMAINS_EXECUTE_REPAIR
+        - NO_AUTOMATIC_CORRECTION_SELECTION
+        - NO_H2_H3_H4_SCOPE_CREEP
+        - STALE_OR_ALREADY_EXECUTED_AUTHORIZATION_FAIL_CLOSED
     objective: >-
       Prospectively require one fresh Decision Packet-bound BP-4A two-stage audited
       CANDIDATE handoff before any new AUTHOR_TASK, AUTHOR_REMEDIATION or AUTHOR_REPAIR
-      canonical mutation, while preserving existing family validators, idempotent
-      non-mutating replay, Reviewer independence and all Runtime/Publisher boundaries.
+      canonical mutation, including bounded immutable REPAIR supersession before a
+      continuation RUN is admitted, while preserving existing family validators,
+      idempotent non-mutating replay, Reviewer independence and all
+      Runtime/Publisher boundaries.
     return_to: brain-runtime-semantic-handoff-hardening-v1-repair-strategy-facts
   - id: admission-failure-v2
     status: DONE
