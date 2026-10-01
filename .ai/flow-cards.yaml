@@ -42,9 +42,9 @@ cards:
     expected_return_shape: REMEDIATION_CONTRACT_PROPOSAL
     invalidation_rules: [WORK_CONTEXT_FINGERPRINT_CHANGE, FRESH_COMPOSITION_FOR_CONTINUATION]
   - id: REPAIR_AUTHORING
-    entry_conditions: [UNIFIED_STATE_AUTHOR_REPAIR]
+    entry_conditions: [UNIFIED_STATE_AUTHOR_REPAIR, EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION]
     required_context: [canonical_observation.repository, canonical_observation.main_sha, canonical_observation.selected_task, canonical_observation.unified_state]
-    optional_context: [canonical_observation.blocker, current_request.human_input]
+    optional_context: [canonical_observation.blocker, canonical_observation.repair_supersession, current_request.flow_selector, current_request.human_input]
     forbidden_context: [chat_history, credentials, raw_logs, unbounded_repository_content]
     authority_owner: BRAIN
     decision_family_ref: publication._validate_repair_authorization

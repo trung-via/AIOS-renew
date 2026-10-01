@@ -1,11 +1,14 @@
 """Deterministic tests for generic Brain authoring ingress."""
 
 import json
+import copy
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 import aios_renew.authoring_ingress as authoring_ingress_module
 from tests.git_fixture_support import (
@@ -32,6 +35,147 @@ from aios_renew.review_transport import (
     transport_post_pass,
 )
 from aios_renew.unified_state import observe_unified_state
+
+
+def new_task_envelope(main_sha: str) -> IngressEnvelope:
+    return IngressEnvelope(
+        "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_TASK", {"task_id": "TASK-105"},
+        {"expected_main_sha": main_sha}, V1_TASK_105_SOURCE,
+    )
+
+
+def test_audited_authoring_missing_handoff_is_non_mutating(tmp_path):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+        execute_ingress(new_task_envelope(main_sha), repo=repo)
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+
+
+def test_audited_authoring_semantic_formatting_and_read_only_replay(tmp_path):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    envelope = audited_envelope(new_task_envelope(main_sha), repo)
+    body = yaml.safe_load(envelope.payload)
+    envelope = replace(envelope, payload=json.dumps(dict(reversed(list(body.items()))), indent=3) + "\r\n")
+    result = execute_ingress(envelope, repo=repo)
+    assert result.status == "CANONICALIZED"
+    assert set(git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", main_sha, result.canonical_sha).splitlines()) == {".ai/tasks/TASK-105.yaml"}
+    replay = execute_ingress(replace(envelope, audited_handoff=None), repo=repo)
+    assert replay.status == "IDEMPOTENT"
+    assert git(remote, "rev-parse", "refs/heads/main") == result.canonical_sha
+    with pytest.raises(AuthoringIngressError, match="conflicting TASK"):
+        execute_ingress(replace(envelope, audited_handoff=None, payload=envelope.payload.replace("Implement generic", "Change generic")), repo=repo)
+    revised = replace(envelope, audited_handoff=None,
+                      expected_state={"expected_main_sha": result.canonical_sha},
+                      payload=V1_TASK_105_R2_SOURCE)
+    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+        execute_ingress(revised, repo=repo)
+
+
+@pytest.mark.parametrize("fault", [
+    "stage1_only", "packet", "profile", "flow", "order", "missing_lens",
+    "no_decision", "substitution", "reconciliation", "payload",
+])
+def test_audited_authoring_rejects_invalid_provenance_before_mutation(tmp_path, fault):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    envelope = audited_envelope(new_task_envelope(main_sha), repo)
+    handoff = copy.deepcopy(envelope.audited_handoff)
+    if fault == "stage1_only":
+        del handoff["stage2"]
+    elif fault == "packet":
+        handoff["stage1"]["packet_fingerprint"] = "0" * 64
+    elif fault == "profile":
+        handoff["stage1"]["audit_profile_ref"]["id"] = "wrong-profile"
+    elif fault == "flow":
+        handoff["stage2"]["selected_flow"] = "ARCHITECTURE"
+    elif fault == "order":
+        handoff["stage2"]["construct_audit"].reverse()
+    elif fault == "missing_lens":
+        handoff["stage2"]["closure"].pop()
+    elif fault == "no_decision":
+        handoff["stage2"]["closure"][0].update(outcome="BLOCKER", blocker_summary="Material blocker.")
+        handoff["stage2"]["outcome"] = "NO_DECISION"
+    elif fault in {"substitution", "reconciliation"}:
+        handoff["stage2"]["reconciled_candidate"]["goal"] = "A different semantic goal."
+        if fault == "substitution":
+            # A valid risk/reconciliation still cannot substitute the payload.
+            handoff["stage2"]["construct_audit"][0] = {
+                "lens": handoff["stage2"]["construct_audit"][0]["lens"], "outcome": "RISK_FOUND",
+                "risks": [{"risk_summary": "Goal mismatch.", "counterexample": "Different goal.",
+                           "candidate_anchor": "goal", "disposition": "ADDRESSED_BY_RECONCILIATION"}],
+            }
+    elif fault == "payload":
+        envelope = replace(envelope, payload=envelope.payload.replace("Implement generic", "Change generic"))
+    with pytest.raises(AuthoringIngressError):
+        execute_ingress(replace(envelope, audited_handoff=handoff), repo=repo)
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+
+
+@pytest.mark.parametrize("input_path", [".ai/roadmap-state.yaml", ".ai/flow-cards.yaml",
+                                       ".ai/brain-audit-profiles.yaml", ".ai/brain-return-contracts.yaml",
+                                       ".ai/tasks/TASK-OTHER.yaml"])
+def test_audited_authoring_rejects_dirty_or_alternate_projection(tmp_path, input_path):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    envelope = audited_envelope(new_task_envelope(main_sha), repo)
+    git(repo, "checkout", "-b", "alternate")
+    path = repo / input_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes((path.read_bytes() if path.exists() else b"") + b"\n# divergent input\n")
+    with pytest.raises(AuthoringIngressError, match="divergent"):
+        execute_ingress(envelope, repo=repo)
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+
+
+@pytest.mark.parametrize("movement", ["main", "correction", "input_at_publication"])
+def test_audited_authoring_rechecks_movement_after_audit_and_at_publication(tmp_path, monkeypatch, movement):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    envelope = audited_envelope(new_task_envelope(main_sha), repo)
+    if movement == "input_at_publication":
+        original = authoring_ingress_module._commit_tree
+        def move_input(*args, **kwargs):
+            commit = original(*args, **kwargs)
+            path = repo / ".ai/brain-return-contracts.yaml"
+            path.write_bytes(path.read_bytes() + b"\n# moved after audit\n")
+            return commit
+        monkeypatch.setattr(authoring_ingress_module, "_commit_tree", move_input)
+    else:
+        from aios_renew import brain_audit
+        original = brain_audit.validate_stage2
+        def move_ref(*args, **kwargs):
+            audit = original(*args, **kwargs)
+            if movement == "main":
+                tree = git(repo, "rev-parse", f"{main_sha}^{{tree}}")
+                commit = authoring_ingress_module._commit_tree(repo, tree, [main_sha], "movement")
+                git(remote, "fetch", "--no-tags", str(repo), commit)
+                git(remote, "update-ref", "refs/heads/main", commit)
+            else:
+                git(remote, "update-ref", "refs/heads/aios/repair/RUN-OTHER", main_sha)
+            return audit
+        monkeypatch.setattr(brain_audit, "validate_stage2", move_ref)
+    with pytest.raises(AuthoringIngressError, match="freshness"):
+        execute_ingress(envelope, repo=repo)
+    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+    if movement != "main":
+        assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+
+
+def test_audited_handoff_has_one_closed_surface_and_excludes_reviewer():
+    envelope = {
+        "format": "AIOS_INGRESS_ENVELOPE", "version": 1, "operation": "AUTHOR_TASK",
+        "identity": {"task_id": "TASK-105"}, "expected_state": {"expected_main_sha": "a" * 40},
+        "payload": V1_TASK_105_SOURCE,
+        "audited_handoff": {"format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1, "stage1": {}, "stage2": {}},
+    }
+    for key in ("decision_packet", "canonical_state", "provider", "model", "session"):
+        invalid = copy.deepcopy(envelope)
+        invalid["audited_handoff"][key] = {}
+        with pytest.raises(AuthoringIngressError, match="two-stage"):
+            parse_envelope(invalid)
+    envelope.update(operation="SUBMIT_REVIEW", identity={"run_id": "RUN-105-001"})
+    with pytest.raises(AuthoringIngressError, match="SUBMIT_REVIEW"):
+        parse_envelope(envelope)
 
 
 def test_repair_review_semantics_require_exact_remediation_finding() -> None:
@@ -150,15 +294,240 @@ V1_TASK_105_R2_SOURCE = TASK_105_R2_SOURCE.replace(
 )
 
 
-def setup_test_repo(root: Path) -> tuple[Path, Path, str]:
+def setup_test_repo(root: Path, *, task_id: str = "TASK-105") -> tuple[Path, Path, str]:
     """Create local repo and bare upstream git repo."""
     return materialize_git_baseline(
         root,
-        files={"README.md": "initial repo\n"},
+        files={
+            "README.md": "initial repo\n",
+            ".gitattributes": ".ai/** -text\n",
+            ".ai/roadmap-state.yaml": yaml.safe_dump({
+                "version": 1, "active_track": "ingress", "active_track_status": "ACTIVE",
+                "sequence": [{"id": task_id, "task_id": task_id, "status": "NEXT"}],
+            }).encode("utf-8"),
+            **{f".ai/{name}": (Path(__file__).resolve().parents[1] / ".ai" / name).read_bytes()
+               for name in ("flow-cards.yaml", "brain-audit-profiles.yaml", "brain-return-contracts.yaml")},
+        },
         user_name="AIOS Test",
         user_email="test@example.invalid",
         commit_message="initial commit",
     )
+
+
+def audited_envelope(envelope: IngressEnvelope, repo: Path) -> IngressEnvelope:
+    """Fixture Brain supplies BP-4A semantic stages over the real fresh packet."""
+    from aios_renew.brain_audit import construct_stage1
+    packet, profile, _, _ = authoring_ingress_module._compose_authoring_packet(envelope, repo)
+    candidate = yaml.safe_load(envelope.payload) if isinstance(envelope.payload, str) else dict(envelope.payload)
+    stage1 = construct_stage1(packet, profile, candidate)
+    stage2 = {
+        **{key: stage1[key] for key in ("packet_fingerprint", "audit_profile_ref", "selected_flow",
+                                       "construct_candidate", "construct_fingerprint")},
+        "construct_audit": [{"lens": lens["id"], "outcome": "CLEAR"} for lens in profile["lenses"]],
+        "reconciled_candidate": copy.deepcopy(candidate),
+        "closure": [{"lens": lens["id"], "outcome": "CLEAR"} for lens in profile["lenses"]],
+        "outcome": "CANDIDATE",
+    }
+    return replace(envelope, audited_handoff={
+        "format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1,
+        "stage1": stage1, "stage2": stage2,
+    })
+
+
+def execute_audited_ingress(envelope: IngressEnvelope, *, repo: Path) -> IngressResult:
+    return execute_ingress(audited_envelope(envelope, repo), repo=repo)
+
+
+def historical_repair_fixture(envelope: IngressEnvelope, *, repo: Path) -> IngressResult:
+    """Seed pre-H1 lineage for historical family/replay tests.
+
+    First prove that this direct prospective authoring is rejected. Existing
+    immutable authorizations remain valid fixture inputs; the fixture does not
+    mock or bypass the production gate to pretend a new decision was audited.
+    """
+    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+        execute_ingress(replace(envelope, audited_handoff=None), repo=repo)
+    payload = dict(envelope.payload)
+    run_id = envelope.identity["failed_run_id"]
+    remote = authoring_ingress_module._resolve_remote(repo)
+    ref = f"refs/heads/aios/repair/{run_id}"
+    first = authoring_ingress_module._resolve_ref_sha(repo, ref, remote)
+    current = resolve_remote_repair_authorization(repo, run_id) if first else None
+    parent = current.commit_sha if current else payload["failed_head_sha"]
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    tree = authoring_ingress_module._tree_with_metadata(
+        repo, parent, ".ai/transport/repair.json", body, replace_existing=current is not None)
+    if current:
+        staged = authoring_ingress_module._commit_tree(repo, tree, [parent], "historical repair fixture stage")
+        failure_sha = authoring_ingress_module._resolve_ref_sha(
+            repo, f"refs/heads/aios/failure-artifacts/{run_id}", remote)
+        metadata = {
+            "format": "AIOS_REPAIR_SUPERSESSION", "version": 1, "failed_run_id": run_id,
+            "authorization_revision": current.revision + 1, "predecessor_repair_sha": parent,
+            "failure_artifacts_sha": failure_sha,
+        }
+        tree = authoring_ingress_module._tree_with_metadata(
+            repo, staged, ".ai/transport/repair-supersession.json",
+            json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode("utf-8"), replace_existing=True)
+        ref = f"refs/heads/aios/repair-supersession/{run_id}/{current.revision + 1}"
+    commit = authoring_ingress_module._commit_tree(repo, tree, [parent], "historical pre-H1 repair fixture")
+    authoring_ingress_module._publish_ingress_ref(repo, remote, ref, commit, expect_missing=True)
+    return IngressResult(operation="AUTHOR_REPAIR", canonical_destination=ref, canonical_sha=commit)
+
+
+def completion_gate_supersession_fixture(tmp_path):
+    """RUN-254-001's r2 blocker shape, with isolated Git identities.
+
+    The r2 candidate is clean/transportable and fails only at COMPLETION_GATE.
+    It is transported as a failed candidate, never published on fixture main.
+    """
+    repo, remote, _ = setup_test_repo(tmp_path, task_id="TASK-254")
+    task_source = TASK_105_R2_SOURCE.replace("TASK-105", "TASK-254")
+    task_path = repo / ".ai/tasks/TASK-254.yaml"
+    task_path.parent.mkdir(parents=True, exist_ok=True)
+    task_path.write_text(task_source, encoding="utf-8")
+    sample = repo / "src/sample.py"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_text("# base\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "--quiet", "-m", "canonical r2 TASK fixture")
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
+    git(repo, "switch", "--quiet", "-c", "failed-candidate")
+    sample.write_text("# completed candidate\n", encoding="utf-8")
+    git(repo, "add", "src/sample.py")
+    git(repo, "commit", "--quiet", "-m", "r2 bounded candidate fixture")
+    head = git(repo, "rev-parse", "HEAD")
+    # Transport reads configured upstream authority on the candidate checkout.
+    git(repo, "config", "branch.failed-candidate.remote", "origin")
+    git(repo, "config", "branch.failed-candidate.merge", "refs/heads/main")
+    run = {"run_id": "RUN-254-001", "task": {"id": "TASK-254", "revision": 2},
+           "executor": "codex", "base_sha": base, "head_sha": head,
+           "workspace": str(repo), "status": "ACTIVE"}
+    failure = {"kind": "FAILURE", "run_id": run["run_id"], "task": run["task"],
+               "executor": "codex", "base_sha": base, "failed_head_sha": head,
+               "phase": "COMPLETION_GATE",
+               "error": {"type": "OperatorError", "message": "RESULT has unresolved items",
+                         "executor_diagnostics": {"unresolved": [
+                             "Superseding REPAIR cannot obtain an audited packet while Unified State projects EXECUTE_REPAIR."]}},
+               "candidate": {"transportable": True, "repairable": True, "dirty": False,
+                             "descends_from_base": True, "changed_files": ["src/sample.py"],
+                             "outside_task_scope": []}}
+    state = tmp_path / "failure-material"
+    state.mkdir()
+    run_path, failure_path = state / "run.json", state / "failure.json"
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    failure_path.write_text(json.dumps(failure), encoding="utf-8")
+    transport_failure(repo, run_id=run["run_id"], head_sha=head,
+                      run_path=run_path, failure_path=failure_path)
+    git(repo, "switch", "--quiet", "main")
+    failure_sha = git(remote, "rev-parse", "refs/heads/aios/failure-artifacts/RUN-254-001")
+    predecessor = {"repair_id": "REPAIR-254-001", "failed_run_id": run["run_id"],
+                   "failed_head_sha": head, "task": run["task"],
+                   "action": "CONTINUE_IMPLEMENTATION", "modification_scope": ["src/sample.py"],
+                   "instructions": ["Continue implementation."],
+                   "constraints": ["Bounded mutation authority only."]}
+    initial = IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
+                              {"failed_run_id": run["run_id"]},
+                              {"expected_failed_head_sha": head}, predecessor)
+    return repo, remote, base, failure_sha, initial
+
+
+def test_completion_gate_audited_supersession_preserves_execute_repair_and_r2_history(tmp_path):
+    from aios_renew.brain_context import BrainContextError, compose_brain_work_context, resolve_flow
+    from aios_renew.brain_sync import observe_brain_sync
+    from aios_renew.decision_packet import compile_decision_packet, DecisionPacketError
+    from aios_renew import decision_packet
+
+    repo, remote, base, failure_sha, initial = completion_gate_supersession_fixture(tmp_path)
+    work = compose_brain_work_context(repo=repo)
+    assert resolve_flow(work).selected_flow == "REPAIR_AUTHORING"
+    assert resolve_flow(work).selection_basis == "UNIFIED_STATE"
+    assert work.current_request is None
+    initial_audited = audited_envelope(initial, repo)
+    first = execute_ingress(initial_audited, repo=repo)
+    assert observe_unified_state("TASK-254", repo=repo).next_action == "EXECUTE_REPAIR"
+    assert resolve_flow(compose_brain_work_context(repo=repo)).selected_flow == "NONE"
+
+    prior_snapshot = observe_brain_sync(repo=repo)
+    explicit = compose_brain_work_context(prior_snapshot,
+                                          {"flow_selector": "REPAIR_AUTHORING",
+                                           "human_input": "The implementation is already complete."})
+    flow = resolve_flow(explicit)
+    assert flow.selection_basis == "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION"
+    assert flow.authority_owner == "BRAIN"
+    assert flow.canonical_next_action == flow.unified_state_next_action == "EXECUTE_REPAIR"
+    assert flow.requires_fresh_context_for_continuation
+    assert flow.pending_canonical_obligation is None
+    material = explicit.repair_supersession_material
+    # Reproduce the r2 completion blocker: the ordinary initial-authoring
+    # packet cannot reinterpret the now-executable authorization as AUTHOR_REPAIR.
+    ordinary_material = {key: material[key] for key in ("kind", "task", "failed_run", "failure")}
+    with pytest.raises(DecisionPacketError, match="canonical state is not REPAIR authoring"):
+        decision_packet._repair_authoring(ordinary_material, observe_brain_sync(repo=repo).as_dict())
+    packet = compile_decision_packet(explicit, flow, material).as_dict()
+    assert packet["subject"]["failure_artifacts_sha"] == failure_sha
+    assert packet["subject"]["failed_run_id"] == "RUN-254-001"
+    assert packet["subject"]["current_repair_authorization_sha"] == first.canonical_sha
+    assert packet["prior_semantic_decisions"] == {
+        "kind": "REPAIR", "authorization_sha": first.canonical_sha, "authorization": initial.payload}
+    assert packet["bounded_observations"]["phase"] == "COMPLETION_GATE"
+    assert all(packet[key] is False for key in
+               ("run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    altered = copy.deepcopy(material)
+    altered["current_authorization"]["authorization"]["instructions"] = ["Caller invented prior strategy"]
+    with pytest.raises(DecisionPacketError, match="canonical reconstruction"):
+        compile_decision_packet(explicit, flow, altered)
+
+    successor = replace(initial, expected_state={**initial.expected_state,
+                        "expected_current_repair_sha": first.canonical_sha,
+                        "expected_failure_artifacts_sha": failure_sha},
+                        payload={**initial.payload, "action": "FINALIZE_CANDIDATE",
+                                 "modification_scope": [], "instructions": ["Finalize existing candidate."]})
+    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+        execute_ingress(successor, repo=repo)
+    with pytest.raises(AuthoringIngressError, match="audited authoring rejected"):
+        execute_ingress(replace(successor, audited_handoff=initial_audited.audited_handoff), repo=repo)
+    fresh = audited_envelope(successor, repo)
+    assert fresh.audited_handoff["stage1"]["packet_fingerprint"] != initial_audited.audited_handoff["stage1"]["packet_fingerprint"]
+    with pytest.raises(AuthoringIngressError, match="differs"):
+        execute_ingress(replace(fresh, payload={**successor.payload, "instructions": ["Different strategy."]}), repo=repo)
+    second = execute_ingress(fresh, repo=repo)
+    current = resolve_remote_repair_authorization(repo, "RUN-254-001")
+    assert current.commit_sha == second.canonical_sha and current.revision == 2
+    assert current.predecessor_sha == first.canonical_sha
+    assert current.failure_artifacts_sha == failure_sha
+    assert observe_unified_state("TASK-254", repo=repo).next_action == "EXECUTE_REPAIR"
+    assert git(remote, "rev-parse", "refs/heads/main") == base
+    assert git(remote, "rev-parse", "refs/heads/aios/failure-artifacts/RUN-254-001") == failure_sha
+    assert git(remote, "rev-parse", "refs/heads/aios/repair/RUN-254-001") == first.canonical_sha
+    assert git(repo, "show", f"{base}:.ai/tasks/TASK-254.yaml") == (repo / ".ai/tasks/TASK-254.yaml").read_text(encoding="utf-8").strip()
+    replay = execute_ingress(replace(successor, expected_state={**successor.expected_state,
+                             "expected_current_repair_sha": second.canonical_sha}), repo=repo)
+    assert replay.replayed and replay.canonical_sha == second.canonical_sha
+    changed = replace(fresh, payload={**successor.payload, "instructions": ["Another successor strategy."]})
+    with pytest.raises(AuthoringIngressError, match="expected current REPAIR SHA"):
+        execute_ingress(changed, repo=repo)
+    changed = replace(changed, expected_state={**changed.expected_state,
+                      "expected_current_repair_sha": second.canonical_sha})
+    with pytest.raises(AuthoringIngressError, match="audited authoring rejected"):
+        execute_ingress(changed, repo=repo)
+    with pytest.raises(BrainContextError, match="stale"):
+        compose_brain_work_context(prior_snapshot, {"flow_selector": "REPAIR_AUTHORING"})
+    assert resolve_remote_repair_authorization(repo, "RUN-254-001").commit_sha == second.canonical_sha
+
+    # An admitted local continuation cannot be replaced by an external-only
+    # snapshot that still displays EXECUTE_REPAIR.
+    saved_snapshot = observe_brain_sync(repo=repo)
+    from aios_renew.operator import _runtime_paths_readonly
+    paths = _runtime_paths_readonly(repo)
+    paths.runs.mkdir(parents=True, exist_ok=True)
+    (paths.runs / "RUN-254-002.json").write_text(json.dumps({
+        "run_id": "RUN-254-002", "task": {"id": "TASK-254", "revision": 2},
+        "executor": "codex", "base_sha": initial.payload["failed_head_sha"],
+        "workspace": str(repo), "head_sha": None, "status": "ACTIVE"}), encoding="utf-8")
+    with pytest.raises(BrainContextError, match="local Runtime"):
+        compose_brain_work_context(saved_snapshot, {"flow_selector": "REPAIR_AUTHORING"})
 
 
 @pytest.mark.parametrize(
@@ -235,10 +604,10 @@ def setup_candidate_lineage(
     run_override: dict[str, object] | None = None,
     result_override: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    repo, remote, base_sha = setup_test_repo(root)
+    repo, remote, base_sha = setup_test_repo(root, task_id=task_id)
     task_dir = repo / ".ai" / "tasks"
     task_dir.mkdir(parents=True, exist_ok=True)
-    (task_dir / f"{task_id}.yaml").write_text(task_source, encoding="utf-8")
+    (task_dir / f"{task_id}.yaml").write_bytes(task_source.encode("utf-8"))
     workflow = repo / ".github" / "workflows" / "aios-auto-publish.yml"
     workflow.parent.mkdir(parents=True, exist_ok=True)
     workflow.write_text("name: AIOS auto publish\n", encoding="utf-8")
@@ -537,6 +906,7 @@ def test_author_task_new_and_revision(tmp_path):
         expected_state={"expected_main_sha": base_sha},
         payload=V1_TASK_105_SOURCE,
     )
+    envelope = audited_envelope(envelope, repo)
     result = execute_ingress(envelope, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == ".ai/tasks/TASK-105.yaml"
@@ -600,7 +970,7 @@ def test_author_task_new_and_revision(tmp_path):
         expected_state={"expected_main_sha": new_main_sha},
         payload=V1_TASK_105_R2_SOURCE,
     )
-    r2_result = execute_ingress(r2_env, repo=repo)
+    r2_result = execute_ingress(audited_envelope(r2_env, repo), repo=repo)
     assert r2_result.status == "CANONICALIZED"
     assert "revision: 2" in (repo / ".ai" / "tasks" / "TASK-105.yaml").read_text(encoding="utf-8")
 
@@ -785,7 +1155,7 @@ def test_submit_review_accepts_code_fix_zero_delta_failure_continuation(
         "instructions": ["Correct the failed implementation."],
         "constraints": [],
     }
-    code_fix_auth = execute_ingress(
+    code_fix_auth = execute_audited_ingress(
         IngressEnvelope(
             "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
             {"failed_run_id": first_run_id},
@@ -817,6 +1187,7 @@ def test_submit_review_accepts_code_fix_zero_delta_failure_continuation(
     zero_failure = {
         "kind": "FAILURE",
         "run_id": zero_run_id,
+        "continuation_of": first_run_id,
         "task": {"id": "TASK-105", "revision": 1},
         "executor": "codex",
         "base_sha": failed_code_sha,
@@ -856,7 +1227,7 @@ def test_submit_review_accepts_code_fix_zero_delta_failure_continuation(
         "instructions": ["Continue the authorized correction."],
         "constraints": [],
     }
-    continuation_auth = execute_ingress(
+    continuation_auth = execute_audited_ingress(
         IngressEnvelope(
             "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
             {"failed_run_id": zero_run_id},
@@ -1429,6 +1800,9 @@ constraints:
         expected_state={"expected_reviewed_sha": candidate_sha},
         payload=remediation_payload,
     )
+    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+        execute_ingress(rem_env, repo=repo)
+    rem_env = audited_envelope(rem_env, repo)
     result = execute_ingress(rem_env, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == f"refs/heads/aios/remediation/{run_id}-F1"
@@ -1589,7 +1963,7 @@ affected_verification: [git diff --check]
         "  policy: minimum-sufficient-v1\n"
         "  affected: [git diff --check]",
     )
-    result = execute_ingress(
+    result = execute_audited_ingress(
         IngressEnvelope(
             format=envelope.format,
             version=envelope.version,
@@ -1685,6 +2059,10 @@ def test_author_repair_success_and_rejections(tmp_path):
     task_dir = repo / ".ai" / "tasks"
     task_dir.mkdir(parents=True, exist_ok=True)
     (task_dir / "TASK-105.yaml").write_text(TASK_105_SOURCE, encoding="utf-8")
+    git(repo, "add", ".ai/tasks/TASK-105.yaml")
+    git(repo, "commit", "--quiet", "-m", "canonical task before failure")
+    base_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", "main")
     (repo / "src").mkdir(parents=True, exist_ok=True)
     (repo / "src" / "sample.py").write_text("# broken\n", encoding="utf-8")
     git(repo, "add", ".")
@@ -1712,6 +2090,8 @@ def test_author_repair_success_and_rejections(tmp_path):
         "executor": "antigravity",
         "base_sha": base_sha,
         "failed_head_sha": failed_head_sha,
+        "phase": "VERIFICATION",
+        "error": {"type": "RuntimeVerificationError", "message": "candidate failed"},
         "candidate": {
             "transportable": True,
             "repairable": True,
@@ -1753,6 +2133,9 @@ def test_author_repair_success_and_rejections(tmp_path):
         expected_state={"expected_failed_head_sha": failed_head_sha},
         payload=repair_payload,
     )
+    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+        execute_ingress(envelope, repo=repo)
+    envelope = audited_envelope(envelope, repo)
     result = execute_ingress(envelope, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == f"refs/heads/aios/repair/{failed_run_id}"
@@ -1770,6 +2153,28 @@ def test_author_repair_success_and_rejections(tmp_path):
     replay = execute_ingress(envelope, repo=repo)
     assert replay.status == "IDEMPOTENT"
     assert replay.replayed is True
+
+    # Exact replay needs no transient material. A changed authorization cannot
+    # reuse that path or the previous authoring packet. Supersession needs a
+    # fresh audit bound to the current authorization and exact FAILURE.
+    assert execute_ingress(replace(envelope, audited_handoff=None), repo=repo).replayed
+    failure_ref = f"refs/heads/aios/failure-artifacts/{failed_run_id}"
+    failure_sha = git(repo, "ls-remote", "--refs", "origin", failure_ref).split()[0]
+    changed = replace(envelope, payload={**repair_payload, "instructions": ["Changed strategy."]},
+                      expected_state={**envelope.expected_state,
+                                      "expected_current_repair_sha": result.canonical_sha,
+                                      "expected_failure_artifacts_sha": failure_sha})
+    with pytest.raises(AuthoringIngressError, match="Stage-1 packet, profile or construct lineage mismatch"):
+        execute_ingress(changed, repo=repo)
+    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+        execute_ingress(replace(changed, audited_handoff=None), repo=repo)
+    fresh_changed = audited_envelope(replace(changed, audited_handoff=None), repo)
+    packet, _, _, _ = authoring_ingress_module._compose_authoring_packet(fresh_changed, repo)
+    assert packet.as_dict()["subject"]["current_repair_authorization_sha"] == result.canonical_sha
+    assert packet.as_dict()["subject"]["failure_artifacts_sha"] == failure_sha
+    assert fresh_changed.audited_handoff["stage1"]["packet_fingerprint"] != envelope.audited_handoff["stage1"]["packet_fingerprint"]
+    authoring_ingress_module._validate_authoring_handoff(fresh_changed, repo)
+    assert git(repo, "ls-remote", "--refs", "origin", result.canonical_destination).split()[0] == result.canonical_sha
 
     # Stale expected_failed_head_sha rejection
     stale_env = IngressEnvelope(
@@ -1868,7 +2273,7 @@ def test_author_repair_immutable_supersession_resolves_one_current_tip(tmp_path)
         "instructions": ["Continue the interrupted implementation."],
         "constraints": ["Bounded mutation authority only."],
     }
-    first = execute_ingress(
+    first = historical_repair_fixture(
         IngressEnvelope(
             "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
             {"failed_run_id": failed_run_id},
@@ -1893,7 +2298,7 @@ def test_author_repair_immutable_supersession_resolves_one_current_tip(tmp_path)
         },
         successor,
     )
-    second = execute_ingress(superseding_envelope, repo=repo)
+    second = historical_repair_fixture(superseding_envelope, repo=repo)
     current = resolve_remote_repair_authorization(repo, failed_run_id)
 
     assert second.canonical_destination.endswith(f"/{failed_run_id}/2")
@@ -2101,7 +2506,7 @@ verification:
         "instructions": ["Continue implementation from interrupted candidate."],
         "constraints": ["Bounded mutation authority only."],
     }
-    rev1_res = execute_ingress(
+    rev1_res = historical_repair_fixture(
         IngressEnvelope(
             "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
             {"failed_run_id": failed_run_id},
@@ -2125,7 +2530,7 @@ verification:
         "modification_scope": [],
         "instructions": ["Finalize existing candidate without further mutation."],
     }
-    rev2_res = execute_ingress(
+    rev2_res = historical_repair_fixture(
         IngressEnvelope(
             "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
             {"failed_run_id": failed_run_id},
@@ -2172,7 +2577,7 @@ verification:
         "modification_scope": [],
         "instructions": ["Finalize candidate with refined recovery intent."],
     }
-    rev3_res = execute_ingress(
+    rev3_res = historical_repair_fixture(
         IngressEnvelope(
             "AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REPAIR",
             {"failed_run_id": failed_run_id},
@@ -2516,7 +2921,7 @@ def test_author_repair_failed_remediation_production_topology_ac1_to_ac6(tmp_pat
     )
 
     # AC1 & AC2: Author repair succeeds for failed REMEDIATION, removing the historical blocker
-    result = execute_ingress(envelope, repo=repo)
+    result = historical_repair_fixture(envelope, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == f"refs/heads/aios/repair/{remediation_run_id}"
     assert_exact_metadata_delta(
@@ -2563,7 +2968,7 @@ def test_author_repair_failed_remediation_production_topology_ac1_to_ac6(tmp_pat
         },
         payload=rev2_payload,
     )
-    rev2_res = execute_ingress(rev2_env, repo=repo)
+    rev2_res = historical_repair_fixture(rev2_env, repo=repo)
     assert rev2_res.status == "CANONICALIZED"
     assert rev2_res.canonical_destination == f"refs/heads/aios/repair-supersession/{remediation_run_id}/2"
 
@@ -2892,7 +3297,7 @@ def _integrated_remediation_repair_review_lineage(
 
     from aios_renew.correction_integration import integrate_correction
 
-    repo, remote, _ = setup_test_repo(root)
+    repo, remote, _ = setup_test_repo(root, task_id="TASK-140")
     task_id = "TASK-140"
     source_run_id = "RUN-140-008"
     remediation_run_id = "RUN-140-009"
@@ -2967,6 +3372,16 @@ findings:
     issue: The reviewed sample needs correction.
     expected: Correct the sample.
 """
+    # Unified State reconstructs the predecessor through the canonical Reviewer
+    # decision ref, not the REVIEW copy in the remediation fixture commit.
+    execute_ingress(
+        IngressEnvelope(
+            "AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW",
+            {"run_id": source_run_id},
+            {"expected_candidate_sha": reviewed_sha}, review_source,
+        ),
+        repo=repo,
+    )
     review_dir = repo / ".ai" / "reviews"
     remediation_dir = repo / ".ai" / "remediations"
     review_dir.mkdir(parents=True, exist_ok=True)
@@ -3113,7 +3528,10 @@ constraints: [Bounded mutation authority only.]
         "instructions": ["Repair the failed integrated remediation."],
         "constraints": ["Bounded mutation authority only."],
     }
-    authorization = execute_ingress(
+    # Invalid integrated lineage is historical input to Reviewer regression
+    # tests; prospective authoring must reject it rather than acquire a flow.
+    author = historical_repair_fixture if execution_base_mutation else execute_audited_ingress
+    authorization = author(
         IngressEnvelope(
             "AIOS_INGRESS_ENVELOPE",
             1,
