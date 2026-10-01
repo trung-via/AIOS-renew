@@ -254,6 +254,38 @@ conversation. The regular Chat Brain must treat the wake turn only as a doorbell
 6. take at most one semantic continuation step for that wake;
 7. stop at any new Human intent, priority or risk-acceptance boundary.
 
+H4B uses `MINIMUM_FRESH_BRAIN_SYNC_V1`. Freshness applies to the identity and
+lifecycle facts that can invalidate the next semantic decision; it does not require
+ceremonially rereading the entire repository, roadmap history or every governance
+document on every wake.
+
+Every wake must freshly establish from canonical state, using the wake payload only as
+an untrusted selector:
+
+- current canonical `main` identity;
+- the exact wake/attention subject and its exact current lineage;
+- selected TASK identity/revision and whether the subject remains unresolved;
+- current Unified State, `next_action`, selected authority and Flow Card.
+
+Only after that minimum reconstruction succeeds may the Brain hydrate additional
+canonical material required by the selected flow. Examples include exact TASK +
+RESULT/EVIDENCE and applicable prior review lineage for semantic review; TASK +
+FAILURE/failed RUN plus current H2 strategy facts for REPAIR authoring; exact source
+REVIEW/finding/provenance for REMEDIATION authoring; and the current roadmap item plus
+the relevant architecture contract for TASK authoring.
+
+Unchanged governance/specification bodies need not be reread in full when their exact
+canonical binding or digest is freshly proven unchanged; a deterministic bounded
+projection may be reused until the relevant binding changes. This reuse is never model
+memory or an independent state store. If the minimum projection cannot establish one
+unambiguous current subject, lifecycle state, authority or flow, reconstruction expands
+only as far as needed to resolve that ambiguity and otherwise fails closed.
+
+The minimum sync must not scan unrelated TASK/RUN history, all AIOS refs, the complete
+roadmap sequence or unrelated architecture material merely for ceremony. It must also
+never let the wake payload, chat history, provider/session identity or cached semantic
+judgment substitute for canonical truth.
+
 Human observability comes from the Brain response appearing directly in the same
 conversation. Conversation/session identity never becomes engineering truth.
 
