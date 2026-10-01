@@ -99,3 +99,23 @@ def test_wake_pointer_export_preserves_source_lifecycle_and_attempt_binding() ->
     assert text.count("source_kind:") == 1
     assert "attention_family" not in text
     assert "[AIOS BRAIN WAKE]" not in text
+
+
+def test_local_wake_handoff_uses_only_successful_admission_identity() -> None:
+    parsed, text = workflow()
+    admission_job = parsed["jobs"]["admit-and-notify"]
+    assert admission_job["outputs"] == {
+        "event_id": "terminal:${{ steps.admission.outputs.terminal_kind }}:${{ steps.admission.outputs.run_id }}:${{ steps.admission.outputs.artifact_sha }}",
+    }
+    handoff = parsed["jobs"]["local-chat-wake"]
+    assert handoff["needs"] == "admit-and-notify"
+    assert "needs.admit-and-notify.result == 'success'" in handoff["if"]
+    assert "vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true'" in handoff["if"]
+    assert handoff["uses"] == "./.github/workflows/aios-local-chat-wake.yml"
+    assert handoff["with"] == {
+        "event_id": "${{ needs.admit-and-notify.outputs.event_id }}",
+        "repository": "trung-via/AIOS-renew",
+    }
+    assert handoff["permissions"] == {"contents": "read"}
+    assert "actions: write" not in text and "createWorkflowDispatch" not in text
+    assert set(parsed["on"]) == {"push", "workflow_dispatch"}

@@ -38,6 +38,8 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      event_id: terminal:${{ steps.admission.outputs.terminal_kind }}:${{ steps.admission.outputs.run_id }}:${{ steps.admission.outputs.artifact_sha }}
     steps:
       - name: Check out published main with complete lineage
         uses: actions/checkout@v4
@@ -165,3 +167,18 @@ jobs:
           path: ${{ runner.temp }}/aios-wake-source/source.json
           if-no-files-found: error
           retention-days: 1
+
+  local-chat-wake:
+    needs: admit-and-notify
+    # Only successful existing terminal admission can reach the local transport.
+    # This repository variable is a Human-operated, noncanonical enable gate.
+    if: >-
+      needs.admit-and-notify.result == 'success' &&
+      vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true' &&
+      github.repository == 'trung-via/AIOS-renew'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/aios-local-chat-wake.yml
+    with:
+      event_id: ${{ needs.admit-and-notify.outputs.event_id }}
+      repository: trung-via/AIOS-renew
