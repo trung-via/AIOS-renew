@@ -1,0 +1,153 @@
+task_id: TASK-259
+revision: 1
+goal: Implement H3 by making acceptance proof-phase ownership explicit in the transient
+  audited TASK_AUTHORING handoff while preserving the frozen TASK schema, so Runtime-owned
+  future truth cannot remain in final canonical acceptance before ingress.
+problem: Current audited TASK authoring validates a two-stage candidate and exact
+  family-payload equality, but the handoff has no explicit proof-phase declaration
+  for final acceptance criteria. A Brain can therefore author an acceptance condition
+  whose truth exists only after Runtime verification, while Executor completion requires
+  acceptance claims before canonical verification. This can deadlock FINALIZE_CANDIDATE
+  and blur Brain semantic authoring with Runtime verification authority.
+assumptions:
+- H1 audited authoring, H1R safe local-main reconciliation and H2 REPAIR strategy
+  facts are published, and H3 acceptance proof-phase authoring is the unique current
+  roadmap NEXT commitment.
+- Kernel v0.1 TASK acceptance and verification schemas remain frozen; H3 is prospective
+  authoring hardening only and does not rewrite historical TASKs.
+- The existing brain-high-value-v2 two-stage audit, provider protocol, return-contract
+  projection and AUTHOR_TASK ingress remain the authorities to extend rather than
+  replace.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-SPEC.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-return-contracts.yaml
+  - src/aios_renew/task.py
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_task.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_return_contract.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_provider.py
+  modify:
+  - .ai/brain-return-contracts.yaml
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/brain_provider_protocol.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_brain_audit.py
+  - tests/test_brain_return_contract.py
+  - tests/test_brain_provider_protocol.py
+  - tests/test_brain_provider.py
+  - tests/test_authoring_ingress.py
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-PROVIDER-PROTOCOL.md
+non_goals:
+- Change the frozen canonical TASK, RUN, RESULT, EVIDENCE, REVIEW or REMEDIATION schemas,
+  including adding proof-phase fields to canonical TASK acceptance.
+- Let Runtime, ingress or deterministic support classify the natural-language meaning
+  of acceptance criteria or decide whether an acceptance condition semantically belongs
+  to CLAIM_NOW or PROOF_LATER.
+- Create a new lifecycle family, Planner, semantic validator, Reviewer, Publisher,
+  correction selector, retry loop, persistent reasoning store or second semantic-state
+  database.
+- Change Runtime verification ownership, Executor completion semantics, Reviewer verdict
+  semantics, publication behavior, Unified State, Flow Resolution, roadmap advancement
+  or downstream adoption.
+- Rewrite historical TASKs or require historical idempotent replay to carry new H3
+  transient material.
+- Implement H4 wake/resume, H5 integration closure, verification-performance work
+  or downstream Python Agent adoption.
+constraints:
+  hard:
+  - H3 applies prospectively to TASK_AUTHORING only. REMEDIATION_AUTHORING and REPAIR_AUTHORING
+    must retain their existing candidate and audited-handoff semantics.
+  - 'The canonical TASK payload remains byte/schema-compatible with the frozen validator:
+    acceptance entries contain only id and condition, and no acceptance_phase_ledger
+    or proof-phase field is written into .ai/tasks.'
+  - The transient TASK_AUTHORING Stage-2 semantic material carries one bounded acceptance_phase_ledger
+    whose entries use only id and phase, with phase limited to CLAIM_NOW or PROOF_LATER;
+    when present it is normalized inside the same Stage-2 semantic material used to
+    derive stage2_fingerprint and any serialized Brain decision identity, so ledger
+    substitution after audit fails closed.
+  - The final AUTHOR_TASK ingress gate must require exact ledger coverage of final
+    candidate acceptance ids and reject missing, duplicate, extra or PROOF_LATER entries
+    before canonical mutation.
+  - Brain owns proof-phase semantic classification. Deterministic support may validate
+    ledger shape, identity coverage, allowed tokens and exact binding only; it must
+    not parse acceptance prose or infer proof ownership.
+  - 'The generic BP-4A audit primitive must remain a bounded structural protocol rather
+    than a second TASK validator: it may normalize and fingerprint declared ledger
+    material, but exact final acceptance-id coverage and the no-PROOF_LATER authoring
+    rule belong to TASK_AUTHORING ingress.'
+  - A final TASK candidate may cross ingress only when every final acceptance id is
+    classified CLAIM_NOW. Any requirement whose truth belongs after Runtime verification
+    must be reconciled out of final acceptance and retained on existing verification,
+    constraint or non-goal surfaces as semantically appropriate.
+  - The proof-phase ledger is transient cognitive-support material only. It must be
+    bound to the audited Stage-2 semantic identity and cannot become lifecycle truth,
+    evidence, a persistent reasoning record or an independent source of TASK semantics.
+  - 'The TASK_AUTHORING provider-facing contract must be self-sufficient for a fresh
+    Brain/provider: it must state the CLAIM_NOW versus PROOF_LATER distinction and
+    the Stage-2 reconciliation requirement without relying on chat memory or hidden
+    prompts.'
+  - Exact historical TASK replay remains non-mutating and does not newly require H3
+    transient material. New TASK identities or revisions after H3 publication must
+    use the hardened contract.
+  - No H3 result may automatically create a RUN, invoke an Executor or verification,
+    produce a Reviewer verdict, publish source, or advance roadmap.
+acceptance:
+- id: AC1
+  condition: TASK_AUTHORING Stage-2 semantic material can carry one bounded acceptance_phase_ledger
+    using only id plus CLAIM_NOW or PROOF_LATER phase entries, and changing that ledger
+    changes the validated Stage-2/Brain-decision semantic identity so post-audit ledger
+    substitution cannot remain valid.
+- id: AC2
+  condition: AUTHOR_TASK ingress requires the H3 ledger for new TASK identities and
+    revisions, matches it exactly to the final candidate acceptance ids, and rejects
+    missing, duplicate, extra, substituted or PROOF_LATER entries before repository
+    mutation.
+- id: AC3
+  condition: A final TASK whose acceptance ids are all declared CLAIM_NOW canonicalizes
+    through the existing frozen TASK validator without adding any proof-phase field
+    to canonical TASK bytes.
+- id: AC4
+  condition: Brain remains the sole semantic classifier of acceptance proof phase;
+    Runtime, provider protocol and ingress perform only structural and identity enforcement
+    and do not interpret natural-language acceptance text.
+- id: AC5
+  condition: The repository-owned TASK_AUTHORING return contract gives a fresh Brain/provider
+    enough bounded guidance to classify CLAIM_NOW versus PROOF_LATER during Stage
+    2 and to reconcile post-verification requirements out of final acceptance before
+    handoff.
+- id: AC6
+  condition: REMEDIATION_AUTHORING, REPAIR_AUTHORING and other audited flows retain
+    their existing Stage-2 contract and do not require or accept TASK acceptance proof-phase
+    semantics.
+- id: AC7
+  condition: Historical identical TASK replay remains non-mutating and compatible
+    without a new H3 ledger, while prospective changed or new TASK authoring cannot
+    bypass the H3 gate.
+- id: AC8
+  condition: Focused regression fixtures across Brain audit, provider protocol/provider
+    attempt, return contract, AUTHOR_TASK ingress and frozen TASK parsing exercise
+    valid all-CLAIM_NOW authoring and fail-closed missing, duplicate, extra, substituted,
+    PROOF_LATER and cross-flow ledger cases while preserving existing two-stage freshness
+    behavior.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_brain_return_contract.py
+    tests/test_brain_provider_protocol.py tests/test_brain_provider.py
+  - python -m pytest -q tests/test_authoring_ingress.py tests/test_task.py -k "audited
+    or author_task or acceptance or handoff or replay"
+  - git diff --check
