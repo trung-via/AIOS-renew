@@ -1,0 +1,144 @@
+task_id: TASK-262
+revision: 1
+goal: 'Implement the H4A2 bounded Local Regular Chat Wake transport: connect canonically
+  admitted terminal attention to one exact Human-bound regular ChatGPT conversation
+  through a self-hosted local browser adapter, with operational binding, idempotent
+  one-message delivery, Human-interaction protection, ambiguous-send fail-close, zero
+  ChatGPT Work use, and no assistant-output extraction.'
+problem: H4A0 retired the legacy Work wake bridge and H4A1 removed Issue fanout noise,
+  but no production path now carries an admitted semantic terminal checkpoint into
+  the bound regular ChatGPT conversation. H4A2 must add only the transport mechanism
+  and deterministic local safety contract; live exact-chat conformance remains H4A3
+  and semantic continuation remains H4B.
+assumptions:
+- H4A0 TASK-260 and H4A1 TASK-261 are reviewed and published, and canonical roadmap
+  state selects H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT.
+- The existing terminal-attention workflow already independently admits exact canonical
+  RESULT/FAILURE attention before creating or reusing its bounded attention Issue,
+  so H4A2 may dispatch a transport signal only after that admission succeeds.
+- The self-hosted Windows runner is the local operational boundary for browser delivery,
+  while the exact ChatGPT conversation binding, browser CDP endpoint, and transport
+  state location remain Human-controlled machine-local configuration outside committed
+  repository state.
+- H4A3, not this TASK, will enable and live-prove the exact bound ChatGPT session;
+  TASK-262 must therefore provide deterministic fake/fixture coverage and a production
+  path that is disabled or fail-closed until the Human-controlled operational gate
+  and local binding are present.
+scope:
+  inspect:
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - .github/workflows/aios-terminal-attention.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .ai/brain-terminal-attention-carriers.yaml
+  - src/aios_renew/terminal_attention.py
+  - src/aios_renew/operator.py
+  - tests/test_terminal_attention.py
+  - tests/test_terminal_attention_workflow.py
+  - pyproject.toml
+  modify:
+  - .github/workflows/aios-local-chat-wake.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_terminal_attention_workflow.py
+  - pyproject.toml
+non_goals:
+- Perform the H4A3 live ACK-only exact-chat conformance probe, assert that a real
+  ChatGPT user turn was delivered in production, or enable semantic continuation.
+- Implement H4B fresh-Brain resume, semantic review, remediation/repair authoring,
+  Executor invocation, Runtime verification, publication, or roadmap advancement.
+- Store an exact ChatGPT conversation URL, conversation identifier, browser cookies,
+  authentication tokens, browser profile data, or conversation content in committed
+  repository state.
+- Read, parse, summarize, or use assistant output or conversation history to decide
+  any lifecycle action.
+- Reintroduce ChatGPT Work, the retired workflow_run wake bus, polling, schedules,
+  a generic lifecycle router, or an alternate semantic authority.
+- Navigate away from an unrelated Human-active ChatGPT page, launch a replacement
+  browser profile, or overwrite an existing Human draft.
+constraints:
+  hard:
+  - 'Production transport wiring must originate directly after successful canonical
+    terminal-attention admission and dispatch a bounded self-hosted local-wake invocation;
+    it must not depend on workflow_run, the retired PR #1200 Work bridge, or Issue
+    re-triggering.'
+  - Automatic production dispatch must be controlled by an explicit Human-operated
+    noncanonical enable gate and must remain disabled or no-op when that gate is absent
+    or false.
+  - The exact target chat URL, CDP endpoint and persistent transport-state location
+    must be read only from machine-local operational configuration outside the committed
+    repository; committed code may define validation rules and variable/config names
+    but no actual binding values.
+  - The browser adapter must attach to an already running authenticated Chromium/Chrome-compatible
+    session through the configured local endpoint; it must not launch a new browser,
+    create a new login profile, navigate an unrelated page to the target, or use ChatGPT
+    Work.
+  - Delivery requires exactly one already-open page whose normalized URL exactly matches
+    one durable https://chatgpt.com/c/<conversation-id> binding, a regular authenticated
+    Chat surface, an empty composer, and no active response generation; missing, duplicate,
+    wrong-surface, logged-out, draft, busy, or otherwise unprovable state fails closed
+    before modifying the composer.
+  - The wake payload is bounded doorbell text containing only the local wake marker,
+    deterministic event identity, repository identity and fresh_brain_sync_required=true;
+    it must not carry TASK semantics, logs, verdicts, correction strategy, roadmap
+    successor, executor/provider selection, or lifecycle commands.
+  - Dedupe state is bounded operational metadata outside repository engineering state.
+    Before the irreversible submit action the adapter must persist an ATTEMPTING marker
+    for the event. A prior SUBMITTED event is a NOOP; a prior ATTEMPTING or otherwise
+    ambiguous event blocks automatic resend until Human intervention.
+  - A successful transition to SUBMITTED may rely only on bounded proof of the exact
+    outbound user wake turn and composer/send state. The implementation must not extract
+    assistant-authored messages or treat browser content as engineering truth.
+  - Transport failures and receipts may expose only bounded event/status/reason metadata;
+    they must not persist cookies, page HTML, assistant output, conversation history,
+    or the exact bound conversation URL in GitHub artifacts or committed files.
+  - If a browser-control dependency is added, it must be isolated to the local-chat-wake
+    transport surface and usable for attaching to an existing browser without downloading
+    or launching a managed browser during ordinary delivery.
+  - No H4A2 code path may mutate canonical AIOS refs/artifacts, allocate lifecycle
+    identities, infer next_action, select a semantic flow/correction, or advance roadmap
+    state.
+acceptance:
+- id: AC1
+  condition: The candidate provides a bounded local_chat_wake transport module and
+    self-hosted workflow whose committed interfaces contain no real chat binding or
+    credentials and whose production entry accepts only bounded doorbell event identity
+    plus fixed repository identity.
+- id: AC2
+  condition: The terminal-attention workflow, only after successful existing terminal
+    admission, can dispatch the local-chat-wake workflow through an explicit Human-controlled
+    noncanonical enable gate; the H4A2 delta introduces no workflow_run, Work, polling,
+    schedule, or Issue-retrigger wake path.
+- id: AC3
+  condition: The browser adapter implementation attaches only to an existing configured
+    local browser session and deterministically fails closed unless exactly one already-open
+    page proves the exact bound regular authenticated chat, empty composer, and non-generating
+    state; it never navigates an unrelated page or launches a replacement browser/profile.
+- id: AC4
+  condition: 'The local transport implements bounded operational dedupe with ATTEMPTING-before-submit
+    and SUBMITTED-after-proof semantics: duplicate SUBMITTED is a NOOP, ATTEMPTING
+    or ambiguous state prevents automatic resend, and persistent metadata remains
+    outside canonical repository state.'
+- id: AC5
+  condition: Wake construction and submission proof are limited to the exact outbound
+    user doorbell turn and local composer/send state; tests and implementation contain
+    no assistant-output extraction or conversation-history-driven lifecycle logic,
+    and operational receipts exclude the exact chat URL and private browser/session
+    material.
+- id: AC6
+  condition: Focused deterministic tests cover valid delivery, duplicate NOOP, missing/malformed
+    binding, zero or multiple target pages, logged-out/wrong surface, existing draft,
+    active generation, pre-submit failure, ambiguous post-attempt failure, and successful
+    submission proof without requiring live ChatGPT access.
+- id: AC7
+  condition: The H4A2 delta remains confined to the authorized transport/workflow/test/dependency
+    surface and does not implement the H4A3 live probe, H4B semantic resume, Runtime/Reviewer/Publisher
+    behavior, lifecycle routing, correction selection, or automatic roadmap advancement.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py tests/test_local_chat_wake_workflow.py
+    tests/test_terminal_attention.py tests/test_terminal_attention_workflow.py
+  - python -m pytest -q tests/test_brain_wake_bridge.py tests/test_brain_wake_bridge_workflow.py
+  - git diff --check
