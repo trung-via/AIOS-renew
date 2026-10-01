@@ -154,8 +154,10 @@ human_priority_sequence:
         hardening_binding_commit_sha: "cfe62963864f04d13d6caa216a9e280e00f808c3"
         selected_contract: LOCAL_REGULAR_CHAT_WAKE_V1
         sequencing:
-          - H4A_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
-          - H4A_ACK_ONLY_EXACT_CHAT_CONFORMANCE
+          - H4A0_RETIRE_LEGACY_WORK_WAKE_BRIDGE
+          - H4A1_REMOVE_ISSUE_WORKFLOW_FANOUT_NOISE
+          - H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
+          - H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
           - H4B_REGULAR_CHAT_BRAIN_RESUME
         required_boundaries:
           - ZERO_CHATGPT_WORK_INVOCATION_FOR_WAKE_TRANSPORT
