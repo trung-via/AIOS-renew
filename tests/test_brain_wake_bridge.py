@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import copy
+import base64
+import hashlib
 import io
 import json
 import zipfile
 from pathlib import Path
+from dataclasses import replace
+from urllib.error import HTTPError
 
 import pytest
 import yaml
@@ -15,6 +19,316 @@ from aios_renew import brain_wake_bridge as bridge
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / ".ai/brain-wake-carriers.yaml"
+
+
+class DeliveryAPI:
+    """In-memory GitHub boundary with persistent writes and injected failures."""
+    def __init__(self):
+        repo = {"full_name": bridge.REPOSITORY, "id": 19, "fork": False}
+        self.pr = {
+            "id": 12000, "number": 1200, "state": "open", "merged": False,
+            "url": f"https://api.github.com/repos/{bridge.REPOSITORY}/pulls/1200",
+            "head": {"ref": "aios-brain-wake-bus-v1", "label": "trung-via:aios-brain-wake-bus-v1", "sha": "a" * 40, "repo": copy.deepcopy(repo)},
+            "base": {"ref": "main", "repo": copy.deepcopy(repo)},
+        }
+        self.history = []
+        self.marker = None
+        self.writes = []
+        self.reads = []
+        self.commits = 0
+        self.failure = None
+        self.pr_reads = 0
+        self.substitute_at = None
+        self.bad_ref = False
+        self.corrupt_after_write = False
+
+    def get(self, path):
+        self.reads.append(path)
+        if path == "pulls/1200":
+            self.pr_reads += 1
+            if self.pr_reads == self.substitute_at:
+                self.pr["id"] += 1
+            return copy.deepcopy(self.pr)
+        if path == "git/ref/heads/aios-brain-wake-bus-v1":
+            return {"ref": "refs/heads/aios-brain-wake-bus-v1", "object": {"type": "commit", "sha": "f" * 40 if self.bad_ref else self.pr["head"]["sha"]}}
+        assert path == f"contents/.ai/brain-wake-marker.json?ref={self.pr['head']['sha']}"
+        if self.marker is None:
+            raise HTTPError(path, 404, "not found", {}, None)
+        return {"type": "file", "path": ".ai/brain-wake-marker.json", "encoding": "base64", "size": len(self.marker), "content": base64.b64encode(self.marker).decode(), "sha": self.blob_sha()}
+
+    def blob_sha(self):
+        return hashlib.sha1(f"blob {len(self.marker)}\0".encode() + self.marker).hexdigest()
+
+    def comments(self):
+        self.reads.append("comments")
+        return copy.deepcopy(self.history)
+
+    def ledger(self, wake, state="PENDING"):
+        raw = bridge.marker_content(wake, bridge.load_policy(POLICY_PATH))
+        body = bridge._ledger_body(wake["event_id"], hashlib.sha256(raw).hexdigest(), state)
+        entry = self.comment(body)
+        self.history.append(entry)
+        return entry
+
+    def comment(self, body):
+        identity = 60000 + len(self.history)
+        return {"id": identity, "body": body, "user": dict(bridge.TRUSTED_SOURCE), "url": f"https://api.github.com/repos/{bridge.REPOSITORY}/issues/comments/{identity}", "issue_url": f"https://api.github.com/repos/{bridge.REPOSITORY}/issues/1200"}
+
+    def write(self, method, path, payload):
+        # Every mutation is immediately preceded by the live PR/ref check.
+        assert self.reads[-2:] == ["pulls/1200", "git/ref/heads/aios-brain-wake-bus-v1"]
+        self.writes.append((method, path, copy.deepcopy(payload)))
+        if self.failure == (method, "before"):
+            raise OSError("injected write failure")
+        if method == "POST":
+            assert path == "issues/1200/comments"
+            response = self.comment(payload["body"])
+            self.history.append(response)
+        elif method == "PATCH":
+            response = next(c for c in self.history if path == f"issues/comments/{c['id']}")
+            response["body"] = payload["body"]
+        else:
+            assert method == "PUT" and path == "contents/.ai/brain-wake-marker.json"
+            assert payload["branch"] == "aios-brain-wake-bus-v1"
+            assert payload.get("sha") == (self.blob_sha() if self.marker is not None else None)
+            self.marker = base64.b64decode(payload["content"])
+            self.commits += 1
+            self.pr["head"]["sha"] = f"{self.commits:040x}"
+            response = {"commit": {"sha": self.pr["head"]["sha"]}}
+            if self.corrupt_after_write:
+                self.marker = self.marker.replace(b"true", b"false")
+        if self.failure == (method, "after"):
+            raise OSError("injected response failure after write")
+        return copy.deepcopy(response)
+
+
+def delivery_wake(policy, identity=42):
+    return bridge._wake(policy, "issues", identity, "TERMINAL_ATTENTION", {"event_family": "issues.opened", "issue_id": identity, "issue_number": 1210})
+
+
+def test_new_delivery_and_exact_replay_only_one_marker_commit(policy):
+    api, wake = DeliveryAPI(), delivery_wake(policy)
+    assert bridge.deliver_wake(wake=wake, policy=policy, api=api) == "EMITTED"
+    assert [(m, p) for m, p, _ in api.writes] == [("POST", "issues/1200/comments"), ("PUT", "contents/.ai/brain-wake-marker.json"), ("PATCH", "issues/comments/60000")]
+    assert api.commits == 1 and len(api.history) == 1
+    assert bridge._ledger_comment(api.history[0])[1]["state"] == "EMITTED"
+    before = copy.deepcopy(api.writes)
+    assert bridge.deliver_wake(wake=wake, policy=policy, api=api) == "NOOP"
+    assert api.writes == before and api.commits == 1
+    next_wake = delivery_wake(policy, 43)
+    assert bridge.deliver_wake(wake=next_wake, policy=policy, api=api) == "EMITTED"
+    assert api.commits == 2 and len(api.history) == 2
+    assert bridge.deliver_wake(wake=wake, policy=policy, api=api) == "NOOP"
+    assert api.commits == 2
+
+
+def test_no_wake_does_not_access_or_mutate_the_bus(policy):
+    api = DeliveryAPI()
+    assert bridge.deliver_wake(wake=bridge.NO_WAKE, policy=policy, api=api) == "NO_WAKE"
+    assert api.reads == api.writes == []
+
+
+@pytest.mark.parametrize("already_written", [False, True])
+def test_pending_recovers_same_ledger_before_and_after_marker_commit(policy, already_written):
+    api, wake = DeliveryAPI(), delivery_wake(policy)
+    entry = api.ledger(wake)
+    if already_written:
+        api.marker = bridge.marker_content(wake, policy)
+    assert bridge.deliver_wake(wake=wake, policy=policy, api=api) == "EMITTED"
+    assert api.commits == (0 if already_written else 1)
+    assert len(api.history) == 1 and api.history[0]["id"] == entry["id"]
+    assert all(method != "POST" for method, _, _ in api.writes)
+
+
+@pytest.mark.parametrize(("method", "phase"), [("POST", "before"), ("POST", "after"), ("PUT", "before"), ("PUT", "after"), ("PATCH", "before"), ("PATCH", "after")])
+def test_write_failure_windows_recover_without_second_marker_commit(policy, method, phase):
+    api, wake = DeliveryAPI(), delivery_wake(policy)
+    api.failure = (method, phase)
+    with pytest.raises(OSError):
+        bridge.deliver_wake(wake=wake, policy=policy, api=api)
+    api.failure = None
+    outcome = bridge.deliver_wake(wake=wake, policy=policy, api=api)
+    assert outcome in {"EMITTED", "NOOP"}
+    assert api.commits == 1 and len(api.history) == 1
+    assert bridge._ledger_comment(api.history[0])[1]["state"] == "EMITTED"
+
+
+@pytest.mark.parametrize("already_written", [False, True])
+def test_unrelated_event_cannot_overtake_pending_delivery(policy, already_written):
+    api, first = DeliveryAPI(), delivery_wake(policy)
+    api.ledger(first)
+    if already_written:
+        api.marker = bridge.marker_content(first, policy)
+    with pytest.raises(bridge.WakeBridgeError, match="blocks unrelated"):
+        bridge.deliver_wake(wake=delivery_wake(policy, 43), policy=policy, api=api)
+    assert api.writes == []
+    bridge.deliver_wake(wake=first, policy=policy, api=api)
+    bridge.deliver_wake(wake=delivery_wake(policy, 43), policy=policy, api=api)
+    assert api.commits == (1 if already_written else 2)
+
+
+@pytest.mark.parametrize("defect", ["duplicate", "contradictory", "multiple_pending", "untrusted", "unknown_state", "extra_field", "quoted", "digest_mismatch"])
+def test_ambiguous_or_substituted_ledger_fails_closed(policy, defect):
+    api, wake = DeliveryAPI(), delivery_wake(policy)
+    entry = api.ledger(wake)
+    if defect in {"duplicate", "contradictory"}:
+        second = api.ledger(wake, "EMITTED" if defect == "contradictory" else "PENDING")
+        assert second["id"] != entry["id"]
+    elif defect == "multiple_pending":
+        api.ledger(delivery_wake(policy, 43))
+    elif defect == "untrusted":
+        entry["user"] = {"login": "trung-via", "id": 1, "type": "User"}
+    elif defect == "unknown_state":
+        entry["body"] = entry["body"].replace("PENDING", "COMPLETE")
+    elif defect == "extra_field":
+        entry["body"] = entry["body"].replace('{"event_id"', '{"next_action":"continue","event_id"')
+    elif defect == "quoted":
+        entry["body"] = "quoted:\n" + entry["body"]
+    else:
+        entry["body"] = bridge._ledger_body(wake["event_id"], "0" * 64, "PENDING")
+    with pytest.raises(bridge.WakeBridgeError):
+        bridge.deliver_wake(wake=wake, policy=policy, api=api)
+    assert api.writes == []
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda p: p.update(number=1201),
+    lambda p: p.update(state="closed"),
+    lambda p: p.update(merged=True),
+    lambda p: p.update(url=p["url"].replace("1200", "1201")),
+    lambda p: p["head"].update(ref="main"),
+    lambda p: p["head"].update(label="attacker:aios-brain-wake-bus-v1"),
+    lambda p: p["head"]["repo"].update(full_name="attacker/AIOS-renew"),
+    lambda p: p["head"]["repo"].update(fork=True),
+    lambda p: p["head"]["repo"].update(id=20),
+    lambda p: p["base"]["repo"].update(full_name="attacker/AIOS-renew"),
+    lambda p: p["base"].update(ref="other"),
+])
+def test_live_pr_head_identity_substitution_fails_before_mutation(policy, mutation):
+    api = DeliveryAPI()
+    mutation(api.pr)
+    with pytest.raises(bridge.WakeBridgeError):
+        bridge.deliver_wake(wake=delivery_wake(policy), policy=policy, api=api)
+    assert api.writes == []
+
+
+@pytest.mark.parametrize("substitute_at", [2, 3, 4, 5, 6])
+def test_pr_identity_is_reacquired_throughout_delivery(policy, substitute_at):
+    api = DeliveryAPI()
+    api.substitute_at = substitute_at
+    with pytest.raises(bridge.WakeBridgeError, match="identity changed"):
+        bridge.deliver_wake(wake=delivery_wake(policy), policy=policy, api=api)
+    assert all(method != "PATCH" for method, _, _ in api.writes)
+    assert api.commits == (0 if substitute_at <= 3 else 1)
+
+
+def test_live_ref_must_equal_pr_head(policy):
+    api = DeliveryAPI()
+    api.bad_ref = True
+    with pytest.raises(bridge.WakeBridgeError, match="head disagree"):
+        bridge.deliver_wake(wake=delivery_wake(policy), policy=policy, api=api)
+    assert api.writes == []
+
+
+@pytest.mark.parametrize("defect", ["same_id_different_payload", "unknown_event", "non_exact", "missing_emitted", "corrupt_write"])
+def test_marker_mismatch_cannot_fabricate_emitted_delivery(policy, defect):
+    api, wake = DeliveryAPI(), delivery_wake(policy)
+    api.ledger(wake)
+    raw = bridge.marker_content(wake, policy)
+    if defect == "same_id_different_payload":
+        value = json.loads(raw)
+        value["selectors"]["issue_number"] += 1
+        api.marker = bridge._canonical(value)
+    elif defect == "unknown_event":
+        api.marker = bridge.marker_content(delivery_wake(policy, 43), policy)
+    elif defect == "non_exact":
+        api.marker = raw + b"\n"
+    elif defect == "missing_emitted":
+        api.ledger(delivery_wake(policy, 43), "EMITTED")
+    else:
+        api.corrupt_after_write = True
+    with pytest.raises(bridge.WakeBridgeError):
+        bridge.deliver_wake(wake=wake, policy=policy, api=api)
+    assert all(method != "PATCH" for method, _, _ in api.writes)
+    assert bridge._ledger_comment(api.history[0])[1]["state"] == "PENDING"
+
+
+@pytest.mark.parametrize("path", ["main", "../main", ".github/workflows/evil.yml", ".ai/tasks/TASK-255.yaml", ".ai/other.json"])
+def test_unauthorized_marker_policy_is_rejected_before_api_access(policy, path):
+    api = DeliveryAPI()
+    with pytest.raises(bridge.WakeBridgeError, match="policy"):
+        bridge.deliver_wake(wake=delivery_wake(policy), policy=replace(policy, marker_path=path), api=api)
+    assert api.reads == api.writes == []
+
+
+@pytest.mark.parametrize(("method", "path", "value"), [
+    ("PUT", "contents/other.json", {}),
+    ("PUT", "contents/.ai/brain-wake-marker.json", {"branch": "main"}),
+    ("POST", "issues/1201/comments", {}),
+    ("POST", "issues/1200/comments", {"body": "[AIOS BRAIN WAKE]\n"}),
+    ("PATCH", "git/refs/heads/main", {}),
+    ("PUT", "pulls/1200/merge", {}),
+])
+def test_api_write_boundary_rejects_other_targets_without_network(tmp_path, method, path, value):
+    api = bridge.GitHubAPI("fixture-token", str(tmp_path))
+    with pytest.raises(bridge.WakeBridgeError):
+        api.write(method, path, value)
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda w: w.update(next_action="continue"),
+    lambda w: w["selectors"].update(next_action="continue"),
+    lambda w: w.update(fresh_brain_sync_required=False),
+    lambda w: w.update(event_id="github-v1-" + "0" * 64),
+    lambda w: w.update(body=w["body"] + "next_action: continue\n"),
+    lambda w: w.update(attention_family="ROADMAP_COMPLETE"),
+    lambda w: w["selectors"].update(issue_id=True),
+])
+def test_semantic_or_substituted_projection_is_never_delivered(policy, mutation):
+    api, wake = DeliveryAPI(), delivery_wake(policy)
+    mutation(wake)
+    with pytest.raises(bridge.WakeBridgeError):
+        bridge.deliver_wake(wake=wake, policy=policy, api=api)
+    assert api.reads == api.writes == []
+
+
+@pytest.mark.parametrize(("source", "identity", "family", "selectors"), [
+    ("issues", 4000, "TERMINAL_ATTENTION", {"event_family": "issues.opened", "issue_number": 1211, "issue_id": 4000}),
+    ("issue_comment", 6000, "INGRESS_REJECTED", {"event_family": "issue_comment.created", "issue_number": 1210, "issue_id": 4000, "comment_id": 6000}),
+    ("issue_comment", 6000, "REVIEW_CHANGES_REQUIRED", {"event_family": "issue_comment.created", "issue_number": 1210, "issue_id": 4000, "comment_id": 6000}),
+    ("workflow_run", "8000:1", "PUBLICATION_WORKFLOW_COMPLETED", {"event_family": "workflow_run.completed", "workflow_run_id": 8000, "run_attempt": 1, "workflow_id": 7000, "conclusion": "success"}),
+    ("workflow_run", "8000:1", "PRE_AIOS_OPERATIONAL_FAILURE", {"event_family": "workflow_run.completed", "workflow_run_id": 8000, "run_attempt": 1, "workflow_id": 7000, "conclusion": "failure"}),
+    ("source_handoff", "8000:1", "WAKE_SOURCE_HANDOFF_FAILURE", {"event_family": "workflow_run.completed", "workflow_run_id": 8000, "run_attempt": 1, "workflow_id": 7000}),
+])
+def test_marker_retains_exact_r2_identity_and_payload_without_continuation(policy, source, identity, family, selectors):
+    wake = bridge._wake(policy, source, identity, family, selectors)
+    # JSON workflow output reorders mappings; this must retain the original body.
+    wake = json.loads(json.dumps(wake, sort_keys=True))
+    raw = bridge.marker_content(wake, policy)
+    payload = json.loads(raw)
+    assert set(payload) == {"version", "event_id", "attention_family", "repository", "selectors", "fresh_brain_sync_required"}
+    assert payload == yaml.safe_load(wake["body"].split("\n", 1)[1])
+    assert payload["selectors"] == selectors and payload["event_id"] == wake["event_id"]
+    assert len(raw) <= 2048 and raw == bridge._canonical(payload)
+    assert bridge.DELIVERY_POLICY["ledger_marker"] != bridge.WAKE_MARKER
+
+
+def test_delivery_cli_uses_bounded_projection_and_reports_operational_failure(tmp_path, monkeypatch, policy):
+    api = DeliveryAPI()
+    monkeypatch.setenv("GH_TOKEN", "fixture-token")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setattr(bridge, "GitHubAPI", lambda *args: api)
+    projection, output = tmp_path / "projection.json", tmp_path / "delivery.json"
+    projection.write_text(json.dumps(delivery_wake(policy)))
+    args = ["--deliver", "--projection", str(projection), "--repository", bridge.REPOSITORY, "--policy", str(POLICY_PATH), "--output", str(output)]
+    assert bridge.main(args) == 0
+    assert json.loads(output.read_text()) == {"delivery": "EMITTED"}
+    projection.write_text(json.dumps(delivery_wake(policy, 43)))
+    api.failure = ("PUT", "before")
+    assert bridge.main(args) == 1
+    assert json.loads(output.read_text()) == {"delivery": "INCOMPLETE"}
+    assert api.commits == 1
+    assert bridge._ledger_comment(api.history[-1])[1]["state"] == "PENDING"
 
 
 @pytest.fixture

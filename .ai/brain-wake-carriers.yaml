@@ -4,6 +4,13 @@ repository: trung-via/AIOS-renew
 wake_pr_number: 1200
 wake_marker: '[AIOS BRAIN WAKE]'
 max_comment_bytes: 2048
+wake_delivery:
+  version: 1
+  head_branch: aios-brain-wake-bus-v1
+  marker_path: .ai/brain-wake-marker.json
+  max_marker_bytes: 2048
+  ledger_marker: '[AIOS WAKE DELIVERY LEDGER V1]'
+  max_ledger_bytes: 512
 trusted_source:
   login: github-actions[bot]
   id: 41898282

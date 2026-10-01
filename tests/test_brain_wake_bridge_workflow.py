@@ -1,4 +1,4 @@
-"""Bounded workflow authority and actual comment-poster replay behavior."""
+"""Bounded workflow authority and delivery/source handoff wiring."""
 
 from __future__ import annotations
 
@@ -27,11 +27,11 @@ def test_workflow_uses_only_completed_handoffs_and_minimum_permissions():
     assert set(data["on"]) == {"workflow_run"}
     assert data["on"]["workflow_run"]["types"] == ["completed"]
     assert set(data["on"]["workflow_run"]["workflows"]) == {v["name"] for v in (bridge.WORKFLOWS | bridge.SOURCE_WORKFLOWS).values()}
-    assert data["permissions"] == {"contents": "read", "actions": "read", "pull-requests": "write"}
+    assert data["permissions"] == {"contents": "read", "actions": "read", "pull-requests": "read"}
     ring = data["jobs"]["ring"]
-    assert ring["permissions"] == {"pull-requests": "write"}
+    assert ring["permissions"] == {"contents": "write", "pull-requests": "write"}
     assert ring["concurrency"]["cancel-in-progress"] == "false"
-    assert "needs.project.outputs.event_id" in ring["concurrency"]["group"]
+    assert ring["concurrency"]["group"] == "aios-brain-wake-1200"
     job = data["jobs"]["project"]
     assert job["permissions"] == {"contents": "read", "actions": "read", "pull-requests": "read"}
     assert job["if"] == "github.repository == 'trung-via/AIOS-renew'"
@@ -40,78 +40,17 @@ def test_workflow_uses_only_completed_handoffs_and_minimum_permissions():
     assert checkout["with"]["persist-credentials"] == "false"
     source = WORKFLOW.read_text()
     assert "continue-on-error" not in source and "if: always()" not in source
-    assert source.count("github.rest.issues.createComment") == 1
-    for forbidden in ("contents: write", "actions: write", "workflow: write", "createWorkflowDispatch", "pulls.merge", "git push", "next_action"):
+    assert source.count("contents: write") == 1
+    assert "github.rest.issues.createComment" not in source
+    assert ring["steps"][0]["with"] == {"ref": "main", "fetch-depth": "1", "persist-credentials": "false"}
+    delivery = ring["steps"][-1]
+    assert delivery["env"]["GH_TOKEN"] == "${{ github.token }}"
+    assert delivery["env"]["AIOS_WAKE_PROJECTION"] == "${{ needs.project.outputs.projection }}"
+    assert "--deliver --projection" in delivery["run"]
+    assert "separate" in source and "post-publication probe" in source
+    assert "Human/Brain architecture review" in source
+    for forbidden in ("secrets.", "actions: write", "workflow: write", "createWorkflowDispatch", "pulls.merge", "git push", "next_action"):
         assert forbidden not in source
-
-
-def execute_poster(tmp_path: Path, comments: list[dict], *, wake: dict | None = None, repeats: int = 1) -> dict:
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("Node is needed for the GitHub-script behavioral harness")
-    if wake is None:
-        policy = bridge.load_policy(ROOT / ".ai/brain-wake-carriers.yaml")
-        wake = bridge._wake(policy, "issues", 42, "TERMINAL_ATTENTION", {"event_family": "issues.opened", "issue_id": 42, "issue_number": 1210})
-    path = tmp_path / "wake.json"
-    path.write_text(json.dumps(wake), encoding="utf-8")
-    script = workflow()["jobs"]["ring"]["steps"][-1]["with"]["script"]
-    harness = r"""
-const comments = INITIAL_COMMENTS;
-const calls = [];
-const reads = [];
-const github = {
-  rest: {issues: {
-    listComments: 'listComments',
-    createComment: async args => {calls.push(args); comments.push({body: args.body});},
-  }},
-  paginate: async (method, args) => {reads.push({method, args}); return comments;},
-};
-const post = new Function('require', 'github', 'context', 'core',
-  'return (async () => {' + POSTER + '})()');
-(async () => {
-  try {
-    for (let i = 0; i < REPEATS; i++) await post(require, github, {}, {info: () => {}});
-    process.stdout.write(JSON.stringify({calls, reads}));
-  } catch (error) {
-    process.stdout.write(JSON.stringify({calls, reads, error: error.message}));
-  }
-})();
-""".replace("INITIAL_COMMENTS", json.dumps(comments)).replace("POSTER", json.dumps(script)).replace("REPEATS", str(repeats))
-    result = subprocess.run([node, "-e", harness], env={**os.environ, "AIOS_WAKE_PROJECTION": json.dumps(wake)}, capture_output=True, text=True, check=True)
-    return json.loads(result.stdout)
-
-
-def test_same_source_projection_posts_exactly_one_top_level_comment(tmp_path):
-    result = execute_poster(tmp_path, [], repeats=2)
-    assert len(result["calls"]) == 1
-    assert len(result["reads"]) == 2
-    assert result["calls"][0]["issue_number"] == 1200
-    assert result["calls"][0]["owner"] == "trung-via"
-    assert result["calls"][0]["repo"] == "AIOS-renew"
-    assert all(read["method"] == "listComments" and read["args"]["per_page"] == 100 for read in result["reads"])
-
-
-def test_substring_duplicate_and_ack_do_not_suppress_new_wake(tmp_path):
-    initial = execute_poster(tmp_path, [])
-    body = initial["calls"][0]["body"]
-    result = execute_poster(tmp_path, [
-        {"body": body.replace("[AIOS BRAIN WAKE]", "[AIOS BRAIN ACK]")},
-        {"body": body.replace("event_id: ", "event_id: prefix-")},
-        {"body": "quoted wake:\n" + body},
-    ])
-    assert len(result["calls"]) == 1
-    result = execute_poster(tmp_path, [{"body": body}])
-    assert result["calls"] == []
-
-
-def test_no_wake_does_not_read_or_write_comment_history(tmp_path):
-    assert execute_poster(tmp_path, [], wake=bridge.NO_WAKE) == {"calls": [], "reads": []}
-
-
-def test_invalid_projection_never_posts(tmp_path):
-    result = execute_poster(tmp_path, [], wake={"projection": "WAKE", "version": 1, "repository": "attacker/fork"})
-    assert result["calls"] == [] and result["reads"] == []
-    assert "error" in result
 
 
 @pytest.mark.parametrize("key", list(bridge.SOURCE_WORKFLOWS))
@@ -188,12 +127,8 @@ const write = new Function('require', 'core', 'return (async () => {' + SCRIPT +
 def test_candidate_changes_are_inside_authorized_scope():
     authorized = {
         ".ai/brain-wake-carriers.yaml", ".github/workflows/aios-brain-wake-bridge.yml",
-        ".github/workflows/aios-brain-ingress.yml", ".github/workflows/aios-brain-wakeup.yml",
-        ".github/workflows/aios-brain-repair-wakeup.yml", ".github/workflows/aios-terminal-attention.yml",
         "src/aios_renew/brain_wake_bridge.py", "tests/test_brain_wake_bridge.py",
-        "tests/test_brain_wake_bridge_workflow.py", "tests/test_github_issue_ingress_workflow.py",
-        "tests/test_github_issue_wakeup_workflow.py", "tests/test_github_issue_repair_wakeup_workflow.py",
-        "tests/test_terminal_attention_workflow.py",
+        "tests/test_brain_wake_bridge_workflow.py",
     }
-    result = subprocess.run(["git", "diff", "--name-only", "2b32ecd22164d0b23ea20e5af02161a9666f731d", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True)
+    result = subprocess.run(["git", "diff", "--name-only", "962e32bc9134290a8e578232e14308c94f5684e0", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True)
     assert set(result.stdout.splitlines()) <= authorized

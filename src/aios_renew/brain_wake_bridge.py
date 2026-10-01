@@ -8,6 +8,7 @@ their triggering actor may legitimately be a Human or GitHub Actions.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import io
 import json
@@ -29,6 +30,11 @@ import yaml
 
 REPOSITORY = "trung-via/AIOS-renew"
 WAKE_MARKER = "[AIOS BRAIN WAKE]"
+DELIVERY_POLICY = {
+    "version": 1, "head_branch": "aios-brain-wake-bus-v1",
+    "marker_path": ".ai/brain-wake-marker.json", "max_marker_bytes": 2048,
+    "ledger_marker": "[AIOS WAKE DELIVERY LEDGER V1]", "max_ledger_bytes": 512,
+}
 TRUSTED_SOURCE = {"login": "github-actions[bot]", "id": 41898282, "type": "Bot"}
 WORKFLOWS = {
     "publication": {"name": "AIOS auto-publish reviewed candidate", "path": ".github/workflows/aios-auto-publish.yml"},
@@ -128,6 +134,8 @@ class WakePolicy:
     wake_pr_number: int
     wake_marker: str
     max_comment_bytes: int
+    head_branch: str = DELIVERY_POLICY["head_branch"]
+    marker_path: str = DELIVERY_POLICY["marker_path"]
 
 
 def load_policy(path: str | Path) -> WakePolicy:
@@ -136,6 +144,7 @@ def load_policy(path: str | Path) -> WakePolicy:
         "format": "AIOS_BRAIN_WAKE_CARRIERS_POLICY", "version": 1,
         "repository": REPOSITORY, "wake_pr_number": 1200,
         "wake_marker": WAKE_MARKER, "max_comment_bytes": 2048,
+        "wake_delivery": DELIVERY_POLICY,
         "trusted_source": TRUSTED_SOURCE, "workflow_sources": WORKFLOWS,
         "source_workflows": SOURCE_WORKFLOWS,
         "source_handoff": {"version": 1, "artifact_prefix": ARTIFACT_PREFIX, "filename": "source.json", "max_pointer_bytes": POINTER_MAX_BYTES, "max_archive_bytes": ARCHIVE_MAX_BYTES, "retention_days": 1},
@@ -514,13 +523,246 @@ def consume_handoff(*, event: Mapping[str, Any], workflow: Mapping[str, Any], po
                      {"event_family": "workflow_run.completed", "workflow_run_id": run["id"], "run_attempt": run["run_attempt"], "workflow_id": run["workflow_id"]})
 
 
+def _canonical(value: Mapping[str, Any]) -> bytes:
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode("ascii")
+
+
+def _marker_payload(value: Any) -> Mapping[str, Any]:
+    """Exact r2 selectors and event identity, with no semantic extension fields."""
+    payload = _mapping(value)
+    if set(payload) != {"version", "event_id", "attention_family", "repository", "selectors", "fresh_brain_sync_required"}:
+        raise WakeBridgeError("unknown marker fields")
+    if type(payload["version"]) is not int or payload["version"] != 1 or payload["repository"] != REPOSITORY or payload["fresh_brain_sync_required"] is not True:
+        raise WakeBridgeError("invalid marker identity")
+    selectors = _mapping(payload["selectors"])
+    family = payload["attention_family"]
+    event_family = selectors.get("event_family")
+    if event_family in {"issues.opened", "issue_comment.created"}:
+        expected = {"event_family", "issue_id", "issue_number"}
+        source = "issues"
+        families = {"TERMINAL_ATTENTION"}
+        identity = _integer(selectors.get("issue_id"))
+        _integer(selectors.get("issue_number"))
+        if selectors["issue_number"] == 1200:
+            raise WakeBridgeError("Wake Bus cannot be its own source")
+        if event_family == "issue_comment.created":
+            expected.add("comment_id")
+            source, identity = "issue_comment", _integer(selectors.get("comment_id"))
+            families = {"INGRESS_REJECTED", "REVIEW_CHANGES_REQUIRED", "PRIMARY_DISPATCH_REJECTED", "REPAIR_DISPATCH_REJECTED", "PUBLICATION_DISPATCH_REJECTED"}
+    elif event_family == "workflow_run.completed":
+        expected = {"event_family", "workflow_run_id", "run_attempt", "workflow_id"}
+        identity = f"{_integer(selectors.get('workflow_run_id'))}:{_integer(selectors.get('run_attempt'))}"
+        _integer(selectors.get("workflow_id"))
+        source = "source_handoff" if family == "WAKE_SOURCE_HANDOFF_FAILURE" else "workflow_run"
+        families = {"WAKE_SOURCE_HANDOFF_FAILURE", "PUBLICATION_WORKFLOW_COMPLETED", "PRE_AIOS_OPERATIONAL_FAILURE"}
+        if source == "workflow_run":
+            expected.add("conclusion")
+            conclusion = selectors.get("conclusion")
+            if not isinstance(conclusion, str) or conclusion not in CONCLUSIONS or (family == "PRE_AIOS_OPERATIONAL_FAILURE" and conclusion not in FAILED_CONCLUSIONS):
+                raise WakeBridgeError("invalid workflow conclusion selector")
+    else:
+        raise WakeBridgeError("invalid marker source selectors")
+    if set(selectors) != expected or not isinstance(family, str) or family not in families:
+        raise WakeBridgeError("unknown marker selectors or attention family")
+    digest = hashlib.sha256(f"v1\n{REPOSITORY}\n{source}\n{identity}\n{family}".encode("ascii")).hexdigest()
+    if payload["event_id"] != f"github-v1-{digest}":
+        raise WakeBridgeError("marker event identity disagreement")
+    return payload
+
+
+def marker_content(wake: Mapping[str, Any], policy: WakePolicy) -> bytes:
+    if set(wake) != {"projection", "version", "event_id", "attention_family", "repository", "selectors", "fresh_brain_sync_required", "wake_pr_number", "max_comment_bytes", "body"}:
+        raise WakeBridgeError("invalid bounded wake projection fields")
+    if wake["projection"] != "WAKE" or type(wake["wake_pr_number"]) is not int or wake["wake_pr_number"] != 1200 or type(wake["max_comment_bytes"]) is not int or wake["max_comment_bytes"] != 2048:
+        raise WakeBridgeError("invalid bounded wake projection")
+    payload = _marker_payload({key: wake[key] for key in ("version", "event_id", "attention_family", "repository", "selectors", "fresh_brain_sync_required")})
+    body = _text(wake["body"], policy.max_comment_bytes)
+    if not body.startswith(WAKE_MARKER + "\n"):
+        raise WakeBridgeError("invalid r2 wake body")
+    parsed = yaml.load(body[len(WAKE_MARKER) + 1:], Loader=_PolicyLoader)
+    if _canonical(_mapping(parsed)) != _canonical(payload):
+        raise WakeBridgeError("projection body and selectors disagree")
+    raw = _canonical(payload)
+    if len(raw) > DELIVERY_POLICY["max_marker_bytes"]:
+        raise WakeBridgeError("marker exceeds transport bound")
+    return raw
+
+
+def _live_head(api: Any, policy: WakePolicy, previous: Mapping[str, Any] | None = None, *, same_sha: bool = False) -> Mapping[str, Any]:
+    pr = _mapping(api.get("pulls/1200"))
+    if type(pr.get("number")) is not int or pr["number"] != 1200 or pr.get("state") != "open" or pr.get("merged") is not False:
+        raise WakeBridgeError("Wake Bus PR is closed or substituted")
+    _source_url(pr.get("url"), "pulls/1200")
+    _integer(pr.get("id"))
+    head, base = _mapping(pr.get("head")), _mapping(pr.get("base"))
+    head_repo, base_repo = _mapping(head.get("repo")), _mapping(base.get("repo"))
+    for repo in (head_repo, base_repo):
+        if repo.get("full_name") != REPOSITORY or repo.get("fork") is not False:
+            raise WakeBridgeError("forked or substituted Wake Bus repository")
+        _integer(repo.get("id"))
+    if head_repo["id"] != base_repo["id"] or head.get("ref") != policy.head_branch or head.get("label") != f"trung-via:{policy.head_branch}" or base.get("ref") != "main":
+        raise WakeBridgeError("substituted Wake Bus head identity")
+    sha = _match(head.get("sha"), SHA)
+    ref = _mapping(api.get(f"git/ref/heads/{policy.head_branch}"))
+    obj = _mapping(ref.get("object"))
+    if ref.get("ref") != f"refs/heads/{policy.head_branch}" or obj.get("type") != "commit" or obj.get("sha") != sha:
+        raise WakeBridgeError("live PR and branch head disagree")
+    identity = {"pr_id": pr["id"], "repo_id": head_repo["id"], "sha": sha}
+    if previous is not None and (identity["pr_id"] != previous["pr_id"] or identity["repo_id"] != previous["repo_id"] or (same_sha and sha != previous["sha"])):
+        raise WakeBridgeError("Wake Bus identity changed during delivery")
+    return identity
+
+
+def _ledger_body(event_id: str, digest: str, state: str) -> str:
+    body = DELIVERY_POLICY["ledger_marker"] + "\n" + _canonical({"version": 1, "event_id": event_id, "marker_sha256": digest, "state": state}).decode("ascii")
+    if len(body.encode("ascii")) > DELIVERY_POLICY["max_ledger_bytes"]:
+        raise WakeBridgeError("ledger exceeds transport bound")
+    return body
+
+
+def _ledger_fields(value: Any) -> Mapping[str, Any]:
+    body = _text(value, DELIVERY_POLICY["max_ledger_bytes"])
+    prefix = DELIVERY_POLICY["ledger_marker"] + "\n"
+    if not body.startswith(prefix):
+        raise WakeBridgeError("malformed delivery ledger")
+    entry = _json(body[len(prefix):])
+    if set(entry) != {"version", "event_id", "marker_sha256", "state"} or type(entry["version"]) is not int or entry["version"] != 1 or entry["state"] not in ("PENDING", "EMITTED"):
+        raise WakeBridgeError("unknown delivery ledger state")
+    _match(entry["event_id"], r"github-v1-[0-9a-f]{64}")
+    _match(entry["marker_sha256"], r"[0-9a-f]{64}")
+    if body != _ledger_body(entry["event_id"], entry["marker_sha256"], entry["state"]):
+        raise WakeBridgeError("non-exact delivery ledger")
+    return entry
+
+
+def _ledger_comment(comment: Any) -> tuple[int, Mapping[str, Any]]:
+    comment = _mapping(comment)
+    _trusted(comment.get("user"))
+    comment_id = _integer(comment.get("id"))
+    _source_url(comment.get("url"), f"issues/comments/{comment_id}")
+    _source_url(comment.get("issue_url"), "issues/1200")
+    return comment_id, _ledger_fields(comment.get("body"))
+
+
+def _ledgers(api: Any) -> dict[str, tuple[int, Mapping[str, Any]]]:
+    entries: dict[str, tuple[int, Mapping[str, Any]]] = {}
+    ids: set[int] = set()
+    for comment in api.comments():
+        body = _text(_mapping(comment).get("body") or "", MAX_EVENT_BYTES)
+        # Quoted or malformed ledger markers are ambiguous, never completion.
+        if DELIVERY_POLICY["ledger_marker"] not in body:
+            continue
+        comment_id, entry = _ledger_comment(comment)
+        if entry["event_id"] in entries or comment_id in ids:
+            raise WakeBridgeError("duplicated delivery ledger")
+        ids.add(comment_id)
+        entries[entry["event_id"]] = (comment_id, entry)
+    if sum(entry["state"] == "PENDING" for _, entry in entries.values()) > 1:
+        raise WakeBridgeError("ambiguous pending delivery")
+    return entries
+
+
+def _current_marker(api: Any, policy: WakePolicy, head: Mapping[str, Any]) -> tuple[bytes | None, str | None]:
+    try:
+        item = _mapping(api.get(f"contents/{policy.marker_path}?ref={head['sha']}"))
+    except HTTPError as exc:
+        if exc.code != 404:
+            raise
+        return None, None
+    if item.get("type") != "file" or item.get("path") != policy.marker_path or item.get("encoding") != "base64" or type(item.get("size")) is not int or not 0 < item["size"] <= DELIVERY_POLICY["max_marker_bytes"]:
+        raise WakeBridgeError("invalid bounded marker file")
+    encoded = _text(item.get("content"), 4096)
+    raw = base64.b64decode(encoded.replace("\n", ""), validate=True)
+    if len(raw) != item["size"]:
+        raise WakeBridgeError("marker size disagreement")
+    payload = _marker_payload(_json(raw))
+    if raw != _canonical(payload):
+        raise WakeBridgeError("non-exact marker content")
+    sha = _match(item.get("sha"), SHA)
+    if sha != hashlib.sha1(f"blob {len(raw)}\0".encode("ascii") + raw).hexdigest():
+        raise WakeBridgeError("marker blob identity disagreement")
+    return raw, sha
+
+
+def deliver_wake(*, wake: Mapping[str, Any], policy: WakePolicy, api: Any) -> str:
+    """Operational delivery only; callers must hold the global workflow boundary.
+
+    Commit-update Work wake/ACK remains a separate post-publication conformance
+    gate. Failure there returns to Human/Brain architecture review; no credential
+    or other transport fallback is authorized.
+    """
+    if wake == NO_WAKE:
+        return "NO_WAKE"
+    if policy != WakePolicy(REPOSITORY, 1200, WAKE_MARKER, 2048):
+        raise WakeBridgeError("unauthorized delivery policy")
+    raw = marker_content(wake, policy)
+    event_id, digest = wake["event_id"], hashlib.sha256(raw).hexdigest()
+    head = _live_head(api, policy)
+    entries = _ledgers(api)
+    current = entries.get(event_id)
+    if current and current[1]["marker_sha256"] != digest:
+        raise WakeBridgeError("replayed event marker mismatch")
+    if any(key != event_id and entry["state"] == "PENDING" for key, (_, entry) in entries.items()):
+        raise WakeBridgeError("unresolved delivery blocks unrelated event")
+    if current and current[1]["state"] == "EMITTED":
+        return "NOOP"
+    old_raw, blob_sha = _current_marker(api, policy, head)
+    if old_raw is not None:
+        old_id = _json(old_raw)["event_id"]
+        old_entry = entries.get(old_id)
+        if old_entry is None or old_entry[1]["marker_sha256"] != hashlib.sha256(old_raw).hexdigest():
+            raise WakeBridgeError("marker has no exact delivery ledger")
+        if old_id == event_id and old_raw != raw:
+            raise WakeBridgeError("current event marker mismatch")
+        if old_id != event_id and old_entry[1]["state"] != "EMITTED":
+            raise WakeBridgeError("unresolved current marker")
+    elif any(entry["state"] == "EMITTED" for _, entry in entries.values()):
+        raise WakeBridgeError("previously emitted marker is missing")
+    if current is None:
+        _live_head(api, policy, head, same_sha=True)
+        created = api.write("POST", "issues/1200/comments", {"body": _ledger_body(event_id, digest, "PENDING")})
+        comment_id, entry = _ledger_comment(created)
+        if entry != {"version": 1, "event_id": event_id, "marker_sha256": digest, "state": "PENDING"}:
+            raise WakeBridgeError("created ledger disagreement")
+        current = (comment_id, entry)
+    # Reacquire history before writing, so ambiguous or interrupted comment writes
+    # never become a fabricated completion. No automatic transport retry occurs.
+    entries = _ledgers(api)
+    if entries.get(event_id) != current or any(key != event_id and entry["state"] == "PENDING" for key, (_, entry) in entries.items()):
+        raise WakeBridgeError("ledger changed during delivery")
+    if old_raw != raw:
+        update = {"branch": policy.head_branch, "message": f"AIOS Wake Bus marker {event_id}", "content": base64.b64encode(raw).decode("ascii")}
+        if blob_sha is not None:
+            update["sha"] = blob_sha
+        _live_head(api, policy, head, same_sha=True)
+        response = _mapping(api.write("PUT", f"contents/{policy.marker_path}", update))
+        commit_sha = _match(_mapping(response.get("commit")).get("sha"), SHA)
+        written_head = _live_head(api, policy, head)
+        if written_head["sha"] != commit_sha:
+            raise WakeBridgeError("marker commit and live PR head disagree")
+        head = written_head
+    # This also recovers a write that succeeded before the PENDING -> EMITTED
+    # transition failed: exact content completes the SAME ledger without a commit.
+    head = _live_head(api, policy, head, same_sha=True)
+    confirmed, _ = _current_marker(api, policy, head)
+    if confirmed != raw:
+        raise WakeBridgeError("written marker mismatch")
+    if _ledgers(api) != entries:
+        raise WakeBridgeError("ledger changed before completion")
+    _live_head(api, policy, head, same_sha=True)
+    emitted = api.write("PATCH", f"issues/comments/{current[0]}", {"body": _ledger_body(event_id, digest, "EMITTED")})
+    if _ledger_comment(emitted) != (current[0], {**current[1], "state": "EMITTED"}):
+        raise WakeBridgeError("completed ledger disagreement")
+    return "EMITTED"
+
+
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 
 
 class GitHubAPI:
-    """Bounded API reads and ephemeral archive outside the repository workspace."""
+    """Bounded reads plus only the fixed operational ledger/marker writes."""
     def __init__(self, token: str, temp_root: str):
         self.token, self.temp_root = token, Path(temp_root).resolve()
         workspace = Path(os.environ.get("GITHUB_WORKSPACE", ".")).resolve()
@@ -535,6 +777,47 @@ class GitHubAPI:
             raw = response.read(MAX_EVENT_BYTES + 1)
         if len(raw) > MAX_EVENT_BYTES:
             raise WakeBridgeError("oversized GitHub response")
+        return _json(raw)
+
+    def comments(self) -> list[Mapping[str, Any]]:
+        comments = []
+        for page in range(1, 101):
+            with build_opener(_NoRedirect).open(self.request(f"issues/1200/comments?per_page=100&page={page}"), timeout=30) as response:
+                raw = response.read(MAX_EVENT_BYTES + 1)
+            if len(raw) > MAX_EVENT_BYTES:
+                raise WakeBridgeError("oversized comment history response")
+            batch = json.loads(raw, object_pairs_hook=_unique_pairs)
+            if not isinstance(batch, list) or len(batch) > 100:
+                raise WakeBridgeError("malformed comment history")
+            comments.extend(_mapping(item) for item in batch)
+            if len(batch) < 100:
+                return comments
+        raise WakeBridgeError("delivery ledger history exceeds bound")
+
+    def write(self, method: str, path: str, value: Mapping[str, Any]) -> Mapping[str, Any]:
+        if method == "PUT" and path == f"contents/{DELIVERY_POLICY['marker_path']}":
+            if set(value) not in ({"branch", "message", "content"}, {"branch", "message", "content", "sha"}) or value.get("branch") != DELIVERY_POLICY["head_branch"]:
+                raise WakeBridgeError("unauthorized marker write")
+            raw = base64.b64decode(_text(value["content"], 4096), validate=True)
+            payload = _marker_payload(_json(raw))
+            if len(raw) > DELIVERY_POLICY["max_marker_bytes"] or raw != _canonical(payload) or value["message"] != f"AIOS Wake Bus marker {payload['event_id']}":
+                raise WakeBridgeError("unauthorized marker write content")
+            if "sha" in value:
+                _match(value["sha"], SHA)
+        elif (method == "POST" and path == "issues/1200/comments") or (method == "PATCH" and re.fullmatch(r"issues/comments/[1-9][0-9]{0,15}", path)):
+            if set(value) != {"body"} or not _text(value["body"], DELIVERY_POLICY["max_ledger_bytes"]).startswith(DELIVERY_POLICY["ledger_marker"] + "\n"):
+                raise WakeBridgeError("unauthorized ledger write")
+            # Reuse exact ledger grammar before crossing the HTTP write boundary.
+            _ledger_fields(value["body"])
+        else:
+            raise WakeBridgeError("unauthorized delivery write target")
+        request = self.request(path)
+        request.method, request.data = method, _canonical(value)
+        request.add_header("Content-Type", "application/json")
+        with build_opener(_NoRedirect).open(request, timeout=30) as response:
+            raw = response.read(MAX_EVENT_BYTES + 1)
+        if len(raw) > MAX_EVENT_BYTES:
+            raise WakeBridgeError("oversized delivery response")
         return _json(raw)
 
     def artifacts(self, run_id: int) -> list[Mapping[str, Any]]:
@@ -577,11 +860,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY"))
     parser.add_argument("--policy", default=".ai/brain-wake-carriers.yaml")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--deliver", action="store_true")
+    parser.add_argument("--projection")
     args = parser.parse_args(argv)
     output = Path(args.output)
-    output.write_text(json.dumps(NO_WAKE) + "\n", encoding="utf-8")
+    initial = {"delivery": "INCOMPLETE"} if args.deliver else NO_WAKE
+    output.write_text(json.dumps(initial) + "\n", encoding="utf-8")
     try:
         policy = load_policy(args.policy)
+        if args.deliver:
+            if args.repository != policy.repository:
+                raise WakeBridgeError("unauthorized delivery repository")
+            wake = _json(_read(args.projection, 8192))
+            api = GitHubAPI(os.environ["GH_TOKEN"], os.environ["RUNNER_TEMP"])
+            delivery = deliver_wake(wake=wake, policy=policy, api=api)
+            output.write_text(json.dumps({"delivery": delivery}) + "\n", encoding="utf-8")
+            return 0
         if args.event_name != "workflow_run" or args.repository != policy.repository:
             raise WakeBridgeError("only exact completed workflow delivery is admitted")
         event = read_event(args.event)
@@ -591,7 +885,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = consume_handoff(event=event, workflow=workflow, policy=policy, api=api)
         output.write_text(json.dumps(result, sort_keys=True) + "\n", encoding="utf-8")
     except (WakeBridgeError, OSError, UnicodeError, ValueError, yaml.YAMLError, TypeError, KeyError, RecursionError) as exc:
-        print(f"wake projection rejected: {type(exc).__name__}", file=sys.stderr)
+        phase = "delivery" if args.deliver else "projection"
+        detail = f": {str(exc)[:160]}" if args.deliver and isinstance(exc, WakeBridgeError) else ""
+        print(f"wake {phase} rejected: {type(exc).__name__}{detail}", file=sys.stderr)
         return 1
     return 0
 

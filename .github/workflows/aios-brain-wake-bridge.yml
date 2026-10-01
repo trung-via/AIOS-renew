@@ -18,7 +18,7 @@ on:
 permissions:
   contents: read
   actions: read
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   project:
@@ -72,43 +72,44 @@ jobs:
     needs: project
     if: needs.project.outputs.event_id != ''
     permissions:
+      contents: write
       pull-requests: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Only deliveries of the same deterministic bell share a concurrency group.
-    # Rerun/replay or reused terminal Issues therefore cannot race the PR scan.
+    # One marker branch: no unrelated event may overtake unresolved PENDING.
     concurrency:
-      group: aios-brain-wake-1200-${{ needs.project.outputs.event_id }}
+      group: aios-brain-wake-1200
       cancel-in-progress: false
     steps:
-      - name: Ring the fixed Wake Bus once
-        uses: actions/github-script@v7
-        env:
-          AIOS_WAKE_PROJECTION: ${{ needs.project.outputs.projection }}
+      - name: Check out trusted delivery code from canonical main
+        uses: actions/checkout@v4
         with:
-          script: |
-            const wake = JSON.parse(process.env.AIOS_WAKE_PROJECTION);
-            if (wake.projection === 'NO_WAKE') return;
-            if (wake.projection !== 'WAKE' || wake.version !== 1 ||
-                wake.repository !== 'trung-via/AIOS-renew' || wake.wake_pr_number !== 1200 ||
-                wake.fresh_brain_sync_required !== true || wake.max_comment_bytes !== 2048 ||
-                !/^github-v1-[0-9a-f]{64}$/.test(wake.event_id) ||
-                typeof wake.body !== 'string' || !wake.body.startsWith('[AIOS BRAIN WAKE]\n') ||
-                Buffer.byteLength(wake.body, 'utf8') > wake.max_comment_bytes ||
-                wake.body.split('\n').filter(line => line === `event_id: ${wake.event_id}`).length !== 1) {
-              throw new Error('Invalid bounded wake projection');
-            }
-            const target = {owner: 'trung-via', repo: 'AIOS-renew', issue_number: 1200};
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              ...target, per_page: 100,
-            });
-            const replay = comments.some(comment => {
-              const body = comment.body || '';
-              return body.startsWith('[AIOS BRAIN WAKE]\n') &&
-                body.split('\n').filter(line => line === `event_id: ${wake.event_id}`).length === 1;
-            });
-            if (replay) {
-              core.info('NOOP: exact wake event_id already exists');
-              return;
-            }
-            await github.rest.issues.createComment({...target, body: wake.body});
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install only the transport parser dependency
+        run: python -m pip install --disable-pip-version-check 'PyYAML>=6.0,<7'
+
+      # Candidate transport only. Autonomous Work wake/ACK requires a separate
+      # post-publication probe. Failure returns to Human/Brain architecture review;
+      # no credential, comment-trigger or other transport fallback is authorized.
+      - name: Deliver the bounded PR head marker through GITHUB_TOKEN
+        env:
+          PYTHONPATH: src
+          GH_TOKEN: ${{ github.token }}
+          AIOS_WAKE_PROJECTION: ${{ needs.project.outputs.projection }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'], 'aios-wake-projection.json').write_text(os.environ['AIOS_WAKE_PROJECTION'], encoding='utf-8')
+          PY
+          python -m aios_renew.brain_wake_bridge --deliver --projection "$RUNNER_TEMP/aios-wake-projection.json" --repository "$GITHUB_REPOSITORY" --policy .ai/brain-wake-carriers.yaml --output "$RUNNER_TEMP/aios-wake-delivery.json"
