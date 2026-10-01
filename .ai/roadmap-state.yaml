@@ -299,7 +299,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+  - brain-runtime-semantic-handoff-hardening-v1-h3-authoring-ingress-remote-fixture-correction
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
@@ -1038,8 +1038,58 @@ sequence:
       expires_on_task_change: true
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+  - id: brain-runtime-semantic-handoff-hardening-v1-h3-authoring-ingress-remote-fixture-correction
     status: NEXT
+    phase: H4A2P_TASK263_BASELINE_VERIFICATION_FIXTURE_CORRECTION
+    task_id: TASK-265
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    triggered_by:
+      task_id: TASK-263
+      task_revision: 1
+      run_id: RUN-263-001
+      failure_artifact_sha: "22885ba02c8b6e1ae1dd588aa01434041ea94ba1"
+      failed_candidate_sha: "d6e246412e77e4adba63563652a60efee2521e1c"
+      phase: VERIFICATION
+      failing_command: "python -m pytest -q tests/test_authoring_ingress.py -k remediation"
+      failure_class: BASELINE_TEST_FIXTURE_BINDING_REGRESSION
+      root_cause_commit: "77c4597c1ab1d9acbab8de3d9bd637b974f62bab"
+      root_cause: >-
+        H3 added a non-mutation assertion in test_author_remediation_success_and_rejections
+        that calls git(remote, ...) but did not bind remote from setup_candidate_lineage,
+        even though that helper already returns the exact fixture remote.
+    blocker_for:
+      task_id: TASK-263
+      task_revision: 1
+      failed_run_id: RUN-263-001
+      return_action: AUTHOR_REPAIR_FOR_EXISTING_RUN_263_001_AFTER_TASK_265_PUBLICATION
+    objective: >-
+      Correct only the H3 authoring-ingress remediation test fixture by binding the
+      already-returned fixture remote before its non-mutation assertion, restoring
+      the intended focused verification without changing production authoring,
+      remediation, publication or Runtime semantics.
+    boundaries:
+      - TEST_FIXTURE_ONLY
+      - NO_PRODUCTION_CODE_CHANGE
+      - EXACT_EXISTING_SETUP_CANDIDATE_LINEAGE_REMOTE_ONLY
+      - NO_ASSERTION_REMOVAL_OR_WEAKENING
+      - NO_SKIP_XFAIL_RETRY_OR_TEST_SELECTION_CHANGE
+      - NO_TASK263_CANDIDATE_CHANGE
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-265
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+    status: BLOCKED_BY_TASK_265
     phase: H4A2P_PUBLISHER_DETACHED_REMOTE_COMPATIBILITY
     task_id: TASK-263
     task_revision: 1
