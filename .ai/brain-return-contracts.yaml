@@ -84,6 +84,53 @@ contracts:
           neither require nor accept this TASK-only ledger.
         - Use minimum-sufficient-v1 verification with focused required commands; give full_suite_reason only when a full suite is necessary.
         - Do not instruct the Executor to push or publish, or include ingress envelope or publication controls.
+        - >-
+          Prospective brain-high-value-v3 TASK_AUTHORING Stage-2 additionally requires
+          exactly cross_authority_context, canonical_shape and terminal_lifecycle
+          sections alongside the existing audit fields. Each closed section contains
+          exactly packet_fingerprint, reconciled_candidate_fingerprint, status,
+          basis and entries, bound to the exact Decision Packet and final reconciled
+          candidate SHA-256. All three together have at most 65536 UTF-8 JSON bytes;
+          each section has at most 16 entries and every text field is non-empty and
+          at most 2048 UTF-8 bytes. These are transient bounded Brain semantic support,
+          never canonical TASK bytes, Runtime EVIDENCE, REVIEW, roadmap lifecycle truth,
+          provider memory or a persistent reasoning store. Do not include secrets,
+          actual remote URLs, machine-local paths, provider/session identity or reasoning traces.
+        - >-
+          cross_authority_context status is CLEAR, NOT_APPLICABLE or BLOCKED. Each
+          entry contains exactly id, status (COVERED, NOT_APPLICABLE or BLOCKED), basis,
+          candidate_anchor, caller_authority, consumer_authority, context_role and
+          propagation. Use unique ids to identify caller-owned inputs across the
+          relevant authority call edges, including shared helpers; explain preservation
+          of explicit remote selection instead of ambient rediscovery when applicable.
+          CLEAR requires at least one COVERED entry. Explicit NOT_APPLICABLE or BLOCKED
+          may use no entries with a bounded basis; NOT_APPLICABLE permits only
+          NOT_APPLICABLE entries. Brain alone judges which edges apply.
+        - >-
+          canonical_shape uses the same section and entry statuses as cross_authority_context.
+          Its entries contain exactly id, status, basis, candidate_anchor and shape.
+          Cover exactly these ordered ids: PRIMARY_RESULT, FAILURE, REVIEWED_RESULT,
+          REMEDIATION_RESULT, REPAIR_RESULT. Describe the valid lineage/state shape
+          considered, including FAILURE and RESULT plus its existing REVIEW, or declare
+          explicit NOT_APPLICABLE or BLOCKED with basis for each. One observed shape
+          cannot substitute for the family. CLEAR requires a COVERED entry;
+          NOT_APPLICABLE requires all entries NOT_APPLICABLE. Brain alone judges
+          applicability; this matrix is not lifecycle reduction.
+        - >-
+          terminal_lifecycle status is CLEAR or BLOCKED; entries contain exactly id,
+          status (FEASIBLE or BLOCKED), basis and candidate_anchor. Cover exactly these
+          ordered ids: PRIMARY_PASS_TO_PUBLICATION, CHANGES_REQUIRED_REMEDIATION_PASS_TO_PUBLICATION,
+          FAILURE_REPAIR_PASS_TO_PUBLICATION. Assess current canonical control-plane
+          capabilities and known blockers for PRIMARY then Reviewer PASS then publication,
+          CHANGES_REQUIRED then REMEDIATION then PASS then publication, and FAILURE then
+          REPAIR then PASS then publication. Do not require future RUN, EVIDENCE, REVIEW
+          or publication facts. Any BLOCKED entry requires section BLOCKED. A BLOCKED
+          section requires a closure BLOCKER on AUTHORITY_BOUNDARY for context,
+          FAILURE_MODE_COUNTEREXAMPLES for shapes, or AC_CONSISTENCY_COMPLETENESS for
+          lifecycle, and final NO_DECISION. CANDIDATE may not contradict a blocker.
+          Deterministic validation checks structure, exact coverage, binding, bounds,
+          privacy and consistency only; it never chooses a correction strategy,
+          semantic verdict, publication eligibility, roadmap successor or Human risk acceptance.
   - selected_flow: REMEDIATION_AUTHORING
     version: 1
     authority_owner: BRAIN

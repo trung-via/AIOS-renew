@@ -98,9 +98,9 @@ def test_task_phase_ledger_never_enters_frozen_task_bytes(tmp_path):
     raw = git(repo, "show", f"{result.canonical_sha}:.ai/tasks/TASK-105.yaml")
     assert parse_task(raw) == parse_task(envelope.payload)
     body = yaml.safe_load(raw)
-    assert "acceptance_phase_ledger" not in body
+    assert all(key not in body for key in ("acceptance_phase_ledger", "cross_authority_context", "canonical_shape", "terminal_lifecycle"))
     assert all(set(entry) == {"id", "condition"} for entry in body["acceptance"])
-    for extra in ("acceptance_phase_ledger", "phase"):
+    for extra in ("acceptance_phase_ledger", "phase", "cross_authority_context", "canonical_shape", "terminal_lifecycle"):
         changed = copy.deepcopy(body)
         if extra == "phase":
             changed["acceptance"][0][extra] = "CLAIM_NOW"
@@ -386,6 +386,9 @@ def audited_envelope(envelope: IngressEnvelope, repo: Path) -> IngressEnvelope:
         "outcome": "CANDIDATE",
     }
     if envelope.operation == "AUTHOR_TASK":
+        from tests.test_brain_audit import v3_sections
+
+        stage2.update(v3_sections(stage1, candidate))
         stage2["acceptance_phase_ledger"] = [
             {"id": entry["id"], "phase": "CLAIM_NOW"} for entry in candidate["acceptance"]
         ]
@@ -3968,3 +3971,70 @@ def test_h2_successful_repair_source_invalid_lineage_creates_no_remediation(tmp_
     with pytest.raises((AuthoringIngressError, OperatorError, RuntimeError, ValueError)):
         execute_audited_ingress(envelope, repo=repo)
     assert not git(remote, "for-each-ref", "--format=%(refname)", f"refs/heads/aios/remediation/{source_id}-F2")
+
+
+@pytest.mark.parametrize("fault", [
+    "missing_context", "missing_shapes", "missing_lifecycle", "malformed", "packet_binding",
+    "candidate_binding", "failure_only", "blocked_remediation", "closure_blocker",
+    "missing_path", "extra_path", "v2_handoff",
+])
+def test_v3_conformance_rejected_before_authoring_git_mutation(tmp_path, monkeypatch, fault):
+    from aios_renew.brain_audit import construct_stage1, parse_profile_registry
+    from tests.test_brain_audit import stage2_input
+
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    envelope = audited_envelope(new_task_envelope(main_sha), repo)
+    handoff = copy.deepcopy(envelope.audited_handoff)
+    material = handoff["stage2"]
+    if fault.startswith("missing_") and fault != "missing_path":
+        key = {"missing_context": "cross_authority_context", "missing_shapes": "canonical_shape",
+               "missing_lifecycle": "terminal_lifecycle"}[fault]
+        del material[key]
+    elif fault == "malformed":
+        material["cross_authority_context"]["entries"][0]["propagation"] = ""
+    elif fault == "packet_binding":
+        material["cross_authority_context"]["packet_fingerprint"] = "0" * 64
+    elif fault == "candidate_binding":
+        material["canonical_shape"]["reconciled_candidate_fingerprint"] = "0" * 64
+    elif fault == "failure_only":
+        material["canonical_shape"]["entries"] = [material["canonical_shape"]["entries"][1]]
+    elif fault in {"blocked_remediation", "closure_blocker"}:
+        target = material["terminal_lifecycle"]
+        target["entries"][1].update(status="BLOCKED", basis="Normal REMEDIATION cannot publish on current control plane")
+        target["status"] = "BLOCKED"
+        if fault == "closure_blocker":
+            material["closure"][4].update(outcome="BLOCKER", blocker_summary="The prerequisite cannot terminalize")
+            material["outcome"] = "NO_DECISION"
+    elif fault == "missing_path":
+        material["terminal_lifecycle"]["entries"].pop()
+    elif fault == "extra_path":
+        material["terminal_lifecycle"]["entries"].append({
+            "id": "OTHER_PATH", "status": "FEASIBLE", "basis": "Substitution", "candidate_anchor": "goal"})
+    else:
+        packet, _, _, _ = authoring_ingress_module._compose_authoring_packet(envelope, repo)
+        historical = next(p for p in parse_profile_registry((repo / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"]
+                          if p["id"] == "brain-high-value-v2")
+        first = construct_stage1(packet, historical, material["construct_candidate"])
+        handoff.update(stage1=first, stage2=stage2_input(first, historical))
+    monkeypatch.setattr(authoring_ingress_module, "_hash_blob", lambda *a: pytest.fail("premature blob mutation"))
+    monkeypatch.setattr(authoring_ingress_module, "_git_env", lambda *a: pytest.fail("premature index mutation"))
+    monkeypatch.setattr(authoring_ingress_module, "_commit_tree", lambda *a: pytest.fail("premature commit mutation"))
+    monkeypatch.setattr(authoring_ingress_module, "_publish_ingress_ref", lambda *a, **k: pytest.fail("premature ref mutation"))
+    with pytest.raises(AuthoringIngressError, match="audited authoring"):
+        execute_ingress(replace(envelope, audited_handoff=handoff), repo=repo)
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+    assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
+
+
+def test_revision_two_requires_current_v3_conformance(tmp_path, monkeypatch):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    authored = execute_ingress(audited_envelope(new_task_envelope(main_sha), repo), repo=repo)
+    revision = replace(new_task_envelope(authored.canonical_sha), payload=V1_TASK_105_R2_SOURCE)
+    revision = audited_envelope(revision, repo)
+    handoff = copy.deepcopy(revision.audited_handoff)
+    del handoff["stage2"]["canonical_shape"]
+    monkeypatch.setattr(authoring_ingress_module, "_hash_blob", lambda *a: pytest.fail("premature blob mutation"))
+    with pytest.raises(AuthoringIngressError, match="closed contract"):
+        execute_ingress(replace(revision, audited_handoff=handoff), repo=repo)
+    assert git(remote, "rev-parse", "refs/heads/main") == authored.canonical_sha

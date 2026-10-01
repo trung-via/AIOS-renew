@@ -16,6 +16,42 @@ from aios_renew.brain_audit import (
 REGISTRY = Path(__file__).resolve().parents[1] / ".ai" / "brain-audit-profiles.yaml"
 
 
+def v3_sections(first, candidate):
+    """Bounded fixture Brain judgments, without future artifact facts."""
+    binding = {"packet_fingerprint": first["packet_fingerprint"],
+               "reconciled_candidate_fingerprint": digest(candidate)}
+    shapes = [
+        ("PRIMARY_RESULT", "PRIMARY RUN with RESULT before review"),
+        ("FAILURE", "Failed RUN with FAILURE and no RESULT"),
+        ("REVIEWED_RESULT", "RUN with RESULT and existing REVIEW preserving reviewed subject"),
+        ("REMEDIATION_RESULT", "REMEDIATION RUN with RESULT linked to prior finding"),
+        ("REPAIR_RESULT", "REPAIR RUN with RESULT linked to failed RUN"),
+    ]
+    paths = [
+        ("PRIMARY_PASS_TO_PUBLICATION", "Current PRIMARY supports Reviewer PASS then Publisher publication"),
+        ("CHANGES_REQUIRED_REMEDIATION_PASS_TO_PUBLICATION", "Current correction supports REMEDIATION then PASS then publication"),
+        ("FAILURE_REPAIR_PASS_TO_PUBLICATION", "Current failure recovery supports REPAIR then PASS then publication"),
+    ]
+    return {
+        "cross_authority_context": {**binding, "status": "CLEAR",
+            "basis": "Caller-owned publication authority context crosses shared helpers",
+            "entries": [{"id": "PUBLISHER_REMOTE", "status": "COVERED",
+                "basis": "A caller-selected remote different from the ambient remote must survive",
+                "candidate_anchor": "scope.modify", "caller_authority": "Publisher caller",
+                "consumer_authority": "Publication shared helper", "context_role": "explicit remote selection",
+                "propagation": "Pass the explicit caller input through every helper; do not rediscover it"}]},
+        "canonical_shape": {**binding, "status": "CLEAR",
+            "basis": "Preserve both FAILURE and reviewed RESULT lineage across shared reconciliation",
+            "entries": [{"id": identity, "status": "COVERED", "shape": shape,
+                         "candidate_anchor": "scope.modify", "basis": "Considered against current canonical family"}
+                        for identity, shape in shapes]},
+        "terminal_lifecycle": {**binding, "status": "CLEAR",
+            "basis": "Brain feasibility judgment uses current capabilities, without future proof",
+            "entries": [{"id": identity, "status": "FEASIBLE", "basis": basis,
+                         "candidate_anchor": "constraints.hard"} for identity, basis in paths]},
+    }
+
+
 def test_task_phase_ledger_is_normalized_and_part_of_stage2_identity(profile):
     supplied = packet("TASK_AUTHORING")
     first = construct_stage1(supplied, profile, {"acceptance": [{"id": "AC1", "condition": "Exists"}]})
@@ -114,7 +150,9 @@ def digest(value):
 
 @pytest.fixture
 def profile():
-    return parse_profile_registry(REGISTRY.read_bytes())["profiles"][0]
+    # Immutable historical v2 protocol examples retain their original grammar.
+    return next(p for p in parse_profile_registry(REGISTRY.read_bytes())["profiles"]
+                if p["id"] == "brain-high-value-v2")
 
 
 def packet(flow="ARCHITECTURE"):
@@ -417,3 +455,178 @@ def test_semantic_vocabulary_is_accepted_and_fingerprint_bound(profile, flow):
     assert changed_final["reconciled_candidate_fingerprint"] == digest(changed)
     assert changed_final["reconciled_candidate_fingerprint"] != final["reconciled_candidate_fingerprint"]
     assert changed_final["stage2_fingerprint"] != final["stage2_fingerprint"]
+
+
+@pytest.fixture
+def v3_profile():
+    return parse_profile_registry(REGISTRY.read_bytes())["profiles"][0]
+
+
+def v3_material(profile):
+    supplied = packet("TASK_AUTHORING")
+    first = construct_stage1(supplied, profile, {"proposal": "Preserve canonical authority context"})
+    material = stage2_input(first, profile)
+    material.update(v3_sections(first, material["reconciled_candidate"]))
+    return supplied, first, material
+
+
+def test_prospective_v3_and_immutable_v2_have_distinct_direct_protocols(profile, v3_profile):
+    assert v3_profile["id"] == "brain-high-value-v3" and v3_profile["version"] == 3
+    historical_registry = {"format": "AIOS_BRAIN_AUDIT_PROFILES", "version": 1, "profiles": [profile]}
+    import yaml
+    assert parse_profile_registry(yaml.safe_dump(historical_registry))["profiles"] == [profile]
+    supplied = packet("TASK_AUTHORING")
+    first = construct_stage1(supplied, profile, {"proposal": "Historical v2"})
+    old = validate_stage2(supplied, profile, first, stage2_input(first, profile))
+    assert old["audit_profile_ref"] == profile_ref(profile)
+    assert old["outcome"] == "CANDIDATE"
+    assert "terminal_lifecycle" not in old
+    with pytest.raises(BrainAuditError):
+        validate_stage2(supplied, v3_profile, first, stage2_input(first, profile))
+    current_packet, current_first, material = v3_material(v3_profile)
+    assert validate_stage2(current_packet, v3_profile, current_first, material)["outcome"] == "CANDIDATE"
+    with pytest.raises(BrainAuditError):
+        validate_stage2(current_packet, v3_profile, current_first, stage2_input(current_first, v3_profile))
+
+
+def test_caller_owned_remote_propagation_is_bounded_and_fingerprint_bound(v3_profile):
+    supplied, first, material = v3_material(v3_profile)
+    result = validate_stage2(supplied, v3_profile, first, material)
+    edge = material["cross_authority_context"]["entries"][0]
+    assert edge["context_role"] == "explicit remote selection"
+    assert "every helper" in edge["propagation"]
+    edge["propagation"] = "Thread the caller argument through the reconciliation helper too"
+    changed = validate_stage2(supplied, v3_profile, first, material)
+    assert changed["stage2_fingerprint"] != result["stage2_fingerprint"]
+    assert changed["handoff_candidate"] == result["handoff_candidate"]
+    material["cross_authority_context"]["entries"] = []
+    with pytest.raises(BrainAuditError, match="CLEAR requires explicit"):
+        validate_stage2(supplied, v3_profile, first, material)
+    # Applicability is a Brain declaration, not inferred from candidate prose.
+    material["cross_authority_context"].update(status="NOT_APPLICABLE", basis="No authority edge is affected")
+    assert validate_stage2(supplied, v3_profile, first, material)["outcome"] == "CANDIDATE"
+
+
+def test_failure_alone_cannot_substitute_for_reviewed_result_shape(v3_profile):
+    supplied, first, material = v3_material(v3_profile)
+    shapes = material["canonical_shape"]["entries"]
+    assert "no RESULT" in shapes[1]["shape"]
+    assert "existing REVIEW" in shapes[2]["shape"]
+    shapes[:] = [entry for entry in shapes if entry["id"] != "REVIEWED_RESULT"]
+    with pytest.raises(BrainAuditError, match="canonical_shape coverage"):
+        validate_stage2(supplied, v3_profile, first, material)
+
+
+@pytest.mark.parametrize("section,lens,index", [
+    ("cross_authority_context", "AUTHORITY_BOUNDARY", 0),
+    ("canonical_shape", "FAILURE_MODE_COUNTEREXAMPLES", 2),
+    ("terminal_lifecycle", "AC_CONSISTENCY_COMPLETENESS", 1),
+])
+def test_conformance_blocker_requires_no_decision(v3_profile, section, lens, index):
+    supplied, first, material = v3_material(v3_profile)
+    material[section]["entries"][index].update(
+        status="BLOCKED", basis="Current normal correction path cannot reach publication")
+    with pytest.raises(BrainAuditError, match="contradicts BLOCKED"):
+        validate_stage2(supplied, v3_profile, first, material)
+    material[section]["status"] = "BLOCKED"
+    with pytest.raises(BrainAuditError, match="closure BLOCKER"):
+        validate_stage2(supplied, v3_profile, first, material)
+    closure = next(entry for entry in material["closure"] if entry["lens"] == lens)
+    closure.update(outcome="BLOCKER", blocker_summary="Current capability blocks this prerequisite")
+    with pytest.raises(BrainAuditError, match="outcome contradicts closure"):
+        validate_stage2(supplied, v3_profile, first, material)
+    material["outcome"] = "NO_DECISION"
+    result = validate_stage2(supplied, v3_profile, first, material)
+    assert result["outcome"] == "NO_DECISION" and result["handoff_candidate"] is None
+
+
+@pytest.mark.parametrize("section", ["cross_authority_context", "canonical_shape", "terminal_lifecycle"])
+@pytest.mark.parametrize("fault", ["missing", "extra", "empty_basis", "binding", "duplicate", "oversize", "private", "path"])
+def test_v3_closed_sections_binding_bounds_and_privacy(v3_profile, section, fault):
+    supplied, first, material = v3_material(v3_profile)
+    target = material[section]
+    if fault == "missing":
+        del material[section]
+    elif fault == "extra":
+        target["extra"] = "Substituted support"
+    elif fault == "empty_basis":
+        target["basis"] = " "
+    elif fault == "binding":
+        target["reconciled_candidate_fingerprint"] = "0" * 64
+    elif fault == "duplicate":
+        target["entries"].append(deepcopy(target["entries"][0]))
+    elif fault == "oversize":
+        target["entries"][0]["basis"] = "x" * 2049
+    elif fault == "private":
+        target["entries"][0]["provider_identity"] = "Forbidden"
+    else:
+        target["entries"][0]["basis"] = "C:/private/context"
+    with pytest.raises(BrainAuditError):
+        validate_stage2(supplied, v3_profile, first, material)
+
+
+def test_v3_reconciliation_rebinds_sections_and_rejects_nested_support(v3_profile):
+    supplied, first, material = v3_material(v3_profile)
+    material["reconciled_candidate"]["proposal"] = "Reconciled"
+    material["construct_audit"][0] = {"lens": "AUTHORITY_BOUNDARY", "outcome": "RISK_FOUND", "risks": [{
+        "risk_summary": "Caller input can be lost", "counterexample": "Helper rediscovers ambient authority",
+        "candidate_anchor": "proposal", "disposition": "ADDRESSED_BY_RECONCILIATION",
+    }]}
+    with pytest.raises(BrainAuditError, match="lineage mismatch"):
+        validate_stage2(supplied, v3_profile, first, material)
+    material.update(v3_sections(first, material["reconciled_candidate"]))
+    assert validate_stage2(supplied, v3_profile, first, material)["handoff_candidate"]["proposal"] == "Reconciled"
+    for section in v3_sections(first, material["reconciled_candidate"]):
+        with pytest.raises(BrainAuditError, match="nested audit envelope"):
+            construct_stage1(supplied, v3_profile, {"nested": {section: {}}})
+
+
+@pytest.mark.parametrize("fault", ["missing_path", "substituted_path", "non_applicable_path", "order", "bare_clear"])
+def test_all_normal_terminal_paths_are_required(v3_profile, fault):
+    supplied, first, material = v3_material(v3_profile)
+    target = material["terminal_lifecycle"]
+    if fault == "missing_path":
+        target["entries"].pop()
+    elif fault == "substituted_path":
+        target["entries"][1]["id"] = "PRIMARY_PASS_TO_PUBLICATION"
+    elif fault == "non_applicable_path":
+        target["entries"][1]["status"] = "NOT_APPLICABLE"
+    elif fault == "order":
+        target["entries"].reverse()
+    else:
+        target["entries"] = []
+    with pytest.raises(BrainAuditError):
+        validate_stage2(supplied, v3_profile, first, material)
+
+
+@pytest.mark.parametrize("flow", ["ARCHITECTURE", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"])
+def test_v3_task_sections_are_excluded_from_other_flows(v3_profile, flow):
+    supplied = packet(flow)
+    first = construct_stage1(supplied, v3_profile, {"proposal": "Bounded"})
+    material = stage2_input(first, v3_profile)
+    assert "terminal_lifecycle" not in validate_stage2(supplied, v3_profile, first, material)
+    material.update(v3_sections(first, material["reconciled_candidate"]))
+    with pytest.raises(BrainAuditError, match="closed contract"):
+        validate_stage2(supplied, v3_profile, first, material)
+
+
+@pytest.mark.parametrize("fault", ["entry_count", "combined_bytes", "policy_substitution"])
+def test_v3_conformance_safety_bounds_are_closed(v3_profile, fault):
+    supplied, first, material = v3_material(v3_profile)
+    if fault == "policy_substitution":
+        changed = deepcopy(v3_profile)
+        changed["conformance"]["bounds"]["entries_per_section"] = 17
+        with pytest.raises(BrainAuditError, match="conformance policy"):
+            normalize_profile(changed)
+        return
+    edge = material["cross_authority_context"]["entries"][0]
+    count = 17 if fault == "entry_count" else 16
+    material["cross_authority_context"]["entries"] = [
+        {**deepcopy(edge), "id": f"EDGE-{index}"} for index in range(count)
+    ]
+    if fault == "combined_bytes":
+        for entry in material["cross_authority_context"]["entries"]:
+            for field in ("basis", "propagation", "context_role"):
+                entry[field] = "x" * 2048
+    with pytest.raises(BrainAuditError, match="entry count|conformance sections"):
+        validate_stage2(supplied, v3_profile, first, material)

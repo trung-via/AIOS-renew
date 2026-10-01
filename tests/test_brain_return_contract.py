@@ -245,3 +245,24 @@ def test_family_candidates_use_only_existing_canonical_validators():
         "EXTERNAL_REQUEST_BINDING_REQUIRED", "DECISION_PACKET", "DECISION_PACKET",
         "DECISION_PACKET", "DECISION_PACKET",
     ]
+
+
+def test_task_v3_return_contract_exposes_transient_closed_conformance():
+    data = registry()
+    task = next(item for item in data["contracts"] if item["selected_flow"] == "TASK_AUTHORING")
+    selected = select_return_contract(data, packet(task))
+    requirements = " ".join(selected["contract"]["candidate_contract"]["requirements"])
+    for term in (
+        "brain-high-value-v3", "cross_authority_context", "canonical_shape", "terminal_lifecycle",
+        "reconciled_candidate_fingerprint", "65536", "2048", "16 entries", "propagation",
+        "FAILURE", "REVIEWED_RESULT", "PRIMARY_PASS_TO_PUBLICATION",
+        "CHANGES_REQUIRED_REMEDIATION_PASS_TO_PUBLICATION", "FAILURE_REPAIR_PASS_TO_PUBLICATION",
+        "BLOCKED", "NO_DECISION", "current canonical control-plane", "future RUN",
+        "transient bounded Brain semantic support", "canonical TASK bytes", "Runtime EVIDENCE",
+        "provider memory", "Brain alone", "Deterministic validation", "Human risk acceptance",
+    ):
+        assert term in requirements
+    assert "cross_authority_context" not in selected["contract"]["candidate_contract"]["shape"]
+    for contract in data["contracts"]:
+        if contract["selected_flow"] != "TASK_AUTHORING":
+            assert "terminal_lifecycle" not in json.dumps(contract)

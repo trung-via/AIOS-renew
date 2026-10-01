@@ -98,7 +98,7 @@ not lifecycle truth and is not persisted as a second semantic-decision database.
 
 The handoff supplies the bounded BP-4A Stage-1 construct and Stage-2 audit/reconcile
 material needed for ingress to validate the candidate against a **freshly composed**
-Decision Packet and the repository-owned `brain-high-value-v2` profile.
+Decision Packet and the repository-owned current `brain-high-value-v3` profile.
 
 Ingress must:
 
@@ -368,3 +368,92 @@ After H5 closes, roadmap returns to `verification-performance-residual-cost-v3`.
 Only after VPRC closes does Human/Brain perform a fresh Python Agent Brain Sync and
 authorize one exact downstream adoption of the final reviewed/source-published
 AIOS-renew generation, including Research Assurance and this hardening generation.
+
+
+## 12. Prospective Brain Audit v3 conformance (TASK-267)
+
+The current registry selects `brain-high-value-v3` first for new canonical
+TASK, REMEDIATION and REPAIR authoring. Historical `brain-high-value-v2` remains
+parseable and directly validatable with its original profile digest and Stage-2
+grammar; it is not converted to v3. Identical canonical replay remains read-only.
+The architecture baseline and historical audit statements above retain their v2
+identity. The three new sections apply only to v3 TASK_AUTHORING Stage 2.
+
+Each section is a closed object with exactly `packet_fingerprint`,
+`reconciled_candidate_fingerprint`, `status`, `basis`, and `entries`. The digests
+bind the exact supplied Decision Packet and the final normalized reconciled
+candidate, including after a risk reconciliation. Stage-2 identity includes all
+three sections. The combined sections are limited to 65536 UTF-8 JSON bytes,
+each list to 16 entries, and each text field to 2048 UTF-8 bytes. Existing depth,
+Stage-2 size, strict JSON and privacy limits still apply. All text is non-empty.
+
+### 12.1 Caller-owned cross-authority context
+
+`cross_authority_context` has status `CLEAR`, `NOT_APPLICABLE`, or `BLOCKED`.
+Entries contain exactly `id`, `status`, `basis`, `candidate_anchor`,
+`caller_authority`, `consumer_authority`, `context_role`, and `propagation`.
+Entry status is `COVERED`, `NOT_APPLICABLE`, or `BLOCKED`; ids are unique.
+Brain identifies the relevant caller-owned authority inputs and call edges,
+including shared helper edges, and describes how the explicit input survives
+instead of being rediscovered from ambient state. Publisher remote selection is
+the demonstrated example; no actual remote URL or secret belongs in this matrix.
+
+`CLEAR` requires at least one explicit `COVERED` entry. Non-applicability or a
+section-level blockage may instead be declared with no entries and a bounded
+basis. `NOT_APPLICABLE` permits only non-applicable entries. A blocked entry
+requires section `BLOCKED`, never a bare clear assertion.
+
+### 12.2 Canonical lineage/state shapes
+
+`canonical_shape` has the same section and entry statuses. Entries contain
+exactly `id`, `status`, `basis`, `candidate_anchor`, and `shape`. The exact ordered
+coverage is `PRIMARY_RESULT`, `FAILURE`, `REVIEWED_RESULT`, `REMEDIATION_RESULT`,
+`REPAIR_RESULT`. Each describes the valid lineage/state shape considered or gives
+explicit non-applicability/blockage with basis. In particular, FAILURE without a
+RESULT and RESULT with an existing REVIEW must both appear; one observed shape
+cannot stand for the family. `CLEAR` requires a covered entry; a non-applicable
+section requires every fixed entry to be non-applicable. This is a bounded Brain
+consideration surface, not another lifecycle reducer or an exhaustive state engine.
+
+### 12.3 Terminal lifecycle feasibility
+
+`terminal_lifecycle` has status `CLEAR` or `BLOCKED`. Entries contain exactly `id`,
+`status`, `basis`, and `candidate_anchor`. Their exact ordered ids are:
+
+1. `PRIMARY_PASS_TO_PUBLICATION`: PRIMARY completion through Reviewer PASS to
+   Publisher publication.
+2. `CHANGES_REQUIRED_REMEDIATION_PASS_TO_PUBLICATION`: CHANGES_REQUIRED through
+   REMEDIATION, subsequent PASS and publication.
+3. `FAILURE_REPAIR_PASS_TO_PUBLICATION`: FAILURE through REPAIR, subsequent PASS
+   and publication.
+
+Each entry is `FEASIBLE` or `BLOCKED`. These normal required paths cannot be
+omitted, substituted or declared non-applicable. Brain assesses current canonical
+control-plane capabilities and known blockers, including whether a proposed
+prerequisite can finish through normal correction and publication. No future RUN,
+EVIDENCE, REVIEW or successful publication is a pre-authoring requirement.
+
+Any blocked entry requires a blocked section. Any blocked section requires a
+Stage-2 closure `BLOCKER` on its corresponding existing lens: `AUTHORITY_BOUNDARY`
+for context, `FAILURE_MODE_COUNTEREXAMPLES` for shape, or
+`AC_CONSISTENCY_COMPLETENESS` for terminal feasibility. Closure must be
+`NO_DECISION`, with no candidate handoff. Ingress still validates fresh packet
+lineage, exact candidate/payload identity and CAS before constructing any authoring
+blob, index, commit or ref update.
+
+### 12.4 Authority and privacy
+
+The return contract tells Brain how to supply these transient audited sections.
+They never enter the frozen TASK candidate or canonical TASK bytes, Runtime
+EVIDENCE, REVIEW artifacts, roadmap lifecycle truth, provider memory, or a
+persistent reasoning store. Reserved section names are rejected even when nested
+inside candidate material. The existing privacy restrictions cover section
+entries and bases as well as candidates and audit ledgers.
+
+Deterministic support validates only profile identity, bounded closed fields,
+exact coverage, unique ids, packet/candidate lineage and status/closure
+consistency. Brain alone decides which edges and shapes apply and whether paths
+are feasible. No deterministic code infers correction strategy, semantic verdict,
+publication eligibility, roadmap successor or Human risk acceptance. Runtime
+verification, Reviewer verdict and Publisher publication remain with their
+existing owners. No Planner, lifecycle router or automatic selector is added.

@@ -1606,8 +1606,8 @@ def _compose_authoring_packet(
             )
     packet = compile_decision_packet(context, resolution, material)
     profile = parse_profile_registry((repo / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"][0]
-    if profile["id"] != "brain-high-value-v2" or profile["version"] != 2:
-        raise AuthoringIngressError("audited authoring requires brain-high-value-v2")
+    if profile["id"] != "brain-high-value-v3" or profile["version"] != 3:
+        raise AuthoringIngressError("new audited authoring requires brain-high-value-v3")
     contract = select_return_contract(
         parse_return_contract_registry((repo / ".ai/brain-return-contracts.yaml").read_bytes()), packet)
     _prove_authoring_inputs(repo, main_sha, remote)
