@@ -1113,11 +1113,14 @@ sequence:
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a2-reviewed-candidate-integration-recovery
     status: NEXT
     phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
-    task_id: TASK-262
-    task_revision: 2
+    task_id: TASK-266
+    task_revision: 1
+    source_task_id: TASK-262
+    source_task_revision: 2
     authority: HUMAN_BRAIN_PLANNING
-    operation: CORRECTION_INTEGRATION
-    human_approval_required: true
+    operation: REVIEWED_STATE_RECOVERY_TASK
+    human_approval_required: false
+    human_approved_on: "2026-10-02"
     reason: >-
       RUN-262-004 remains canonically reviewed PASS, but its reviewed candidate and
       current main diverged while TASK-264, TASK-265 and TASK-263 were published.
@@ -1133,14 +1136,32 @@ sequence:
       relationship: DIVERGED
       main_only_commits: 14
       candidate_only_commits: 2
-    required_primitive: aios integrate-correction
+    recovery_strategy: FRESH_PRIMARY_ON_CURRENT_MAIN
+    rejected_strategy:
+      primitive: aios integrate-correction
+      reason: >-
+        A standalone integration ref has no canonical consumer after RUN-262-004
+        already reached semantic PASS with no outstanding finding. Integration is
+        valid for an outstanding correction execution base, not as a substitute for
+        review/publication of an already-PASS diverged candidate.
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-266
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
     constraints:
       - EXACT_CURRENT_CANONICAL_MAIN_MUST_BE_REAUTHORIZED_AT_EXECUTION_EDGE
       - EXACT_CANONICAL_TASK262_R2_LIFECYCLE_TIP_REQUIRED
       - CLEAN_DETERMINISTIC_MERGE_TREE_REQUIRED
       - NO_DIRECT_PUSH_TO_MAIN
       - NO_FORCE_PUBLICATION_OF_DIVERGED_REVIEWED_CANDIDATE
-      - INTEGRATION_REF_ONLY_UNTIL_SUBSEQUENT_CANONICAL_LIFECYCLE_ACTION
+      - FRESH_RUNTIME_RESULT_AND_FRESH_SEMANTIC_REVIEW_REQUIRED
+      - PRESERVE_NEWER_CANONICAL_MAIN_CHANGES_OUTSIDE_H4A2_SEMANTICS
       - FAIL_CLOSED_ON_MAIN_DRIFT_OR_MERGE_CONFLICT
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
