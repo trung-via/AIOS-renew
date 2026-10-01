@@ -1,0 +1,96 @@
+task_id: TASK-260
+revision: 1
+goal: Retire the superseded GitHub-to-ChatGPT Work wake bridge workflow as H4A0 while
+  preserving historical wake evidence, deterministic projection/parser support, and
+  all currently authorized AIOS Runtime/Reviewer/Publisher and Issue-carrier semantics.
+problem: 'The published Local Regular Chat Wake architecture makes the PR #1200 ->
+  ChatGPT Work bridge historical-only, but .github/workflows/aios-brain-wake-bridge.yml
+  still subscribes to completed AIOS workflows and can emit the legacy PR-head wake
+  marker. Leaving that workflow active preserves an unwanted production Work-wake
+  dependency and shared-allowance cost before the new local regular-chat transport
+  is introduced.'
+assumptions:
+- H3 TASK-259 is reviewed and published, and canonical roadmap state selects H4A0_RETIRE_LEGACY_WORK_WAKE_BRIDGE
+  as the first H4A subphase.
+- 'docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md is the current Human/Brain-approved architecture
+  contract and explicitly preserves historical PR #1200 evidence plus deterministic
+  parser/projection logic while retiring only the legacy delivery workflow.'
+- H4A1 Issue fanout cleanup, H4A2 local regular-chat transport, H4A3 live ACK-only
+  conformance and H4B Brain resume remain later separate milestones.
+scope:
+  inspect:
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md
+  - .github/workflows/aios-brain-wake-bridge.yml
+  - .ai/brain-wake-carriers.yaml
+  - src/aios_renew/brain_wake_bridge.py
+  - tests/test_brain_wake_bridge.py
+  - tests/test_brain_wake_bridge_workflow.py
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - .github/workflows/aios-auto-publish.yml
+  modify:
+  - .github/workflows/aios-brain-wake-bridge.yml
+  - tests/test_brain_wake_bridge_workflow.py
+non_goals:
+- Implement the H4A1 Issue workflow demultiplexing/noise cleanup.
+- Implement the H4A2 browser/session transport, exact ChatGPT conversation binding,
+  dedupe ledger, composer interaction or any ChatGPT UI automation.
+- Run the H4A3 live ACK-only exact-chat conformance probe or enable H4B semantic continuation.
+- 'Delete or rewrite historical PR #1200 markers, wake ledgers, canonical lineage,
+  conformance evidence, brain_wake_bridge parser/projection code or .ai/brain-wake-carriers.yaml.'
+- Change PRIMARY, REPAIR, remediation, ingress, terminal-attention, Reviewer, Publisher,
+  Runtime verification, TASK semantics or roadmap advancement behavior.
+constraints:
+  hard:
+  - Retire the legacy Work wake bridge by removing .github/workflows/aios-brain-wake-bridge.yml;
+    do not replace it with another workflow_run, PR-marker, comment, Work, scheduled
+    or polling wake path in this TASK.
+  - Preserve src/aios_renew/brain_wake_bridge.py and .ai/brain-wake-carriers.yaml
+    unchanged as historical evidence/reusable deterministic transport logic unless
+    a test-only import adaptation is strictly required without semantic change.
+  - Keep existing source carrier workflows and their bounded selector-artifact export
+    behavior unchanged; H4A0 must not modify their permissions, triggers or dispatch
+    semantics.
+  - Update tests/test_brain_wake_bridge_workflow.py only as needed to prove the legacy
+    bridge is absent while retaining coverage for historical parser/projection and
+    source-selector writer contracts that remain canonical.
+  - 'Do not delete Git refs, Issues, PR #1200 state, workflow history or any canonical
+    engineering artifact.'
+  - No Executor implementation claim in this TASK may depend on Work being disabled
+    through ChatGPT account settings; repository retirement is the exact implementation
+    subject.
+  - This TASK creates no alternate wake transport and must leave H4A1/H4A2/H4A3/H4B
+    sequencing explicit rather than collapsing H4 into one implementation.
+acceptance:
+- id: AC1
+  condition: The candidate repository contains no .github/workflows/aios-brain-wake-bridge.yml,
+    so canonical GitHub Actions no longer defines the legacy AIOS Brain wake bridge
+    workflow_run delivery path.
+- id: AC2
+  condition: No replacement workflow, schedule, polling path, PR-head marker delivery,
+    Issue/comment Work wake or other production Work wake mechanism is introduced
+    by the H4A0 delta.
+- id: AC3
+  condition: src/aios_renew/brain_wake_bridge.py, .ai/brain-wake-carriers.yaml and
+    historical planning/conformance evidence remain present and are not semantically
+    rewritten by the H4A0 delta.
+- id: AC4
+  condition: Existing PRIMARY, REPAIR, ingress, terminal-attention and auto-publish
+    workflows remain outside the H4A0 modification delta and preserve their current
+    triggers, permissions and delivery semantics.
+- id: AC5
+  condition: Focused workflow regression coverage asserts retirement of the legacy
+    bridge while continuing to exercise the retained bounded source-selector artifact
+    writer/projection contracts without requiring the deleted workflow file.
+- id: AC6
+  condition: The H4A0 candidate modifies only the authorized legacy workflow/test
+    surface and contains no Runtime, Reviewer, Publisher, TASK schema, roadmap or
+    local regular-chat transport implementation changes.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_wake_bridge_workflow.py tests/test_brain_wake_bridge.py
+  - git diff --check
