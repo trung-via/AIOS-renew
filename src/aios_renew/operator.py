@@ -3681,10 +3681,178 @@ def _require_primary_reconciliation_worktree(
         raise OperatorError("reconciliation requires completely clean status")
 
 
+def _prove_primary_reviewed_result(
+    observer: Path, *, remote: str, run_id: str, local_sha: str,
+) -> tuple[str, dict[str, str], tuple[str, ...]]:
+    """Read-only preservation proof; no publication eligibility is inferred."""
+    from . import publication as pub
+    from .authoring_ingress import _validate_metadata_commit, _validate_repair_review_semantics
+    from .review_transport import (
+        REPAIR_SUPERSESSION_PREFIX, _bind_result_identity,
+        _decode_run_task_identity, _performance_json_mapping, _run_task_prefix,
+    )
+
+    if re.fullmatch(r"RUN-[A-Za-z0-9_-]+-\d{3,}", run_id) is None:
+        raise OperatorError("invalid reviewed RESULT RUN identity")
+    prefix = _run_task_prefix(run_id)
+    task_id = "TASK-" + prefix[4:-1]
+    # Include the correction inputs read by the existing lineage validators.
+    # Capture their immutable identities too, rather than only their contents.
+    patterns = tuple(f"refs/heads/aios/{family}/{prefix}*" for family in (
+        "review", "artifacts", "review-decision", "failure", "failure-artifacts",
+        "remediation", "repair",
+    )) + (f"{REPAIR_SUPERSESSION_PREFIX}{prefix}*/*",)
+    refs = _exact_remote_refs(observer, remote, *patterns)
+    candidate_ref = f"refs/heads/aios/review/{run_id}"
+    artifact_ref = f"refs/heads/aios/artifacts/{run_id}"
+    decision_ref = f"refs/heads/aios/review-decision/{run_id}"
+    if (
+        refs.get(candidate_ref) != local_sha
+        or artifact_ref not in refs or decision_ref not in refs
+        or any(
+            f"refs/heads/aios/{family}/{ref.rsplit('/', 1)[-1]}" in refs
+            for ref in refs if ref.startswith("refs/heads/aios/artifacts/")
+            for family in ("failure", "failure-artifacts")
+        )
+        or any(ref.startswith(decision_ref + "/") for ref in refs)
+    ):
+        raise OperatorError("missing or conflicting canonical reviewed RESULT transport")
+    try:
+        for ref in (candidate_ref, artifact_ref, decision_ref):
+            sha = refs[ref]
+            _git(observer, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=", remote, sha)
+            if _git(observer, "rev-parse", "--verify", f"{sha}^{{commit}}") != sha:
+                raise ValueError("reviewed RESULT transport is not an exact commit")
+        artifact_sha = refs[artifact_ref]
+        entries = _git(observer, "ls-tree", "-r", artifact_sha).splitlines()
+        required_paths = {".ai/transport/run.json", ".ai/transport/result.json"}
+        allowed_paths = required_paths | {
+            ".ai/transport/repair.json", ".ai/transport/observation.json",
+            ".ai/transport/execution-profile.json",
+        }
+        paths = {entry.partition("\t")[2] for entry in entries}
+        if (
+            _git(observer, "show", "-s", "--format=%P", artifact_sha)
+            or not required_paths.issubset(paths) or paths.difference(allowed_paths)
+            or any(not entry.startswith("100644 blob ") for entry in entries)
+        ):
+            raise ValueError("substituted canonical RESULT artifacts tree")
+        run_bytes = pub._read_blob(observer, refs[artifact_ref], ".ai/transport/run.json", run_id=run_id)
+        result_bytes = pub._read_blob(observer, refs[artifact_ref], ".ai/transport/result.json", run_id=run_id)
+        bound_task, revision, bound_run = _decode_run_task_identity(run_bytes, artifact_ref)
+        if bound_task != task_id or bound_run != run_id:
+            raise ValueError("reviewed RESULT TASK/RUN identity mismatch")
+        run_data = _performance_json_mapping(run_bytes, "RUN")
+        remediation = None
+        prior = None
+        if "kind" not in run_data:
+            run = pub._run_from_data(run_data, "RUN")
+        elif run_data.get("kind") == "REMEDIATION":
+            if "predecessor" in run_data:
+                run, remediation = pub._parse_remediation_run(run_data, run_id=run_id)
+            else:
+                run, remediation, prior = pub._remediation_lineage(run_data, run_id=run_id)
+        else:
+            raise ValueError("unknown canonical RUN kind")
+        if run.status != "ACTIVE" or run.run_id != run_id or run.task.id != task_id:
+            raise ValueError("reviewed RESULT RUN identity mismatch")
+        if re.fullmatch(r"[0-9a-f]{40}", run.base_sha) is None or not _git_is_ancestor(
+            observer, run.base_sha, local_sha,
+        ):
+            raise ValueError("reviewed RESULT does not descend from exact RUN base")
+        lineage_base = run.base_sha
+        data = _performance_json_mapping(result_bytes, "ResultPackage")
+        if set(data) != {"result", "evidence"} or not isinstance(data["evidence"], list):
+            raise ValueError("invalid canonical ResultPackage")
+        result = validate_result(data["result"])
+        evidence = tuple(validate_evidence(item) for item in data["evidence"])
+        _bind_result_identity(run, result, evidence)
+        if result.head_sha != local_sha or result.unresolved:
+            raise ValueError("reviewed RESULT candidate binding conflicts")
+        task = parse_task(pub._read_blob(
+            observer, local_sha, f".ai/tasks/{task_id}.yaml", run_id=run_id,
+        ).decode("utf-8", errors="strict"))
+        if task.task_id != task_id or task.revision != revision:
+            raise ValueError("reviewed RESULT TASK revision mismatch")
+
+        def canonical_review(source_run_id: str, source_sha: str) -> Review:
+            ref = f"refs/heads/aios/review-decision/{source_run_id}"
+            if ref not in refs or any(name.startswith(ref + "/") for name in refs):
+                raise ValueError("canonical review decision is missing or ambiguous")
+            decision_sha = refs[ref]
+            _git(observer, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=", remote, decision_sha)
+            paths = _git(observer, "ls-tree", "-r", "--name-only", decision_sha, "--", ".ai/reviews").splitlines()
+            paths = [p for p in paths if p.endswith((".yaml", ".yml"))]
+            if len(paths) != 1:
+                raise ValueError("canonical review decision is missing or ambiguous")
+            content = pub._read_blob(observer, decision_sha, paths[0], run_id=source_run_id)
+            decision = parse_review(content.decode("utf-8", errors="strict"))
+            if decision.reviewed_sha != source_sha:
+                raise ValueError("canonical review decision candidate mismatch")
+            _validate_metadata_commit(
+                observer, decision_sha, expected_parent_sha=source_sha,
+                metadata_path=f".ai/reviews/{decision.review_id}.yaml",
+                metadata_bytes=content, operation="SUBMIT_REVIEW",
+            )
+            return decision
+
+        review = canonical_review(run_id, local_sha)
+        if review.reviewed_sha != local_sha or review.verdict != "PASS":
+            raise ValueError("canonical reviewed RESULT requires exact PASS decision")
+        repair = pub._read_optional_blob(observer, refs[artifact_ref], ".ai/transport/repair.json")
+        if repair is not None:
+            if remediation is not None:
+                raise ValueError("conflicting REMEDIATION/REPAIR lineage")
+            lineage_base, result_base, prior, finding_id = pub._repair_review_lineage(
+                observer, remote=remote, publication_run_id=run_id,
+                child_run_data=run_data, child_run=run, child_head_sha=local_sha,
+                lineage_bytes=repair, task=task, strict_source=True,
+            )
+            _validate_repair_review_semantics(review, prior_review=prior, repaired_finding_id=finding_id)
+            pub._validate_repair_package(
+                observer, source_sha=local_sha, result_base_sha=result_base,
+                task=task, run=run, result=result, evidence=evidence,
+            )
+        elif remediation is not None:
+            if "predecessor" in run_data:
+                prior = pub._validate_predecessor_lineage(
+                    observer, remote=remote, publication_run_id=run_id,
+                    run_data=run_data, run=run, remediation=remediation, task=task,
+                )
+                predecessor = run_data["predecessor"]
+                if canonical_review(predecessor["source_run_id"], predecessor["reviewed_sha"]) != prior:
+                    raise ValueError("substituted canonical predecessor review decision")
+            if prior is None or review.mode != "DELTA" or review.prior_finding_id != remediation.finding_id:
+                raise ValueError("reviewed RESULT requires exact DELTA finding")
+            pub._validate_remediation_package(
+                observer, source_sha=local_sha, task=task, run=run,
+                remediation=remediation, prior_review=prior, result=result, evidence=evidence,
+                execution_base_sha=run.base_sha if "execution_base" in run_data else None,
+            )
+            # A DELTA execution base can itself be unpublished local-only history.
+            # Retain H1R's common-base gate using the fully validated source root.
+            lineage_base = _derive_remediation_source_root(
+                observer, task=task,
+                execution=_remediation_execution_from_data(run_data["execution"]),
+            )
+        else:
+            _validated_repair_remediation_source(
+                observer, task=task, run_data=run_data, run=run,
+                package=ResultPackage(result=result, evidence=evidence), review=review, repair=None,
+            )
+            validate_result_package(task=task, run=run, result=result, evidence=evidence)
+        validate_review(task=task, result=result, review=review, prior_review=prior)
+        if _exact_remote_refs(observer, remote, *patterns) != refs:
+            raise ValueError("canonical reviewed RESULT proof drift")
+        return lineage_base, refs, patterns
+    except (KeyError, TypeError, ValueError, UnicodeError, RuntimeError) as exc:
+        raise OperatorError(f"invalid canonical reviewed RESULT preservation: {exc}") from exc
+
+
 def _reconcile_primary_divergence(
     root: Path, *, remote: str, allow_restart: bool,
 ) -> bool | None:
-    """Locked PRIMARY pre-RUN edge; an exact FAILURE tip preserves its full ancestry.
+    """Locked PRIMARY pre-RUN edge; one canonical tip preserves its full ancestry.
 
     None leaves non-divergence to the established non-destructive/FF path. There
     is no Human-command delegation, lifecycle result, dispatch or retry here.
@@ -3746,24 +3914,36 @@ def _reconcile_primary_divergence(
 
             preservation_patterns = (
                 "refs/heads/aios/failure/*", "refs/heads/aios/failure-artifacts/*",
+                "refs/heads/aios/review/*",
             )
             preservation = _exact_remote_refs(observer, remote, *preservation_patterns)
             candidates = [ref for ref, sha in preservation.items()
-                          if ref.startswith("refs/heads/aios/failure/") and sha == local_sha]
+                          if ref.startswith(("refs/heads/aios/failure/", "refs/heads/aios/review/"))
+                          and sha == local_sha]
             if len(candidates) != 1:
                 raise OperatorError("diverged main has missing or ambiguous canonical preservation")
-            failed_run_id = candidates[0].rsplit("/", 1)[-1]
-            base, failure_refs = prove_remote_failed_candidate(
-                observer, failed_run_id=failed_run_id, failed_head_sha=local_sha,
-            )
-            if any(preservation.get(ref) != sha for ref, sha in failure_refs.items()):
+            preserved_run_id = candidates[0].rsplit("/", 1)[-1]
+            reviewed = candidates[0].startswith("refs/heads/aios/review/")
+            if reviewed:
+                base, proof_refs, proof_patterns = _prove_primary_reviewed_result(
+                    observer, remote=remote, run_id=preserved_run_id, local_sha=local_sha,
+                )
+            else:
+                base, proof_refs = prove_remote_failed_candidate(
+                    observer, failed_run_id=preserved_run_id, failed_head_sha=local_sha,
+                )
+                proof_patterns = ()
+            if any(preservation.get(ref) != sha for ref, sha in proof_refs.items()
+                   if ref.startswith(("refs/heads/aios/failure/", "refs/heads/aios/failure-artifacts/",
+                                      "refs/heads/aios/review/"))):
                 raise OperatorError("canonical preservation identity drift")
             if not _git_is_ancestor(observer, base, local_sha) or not _git_is_ancestor(observer, base, target_sha):
-                raise OperatorError("reconciliation requires diverged common failure-base lineage")
+                lineage = "reviewed-result" if reviewed else "failure-base"
+                raise OperatorError(f"reconciliation requires diverged common {lineage} lineage")
             # The validated canonical candidate is exactly local HEAD. Thus every
             # local-only commit, including merge ancestry, remains reachable there.
             local_only = _git(observer, "rev-list", local_sha, "--not", target_sha).splitlines()
-            if not local_only or any(not _git_is_ancestor(observer, sha, failure_refs[candidates[0]])
+            if not local_only or any(not _git_is_ancestor(observer, sha, proof_refs[candidates[0]])
                                      for sha in local_only):
                 raise OperatorError("local-only history lacks complete canonical preservation")
             changed_paths = _git(
@@ -3774,9 +3954,9 @@ def _reconcile_primary_divergence(
             if requires_restart and not allow_restart:
                 raise OperatorError("cannot continue under stale pre-sync kernel state")
 
-            patterns = (*preservation_patterns, f"refs/heads/aios/review/{failed_run_id}",
-                        f"refs/heads/aios/artifacts/{failed_run_id}", "refs/heads/main")
-            expected_proof = {**preservation, **targets}
+            patterns = (*preservation_patterns, *proof_patterns, f"refs/heads/aios/review/{preserved_run_id}",
+                        f"refs/heads/aios/artifacts/{preserved_run_id}", "refs/heads/main")
+            expected_proof = {**preservation, **proof_refs, **targets}
             if _exact_remote_refs(observer, remote, *patterns) != expected_proof:
                 raise OperatorError("canonical reconciliation proof drift")
             require_binding()
@@ -3786,10 +3966,22 @@ def _reconcile_primary_divergence(
             # before reset leave the control refs/index/worktree unchanged.
             _git(observer, "update-ref", "refs/heads/main", target_sha)
             _git(root, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=", str(observer), target_sha)
-            if prove_remote_failed_candidate(
-                observer, failed_run_id=failed_run_id, failed_head_sha=local_sha,
-            ) != (base, failure_refs):
+            if reviewed:
+                edge_proof = _prove_primary_reviewed_result(
+                    observer, remote=remote, run_id=preserved_run_id, local_sha=local_sha,
+                )
+                proof_matches = edge_proof == (base, proof_refs, proof_patterns)
+            else:
+                proof_matches = prove_remote_failed_candidate(
+                    observer, failed_run_id=preserved_run_id, failed_head_sha=local_sha,
+                ) == (base, proof_refs)
+            if not proof_matches:
                 raise OperatorError("canonical preservation identity drift")
+            if reviewed and (
+                _git(observer, "rev-list", local_sha, "--not", target_sha).splitlines() != local_only
+                or any(not _git_is_ancestor(observer, sha, proof_refs[candidates[0]]) for sha in local_only)
+            ):
+                raise OperatorError("local-only history lacks complete canonical preservation")
             if _exact_remote_refs(observer, remote, *patterns) != expected_proof:
                 raise OperatorError("canonical reconciliation proof drift")
             require_binding()

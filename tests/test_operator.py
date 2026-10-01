@@ -13436,3 +13436,302 @@ def test_primary_reconciliation_does_not_add_workflow_git_recovery() -> None:
     for command in ("fetch", "reset", "rebase", "merge", "cherry-pick", "stash", "clean"):
         assert f"git -C $env:AIOS_REPO_ROOT {command}" not in workflow
     assert "reconcile-control-main" not in workflow
+
+
+# TASK-264: reviewed transport proves preservation, never publication.
+def _reviewed_preservation_metadata(repo: Path, parent: str, documents: dict[str, bytes]) -> str:
+    from aios_renew.authoring_ingress import _commit_tree, _tree_with_metadata
+
+    tree_parent = parent
+    for path, content in documents.items():
+        tree = _tree_with_metadata(repo, tree_parent, path, content)
+        tree_parent = _commit_tree(repo, tree, [parent], "review preservation fixture")
+    return tree_parent
+
+
+def _reviewed_divergence(root: Path, *, delta: bool = True, merge_ancestry: bool = False) -> tuple:
+    """RUN-262-004-shaped DELTA PASS with separate source/artifacts/decision."""
+    repo = make_repo(root)
+    remote = root / "upstream.git"
+    task_path = repo / ".ai/tasks/TASK-262.yaml"
+    task_path.write_text(TASK_SOURCE.replace("TASK-101", "TASK-262").replace("revision: 1", "revision: 2"), encoding="utf-8")
+    common_base = commit_setup_state(repo, ".ai/tasks/TASK-262.yaml", message="authorized TASK")
+    git(repo, "push", "--quiet", "origin", f"{common_base}:refs/heads/main")
+    (repo / "OUTPUT.txt").write_text("primary candidate\n", encoding="utf-8")
+    base = commit_setup_state(repo, "OUTPUT.txt", message="primary candidate")
+    target = publish_upstream(repo, {"NEW_MAIN.txt": "canonical advancement\n"})
+    state = runtime_paths(repo)
+    run = {
+        "run_id": "RUN-262-003", "task": {"id": "TASK-262", "revision": 2},
+        "executor": "codex", "base_sha": common_base, "workspace": str(repo),
+        "head_sha": None, "status": "ACTIVE",
+    }
+    primary = canonical_result_payload("RUN-262-003", base, changed_files=["OUTPUT.txt"])
+    primary["result"]["claims"] = [{
+        "id": "C1", "satisfies": ["AC1"], "claim": "Primary output exists.",
+        "evidence": [primary["evidence"][0]["evidence_id"]],
+    }]
+
+    def artifacts(run_id, run_data, package):
+        run_path = state.runs / f"{run_id}.json"
+        result_path = state.results / f"{run_id}.json"
+        run_path.write_text(json.dumps(run_data), encoding="utf-8")
+        result_path.write_text(json.dumps(package), encoding="utf-8")
+        transport_module.transport_post_pass(
+            repo, run_id=run_id, head_sha=package["result"]["head_sha"],
+            run_path=run_path, result_path=result_path,
+        )
+
+    artifacts("RUN-262-003", run, primary)
+    finding = {
+        "id": "FINDING-262-001", "basis": "AC1", "action": "CODE_FIX",
+        "location": "OUTPUT.txt", "issue": "The output needs correction.",
+        "expected": "Correct the output.",
+    }
+    prior = {
+        "review_id": "REVIEW-262-001", "reviewed_sha": base, "mode": "PRIMARY",
+        "verdict": "CHANGES_REQUIRED", "acceptance": {"AC1": "FAIL"}, "findings": [finding],
+    }
+    prior_bytes = json.dumps(prior).encode()
+    prior_sha = _reviewed_preservation_metadata(repo, base, {".ai/reviews/REVIEW-262-001.yaml": prior_bytes})
+    git(repo, "push", "--quiet", "origin", f"{prior_sha}:refs/heads/aios/review-decision/RUN-262-003")
+    remediation = {
+        "finding_id": finding["id"], "action": "CODE_FIX", "reviewed_sha": base,
+        "modification_scope": ["OUTPUT.txt"], "affected_verification": ["git diff --check"],
+        "constraints": {"hard": ["Commit the output."]},
+    }
+    authorization_sha = _reviewed_preservation_metadata(repo, base, {
+        ".ai/reviews/REVIEW-262-001.yaml": prior_bytes,
+        ".ai/remediations/FINDING-262-001.yaml": json.dumps(remediation).encode(),
+    })
+    git(repo, "push", "--quiet", "origin", f"{authorization_sha}:refs/heads/aios/remediation/RUN-262-003-FINDING-262-001")
+    (repo / "OUTPUT.txt").write_text("earlier correction\n", encoding="utf-8")
+    commit_setup_state(repo, "OUTPUT.txt", message="earlier local-only commit")
+    (repo / "OUTPUT.txt").write_text("complete correction\n", encoding="utf-8")
+    candidate = commit_setup_state(repo, "OUTPUT.txt", message="reviewed candidate")
+    if merge_ancestry:
+        from aios_renew.authoring_ingress import _commit_tree
+
+        side = _commit_tree(repo, git(repo, "rev-parse", f"{common_base}^{{tree}}"), [common_base], "side ancestry")
+        git(repo, "merge", "--quiet", "--no-ff", "--strategy=ours", side, "-m", "preserved merge ancestry")
+        candidate = git(repo, "rev-parse", "HEAD")
+    run = {**run, "run_id": "RUN-262-004", "base_sha": base if delta else common_base}
+    if delta:
+        run = {
+            "kind": "REMEDIATION", "remediation_authorization_sha": authorization_sha,
+            "predecessor": {
+                "source_run_id": "RUN-262-003", "review_id": "REVIEW-262-001",
+                "finding_id": finding["id"], "reviewed_sha": base,
+            },
+            "execution_base": {"run_id": "RUN-262-003", "candidate_sha": base},
+            "execution": {
+                "review_id": "REVIEW-262-001", "finding": finding,
+                "remediation": remediation, "original_constraints": ["Commit the output."],
+                "run": run,
+            },
+        }
+    package = canonical_result_payload("RUN-262-004", candidate, changed_files=["OUTPUT.txt"])
+    if not delta:
+        package["result"]["claims"] = [{
+            "id": "C1", "satisfies": ["AC1"], "claim": "The output is corrected.",
+            "evidence": [package["evidence"][0]["evidence_id"]],
+        }]
+    artifacts("RUN-262-004", run, package)
+    review = {
+        "review_id": "REVIEW-262-002", "reviewed_sha": candidate,
+        "mode": "DELTA" if delta else "PRIMARY", "verdict": "PASS",
+        "acceptance": {"AC1": "PASS"}, "findings": [],
+    }
+    if delta:
+        review["prior_finding_id"] = finding["id"]
+    decision = _reviewed_preservation_metadata(repo, candidate, {
+        ".ai/reviews/REVIEW-262-002.yaml": json.dumps(review).encode(),
+    })
+    git(repo, "push", "--quiet", "origin", f"{decision}:refs/heads/aios/review-decision/RUN-262-004")
+    with RepositoryLock(state.lock):
+        pass
+    return repo, remote, candidate, target, base, run, package, review, decision
+
+
+@pytest.mark.parametrize(("delta", "merge_ancestry"), [(True, False), (False, False), (True, True)])
+def test_primary_reviewed_result_preserves_complete_history_without_lifecycle_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, delta: bool, merge_ancestry: bool,
+) -> None:
+    repo, remote, candidate, target, *_ = _reviewed_divergence(tmp_path, delta=delta, merge_ancestry=merge_ancestry)
+    before = _reconciliation_snapshot(repo)
+    refs_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    local_only = git(repo, "rev-list", candidate, "--not", target).splitlines()
+    assert len(local_only) == (5 if merge_ancestry else 3)
+    calls = []
+    real_git = operator_module._git
+
+    def record_git(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("preservation cannot invoke lifecycle or publication authority")
+
+    monkeypatch.setattr(operator_module, "_git", record_git)
+    for name in ("run_task", "run_repair", "run_remediation", "retry_transport", "reconcile_control_main"):
+        monkeypatch.setattr(operator_module, name, forbidden)
+    monkeypatch.setattr(publication_module, "publish_review_decision", forbidden)
+    monkeypatch.setattr(publication_module, "_derive_publication_frontier", forbidden)
+    outcome = operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+    assert outcome.preflight_sha == target and outcome.restart_code is None
+    after = _reconciliation_snapshot(repo)
+    assert after[:2] == ("refs/heads/main", target) and after[3] == ""
+    assert after[5] == before[5] and after[-1] == before[-1]
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before
+    for sha in local_only:
+        assert operator_module._git_is_ancestor(remote, sha, candidate)
+    mutations = [args for root, args in calls if root == repo and args[0] in {
+        "reset", "merge", "rebase", "cherry-pick", "stash", "clean", "commit", "push", "update-ref",
+    }]
+    assert mutations == [("reset", "--hard", target)]
+    # The complete history proof is evaluated before import and again at reset.
+    history_checks = [args for _, args in calls if args == ("rev-list", candidate, "--not", target)]
+    assert len(history_checks) == 2
+
+
+@pytest.mark.parametrize("gate", [
+    "unreviewed", "missing-artifacts", "substituted-artifacts", "source-tree-artifacts", "missing-result", "malformed-result",
+    "duplicate-json", "wrong-result-head", "wrong-evidence-run", "wrong-run", "wrong-task", "wrong-revision",
+    "non-pass", "wrong-reviewed-sha", "substituted-decision", "ambiguous-decision", "decision-alias",
+    "ambiguous-run", "mixed-families", "conflicting-terminal", "wrong-prior-finding",
+    "extra-local-commit", "malformed-run", "wrong-decision-path", "unrelated-base", "substituted-prior",
+])
+def test_primary_reviewed_result_rejects_invalid_proofs_without_reset_or_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gate: str,
+) -> None:
+    repo, remote, candidate, _, base, run, package, review, decision = _reviewed_divergence(tmp_path)
+    artifact_ref = "refs/heads/aios/artifacts/RUN-262-004"
+    decision_ref = "refs/heads/aios/review-decision/RUN-262-004"
+    state = runtime_paths(repo)
+    if gate in {"unreviewed", "missing-artifacts"}:
+        git(remote, "update-ref", "-d", decision_ref if gate == "unreviewed" else artifact_ref)
+    elif gate == "substituted-artifacts":
+        git(remote, "update-ref", artifact_ref, git(remote, "rev-parse", "refs/heads/aios/artifacts/RUN-262-003"))
+    elif gate == "substituted-prior":
+        replacement = _reviewed_preservation_metadata(repo, base, {
+            ".ai/reviews/REVIEW-262-OTHER.yaml": json.dumps({
+                "review_id": "REVIEW-262-OTHER", "reviewed_sha": base, "mode": "PRIMARY",
+                "verdict": "PASS", "acceptance": {"AC1": "PASS"}, "findings": [],
+            }).encode(),
+        })
+        git(remote, "update-ref", "refs/heads/aios/review-decision/RUN-262-003", replacement)
+    elif gate in {"non-pass", "wrong-reviewed-sha", "substituted-decision", "ambiguous-decision",
+                  "wrong-prior-finding", "wrong-decision-path"}:
+        if gate == "non-pass":
+            review["verdict"] = "CHANGES_REQUIRED"
+            review["acceptance"] = {"AC1": "FAIL"}
+        elif gate == "wrong-reviewed-sha":
+            review["reviewed_sha"] = base
+        elif gate == "wrong-prior-finding":
+            review["prior_finding_id"] = "OTHER"
+        documents = {".ai/reviews/REVIEW-262-002.yaml": json.dumps(review).encode()}
+        if gate == "ambiguous-decision":
+            documents[".ai/reviews/OTHER.yaml"] = json.dumps(review).encode()
+        elif gate == "wrong-decision-path":
+            documents = {".ai/reviews/SUBSTITUTE.yaml": json.dumps(review).encode()}
+        replacement = _reviewed_preservation_metadata(repo, base if gate == "substituted-decision" else candidate, documents)
+        git(remote, "update-ref", decision_ref, replacement)
+    elif gate == "decision-alias":
+        git(remote, "update-ref", "-d", decision_ref)
+        git(remote, "update-ref", decision_ref + "/extra", decision)
+    elif gate == "ambiguous-run":
+        git(remote, "update-ref", "refs/heads/aios/review/RUN-262-005", candidate)
+    elif gate in {"mixed-families", "conflicting-terminal"}:
+        git(remote, "update-ref", "refs/heads/aios/failure/RUN-262-005" if gate == "mixed-families"
+            else "refs/heads/aios/failure-artifacts/RUN-262-004", candidate)
+    elif gate == "extra-local-commit":
+        (repo / "OUTPUT.txt").write_text("unpreserved\n", encoding="utf-8")
+        commit_setup_state(repo, "OUTPUT.txt", message="unpreserved commit")
+    else:
+        if gate == "wrong-result-head":
+            package["result"]["head_sha"] = base
+        elif gate == "wrong-evidence-run":
+            package["evidence"][0]["run_id"] = "RUN-262-003"
+        elif gate == "wrong-run":
+            run["execution"]["run"]["run_id"] = "RUN-262-005"
+        elif gate == "wrong-task":
+            run["execution"]["run"]["task"]["id"] = "TASK-101"
+        elif gate == "wrong-revision":
+            run["execution"]["run"]["task"]["revision"] = 1
+        elif gate == "unrelated-base":
+            run["execution"]["run"]["base_sha"] = decision
+        run_bytes = b"{" if gate == "malformed-run" else json.dumps(run).encode()
+        result_bytes = b"{" if gate == "malformed-result" else json.dumps(package).encode()
+        if gate == "duplicate-json":
+            result_bytes = b'{"result":{},"result":{},"evidence":[]}'
+        documents = {".ai/transport/run.json": run_bytes}
+        if gate != "missing-result":
+            documents[".ai/transport/result.json"] = result_bytes
+        if gate in {"source-tree-artifacts", "missing-result"}:
+            replacement = _reviewed_preservation_metadata(repo, base, documents)
+        else:
+            # Keep the canonical artifact tree shape so these cases exercise
+            # JSON and identity validation, rather than a tree-shape rejection.
+            run_path = state.runs / "RUN-262-004.json"
+            result_path = state.results / "RUN-262-004.json"
+            run_path.write_bytes(run_bytes)
+            result_path.write_bytes(result_bytes)
+            replacement = transport_module._create_artifacts_commit(
+                repo, run_path=run_path, result_path=result_path, run_id="RUN-262-004",
+            )
+        git(remote, "update-ref", artifact_ref, replacement)
+    before = _reconciliation_snapshot(repo)
+    refs_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    calls = []
+    real_git = operator_module._git
+
+    def record_git(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("rejected preservation cannot admit or invoke")
+
+    monkeypatch.setattr(operator_module, "_git", record_git)
+    monkeypatch.setattr(operator_module, "run_task", forbidden)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
+    with pytest.raises(OperatorError):
+        operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"], runner=forbidden)
+    assert _reconciliation_snapshot(repo) == before
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before
+    assert not any(root == repo and args[0] == "reset" for root, args in calls)
+    assert not list(state.runs.glob("RUN-101-*.json"))
+
+
+@pytest.mark.parametrize("drift", ["candidate", "artifact", "decision", "predecessor", "target", "mixed-proof"])
+def test_primary_reviewed_result_reproves_moved_transport_at_mutation_edge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, drift: str,
+) -> None:
+    repo, remote, candidate, _, base, *_ = _reviewed_divergence(tmp_path)
+    real_git = operator_module._git
+    calls = []
+    edge_snapshot = None
+
+    def drift_at_import(root, *args, **kwargs):
+        nonlocal edge_snapshot
+        calls.append((Path(root), args))
+        result = real_git(root, *args, **kwargs)
+        if Path(root) == repo and args[0] == "fetch":
+            ref = {
+                "candidate": "refs/heads/aios/review/RUN-262-004",
+                "artifact": "refs/heads/aios/artifacts/RUN-262-004",
+                "decision": "refs/heads/aios/review-decision/RUN-262-004",
+                "predecessor": "refs/heads/aios/review-decision/RUN-262-003",
+                "target": "refs/heads/main",
+                "mixed-proof": "refs/heads/aios/failure/RUN-262-005",
+            }[drift]
+            git(remote, "update-ref", ref, candidate if drift == "mixed-proof" else base)
+            edge_snapshot = _reconciliation_snapshot(repo)
+        return result
+
+    monkeypatch.setattr(operator_module, "_git", drift_at_import)
+    with pytest.raises(OperatorError):
+        operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+    assert edge_snapshot is not None
+    assert _reconciliation_snapshot(repo) == edge_snapshot
+    assert not any(root == repo and args[0] == "reset" for root, args in calls)
