@@ -299,7 +299,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-acceptance-proof-phase-contract
+  - brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
@@ -871,11 +871,19 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-acceptance-proof-phase-contract
 
   - id: brain-runtime-semantic-handoff-hardening-v1-acceptance-proof-phase-contract
-    status: ACTIVE
+    status: DONE
     task_id: TASK-259
     task_revision: 1
     authored_commit_sha: "358677181ebb6979d00f3d259659d96e56a7aeee"
     task_blob_sha: "899af5ad0c4f9008616c0d05334981da79cb8269"
+    run_id: RUN-259-001
+    result_artifact_sha: "3a5598b45cad2275a5ec911af26cd348a47c56ac"
+    reviewed_candidate_sha: "77c4597c1ab1d9acbab8de3d9bd637b974f62bab"
+    review_id: REVIEW-259-001
+    review_decision_sha: "37d75c1bf35bc49064bbb77e3918b2f8ec39679b"
+    review_verdict: PASS
+    published_sha: "77c4597c1ab1d9acbab8de3d9bd637b974f62bab"
+    completed_on: "2026-10-01"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
@@ -914,6 +922,38 @@ sequence:
       - NO_NEW_SEMANTIC_AUTHORITY_OR_PERSISTENT_REASONING_STORE
       - NO_AUTOMATIC_ROADMAP_ADVANCE
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+    status: ACTIVE
+    phase: H4A0_RETIRE_LEGACY_WORK_WAKE_BRIDGE
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+    audit_profile: brain-high-value-v2
+    architecture_contract: LOCAL_REGULAR_CHAT_WAKE_V1
+    sequencing:
+      - H4A0_RETIRE_LEGACY_WORK_WAKE_BRIDGE
+      - H4A1_REMOVE_ISSUE_WORKFLOW_FANOUT_NOISE
+      - H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
+      - H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
+      - H4B_REGULAR_CHAT_BRAIN_RESUME
+    objective: >-
+      Establish and live-prove a zero-Work local wake path into one exact Human-bound
+      regular ChatGPT Project conversation while keeping wake transport operational,
+      bounded and semantically inert.
+    boundaries:
+      - ZERO_CHATGPT_WORK_INVOCATION_FOR_WAKE_TRANSPORT
+      - WAKE_SIGNAL_IS_TRANSPORT_ONLY
+      - EXACT_DURABLE_CHAT_TARGET_BINDING
+      - CHAT_TARGET_BINDING_IS_OPERATIONAL_NOT_CANONICAL
+      - AUTHENTICATED_REGULAR_CHAT_REQUIRED
+      - ONE_DEDUPLICATED_WAKE_TURN_PER_UNRESOLVED_EVENT
+      - BUSY_DRAFT_AND_GENERATION_FAIL_CLOSED
+      - AMBIGUOUS_SUBMISSION_NEVER_BLINDLY_RESENT
+      - WAKE_TRANSPORT_DOES_NOT_READ_ASSISTANT_OUTPUT
+      - FRESH_BRAIN_SYNC_ON_CHAT_RESUME
+      - EXISTING_BRAIN_AND_REVIEWER_PROTOCOLS_REUSED
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
+    return_to: brain-runtime-semantic-handoff-hardening-v1-regular-chat-brain-resume
   - id: admission-failure-v2
     status: DONE
     completed_by:
