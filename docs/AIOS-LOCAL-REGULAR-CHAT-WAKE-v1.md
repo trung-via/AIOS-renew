@@ -166,7 +166,32 @@ No cookies, credentials or conversation content are committed to the repository.
 
 ## 9. H4 sequencing
 
-### H4A — Local Regular Chat Wake transport
+### H4A.0 — Retire legacy Work Wake Bus workflow
+
+The existing `.github/workflows/aios-brain-wake-bridge.yml` is a legacy delivery
+workflow for the superseded PR #1200 -> ChatGPT Work path. It is not part of the
+production Local Regular Chat Wake design and must be retired through a reviewed
+implementation change. Historical PR #1200 markers, ledgers, bridge evidence and the
+deterministic projection/parser code may remain as immutable evidence or reusable
+transport logic until an explicit cleanup proves they are no longer needed.
+
+Retirement must not delete historical canonical lineage or conformance evidence and
+must not change Runtime, Reviewer, Publisher or current TASK semantics.
+
+### H4A.1 — Remove top-level Issue workflow fanout noise
+
+Current Issue carriers share `issues: opened` and reject unrelated titles inside jobs,
+which causes visible skipped workflow runs. H4A should replace that presentation-noise
+fanout with one deterministic syntactic entry/demultiplexing boundary, or an equivalent
+GitHub-native mechanism if available, so one recognized Issue title activates only the
+corresponding carrier path.
+
+This boundary may map exact title markers to existing carrier workflows only. It must
+not inspect lifecycle state, select semantic flow, choose correction strategy, infer
+NEXT, or become a Planner/router authority. Unknown titles fail closed without
+dispatch.
+
+### H4A.2 — Local Regular Chat Wake transport
 
 Implement and prove the bounded transport contract only:
 
@@ -182,6 +207,13 @@ Implement and prove the bounded transport contract only:
 The first live conformance probe is ACK-only in semantic effect: one fresh synthetic or
 bounded attention event must cause exactly one short wake message to appear in the exact
 bound conversation. The Brain side performs no lifecycle mutation for this probe.
+
+### H4A.3 — ACK-only exact-chat conformance
+
+Before semantic continuation is enabled, prove one bounded eligible event produces
+exactly one wake user turn in the exact bound conversation, with duplicate delivery,
+busy/draft/generation, wrong-chat and ambiguous-send cases failing closed. No lifecycle
+mutation is permitted in this probe.
 
 ### H4B — Regular Chat Brain resume
 
