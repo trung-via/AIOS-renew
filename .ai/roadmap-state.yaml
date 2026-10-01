@@ -265,7 +265,7 @@ sequence:
         automation is still explicitly bound to qualifying PR comments and ignores
         commits, so no autonomous Work result may be inferred from this marker commit.
     work_commit_update_trigger:
-      status: SHALESS_PRIMARY_PASS_DUPLICATE_PROBE_PENDING
+      status: DUPLICATE_RELIABILITY_PAIR_PROBE_ARMED
       authority: HUMAN
       configuration_ref: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md#17-chatgpt-work-pr-commit-update-trigger-contract
       repository: trung-via/AIOS-renew
@@ -292,6 +292,18 @@ sequence:
         max_history_scan: 64
         max_unacked_candidates: 8
         product_concurrency_status: REQUIRES_POST_SUCCESS_DUPLICATE_PROBE
+      duplicate_reliability_probe:
+        profile: brain-high-value-v2
+        stage1: CONSTRUCT
+        stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+        closure: CLEAR
+        outcome: PROBE_AUTHORIZED
+        contract: WORK_POST_SUCCESS_PAIR_RELIABILITY_V1
+        configuration_ref: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md#19-post-success-duplicatereliability-pair-probe
+        emission: TWO_RAPID_BOUNDED_INVALID_INGRESS_PROBES
+        manual_work_invocation: false
+        manual_bridge_rerun: false
+        expected_external_result: EXACTLY_ONE_ACK_PER_NEW_EVENT
       sha_less_live_result:
         status: PRIMARY_FUNCTIONAL_CONFORMANCE_PASS
         fresh_probe_issue_number: 1227
