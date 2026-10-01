@@ -1804,6 +1804,7 @@ findings: []
 def test_author_remediation_success_and_rejections(tmp_path):
     lineage = setup_candidate_lineage(tmp_path)
     repo = lineage["repo"]
+    remote = lineage["remote"]
     run_id = lineage["run_id"]
     candidate_sha = lineage["candidate_sha"]
 
