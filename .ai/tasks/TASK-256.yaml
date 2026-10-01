@@ -1,0 +1,199 @@
+task_id: TASK-256
+revision: 1
+
+goal: >
+  Integrate the semantically reviewed TASK-254 revision 3 H1 audited-authoring
+  implementation onto current canonical main as a fresh current-main descendant,
+  preserving all canonical planning state added after the TASK-254 execution base
+  and producing one normally verifiable, reviewable and publishable source candidate.
+
+problem: >
+  TASK-254 r3 reached canonical RESULT at RUN-254-004 with exact candidate
+  56419eecea29be28cde1a4b2826226c5ca83ef22. Runtime verification passed all
+  181 focused tests and git diff --check with zero unresolved items, and
+  REVIEW-254-004 returned PRIMARY PASS for AC1-AC8 with no findings at review
+  decision a6a73f4a9178176dfc43da072c460c7c36744a71. Publisher then correctly
+  returned INTEGRATION_REQUIRED because canonical main had independently advanced
+  from the TASK-254 execution base 92e9d232e84498ee076b50acc8eba4c839e3dbf8
+  to 132293dad42a7310e8584338950ac3227cedd5cf through the Human-approved
+  Safe Local Main Reconciliation roadmap planning commit.
+
+  Canonical comparison proves the reviewed TASK-254 cumulative candidate changes
+  only the eight H1 implementation/test files authorized below, while the divergent
+  current-main delta changes only .ai/roadmap-state.yaml. Direct publication of the
+  historical reviewed candidate would discard current canonical planning state.
+  TASK-256 therefore creates a fresh current-main integration candidate carrying
+  the already-reviewed H1 semantics without treating historical TASK-254 source as
+  current publication truth.
+
+assumptions:
+  - >
+    Canonical main at TASK-256 authoring is
+    132293dad42a7310e8584338950ac3227cedd5cf.
+  - >
+    RUN-254-004 is the unique successful cumulative operational tip for TASK-254 r3,
+    with RESULT artifact commit 0e8f7bf9a6ed0090375a9072a52ce47afcd0dc00
+    and reviewed candidate 56419eecea29be28cde1a4b2826226c5ca83ef22.
+  - >
+    REVIEW-254-004 is PRIMARY PASS with no findings for that exact reviewed SHA.
+    The failed publication is an ancestry/current-main integration boundary, not a
+    semantic or Runtime-verification failure of TASK-254.
+  - >
+    The current-main-only change relative to TASK-254 execution base is
+    .ai/roadmap-state.yaml and must remain authoritative and unchanged by this TASK.
+  - >
+    Historical TASK-254 TASK/RUN/FAILURE/REPAIR/RESULT/REVIEW artifacts remain
+    immutable evidence and are not rewritten, replaced or reinterpreted by TASK-256.
+
+scope:
+  inspect:
+    - docs/AIOS-MANIFESTO.md
+    - docs/AIOS-CONSTITUTION.md
+    - docs/CHATGPT_PROJECT_CONTRACT.md
+    - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+    - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+    - .ai/tasks/TASK-254.yaml
+    - .ai/brain-audit-profiles.yaml
+    - .ai/brain-return-contracts.yaml
+    - .ai/roadmap-state.yaml
+    - refs/heads/aios/artifacts/RUN-254-004
+    - refs/heads/aios/review/RUN-254-004
+    - refs/heads/aios/review-decision/RUN-254-004
+  modify:
+    - .ai/flow-cards.yaml
+    - src/aios_renew/brain_context.py
+    - src/aios_renew/decision_packet.py
+    - src/aios_renew/authoring_ingress.py
+    - tests/test_brain_context.py
+    - tests/test_decision_packet.py
+    - tests/test_authoring_ingress.py
+    - tests/test_github_issue_ingress.py
+
+non_goals:
+  - >
+    Force-publish, merge, rebase, cherry-pick or move the historical
+    RUN-254-004 reviewed source directly onto main as publication of TASK-254.
+  - >
+    Use the correction/remediation integrate-correction primitive for this PRIMARY
+    publication divergence.
+  - >
+    Modify .ai/roadmap-state.yaml or alter the Human-approved Safe Local Main
+    Reconciliation planning state.
+  - >
+    Change TASK-254 semantics beyond the exact reviewed H1 r3 outcome or add new
+    H1 behavior not present in REVIEW-254-004 subject.
+  - >
+    Implement H1R Safe Local Main Reconciliation, H2 repair-strategy fact
+    projection, H3 acceptance proof phase, H4 wake work, H5 closure, VPRC or
+    downstream adoption.
+  - >
+    Rewrite or delete any historical TASK-254 TASK/RUN/FAILURE/REPAIR/RESULT/
+    REVIEW artifact or ref.
+  - >
+    Add a Planner, lifecycle router, correction selector, retry/failover authority,
+    persistent reasoning store, Reviewer, Publisher or Runtime authority.
+  - >
+    Change frozen artifact schemas or transfer verification/review/publication
+    authority to Brain or Executor.
+
+constraints:
+  hard:
+    - >
+      The TASK-256 implementation candidate must descend from the canonical
+      TASK-256 authoring state on current main and preserve every current-main file
+      outside scope.modify byte-for-byte as inherited state.
+    - >
+      Integrate the complete reviewed TASK-254 r3 semantic outcome represented by
+      exact reviewed SHA 56419eecea29be28cde1a4b2826226c5ca83ef22,
+      reconciled with current-main versions of the eight authorized files rather
+      than treating that historical commit as publication authority.
+    - >
+      Preserve the complete audited-authoring gate for new AUTHOR_TASK,
+      AUTHOR_REMEDIATION and initial AUTHOR_REPAIR mutations: canonical-input
+      binding, deterministic Decision Packet reconstruction, repository-owned
+      brain-high-value-v2 Stage 1 then Stage 2 validation, Stage-2 CANDIDATE
+      requirement, family/return-contract equality, mutation-edge freshness and
+      exact idempotent replay before the audit gate.
+    - >
+      Preserve the bounded explicit REPAIR_AUTHORING supersession side-flow only
+      when canonical state proves EXECUTE_REPAIR for the exact failed RUN, a unique
+      current unexecuted REPAIR authorization exists, and no continuation RUN has
+      been admitted. Canonical next_action remains EXECUTE_REPAIR.
+    - >
+      Supersession reasoning must remain bound to the exact failed RUN/FAILURE and
+      exact current REPAIR authorization SHA and semantic body. Stale, missing,
+      competing, mismatched or already-executed authorization state remains
+      fail-closed before semantic mutation.
+    - >
+      A changed or superseding REPAIR authorization requires a fresh
+      brain-high-value-v2 Stage-2 CANDIDATE bound to the exact current
+      authorization. Exact replay of the current authorization remains
+      non-mutating and does not require a new audit.
+    - >
+      Preserve SUBMIT_REVIEW isolation and Reviewer ownership. Brain-authoring-only
+      dependencies must not be introduced as eager imports that cause Executor
+      adapters or Brain authoring machinery to load merely for SUBMIT_REVIEW.
+    - >
+      Unified State lifecycle reduction remains unchanged: executable current
+      REPAIR authorization continues to project EXECUTE_REPAIR, and neither Flow
+      Resolution nor Decision Packet becomes a lifecycle router or automatic
+      correction selector.
+    - >
+      Preserve the reviewed regression coverage for initial authoring, exact replay,
+      stale/moved canonical state, bounded REPAIR supersession, Decision Packet
+      binding, mutation-edge freshness and SUBMIT_REVIEW isolation. Do not weaken,
+      delete, skip or xfail those behaviors to obtain a green suite.
+    - >
+      No file outside scope.modify may be changed by the Executor. In particular,
+      .ai/roadmap-state.yaml and TASK-254 historical artifacts remain untouched.
+    - >
+      Executor implementation must not push or publish. Runtime retains canonical
+      verification and Publisher retains publication of the exact eligible reviewed
+      TASK-256 source candidate.
+
+acceptance:
+  - id: AC1
+    condition: >
+      The completed implementation is a descendant of the TASK-256 current-main
+      authoring state, modifies only the eight authorized H1 files and preserves the
+      current canonical roadmap planning state and all other current-main content.
+  - id: AC2
+    condition: >
+      New AUTHOR_TASK, AUTHOR_REMEDIATION and initial AUTHOR_REPAIR mutations expose
+      the complete reviewed TASK-254 r3 audited-handoff, canonical-input, semantic
+      equality, freshness and exact-replay behavior.
+  - id: AC3
+    condition: >
+      Exact eligible REPAIR supersession remains reachable as a reasoning-only
+      REPAIR_AUTHORING side-flow while canonical Unified State remains EXECUTE_REPAIR
+      and no execution, lifecycle or correction-selection authority moves to Brain.
+  - id: AC4
+    condition: >
+      Supersession Decision Packets and ingress bind the exact failed RUN/FAILURE and
+      exact current authorization identity/body, and stale, competing, mismatched or
+      already-executed authorization state remains fail-closed.
+  - id: AC5
+    condition: >
+      Changed/superseding REPAIR semantics require a fresh exact Stage-2 audited
+      CANDIDATE while exact replay remains non-mutating and audit-free.
+  - id: AC6
+    condition: >
+      SUBMIT_REVIEW remains Reviewer-owned and isolated from Brain-authoring-only
+      eager dependency loading; frozen artifact families and existing review
+      semantics are unchanged.
+  - id: AC7
+    condition: >
+      The integrated source introduces no new Planner, lifecycle router, automatic
+      correction selector, Runtime, Reviewer, Publisher or persistent semantic-state
+      authority and does not implement H1R/H2/H3/H4/H5 or downstream work.
+  - id: AC8
+    condition: >
+      The focused regression corpus retained by the implementation covers the
+      reviewed TASK-254 r3 happy paths and fail-closed counterexamples, including
+      the corrected lazy-import monkeypatch seam, without weakening assertions.
+
+verification:
+  policy: minimum-sufficient-v1
+  required:
+    - python -m pytest -q tests/test_brain_context.py tests/test_decision_packet.py tests/test_authoring_ingress.py tests/test_github_issue_ingress.py
+    - git diff --check
