@@ -508,3 +508,24 @@ commit.
 Reconciled outcome: **CLEAR / CANDIDATE** for TASK-255 r4,
 `BOUNDED_POST_WRITE_PR_HEAD_LAG_RECONCILIATION_V1`. Real ChatGPT Work commit-update
 wake remains a separate post-publication conformance gate.
+
+### 16.1 Live r4 result
+
+After r4 publication, the existing PENDING terminal-attention delivery for RUN-255-005
+was recovered by rerunning the exact terminal carrier so that a new bridge invocation
+used published r4 code. Bridge run 36808623800 converted ledger comment 5923771367 from
+PENDING to EMITTED without creating a second marker commit; the Wake Bus branch remained
+at `abe2baf47010534e6def6573ead44f092b6fbb19`.
+
+A fresh post-publication ingress-rejection probe then used Issue #1225. Bridge run
+36808709208 completed successfully on its first attempt, created exactly one new marker
+commit `47f4bfa40ea07adbf3321633c519e88559b098fc`, and completed ledger comment
+5923883474 directly to EMITTED for event
+`github-v1-1fb01d7f2e1fdcc055e98823cd6e430a3304f1f9cd74f5b7731cdf9880686ec9`.
+
+This closes the observed repository-side read-after-write transport defect for the live
+failure shape. It does **not** establish ChatGPT Work commit-update delivery. The current
+Work automation remains explicitly scoped to qualifying PR comments and ignores commits,
+so the next conformance step is product-level provisioning of a PR commit-update trigger,
+followed by an autonomous wake/Brain-Sync/ACK probe. No repository fallback transport is
+authorized by this result.
