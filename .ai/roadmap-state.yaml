@@ -925,11 +925,49 @@ sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
     status: ACTIVE
-    phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
-    task_id: TASK-262
-    task_revision: 2
-    authored_commit_sha: "79921f9e0b1e56e064b3f0c192d83d18b815acb3"
-    task_blob_sha: "aa5d38ac78c25b964462a9196784025b7e000550"
+    phase: H4A2P_PUBLISHER_DETACHED_REMOTE_COMPATIBILITY
+    task_id: TASK-263
+    task_revision: 1
+    authored_commit_sha: "10e22531e013c9c53748ecf0324e7435ea495343"
+    task_blob_sha: "69edbf295494b85aba0534b389ce72730d67f865"
+    blocker_for:
+      phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
+      task_id: TASK-262
+      task_revision: 2
+      publication_run_id: RUN-262-004
+      reviewed_candidate_sha: "766f4805f08fd95c621f8bd081fee55afdc44f86"
+      review_id: REVIEW-262-002
+      review_decision_sha: "1458674ecd381a4c54a3f5ad1b994af8cf22088d"
+      failed_publication_workflow_run_id: 36884545239
+      failure_class: PUBLISHER_DETACHED_REMOTE_COMPATIBILITY
+      return_to_phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
+      return_action: REPLAY_PUBLICATION_THEN_RECONCILE_INTEGRATION_IF_REQUIRED
+    human_execution_delegation:
+      selected_on: "2026-10-01"
+      authority: HUMAN
+      task_id: TASK-263
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_delegation_policy_planning:
+      approved_on: "2026-10-01"
+      authority: HUMAN_BRAIN_PLANNING
+      contract: TASK_SCOPED_STICKY_EXECUTION_PROFILE_V1
+      implementation_status: PENDING_HARDENING_TASK
+      semantics:
+        - HUMAN_SELECTS_EXECUTOR_MODEL_EFFORT_ONCE_PER_TASK
+        - EXACT_PROFILE_REUSED_FOR_PRIMARY_REPAIR_REMEDIATION_AND_CONTINUATION_WITHIN_SAME_TASK
+        - HUMAN_EXPLICIT_OVERRIDE_TAKES_EFFECT_PROSPECTIVELY
+        - NO_AUTOMATIC_FALLBACK_OR_DIFFICULTY_ROUTING
+        - PROFILE_EXPIRES_WHEN_TASK_ID_CHANGES
+        - NEW_TASK_REQUIRES_NEW_HUMAN_SELECTION
+      note: >-
+        This planning contract records Human intent now; current Runtime still
+        requires explicit selectors on each execution boundary until a dedicated
+        hardening TASK implements deterministic task-scoped delegation reuse.
     task_authoring_audit:
       approved_on: "2026-10-01"
       profile: brain-high-value-v2
