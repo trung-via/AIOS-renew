@@ -718,3 +718,33 @@ Reconciled outcome: **CLEAR / CANDIDATE** for
 `WORK_SHALESS_SYNCHRONIZE_RECONSTRUCTION_V1`. This supersedes Section 17 step 1's SHA
 requirement while preserving all other authority boundaries. It requires no TASK-255
 production-code revision.
+
+### 18.3 Live SHA-less reconstruction result
+
+After the Section 18 prompt was installed on Work automation
+`6abdd13291688191960494656fab3c34`, a fresh conformance probe used Issue #1227.
+Repository transport emitted marker commit
+`b413bd76d307e9d6aa5880be38d32f00654244d0` for event
+`github-v1-f5740ad8856609ce8398a599a925f5f73294cfe278ad0f506f1bfa944c6b02d0`, and its
+ledger comment 5924290956 reached EMITTED.
+
+Work then advanced its last_run_time to `2026-10-01T03:49:10.149660Z` and reconstructed
+the post-fence marker suffix from GitHub without a webhook SHA. It posted two ACKs in
+oldest-first order:
+
+- comment 5924336402 ACKed the previously unACKed post-fence probe event
+  `github-v1-8e147e1f378ab983b925391997bf7f8a929f89c008afd7d44c5f8dfb7c15c037`;
+- comment 5924340475 ACKed the fresh #1227 event
+  `github-v1-f5740ad8856609ce8398a599a925f5f73294cfe278ad0f506f1bfa944c6b02d0`.
+
+Both ACKs carried canonical main SHA
+`41d4c64f443290e9601b42a763987f0f94aa4f22` with `fresh_brain_sync: true`. The two ACKs
+are not duplicates: they correspond to two distinct valid post-fence marker events, and
+the older unresolved event was recovered before the fresh event as required by the
+oldest-first backlog rule.
+
+Result: **PRIMARY FUNCTIONAL CONFORMANCE PASS** for the SHA-less synchronize
+reconstruction path: GitHub commit update -> Work wake -> deterministic immutable marker
+reconstruction -> fresh Brain Sync -> ACK. The track is not yet closed because Section
+18.2 deliberately requires one bounded post-success duplicate/reliability probe to test
+idempotence/product-level overlap behavior before final conformance closure.
