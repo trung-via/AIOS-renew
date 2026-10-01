@@ -299,7 +299,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-preservation-reconciliation
+  - brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
@@ -924,7 +924,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-preservation-reconciliation
-    status: NEXT
+    status: DONE
     task_id: TASK-264
     task_revision: 1
     authority: HUMAN_BRAIN_PLANNING
@@ -981,6 +981,51 @@ sequence:
       - NO_FAKE_FAILURE_REPAIR_OR_RUN
       - NO_WORKFLOW_LEVEL_GIT_RECOVERY
       - NO_AUTOMATIC_ROADMAP_ADVANCE
+    completed_by:
+      task_id: TASK-264
+      task_revision: 1
+      primary_run_id: RUN-264-001
+      remediation_run_id: RUN-264-002
+      remediation_authorization_sha: "d628dae867e27a4aba4541aeee93e245f61180ab"
+      review_id: REVIEW-264-002
+      review_mode: DELTA
+      verdict: PASS
+      result_artifact_sha: "3d69567db740f460bbfe612aeb58147a22069712"
+      review_decision_sha: "92972df2e11308d272a5d9fdca2f1e79527968d6"
+      reviewed_sha: "2f10a34599fd1a99aa4bee63553498dd09821bda"
+      published_sha: "2f10a34599fd1a99aa4bee63553498dd09821bda"
+      completed_on: "2026-10-02"
+      publication_transport: BOOTSTRAP_ATTACHED_PUBLISHER_EXCEPTION_V1
+    bootstrap_publication_exception:
+      contract: BOOTSTRAP_ATTACHED_PUBLISHER_EXCEPTION_V1
+      approved_on: "2026-10-02"
+      authority: HUMAN
+      reason: >-
+        Break one circular prerequisite between TASK-264 H1R publication and TASK-263
+        detached-Publisher repair without bypassing canonical RESULT, REVIEW or Publisher
+        validation.
+      exact_scope:
+        run_id: RUN-264-002
+        control_sha: "ae37b10bd1433ce34db31ac77aeede73dff5be38"
+        reviewed_sha: "2f10a34599fd1a99aa4bee63553498dd09821bda"
+        artifacts_sha: "3d69567db740f460bbfe612aeb58147a22069712"
+        review_decision_sha: "92972df2e11308d272a5d9fdca2f1e79527968d6"
+        remote: origin
+      constraints:
+        - CANONICAL_PUBLISHER_ONLY
+        - ATTACHED_CLEAN_MAIN_ONLY
+        - NO_MANUAL_GIT_PUSH
+        - NO_REVIEW_OR_ARTIFACT_REF_MUTATION
+        - EXACT_REF_AND_SHA_RECHECK_BEFORE_MUTATION
+        - FAIL_CLOSED_ON_ANY_IDENTITY_OR_TOPOLOGY_DRIFT
+      observed_outcome:
+        outcome: PUBLISHED
+        prior_main_sha: "ae37b10bd1433ce34db31ac77aeede73dff5be38"
+        published_main_sha: "2f10a34599fd1a99aa4bee63553498dd09821bda"
+      expiry: >-
+        One-time TASK-264 bootstrap consumed. A second use is permitted only for TASK-263
+        after Runtime PASS and semantic review PASS if and only if publication fails with
+        the same detached-upstream defect; otherwise fail closed and return to Human.
     human_execution_delegation:
       selected_on: "2026-10-01"
       authority: HUMAN
@@ -994,7 +1039,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
-    status: BLOCKED_BY_TASK_264
+    status: NEXT
     phase: H4A2P_PUBLISHER_DETACHED_REMOTE_COMPATIBILITY
     task_id: TASK-263
     task_revision: 1
@@ -1026,11 +1071,18 @@ sequence:
       status: QUEUED_AFTER_TASK_263_AND_H4A2_PUBLICATION_RECOVERY
       authority: HUMAN_BRAIN_PLANNING
       contract: CROSS_AUTHORITY_CONTEXT_AND_CANONICAL_SHAPE_CONFORMANCE_V1
+      additional_contract: TERMINAL_LIFECYCLE_FEASIBILITY_GATE_V1
       basis: >-
         Root-cause audit of the TASK-258 Publisher regression and the TASK-257 H1R
         admission regression found the same systemic class: implementation and tests
         overfit one observed execution/lineage shape while the semantic contract is
         broader.
+      terminal_lifecycle_feasibility_basis: >-
+        The TASK-264 prerequisite audit proved implementation semantics and safety but
+        failed to prove that every allowed correction path could reach canonical
+        publication on the current control plane. Future prerequisite authoring must
+        fail closed unless terminal lifecycle feasibility is established across PRIMARY,
+        REMEDIATION, REPAIR, semantic review and publication paths.
       invariants:
         - NO_AMBIENT_REDISCOVERY_OF_CALLER_OWNED_AUTHORITY
         - NO_IMPLEMENTATION_OR_TEST_OVERFITTING_TO_ONE_CANONICAL_LINEAGE_SHAPE
@@ -1042,6 +1094,7 @@ sequence:
         - AFTER_TASK_263_REVIEW_AND_PUBLICATION
         - AFTER_RUN_262_004_PUBLICATION_RECOVERY
         - BEFORE_RESUMING_LATER_H4_HARDENING
+        - AUTHOR_TERMINAL_LIFECYCLE_FEASIBILITY_HARDENING_AFTER_PUBLICATION_RECOVERY
     execution_delegation_policy_planning:
       approved_on: "2026-10-01"
       authority: HUMAN_BRAIN_PLANNING
