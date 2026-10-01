@@ -925,21 +925,21 @@ sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
     status: ACTIVE
-    phase: H4A1_REMOVE_ISSUE_WORKFLOW_FANOUT_NOISE
-    task_id: TASK-261
-    task_revision: 1
-    authored_commit_sha: "d10e2d3dc58695131d7363d742702b22dfc216f0"
-    task_blob_sha: "d5c572446458d28ef02d6965377d64789027d224"
-    task_authoring_audit:
-      approved_on: "2026-10-01"
-      profile: brain-high-value-v2
-      stage1: CONSTRUCT
-      stage1_outcome: CLEAR
-      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
-      closure: CLEAR
-      outcome: CANDIDATE
-      acceptance_phase_ledger: ALL_CLAIM_NOW
+    phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
     completed_subphases:
+      H4A1_REMOVE_ISSUE_WORKFLOW_FANOUT_NOISE:
+        task_id: TASK-261
+        task_revision: 1
+        authored_commit_sha: "d10e2d3dc58695131d7363d742702b22dfc216f0"
+        task_blob_sha: "d5c572446458d28ef02d6965377d64789027d224"
+        run_id: RUN-261-001
+        result_artifact_sha: "42a834548f87c8d27f21c6868b35d54aa299778b"
+        reviewed_candidate_sha: "9440bc057038f16a2e4484041529c1213b8ebe01"
+        review_id: REVIEW-261-001
+        review_decision_sha: "018f9bbe2f729abccace33f1bc6164fa5b022232"
+        review_verdict: PASS
+        published_sha: "9440bc057038f16a2e4484041529c1213b8ebe01"
+        completed_on: "2026-10-01"
       H4A0_RETIRE_LEGACY_WORK_WAKE_BRIDGE:
         task_id: TASK-260
         task_revision: 1
@@ -953,6 +953,35 @@ sequence:
         review_verdict: PASS
         published_sha: "c8653e091aa8c92aa28c271ce79d4e32f0dbc488"
         completed_on: "2026-10-01"
+    h4a2_planning_audit:
+      approved_on: "2026-10-01"
+      authority: HUMAN_BRAIN_PLANNING
+      profile: brain-high-value-v2
+      selected_contract: DIRECT_TERMINAL_TO_BOUND_CHAT_TRANSPORT_V1
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      objective: >-
+        Deliver one bounded doorbell from canonically admitted terminal attention to one
+        exact Human-bound regular ChatGPT conversation through a self-hosted local browser
+        session without Work, semantic interpretation, output scraping or blind resend.
+      boundaries:
+        - DIRECT_TERMINAL_ATTENTION_TO_SELF_HOSTED_LOCAL_WAKE
+        - NO_WORKFLOW_RUN_WAKE_BUS
+        - HUMAN_CONTROLLED_OPERATIONAL_ENABLE_GATE
+        - CHAT_BINDING_AND_CDP_ENDPOINT_OUTSIDE_REPOSITORY
+        - UNIQUE_EXACT_TARGET_TAB_REQUIRED
+        - NO_NAVIGATION_AWAY_FROM_UNRELATED_CHAT
+        - AUTHENTICATED_REGULAR_CHAT_ONLY
+        - EMPTY_COMPOSER_AND_NOT_GENERATING_REQUIRED
+        - LOCAL_OPERATIONAL_DEDUPE_NOT_ENGINEERING_TRUTH
+        - ATTEMPT_MARKER_BEFORE_IRREVERSIBLE_SUBMIT
+        - AMBIGUOUS_ATTEMPT_NEVER_AUTO_RESENT
+        - USER_TURN_SUBMISSION_PROOF_ONLY
+        - NO_ASSISTANT_OUTPUT_EXTRACTION
+        - NO_LIFECYCLE_OR_ROADMAP_MUTATION
     h4a1_planning_audit:
       approved_on: "2026-10-01"
       authority: HUMAN_BRAIN_PLANNING
