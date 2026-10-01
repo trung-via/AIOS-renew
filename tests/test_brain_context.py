@@ -221,6 +221,64 @@ def test_registry_exact_seven_and_contracts():
     assert cards["SEMANTIC_REVIEW"]["authority_owner"] == "REVIEWER"
     assert cards["SEMANTIC_REVIEW"]["decision_family_ref"] == "review.validate_review"
     assert cards["REPAIR_AUTHORING"]["decision_family_ref"] == "publication._validate_repair_authorization"
+    assert cards["REPAIR_AUTHORING"]["entry_conditions"] == [
+        "UNIFIED_STATE_AUTHOR_REPAIR", "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION"]
+
+
+@pytest.mark.parametrize("action", ["AUTHOR_REPAIR", "AUTHOR_REMEDIATION", "SEMANTIC_REVIEW",
+                                    "EXECUTE_PRIMARY", "EXECUTE_REMEDIATION", "WAIT", "DONE", "NONE"])
+def test_explicit_repair_is_not_a_generic_override(action):
+    with pytest.raises(BrainContextError, match="supersession"):
+        compose_brain_work_context(snapshot(action), {"flow_selector": "REPAIR_AUTHORING"})
+
+
+def test_explicit_repair_requires_canonical_material_even_in_execute_state():
+    with pytest.raises(BrainContextError, match="supersession"):
+        compose_brain_work_context(snapshot("EXECUTE_REPAIR"), {"flow_selector": "REPAIR_AUTHORING"})
+
+
+@pytest.mark.parametrize("fault", ["main", "lifecycle", "authorization", "failure", "competing", "executed"])
+def test_explicit_repair_rejects_changed_canonical_authority_before_material_compilation(monkeypatch, fault):
+    from types import SimpleNamespace
+    from aios_renew import authoring_ingress as ingress
+    from aios_renew.review_transport import ReviewTransportError
+
+    source = snapshot("EXECUTE_REPAIR")
+    source = replace(source, unified_state={**source.unified_state,
+                     "failed_run_id": "RUN-177-001", "failed_head_sha": "b" * 40,
+                     "correction_sha": "c" * 40})
+    repair_ref = "refs/heads/aios/repair/RUN-177-001"
+    failure_ref = "refs/heads/aios/failure-artifacts/RUN-177-001"
+    refs = {"refs/heads/main": source.main_sha, repair_ref: "c" * 40, failure_ref: "d" * 40}
+    if fault == "main":
+        refs["refs/heads/main"] = "e" * 40
+    if fault == "failure":
+        refs.pop(failure_ref)
+    monkeypatch.setattr(ingress, "_authoring_refs", lambda repo: ("origin", refs))
+    monkeypatch.setattr(ingress, "_prove_authoring_inputs", lambda *args: None)
+    fresh = replace(source, next_action="WAIT") if fault == "lifecycle" else source
+    monkeypatch.setattr(ingress, "observe_brain_sync", lambda **kwargs: fresh)
+
+    def authorization(*args, **kwargs):
+        if fault == "competing":
+            raise ReviewTransportError("competing current authorization")
+        return SimpleNamespace(commit_sha="e" * 40 if fault == "authorization" else "c" * 40,
+                               ref=repair_ref)
+
+    monkeypatch.setattr(ingress, "resolve_remote_repair_authorization", authorization)
+
+    def continuation(*args):
+        if fault == "executed":
+            raise ingress.AuthoringIngressError("canonical continuation already exists")
+
+    monkeypatch.setattr(ingress, "_check_continuation_does_not_exist", continuation)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid authority reached semantic material or mutation")
+    monkeypatch.setattr(ingress, "_authoring_blob", forbidden)
+    monkeypatch.setattr(ingress, "_commit_tree", forbidden)
+    monkeypatch.setattr(ingress, "_publish_ingress_ref", forbidden)
+    with pytest.raises(BrainContextError, match="supersession"):
+        compose_brain_work_context(source, {"flow_selector": "REPAIR_AUTHORING"})
 
 
 @pytest.mark.parametrize("mutation", [

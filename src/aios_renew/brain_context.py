@@ -6,7 +6,7 @@ only projects their observation and identifies a bounded reasoning contract.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
@@ -14,7 +14,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from .brain_sync import BrainSyncSnapshot, observe_brain_sync
+from .brain_sync import BrainSyncError, BrainSyncSnapshot, observe_brain_sync
 
 
 class BrainContextError(ValueError):
@@ -25,7 +25,7 @@ _FLOWS = frozenset({
     "ARCHITECTURE", "TASK_AUTHORING", "SEMANTIC_REVIEW",
     "REMEDIATION_AUTHORING", "REPAIR_AUTHORING", "DIAGNOSTIC", "RESEARCH",
 })
-_EXPLICIT = frozenset({"ARCHITECTURE", "TASK_AUTHORING", "DIAGNOSTIC", "RESEARCH"})
+_EXPLICIT = frozenset({"ARCHITECTURE", "TASK_AUTHORING", "DIAGNOSTIC", "RESEARCH", "REPAIR_AUTHORING"})
 _OBLIGATIONS = {
     "SEMANTIC_REVIEW": "SEMANTIC_REVIEW",
     "AUTHOR_REMEDIATION": "REMEDIATION_AUTHORING",
@@ -65,7 +65,7 @@ _ENTRIES = {
     "TASK_AUTHORING": frozenset({"EXPLICIT_SELECTOR", "UNIQUE_UNAUTHORED_NEXT"}),
     "SEMANTIC_REVIEW": frozenset({"UNIFIED_STATE_SEMANTIC_REVIEW"}),
     "REMEDIATION_AUTHORING": frozenset({"UNIFIED_STATE_AUTHOR_REMEDIATION"}),
-    "REPAIR_AUTHORING": frozenset({"UNIFIED_STATE_AUTHOR_REPAIR"}),
+    "REPAIR_AUTHORING": frozenset({"UNIFIED_STATE_AUTHOR_REPAIR", "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION"}),
     "DIAGNOSTIC": frozenset({"EXPLICIT_SELECTOR"}),
     "RESEARCH": frozenset({"EXPLICIT_SELECTOR"}),
 }
@@ -74,7 +74,7 @@ _CONTEXT_PATHS = frozenset({
     "canonical_observation.roadmap", "canonical_observation.selection_status",
     "canonical_observation.selected_task", "canonical_observation.unified_state",
     "canonical_observation.blocker", "current_request.flow_selector",
-    "current_request.human_input",
+    "current_request.human_input", "canonical_observation.repair_supersession",
 })
 _REQUIRED_CONTEXT = {
     "ARCHITECTURE": frozenset({"canonical_observation.repository", "canonical_observation.main_sha", "current_request.flow_selector"}),
@@ -138,7 +138,7 @@ def _request(value: Mapping[str, Any] | None) -> dict[str, str] | None:
 
 
 def _invalidation_basis(observed: Mapping[str, Any], request: Mapping[str, str] | None) -> dict[str, str]:
-    return {
+    basis = {
         # Root and remote are operational observations. Brain Sync's name is
         # the canonical repository identity and remains stable across checkouts.
         "repository_identity_sha256": _digest(observed["repository"]["name"]),
@@ -156,6 +156,20 @@ def _invalidation_basis(observed: Mapping[str, Any], request: Mapping[str, str] 
         "blocker_sha256": _digest(observed["blocker"]),
         "current_request_sha256": _digest(request),
     }
+    if "repair_supersession" in observed:
+        basis["repair_supersession_sha256"] = _digest(observed["repair_supersession"])
+    return basis
+
+
+def _supersession_facts(material: Mapping[str, Any]) -> dict[str, Any]:
+    """Bind the read-only reconstruction without projecting Runtime diagnostics."""
+    return {
+        "failed_run_id": material["failed_run"]["run_id"],
+        "failed_head_sha": material["failure"]["failed_head_sha"],
+        "failure_artifacts_sha": material["failure_artifacts_sha"],
+        "current_authorization": _stable_copy(material["current_authorization"]),
+        "canonical_material_sha256": _digest(material),
+    }
 
 
 @dataclass(frozen=True)
@@ -165,6 +179,8 @@ class BrainWorkContext:
     invalidation_basis: Mapping[str, Any]
     invalidation_fingerprint: str
     operational_repository_root: str
+    # Private compiler input; raw FAILURE diagnostics never become Brain facts.
+    repair_supersession_material: Mapping[str, Any] | None = field(default=None, repr=False)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -204,9 +220,23 @@ def compose_brain_work_context(
     observed = _stable_copy(observed)
     if observed["format"] != "AIOS_BRAIN_SYNC_SNAPSHOT" or observed["version"] != 1:
         raise BrainContextError("unsupported Brain Sync snapshot")
+    supersession = None
+    if request and request.get("flow_selector") == "REPAIR_AUTHORING":
+        # Reuse ingress's canonical read glue, not caller-supplied authorization
+        # text or an alternate lifecycle reducer. This import is deliberately
+        # lazy: ordinary BP-3 classification remains observation-only.
+        from .authoring_ingress import _canonical_repair_supersession
+        from .review_transport import ReviewTransportError
+        import subprocess
+        try:
+            supersession = _stable_copy(_canonical_repair_supersession(observed))
+            observed["repair_supersession"] = _supersession_facts(supersession)
+        except (ValueError, OSError, KeyError, TypeError, BrainSyncError,
+                ReviewTransportError, subprocess.SubprocessError) as exc:
+            raise BrainContextError(f"explicit REPAIR supersession rejected: {exc}") from exc
     basis = _invalidation_basis(observed, request)
     fingerprint = _digest(basis)
-    return BrainWorkContext(observed, request, basis, fingerprint, observed["repository"]["root"])
+    return BrainWorkContext(observed, request, basis, fingerprint, observed["repository"]["root"], supersession)
 
 
 def _tokens(value: Any, *, allowed: frozenset[str], nonempty: bool = True) -> list[str]:
@@ -335,7 +365,18 @@ def resolve_flow(context: BrainWorkContext, *, cards_path: str | Path | None = N
     unified_action = unified["next_action"] if unified is not None else None
     pending = _OBLIGATIONS.get(unified_action)
     explicit = context.current_request.get("flow_selector") if context.current_request else None
-    if explicit is not None:
+    if explicit == "REPAIR_AUTHORING":
+        if (next_action != "EXECUTE_REPAIR" or unified_action != "EXECUTE_REPAIR"
+                or observed["blocker"] is not None or not isinstance(unified, Mapping)
+                or unified.get("blocker") is not None
+                or context.repair_supersession_material is None
+                or observed.get("repair_supersession") != _supersession_facts(context.repair_supersession_material)
+                or unified.get("failed_run_id") != observed["repair_supersession"]["failed_run_id"]
+                or unified.get("failed_head_sha") != observed["repair_supersession"]["failed_head_sha"]
+                or unified.get("correction_sha") != observed["repair_supersession"]["current_authorization"]["authorization_sha"]):
+            raise BrainContextError("explicit REPAIR_AUTHORING requires exact unexecuted canonical supersession")
+        selected, basis = explicit, "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION"
+    elif explicit is not None:
         selected, basis = explicit, "EXPLICIT_SELECTOR"
     elif pending is not None:
         selected, basis = pending, "UNIFIED_STATE"

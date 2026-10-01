@@ -283,6 +283,8 @@ def test_repair_authoring_and_exact_repair_provenance():
     assert "private raw log" not in packet.render()
     assert "private native stream" not in packet.render()
 
+
+
     repair_run = run("RUN-002-003", C, A)
     authorization = {"repair_id": "REPAIR-002-001", "failed_run_id": "RUN-002-001",
                      "failed_head_sha": A, "task": {"id": "TASK-002", "revision": 1},
@@ -311,6 +313,47 @@ def test_repair_authoring_and_exact_repair_provenance():
     altered["prior_correction"]["authorization"]["instructions"] = ["Different valid correction"]
     with pytest.raises(DecisionPacketError):
         compile_decision_packet(work, flow, altered)
+
+
+def test_supersession_packet_requires_exact_reconstruction_and_projects_prior_strategy(monkeypatch):
+    # Pure compiler coverage: the integration fixture separately establishes
+    # that the reconstruction comes from immutable canonical Git artifacts.
+    authorization = {"repair_id": "REPAIR-002-001", "failed_run_id": "RUN-002-001",
+                     "failed_head_sha": A, "task": {"id": "TASK-002", "revision": 1},
+                     "action": "CONTINUE_IMPLEMENTATION",
+                     "modification_scope": ["src/aios_renew/decision_packet.py"],
+                     "instructions": ["Continue bounded implementation."], "constraints": []}
+    material = {"kind": "REPAIR_AUTHORING", "task": task(), "failed_run": run("RUN-002-001"),
+                "failure": runtime_failure(phase="COMPLETION_GATE"), "failure_artifacts_sha": C,
+                "current_authorization": {"kind": "REPAIR", "authorization_sha": D,
+                                          "authorization": authorization}}
+    monkeypatch.setattr("aios_renew.authoring_ingress._canonical_repair_supersession",
+                        lambda observed: copy.deepcopy(material))
+    work, flow = context("EXECUTE_REPAIR", {"next_action": "EXECUTE_REPAIR", "run_id": "RUN-002-001",
+                                           "failed_run_id": "RUN-002-001", "failed_head_sha": A,
+                                           "correction_sha": D}, selector="REPAIR_AUTHORING")
+    packet = compile_decision_packet(work, flow, material)
+    body = packet.as_dict()
+    assert body["canonical_facts"]["canonical_next_action"] == "EXECUTE_REPAIR"
+    assert body["prior_semantic_decisions"] == material["current_authorization"]
+    assert body["subject"]["kind"] == "REPAIR_SUPERSESSION"
+    assert body["subject"]["failure_artifacts_sha"] == C
+    assert body["subject"]["current_repair_authorization_sha"] == D
+    assert "C:/private" not in packet.render()
+    assert "native_diagnostics" not in packet.render()
+    for mutate in (
+        lambda m: m.pop("current_authorization"),
+        lambda m: m.pop("failure_artifacts_sha"),
+        lambda m: m["current_authorization"].__setitem__("authorization_sha", B),
+        lambda m: m["current_authorization"]["authorization"].__setitem__("instructions", ["Invented prior"]),
+        lambda m: m.__setitem__("failure_artifacts_sha", B),
+        lambda m: m["failed_run"].__setitem__("run_id", "RUN-002-009"),
+        lambda m: m["failure"]["error"].__setitem__("type", "InventedRuntimeError"),
+    ):
+        invalid = copy.deepcopy(material)
+        mutate(invalid)
+        with pytest.raises(DecisionPacketError, match="canonical reconstruction"):
+            compile_decision_packet(work, flow, invalid)
 
 
 @pytest.mark.parametrize("phase", ["VERIFICATION", "EXECUTION", "COMPLETION_GATE"])

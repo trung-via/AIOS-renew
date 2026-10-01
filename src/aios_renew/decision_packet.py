@@ -384,11 +384,17 @@ def _semantic_review(material: dict[str, Any], observed: Mapping[str, Any]) -> t
 
 
 def _repair_authoring(material: dict[str, Any], observed: Mapping[str, Any]) -> tuple[Any, Any, Any, Any]:
-    _mapping(material, "REPAIR_AUTHORING", fields={"kind", "task", "failed_run", "failure"})
+    _mapping(material, "REPAIR_AUTHORING", fields={"kind", "task", "failed_run", "failure",
+             "failure_artifacts_sha", "current_authorization"},
+             required={"kind", "task", "failed_run", "failure"})
     task = _task(material["task"], observed)
     unified = observed.get("unified_state")
-    if not isinstance(unified, dict) or unified.get("next_action") != "AUTHOR_REPAIR":
+    supersession = observed.get("repair_supersession")
+    action = "EXECUTE_REPAIR" if supersession is not None else "AUTHOR_REPAIR"
+    if not isinstance(unified, dict) or unified.get("next_action") != action:
         raise DecisionPacketError("canonical state is not REPAIR authoring")
+    if supersession is None and set(material) != {"kind", "task", "failed_run", "failure"}:
+        raise DecisionPacketError("initial REPAIR authoring cannot supply a prior authorization")
     failed = _run(material["failed_run"], task, expected_id=unified.get("failed_run_id"))
     failure = material["failure"]
     failed_head = _sha(unified.get("failed_head_sha"), "failed head SHA")
@@ -405,6 +411,21 @@ def _repair_authoring(material: dict[str, Any], observed: Mapping[str, Any]) -> 
     subject = {"failed_run_id": failed["run_id"], "failed_head_sha": failed_head}
     candidate = failure["candidate"]
     subject["failed_changed_files"] = sorted(candidate["changed_files"])
+    if supersession is not None:
+        prior = _mapping(material.get("current_authorization"), "current REPAIR",
+                         fields={"kind", "authorization_sha", "authorization"})
+        sha = _sha(prior["authorization_sha"], "current REPAIR SHA")
+        failure_sha = _sha(material.get("failure_artifacts_sha"), "FAILURE artifacts SHA")
+        if (prior["kind"] != "REPAIR" or sha != unified.get("correction_sha")
+                or prior != supersession["current_authorization"]
+                or failure_sha != supersession["failure_artifacts_sha"]):
+            raise DecisionPacketError("supersession prior authorization or FAILURE identity mismatch")
+        from .publication import _validate_repair_authorization
+        _validate_repair_authorization(prior["authorization"], failed_run_id=failed["run_id"],
+                                       failed_head_sha=failed_head, task=task,
+                                       failed_changed_files=set(candidate["changed_files"]))
+        subject.update(kind="REPAIR_SUPERSESSION", failure_artifacts_sha=failure_sha,
+                       current_repair_authorization_sha=sha)
     if failure.get("phase") not in {"VERIFICATION", "EXECUTION", "COMPLETION_GATE"}:
         raise DecisionPacketError("FAILURE phase is invalid")
     observation = {"phase": failure["phase"]}
@@ -469,6 +490,10 @@ def compile_decision_packet(
         elif flow == "SEMANTIC_REVIEW":
             subject, task_facts, claims, prior, observations = _semantic_review(supplied, observed)
         elif flow == "REPAIR_AUTHORING":
+            if resolution.selection_basis == "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION" and (
+                supplied != _normal(json.loads(_json(context.repair_supersession_material)))
+            ):
+                raise DecisionPacketError("supersession material differs from canonical reconstruction")
             subject, task_facts, claims, prior = _repair_authoring(supplied, observed)
         else:
             _mapping(supplied, flow, fields={"kind", "observations"}, required={"kind"})
@@ -509,7 +534,8 @@ def compile_decision_packet(
         "canonical_blocker": _normal(json.loads(_json(resolution.canonical_blocker))),
         "bounded_observations": notes if flow in {"ARCHITECTURE", "TASK_AUTHORING", "DIAGNOSTIC"} else (observations if flow == "SEMANTIC_REVIEW" else (prior if flow == "REPAIR_AUTHORING" else None)),
         "executor_claims": claims,
-        "prior_semantic_decisions": prior if flow == "SEMANTIC_REVIEW" else None,
+        "prior_semantic_decisions": (prior if flow == "SEMANTIC_REVIEW" else
+                                     supplied.get("current_authorization") if flow == "REPAIR_AUTHORING" else None),
         "human_input": request.get("human_input") if request else None,
         "subject": subject,
         "run_created": False, "executor_invoked": False,
