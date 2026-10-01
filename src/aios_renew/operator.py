@@ -3578,6 +3578,166 @@ def reconcile_control_main(
             "restored_head": expected_canonical_main, "status": "SUCCESS"}
 
 
+def _require_primary_reconciliation_worktree(
+    root: Path, observer: Path, local_sha: str, target_sha: str,
+) -> None:
+    """Check safety again at the destructive edge, including ignored content."""
+    if _git(root, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError("reconciliation requires completely clean status")
+    # Status may hide modifications under assume-unchanged or sparse entries.
+    if any(line and (line[0].islower() or line[0] == "S")
+           for line in _git(root, "ls-files", "-v").splitlines()):
+        raise OperatorError("reconciliation requires fully observed tracked content")
+    for sha in (local_sha, target_sha):
+        if any(line.startswith("160000 ")
+               for line in _git(observer, "ls-tree", "-r", sha).splitlines()):
+            raise OperatorError("reconciliation does not mutate submodule worktrees")
+    ignored = _git(
+        root, "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
+        strip_stdout=False,
+    ).split("\0")
+    targets = _git(
+        observer, "ls-tree", "-r", "--name-only", "-z", target_sha,
+        strip_stdout=False,
+    ).split("\0")
+    if any(
+        path and target and (
+            os.path.normcase(path) == os.path.normcase(target)
+            or os.path.normcase(path).startswith(os.path.normcase(target + "/"))
+            or os.path.normcase(target).startswith(os.path.normcase(path + "/"))
+        ) for path in ignored for target in targets
+    ):
+        raise OperatorError("reconciliation would overwrite ignored worktree content")
+    if _git(root, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError("reconciliation requires completely clean status")
+
+
+def _reconcile_primary_divergence(
+    root: Path, *, remote: str, allow_restart: bool,
+) -> bool | None:
+    """Locked PRIMARY pre-RUN edge; an exact FAILURE tip preserves its full ancestry.
+
+    None leaves non-divergence to the established non-destructive/FF path. There
+    is no Human-command delegation, lifecycle result, dispatch or retry here.
+    """
+    local_sha = _git(root, "rev-parse", "HEAD")
+    remotes = _git(root, "config", "--get-all", "branch.main.remote").splitlines()
+    merges = _git(root, "config", "--get-all", "branch.main.merge").splitlines()
+    upstream = _git(root, "rev-parse", "--symbolic-full-name", "@{upstream}")
+    remote_url = _git(root, "remote", "get-url", remote)
+    remote_urls = _git(root, "remote", "get-url", "--all", remote).splitlines()
+    fetch_specs = _git(root, "config", "--get-all", f"remote.{remote}.fetch").splitlines()
+    if remotes != [remote] or merges != ["refs/heads/main"] or not (
+        upstream.startswith("refs/remotes/") and upstream.endswith("/main")
+    ) or remote_urls != [remote_url]:
+        raise OperatorError("missing or ambiguous upstream main")
+
+    def require_binding() -> None:
+        if (
+            _git(root, "symbolic-ref", "--quiet", "HEAD") != "refs/heads/main"
+            or _git(root, "rev-parse", "HEAD") != local_sha
+        ):
+            raise OperatorError("reconciliation local HEAD drift")
+        if (
+            _git(root, "config", "--get-all", "branch.main.remote").splitlines() != remotes
+            or _git(root, "config", "--get-all", "branch.main.merge").splitlines() != merges
+            or _git(root, "rev-parse", "--symbolic-full-name", "@{upstream}") != upstream
+            or _git(root, "remote", "get-url", remote) != remote_url
+            or _git(root, "remote", "get-url", "--all", remote).splitlines() != remote_urls
+            or _git(root, "config", "--get-all", f"remote.{remote}.fetch").splitlines() != fetch_specs
+        ):
+            raise OperatorError("configured upstream drift")
+
+    try:
+        with _remote_observation_repository(root) as observer:
+            if _git(observer, "remote", "get-url", remote) != remote_url:
+                raise OperatorError("configured upstream drift")
+            try:
+                targets = _exact_remote_refs(observer, remote, "refs/heads/main")
+            except RemoteQueryError as exc:
+                raise OperatorError(f"upstream fetch failed: {exc}") from exc
+            target_sha = targets.get("refs/heads/main")
+            if set(targets) != {"refs/heads/main"} or not isinstance(target_sha, str) or (
+                re.fullmatch(r"[0-9a-f]{40}", target_sha) is None
+            ):
+                raise OperatorError("missing or malformed canonical main target")
+            try:
+                _git(observer, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=", remote, target_sha)
+            except OperatorError as exc:
+                raise OperatorError(f"upstream fetch failed: {exc}") from exc
+            if _git(observer, "rev-parse", "--verify", f"{target_sha}^{{commit}}") != target_sha:
+                raise OperatorError("canonical main target is not an exact commit")
+            require_binding()
+            if local_sha == target_sha or _git_is_ancestor(observer, target_sha, local_sha) or (
+                _git_is_ancestor(observer, local_sha, target_sha)
+            ):
+                return None
+            if os.environ.get("AIOS_RESTART_ATTEMPTED") == "1":
+                raise OperatorError("unsafe reload/restart condition")
+
+            preservation_patterns = (
+                "refs/heads/aios/failure/*", "refs/heads/aios/failure-artifacts/*",
+            )
+            preservation = _exact_remote_refs(observer, remote, *preservation_patterns)
+            candidates = [ref for ref, sha in preservation.items()
+                          if ref.startswith("refs/heads/aios/failure/") and sha == local_sha]
+            if len(candidates) != 1:
+                raise OperatorError("diverged main has missing or ambiguous canonical preservation")
+            failed_run_id = candidates[0].rsplit("/", 1)[-1]
+            base, failure_refs = prove_remote_failed_candidate(
+                observer, failed_run_id=failed_run_id, failed_head_sha=local_sha,
+            )
+            if any(preservation.get(ref) != sha for ref, sha in failure_refs.items()):
+                raise OperatorError("canonical preservation identity drift")
+            if not _git_is_ancestor(observer, base, local_sha) or not _git_is_ancestor(observer, base, target_sha):
+                raise OperatorError("reconciliation requires diverged common failure-base lineage")
+            # The validated canonical candidate is exactly local HEAD. Thus every
+            # local-only commit, including merge ancestry, remains reachable there.
+            local_only = _git(observer, "rev-list", local_sha, "--not", target_sha).splitlines()
+            if not local_only or any(not _git_is_ancestor(observer, sha, failure_refs[candidates[0]])
+                                     for sha in local_only):
+                raise OperatorError("local-only history lacks complete canonical preservation")
+            changed_paths = _git(
+                observer, "diff", "--name-only", "--no-renames", "-z", local_sha, target_sha,
+                strip_stdout=False,
+            ).split("\0")
+            requires_restart = any(_is_kernel_source_or_task_state(p) for p in changed_paths if p)
+            if requires_restart and not allow_restart:
+                raise OperatorError("cannot continue under stale pre-sync kernel state")
+
+            patterns = (*preservation_patterns, f"refs/heads/aios/review/{failed_run_id}",
+                        f"refs/heads/aios/artifacts/{failed_run_id}", "refs/heads/main")
+            expected_proof = {**preservation, **targets}
+            if _exact_remote_refs(observer, remote, *patterns) != expected_proof:
+                raise OperatorError("canonical reconciliation proof drift")
+            require_binding()
+            _require_primary_reconciliation_worktree(root, observer, local_sha, target_sha)
+
+            # Import only objects, never tracking refs or FETCH_HEAD. All failures
+            # before reset leave the control refs/index/worktree unchanged.
+            _git(observer, "update-ref", "refs/heads/main", target_sha)
+            _git(root, "fetch", "--no-tags", "--no-write-fetch-head", "--refmap=", str(observer), target_sha)
+            if prove_remote_failed_candidate(
+                observer, failed_run_id=failed_run_id, failed_head_sha=local_sha,
+            ) != (base, failure_refs):
+                raise OperatorError("canonical preservation identity drift")
+            if _exact_remote_refs(observer, remote, *patterns) != expected_proof:
+                raise OperatorError("canonical reconciliation proof drift")
+            require_binding()
+            _require_primary_reconciliation_worktree(root, observer, local_sha, target_sha)
+            require_binding()
+            _git(root, "reset", "--hard", target_sha)
+            if (
+                _git(root, "symbolic-ref", "--quiet", "HEAD") != "refs/heads/main"
+                or _git(root, "rev-parse", "HEAD") != target_sha
+                or _git(root, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all")
+            ):
+                raise OperatorError("repository-integrity BLOCKED: reconciliation postconditions failed")
+            return requires_restart
+    except ReviewTransportError as exc:
+        raise OperatorError(str(exc)) from exc
+
+
 def _synchronize_primary_branch(
     root: Path,
     *,
@@ -3638,6 +3798,15 @@ def _synchronize_primary_branch(
         if only_if_behind:
             return False
         raise OperatorError("configured upstream does not resolve to main")
+
+    # PRIMARY callers hold the mutation lock; CONTINUE is behind-only.
+    # Observe divergence before the ordinary fetch can change control refs.
+    if not only_if_behind and remote != ".":
+        reconciled = _reconcile_primary_divergence(
+            root, remote=remote, allow_restart=allow_restart,
+        )
+        if reconciled is not None:
+            return reconciled
 
     try:
         _git(root, "fetch", "--no-tags", remote, merge_ref)

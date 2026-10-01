@@ -12801,11 +12801,18 @@ def test_operator_reusing_preexisting_sidecar_preserves_bound_profile_values(tmp
 
 
 # TASK-242: explicit Human reconciliation is separate from automatic synchronization.
-def _transported_diverged_failure(root: Path) -> tuple[Path, Path, str, str, dict]:
+def _transported_diverged_failure(
+    root: Path, *, candidate_changes: dict[str, str] | None = None,
+) -> tuple[Path, Path, str, str, dict]:
     repo = make_repo(root)
     remote = root / "upstream.git"
     base = git(repo, "rev-parse", "HEAD")
     target = publish_upstream(repo, {"NEW_MAIN.txt": "new canonical main\n"})
+    for path, content in (candidate_changes or {}).items():
+        destination = repo / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(content, encoding="utf-8")
+        commit_setup_state(repo, path, message="local candidate ancestry")
     (repo / "FAILED_CANDIDATE.txt").write_text("failed candidate\n", encoding="utf-8")
     failed = commit_setup_state(repo, "FAILED_CANDIDATE.txt", message="failed candidate")
     run = {
@@ -12818,7 +12825,8 @@ def _transported_diverged_failure(root: Path) -> tuple[Path, Path, str, str, dic
         "executor": "codex", "base_sha": base, "failed_head_sha": failed,
         "candidate": {
             "transportable": True, "repairable": True, "dirty": False,
-            "descends_from_base": True, "changed_files": ["FAILED_CANDIDATE.txt"],
+            "descends_from_base": True,
+            "changed_files": sorted(["FAILED_CANDIDATE.txt", *(candidate_changes or {})]),
             "outside_task_scope": [],
         },
     }
@@ -13019,7 +13027,7 @@ def test_human_reconciliation_conflicting_lock_preserves_repository(tmp_path: Pa
     assert _reconciliation_snapshot(repo) == before
 
 
-def test_automatic_sync_never_reconciles_transported_diverged_failure(
+def test_continue_sync_never_reconciles_transported_divergence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, _, failed, _, _ = _transported_diverged_failure(tmp_path)
@@ -13029,8 +13037,7 @@ def test_automatic_sync_never_reconciles_transported_diverged_failure(
 
     monkeypatch.setattr(operator_module, "reconcile_control_main", forbidden)
     monkeypatch.setattr(operator_module, "run_task", forbidden)
-    with pytest.raises(OperatorError, match="diverged"):
-        operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+    assert operator_module._synchronize_primary_branch(repo, only_if_behind=True) is False
     outcome = operator_module._preflight_continue_sync(repo, argv=["continue", "TASK-101"])
     assert outcome.restart_code is None
     assert git(repo, "rev-parse", "HEAD") == failed
@@ -13127,3 +13134,302 @@ def test_reconciliation_rechecks_proofs_before_any_reset(
     assert not any(root == repo and args[0] in {"reset", "merge", "rebase", "clean", "push"}
                    for root, args in calls)
     assert git(repo, "rev-parse", "HEAD") == (failure["base_sha"] if drift == "head" else failed)
+
+
+# TASK-257: automatic authority exists only at the locked PRIMARY pre-RUN edge.
+def test_primary_reconciles_exact_canonical_failure_and_all_local_only_ancestry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, remote, failed, target, _ = _transported_diverged_failure(
+        tmp_path, candidate_changes={"EARLIER.txt": "earlier local commit\n"},
+    )
+    before = _reconciliation_snapshot(repo)
+    remote_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    local_only = git(repo, "rev-list", failed, "--not", target).splitlines()
+    assert len(local_only) == 2
+    calls = []
+    real_git = operator_module._git
+
+    def record_git(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("reconciliation cannot delegate or create lifecycle truth")
+
+    monkeypatch.setattr(operator_module, "_git", record_git)
+    for name in ("reconcile_control_main", "run_task", "run_repair", "run_remediation",
+                 "retry_transport", "_restart_primary_invocation"):
+        monkeypatch.setattr(operator_module, name, forbidden)
+    outcome = operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+    assert outcome.preflight_sha == target
+    assert outcome.restart_code is None
+    after = _reconciliation_snapshot(repo)
+    assert after[0:2] == ("refs/heads/main", target)
+    assert after[3] == ""
+    assert after[5] == before[5]  # FETCH_HEAD is not written.
+    assert after[-1] == before[-1]  # No new RUN or other Runtime artifact.
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == remote_before
+    assert git(remote, "rev-parse", "refs/heads/aios/failure/RUN-231-004") == failed
+    for sha in local_only:
+        assert operator_module._git_is_ancestor(remote, sha, failed)
+    mutations = [args for root, args in calls if root == repo and args[0] in {
+        "reset", "merge", "rebase", "cherry-pick", "stash", "clean", "commit", "push", "update-ref",
+    }]
+    assert mutations == [("reset", "--hard", target)]
+
+
+def test_primary_after_reconciliation_admits_once_on_exact_restored_base(tmp_path: Path) -> None:
+    repo, _, _, target, _ = _transported_diverged_failure(tmp_path)
+    runner = FakeCodexRunner(repo)
+    preflight = operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+    summary = run_task(
+        "TASK-101", executor="codex", repo=repo, native_runner=runner,
+        synchronize=False, preflight_sha=preflight.preflight_sha,
+    )
+    assert summary.base_sha == target
+    assert summary.task_id == "TASK-101"
+    assert runner.count == 1
+    assert len(list(runtime_paths(repo).runs.glob("RUN-101-*.json"))) == 1
+
+
+@pytest.mark.parametrize("gate", [
+    "dirty", "staged", "untracked", "detached", "non-main", "missing-upstream",
+    "ambiguous-upstream", "wrong-upstream", "remote-failure", "missing-candidate",
+    "missing-artifact", "candidate-mismatch", "ambiguous-preservation", "extra-local-commit",
+    "competing-result", "competing-review", "missing-content", "malformed-json",
+    "wrong-run", "wrong-head", "dirty-record", "untransportable-record", "malformed-flags",
+    "missing-base", "unrelated-base", "ignored-collision", "submodule", "hidden-tracked",
+])
+def test_primary_reconciliation_rejects_unproven_states_without_reset_or_run(
+    tmp_path: Path, gate: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, remote, failed, target, failure = _transported_diverged_failure(tmp_path)
+    state = runtime_paths(repo)
+    if gate in {"dirty", "staged"}:
+        (repo / "README.md").write_text("changed\n", encoding="utf-8")
+        if gate == "staged":
+            git(repo, "add", "README.md")
+    elif gate == "untracked":
+        (repo / "untracked.txt").write_text("keep\n", encoding="utf-8")
+    elif gate == "detached":
+        git(repo, "checkout", "--quiet", "--detach")
+    elif gate == "non-main":
+        git(repo, "checkout", "--quiet", "-b", "feature")
+    elif gate == "missing-upstream":
+        git(repo, "branch", "--unset-upstream")
+    elif gate == "ambiguous-upstream":
+        git(repo, "config", "--add", "branch.main.remote", "other")
+    elif gate == "wrong-upstream":
+        git(repo, "config", "branch.main.merge", "refs/heads/other")
+    elif gate == "remote-failure":
+        git(repo, "remote", "set-url", "origin", str(tmp_path / "missing.git"))
+    elif gate in {"missing-candidate", "missing-artifact"}:
+        namespace = "failure" if gate == "missing-candidate" else "failure-artifacts"
+        git(remote, "update-ref", "-d", f"refs/heads/aios/{namespace}/RUN-231-004")
+    elif gate == "candidate-mismatch":
+        git(remote, "update-ref", "refs/heads/aios/failure/RUN-231-004", target)
+    elif gate == "ambiguous-preservation":
+        git(remote, "update-ref", "refs/heads/aios/failure/RUN-231-005", failed)
+    elif gate == "extra-local-commit":
+        (repo / "unpreserved.txt").write_text("unpreserved\n", encoding="utf-8")
+        commit_setup_state(repo, "unpreserved.txt", message="unpreserved local commit")
+    elif gate in {"competing-result", "competing-review", "missing-content"}:
+        namespace = {"competing-result": "artifacts", "competing-review": "review",
+                     "missing-content": "failure-artifacts"}[gate]
+        git(remote, "update-ref", f"refs/heads/aios/{namespace}/RUN-231-004", target)
+    elif gate == "ignored-collision":
+        exclude = Path(git(repo, "rev-parse", "--absolute-git-dir")) / "info" / "exclude"
+        with exclude.open("ab") as stream:
+            stream.write(b"\nNEW_MAIN.txt\n")
+        (repo / "NEW_MAIN.txt").write_text("preserve ignored\n", encoding="utf-8")
+    elif gate == "submodule":
+        # A gitlink in the canonical target is enough to forbid this authority.
+        publisher = repo.parent / "publisher"
+        git(publisher, "update-index", "--add", "--cacheinfo", f"160000,{failed},module")
+        tree = git(publisher, "write-tree")
+        submodule_target = git(publisher, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                               "commit-tree", tree, "-p", target, "-m", "submodule target")
+        git(publisher, "push", "--quiet", "origin", f"{submodule_target}:refs/heads/main")
+    elif gate == "hidden-tracked":
+        git(repo, "update-index", "--assume-unchanged", "README.md")
+        (repo / "README.md").write_text("hidden changes\n", encoding="utf-8")
+    else:
+        if gate == "wrong-run":
+            failure["run_id"] = "RUN-231-005"
+        elif gate == "wrong-head":
+            failure["failed_head_sha"] = target
+        elif gate == "dirty-record":
+            failure["candidate"].update(dirty=True, repairable=False, transportable=False)
+        elif gate == "untransportable-record":
+            failure["candidate"].update(transportable=False, outside_task_scope=["FAILED_CANDIDATE.txt"])
+        elif gate == "malformed-flags":
+            failure["candidate"]["dirty"] = "false"
+        elif gate in {"missing-base", "unrelated-base"}:
+            failure["base_sha"] = "f" * 40 if gate == "missing-base" else target
+            run_path = state.runs / "RUN-231-004.json"
+            run = json.loads(run_path.read_text())
+            run["base_sha"] = failure["base_sha"]
+            run_path.write_text(json.dumps(run), encoding="utf-8")
+        (state.failures / "RUN-231-004.json").write_text(
+            "{" if gate == "malformed-json" else json.dumps(failure), encoding="utf-8",
+        )
+        _publish_reconciliation_artifact(repo)
+    calls = []
+    real_git = operator_module._git
+
+    def record_git(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("rejected preflight must not invoke Executor or Human reconciliation")
+
+    monkeypatch.setattr(operator_module, "_git", record_git)
+    monkeypatch.setattr(operator_module, "reconcile_control_main", forbidden)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
+    before = _reconciliation_snapshot(repo)
+    with pytest.raises(OperatorError):
+        operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"], runner=forbidden)
+    assert _reconciliation_snapshot(repo) == before
+    assert not any(root == repo and args[0] in {"reset", "merge", "push", "update-ref"}
+                   for root, args in calls)
+
+
+@pytest.mark.parametrize("drift", [
+    "head", "upstream", "url", "target", "candidate", "artifact", "competing-result",
+    "ambiguous-preservation", "dirty", "untracked", "ignored-collision",
+])
+def test_primary_reconciliation_rechecks_after_target_import_before_reset(
+    tmp_path: Path, drift: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, remote, failed, target, failure = _transported_diverged_failure(tmp_path)
+    real_git = operator_module._git
+    calls = []
+    edge_snapshot = None
+
+    def drift_at_import(root, *args, **kwargs):
+        nonlocal edge_snapshot
+        calls.append((Path(root), args))
+        result = real_git(root, *args, **kwargs)
+        if Path(root) == repo and args[0] == "fetch":
+            if drift == "head":
+                git(repo, "reset", "--hard", failure["base_sha"])
+            elif drift == "upstream":
+                git(repo, "config", "branch.main.merge", "refs/heads/other")
+            elif drift == "url":
+                git(repo, "remote", "set-url", "origin", str(tmp_path / "other.git"))
+            elif drift in {"target", "candidate", "artifact", "competing-result", "ambiguous-preservation"}:
+                ref = {"target": "refs/heads/main",
+                       "candidate": "refs/heads/aios/failure/RUN-231-004",
+                       "artifact": "refs/heads/aios/failure-artifacts/RUN-231-004",
+                       "competing-result": "refs/heads/aios/artifacts/RUN-231-004",
+                       "ambiguous-preservation": "refs/heads/aios/failure/RUN-231-005"}[drift]
+                git(remote, "update-ref", ref, failed if drift == "ambiguous-preservation" else failure["base_sha"])
+            elif drift == "dirty":
+                (repo / "README.md").write_text("edge dirty\n", encoding="utf-8")
+            elif drift == "untracked":
+                (repo / "untracked.txt").write_text("edge untracked\n", encoding="utf-8")
+            else:
+                exclude = Path(git(repo, "rev-parse", "--absolute-git-dir")) / "info" / "exclude"
+                with exclude.open("ab") as stream:
+                    stream.write(b"\nNEW_MAIN.txt\n")
+                (repo / "NEW_MAIN.txt").write_text("edge ignored\n", encoding="utf-8")
+            edge_snapshot = _reconciliation_snapshot(repo)
+        return result
+
+    monkeypatch.setattr(operator_module, "_git", drift_at_import)
+    with pytest.raises(OperatorError):
+        operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+    assert edge_snapshot is not None
+    assert _reconciliation_snapshot(repo) == edge_snapshot
+    assert not any(root == repo and args[0] == "reset" for root, args in calls)
+
+
+@pytest.mark.parametrize("path", ["src/aios_renew/marker.py", ".ai/tasks/TASK-999.yaml"])
+def test_primary_reconciliation_restart_retains_exact_pending_wakeup_selectors(
+    tmp_path: Path, path: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AIOS_RESTART_ATTEMPTED", raising=False)
+    repo, _, _, target, _ = _transported_diverged_failure(
+        tmp_path, candidate_changes={path: "# old candidate state\n"},
+    )
+    before = _reconciliation_snapshot(repo)[-1]
+    argv = ["wakeup", "pending-257", "TASK-101", "--task-revision", "1",
+            "--task-blob-sha", git(repo, "rev-parse", "HEAD:.ai/tasks/TASK-101.yaml"),
+            "--task-commit-sha", target, "--executor", "codex", "--model", "gpt-5.6-sol",
+            "--reasoning-effort", "high", "--model-source", "EXPLICIT",
+            "--effort-source", "EXPLICIT", "--repo", str(repo)]
+    restarted = []
+
+    def restart_runner(cmd, **kwargs):
+        restarted.append((cmd, kwargs))
+        assert git(repo, "rev-parse", "HEAD") == target
+        assert git(repo, "status", "--porcelain") == ""
+        return subprocess.CompletedProcess(cmd, 23)
+
+    outcome = operator_module._preflight_primary_sync(repo, argv=argv, runner=restart_runner)
+    assert outcome.restart_code == 23
+    assert outcome.preflight_sha is None
+    assert len(restarted) == 1
+    assert restarted[0][0] == [sys.executable, "-m", "aios_renew.operator", *argv]
+    assert restarted[0][1]["env"]["AIOS_RESTART_ATTEMPTED"] == "1"
+    assert _reconciliation_snapshot(repo)[-1] == before
+
+
+def test_primary_reconciliation_stale_generation_rejects_before_reset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _, _, _, _ = _transported_diverged_failure(
+        tmp_path, candidate_changes={"src/aios_renew/marker.py": "# candidate kernel\n"},
+    )
+    before = _reconciliation_snapshot(repo)
+    with RepositoryLock(runtime_paths(repo).lock):
+        with pytest.raises(OperatorError, match="stale pre-sync kernel"):
+            operator_module._synchronize_primary_branch(repo)
+    assert _reconciliation_snapshot(repo) == before
+    monkeypatch.setenv("AIOS_RESTART_ATTEMPTED", "1")
+    with pytest.raises(OperatorError, match="unsafe reload/restart"):
+        operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+    assert _reconciliation_snapshot(repo) == before
+
+
+def test_primary_reconciliation_failed_postconditions_block_continuation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _, _, _, _ = _transported_diverged_failure(tmp_path)
+    before = _reconciliation_snapshot(repo)[-1]
+    real_git = operator_module._git
+
+    def break_postcondition(root, *args, **kwargs):
+        result = real_git(root, *args, **kwargs)
+        if Path(root) == repo and args[0] == "reset":
+            (repo / "postcondition.txt").write_text("unexpected dirty\n", encoding="utf-8")
+        return result
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("failed postconditions cannot restart or admit execution")
+
+    monkeypatch.setattr(operator_module, "_git", break_postcondition)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
+    with pytest.raises(OperatorError, match="reconciliation postconditions failed"):
+        operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"], runner=forbidden)
+    assert _reconciliation_snapshot(repo)[-1] == before
+
+
+def test_primary_reconciliation_lock_conflict_leaves_subject_unchanged(tmp_path: Path) -> None:
+    repo, _, _, _, _ = _transported_diverged_failure(tmp_path)
+    before = _reconciliation_snapshot(repo)
+    with RepositoryLock(runtime_paths(repo).lock):
+        with pytest.raises(OperatorError, match="active"):
+            operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+    assert _reconciliation_snapshot(repo) == before
+
+
+def test_primary_reconciliation_does_not_add_workflow_git_recovery() -> None:
+    workflow = (Path(__file__).parents[1] / ".github/workflows/aios-self-hosted-wakeup.yml").read_text(
+        encoding="utf-8",
+    )
+    for command in ("fetch", "reset", "rebase", "merge", "cherry-pick", "stash", "clean"):
+        assert f"git -C $env:AIOS_REPO_ROOT {command}" not in workflow
+    assert "reconcile-control-main" not in workflow

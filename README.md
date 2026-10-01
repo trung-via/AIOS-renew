@@ -619,11 +619,30 @@ change to the syntax and authority of the existing low-level commands.
 Downstream repositories receive this presentation only through a separate explicit
 migration to a reviewed and source-published AIOS revision that contains it.
 
-### Explicit Human control-main reconciliation
+### PRIMARY safe divergence and explicit Human reconciliation
 
 Clean stale-behind `main` may automatically fast-forward during PRIMARY or
-CONTINUE. A diverged `main` remains fail-closed, even when its HEAD is a transported
-failed candidate. Only a Human's explicit command can reconcile that narrow case:
+CONTINUE. PRIMARY pre-RUN synchronization also admits one narrowly proven diverged
+`main`: the completely clean attached local HEAD must be the unique exact candidate
+of validated canonical immutable FAILURE transport, preserving every local-only
+ancestor. An isolated observer freshly resolves and fetches the exact configured
+canonical main; both tips must descend from the FAILURE base and genuinely diverge.
+Missing, malformed, ambiguous, conflicting, non-transportable or drifting proof
+fails closed before any reset or RUN admission.
+
+Under the existing repository mutation lock, PRIMARY rechecks local HEAD, upstream
+binding and URL, canonical target and preservation identity, complete worktree
+safety, ignored-path collisions and submodule safety immediately before one reset
+to the exact fetched target. Proof rejection leaves local refs, index and worktree
+unchanged. Exact attached-main and clean-index/worktree postconditions must succeed
+before the same pending PRIMARY can proceed. Kernel or TASK changes use the existing
+single safe restart with the original request, TASK authorization, dispatch and
+Executor/profile selectors; no second dispatch or blind retry is created.
+Reconciliation creates no engineering terminal artifact, semantic decision,
+verification/review/publication outcome or roadmap transition. CONTINUE remains
+stale-behind-only; REMEDIATION, REPAIR and workflow transport gain no reset authority.
+
+The distinct explicit Human operation remains available with exact selectors:
 
 ```powershell
 aios reconcile-control-main RUN-231-004 --expected-failed-head 8908a7be6f190eeba0dff7d8fce03f9e892a4ecb --expected-canonical-main 86df498a1317b085496a362c18c89be80497b8a4 --repo C:\TOOL\AIOS-Runtime\AIOS-renew
@@ -647,7 +666,8 @@ cherry-pick, stash, clean, new commit or remote publication. Canonical remote fa
 refs and `.git/aios` Runtime evidence remain intact. The JSON summary contains only
 `failed_run_id`, `prior_head`, `restored_head` and `status` (`SUCCESS` or `FAILURE`).
 The command creates no RUN, RESULT, FAILURE or REVIEW and invokes no Executor or
-verification. PRIMARY, CONTINUE, failure handling and transport never call it;
+verification. PRIMARY uses its own bounded pre-RUN edge and never calls this Human
+command. CONTINUE, failure handling and transport never call it;
 reconciliation grants no delivery retry or roadmap authority.
 
 ### Admission Failure v2 and outcome boundaries
