@@ -473,3 +473,38 @@ Reconciled outcome: **CLEAR / CANDIDATE** for TASK-255 r3,
 fails, return to Human/Brain architecture review. Credential-bearing user-attributed
 comment transport is not authorized by r3 and requires a separate Human decision.
 
+## 16. TASK-255 r4 — live read-after-write reconciliation
+
+The first live post-publication r3 marker probe used Issue #1220 and produced the exact
+INGRESS_REJECTED event
+`github-v1-f89372ce2240f2d3d17f7c4c69312045d0c75d0fa3d95516484ea11cbe3c2c01`.
+Bridge run 36806928682 attempt 1 created PENDING ledger comment 5923638532 and
+successfully committed the exact marker to `aios-brain-wake-bus-v1` at
+`70e5b34021c0735728798e1c88cffecd8df7ba2e`, then failed with
+`live PR and branch head disagree`.
+
+The failure was not projection, authorization, marker confinement, or write failure.
+The branch ref had advanced to the exact returned marker commit while GitHub's PR
+representation temporarily still advertised the previous head SHA. Once the PR view
+converged, a manual rerun of only the failed ring job recovered the same PENDING entry
+to EMITTED without a second marker commit. This live result validates the r3 recovery
+ledger but exposes an invalid immediate post-write equality assumption for the normal
+first attempt.
+
+Stage 1 keeps the r3 architecture and removes only that assumption. Pre-write admission
+remains exact PR-head == branch-ref. After the bridge itself receives one successful
+marker write response, completion is bound to the exact transition
+`pre_write_head_sha -> write_response_commit_sha`: the branch ref must equal the new
+commit, the marker must be read from that exact commit SHA, and PR identity/repository/
+branch/base bindings must remain unchanged. During this bounded post-write window only,
+PR head.sha may be either the exact old SHA or exact new SHA.
+
+Stage 2 rejected polling, sleeps, automatic reruns, looser arbitrary staleness and branch
+alias confirmation. A third PR head SHA, branch movement beyond the returned commit,
+identity substitution, marker mismatch, closed/merged PR, or wrong repo/ref still fails
+closed before EMITTED. Existing later recovery remains exact and creates no second marker
+commit.
+
+Reconciled outcome: **CLEAR / CANDIDATE** for TASK-255 r4,
+`BOUNDED_POST_WRITE_PR_HEAD_LAG_RECONCILIATION_V1`. Real ChatGPT Work commit-update
+wake remains a separate post-publication conformance gate.
