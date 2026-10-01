@@ -3912,14 +3912,18 @@ def _reconcile_primary_divergence(
             if os.environ.get("AIOS_RESTART_ATTEMPTED") == "1":
                 raise OperatorError("unsafe reload/restart condition")
 
-            preservation_patterns = (
+            failure_patterns = (
                 "refs/heads/aios/failure/*", "refs/heads/aios/failure-artifacts/*",
-                "refs/heads/aios/review/*",
             )
-            preservation = _exact_remote_refs(observer, remote, *preservation_patterns)
-            candidates = [ref for ref, sha in preservation.items()
-                          if ref.startswith(("refs/heads/aios/failure/", "refs/heads/aios/review/"))
-                          and sha == local_sha]
+            discovery_patterns = (*failure_patterns, "refs/heads/aios/review/*")
+
+            def preservation_candidates(refs: dict[str, str]) -> list[str]:
+                return sorted(ref for ref, sha in refs.items()
+                              if ref.startswith(("refs/heads/aios/failure/", "refs/heads/aios/review/"))
+                              and sha == local_sha)
+
+            discovery = _exact_remote_refs(observer, remote, *discovery_patterns)
+            candidates = preservation_candidates(discovery)
             if len(candidates) != 1:
                 raise OperatorError("diverged main has missing or ambiguous canonical preservation")
             preserved_run_id = candidates[0].rsplit("/", 1)[-1]
@@ -3933,7 +3937,7 @@ def _reconcile_primary_divergence(
                     observer, failed_run_id=preserved_run_id, failed_head_sha=local_sha,
                 )
                 proof_patterns = ()
-            if any(preservation.get(ref) != sha for ref, sha in proof_refs.items()
+            if any(discovery.get(ref) != sha for ref, sha in proof_refs.items()
                    if ref.startswith(("refs/heads/aios/failure/", "refs/heads/aios/failure-artifacts/",
                                       "refs/heads/aios/review/"))):
                 raise OperatorError("canonical preservation identity drift")
@@ -3954,11 +3958,23 @@ def _reconcile_primary_divergence(
             if requires_restart and not allow_restart:
                 raise OperatorError("cannot continue under stale pre-sync kernel state")
 
-            patterns = (*preservation_patterns, *proof_patterns, f"refs/heads/aios/review/{preserved_run_id}",
+            # Discovery binds only competing tips at local HEAD. Keep FAILURE's
+            # original snapshot identity; reviewed RESULT binds its lineage refs.
+            preservation = {} if reviewed else {
+                ref: sha for ref, sha in discovery.items()
+                if ref.startswith(("refs/heads/aios/failure/", "refs/heads/aios/failure-artifacts/"))
+            }
+            patterns = (*(proof_patterns if reviewed else failure_patterns), f"refs/heads/aios/review/{preserved_run_id}",
                         f"refs/heads/aios/artifacts/{preserved_run_id}", "refs/heads/main")
             expected_proof = {**preservation, **proof_refs, **targets}
-            if _exact_remote_refs(observer, remote, *patterns) != expected_proof:
-                raise OperatorError("canonical reconciliation proof drift")
+
+            def require_proof() -> None:
+                if _exact_remote_refs(observer, remote, *patterns) != expected_proof:
+                    raise OperatorError("canonical reconciliation proof drift")
+                if preservation_candidates(_exact_remote_refs(observer, remote, *discovery_patterns)) != candidates:
+                    raise OperatorError("diverged main has missing or ambiguous canonical preservation")
+
+            require_proof()
             require_binding()
             _require_primary_reconciliation_worktree(root, observer, local_sha, target_sha)
 
@@ -3982,8 +3998,7 @@ def _reconcile_primary_divergence(
                 or any(not _git_is_ancestor(observer, sha, proof_refs[candidates[0]]) for sha in local_only)
             ):
                 raise OperatorError("local-only history lacks complete canonical preservation")
-            if _exact_remote_refs(observer, remote, *patterns) != expected_proof:
-                raise OperatorError("canonical reconciliation proof drift")
+            require_proof()
             require_binding()
             _require_primary_reconciliation_worktree(root, observer, local_sha, target_sha)
             require_binding()

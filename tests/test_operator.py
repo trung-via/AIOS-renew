@@ -13180,6 +13180,72 @@ def test_primary_reconciles_exact_canonical_failure_and_all_local_only_ancestry(
     assert mutations == [("reset", "--hard", target)]
 
 
+@pytest.mark.parametrize("stage", ["proof", "import"])
+@pytest.mark.parametrize("drift", ["unrelated-review", "competing-review"])
+def test_primary_failure_reconciliation_bounds_review_ref_drift_to_local_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str, drift: str,
+) -> None:
+    repo, remote, failed, target, failure = _transported_diverged_failure(tmp_path)
+    review_ref = "refs/heads/aios/review/RUN-999-001"
+    if drift == "unrelated-review":
+        git(remote, "update-ref", review_ref, failure["base_sha"])
+    before = _reconciliation_snapshot(repo)
+    failure_refs = git(remote, "for-each-ref", "--format=%(refname) %(objectname)",
+                       "refs/heads/aios/failure", "refs/heads/aios/failure-artifacts")
+    real_query = operator_module._exact_remote_refs
+    real_git = operator_module._git
+    calls = []
+    mutation_snapshot = None
+
+    def mutate_review():
+        nonlocal mutation_snapshot
+        assert mutation_snapshot is None
+        git(remote, "update-ref", review_ref, failed if drift == "competing-review" else target)
+        mutation_snapshot = _reconciliation_snapshot(repo)
+
+    def drift_at_proof(observer, remote_name, *patterns):
+        if stage == "proof" and mutation_snapshot is None and "refs/heads/main" in patterns and len(patterns) > 1:
+            mutate_review()
+        return real_query(observer, remote_name, *patterns)
+
+    def drift_at_import(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        result = real_git(root, *args, **kwargs)
+        if stage == "import" and Path(root) == repo and args[0] == "fetch":
+            mutate_review()
+        return result
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("preservation cannot admit or invoke lifecycle authority")
+
+    monkeypatch.setattr(operator_module, "_exact_remote_refs", drift_at_proof)
+    monkeypatch.setattr(operator_module, "_git", drift_at_import)
+    for name in ("reconcile_control_main", "run_task", "run_repair", "run_remediation",
+                 "retry_transport", "_restart_primary_invocation"):
+        monkeypatch.setattr(operator_module, name, forbidden)
+    if drift == "competing-review":
+        with pytest.raises(OperatorError, match="ambiguous canonical preservation"):
+            operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+        assert mutation_snapshot is not None
+        assert _reconciliation_snapshot(repo) == mutation_snapshot
+        assert not any(root == repo and args[0] == "reset" for root, args in calls)
+    else:
+        outcome = operator_module._preflight_primary_sync(repo, argv=["run", "TASK-101"])
+        assert mutation_snapshot is not None
+        assert outcome.preflight_sha == target and outcome.restart_code is None
+        after = _reconciliation_snapshot(repo)
+        assert after[:2] == ("refs/heads/main", target) and after[3] == ""
+        assert after[5] == before[5] and after[-1] == before[-1]
+        mutations = [args for root, args in calls if root == repo and args[0] in {
+            "reset", "merge", "rebase", "cherry-pick", "stash", "clean", "commit", "push", "update-ref",
+        }]
+        assert mutations == [("reset", "--hard", target)]
+    assert git(remote, "rev-parse", review_ref) == (failed if drift == "competing-review" else target)
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)",
+               "refs/heads/aios/failure", "refs/heads/aios/failure-artifacts") == failure_refs
+    assert not list(runtime_paths(repo).runs.glob("RUN-101-*.json"))
+
+
 def test_primary_after_reconciliation_admits_once_on_exact_restored_base(tmp_path: Path) -> None:
     repo, _, _, target, _ = _transported_diverged_failure(tmp_path)
     runner = FakeCodexRunner(repo)
