@@ -1,5 +1,5 @@
 version: 1
-active_track: github-chatgpt-brain-wake-automation-v1
+active_track: brain-runtime-semantic-handoff-hardening-v1
 active_track_status: ACTIVE
 planning_document: docs/AIOS-BRAIN-PORTABILITY.md
 planning_baseline:
@@ -73,7 +73,7 @@ human_priority_sequence:
   ordering_policy: STRICT_SEQUENTIAL_NO_AUTOMATIC_CROSS_TRACK_ADVANCE
   order:
     - track: github-chatgpt-brain-wake-automation-v1
-      status: ACTIVE
+      status: COMPLETE
       objective: >-
         Establish and prove a native GitHub-to-ChatGPT Brain wake loop before
         strengthening fail-close authoring: use GitHub PR activity only as a wake
@@ -89,7 +89,7 @@ human_priority_sequence:
         - NO_ROADMAP_AUTO_ADVANCE
         - NO_FAKE_RUN_FOR_PRE_AIOS_FAILURE
     - track: brain-runtime-semantic-handoff-hardening-v1
-      status: PAUSED_BY_HUMAN_PRIORITY
+      status: ACTIVE
       objective: >-
         Close the demonstrated Brain-to-canonical-mutation continuity gaps before
         further performance work: enforce validated two-stage Brain audit handoff at
@@ -147,16 +147,16 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - github-chatgpt-brain-wake-automation-v1-real-conformance
+  - brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
-    status: ACTIVE
+    status: DONE
     task_id: TASK-255
     task_revision: 4
     task_author_commit_sha: "b016dcabd7623b9fc2763f48ab3ae4bf71939850"
     task_blob_sha: "9d3cc4f638621ec62daa52fd0dc056c2815419f2"
-    implementation_phase: WORK_COMMIT_UPDATE_CONFORMANCE
+    implementation_phase: REAL_CONFORMANCE_CLOSED
     authority: HUMAN_BRAIN_PLANNING
     r1_failure:
       run_id: RUN-255-001
@@ -265,7 +265,7 @@ sequence:
         automation is still explicitly bound to qualifying PR comments and ignores
         commits, so no autonomous Work result may be inferred from this marker commit.
     work_commit_update_trigger:
-      status: DUPLICATE_RELIABILITY_PAIR_PROBE_ARMED
+      status: REAL_CONFORMANCE_PASS
       authority: HUMAN
       configuration_ref: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md#17-chatgpt-work-pr-commit-update-trigger-contract
       repository: trung-via/AIOS-renew
@@ -304,6 +304,29 @@ sequence:
         manual_work_invocation: false
         manual_bridge_rerun: false
         expected_external_result: EXACTLY_ONE_ACK_PER_NEW_EVENT
+      duplicate_reliability_live_result:
+        status: PASS
+        probe_issues:
+          - 1228
+          - 1229
+        ingress_receipt_comment_ids:
+          - 5924406355
+          - 5924408699
+        first_marker_commit_sha: "2aa79ca09bb97efc3472fcd06788313766583b96"
+        first_event_id: github-v1-189efb5ab0e54a7ab4b1399ec8c61d805b343a719a89cb23af7bd113e026808f
+        first_ledger_comment_id: 5924414883
+        first_ack_comment_id: 5924467407
+        second_marker_commit_sha: "6342b7a2f5ca24d5db0283d396f9c993648cafad"
+        second_event_id: github-v1-b227ef7fe2e9b43e9afd57a58153f366538af474ffd274e35ea0cd914f682f9a
+        second_ledger_comment_id: 5924417964
+        second_ack_comment_id: 5924469974
+        ack_main_sha: "912dcf8d0410840fd46a916a3e5b8121155f0334"
+        fresh_brain_sync: true
+        exactly_once_ack_per_event: true
+        oldest_first_ack_order: true
+        duplicate_ack_observed: false
+        work_last_run_time_utc: "2026-10-01T04:01:30.344662Z"
+        result: WORK_POST_SUCCESS_PAIR_RELIABILITY_V1_PASS
       sha_less_live_result:
         status: PRIMARY_FUNCTIONAL_CONFORMANCE_PASS
         fresh_probe_issue_number: 1227
@@ -493,8 +516,7 @@ sequence:
       after exact reviewed H1 source publication.
 
   - id: brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
-    status: PAUSED_BY_HUMAN_PRIORITY
-    blocked_by: github-chatgpt-brain-wake-automation-v1-real-conformance
+    status: ACTIVE
     task_id: TASK-254
     task_revision: 1
     authored_commit_sha: "2ea52d8237bbb1a569a8c707b638d2c8ef755f85"
