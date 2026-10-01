@@ -100,6 +100,7 @@ human_priority_sequence:
       milestones:
         - BSH-H0-ARCHITECTURE-CONTRACT
         - BSH-H1-AUDITED-AUTHORING-GATE
+        - BSH-H1R-SAFE-LOCAL-MAIN-RECONCILIATION
         - BSH-H2-REPAIR-STRATEGY-FACT-PROJECTION
         - BSH-H3-ACCEPTANCE-PROOF-PHASE-CONTRACT
         - BSH-H4A-LOCAL-REGULAR-CHAT-WAKE
@@ -118,6 +119,54 @@ human_priority_sequence:
         - NO_BLIND_RESEND_AFTER_AMBIGUOUS_SUBMISSION
         - REGULAR_CHAT_REQUIRES_FRESH_BRAIN_SYNC
         - NO_AUTOMATIC_ROADMAP_ADVANCE
+        - NO_UNPROVEN_DESTRUCTIVE_LOCAL_RESET
+        - LOCAL_RECONCILIATION_IS_RUNTIME_CONTROL_NOT_EXECUTOR_REASONING
+      h1r_safe_local_main_reconciliation:
+        approved_on: "2026-10-01"
+        authority: HUMAN_BRAIN_PLANNING
+        profile: brain-high-value-v2
+        stage1: CONSTRUCT
+        stage1_outcome: RISK_FOUND
+        stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+        closure: CLEAR
+        outcome: CANDIDATE
+        selected_contract: SAFE_LOCAL_MAIN_RECONCILIATION_V1
+        sequencing:
+          - AFTER_H1_CURRENT_RUN_OR_TERMINAL_RECONCILIATION
+          - BEFORE_H2
+        observed_case:
+          dispatch_id: task254-r3-codex61-high-20261001-001
+          operational_boundary: ADMISSION_REJECTED
+          phase: PRIMARY_SYNCHRONIZATION
+          reason: LOCAL_MAIN_DIVERGED_FROM_UPSTREAM
+          run_created: false
+          executor_invoked: false
+        required_safety_gates:
+          - WORKTREE_CLEAN
+          - ATTACHED_BRANCH_IS_MAIN
+          - UNIQUE_UPSTREAM_MAIN
+          - EXACT_FETCHED_UPSTREAM_SHA
+          - ALL_LOCAL_ONLY_COMMITS_HAVE_PROVEN_CANONICAL_PRESERVATION
+          - PRESERVATION_REF_IDENTITY_RECHECKED_BEFORE_RESET
+          - NO_ACTIVE_OR_UNRESOLVED_LOCAL_MUTATION_AUTHORITY
+          - RESET_TARGET_IS_EXACT_FETCHED_UPSTREAM_MAIN
+          - POSTCHECK_MAIN_HEAD_EQUALS_UPSTREAM
+          - POSTCHECK_WORKTREE_CLEAN
+        fail_closed_cases:
+          - DIRTY_WORKTREE
+          - DETACHED_HEAD
+          - NON_MAIN_BRANCH
+          - AMBIGUOUS_OR_MISSING_UPSTREAM
+          - UNPRESERVED_LOCAL_ONLY_COMMIT
+          - PRESERVATION_REF_MISMATCH
+          - TARGET_MOVED_DURING_RECONCILIATION
+          - UNKNOWN_OR_AMBIGUOUS_LOCAL_STATE
+        authority_boundaries:
+          - RUNTIME_CONTROL_PLANE_OWNS_DETERMINISTIC_RECONCILIATION
+          - EXECUTOR_MUST_NOT_DECIDE_OR_PERFORM_AD_HOC_RESET
+          - BRAIN_DOES_NOT_IMPLEMENT_OR_EXECUTE_PRODUCTION_RESET_LOGIC
+          - RECONCILIATION_CREATES_NO_RUN_FAILURE_OR_SEMANTIC_DECISION
+          - RECONCILIATION_MAY_RETRY_PRIMARY_ONLY_AFTER_POSTCHECK_SUCCESS
       h4_production_semantic_continuation_audit:
         approved_on: "2026-10-01"
         authority: HUMAN_BRAIN_PLANNING
