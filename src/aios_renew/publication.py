@@ -624,7 +624,7 @@ def _validate_predecessor_lineage(
     if not isinstance(evidence, list):
         raise ValueError("predecessor ResultPackage evidence is invalid")
     _validated_repair_remediation_source(
-        repo, task=task, run_data=pred_run_data, run=pred_run,
+        repo, remote=remote, task=task, run_data=pred_run_data, run=pred_run,
         package=ResultPackage(result=pred_result, evidence=tuple(validate_evidence(item) for item in evidence)),
         review=prior_review,
         repair=_read_remote_blob(repo, remote, pred_artifacts_sha, ".ai/transport/repair.json"),
@@ -775,7 +775,7 @@ def _derive_publication_frontier(
             source_task = parse_task(_read_blob(repo, pred_result.head_sha,
                 f".ai/tasks/{source_run.task.id}.yaml", run_id=publication_run_id).decode("utf-8"))
             _validated_repair_remediation_source(
-                repo, task=source_task, run_data=pred_run_data, run=source_run,
+                repo, remote=remote, task=source_task, run_data=pred_run_data, run=source_run,
                 package=ResultPackage(result=pred_result, evidence=tuple(
                     validate_evidence(item) for item in source_package["evidence"])),
                 review=prior_review,

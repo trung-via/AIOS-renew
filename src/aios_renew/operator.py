@@ -3237,16 +3237,20 @@ def _validated_repair_remediation_source(
     repo: Path, *, task: Task, run_data: Mapping[str, Any], run: Run,
     package: ResultPackage, review: Review, repair: bytes | None,
     repair_sources: frozenset[str] = frozenset(),
+    remote: str | None = None,
 ) -> tuple[str, Review | None] | None:
     """Validate exact successful REPAIR provenance before remediation authority.
 
     A missing wrapper on a RUN based on a canonical failed candidate cannot become
     ordinary PRIMARY provenance. No new lifecycle kind is inferred or persisted.
+    Publisher callers may supply their already validated remote; other callers
+    retain the current branch's fail-closed upstream resolution.
     """
     from . import publication as pub
     from .review_transport import resolve_transport_remote, _read_remote_blob
 
-    remote = resolve_transport_remote(repo)
+    if remote is None:
+        remote = resolve_transport_remote(repo)
     if repair is None:
         if "kind" not in run_data:
             if review.mode == "DELTA":

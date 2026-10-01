@@ -1903,11 +1903,21 @@ def make_predecessor_lineage(
     predecessor_override: dict[str, object] | None = None,
     sibling_findings: bool = False,
     remediation_scope: tuple[str, ...] = ("product.txt",),
+    repaired_predecessor: bool = False,
 ) -> dict[str, object]:
-    repo, remote, base_sha = materialize_publication_baseline(root)
+    if repaired_predecessor:
+        repaired = make_repair_lineage(root, predecessor_kind="PRIMARY")
+        repo, remote = repaired["repo"], repaired["remote"]
+        base_sha = repaired["candidate_sha"]
+        pred_run_id = repaired["run_id"]
+        # Replace the fixture's PASS decision with the canonical finding that
+        # authorizes this next REMEDIATION of the successful REPAIR candidate.
+        git(repo, "reset", "--hard", "--quiet", base_sha)
+    else:
+        repo, remote, base_sha = materialize_publication_baseline(root)
 
     state = root / "state"
-    state.mkdir()
+    state.mkdir(exist_ok=True)
 
     pred_run = {
         "run_id": pred_run_id,
@@ -1925,13 +1935,14 @@ def make_predecessor_lineage(
         json.dumps(result_payload(pred_run_id, base_sha, remediation=False)),
         encoding="utf-8",
     )
-    transport_post_pass(
-        repo,
-        run_id=pred_run_id,
-        head_sha=base_sha,
-        run_path=pred_run_path,
-        result_path=pred_result_path,
-    )
+    if not repaired_predecessor:
+        transport_post_pass(
+            repo,
+            run_id=pred_run_id,
+            head_sha=base_sha,
+            run_path=pred_run_path,
+            result_path=pred_result_path,
+        )
 
     review_dir = repo / ".ai" / "reviews"
     review_dir.mkdir(parents=True, exist_ok=True)
@@ -1988,6 +1999,11 @@ constraints: []
     git(repo, "add", ".ai")
     git(repo, "commit", "--quiet", "-m", "predecessor review and remediation")
     git(repo, "push", "--quiet", "origin", f"HEAD:refs/heads/aios/remediation/{pred_run_id}-R1")
+    if repaired_predecessor:
+        git(
+            repo, "push", "--quiet", "--force", "origin",
+            f"HEAD:refs/heads/aios/review-decision/{pred_run_id}",
+        )
 
     git(repo, "reset", "--hard", "--quiet", base_sha)
 
@@ -1996,7 +2012,7 @@ constraints: []
     git(repo, "commit", "--quiet", "-m", "remediation candidate")
     candidate_sha = git(repo, "rev-parse", "HEAD")
 
-    rem_run_id = "RUN-063-002"
+    rem_run_id = "RUN-063-005" if repaired_predecessor else "RUN-063-002"
     rem_operational_run = {
         "run_id": rem_run_id,
         "task": {"id": "TASK-063", "revision": 2},
@@ -2091,6 +2107,108 @@ findings: []
         "candidate_sha": candidate_sha,
         "decision_sha": decision_sha,
     }
+
+
+def _repair_source_validation_inputs(lineage: dict[str, object]) -> dict:
+    from aios_renew.artifacts import ResultPackage, validate_evidence, validate_result
+    from aios_renew.review import parse_review
+    from aios_renew.task import parse_task
+
+    repo = lineage["remote"]
+    source_id = lineage["pred_run_id"]
+    artifacts_ref = f"refs/heads/aios/artifacts/{source_id}"
+    run_data = json.loads(git(repo, "show", f"{artifacts_ref}:.ai/transport/run.json"))
+    package = json.loads(git(repo, "show", f"{artifacts_ref}:.ai/transport/result.json"))
+    # Read bytes without stripping the transport's trailing whitespace.
+    repair = subprocess.run(
+        ("git", "-C", str(repo), "show", f"{artifacts_ref}:.ai/transport/repair.json"),
+        capture_output=True, check=True,
+    ).stdout
+    review = parse_review(git(
+        repo, "show",
+        f"refs/heads/aios/review-decision/{source_id}:.ai/reviews/REVIEW-063-001.yaml",
+    ))
+    return {
+        "task": parse_task(TASK_SOURCE),
+        "run_data": run_data,
+        "run": publication_module._run_from_data(run_data, "source REPAIR RUN"),
+        "package": ResultPackage(
+            result=validate_result(package["result"]),
+            evidence=tuple(validate_evidence(item) for item in package["evidence"]),
+        ),
+        "review": review,
+        "repair": repair,
+    }
+
+
+@pytest.mark.parametrize("remote", ["origin", "publisher"])
+def test_detached_publication_validates_successful_repair_predecessor_and_frontier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, remote: str,
+) -> None:
+    import aios_renew.operator as operator_module
+
+    lineage = make_predecessor_lineage(tmp_path, repaired_predecessor=True)
+    repo = lineage["repo"]
+    if remote != "origin":
+        git(repo, "remote", "rename", "origin", remote)
+        # An unrelated origin must never replace the Publisher's identity.
+        git(repo, "remote", "add", "origin", str(tmp_path / "unavailable.git"))
+    git(repo, "checkout", "--quiet", "--detach", lineage["base_sha"])
+    assert git(repo, "branch", "--show-current") == ""
+    observed = []
+    validate_source = operator_module._validated_repair_remediation_source
+
+    def record_source(*args, **kwargs):
+        observed.append(kwargs.get("remote"))
+        return validate_source(*args, **kwargs)
+
+    monkeypatch.setattr(operator_module, "_validated_repair_remediation_source", record_source)
+    report = publish_review_decision(
+        repo, run_id=lineage["run_id"], decision_sha=lineage["decision_sha"], remote=remote,
+    )
+
+    assert report.outcome == "PUBLISHED"
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert remote_main(lineage) == lineage["candidate_sha"]
+    assert observed == [remote, remote]
+
+
+def test_detached_repair_source_requires_explicit_remote(tmp_path: Path) -> None:
+    from aios_renew.operator import _validated_repair_remediation_source
+    from aios_renew.review_transport import ReviewTransportError
+
+    lineage = make_predecessor_lineage(tmp_path, repaired_predecessor=True)
+    inputs = _repair_source_validation_inputs(lineage)
+    repo = lineage["repo"]
+    expected = _validated_repair_remediation_source(repo, **inputs)
+    assert expected is not None
+    git(repo, "checkout", "--quiet", "--detach", lineage["base_sha"])
+
+    with pytest.raises(ReviewTransportError, match="no configured upstream Git remote"):
+        _validated_repair_remediation_source(repo, **inputs)
+    assert _validated_repair_remediation_source(repo, remote="origin", **inputs) == expected
+    assert remote_main(lineage) != lineage["candidate_sha"]
+
+
+@pytest.mark.parametrize("remote", ["missing", "unavailable", "empty", ""])
+def test_explicit_repair_remote_never_falls_back_to_valid_origin(
+    tmp_path: Path, remote: str,
+) -> None:
+    from aios_renew.operator import _validated_repair_remediation_source
+
+    lineage = make_predecessor_lineage(tmp_path, repaired_predecessor=True)
+    inputs = _repair_source_validation_inputs(lineage)
+    repo = lineage["repo"]
+    git(repo, "remote", "add", "unavailable", str(tmp_path / "unavailable.git"))
+    empty_remote = tmp_path / "empty.git"
+    git(tmp_path, "init", "--quiet", "--bare", str(empty_remote))
+    git(repo, "remote", "add", "empty", str(empty_remote))
+    git(repo, "checkout", "--quiet", "--detach", lineage["base_sha"])
+
+    assert _validated_repair_remediation_source(repo, remote="origin", **inputs) is not None
+    with pytest.raises(PublicationError):
+        _validated_repair_remediation_source(repo, remote=remote, **inputs)
+    assert remote_main(lineage) != lineage["candidate_sha"]
 
 
 def test_predecessor_bearing_remediation_publication_advances_main_ac5(
