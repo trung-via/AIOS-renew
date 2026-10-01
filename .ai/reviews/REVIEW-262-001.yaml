@@ -1,0 +1,43 @@
+review_id: REVIEW-262-001
+run_id: RUN-262-003
+reviewed_sha: 458ed520882ebab3e2642d6f20c7e52a382c3dbf
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: FAIL
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings:
+- id: FINDING-262-001
+  basis: AC2
+  action: CODE_FIX
+  location: .github/workflows/aios-terminal-attention.yml and focused H4A2 workflow
+    regressions
+  issue: The new local-chat wake job is gated on needs.admit-and-notify.result ==
+    'success'. That job contains canonical terminal admission plus unrelated downstream
+    Issue notification and wake-source artifact/export steps. If exact terminal admission
+    succeeds but Issue creation, selector writing, or artifact export fails afterward,
+    the job result is failure and the local-chat wake is skipped. TASK-262 r2 requires
+    the production wake wiring to originate after successful canonical terminal-attention
+    admission; unrelated legacy/observability transport failure must not suppress
+    an otherwise admitted local wake.
+  expected: Bind local-chat-wake eligibility to the exact successful terminal admission
+    outputs/status rather than success of the entire mixed admit-and-notify job, while
+    preserving fail-closed behavior when admission itself is absent/failed/ambiguous.
+    Keep terminal attention permissions at contents:read plus issues:write, preserve
+    the existing Issue/artifact path as independent observability, and add deterministic
+    regressions proving post-admission notification/artifact failure cannot suppress
+    an admitted local wake while admission failure cannot trigger one.
+notes:
+- 'Runtime verification is valid for exact candidate 458ed520882ebab3e2642d6f20c7e52a382c3dbf:
+  91 passed, 9 skipped; git diff --check PASS; unresolved is empty; changed files
+  are within TASK-262 r2 scope.'
+- Execution profile is Codex gpt-6.1-sol/high with explicit model and effort.
+- AC1 and AC3-AC7 are semantically supported. AC2 requires correction because wake
+  eligibility is coupled to downstream observability steps rather than the exact canonical
+  admission boundary.
+- Do not publish RUN-262-003. Continue through canonical remediation for FINDING-262-001.
