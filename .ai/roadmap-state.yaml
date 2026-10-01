@@ -299,7 +299,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+  - brain-runtime-semantic-handoff-hardening-v1-h4a2-reviewed-candidate-integration-recovery
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
@@ -1110,8 +1110,42 @@ sequence:
       expires_on_task_change: true
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a2-reviewed-candidate-integration-recovery
     status: NEXT
+    phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
+    task_id: TASK-262
+    task_revision: 2
+    authority: HUMAN_BRAIN_PLANNING
+    operation: CORRECTION_INTEGRATION
+    human_approval_required: true
+    reason: >-
+      RUN-262-004 remains canonically reviewed PASS, but its reviewed candidate and
+      current main diverged while TASK-264, TASK-265 and TASK-263 were published.
+      Direct Publisher replay is therefore no longer a fast-forward operation.
+    cumulative_tip:
+      run_id: RUN-262-004
+      candidate_sha: "766f4805f08fd95c621f8bd081fee55afdc44f86"
+      artifacts_sha: "7ae594092fa4e7f56cde0ab5d54b0ec80055afe8"
+      review_id: REVIEW-262-002
+      review_decision_sha: "1458674ecd381a4c54a3f5ad1b994af8cf22088d"
+    topology_at_detection:
+      main_sha: "1a630a357b0fb5cf8e74afdbe30e0bfe4ab92994"
+      relationship: DIVERGED
+      main_only_commits: 14
+      candidate_only_commits: 2
+    required_primitive: aios integrate-correction
+    constraints:
+      - EXACT_CURRENT_CANONICAL_MAIN_MUST_BE_REAUTHORIZED_AT_EXECUTION_EDGE
+      - EXACT_CANONICAL_TASK262_R2_LIFECYCLE_TIP_REQUIRED
+      - CLEAN_DETERMINISTIC_MERGE_TREE_REQUIRED
+      - NO_DIRECT_PUSH_TO_MAIN
+      - NO_FORCE_PUBLICATION_OF_DIVERGED_REVIEWED_CANDIDATE
+      - INTEGRATION_REF_ONLY_UNTIL_SUBSEQUENT_CANONICAL_LIFECYCLE_ACTION
+      - FAIL_CLOSED_ON_MAIN_DRIFT_OR_MERGE_CONFLICT
+    return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+    status: DONE
     phase: H4A2P_PUBLISHER_DETACHED_REMOTE_COMPATIBILITY
     task_id: TASK-263
     task_revision: 1
@@ -1129,6 +1163,21 @@ sequence:
       failure_class: PUBLISHER_DETACHED_REMOTE_COMPATIBILITY
       return_to_phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
       return_action: REPLAY_PUBLICATION_THEN_RECONCILE_INTEGRATION_IF_REQUIRED
+    completed_by:
+      task_id: TASK-263
+      task_revision: 1
+      primary_failed_run_id: RUN-263-001
+      primary_failed_candidate_sha: "d6e246412e77e4adba63563652a60efee2521e1c"
+      successful_run_id: RUN-263-002
+      artifacts_sha: "8524eb4197ec37601dee767f4ba79cade3292738"
+      review_id: REVIEW-263-001
+      review_decision_sha: "ae1edfd0b660f2650b6b1740f812403e86ed20fa"
+      reviewed_sha: "1a630a357b0fb5cf8e74afdbe30e0bfe4ab92994"
+      published_sha: "1a630a357b0fb5cf8e74afdbe30e0bfe4ab92994"
+      publication_workflow_run_id: 36910894515
+      completed_on: "2026-10-02"
+      publication_transport: STANDARD_DETACHED_PUBLISHER
+      bootstrap_exception_second_use: NOT_REQUIRED
     historical_repair_feasibility_audit:
       audited_on: "2026-10-02"
       authority: BRAIN
