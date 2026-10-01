@@ -1,213 +1,163 @@
 task_id: TASK-255
-revision: 3
+revision: 4
 goal: >-
-  Complete the repository-owned GitHub -> ChatGPT Brain wake return path after live
-  post-publication conformance proved that the r2 central bridge can project and post
-  INGRESS_REJECTED correctly but a wake comment authored by github-actions[bot] is not
-  delivered to the ChatGPT Work event trigger, while an otherwise equivalent
-  user-attributed PR comment is autonomously ACKed. Preserve the r2 source-pointer /
-  projector semantics and replace only the final Wake Bus trigger emission with a
-  bounded secretless PR-head commit-update transport on the dedicated PR #1200 branch,
-  leaving final ChatGPT Work conformance to a separate post-publication probe.
+  Close the live post-publication read-after-write consistency defect in the
+  secretless PR-head Wake Bus transport without changing the selected r3 architecture.
+  Preserve exact pre-write PR/head admission, marker/ledger identity and no-retry
+  semantics, but make one ordinary successful marker write complete in the same bridge
+  attempt when GitHub's pull-request head SHA temporarily lags the branch ref that has
+  already advanced to the exact marker commit.
 
 problem: >-
-  TASK-255 r2 is implemented and published on canonical main at
-  524b7eacb13d51867135f4589b19cb3c3d95d258. Live P1 created Issue #1215, failed
-  ingress receipt comment 5921442341, bridge run 36790617018 and wake comment
-  5921447869 with event_id
-  github-v1-1bc20ed173c240e093272dc5be034cec9eb50b3f9d11ad851bafb9dde8244e6a.
-  The GitHub bridge path passed, but that wake was authored by github-actions[bot] and
-  received no ChatGPT Work ACK after many hours. P1b then posted an equivalent
-  qualifying wake on PR #1200 as user actor trung-via with event_id
-  wake-p1b-actor-discrimination-20261001-001; Work autonomously ACKed it after
-  185 seconds in comment 5921598459 and reported the exact fresh canonical main SHA
-  524b7eacb13d51867135f4589b19cb3c3d95d258.
-
-  The repository therefore has strong empirical evidence that the remaining break is
-  the last-mile PR-comment actor/delivery path, not source handoff or deterministic
-  projection. Current public Work documentation also lists PR commit updates as an
-  eligible event-trigger class. This revision deliberately does not add a PAT, GitHub
-  App credential, external relay, polling or API Brain service. Instead it gives the
-  central bridge a narrowly bounded contents:write capability only for the existing
-  dedicated Wake Bus PR head branch and one operational marker path so a new wake can
-  create a PR commit-update event. Because commit-update delivery from GITHUB_TOKEN is
-  not yet proven to wake Work, the implementation is a bounded transport candidate
-  whose real success may only be established by a separate post-publication conformance
-  probe. If that probe fails, the repository must return to Human/Brain architecture
-  review; no credential-bearing fallback is authorized by this TASK.
+  TASK-255 r3 was reviewed, published, and then exercised live by Issue #1220. The
+  source ingress correctly rejected the bounded conformance probe and source handoff
+  projected INGRESS_REJECTED. Bridge workflow run 36806928682 attempt 1 created the
+  exact PENDING ledger comment 5923638532 and successfully committed marker event
+  github-v1-f89372ce2240f2d3d17f7c4c69312045d0c75d0fa3d95516484ea11cbe3c2c01
+  to the dedicated Wake Bus branch at commit
+  70e5b34021c0735728798e1c88cffecd8df7ba2e, but then failed with
+  "live PR and branch head disagree". The branch ref had already advanced while the
+  pulls/1200 representation still exposed the previous head SHA. After GitHub's PR
+  representation converged, a manual rerun of only the failed ring job completed
+  successfully, changed the same ledger from PENDING to EMITTED, and created no second
+  marker commit. This proves the r3 PENDING recovery path works and localizes the live
+  defect to an immediate post-write PR-head/ref equality assumption, not projector,
+  event identity, branch write permission, marker confinement, or recovery semantics.
 
 assumptions:
   - >-
-    Canonical main at TASK-255 r3 authoring is
-    524b7eacb13d51867135f4589b19cb3c3d95d258, the reviewed and published RUN-255-003
-    remediation candidate for TASK-255 r2.
+    Canonical main at r4 authoring is
+    b1c9a6ed77eb3bd90d00a73d0a906f1b9ad3752f, the exact reviewed/published
+    TASK-255 r3 candidate.
   - >-
-    PR #1200 remains the dedicated operational Wake Bus. Its head branch is
-    aios-brain-wake-bus-v1 in trung-via/AIOS-renew. The PR, branch and marker are
-    transport only and are never canonical TASK/RUN/RESULT/FAILURE/REVIEW/publication
-    or roadmap truth.
+    PR #1200 is still open and bound to repository trung-via/AIOS-renew, head branch
+    aios-brain-wake-bus-v1 and base main. The live r3 marker commit is
+    70e5b34021c0735728798e1c88cffecd8df7ba2e and its exact ledger comment
+    5923638532 is EMITTED after deterministic manual recovery.
   - >-
-    The r2 workflow_run source-pointer transport, source-object reacquisition, exact
-    source provenance checks, attention-family mapping, deterministic event_id
-    generation, NO_WAKE behavior and handoff-failure semantics are already reviewed
-    and published and remain the semantic baseline for this revision.
+    GitHub's branch ref and contents-write response can expose the newly written commit
+    before the pull-request representation's head.sha converges. This is treated only
+    as a bounded operational read-after-write lag observed in the live probe, never as
+    permission to accept arbitrary PR/head disagreement.
   - >-
-    Live P1/P1b actor-discrimination evidence is operational conformance evidence, not
-    lifecycle truth: github-actions[bot] wake comment 5921447869 was not ACKed;
-    user-attributed wake comment 5921558759 was ACKed by 5921598459 after 185 seconds
-    with fresh main SHA 524b7eacb13d51867135f4589b19cb3c3d95d258.
-  - >-
-    ChatGPT Work configuration is outside Executor production-code authority. The
-    existing comment-trigger automation may remain present during implementation; a
-    commit-update-triggered Work task must be provisioned or adjusted separately by an
-    authorized Human/ChatGPT product surface before real r3 conformance is claimed.
+    Real ChatGPT Work commit-update invocation remains a separate post-publication
+    conformance gate. R4 does not configure Work and cannot claim that gate passes.
 
 scope:
   inspect:
-    - docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md
-    - .ai/brain-audit-profiles.yaml
     - .ai/tasks/TASK-255.yaml
+    - .ai/brain-wake-carriers.yaml
     - .github/workflows/aios-brain-wake-bridge.yml
     - src/aios_renew/brain_wake_bridge.py
     - tests/test_brain_wake_bridge.py
     - tests/test_brain_wake_bridge_workflow.py
   modify:
-    - .ai/brain-wake-carriers.yaml
-    - .github/workflows/aios-brain-wake-bridge.yml
     - src/aios_renew/brain_wake_bridge.py
     - tests/test_brain_wake_bridge.py
     - tests/test_brain_wake_bridge_workflow.py
 
 non_goals:
   - >-
-    Change any existing source workflow, source-pointer artifact, source receipt
-    grammar, attention-family mapping, Runtime/Reviewer/Publisher/Unified State
-    behavior, lifecycle schema or roadmap semantics.
+    Change source-pointer projection, attention-family mapping, event_id derivation,
+    marker or ledger grammar, marker path, Wake Bus branch, PR number, permissions,
+    credentials, source workflows, Runtime/Reviewer/Publisher behavior, lifecycle
+    schemas or roadmap semantics.
   - >-
-    Add or use a PAT, GitHub App installation credential, GitHub App user access
-    token, OAuth token, external relay, Slack/email relay, OpenAI API service, polling
-    loop, timer or persistent queue/database.
+    Add sleep, polling, retry loops, automatic workflow reruns, token refresh,
+    credential fallback, PAT/App tokens, another branch/PR, comment-trigger fallback
+    or external relay.
   - >-
-    Treat the Wake Bus PR, wake ledger comment, marker file, branch commit, GitHub
-    workflow status or Work ACK as canonical engineering truth or semantic
-    authorization.
+    Weaken pre-write exact PR/head/ref validation or allow an arbitrary stale,
+    substituted or third-party PR head SHA after the write.
   - >-
-    Merge, rebase for product delivery, or repurpose PR #1200; modify canonical main
-    directly from the wake bridge; or write arbitrary files on the Wake Bus branch.
+    Treat the contents-write response, branch ref, PR object, marker or ledger as
+    canonical engineering truth. They remain bounded operational transport evidence.
   - >-
-    Make the Executor configure ChatGPT Work, claim autonomous Work invocation, claim
-    real end-to-end conformance, advance TASK-254, or select a credential-bearing
-    fallback if commit-update delivery fails.
-  - >-
-    Create a Planner, semantic router, retry/failover policy, correction selector,
-    Reviewer, Publisher or lifecycle state store in the wake transport.
+    Configure ChatGPT Work, claim autonomous Work invocation, advance TASK-254, or
+    close real wake conformance.
 
 constraints:
   hard:
     - >-
-      Preserve the r2 central projector and all source admission/projection behavior.
-      R3 may change only the final delivery mechanism used after a WAKE projection;
-      NO_WAKE must perform no Wake Bus branch mutation.
+      Preserve exact r3 pre-write validation: immediately before creating a PENDING
+      ledger and immediately before writing the marker, PR #1200 must be open,
+      unmerged, same PR/repository identity, exact head repository/branch, base main,
+      and its advertised head SHA must equal the exact live Wake Bus branch ref.
     - >-
-      Bind delivery to repository trung-via/AIOS-renew, PR #1200, exact head
-      repository trung-via/AIOS-renew, exact head branch aios-brain-wake-bus-v1, and
-      one repository-owned operational marker path configured in
-      .ai/brain-wake-carriers.yaml. Reacquire and validate the live PR/head identity
-      immediately before any write. Fail closed on closed/replaced/forked/substituted
-      PR or branch identity.
+      After a successful marker contents write, bind one immutable write transition:
+      pre_write_head_sha -> write_response_commit_sha. The exact branch ref must equal
+      write_response_commit_sha before completion can proceed.
     - >-
-      The marker content must be exact, versioned and bounded and contain only the
-      deterministic event_id, attention_family, repository, bounded source selectors
-      and fresh_brain_sync_required=true. It must not contain next_action, semantic
-      recommendation, lifecycle verdict, roadmap state, model output or credentials.
+      During only that post-write transition, the PR representation may advertise
+      either pre_write_head_sha or write_response_commit_sha while all PR identity,
+      repository, head branch and base branch fields remain exact. Any third SHA,
+      changed PR identity, fork/substitution, closed/merged PR, wrong branch, or branch
+      ref other than write_response_commit_sha fails closed.
     - >-
-      Use only GITHUB_TOKEN. Add contents:write only to the bridge ring delivery job
-      and retain the minimum read/write permissions otherwise required. Do not broaden
-      permissions on source workflows.
+      Confirm the marker from the exact write_response_commit_sha, not from a mutable
+      branch alias, and require exact canonical marker bytes/digest/event_id before the
+      ledger may become EMITTED.
     - >-
-      Use one global Wake Bus delivery concurrency boundary, not per-event
-      concurrency, so partial delivery for one event cannot race a later event into
-      the same marker branch.
+      Immediately before PATCHing PENDING -> EMITTED, reacquire PR identity and exact
+      branch ref under the same bounded post-write rule. The branch ref must still be
+      write_response_commit_sha. No later unrelated branch movement may be accepted as
+      successful delivery.
     - >-
-      Retain a bounded non-trigger ledger on PR #1200 using a marker distinct from
-      [AIOS BRAIN WAKE]. For each event_id there may be at most one ledger comment,
-      whose exact state is PENDING or EMITTED. The ledger is operational transport
-      evidence only. An EMITTED event is a deterministic NOOP on replay.
+      If the marker already exists for the exact PENDING event on a later recovery
+      invocation, retain existing r3 recovery behavior: no second marker commit and
+      completion is allowed only after current PR and branch ref have converged to the
+      exact existing marker commit under normal exact validation.
     - >-
-      A PENDING event must be recoverable without semantic choice: reconcile the exact
-      current marker content on the bound Wake Bus branch. If it already names that
-      event_id, complete the ledger to EMITTED without creating another marker commit;
-      otherwise write the exact marker once and then complete the same ledger entry. A
-      new unrelated event must not overtake an unresolved PENDING event. Ambiguous,
-      duplicated or contradictory ledger state fails closed rather than fabricating
-      completion.
+      Do not add waiting, polling or automatic transport retry to mask eventual
+      consistency. The correction must remove the invalid immediate equality
+      assumption by using exact write-transition evidence and bounded identity checks.
     - >-
-      The marker branch update must affect only the configured marker path and must
-      not modify canonical main, source code, TASK/RUN/REVIEW/publication refs or any
-      other Wake Bus branch path. The bridge must not force-merge or publish PR #1200.
-    - >-
-      Every successful new marker write must produce an ordinary PR head commit update
-      suitable for a later ChatGPT Work commit-update trigger. Executor tests may
-      verify deterministic repository/workflow behavior only; they must not treat
-      GitHub or Work delivery as Runtime verification or semantic review.
-    - >-
-      Preserve exact r2 event_id and payload semantics. Replays, source workflow reruns
-      and bridge reruns must not create a second marker commit once the corresponding
-      ledger is EMITTED.
-    - >-
-      If the bridge cannot create or reconcile the bounded marker update, the workflow
-      must fail with bounded operational evidence. It must not silently fall back to
-      github-actions[bot] wake comments, credentials, another branch, another PR,
-      polling or a semantic retry.
+      Preserve one global Wake Bus concurrency group, exact PENDING/EMITTED ledger,
+      one marker path, GITHUB_TOKEN-only delivery, and all r3 fail-closed write-target
+      confinement.
     - >-
       No file outside scope.modify may change. Executor returns one clean candidate
-      with zero unresolved items and makes no Reviewer, publication, roadmap or real
-      ChatGPT Work conformance claim.
+      with zero unresolved items and makes no Reviewer/publication/roadmap/real-Work
+      conformance claim.
 
 acceptance:
   - id: AC1
     condition: >-
-      All r2 source-pointer, source-reacquisition, provenance, attention-family,
-      handoff-failure and NO_WAKE semantics remain intact; r3 changes only the final
-      WAKE delivery path.
+      Existing r3 projection, marker, ledger, permission, confinement, replay and
+      recovery semantics remain unchanged except for bounded post-write PR-head lag
+      reconciliation.
   - id: AC2
     condition: >-
-      A WAKE projection validates the exact live PR #1200 head identity and writes only
-      one bounded marker path on aios-brain-wake-bus-v1 using GITHUB_TOKEN, while
-      NO_WAKE causes no branch mutation.
+      A live-equivalent first delivery where contents PUT advances the exact branch ref
+      to the returned commit while PR head.sha temporarily remains the exact pre-write
+      SHA completes EMITTED in one bridge attempt with exactly one marker commit.
   - id: AC3
     condition: >-
-      The marker payload is exact and bounded, carries only event
-      identity/family/repository/selectors/fresh-sync requirement, and cannot encode
-      semantic continuation or lifecycle truth.
+      The same post-write path also succeeds when PR head.sha already equals the new
+      commit, and marker confirmation is read from the exact new commit SHA.
   - id: AC4
     condition: >-
-      Global delivery serialization plus the PENDING/EMITTED ledger makes exact replay
-      idempotent and gives deterministic recovery for the write-versus-ledger
-      partial-failure window without allowing a later event to overtake unresolved
-      delivery.
+      A third/unrelated PR head SHA, changed PR/repository/branch identity, branch ref
+      mismatch, marker mismatch, or branch movement after write fails closed before
+      EMITTED.
   - id: AC5
     condition: >-
-      Closed/substituted/forked PR identity, wrong head branch, unauthorized marker
-      path, ambiguous ledger, marker mismatch or write failure fails closed and cannot
-      mutate main or fabricate canonical lifecycle state.
+      Pre-write PR head/ref equality remains exact and cannot use the post-write lag
+      allowance.
   - id: AC6
     condition: >-
-      Bridge permissions are minimum sufficient: contents:write exists only on the
-      ring delivery job for the bounded Wake Bus branch update; no source workflow
-      permission expands and no credential or external relay is introduced.
+      Existing PENDING recovery after an interrupted successful write still completes
+      the same ledger without creating a second marker commit.
   - id: AC7
     condition: >-
-      Focused regression covers new delivery, NO_WAKE, exact replay, PENDING recovery
-      both before and after marker write, unrelated-event blocking, ambiguous ledger,
-      PR/head substitution, marker-path confinement and preservation of r2 projection
-      behavior.
+      Focused regression includes the exact live failure shape from bridge run
+      36806928682 attempt 1 plus adversarial third-SHA and post-write branch-movement
+      cases.
   - id: AC8
     condition: >-
-      The candidate makes no claim that ChatGPT Work commit-update delivery succeeds.
-      Real autonomous Work wake/ACK is a separate post-publication conformance gate;
-      failure there returns to Human/Brain architecture review with no automatic
-      credential fallback.
+      No retry/poll/sleep, credential, permission, workflow-source, marker-schema or
+      Work-configuration change is introduced; real Work commit-update wake remains a
+      separate post-publication conformance gate.
 
 verification:
   policy: minimum-sufficient-v1
