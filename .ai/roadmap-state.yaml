@@ -265,7 +265,7 @@ sequence:
         automation is still explicitly bound to qualifying PR comments and ignores
         commits, so no autonomous Work result may be inferred from this marker commit.
     work_commit_update_trigger:
-      status: CONFIGURED_AWAITING_FRESH_PROBE
+      status: SHALESS_RECONSTRUCTION_READY
       authority: HUMAN
       configuration_ref: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md#17-chatgpt-work-pr-commit-update-trigger-contract
       repository: trung-via/AIOS-renew
@@ -280,6 +280,18 @@ sequence:
       existing_comment_ack_automation:
         automation_id: "6abd40a6f8d881918f2c9e7945cbf54d"
         disposition: KEEP_UNCHANGED_UNTIL_COMMIT_TRIGGER_CONFORMANCE
+      sha_less_reconstruction_audit:
+        profile: brain-high-value-v2
+        stage1: CONSTRUCT
+        stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+        closure: CLEAR
+        outcome: CANDIDATE
+        selected_contract: WORK_SHALESS_SYNCHRONIZE_RECONSTRUCTION_V1
+        configuration_ref: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md#18-sha-less-synchronize-payload-reconstruction-contract
+        bootstrap_fence_sha: "47f4bfa40ea07adbf3321633c519e88559b098fc"
+        max_history_scan: 64
+        max_unacked_candidates: 8
+        product_concurrency_status: REQUIRES_POST_SUCCESS_DUPLICATE_PROBE
       fresh_post_configuration_probe:
         status: TRIGGER_OBSERVED_ACK_NOT_OBSERVED
         issue_number: 1226
@@ -291,11 +303,16 @@ sequence:
         repository_transport_result: PASS
         work_last_run_time_utc: "2026-10-01T03:22:19.381814Z"
         matching_ack_observed: false
-        disposition: WORK_EXECUTION_RESULT_REQUIRED
+        work_result_observed:
+          result: FAIL_CLOSED_NO_UPDATE
+          reason: >-
+            The normalized synchronize payload supplied to Work contained no exact
+            triggering commit SHA, so Section 17 step 1 stopped without ACK.
+        disposition: PROMPT_CONTRACT_REVISION_REQUIRED
         requirement: >-
-          Obtain the surfaced Work execution result/blocker for this exact commit
-          event before changing architecture. Do not infer the cause from last_run_time
-          alone and do not introduce polling, credential fallback or another transport.
+          Use the audited SHA-less reconstruction contract in Section 18. Treat the
+          webhook as a doorbell and reconstruct immutable marker commits from exact
+          PR ancestry before Brain Sync or ACK.
     r3_live_evidence:
       p1:
         issue_number: 1215
