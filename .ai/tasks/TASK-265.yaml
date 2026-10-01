@@ -1,0 +1,80 @@
+task_id: TASK-265
+revision: 1
+goal: Restore the intended H3 Authoring Ingress remediation regression by binding
+  the existing fixture remote returned by setup_candidate_lineage before the pre-mutation
+  canonical-ref assertion, without changing production behavior or TASK-263 implementation
+  semantics.
+problem: 'RUN-263-001 reached execution and produced a repairable TASK-263 candidate,
+  but Runtime verification failed in tests/test_authoring_ingress.py::test_author_remediation_success_and_rejections
+  with NameError: remote is not defined. The failing test was introduced by H3 commit
+  77c4597c1ab1d9acbab8de3d9bd637b974f62bab: it added a pre-mutation assertion using
+  git(remote, ...) while the test binds repo, run_id and candidate_sha from setup_candidate_lineage
+  but omits the remote value that the helper already returns. tests/test_authoring_ingress.py
+  is outside TASK-263 scope, so the baseline fixture defect must be corrected separately
+  before repairing RUN-263-001.'
+assumptions:
+- Canonical main at TASK-265 authoring is ca39e4a861dff9f32db82977452ba94282637ebf
+  and roadmap selects TASK-265 as the unique unauthored NEXT blocker before returning
+  to TASK-263.
+- RUN-263-001 is a canonical repairable VERIFICATION failure with failed candidate
+  d6e246412e77e4adba63563652a60efee2521e1c and failure-artifacts commit 22885ba02c8b6e1ae1dd588aa01434041ea94ba1.
+- TASK-263 candidate changes only src/aios_renew/operator.py, src/aios_renew/publication.py
+  and tests/test_publication.py; tests/test_authoring_ingress.py is unchanged from
+  its canonical baseline.
+- H3 commit 77c4597c1ab1d9acbab8de3d9bd637b974f62bab added the failing remediation
+  assertion, and setup_candidate_lineage already returns the exact fixture remote
+  under the remote key.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-263.yaml
+  - tests/test_authoring_ingress.py
+  modify:
+  - tests/test_authoring_ingress.py
+non_goals:
+- Modify TASK-263 production code, candidate d6e246412e77e4adba63563652a60efee2521e1c,
+  RUN-263-001 FAILURE lineage, or TASK-263 publication semantics.
+- Change Authoring Ingress, remediation, repair, Runtime, Reviewer, Publisher, workflow,
+  or roadmap execution semantics.
+- Remove, weaken, skip, xfail, retry, reselect, or broaden the failing regression
+  instead of restoring its intended fixture binding.
+- Change setup_candidate_lineage's return contract or introduce a new fixture/helper
+  abstraction.
+- Treat TASK-265 completion as TASK-263 repair, review, publication, or roadmap completion.
+constraints:
+  hard:
+  - The correction must be test-fixture-only and must not modify production source
+    files.
+  - The remediation regression must bind and use the exact remote already returned
+    by setup_candidate_lineage for that fixture; it must not infer, substitute or
+    hard-code another remote.
+  - The existing assertion that the canonical remediation ref is absent before AUTHOR_REMEDIATION
+    mutation must remain present and behaviorally equivalent.
+  - The correction must not remove or weaken audited_handoff, acceptance_phase_ledger
+    isolation, canonical ref, idempotency, conflicting replay, scope-widening, or
+    malformed historical-content assertions in the test.
+  - No skip, xfail, retry, sleep, test deselection, verification-command weakening,
+    or production fallback is permitted.
+  - TASK-263 candidate and RUN-263-001 immutable failure lineage remain untouched;
+    after TASK-265 publication Brain must return to the existing RUN-263-001 repair
+    path rather than start TASK-263 over.
+acceptance:
+- id: AC1
+  condition: test_author_remediation_success_and_rejections explicitly binds the fixture
+    remote returned by setup_candidate_lineage before the existing pre-mutation remediation-ref
+    assertion uses it.
+- id: AC2
+  condition: The existing pre-mutation assertion still checks the exact refs/heads/aios/remediation/{run_id}-F1
+    ref through the bound fixture remote and remains before the canonical AUTHOR_REMEDIATION
+    mutation.
+- id: AC3
+  condition: The candidate changes only tests/test_authoring_ingress.py and changes
+    no production source, workflow, TASK-263 artifact, or roadmap file.
+- id: AC4
+  condition: The correction introduces no skip, xfail, retry, hard-coded remote, helper-contract
+    change, assertion removal, or verification-selection weakening.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_authoring_ingress.py -k remediation
+  - git diff --check
