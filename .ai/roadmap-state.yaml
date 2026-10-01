@@ -300,11 +300,11 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
-    status: NEXT
+    status: DONE
     phase: H4_PRE_H4A3_SYSTEMIC_HARDENING
     task_id: TASK-267
     task_revision: 1
@@ -363,10 +363,89 @@ sequence:
         sequence rather than the top-level roadmap sequence. Authoring ingress failed
         closed before TASK or RUN mutation. The roadmap placement was repaired and the
         audited packet was freshly recomputed before successful AUTHOR_TASK.
-    execution_profile_status: HUMAN_SELECTION_REQUIRED
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-267
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    completed_by:
+      task_id: TASK-267
+      task_revision: 1
+      run_id: RUN-267-001
+      artifacts_sha: "d1bd99ffd60ddfdca4990128d623a9c8a8f45056"
+      review_id: REVIEW-267-001
+      review_decision_sha: "e2a2c2228db30c29e5f970ba94e05284d6f4526e"
+      reviewed_sha: "c3f64d6a766bc21752cfe303805b858f6d2d999c"
+      published_sha: "c3f64d6a766bc21752cfe303805b858f6d2d999c"
+      publication_workflow_run_id: 36941338997
+      completed_on: "2026-10-02"
+      verification_summary: "198 passed; git diff --check passed"
     sequencing:
       - AFTER_TASK_266_H4A2_RECOVERY
       - BEFORE_H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
+    return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+    status: NEXT
+    phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
+    task_id: TASK-268
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    planning_document: docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+    implementation_shape: CONFORMANCE_CONTRACT_ONLY_NO_PRODUCTION_TRANSPORT_CHANGE
+    objective: >-
+      Establish a small repository-owned H4A3 conformance procedure without changing
+      the published H4A2 transport, then use TASK-268's real canonical RESULT terminal
+      attention as the live eligible wake event after the Human-owned exact-chat binding
+      and enable gate are ready. H4A3 closes only after exactly one bounded wake user
+      turn is proven in the bound regular Project chat and duplicate delivery is a NOOP.
+    architecture_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      reconciled_risks:
+        - DO_NOT_FABRICATE_SYNTHETIC_RUN_ID_FOR_TRANSPORT_PROBE
+        - LIVE_CHAT_BINDING_REMAINS_HUMAN_OWNED_AND_NONCANONICAL
+        - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
+        - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
+    live_probe:
+      trigger: TASK_268_CANONICAL_RESULT_TERMINAL_ATTENTION
+      semantic_effect: ACK_ONLY_NO_LIFECYCLE_MUTATION
+      human_prerequisites:
+        - EXPLICIT_EXACT_CHAT_BINDING_READY
+        - AUTHENTICATED_REGULAR_CHAT_TARGET_OPEN
+        - AIOS_LOCAL_CHAT_WAKE_ENABLED_TRUE
+      required_observations:
+        - EXACT_TERMINAL_ATTENTION_ADMISSION
+        - LOCAL_WAKE_RECEIPT_SUBMITTED
+        - EXACTLY_ONE_MATCHING_USER_TURN_IN_BOUND_CHAT
+        - DUPLICATE_DELIVERY_NOOP_WITH_NO_SECOND_TURN
+      negative_case_basis:
+        - TASK_266_FOCUSED_TESTS_DRAFT_GENERATION_WRONG_CHAT_AMBIGUOUS_SEND
+    constraints:
+      - NO_PRODUCTION_LOCAL_CHAT_WAKE_CODE_CHANGE_UNLESS_REVIEWED_EVIDENCE_REVEALS_A_DEFECT
+      - NO_FAKE_RUN_OR_CANONICAL_FAILURE_FOR_PROBE
+      - NO_CHAT_URL_CREDENTIAL_COOKIE_OR_SESSION_DATA_IN_REPOSITORY
+      - NO_ASSISTANT_OUTPUT_EXTRACTION
+      - NO_LIFECYCLE_MUTATION_FROM_H4A3_WAKE
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
+      - H4B_REMAINS_BLOCKED_UNTIL_H4A3_LIVE_PROOF_CLOSES
+    task_authoring_audit:
+      profile: brain-high-value-v3
+      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
+    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+    sequencing:
+      - AFTER_TASK_267_BRAIN_AUDIT_V3_PUBLICATION
+      - BEFORE_H4B_REGULAR_CHAT_BRAIN_RESUME
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
 
