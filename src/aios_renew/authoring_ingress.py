@@ -961,8 +961,31 @@ def _execute_author_remediation(envelope: IngressEnvelope, repo: Path) -> Ingres
     task = parse_task(task_bytes.decode("utf-8"))
 
     try:
+        from .operator import (
+            _run_from_data as source_run_from_data,
+            _remediation_execution_from_data,
+            _validated_repair_remediation_source,
+        )
+        result_bytes = _read_commit_blob(repo, artifacts_sha, ".ai/transport/result.json")
+        if result_bytes is None:
+            raise ValueError("canonical source RESULT is missing")
+        result_data = _json_no_dups(result_bytes, "source ResultPackage")
+        package = ResultPackage(
+            result=validate_result(result_data["result"]),
+            evidence=tuple(validate_evidence(item) for item in result_data["evidence"]),
+        )
+        source_run = (
+            _remediation_execution_from_data(run_data["execution"]).run
+            if run_data.get("kind") == "REMEDIATION" else source_run_from_data(run_data)
+        )
+        if source_run.run_id != source_run_id or source_run.task.id != task.task_id or source_run.task.revision != task.revision:
+            raise ValueError("canonical source RUN/TASK identity mismatch")
+        _validated_repair_remediation_source(
+            repo, task=task, run_data=run_data, run=source_run, package=package,
+            review=review, repair=_read_commit_blob(repo, artifacts_sha, ".ai/transport/repair.json"),
+        )
         validate_remediation(review=review, remediation=remediation, task=task)
-    except ReviewValidationError as exc:
+    except (ReviewValidationError, ValueError, TypeError, KeyError) as exc:
         raise AuthoringIngressError(f"remediation validation failed: {exc}") from exc
 
     # Check if finding is already resolved by subsequent published main
@@ -1528,7 +1551,7 @@ def _compose_authoring_packet(
         task_bytes = _authoring_blob(repo, main_sha, f".ai/tasks/{selected['id']}.yaml", remote)
         # Feed the compiler the canonical family document. Dataclass defaults
         # (notably legacy verification.policy=None) are not authored fields.
-        parse_task(task_bytes.decode("utf-8"))
+        canonical_task = parse_task(task_bytes.decode("utf-8"))
         task_data = yaml.safe_load(task_bytes)
         if envelope.operation == "AUTHOR_REMEDIATION":
             findings = []
@@ -1576,6 +1599,11 @@ def _compose_authoring_packet(
                     raise AuthoringIngressError("expected current REPAIR SHA does not match canonical authorization")
                 if expected_failure != material["failure_artifacts_sha"] or sha != material["failure_artifacts_sha"]:
                     raise AuthoringIngressError("expected canonical FAILURE identity does not match failed RUN")
+            from .correction_preflight import canonical_repair_strategy_state
+            material["strategy_state"] = canonical_repair_strategy_state(
+                repo, failed_run_id=failed_run_id, task=canonical_task, failure=failure,
+                expected_refs=refs,
+            )
     packet = compile_decision_packet(context, resolution, material)
     profile = parse_profile_registry((repo / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"][0]
     if profile["id"] != "brain-high-value-v2" or profile["version"] != 2:

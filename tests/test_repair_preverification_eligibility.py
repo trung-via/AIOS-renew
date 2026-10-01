@@ -1527,3 +1527,54 @@ def test_eligible_reusable_repair_package_direct_check_with_distinct_authorities
             root_base_sha=primary_failure["base_sha"],
         )
 
+
+
+
+@pytest.mark.parametrize("defect", ["valid", "absent", "wrong_task", "unresolved", "coverage", "duplicate"])
+def test_h2_projection_matches_authoritative_no_change_reuse(defect, tmp_path):
+    from aios_renew.correction_preflight import repair_strategy_facts
+
+    repo = make_repo(tmp_path)
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "OUTPUT.txt").write_text("committed candidate\n", encoding="utf-8")
+    git(repo, "add", "OUTPUT.txt")
+    git(repo, "commit", "--quiet", "-m", "candidate")
+    head = git(repo, "rev-parse", "HEAD")
+    task = load_task(repo, "TASK-101")
+    failure = {"kind": "FAILURE", "run_id": "RUN-101-001", "base_sha": base,
+               "failed_head_sha": head, "phase": "VERIFICATION",
+               "candidate": {"dirty": False, "transportable": True, "repairable": True,
+                             "descends_from_base": True, "changed_files": ["OUTPUT.txt"],
+                             "outside_task_scope": []}}
+    sidecar = {"kind": "PRE_VERIFICATION_CANDIDATE", "run_id": "RUN-101-001",
+               "task": {"id": "TASK-101", "revision": 1}, "subject_sha": head,
+               "package": {"result": {"head_sha": head, "claims": [{"id": "C1",
+                   "satisfies": ["AC1"], "claim": "Committed implementation", "evidence": []}],
+                   "changed_files": ["OUTPUT.txt"], "unresolved": []}, "evidence": []}}
+    if defect == "wrong_task":
+        sidecar["task"]["revision"] = 2
+    elif defect == "unresolved":
+        sidecar["package"]["result"]["unresolved"] = ["Remaining implementation"]
+    elif defect == "coverage":
+        sidecar["package"]["result"]["claims"] = []
+    content = json.dumps(sidecar).encode()
+    if defect == "absent":
+        content = None
+    elif defect == "duplicate":
+        content = content.replace(b'{"kind":', b'{"kind":"CONFLICT","kind":', 1)
+    try:
+        reused = _eligible_reusable_repair_package(content, task=task, failed_run_id="RUN-101-001",
+            failure=failure, action="NO_CHANGE", scope=[], repo=repo, root_base_sha=base)
+        eligible = reused is not None
+    except OperatorError:
+        eligible = False
+    facts = repair_strategy_facts(task=task, failure=failure, state={
+        "preverification_hex": None if content is None else content.hex(),
+        "root_base_sha": base, "result_base_sha": base,
+        "committed_deltas": {"candidate": ["OUTPUT.txt"], "result": ["OUTPUT.txt"]}})
+    assert facts["action_structural_eligibility"]["NO_CHANGE"] == ("ELIGIBLE" if eligible else "INELIGIBLE")
+    assert eligible == (defect == "valid")
+    # Mutation actions and FINALIZE never acquire reusable-package authority.
+    for action in ("CODE_FIX", "CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"):
+        assert _eligible_reusable_repair_package(content, task=task, failed_run_id="RUN-101-001",
+            failure=failure, action=action, scope=[], repo=repo, root_base_sha=base) is None

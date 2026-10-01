@@ -275,7 +275,8 @@ def test_repair_authoring_and_exact_repair_provenance():
         "failed_run_id": "RUN-002-001", "failed_head_sha": A,
         "failed_changed_files": ["src/aios_renew/decision_packet.py"],
     }
-    assert packet.as_dict()["bounded_observations"] == {
+    assert {key: value for key, value in packet.as_dict()["bounded_observations"].items()
+            if key != "strategy_facts"} == {
         "phase": "VERIFICATION",
         "error": {"type": "RuntimeVerificationError"},
     }
@@ -518,3 +519,92 @@ def test_checkout_remote_and_line_endings_do_not_change_packet_identity(tmp_path
     two = compile_decision_packet(second, resolve_flow(second), {"kind": "DIAGNOSTIC",
                                                                   "observations": ["same\nobservation"]})
     assert one.render() == two.render()
+
+
+@pytest.mark.parametrize("phase", ["VERIFICATION", "EXECUTION", "COMPLETION_GATE"])
+@pytest.mark.parametrize("state_kind", ["absent", "present", "malformed", "stale", "task",
+                                        "missing_result", "coverage", "unresolved", "duplicate"])
+def test_h2_action_neutral_strategy_projection(phase, state_kind, monkeypatch):
+    import json
+    from aios_renew import operator
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Pure strategy projection cannot observe or mutate local state")
+
+    monkeypatch.setattr(operator, "_git", forbidden)
+    monkeypatch.setattr(operator, "runtime_paths", forbidden)
+    failure = runtime_failure(phase=phase)
+    work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
+                                          "failed_run_id": "RUN-002-001", "failed_head_sha": A})
+    package = {"result": {"head_sha": A, "claims": [{"id": "C1", "satisfies": ["AC1", "AC2"],
+                 "claim": "Implemented both surfaces", "evidence": []}],
+                 "changed_files": failure["candidate"]["changed_files"], "unresolved": []}, "evidence": []}
+    sidecar = {"kind": "PRE_VERIFICATION_CANDIDATE", "run_id": "RUN-002-001",
+               "task": {"id": "TASK-002", "revision": 1}, "subject_sha": A, "package": package}
+    if state_kind == "stale":
+        sidecar["subject_sha"] = C
+    elif state_kind == "task":
+        sidecar["task"]["revision"] = 2
+    elif state_kind == "missing_result":
+        del package["result"]
+    elif state_kind == "coverage":
+        package["result"]["claims"][0]["satisfies"] = ["AC1"]
+    elif state_kind == "unresolved":
+        package["result"]["unresolved"] = ["Concrete remaining work"]
+    raw = json.dumps(sidecar).encode()
+    if state_kind == "malformed":
+        raw = b"{bad"
+    elif state_kind == "duplicate":
+        raw = raw.replace(b'{"kind":', b'{"kind":"SUBSTITUTED","kind":', 1)
+    state = {"preverification_hex": None if state_kind == "absent" else raw.hex(),
+             "root_base_sha": B, "result_base_sha": B,
+             "committed_deltas": {"candidate": failure["candidate"]["changed_files"],
+                                   "result": failure["candidate"]["changed_files"]}}
+    packet = compile_decision_packet(work, flow, {"kind": "REPAIR_AUTHORING", "task": task(),
+        "failed_run": run("RUN-002-001"), "failure": failure, "strategy_state": state})
+    facts = packet.as_dict()["bounded_observations"]["strategy_facts"]
+    assert set(facts) == {"reusable_preverification_state", "structural_result_package",
+        "candidate_clean_committed", "candidate_transportable", "candidate_repairable",
+        "candidate_descends_from_base", "outside_task_scope", "acceptance_coverage",
+        "action_structural_eligibility"}
+    invalid = state_kind in {"malformed", "stale", "task", "missing_result", "duplicate"}
+    assert facts["structural_result_package"] == ("MISSING" if state_kind == "absent" else
+                                                  "INVALID" if invalid else "PRESENT")
+    assert facts["acceptance_coverage"] == ("INVALID" if invalid else "INCOMPLETE" if
+                                          state_kind in {"absent", "coverage"} else "COMPLETE")
+    reusable = state_kind == "present" and phase == "VERIFICATION"
+    assert facts["reusable_preverification_state"] == ("ABSENT" if state_kind == "absent" else
+                                                       "PRESENT" if reusable else "INVALID")
+    eligibility = facts["action_structural_eligibility"]
+    assert eligibility == {"NO_CHANGE": "ELIGIBLE" if reusable else "INELIGIBLE",
+                           "FINALIZE_CANDIDATE": "INELIGIBLE" if phase == "VERIFICATION" else "ELIGIBLE",
+                           "CONTINUE_IMPLEMENTATION": "INELIGIBLE" if phase == "VERIFICATION" else "ELIGIBLE",
+                           "CODE_FIX": "ELIGIBLE"}
+    assert all(packet.as_dict()[name] is False for name in
+               ("run_created", "executor_invoked", "verification_invoked", "state_mutated"))
+    assert "candidate_mutation_required" not in packet.render()
+    assert "preferred_action" not in packet.render()
+    assert "preverification_hex" not in packet.render()
+
+
+def test_h2_supplied_strategy_recommendation_is_rejected():
+    work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
+                                          "failed_run_id": "RUN-002-001", "failed_head_sha": A})
+    material = {"kind": "REPAIR_AUTHORING", "task": task(), "failed_run": run("RUN-002-001"),
+                "failure": runtime_failure(),
+                "strategy_state": {"preverification_hex": None, "preferred_action": "CODE_FIX"}}
+    with pytest.raises(DecisionPacketError):
+        compile_decision_packet(work, flow, material)
+
+
+
+def test_h2_missing_transport_binding_is_invalid_not_canonical_absence():
+    work, flow = context("AUTHOR_REPAIR", {"next_action": "AUTHOR_REPAIR",
+                                          "failed_run_id": "RUN-002-001", "failed_head_sha": A})
+    packet = compile_decision_packet(work, flow, {"kind": "REPAIR_AUTHORING", "task": task(),
+        "failed_run": run("RUN-002-001"), "failure": runtime_failure()})
+    facts = packet.as_dict()["bounded_observations"]["strategy_facts"]
+    assert facts["reusable_preverification_state"] == "INVALID"
+    assert facts["structural_result_package"] == "INVALID"
+    assert facts["acceptance_coverage"] == "INVALID"
+    assert facts["action_structural_eligibility"]["NO_CHANGE"] == "INELIGIBLE"

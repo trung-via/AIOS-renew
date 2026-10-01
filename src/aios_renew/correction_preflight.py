@@ -132,6 +132,134 @@ def _operator():
     return op
 
 
+def repair_strategy_facts(
+    *, task: Any, failure: Mapping[str, Any], state: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Pure H2 projection of supplied canonical material, with no action choice.
+
+    The ingress reconstructs state from immutable transport in an isolated object
+    store. Raw sidecar bytes and Git deltas never enter the projected packet.
+    """
+    op = _operator()
+    from .artifacts import ArtifactValidationError
+    from .publication import _json_no_duplicates
+
+    candidate = failure["candidate"]
+    unbound = state is None
+    state = {"preverification_hex": None} if unbound else state
+    if not isinstance(state, Mapping):
+        raise ValueError("strategy state must be a canonical input mapping")
+    allowed = {"preverification_hex", "root_base_sha", "result_base_sha", "committed_deltas"}
+    if set(state) - allowed or "preverification_hex" not in state:
+        raise ValueError("strategy state fields do not match canonical input contract")
+    raw = state["preverification_hex"]
+    if raw is not None and not isinstance(raw, str):
+        raise ValueError("strategy pre-verification transport must be hex bytes or absent")
+    deltas = state.get("committed_deltas")
+    if deltas is not None and (
+        not isinstance(deltas, Mapping) or set(deltas) != {"candidate", "result"}
+        or any(not isinstance(paths, list) or len(paths) != len(set(paths))
+               or any(not isinstance(path, str) or not path for path in paths)
+               for paths in deltas.values())
+    ):
+        raise ValueError("strategy committed deltas are invalid")
+    content = None if raw is None else bytes.fromhex(raw)
+    reusable = "ABSENT" if content is None and not unbound else "INVALID"
+    structural = "MISSING" if content is None and not unbound else "INVALID"
+    coverage = "INCOMPLETE" if content is None and not unbound else "INVALID"
+    package = None
+    if content is not None:
+        try:
+            # Reject duplicate keys before the existing structural validator.
+            _json_no_duplicates(content, document="pre-verification candidate")
+            package = op.validate_preverification_candidate(
+                content, task=task, run_id=failure["run_id"],
+                subject_sha=failure["failed_head_sha"],
+            )
+            if deltas is not None and (
+                set(package.result.changed_files) != set(deltas["result"])
+                or set(candidate["changed_files"]) != set(deltas["candidate"])
+                or set(deltas["result"]).difference(task.scope.modify)
+            ):
+                raise ValueError("pre-verification committed delta mismatch")
+            structural = "PRESENT"
+            satisfied = {aid for claim in package.result.claims for aid in claim.satisfies}
+            coverage = ("COMPLETE" if all(item.id in satisfied for item in task.acceptance)
+                        else "INCOMPLETE")
+            reusable_package = op._eligible_reusable_repair_package(
+                content, task=task, failed_run_id=failure["run_id"], failure=failure,
+                action="NO_CHANGE", scope=[], root_base_sha=state.get("root_base_sha"),
+                result_base_sha=state.get("result_base_sha"), committed_deltas=deltas,
+            )
+            if reusable_package is not None:
+                reusable = "PRESENT"
+        except (ArtifactValidationError, op.OperatorError, ValueError, TypeError, KeyError):
+            pass
+    eligibility = op._repair_action_structure(failure)
+    eligibility["NO_CHANGE"] = reusable == "PRESENT"
+    # CONTINUE_IMPLEMENTATION requires some possible authorized mutation scope.
+    eligibility["CONTINUE_IMPLEMENTATION"] &= bool(
+        set(task.scope.modify).union(candidate["changed_files"])
+    )
+    return {
+        "reusable_preverification_state": reusable,
+        "structural_result_package": structural,
+        "candidate_clean_committed": candidate.get("dirty") is False,
+        "candidate_transportable": candidate.get("transportable") is True,
+        "candidate_repairable": candidate.get("repairable") is True,
+        "candidate_descends_from_base": candidate.get("descends_from_base") is True,
+        "outside_task_scope": sorted(candidate["outside_task_scope"]),
+        "acceptance_coverage": coverage,
+        "action_structural_eligibility": {
+            action: "ELIGIBLE" if eligible else "INELIGIBLE"
+            for action, eligible in eligibility.items()
+        },
+    }
+
+
+def canonical_repair_strategy_state(
+    repo: Path, *, failed_run_id: str, task: Any, failure: Mapping[str, Any],
+    expected_refs: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Reconstruct exact transported inputs without touching the control repository."""
+    op = _operator()
+    with op._remote_observation_repository(repo) as observer:
+        admission = {"failed_run_id": failed_run_id}
+        resolved = op._resolve_historical_repair_admission(observer, failed_run_id, admission=admission)
+        if expected_refs is not None:
+            prefix = op.task_run_prefix(task.task_id)
+            prefixes = tuple(f"refs/heads/aios/{family}/{prefix}" for family in
+                             ("failure-artifacts", "artifacts", "failure"))
+            expected = {}
+            op._record_observed_refs(expected, tuple(
+                (ref, sha) for ref, sha in expected_refs.items() if ref.startswith(prefixes)
+            ))
+            if admission.get("observed_snapshot_sha256") != expected["observed_snapshot_sha256"]:
+                raise ValueError("canonical strategy inputs moved during reconstruction")
+        if resolved.task != task or dict(resolved.failure) != dict(failure):
+            raise ValueError("strategy TASK/FAILURE differs from canonical recovery")
+        head = failure["failed_head_sha"]
+        candidate_changed = sorted(op._committed_changed_files(observer, failure["base_sha"], head))
+        op.validate_runtime_failure_binding(
+            failure, run_id=failed_run_id, task_id=task.task_id, task_revision=task.revision,
+            executor=failure["executor"], base_sha=failure["base_sha"], candidate_sha=head,
+            modification_scope=task.scope.modify,
+            actual_descends_from_base=op._git_is_ancestor(observer, failure["base_sha"], head),
+            actual_changed_files=set(candidate_changed),
+        )
+        return {
+            "preverification_hex": (
+                None if resolved.preverification is None else resolved.preverification.hex()
+            ),
+            "root_base_sha": resolved.root_base_sha,
+            "result_base_sha": resolved.result_base_sha,
+            "committed_deltas": {
+                "candidate": candidate_changed,
+                "result": sorted(op._committed_changed_files(observer, resolved.result_base_sha, head)),
+            },
+        }
+
+
 def _blocked_correction_preflight(
     family: str, admission: Mapping[str, Any], failure: BaseException
 ) -> CorrectionPreflightResult:

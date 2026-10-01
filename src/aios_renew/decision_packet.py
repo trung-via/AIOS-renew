@@ -385,7 +385,7 @@ def _semantic_review(material: dict[str, Any], observed: Mapping[str, Any]) -> t
 
 def _repair_authoring(material: dict[str, Any], observed: Mapping[str, Any]) -> tuple[Any, Any, Any, Any]:
     _mapping(material, "REPAIR_AUTHORING", fields={"kind", "task", "failed_run", "failure",
-             "failure_artifacts_sha", "current_authorization"},
+             "failure_artifacts_sha", "current_authorization", "strategy_state"},
              required={"kind", "task", "failed_run", "failure"})
     task = _task(material["task"], observed)
     unified = observed.get("unified_state")
@@ -393,7 +393,7 @@ def _repair_authoring(material: dict[str, Any], observed: Mapping[str, Any]) -> 
     action = "EXECUTE_REPAIR" if supersession is not None else "AUTHOR_REPAIR"
     if not isinstance(unified, dict) or unified.get("next_action") != action:
         raise DecisionPacketError("canonical state is not REPAIR authoring")
-    if supersession is None and set(material) != {"kind", "task", "failed_run", "failure"}:
+    if supersession is None and set(material) - {"strategy_state"} != {"kind", "task", "failed_run", "failure"}:
         raise DecisionPacketError("initial REPAIR authoring cannot supply a prior authorization")
     failed = _run(material["failed_run"], task, expected_id=unified.get("failed_run_id"))
     failure = material["failure"]
@@ -439,6 +439,10 @@ def _repair_authoring(material: dict[str, Any], observed: Mapping[str, Any]) -> 
     # Runtime diagnostic messages and structured details can contain local
     # paths, streams, and secrets. Project only the bounded error class.
     observation["error"] = {"type": error_type}
+    from .correction_preflight import repair_strategy_facts
+    observation["strategy_facts"] = repair_strategy_facts(
+        task=task, failure=failure, state=material.get("strategy_state"),
+    )
     return subject, asdict(task), None, observation
 
 
@@ -491,7 +495,8 @@ def compile_decision_packet(
             subject, task_facts, claims, prior, observations = _semantic_review(supplied, observed)
         elif flow == "REPAIR_AUTHORING":
             if resolution.selection_basis == "EXPLICIT_UNEXECUTED_REPAIR_SUPERSESSION" and (
-                supplied != _normal(json.loads(_json(context.repair_supersession_material)))
+                {k: v for k, v in supplied.items() if k != "strategy_state"}
+                != _normal(json.loads(_json(context.repair_supersession_material)))
             ):
                 raise DecisionPacketError("supersession material differs from canonical reconstruction")
             subject, task_facts, claims, prior = _repair_authoring(supplied, observed)

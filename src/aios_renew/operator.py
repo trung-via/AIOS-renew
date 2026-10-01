@@ -2513,38 +2513,13 @@ def _resolve_repair_admission(
         raise OperatorError(
             "FINALIZE_CANDIDATE REPAIR modification scope must be empty"
         )
-    if action == "CONTINUE_IMPLEMENTATION":
-        if not scope:
-            raise OperatorError(
-                "CONTINUE_IMPLEMENTATION REPAIR modification scope is empty"
-            )
+    if action in ("CONTINUE_IMPLEMENTATION", "FINALIZE_CANDIDATE"):
+        if action == "CONTINUE_IMPLEMENTATION" and not scope:
+            raise OperatorError("CONTINUE_IMPLEMENTATION REPAIR modification scope is empty")
         if failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE"):
-            raise OperatorError(
-                "CONTINUE_IMPLEMENTATION requires a pre-verification failure"
-            )
-        if (
-            candidate.get("transportable") is not True
-            or candidate.get("dirty") is not False
-            or candidate.get("descends_from_base") is not True
-            or candidate.get("outside_task_scope") != []
-        ):
-            raise OperatorError(
-                "CONTINUE_IMPLEMENTATION requires a clean transportable candidate"
-            )
-    if action == "FINALIZE_CANDIDATE":
-        if failure.get("phase") not in ("EXECUTION", "COMPLETION_GATE"):
-            raise OperatorError(
-                "FINALIZE_CANDIDATE requires a pre-verification failure"
-            )
-        if (
-            candidate.get("transportable") is not True
-            or candidate.get("dirty") is not False
-            or candidate.get("descends_from_base") is not True
-            or candidate.get("outside_task_scope") != []
-        ):
-            raise OperatorError(
-                "FINALIZE_CANDIDATE requires a clean transportable candidate"
-            )
+            raise OperatorError(f"{action} requires a pre-verification failure")
+        if not _repair_action_structure(failure)[action]:
+            raise OperatorError(f"{action} requires a clean transportable candidate")
     admission["action"] = action
 
     reusable_package = None
@@ -3127,6 +3102,29 @@ def _read_optional_bytes(path: Path) -> bytes | None:
         ) from exc
 
 
+def _repair_action_structure(failure: Mapping[str, Any]) -> dict[str, bool]:
+    """Action-neutral prerequisites shared by authoring and execution admission.
+
+    Authorization, nonempty mutation scope and exact NO_CHANGE reuse are separate
+    admission gates. These facts grant no execution authority.
+    """
+    candidate = failure.get("candidate", {})
+    repairable = candidate.get("repairable") is True
+    clean = (
+        candidate.get("transportable") is True
+        and candidate.get("dirty") is False
+        and candidate.get("descends_from_base") is True
+        and candidate.get("outside_task_scope") == []
+    )
+    preverification = failure.get("phase") in ("EXECUTION", "COMPLETION_GATE")
+    return {
+        "NO_CHANGE": repairable and clean and failure.get("phase") == "VERIFICATION",
+        "FINALIZE_CANDIDATE": repairable and clean and preverification,
+        "CONTINUE_IMPLEMENTATION": repairable and clean and preverification,
+        "CODE_FIX": repairable,
+    }
+
+
 def _eligible_reusable_repair_package(
     content: bytes | None,
     *,
@@ -3139,6 +3137,7 @@ def _eligible_reusable_repair_package(
     repo: Path | None = None,
     root_base_sha: str | None = None,
     result_base_sha: str | None = None,
+    committed_deltas: Mapping[str, list[str]] | None = None,
 ) -> ResultPackage | None:
     """Fail closed on present state and admit only exact verification reuse."""
 
@@ -3155,13 +3154,15 @@ def _eligible_reusable_repair_package(
     if not isinstance(failed_head, str) or not failed_head:
         raise OperatorError("invalid failed subject for pre-verification candidate")
     try:
+        from .publication import _json_no_duplicates
+        _json_no_duplicates(content, document="pre-verification candidate")
         package = validate_preverification_candidate(
             content,
             task=task,
             run_id=failed_run_id,
             subject_sha=failed_head,
         )
-    except ArtifactValidationError as exc:
+    except (ArtifactValidationError, ValueError) as exc:
         raise OperatorError(f"invalid pre-verification candidate: {exc}") from exc
 
     candidate = failure.get("candidate")
@@ -3172,7 +3173,7 @@ def _eligible_reusable_repair_package(
         isinstance(item, str) and item for item in changed_files
     ):
         raise OperatorError("invalid pre-verification candidate changed-files binding")
-    if repo is not None:
+    if repo is not None or committed_deltas is not None:
         resolved_root_base = result_base_sha
         if resolved_root_base is None:
             resolved_root_base = root_base_sha
@@ -3180,8 +3181,10 @@ def _eligible_reusable_repair_package(
             resolved_root_base = failure.get("base_sha")
         if not isinstance(resolved_root_base, str) or not resolved_root_base:
             raise OperatorError("invalid REPAIR result-base lineage")
-        actual_root_changed = _committed_changed_files(
-            repo, resolved_root_base, failed_head
+        actual_root_changed = (
+            set(committed_deltas["result"])
+            if committed_deltas is not None else
+            _committed_changed_files(repo, resolved_root_base, failed_head)
         )
         if set(package.result.changed_files) != actual_root_changed or len(
             package.result.changed_files
@@ -3192,8 +3195,10 @@ def _eligible_reusable_repair_package(
         failed_base = failure.get("base_sha")
         if not isinstance(failed_base, str) or not failed_base:
             raise OperatorError("invalid failed candidate base")
-        actual_candidate_changed = _committed_changed_files(
-            repo, failed_base, failed_head
+        actual_candidate_changed = (
+            set(committed_deltas["candidate"])
+            if committed_deltas is not None else
+            _committed_changed_files(repo, failed_base, failed_head)
         )
         if set(changed_files) != actual_candidate_changed or len(changed_files) != len(
             actual_candidate_changed
@@ -3210,14 +3215,7 @@ def _eligible_reusable_repair_package(
         ):
             if list(package.result.changed_files) != changed_files:
                 raise OperatorError("pre-verification candidate changed-files mismatch")
-    if (
-        failure.get("phase") != "VERIFICATION"
-        or candidate.get("repairable") is not True
-        or candidate.get("transportable") is not True
-        or candidate.get("dirty") is not False
-        or candidate.get("descends_from_base") is not True
-        or candidate.get("outside_task_scope") != []
-    ):
+    if not _repair_action_structure(failure)["NO_CHANGE"]:
         return None
     if package.result.unresolved:
         raise OperatorError("pre-verification candidate is incomplete")
@@ -3235,12 +3233,121 @@ def _eligible_reusable_repair_package(
     return package
 
 
+def _validated_repair_remediation_source(
+    repo: Path, *, task: Task, run_data: Mapping[str, Any], run: Run,
+    package: ResultPackage, review: Review, repair: bytes | None,
+    repair_sources: frozenset[str] = frozenset(),
+) -> tuple[str, Review | None] | None:
+    """Validate exact successful REPAIR provenance before remediation authority.
+
+    A missing wrapper on a RUN based on a canonical failed candidate cannot become
+    ordinary PRIMARY provenance. No new lifecycle kind is inferred or persisted.
+    """
+    from . import publication as pub
+    from .review_transport import resolve_transport_remote, _read_remote_blob
+
+    remote = resolve_transport_remote(repo)
+    if repair is None:
+        if "kind" not in run_data:
+            if review.mode == "DELTA":
+                raise ValueError("DELTA source is missing validated correction lineage")
+            _, failures, _ = pub._git(
+                repo, "ls-remote", "--refs", remote,
+                f"refs/heads/aios/failure/{task_run_prefix(task.task_id)}*",
+            )
+            if any(line.split()[0] == run.base_sha for line in failures.splitlines()):
+                raise ValueError("successful REPAIR source is missing REPAIR lineage")
+        return None
+    if "kind" in run_data:
+        raise ValueError("successful source has conflicting REMEDIATION/REPAIR lineage")
+    if run.status != "ACTIVE" or run.task.id != task.task_id or run.task.revision != task.revision:
+        raise ValueError("successful REPAIR RUN status or TASK identity mismatch")
+    source_id = run.run_id
+    if source_id in repair_sources:
+        raise ValueError("cyclic successful REPAIR source lineage")
+    repair_sources = repair_sources.union((source_id,))
+    artifacts_sha = pub._single_remote_sha(
+        repo, remote, f"refs/heads/aios/artifacts/{source_id}", run_id=source_id,
+    )
+    candidate_sha = pub._single_remote_sha(
+        repo, remote, f"refs/heads/aios/review/{source_id}", run_id=source_id,
+    )
+    if candidate_sha != package.result.head_sha or review.reviewed_sha != candidate_sha:
+        raise ValueError("successful REPAIR source candidate/REVIEW mismatch")
+    pub._fetch_object(repo, remote, candidate_sha, run_id=source_id)
+    if not _git_is_ancestor(repo, run.base_sha, candidate_sha):
+        raise ValueError("successful REPAIR candidate does not descend from failed head")
+    if pub._single_optional_remote_sha(
+        repo, remote, f"refs/heads/aios/failure-artifacts/{source_id}", run_id=source_id,
+    ) is not None:
+        raise ValueError("successful REPAIR source has conflicting terminal lineage")
+    pub._fetch_object(repo, remote, artifacts_sha, run_id=source_id)
+    canonical_repair = _read_remote_blob(repo, remote, artifacts_sha, ".ai/transport/repair.json")
+    canonical_run = pub._json_no_duplicates(
+        pub._read_blob(repo, artifacts_sha, ".ai/transport/run.json", run_id=source_id), document="RUN",
+    )
+    canonical_result = pub._json_no_duplicates(
+        pub._read_blob(repo, artifacts_sha, ".ai/transport/result.json", run_id=source_id),
+        document="ResultPackage",
+    )
+    if canonical_repair != repair or canonical_run != dict(run_data) or (
+        validate_result(canonical_result["result"]) != package.result
+        or tuple(validate_evidence(item) for item in canonical_result["evidence"]) != package.evidence
+    ):
+        raise ValueError("substituted successful REPAIR source transport")
+    decision_sha = pub._single_remote_sha(
+        repo, remote, f"refs/heads/aios/review-decision/{source_id}", run_id=source_id,
+    )
+    pub._fetch_object(repo, remote, decision_sha, run_id=source_id)
+    _, tree, _ = pub._git(repo, "ls-tree", "-r", "--name-only", decision_sha, "--", ".ai/reviews")
+    paths = [path for path in tree.splitlines() if path.endswith((".yaml", ".yml"))]
+    if len(paths) != 1 or parse_review(pub._read_blob(
+        repo, decision_sha, paths[0], run_id=source_id,
+    ).decode("utf-8")) != review:
+        raise ValueError("successful REPAIR source REVIEW is not the exact canonical decision")
+    root, result_base, prior, finding_id = pub._repair_review_lineage(
+        repo, remote=remote, publication_run_id=source_id, child_run_data=run_data,
+        child_run=run, child_head_sha=candidate_sha, lineage_bytes=repair, task=task,
+        strict_source=True, repair_sources=repair_sources,
+    )
+    pub._validate_repair_package(
+        repo, source_sha=candidate_sha, result_base_sha=result_base, task=task,
+        run=run, result=package.result, evidence=package.evidence,
+    )
+    if prior is not None and (review.mode != "DELTA" or review.prior_finding_id != finding_id):
+        raise ValueError("successful REPAIR requires the exact prior DELTA finding")
+    if prior is not None:
+        # The prior semantic REVIEW copied in an authorization carrier must also
+        # be the exact canonical Reviewer decision, not an unrelated substitute.
+        origins = resolve_remote_remediation_lineages(
+            repo, finding_id=finding_id, task_id=task.task_id, task_revision=task.revision,
+        )
+        origins = [item for item in origins
+                   if parse_review(item.review.decode("utf-8")) == prior]
+        if len(origins) != 1:
+            raise ValueError("successful REPAIR prior REVIEW source is missing or ambiguous")
+        origin_id = origins[0].source_run_id
+        prior_sha = pub._single_remote_sha(
+            repo, remote, f"refs/heads/aios/review-decision/{origin_id}", run_id=source_id,
+        )
+        pub._fetch_object(repo, remote, prior_sha, run_id=source_id)
+        _, tree, _ = pub._git(repo, "ls-tree", "-r", "--name-only", prior_sha, "--", ".ai/reviews")
+        paths = [path for path in tree.splitlines() if path.endswith((".yaml", ".yml"))]
+        if len(paths) != 1 or parse_review(pub._read_blob(
+            repo, prior_sha, paths[0], run_id=source_id,
+        ).decode("utf-8")) != prior:
+            raise ValueError("successful REPAIR prior REVIEW differs from canonical decision")
+    validate_review(task=task, result=package.result, review=review, prior_review=prior)
+    return root, prior
+
+
 def _derive_remediation_source_root(
     repo: Path,
     *,
     task: Task,
     execution: RemediationExecution,
     seen: frozenset[tuple[str, str]] = frozenset(),
+    repair_sources: frozenset[str] = frozenset(),
 ) -> str:
     if execution.original_constraints != execution.remediation.constraints:
         raise OperatorError("REMEDIATION origin constraints mismatch")
@@ -3261,6 +3368,8 @@ def _derive_remediation_source_root(
     for remote in lineages:
         try:
             review = parse_review(remote.review.decode("utf-8", errors="strict"))
+            if review.review_id != execution.review_id:
+                continue
             remediation = parse_remediation(
                 remote.remediation.decode("utf-8", errors="strict")
             )
@@ -3286,11 +3395,15 @@ def _derive_remediation_source_root(
                 raise TypeError("source evidence must be a list")
             evidence = tuple(validate_evidence(item) for item in evidence_data)
             package = ResultPackage(result=result, evidence=evidence)
+            repaired_source = _validated_repair_remediation_source(
+                repo, task=task, run_data=run_data, run=source_run,
+                package=package, review=review, repair=remote.repair, repair_sources=repair_sources,
+            )
             if source_execution is None:
                 validate_result_package(
                     task=task, run=source_run, result=result, evidence=evidence
                 )
-                prior_review = None
+                prior_review = None if repaired_source is None else repaired_source[1]
             else:
                 _validate_persisted_remediation_result(
                     repo=repo,
@@ -3326,56 +3439,12 @@ def _derive_remediation_source_root(
                 raise ValueError("reviewed source identity or SHA mismatch")
             if source_execution is not None:
                 root = _derive_remediation_source_root(
-                    repo, task=task, execution=source_execution, seen=seen
+                    repo, task=task, execution=source_execution, seen=seen, repair_sources=repair_sources,
                 )
-            elif remote.repair is None:
-                root = source_run.base_sha
+            elif repaired_source is not None:
+                root = repaired_source[0]
             else:
-                repair_lineage = _decode_remote_mapping(
-                    remote.repair, "source REPAIR execution"
-                )
-                source_failure = repair_lineage.get("failure")
-                source_authorization = repair_lineage.get("repair")
-                source_authorization_sha = repair_lineage.get(
-                    "repair_authorization_sha"
-                )
-                source_task = repair_lineage.get("task")
-                if (
-                    not isinstance(repair_lineage.get("failed_run_id"), str)
-                    or repair_lineage.get("failed_head_sha") != source_run.base_sha
-                    or repair_lineage.get("run") != dict(run_data)
-                    or not isinstance(source_failure, Mapping)
-                    or source_failure.get("run_id")
-                    != repair_lineage.get("failed_run_id")
-                    or source_failure.get("failed_head_sha") != source_run.base_sha
-                    or not isinstance(source_failure.get("task"), Mapping)
-                    or dict(source_failure["task"])
-                    != {"id": task.task_id, "revision": task.revision}
-                    or not isinstance(source_authorization, Mapping)
-                    or source_authorization.get("failed_run_id")
-                    != repair_lineage.get("failed_run_id")
-                    or source_authorization.get("failed_head_sha")
-                    != source_run.base_sha
-                    or not isinstance(source_authorization.get("task"), Mapping)
-                    or dict(source_authorization["task"])
-                    != {"id": task.task_id, "revision": task.revision}
-                    or (
-                        source_authorization_sha is not None
-                        and (
-                            not isinstance(source_authorization_sha, str)
-                            or re.fullmatch(
-                                r"[0-9a-f]{40}|[0-9a-f]{64}",
-                                source_authorization_sha,
-                            )
-                            is None
-                        )
-                    )
-                    or not isinstance(source_task, Mapping)
-                    or source_task.get("task_id") != task.task_id
-                    or source_task.get("revision") != task.revision
-                ):
-                    raise ValueError("source REPAIR lineage mismatch")
-                root = repair_lineage.get("root_base_sha")
+                root = source_run.base_sha
             if not isinstance(root, str) or not root:
                 raise ValueError("source root_base_sha is invalid")
             matches.append(root)
@@ -7418,6 +7487,10 @@ def _parse_remote_direct_lineage_impl(
             raise TypeError("evidence must be a list")
         evidence = tuple(validate_evidence(item) for item in evidence_data)
         package = ResultPackage(result=result, evidence=evidence)
+        repaired_source = _validated_repair_remediation_source(
+            repo, task=lineage_task, run_data=run_data, run=source_run,
+            package=package, review=review, repair=remote.repair,
+        )
         if prior_execution is None:
             validate_result_package(
                 task=lineage_task,
@@ -7437,18 +7510,16 @@ def _parse_remote_direct_lineage_impl(
             raise ValueError("REVIEW does not bind to authoritative source RESULT")
         if remediation.finding_id not in {item.id for item in review.findings}:
             raise ValueError("REMEDIATION finding is absent from REVIEW")
-        prior_review = None
-        if review.prior_finding_id is not None:
+        prior_review = None if repaired_source is None else repaired_source[1]
+        if review.prior_finding_id is not None and repaired_source is None:
             if prior_execution is None:
-                raise ValueError("DELTA REVIEW source is not a REMEDIATION RUN")
+                raise ValueError("DELTA REVIEW source has no validated correction lineage")
             if review.prior_finding_id != prior_execution.finding.id:
                 raise ValueError("DELTA REVIEW prior finding lineage mismatch")
             prior_review = Review(
                 review_id=prior_execution.review_id,
                 reviewed_sha=prior_execution.remediation.reviewed_sha,
-                mode="PRIMARY",
-                verdict="CHANGES_REQUIRED",
-                acceptance={},
+                mode="PRIMARY", verdict="CHANGES_REQUIRED", acceptance={},
                 findings=(prior_execution.finding,),
             )
         return review, remediation, result, prior_review, lineage_task

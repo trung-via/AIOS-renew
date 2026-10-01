@@ -3715,3 +3715,182 @@ findings: []
             ),
             repo=lineage["repo"],
         )
+
+
+
+def test_h2_authoring_binds_transported_strategy_and_rejects_sidecar_drift(tmp_path, monkeypatch):
+    from aios_renew import brain_audit
+
+    repo, remote, _, failure_sha, initial = completion_gate_supersession_fixture(tmp_path)
+    packet, _, _, _ = authoring_ingress_module._compose_authoring_packet(initial, repo)
+    facts = packet.as_dict()["bounded_observations"]["strategy_facts"]
+    assert facts["reusable_preverification_state"] == "ABSENT"
+    assert facts["structural_result_package"] == "MISSING"
+    assert facts["action_structural_eligibility"] == {
+        "NO_CHANGE": "INELIGIBLE", "FINALIZE_CANDIDATE": "ELIGIBLE",
+        "CONTINUE_IMPLEMENTATION": "ELIGIBLE", "CODE_FIX": "ELIGIBLE"}
+    # Conflicting machine-local state has no standing in the projection.
+    from aios_renew.operator import runtime_paths
+    state = runtime_paths(repo)
+    (state.preverification / "RUN-254-001.json").write_bytes(b"local transient garbage")
+    assert authoring_ingress_module._compose_authoring_packet(initial, repo)[0].render() == packet.render()
+    envelope = audited_envelope(initial, repo)
+    validate = brain_audit.validate_stage2
+
+    def move_transport(*args, **kwargs):
+        audit = validate(*args, **kwargs)
+        tree = authoring_ingress_module._tree_with_metadata(
+            repo, failure_sha, ".ai/transport/pre-verification-candidate.json", b"{malformed",
+        )
+        moved = authoring_ingress_module._commit_tree(repo, tree, [failure_sha], "sidecar movement")
+        git(remote, "fetch", "--no-tags", str(repo), moved)
+        git(remote, "update-ref", "refs/heads/aios/failure-artifacts/RUN-254-001", moved)
+        return audit
+
+    monkeypatch.setattr(brain_audit, "validate_stage2", move_transport)
+    with pytest.raises(AuthoringIngressError, match="freshness"):
+        execute_ingress(envelope, repo=repo)
+    assert not git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/aios/repair/RUN-254-001")
+
+
+def h2_reviewed_repair_source(tmp_path):
+    lineage = _integrated_remediation_repair_review_lineage(tmp_path)
+    repo = lineage["repo"]
+    review = f"""review_id: REVIEW-140-010
+reviewed_sha: {lineage['repaired_sha']}
+mode: DELTA
+verdict: CHANGES_REQUIRED
+prior_finding_id: F1
+acceptance:
+  AC1: FAIL
+findings:
+  - id: F2
+    basis: AC1
+    action: CODE_FIX
+    location: src/sample.py
+    issue: One additional bounded defect remains.
+    expected: Correct the additional defect.
+"""
+    execute_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW",
+        {"run_id": lineage["run_id"]}, {"expected_candidate_sha": lineage["repaired_sha"]}, review), repo=repo)
+    remediation = {"finding_id": "F2", "action": "CODE_FIX", "reviewed_sha": lineage["repaired_sha"],
+                   "modification_scope": ["src/sample.py"],
+                   "affected_verification": ["git diff --check"], "constraints": ["Bounded mutation authority only."]}
+    envelope = IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "AUTHOR_REMEDIATION",
+        {"source_run_id": lineage["run_id"], "finding_id": "F2"},
+        {"expected_reviewed_sha": lineage["repaired_sha"]}, remediation)
+    return lineage, envelope
+
+
+def test_h2_successful_repair_delta_changes_required_authors_and_admits_remediation(tmp_path):
+    from aios_renew.operator import preflight_remediation, run_remediation
+
+    lineage, envelope = h2_reviewed_repair_source(tmp_path)
+    repo = lineage["repo"]
+    authorization = execute_audited_ingress(envelope, repo=repo)
+    assert authorization.status == "CANONICALIZED"
+    ready = preflight_remediation("TASK-140", finding_id="F2", source_run_id=lineage["run_id"], repo=repo)
+    assert ready.status == "READY"
+    assert ready.source_run_id == lineage["run_id"]
+    assert ready.reviewed_sha == lineage["repaired_sha"]
+    calls = []
+
+    def executor(command, **kwargs):
+        calls.append("executor")
+        execution = json.loads(kwargs["input"].decode().split("REMEDIATION_INPUT:\n", 1)[1])
+        workspace = Path(execution["run"]["workspace"])
+        target = workspace / "src/sample.py"
+        target.write_text(target.read_text() + "# additional correction\n", encoding="utf-8")
+        git(workspace, "add", "src/sample.py")
+        git(workspace, "commit", "--quiet", "-m", "bounded F2 correction")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"result": {
+            "head_sha": git(workspace, "rev-parse", "HEAD"),
+            "claims": [],
+            "changed_files": ["src/sample.py"], "unresolved": []}, "evidence": []}), "")
+
+    def verification(command, **kwargs):
+        calls.append("verification")
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    summary = run_remediation("TASK-140", finding_id="F2", source_run_id=lineage["run_id"],
+        executor="codex", repo=repo, native_runner=executor, verification_runner=verification)
+    assert calls == ["executor", "verification"]
+    assert summary.head_sha != lineage["repaired_sha"]
+    review = f"""review_id: REVIEW-140-F2-FINAL
+reviewed_sha: {summary.head_sha}
+mode: DELTA
+verdict: PASS
+prior_finding_id: F2
+acceptance:
+  AC1: PASS
+findings: []
+"""
+    decision = execute_ingress(IngressEnvelope("AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW",
+        {"run_id": summary.run_id}, {"expected_candidate_sha": summary.head_sha}, review), repo=repo)
+    assert decision.status == "CANONICALIZED"
+    report = publish_review_decision(repo, run_id=summary.run_id, decision_sha=decision.canonical_sha)
+    assert report.outcome == "PUBLISHED"
+    assert git(lineage["remote"], "rev-parse", "refs/heads/main") == summary.head_sha
+
+
+@pytest.mark.parametrize("defect", ["missing", "malformed", "run", "failed_head", "root", "result_base",
+                                    "task", "authorization", "moved_failure", "missing_failure",
+                                    "prior_review", "conflicting_kind"])
+def test_h2_successful_repair_source_invalid_lineage_creates_no_remediation(tmp_path, defect):
+    lineage, envelope = h2_reviewed_repair_source(tmp_path)
+    repo, remote = lineage["repo"], lineage["remote"]
+    source_id = lineage["run_id"]
+    artifacts_ref = f"refs/heads/aios/artifacts/{source_id}"
+    artifacts_sha = git(remote, "rev-parse", artifacts_ref)
+    repair_bytes = authoring_ingress_module._read_commit_blob(repo, artifacts_sha, ".ai/transport/repair.json")
+    repair = json.loads(repair_bytes)
+    if defect == "missing_failure":
+        git(remote, "update-ref", "-d", "refs/heads/aios/failure/RUN-140-009")
+    elif defect == "moved_failure":
+        git(remote, "update-ref", "refs/heads/aios/failure/RUN-140-009", lineage["repaired_sha"])
+    elif defect == "prior_review":
+        prior_ref = "refs/heads/aios/remediation/RUN-140-008-F1"
+        parent = git(remote, "rev-parse", prior_ref)
+        paths = git(repo, "ls-tree", "-r", "--name-only", parent, "--", ".ai/reviews").splitlines()
+        original = authoring_ingress_module._read_commit_blob(repo, parent, paths[0])
+        substituted = original.replace(b"review_id:", b"review_id: UNRELATED #", 1)
+        tree = authoring_ingress_module._tree_with_metadata(repo, parent, paths[0], substituted, replace_existing=True)
+        moved = authoring_ingress_module._commit_tree(repo, tree, [parent], "unrelated prior REVIEW")
+        git(remote, "fetch", "--no-tags", str(repo), moved)
+        git(remote, "update-ref", prior_ref, moved)
+    else:
+        if defect == "run":
+            repair["run"]["run_id"] = "RUN-140-099"
+        elif defect == "failed_head":
+            repair["failed_head_sha"] = lineage["repaired_sha"]
+        elif defect == "root":
+            repair["root_base_sha"] = lineage["failed_head_sha"]
+        elif defect == "result_base":
+            repair["result_base_sha"] = lineage["failed_head_sha"]
+        elif defect == "task":
+            repair["task"]["task_id"] = "TASK-OTHER"
+        elif defect == "authorization":
+            repair["repair"]["instructions"] = ["Substituted authorization"]
+        tree = authoring_ingress_module._tree_with_metadata(repo, artifacts_sha,
+            ".ai/transport/repair.json", b"{bad" if defect == "malformed" else json.dumps(repair).encode(),
+            replace_existing=True)
+        if defect == "missing":
+            # Build the exact transported tree with only the wrapper removed.
+            index = tmp_path / "remove-wrapper-index"
+            import os
+            env = {**os.environ, "GIT_INDEX_FILE": str(index)}
+            subprocess.run(("git", "-C", str(repo), "read-tree", tree), env=env, check=True)
+            subprocess.run(("git", "-C", str(repo), "update-index", "--force-remove", ".ai/transport/repair.json"), env=env, check=True)
+            tree = subprocess.run(("git", "-C", str(repo), "write-tree"), env=env, capture_output=True, text=True, check=True).stdout.strip()
+        elif defect == "conflicting_kind":
+            run = json.loads(authoring_ingress_module._read_commit_blob(repo, artifacts_sha, ".ai/transport/run.json"))
+            run["kind"] = "UNRELATED"
+            intermediate = authoring_ingress_module._commit_tree(repo, tree, [artifacts_sha], "conflict stage")
+            tree = authoring_ingress_module._tree_with_metadata(repo, intermediate, ".ai/transport/run.json", json.dumps(run).encode(), replace_existing=True)
+        moved = authoring_ingress_module._commit_tree(repo, tree, [artifacts_sha], "invalid source wrapper")
+        git(remote, "fetch", "--no-tags", str(repo), moved)
+        git(remote, "update-ref", artifacts_ref, moved)
+    from aios_renew.operator import OperatorError
+    with pytest.raises((AuthoringIngressError, OperatorError, RuntimeError, ValueError)):
+        execute_audited_ingress(envelope, repo=repo)
+    assert not git(remote, "for-each-ref", "--format=%(refname)", f"refs/heads/aios/remediation/{source_id}-F2")

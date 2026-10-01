@@ -618,6 +618,17 @@ def _validate_predecessor_lineage(
     if not any(f.id == pred.finding_id for f in prior_review.findings):
         raise ValueError("predecessor REVIEW does not contain selected finding")
 
+    from .operator import _validated_repair_remediation_source
+    from .review_transport import _read_remote_blob
+    evidence = pred_result_data.get("evidence")
+    if not isinstance(evidence, list):
+        raise ValueError("predecessor ResultPackage evidence is invalid")
+    _validated_repair_remediation_source(
+        repo, task=task, run_data=pred_run_data, run=pred_run,
+        package=ResultPackage(result=pred_result, evidence=tuple(validate_evidence(item) for item in evidence)),
+        review=prior_review,
+        repair=_read_remote_blob(repo, remote, pred_artifacts_sha, ".ai/transport/repair.json"),
+    )
     return prior_review
 
 
@@ -679,9 +690,35 @@ def _derive_publication_frontier(
         if pred_result.head_sha != expected_head:
             raise ValueError("cumulative execution-base candidate mismatch")
 
+        # A successful REPAIR keeps its own RUN identity. Its DELTA semantics
+        # continue the exact failed REMEDIATION origin, including integrated bases.
+        semantic_run_data = pred_run_data
+        semantic_run_id = source_id
+        repair_bytes = _read_optional_blob(repo, pred_artifacts_sha, ".ai/transport/repair.json")
+        if repair_bytes is not None:
+            lineage = _mapping(_json_no_duplicates(repair_bytes, document="source REPAIR"), "source REPAIR")
+            repair_seen: set[str] = set()
+            while True:
+                failed_id = lineage.get("failed_run_id")
+                if not isinstance(failed_id, str) or failed_id in repair_seen:
+                    raise ValueError("cyclic or malformed successful REPAIR source lineage")
+                repair_seen.add(failed_id)
+                failed_sha = _single_remote_sha(repo, remote,
+                    f"refs/heads/aios/failure-artifacts/{failed_id}", run_id=publication_run_id)
+                _fetch_object(repo, remote, failed_sha, run_id=publication_run_id)
+                origin = _mapping(_json_no_duplicates(_read_blob(repo, failed_sha,
+                    ".ai/transport/run.json", run_id=publication_run_id), document="REPAIR origin RUN"),
+                    "REPAIR origin RUN")
+                if origin.get("kind") == "REMEDIATION":
+                    semantic_run_data, semantic_run_id = origin, failed_id
+                    break
+                previous = _read_optional_blob(repo, failed_sha, ".ai/transport/repair.json")
+                if previous is None:
+                    break
+                lineage = _mapping(_json_no_duplicates(previous, document="prior REPAIR"), "prior REPAIR")
         source_pred = (
-            _parse_remediation_predecessor(pred_run_data["predecessor"])
-            if "predecessor" in pred_run_data
+            _parse_remediation_predecessor(semantic_run_data["predecessor"])
+            if "predecessor" in semantic_run_data
             else None
         )
         remediation_ref = (
@@ -728,17 +765,33 @@ def _derive_publication_frontier(
         )
         prior_review = parse_review(review_bytes.decode("utf-8", errors="strict"))
 
+        if repair_bytes is not None:
+            from .operator import _validated_repair_remediation_source
+            from .review_transport import _read_remote_blob
+            source_package = _mapping(_json_no_duplicates(
+                _read_blob(repo, pred_artifacts_sha, ".ai/transport/result.json", run_id=publication_run_id),
+                document="source ResultPackage"), "source ResultPackage")
+            source_run = _run_from_data(pred_run_data, "source REPAIR RUN")
+            source_task = parse_task(_read_blob(repo, pred_result.head_sha,
+                f".ai/tasks/{source_run.task.id}.yaml", run_id=publication_run_id).decode("utf-8"))
+            _validated_repair_remediation_source(
+                repo, task=source_task, run_data=pred_run_data, run=source_run,
+                package=ResultPackage(result=pred_result, evidence=tuple(
+                    validate_evidence(item) for item in source_package["evidence"])),
+                review=prior_review,
+                repair=_read_remote_blob(repo, remote, pred_artifacts_sha, ".ai/transport/repair.json"),
+            )
         if source_pred is not None:
             pred_run, pred_remediation = _parse_remediation_run(
-                pred_run_data, run_id=source_id
+                semantic_run_data, run_id=semantic_run_id
             )
             if source_pred.reviewed_sha != pred_remediation.reviewed_sha:
                 raise ValueError("cumulative semantic predecessor mismatch")
             steps.append((source_id, source_pred, prior_review))
             current_pred = source_pred
-            if "execution_base" in pred_run_data:
+            if "execution_base" in semantic_run_data:
                 current_base = _parse_remediation_execution_base(
-                    pred_run_data["execution_base"]
+                    semantic_run_data["execution_base"]
                 )
                 if current_base.candidate_sha != pred_run.base_sha:
                     raise ValueError("cumulative execution-base RUN mismatch")
@@ -1029,6 +1082,8 @@ def _repair_review_lineage(
     task: Any,
     historical_child_failure: Mapping[str, Any] | None = None,
     seen: frozenset[str] = frozenset(),
+    strict_source: bool = False,
+    repair_sources: frozenset[str] = frozenset(),
 ) -> tuple[str, str, Review | None, str | None]:
     """Validate persisted REPAIR links and recover the applicable prior REVIEW."""
 
@@ -1276,6 +1331,25 @@ def _repair_review_lineage(
             result_base_sha = root_base_sha
         validate_remediation(review=prior_review, remediation=remediation, task=task)
         semantic_review = prior_review
+        if strict_source:
+            from .operator import _derive_remediation_source_root, _remediation_execution_from_data
+            from .review_transport import resolve_remote_remediation_lineages
+            origin_execution = _remediation_execution_from_data(predecessor_run_data["execution"])
+            canonical_root = _derive_remediation_source_root(
+                repo, task=task, execution=origin_execution, repair_sources=repair_sources,
+            )
+            if canonical_root != root_base_sha:
+                raise ValueError("REPAIR root_base_sha does not match REMEDIATION origin")
+            reviews = [parse_review(item.review.decode("utf-8")) for item in
+                       resolve_remote_remediation_lineages(
+                           repo, finding_id=remediation.finding_id,
+                           task_id=task.task_id, task_revision=task.revision,
+                       )]
+            reviews = [item for item in reviews if item.review_id == origin_execution.review_id
+                       and item.reviewed_sha == remediation.reviewed_sha]
+            if len(reviews) != 1:
+                raise ValueError("REPAIR prior semantic REVIEW is missing or ambiguous")
+            semantic_review = reviews[0]
         semantic_finding_id = remediation.finding_id
     elif "kind" not in predecessor_run_data:
         predecessor_run = _run_from_data(predecessor_run_data, "predecessor RUN")
@@ -1310,12 +1384,24 @@ def _repair_review_lineage(
                 task=task,
                 historical_child_failure=failure,
                 seen=seen,
+                strict_source=strict_source,
+                repair_sources=repair_sources,
             )
             if predecessor_root != root_base_sha:
                 raise ValueError("conflicting REPAIR root_base_sha lineage")
     else:
         raise ValueError("unknown predecessor RUN kind")
 
+    if strict_source:
+        code, _, _ = _git(repo, "merge-base", "--is-ancestor",
+                          predecessor_run.base_sha, failed_head_sha, allow_fail=True)
+        validate_runtime_failure_binding(
+            failure, run_id=failed_run_id, task_id=task.task_id, task_revision=task.revision,
+            executor=predecessor_run.executor, base_sha=predecessor_run.base_sha,
+            candidate_sha=failed_head_sha, modification_scope=task.scope.modify,
+            actual_descends_from_base=code == 0,
+            actual_changed_files=_changed_files(repo, predecessor_run.base_sha, failed_head_sha),
+        )
     code, _, _ = _git(
         repo,
         "merge-base",

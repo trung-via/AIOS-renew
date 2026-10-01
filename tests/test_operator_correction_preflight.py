@@ -1620,3 +1620,30 @@ constraints: []
     preflight_missing_ref = preflight_remediation("TASK-101", finding_id="F1", repo=repo)
     assert preflight_missing_ref.status == "BLOCKED"
     assert preflight_missing_ref.reason_code == "INTEGRATION_REQUIRED"
+
+
+
+def test_h2_canonical_strategy_reconstruction_is_read_only(tmp_path):
+    from tests.test_authoring_ingress import completion_gate_supersession_fixture
+    from aios_renew.task import parse_task
+
+    repo, remote, _, failure_sha, initial = completion_gate_supersession_fixture(tmp_path)
+    failure = json.loads(git(repo, "show", f"{failure_sha}:.ai/transport/failure.json"))
+    task = parse_task((repo / ".ai/tasks/TASK-254.yaml").read_text())
+    before = _control_repository_snapshot(repo)
+    refs = dict(line.split()[::-1] for line in git(repo, "ls-remote", "--refs", "origin",
+                                                 "refs/heads/main", "refs/heads/aios/*").splitlines())
+    state = correction_preflight_module.canonical_repair_strategy_state(
+        repo, failed_run_id=initial.identity["failed_run_id"], task=task, failure=failure,
+        expected_refs=refs)
+    facts = correction_preflight_module.repair_strategy_facts(task=task, failure=failure, state=state)
+    assert facts["structural_result_package"] == "MISSING"
+    assert facts["action_structural_eligibility"]["FINALIZE_CANDIDATE"] == "ELIGIBLE"
+    assert _control_repository_snapshot(repo) == before
+    stale = dict(refs)
+    stale[f"refs/heads/aios/failure-artifacts/{initial.identity['failed_run_id']}"] = "0" * 40
+    with pytest.raises(ValueError, match="moved during reconstruction"):
+        correction_preflight_module.canonical_repair_strategy_state(
+            repo, failed_run_id=initial.identity["failed_run_id"], task=task, failure=failure,
+            expected_refs=stale)
+    assert _control_repository_snapshot(repo) == before
