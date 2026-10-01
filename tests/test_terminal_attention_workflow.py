@@ -105,11 +105,21 @@ def test_local_wake_handoff_uses_only_successful_admission_identity() -> None:
     parsed, text = workflow()
     admission_job = parsed["jobs"]["admit-and-notify"]
     assert admission_job["outputs"] == {
+        "admission_status": "${{ steps.admission.outcome }}",
+        "run_id": "${{ steps.admission.outputs.run_id }}",
+        "terminal_kind": "${{ steps.admission.outputs.terminal_kind }}",
+        "artifact_sha": "${{ steps.admission.outputs.artifact_sha }}",
         "event_id": "terminal:${{ steps.admission.outputs.terminal_kind }}:${{ steps.admission.outputs.run_id }}:${{ steps.admission.outputs.artifact_sha }}",
     }
     handoff = parsed["jobs"]["local-chat-wake"]
     assert handoff["needs"] == "admit-and-notify"
-    assert "needs.admit-and-notify.result == 'success'" in handoff["if"]
+    assert handoff["if"].startswith("always() &&")
+    assert "needs.admit-and-notify.result" not in handoff["if"]
+    assert "needs.admit-and-notify.outputs.admission_status == 'success'" in handoff["if"]
+    assert "needs.admit-and-notify.outputs.run_id != ''" in handoff["if"]
+    assert "needs.admit-and-notify.outputs.terminal_kind == 'RESULT'" in handoff["if"]
+    assert "needs.admit-and-notify.outputs.terminal_kind == 'FAILURE'" in handoff["if"]
+    assert "needs.admit-and-notify.outputs.artifact_sha != ''" in handoff["if"]
     assert "vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true'" in handoff["if"]
     assert handoff["uses"] == "./.github/workflows/aios-local-chat-wake.yml"
     assert handoff["with"] == {

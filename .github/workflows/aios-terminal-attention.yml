@@ -39,6 +39,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
+      admission_status: ${{ steps.admission.outcome }}
+      run_id: ${{ steps.admission.outputs.run_id }}
+      terminal_kind: ${{ steps.admission.outputs.terminal_kind }}
+      artifact_sha: ${{ steps.admission.outputs.artifact_sha }}
       event_id: terminal:${{ steps.admission.outputs.terminal_kind }}:${{ steps.admission.outputs.run_id }}:${{ steps.admission.outputs.artifact_sha }}
     steps:
       - name: Check out published main with complete lineage
@@ -170,10 +174,17 @@ jobs:
 
   local-chat-wake:
     needs: admit-and-notify
-    # Only successful existing terminal admission can reach the local transport.
+    # Admission alone authorizes the wake, even if later Issue/artifact steps fail.
+    # always() bypasses the implicit dependency-success gate; exact admission
+    # status and complete selectors still fail closed when admission is absent.
     # This repository variable is a Human-operated, noncanonical enable gate.
     if: >-
-      needs.admit-and-notify.result == 'success' &&
+      always() &&
+      needs.admit-and-notify.outputs.admission_status == 'success' &&
+      needs.admit-and-notify.outputs.run_id != '' &&
+      (needs.admit-and-notify.outputs.terminal_kind == 'RESULT' ||
+       needs.admit-and-notify.outputs.terminal_kind == 'FAILURE') &&
+      needs.admit-and-notify.outputs.artifact_sha != '' &&
       vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true' &&
       github.repository == 'trung-via/AIOS-renew'
     permissions:
