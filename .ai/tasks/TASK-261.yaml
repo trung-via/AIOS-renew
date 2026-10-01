@@ -1,0 +1,126 @@
+task_id: TASK-261
+revision: 1
+goal: Replace the four independent GitHub issues.opened Brain carrier subscriptions
+  with one exact-title syntactic demultiplexing entry boundary that invokes only the
+  corresponding reusable carrier, eliminating top-level fanout noise without creating
+  lifecycle or semantic routing authority.
+problem: The current Brain ingress, PRIMARY wakeup, REPAIR wakeup, and REMEDIATION
+  intent carrier workflows each subscribe independently to issues.opened and reject
+  unrelated Issue titles inside their jobs. Every recognized or unrelated Issue therefore
+  fans out into multiple visible workflow runs, most skipped. H4A1 must collapse only
+  that syntactic event fanout while preserving each carrier's existing admission,
+  receipt, dispatch, permissions, provenance, and fail-closed semantics.
+assumptions:
+- H4A0 TASK-260 is reviewed and published and canonical roadmap state selects H4A1_REMOVE_ISSUE_WORKFLOW_FANOUT_NOISE.
+- docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md authorizes one deterministic syntactic entry/demultiplexing
+  boundary and forbids lifecycle state, correction strategy, NEXT, or semantic-flow
+  interpretation at that boundary.
+- The four current Issue carrier title markers are [AIOS BRAIN INGRESS], [AIOS BRAIN
+  WAKEUP], [AIOS REPAIR WAKEUP], and [AIOS REMEDIATION INTENT].
+- GitHub reusable-workflow invocation must preserve the original Issue event context
+  required by the existing event-file carrier admission. If that cannot be proven
+  with focused tests, the implementation must fail closed rather than serialize new
+  semantic payloads or widen routing authority.
+scope:
+  inspect:
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-brain-remediation-intent.yml
+  - .github/workflows/aios-approved-remediation-intent.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - .github/workflows/aios-auto-publish.yml
+  - .ai/brain-ingress-carriers.yaml
+  - .ai/brain-wakeup-carriers.yaml
+  - .ai/brain-repair-wakeup-carriers.yaml
+  - .ai/brain-remediation-intent-carriers.yaml
+  - tests/test_github_issue_ingress_workflow.py
+  - tests/test_github_issue_wakeup_workflow.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_github_issue_remediation_intent_workflow.py
+  modify:
+  - .github/workflows/aios-issue-carrier.yml
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-brain-remediation-intent.yml
+  - tests/test_issue_carrier_demux_workflow.py
+  - tests/test_github_issue_ingress_workflow.py
+  - tests/test_github_issue_wakeup_workflow.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_github_issue_remediation_intent_workflow.py
+non_goals:
+- Implement H4A2 local regular-chat browser/session transport, exact ChatGPT conversation
+  binding, wake dedupe, composer interaction, or any ChatGPT UI automation.
+- Run H4A3 live ACK-only exact-chat conformance or enable H4B regular-chat Brain semantic
+  continuation.
+- Change the Python carrier admission parsers, carrier policy registries, Runtime,
+  Reviewer, Publisher, TASK schema, Unified State, correction strategy logic, or roadmap
+  advancement.
+- Merge the four carrier families into one semantic carrier or normalize their payload
+  schemas, receipts, dispatch selectors, lifecycle meanings, or failure semantics.
+- Add polling, schedules, workflow_run fanout, Issue-comment fallback, Work wake,
+  or a generic execution/lifecycle router.
+constraints:
+  hard:
+  - Exactly one top-level workflow in this H4A1 carrier family may subscribe to issues.opened;
+    it may route only by exact literal Issue title equality to the four existing carrier
+    workflows.
+  - The demultiplexer must not read Issue body content, canonical lifecycle state,
+    Unified State, TASK/RUN/REVIEW artifacts, next_action, correction strategy, provider/model/executor
+    selection, or repository roadmap data.
+  - The four existing carrier workflows must cease direct issues.opened subscription
+    and become reusable-only entry surfaces for this path while retaining their existing
+    admission, receipt, dispatch, concurrency, fail-closed, source-selector export,
+    and provenance semantics except for trigger plumbing required by reuse.
+  - Permissions must remain route-scoped and no broader than the pre-H4A1 carrier
+    requirements; the root demultiplexer must not receive a broad union of write permissions
+    merely for convenience.
+  - Unknown or non-exact Issue titles must invoke no carrier workflow and cause no
+    dispatch, mutation, receipt comment, semantic action, or alternate fallback.
+  - Recognized title conditions must be mutually exclusive and map one-to-one to .github/workflows/aios-brain-ingress.yml,
+    aios-brain-wakeup.yml, aios-brain-repair-wakeup.yml, and aios-brain-remediation-intent.yml
+    respectively.
+  - Do not duplicate the four carrier implementations into the demultiplexer; reuse
+    the existing workflow bodies so H4A1 remains syntactic transport cleanup rather
+    than a second carrier implementation.
+  - Do not modify H4A0 historical evidence or introduce any Work wake dependency.
+acceptance:
+- id: AC1
+  condition: Within the H4A1 Brain Issue-carrier family, the candidate has exactly
+    one top-level issues.opened subscription and the four existing carrier workflows
+    no longer subscribe directly to issues.opened.
+- id: AC2
+  condition: 'The top-level demultiplexer contains exactly four mutually exclusive
+    literal-title routes: [AIOS BRAIN INGRESS] to aios-brain-ingress.yml, [AIOS BRAIN
+    WAKEUP] to aios-brain-wakeup.yml, [AIOS REPAIR WAKEUP] to aios-brain-repair-wakeup.yml,
+    and [AIOS REMEDIATION INTENT] to aios-brain-remediation-intent.yml; any other
+    title invokes no carrier.'
+- id: AC3
+  condition: The demultiplexer does not inspect Issue bodies or lifecycle/semantic
+    state and does not select NEXT, correction strategy, provider, model, executor,
+    Runtime action, review action, publication action, or roadmap action.
+- id: AC4
+  condition: Each reusable carrier preserves its pre-H4A1 admission, receipt, dispatch,
+    concurrency, event-file provenance, source-selector export, and fail-closed behavior,
+    and route permissions are no wider than that carrier's pre-H4A1 requirements.
+- id: AC5
+  condition: Focused workflow regression coverage proves one recognized title activates
+    only its corresponding reusable carrier contract, unknown titles activate none,
+    reusable carriers retain the original Issue event context needed by existing admission,
+    and direct per-carrier issues.opened triggers are absent.
+- id: AC6
+  condition: The H4A1 delta is confined to the authorized workflow/test surface and
+    introduces no Python lifecycle router, carrier-policy rewrite, Runtime/Reviewer/Publisher/TASK/roadmap
+    semantic change, Work wake path, schedule, polling, or workflow_run fanout.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_issue_carrier_demux_workflow.py tests/test_github_issue_ingress_workflow.py
+    tests/test_github_issue_wakeup_workflow.py tests/test_github_issue_repair_wakeup_workflow.py
+    tests/test_github_issue_remediation_intent_workflow.py
+  - python -m pytest -q tests/test_github_issue_ingress.py tests/test_github_issue_wakeup.py
+    tests/test_github_issue_repair_wakeup.py tests/test_github_issue_remediation_intent.py
+  - git diff --check
