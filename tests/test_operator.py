@@ -12867,8 +12867,9 @@ def _reconciliation_snapshot(repo: Path) -> tuple:
         (git_dir / "FETCH_HEAD").read_bytes() if (git_dir / "FETCH_HEAD").exists() else None,
         {str(p.relative_to(repo)): p.read_bytes() for p in repo.rglob("*")
          if p.is_file() and ".git" not in p.relative_to(repo).parts},
+        # Windows denies byte reads of the transient lock while it is held.
         {str(p.relative_to(state.root)): p.read_bytes() for p in state.root.rglob("*")
-         if p.is_file()},
+         if p.is_file() and p != state.lock},
     )
 
 
@@ -13240,6 +13241,7 @@ def test_primary_reconciliation_rejects_unproven_states_without_reset_or_run(
         git(remote, "update-ref", f"refs/heads/aios/{namespace}/RUN-231-004", target)
     elif gate == "ignored-collision":
         exclude = Path(git(repo, "rev-parse", "--absolute-git-dir")) / "info" / "exclude"
+        exclude.parent.mkdir(parents=True, exist_ok=True)
         with exclude.open("ab") as stream:
             stream.write(b"\nNEW_MAIN.txt\n")
         (repo / "NEW_MAIN.txt").write_text("preserve ignored\n", encoding="utf-8")
@@ -13332,6 +13334,7 @@ def test_primary_reconciliation_rechecks_after_target_import_before_reset(
                 (repo / "untracked.txt").write_text("edge untracked\n", encoding="utf-8")
             else:
                 exclude = Path(git(repo, "rev-parse", "--absolute-git-dir")) / "info" / "exclude"
+                exclude.parent.mkdir(parents=True, exist_ok=True)
                 with exclude.open("ab") as stream:
                     stream.write(b"\nNEW_MAIN.txt\n")
                 (repo / "NEW_MAIN.txt").write_text("edge ignored\n", encoding="utf-8")
