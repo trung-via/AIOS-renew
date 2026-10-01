@@ -258,7 +258,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-safe-local-main-reconciliation
+  - brain-runtime-semantic-handoff-hardening-v1-repair-strategy-facts
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
@@ -730,12 +730,24 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-safe-local-main-reconciliation
 
   - id: brain-runtime-semantic-handoff-hardening-v1-safe-local-main-reconciliation
-    status: ACTIVE
+    status: DONE
     task_id: TASK-257
     task_revision: 1
     authored_commit_sha: "853452ac565a6966af47e8965cd0ce6c3ea434c3"
     task_blob_sha: "c17e6e022144f872660bbf32ef3252f9f2e964ed"
     authority: HUMAN_BRAIN_PLANNING
+    completed_by:
+      task_id: TASK-257
+      task_revision: 1
+      failed_run_id: RUN-257-001
+      repair_authorization_sha: "eb59ebb0ae7d30c38df10673d4b5054ffb9db173"
+      run_id: RUN-257-002
+      result_artifact_sha: "21b76901ef25590542294294da57e668d94b88d6"
+      review_id: REVIEW-257-002
+      review_decision_sha: "731bf031e9f6c19f9173be5999af34b01ac53d58"
+      reviewed_sha: "1489ecb2b0684f184b2523cf998f80e6a3a72720"
+      published_sha: "1489ecb2b0684f184b2523cf998f80e6a3a72720"
+      verdict: PASS
     planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
     architecture_contract: SAFE_LOCAL_MAIN_RECONCILIATION_V1
@@ -774,6 +786,32 @@ sequence:
       - RECONCILIATION_CREATES_NO_RUN_FAILURE_OR_SEMANTIC_DECISION
       - NO_AUTOMATIC_ROADMAP_ADVANCE
     return_to: brain-runtime-semantic-handoff-hardening-v1-repair-strategy-facts
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-repair-strategy-facts
+    status: ACTIVE
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+    audit_profile: brain-high-value-v2
+    architecture_contract: PRE_BRAIN_REPAIR_STRATEGY_FACTS_V1
+    objective: >-
+      Add one read-only action-neutral REPAIR decision-preflight projection that
+      deterministically exposes exact canonical FAILURE/TASK/candidate,
+      pre-verification, structural-result and action-eligibility facts before Brain
+      correction-strategy selection, and close the reviewed successful-REPAIR to
+      DELTA CHANGES_REQUIRED remediation source-lineage compatibility gap.
+    boundaries:
+      - READ_ONLY_ACTION_NEUTRAL_PROJECTION
+      - NO_RUN_CREATION
+      - NO_MUTATION_AUTHORITY
+      - NO_ACTION_RANKING_RECOMMENDATION_OR_SELECTION
+      - NO_CANDIDATE_MUTATION_REQUIRED_RUNTIME_FACT
+      - EXACT_CANONICAL_FAILURE_TASK_CANDIDATE_BINDING
+      - REPAIR_AUTHORING_DECISION_PACKET_CONSUMES_EXACT_PROJECTION
+      - SUCCESSFUL_REPAIR_DELTA_REMEDIATION_LINEAGE_COMPATIBILITY_ONLY
+      - NO_NEW_LIFECYCLE_FAMILY
+      - NO_GENERIC_CORRECTION_ROUTER
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
+    return_to: brain-runtime-semantic-handoff-hardening-v1-acceptance-proof-phase-contract
   - id: admission-failure-v2
     status: DONE
     completed_by:
