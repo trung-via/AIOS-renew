@@ -308,6 +308,8 @@ sequence:
     phase: H4_PRE_H4A3_SYSTEMIC_HARDENING
     task_id: TASK-267
     task_revision: 1
+    authored_commit_sha: "9628f68df5f1e1a1174cd0b14f5068dbbfcaab67"
+    task_blob_sha: "e1c89642a2b50abf8affa8e0fd5352d7f2669395"
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
     contracts:
@@ -334,6 +336,34 @@ sequence:
       - RUNTIME_RETAINS_CANONICAL_VERIFICATION
       - REVIEWER_RETAINS_SEMANTIC_VERDICT
       - PUBLISHER_RETAINS_PUBLICATION_AUTHORITY
+    task_authoring_audit:
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "d5b4726bb7c80af6eb358f587ca350b9a458a5eb7ac5d30840fb71abbd8a96c6"
+      construct_fingerprint: "a0fd29055d8e2311ddfd2ef574327fe1b1cdde1e73fe9206e03b49daf0fbe28a"
+      reconciled_risks:
+        - PRESERVE_HISTORICAL_V2_PROTOCOL_VALIDATION
+        - DETERMINISTIC_V3_GATE_MUST_NOT_BECOME_SEMANTIC_AUTHORITY
+        - TERMINAL_FEASIBILITY_MUST_NOT_REQUIRE_FUTURE_LIFECYCLE_EVIDENCE
+      acceptance_phase_ledger: ALL_CLAIM_NOW
+    planning_authoring_correction:
+      failed_ingress_issue: 1318
+      failed_workflow_run_id: 36914811412
+      malformed_planning_commit_sha: "e2c2735b6dda88a726b7e60599e696cdaa64cb2f"
+      failure_class: ROADMAP_SEQUENCE_PLACEMENT_ERROR
+      run_created: false
+      executor_invoked: false
+      corrected_planning_commit_sha: "c727b74c8f7604880bf5d816ba87d5aedbf64af1"
+      note: >-
+        TASK-267 was initially inserted under the nested human_priority_side_track
+        sequence rather than the top-level roadmap sequence. Authoring ingress failed
+        closed before TASK or RUN mutation. The roadmap placement was repaired and the
+        audited packet was freshly recomputed before successful AUTHOR_TASK.
+    execution_profile_status: HUMAN_SELECTION_REQUIRED
     sequencing:
       - AFTER_TASK_266_H4A2_RECOVERY
       - BEFORE_H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
