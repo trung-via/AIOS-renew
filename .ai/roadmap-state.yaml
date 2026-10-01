@@ -439,10 +439,25 @@ sequence:
       - NO_LIFECYCLE_MUTATION_FROM_H4A3_WAKE
       - NO_AUTOMATIC_ROADMAP_ADVANCE
       - H4B_REMAINS_BLOCKED_UNTIL_H4A3_LIVE_PROOF_CLOSES
+    authored_commit_sha: "7255aefb65dcbca24a6a81032ec3241201989307"
+    task_blob_sha: "5ab8cc8dc19fb79b1eb4f5ef2ddc034543f64f17"
     task_authoring_audit:
       profile: brain-high-value-v3
-      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
-    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "594a596522a084f4f4aabab674d3ccdcd177897cba226d5f6ceb0eb6098c63f3"
+      construct_fingerprint: "ce31b06953ac835dcb98614ee52b0300edbcbcfe9e79a2bb2cd51342be40db4b"
+      stage2_fingerprint: "a2399a08346f5bab16cdf8a05b3a6a024cec299b9dca789971ea49fa8892628f"
+      acceptance_phase_ledger: ALL_CLAIM_NOW
+      ingress_issue: 1323
+      ingress_workflow_run_id: 36942993554
+      reconciled_risks:
+        - SYNTHETIC_OR_STALE_TERMINAL_CANNOT_SUBSTITUTE_FOR_REAL_TASK268_RESULT
+        - HUMAN_BINDING_UNREADY_MUST_NOT_BECOME_ENGINEERING_FAILURE_OR_H4A3_PASS
+    execution_profile_status: HUMAN_SELECTION_REQUIRED
     sequencing:
       - AFTER_TASK_267_BRAIN_AUDIT_V3_PUBLICATION
       - BEFORE_H4B_REGULAR_CHAT_BRAIN_RESUME
