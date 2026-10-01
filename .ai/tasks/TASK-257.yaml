@@ -1,0 +1,138 @@
+task_id: TASK-257
+revision: 1
+goal: Allow PRIMARY pre-RUN synchronization to recover a narrowly proven safe local-main
+  divergence without Human Git reset, using deterministic Runtime control-plane reconciliation
+  while preserving canonical lineage, execution authority, and existing fail-closed
+  boundaries.
+problem: The current PRIMARY synchronization path can fast-forward a clean stale-behind
+  main but rejects every diverged main. In the observed TASK-254 case, the local-only
+  candidate was already preserved by canonical immutable AIOS failure transport, yet
+  Human intervention was still required to create a preservation pointer and reset
+  local main before the next authorized PRIMARY could proceed. H1R must remove that
+  repeated manual recovery only for divergences whose local-only history and exact
+  canonical target are deterministically proven safe; unknown or ambiguous divergence
+  must remain rejected.
+assumptions:
+- Canonical H1 audited authoring is already published and H1R is the unique current
+  roadmap NEXT commitment.
+- The existing explicit Human reconcile-control-main operation and canonical failure-transport
+  validation provide reviewed preservation/proof primitives that may be reused rather
+  than creating a second reconciliation authority.
+- Safe automatic reconciliation is a pre-RUN Runtime control-plane operation. It is
+  not Executor implementation reasoning, semantic correction selection, Runtime verification,
+  semantic review, publication, or roadmap advancement.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  - .ai/roadmap-state.yaml
+  - src/aios_renew/operator.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/dispatch_reconciliation.py
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - tests/test_operator.py
+  - tests/test_dispatch_reconciliation.py
+  - tests/test_self_hosted_wakeup.py
+  - README.md
+  modify:
+  - src/aios_renew/operator.py
+  - tests/test_operator.py
+  - README.md
+non_goals:
+- Broaden automatic reconciliation to CONTINUE, REMEDIATION, REPAIR, publication,
+  migration, or any generic lifecycle transition.
+- Treat arbitrary local branches, arbitrary ahead-only commits, untracked or ignored
+  content, submodule worktrees, or an unproven local preservation branch as sufficient
+  canonical preservation.
+- Create a new Planner, lifecycle router, retry/failover loop, correction selector,
+  semantic authority, Reviewer, Publisher, verification authority, or persistent reconciliation
+  state store.
+- Move Git recovery logic into GitHub Actions or another transport layer, or let an
+  Executor choose or perform an ad-hoc reset.
+- Implement H2 repair-strategy fact projection, H3 acceptance proof-phase work, H4
+  wake/resume work, H5 closure, VPRC, or downstream adoption.
+- Change frozen TASK/RUN/RESULT/EVIDENCE/REVIEW/REMEDIATION semantics or reinterpret
+  historical terminal artifacts.
+constraints:
+  hard:
+  - Automatic reconciliation may run only inside PRIMARY pre-RUN synchronization while
+    the existing Runtime repository mutation lock is held; it must not create a RUN
+    or invoke an Executor before all reconciliation postconditions succeed.
+  - Admission requires a completely clean attached main, one unambiguous upstream
+    main, an exact freshly observed canonical-main target, and genuine divergence;
+    equal, stale-behind, ahead-only, detached, non-main, dirty, missing-upstream,
+    ambiguous-upstream, or remote-query failure cases keep their existing non-destructive
+    behavior or fail closed.
+  - Every local-only commit that would become unreachable from local main after reset
+    must remain reachable through validated immutable canonical AIOS transport lineage.
+    Missing, malformed, conflicting, non-transportable, ambiguous, or moved preservation
+    proof must reject reconciliation without changing local refs, index, or worktree.
+  - Preservation identity, local HEAD, upstream binding, exact target, worktree safety,
+    ignored-path collision safety, submodule safety, and canonical remote proof must
+    be rechecked at the mutation edge before any destructive reset.
+  - The only admitted destructive local mutation is one reset of attached local main
+    to the exact fetched canonical-main commit after all safety proofs pass. No merge,
+    rebase, cherry-pick, stash, clean, new commit, remote ref mutation, or push is
+    authorized by H1R.
+  - After reconciliation, attached main must equal the exact canonical target and
+    the worktree/index must be completely clean before the pending PRIMARY may continue.
+    Any failed postcondition blocks continuation rather than fabricating a RUN, FAILURE,
+    RESULT, or retry success.
+  - Successful reconciliation must preserve the exact pending PRIMARY delivery, TASK
+    authorization, Executor/profile binding, and restart-generation safety. If reconciliation
+    changes kernel or TASK bytes relative to the active generation, continuation must
+    use the existing safe restart mechanism so stale pre-reset code cannot admit the
+    RUN; reconciliation itself must not create a second dispatch or blind retry.
+  - Existing explicit Human reconcile-control-main semantics and its proof gates remain
+    available and distinct; H1R must not turn that command into a generic automatic
+    recovery API or weaken its historical fail-closed cases.
+  - The self-hosted wake workflow remains transport-only and contains no persistent-checkout
+    fetch/reset/rebase/merge/cherry-pick/stash/clean recovery logic; all reconciliation
+    policy remains in Runtime control code.
+  - No automatic roadmap advancement, semantic correction selection, verification
+    claim, review verdict, publication claim, or new lifecycle truth may be derived
+    from reconciliation success.
+acceptance:
+- id: AC1
+  condition: A PRIMARY pre-RUN request encountering a clean attached-main divergence
+    can continue without Human Git reset only when Runtime proves the exact canonical-main
+    target and complete canonical preservation of the local-only history, then establishes
+    exact clean postconditions before RUN admission.
+- id: AC2
+  condition: Dirty, detached, non-main, equal, behind-only, ahead-only, missing or
+    ambiguous upstream, unpreserved, malformed, conflicting, non-transportable, proof-drift,
+    ignored-collision, submodule, or target-drift cases do not perform a destructive
+    reset and do not create a RUN or invoke an Executor.
+- id: AC3
+  condition: The reconciliation mutation edge revalidates the exact local HEAD, upstream
+    binding, canonical target, preservation identity, remote proof, and worktree safety,
+    and the admitted mutation is limited to one reset to the exact fetched canonical-main
+    commit.
+- id: AC4
+  condition: The existing explicit Human reconcile-control-main operation remains
+    available with its established safety semantics, while CONTINUE, REMEDIATION,
+    REPAIR and workflow transport do not gain generic automatic reset authority.
+- id: AC5
+  condition: After a successful reset, continuation preserves the exact pending PRIMARY
+    dispatch/TASK/Executor/profile identity and existing restart-generation safety,
+    so stale pre-reset kernel or TASK code cannot admit a RUN and no duplicate dispatch
+    or blind retry is created.
+- id: AC6
+  condition: Reconciliation success creates no engineering terminal artifact, semantic
+    decision, verification result, review verdict, publication outcome, or roadmap
+    transition; it only restores the control checkout so the already-authorized PRIMARY
+    may proceed.
+- id: AC7
+  condition: Focused regressions cover the automatic safe-divergence path, preservation
+    and mutation-edge counterexamples, no-reset/no-RUN rejection behavior, preservation
+    of the explicit Human reconciliation path, and absence of workflow-level Git recovery.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_operator.py -k "reconciliation or primary_sync
+    or primary_fast_forwards or synchronization_failure or wakeup_preflight"
+  - python -m pytest -q tests/test_self_hosted_wakeup.py
+  - git diff --check
