@@ -265,7 +265,7 @@ sequence:
         automation is still explicitly bound to qualifying PR comments and ignores
         commits, so no autonomous Work result may be inferred from this marker commit.
     work_commit_update_trigger:
-      status: SHALESS_RECONSTRUCTION_READY
+      status: SHALESS_PRIMARY_PASS_DUPLICATE_PROBE_PENDING
       authority: HUMAN
       configuration_ref: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md#17-chatgpt-work-pr-commit-update-trigger-contract
       repository: trung-via/AIOS-renew
@@ -292,6 +292,19 @@ sequence:
         max_history_scan: 64
         max_unacked_candidates: 8
         product_concurrency_status: REQUIRES_POST_SUCCESS_DUPLICATE_PROBE
+      sha_less_live_result:
+        status: PRIMARY_FUNCTIONAL_CONFORMANCE_PASS
+        fresh_probe_issue_number: 1227
+        fresh_marker_commit_sha: "b413bd76d307e9d6aa5880be38d32f00654244d0"
+        fresh_event_id: github-v1-f5740ad8856609ce8398a599a925f5f73294cfe278ad0f506f1bfa944c6b02d0
+        ledger_comment_id: 5924290956
+        work_last_run_time_utc: "2026-10-01T03:49:10.149660Z"
+        recovered_backlog_ack_comment_id: 5924336402
+        recovered_backlog_event_id: github-v1-8e147e1f378ab983b925391997bf7f8a929f89c008afd7d44c5f8dfb7c15c037
+        fresh_ack_comment_id: 5924340475
+        fresh_ack_main_sha: "41d4c64f443290e9601b42a763987f0f94aa4f22"
+        fresh_brain_sync: true
+        remaining_gate: POST_SUCCESS_DUPLICATE_RELIABILITY_PROBE
       fresh_post_configuration_probe:
         status: TRIGGER_OBSERVED_ACK_NOT_OBSERVED
         issue_number: 1226
