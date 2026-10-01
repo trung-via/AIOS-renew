@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -60,6 +61,15 @@ from .run import (
 from .task import Task, TaskValidationError, parse_task
 from .verification_contract import MINIMUM_SUFFICIENT_V1
 from .unified_state import observe_unified_state
+from .brain_sync import BrainSyncError, observe_brain_sync
+from .brain_context import compose_brain_work_context, resolve_flow
+from .decision_packet import DecisionPacket, compile_decision_packet
+from .brain_audit import parse_profile_registry, validate_stage2
+from .brain_return_contract import (
+    _normalize as normalize_return_value,
+    parse_return_contract_registry,
+    select_return_contract,
+)
 
 
 class AuthoringIngressError(ValueError):
@@ -114,6 +124,7 @@ _ALLOWED_TOP_LEVEL_KEYS = frozenset(
         "identity",
         "expected_state",
         "payload",
+        "audited_handoff",
     }
 )
 
@@ -139,6 +150,7 @@ class IngressEnvelope:
     identity: Mapping[str, Any]
     expected_state: Mapping[str, Any]
     payload: str | Mapping[str, Any]
+    audited_handoff: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -238,6 +250,12 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
 
     _validate_operation_identity(operation, identity)
 
+    handoff = data.get("audited_handoff")
+    if handoff is not None:
+        _validate_handoff_shape(handoff)
+        if operation == "SUBMIT_REVIEW":
+            raise AuthoringIngressError("SUBMIT_REVIEW does not accept Brain audited handoff")
+
     return IngressEnvelope(
         format=envelope_format,
         version=version,
@@ -245,6 +263,7 @@ def parse_envelope(raw: str | bytes | Mapping[str, Any]) -> IngressEnvelope:
         identity=identity,
         expected_state=dict(expected_state),
         payload=payload,
+        audited_handoff=handoff,
     )
 
 
@@ -344,6 +363,9 @@ def execute_ingress(envelope: IngressEnvelope, *, repo: Path) -> IngressResult:
         raise AuthoringIngressError(f"not a Git repository: {repo}")
 
     operation = envelope.operation
+    if operation in _AUTHORING_FLOWS:
+        # Caller-owned mappings cannot change the audited payload mid-ingress.
+        envelope = copy.deepcopy(envelope)
     if operation == "AUTHOR_TASK":
         return _execute_author_task(envelope, repo_root)
     elif operation == "SUBMIT_REVIEW":
@@ -429,6 +451,8 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path) -> IngressResult
             f"expected main SHA mismatch (stale predecessor): expected {expected_main_sha}, current is {current_main_sha}"
         )
 
+    audit_binding = _validate_authoring_handoff(envelope, repo)
+
     # Check that working tree is clean if currently checked out on main
     code, status_out, _ = _git(repo, "status", "--porcelain", allow_fail=True)
     if code == 0 and status_out.strip():
@@ -438,6 +462,7 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path) -> IngressResult
             raise AuthoringIngressError("working tree is dirty: cannot mutate main")
 
     # Create new tree using temporary index
+    _recheck_authoring_binding(envelope, repo, audit_binding)
     with tempfile.TemporaryDirectory(prefix="aios-ingress-") as tmp_dir:
         temp_index = Path(tmp_dir) / "index"
         env = dict(os.environ)
@@ -477,6 +502,7 @@ def _execute_author_task(envelope: IngressEnvelope, repo: Path) -> IngressResult
         f"task: {task_id} r{task.revision}",
     )
 
+    _recheck_authoring_binding(envelope, repo, audit_binding)
     _publish_ingress_ref(
         repo,
         remote,
@@ -981,6 +1007,8 @@ def _execute_author_remediation(envelope: IngressEnvelope, repo: Path) -> Ingres
     remediation_path = (
         f".ai/remediations/REMEDIATION-{source_run_id}-{finding_id}.yaml"
     )
+    audit_binding = _validate_authoring_handoff(envelope, repo)
+    _recheck_authoring_binding(envelope, repo, audit_binding)
     root_tree = _tree_with_metadata(
         repo, decision_sha, remediation_path, remediation_bytes
     )
@@ -1000,6 +1028,7 @@ def _execute_author_remediation(envelope: IngressEnvelope, repo: Path) -> Ingres
         metadata_bytes=remediation_bytes,
         operation="AUTHOR_REMEDIATION",
     )
+    _recheck_authoring_binding(envelope, repo, audit_binding)
     _publish_ingress_ref(
         repo, remote, remediation_ref, commit_sha, expect_missing=True
     )
@@ -1206,6 +1235,20 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
             "repair authorization action requires a pre-verification FAILURE"
         )
 
+    if current_authorization is not None:
+        expected_predecessor = _get_expected_sha(
+            envelope.expected_state, "expected_current_repair_sha", "expected_repair_sha", "predecessor_repair_sha"
+        )
+        if expected_predecessor != current_authorization.commit_sha:
+            raise AuthoringIngressError("expected current REPAIR SHA does not match canonical authorization")
+        expected_failure_sha = _get_expected_sha(
+            envelope.expected_state, "expected_failure_artifacts_sha", "expected_failure_sha", "failure_artifacts_sha"
+        )
+        if expected_failure_sha != artifacts_sha:
+            raise AuthoringIngressError("expected canonical FAILURE identity does not match failed RUN")
+
+    audit_binding = _validate_authoring_handoff(envelope, repo)
+    _recheck_authoring_binding(envelope, repo, audit_binding)
     if current_authorization is None:
         root_tree = _tree_with_metadata(
             repo, failed_head_sha, ".ai/transport/repair.json", repair_json_bytes
@@ -1226,26 +1269,6 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
         )
         destination_ref = repair_ref
     else:
-        expected_predecessor = _get_expected_sha(
-            envelope.expected_state,
-            "expected_current_repair_sha",
-            "expected_repair_sha",
-            "predecessor_repair_sha",
-        )
-        if expected_predecessor != current_authorization.commit_sha:
-            raise AuthoringIngressError(
-                "expected current REPAIR SHA does not match canonical authorization"
-            )
-        expected_failure_sha = _get_expected_sha(
-            envelope.expected_state,
-            "expected_failure_artifacts_sha",
-            "expected_failure_sha",
-            "failure_artifacts_sha",
-        )
-        if expected_failure_sha != artifacts_sha:
-            raise AuthoringIngressError(
-                "expected canonical FAILURE identity does not match failed RUN"
-            )
         revision = current_authorization.revision + 1
         destination_ref = (
             f"{REPAIR_SUPERSESSION_PREFIX}{failed_run_id}/{revision}"
@@ -1292,6 +1315,7 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
         if _read_commit_blob(repo, commit_sha, REPAIR_SUPERSESSION_PATH) != supersession_bytes:
             raise AuthoringIngressError("AUTHOR_REPAIR supersession metadata mismatch")
 
+    _recheck_authoring_binding(envelope, repo, audit_binding)
     _publish_ingress_ref(
         repo, remote, destination_ref, commit_sha, expect_missing=True
     )
@@ -1309,6 +1333,219 @@ def _execute_author_repair(envelope: IngressEnvelope, repo: Path) -> IngressResu
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
+_AUTHORING_FLOWS = {
+    "AUTHOR_TASK": "TASK_AUTHORING",
+    "AUTHOR_REMEDIATION": "REMEDIATION_AUTHORING",
+    "AUTHOR_REPAIR": "REPAIR_AUTHORING",
+}
+_AuthoringRefs = tuple[str | None, dict[str, str]]
+_AuthoringBinding = tuple[str, dict[str, Any], _AuthoringRefs]
+
+
+def _validate_handoff_shape(value: Any) -> None:
+    """The sole transient carrier contains BP-4A input, never canonical facts."""
+    if not isinstance(value, Mapping) or set(value) != {"format", "version", "stage1", "stage2"}:
+        raise AuthoringIngressError("complete two-stage audited_handoff is required")
+    if value["format"] != "AIOS_AUDITED_AUTHORING_HANDOFF" or (
+        type(value["version"]) is not int or value["version"] != 1
+    ):
+        raise AuthoringIngressError("invalid audited authoring handoff format/version")
+    if not all(isinstance(value[key], Mapping) for key in ("stage1", "stage2")):
+        raise AuthoringIngressError("audited handoff requires Stage 1 and Stage 2 mappings")
+
+
+def _authoring_refs(repo: Path) -> _AuthoringRefs:
+    remote = _resolve_remote(repo)
+    # Fresh authoring must not fall back to stale local refs on remote failure.
+    refs = _query_matching_refs(repo, remote, "refs/heads/main", "refs/heads/aios/*")
+    if "refs/heads/main" not in refs:
+        raise AuthoringIngressError("cannot resolve exact canonical main for audited authoring")
+    return remote, refs
+
+
+def _prove_authoring_inputs(repo: Path, main_sha: str, remote: str | None) -> None:
+    """Prove every file input of the working-tree projections verbatim.
+
+    Registries, roadmap and TASK lookup inputs live in .ai. Include ignored
+    additions: Git status and clean filters alone do not prove byte equality.
+    Local Runtime observations cannot substitute for canonical remote lineage.
+    """
+    _fetch_if_remote(repo, remote, main_sha)
+    tree = subprocess.run(
+        ("git", "-C", str(repo), "ls-tree", "-r", "-z", "--full-tree", main_sha, "--", ".ai"),
+        capture_output=True, check=True,
+    )
+    entries = {}
+    for raw in tree.stdout.split(b"\0"):
+        if not raw:
+            continue
+        header, relative = raw.split(b"\t", 1)
+        _, kind, object_sha = header.split()
+        if kind != b"blob" or b"\n" in relative or b"\r" in relative:
+            raise AuthoringIngressError("invalid canonical authoring input tree entry")
+        entries[relative.decode("utf-8")] = object_sha.decode("ascii")
+    paths = list(entries)
+    actual = set()
+    ai_root = repo / ".ai"
+    if ai_root.is_symlink():
+        raise AuthoringIngressError("divergent canonical authoring inputs: .ai symlink")
+    if ai_root.exists():
+        for path in ai_root.rglob("*"):
+            if path.is_symlink():
+                raise AuthoringIngressError("divergent canonical authoring inputs: symlink")
+            if path.is_file():
+                actual.add(path.relative_to(repo).as_posix())
+    if actual != set(paths):
+        raise AuthoringIngressError("divergent working-tree/canonical authoring input set")
+    # Git computes raw blob identities in one read-only batch. --no-filters
+    # ensures CRLF conversion, clean drivers and index state cannot hide drift.
+    hashes = subprocess.run(
+        ("git", "-C", str(repo), "hash-object", "--no-filters", "--stdin-paths"),
+        input=("".join(f"{path}\n" for path in paths)).encode("utf-8"),
+        capture_output=True, check=True,
+    ).stdout.decode("ascii").splitlines()
+    if hashes != list(entries.values()):
+        raise AuthoringIngressError("divergent canonical authoring input bytes")
+    from .operator import _runtime_paths_readonly
+    state = _runtime_paths_readonly(repo)
+    for directory in (state.runs, state.admission_failures):
+        if directory.exists() and any(directory.iterdir()):
+            raise AuthoringIngressError("local Runtime observations cannot supply canonical authoring inputs")
+
+
+def _authoring_blob(repo: Path, sha: str, path: str, remote: str | None) -> bytes:
+    _fetch_if_remote(repo, remote, sha)
+    content = _read_commit_blob(repo, sha, path)
+    if content is None:
+        raise AuthoringIngressError(f"missing canonical authoring material: {path}")
+    return content
+
+
+def _compose_authoring_packet(
+    envelope: IngressEnvelope, repo: Path
+) -> tuple[DecisionPacket, dict[str, Any], dict[str, Any], _AuthoringRefs]:
+    """Deterministic ingress glue over existing projection/compiler owners."""
+    remote, refs = _authoring_refs(repo)
+    main_sha = refs["refs/heads/main"]
+    _prove_authoring_inputs(repo, main_sha, remote)
+    snapshot = observe_brain_sync(repo=repo)
+    if snapshot.main_sha != main_sha:
+        raise AuthoringIngressError("Brain Sync canonical main moved during authoring")
+    flow = _AUTHORING_FLOWS[envelope.operation]
+    request = {"flow_selector": flow} if envelope.operation == "AUTHOR_TASK" else None
+    context = compose_brain_work_context(snapshot, current_request=request)
+    resolution = resolve_flow(context)
+    if resolution.selected_flow != flow:
+        raise AuthoringIngressError(f"canonical selected flow is not {flow}")
+    if envelope.operation == "AUTHOR_TASK":
+        task = parse_task(_payload_to_str(envelope.payload))
+        material = {"kind": flow, "observations": [f"AUTHOR_TASK {task.task_id} revision {task.revision}"]}
+    else:
+        selected, unified = snapshot.selected_task, snapshot.unified_state
+        if selected is None or unified is None:
+            raise AuthoringIngressError("canonical authoring subject is absent")
+        task_bytes = _authoring_blob(repo, main_sha, f".ai/tasks/{selected['id']}.yaml", remote)
+        # Feed the compiler the canonical family document. Dataclass defaults
+        # (notably legacy verification.policy=None) are not authored fields.
+        parse_task(task_bytes.decode("utf-8"))
+        task_data = yaml.safe_load(task_bytes)
+        if envelope.operation == "AUTHOR_REMEDIATION":
+            findings = []
+            outstanding = unified.get("outstanding_findings", [])
+            if not any(item["source_run_id"] == envelope.identity["source_run_id"]
+                       and item["finding_id"] == envelope.identity["finding_id"] for item in outstanding):
+                raise AuthoringIngressError("REMEDIATION target is not canonically outstanding")
+            for identity in outstanding:
+                ref = f"refs/heads/aios/review-decision/{identity['source_run_id']}"
+                sha = refs.get(ref)
+                if sha is None:
+                    raise AuthoringIngressError("canonical finding REVIEW ref is missing")
+                _fetch_if_remote(repo, remote, sha)
+                paths = [p for p in _ls_tree(repo, sha, ".ai/reviews") if p.endswith((".yaml", ".yml"))]
+                if len(paths) != 1:
+                    raise AuthoringIngressError("canonical finding REVIEW is ambiguous")
+                review = parse_review(_authoring_blob(repo, sha, paths[0], remote).decode("utf-8"))
+                if review.review_id != identity["review_id"] or review.reviewed_sha != identity["reviewed_sha"]:
+                    raise AuthoringIngressError("canonical finding REVIEW lineage mismatch")
+                finding = next((f for f in review.findings if f.id == identity["finding_id"]), None)
+                if finding is None:
+                    raise AuthoringIngressError("canonical outstanding finding is missing from REVIEW")
+                findings.append({"source_run_id": identity["source_run_id"], "review_id": review.review_id,
+                                 "reviewed_sha": review.reviewed_sha, "finding": asdict(finding)})
+            material = {"kind": flow, "task": task_data, "findings": findings,
+                        "subject_kind": "UNIQUE_FINDING" if len(findings) == 1 else "CORRECTION_FRONTIER"}
+        else:
+            failed_run_id = envelope.identity["failed_run_id"]
+            if unified.get("failed_run_id") != failed_run_id:
+                raise AuthoringIngressError("REPAIR target differs from canonical failed RUN")
+            sha = refs.get(f"refs/heads/aios/failure-artifacts/{failed_run_id}")
+            if sha is None:
+                raise AuthoringIngressError("canonical FAILURE ref is missing")
+            run_data = _json_no_dups(_authoring_blob(repo, sha, ".ai/transport/run.json", remote), "RUN")
+            failure = _json_no_dups(_authoring_blob(repo, sha, ".ai/transport/failure.json", remote), "FAILURE")
+            material = {"kind": flow, "task": task_data, "failure": failure,
+                        "failed_run": dict(_resolve_underlying_run_view(run_data, expected_run_id=failed_run_id))}
+    packet = compile_decision_packet(context, resolution, material)
+    profile = parse_profile_registry((repo / ".ai/brain-audit-profiles.yaml").read_bytes())["profiles"][0]
+    if profile["id"] != "brain-high-value-v2" or profile["version"] != 2:
+        raise AuthoringIngressError("audited authoring requires brain-high-value-v2")
+    contract = select_return_contract(
+        parse_return_contract_registry((repo / ".ai/brain-return-contracts.yaml").read_bytes()), packet)
+    _prove_authoring_inputs(repo, main_sha, remote)
+    if _authoring_refs(repo) != (remote, refs):
+        raise AuthoringIngressError("canonical authoring inputs moved during packet composition")
+    return packet, profile, contract, (remote, refs)
+
+
+def _authoring_family_body(operation: str, value: Any, packet: DecisionPacket, repo: Path) -> Any:
+    # Strict Brain representation plus family normalization; no new normalizer.
+    if isinstance(value, str):
+        value = yaml.safe_load(value)
+    body = normalize_return_value(dict(value))
+    if operation == "AUTHOR_TASK":
+        return parse_task(json.dumps(body))
+    if operation == "AUTHOR_REMEDIATION":
+        return parse_remediation(json.dumps(body))
+    facts = packet.as_dict()
+    task_bytes = _read_commit_blob(repo, facts["canonical_facts"]["main_sha"],
+                                   f".ai/tasks/{facts['canonical_facts']['selected_task']['id']}.yaml")
+    if task_bytes is None:
+        raise AuthoringIngressError("canonical REPAIR TASK is missing")
+    task = parse_task(task_bytes.decode("utf-8"))
+    return _validate_repair_authorization(
+        body, failed_run_id=facts["subject"]["failed_run_id"],
+        failed_head_sha=facts["subject"]["failed_head_sha"], task=task,
+        failed_changed_files=set(facts["subject"]["failed_changed_files"]))
+
+
+def _validate_authoring_handoff(envelope: IngressEnvelope, repo: Path) -> _AuthoringBinding:
+    if envelope.audited_handoff is None:
+        raise AuthoringIngressError("new authoring mutation requires audited_handoff")
+    try:
+        _validate_handoff_shape(envelope.audited_handoff)
+        packet, profile, contract, refs = _compose_authoring_packet(envelope, repo)
+        audit = validate_stage2(packet, profile, envelope.audited_handoff["stage1"], envelope.audited_handoff["stage2"])
+        if audit["outcome"] != "CANDIDATE":
+            raise AuthoringIngressError("audited authoring requires Stage-2 CANDIDATE")
+        if _authoring_family_body(envelope.operation, audit["handoff_candidate"], packet, repo) != \
+                _authoring_family_body(envelope.operation, envelope.payload, packet, repo):
+            raise AuthoringIngressError("audited candidate differs from canonical family payload")
+        return packet.packet_fingerprint, contract["return_contract_ref"], refs
+    except (ValueError, TypeError, KeyError, OSError, RecursionError, yaml.YAMLError,
+            BrainSyncError, ReviewTransportError, subprocess.SubprocessError) as exc:
+        raise AuthoringIngressError(f"audited authoring rejected: {exc}") from exc
+
+
+def _recheck_authoring_binding(envelope: IngressEnvelope, repo: Path, binding: _AuthoringBinding) -> None:
+    try:
+        packet, _, contract, refs = _compose_authoring_packet(envelope, repo)
+        if (packet.packet_fingerprint, contract["return_contract_ref"], refs) != binding:
+            raise AuthoringIngressError("audited authoring binding is no longer current")
+    except (ValueError, TypeError, KeyError, OSError, BrainSyncError,
+            ReviewTransportError, subprocess.SubprocessError) as exc:
+        raise AuthoringIngressError(f"audited authoring freshness rejected: {exc}") from exc
+
 
 def _validate_repair_review_semantics(
     review: Review,

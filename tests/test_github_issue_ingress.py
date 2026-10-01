@@ -191,6 +191,32 @@ payload:
     assert not (tmp_path / "owned").exists()
 
 
+def test_audited_handoff_remains_opaque_and_semantic_rejection_has_no_success_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    body = (
+        "format: AIOS_INGRESS_ENVELOPE\nversion: 1\noperation: AUTHOR_TASK\n"
+        "audited_handoff:\n  format: AIOS_AUDITED_AUTHORING_HANDOFF\n  version: 1\n"
+        "  stage1: {opaque: '$() `git push`'}\n  stage2: {outcome: NO_DECISION}\n"
+    )
+    event = _write_event(tmp_path, _event(body))
+    policy = _write_policy(tmp_path)
+    calls = []
+    def reject(source, *, repo, stdin_bytes=None):
+        calls.append((source, stdin_bytes))
+        raise AuthoringIngressError("audited authoring requires Stage-2 CANDIDATE")
+    monkeypatch.setattr(carrier, "ingest_carrier", reject)
+    output = tmp_path / "github-output"
+    assert carrier.main(["--event", str(event), "--policy", str(policy),
+                         "--repo", str(tmp_path), "--output", str(output)]) == 1
+    assert calls == [("-", body.encode("utf-8"))]
+    receipt = capsys.readouterr().out
+    assert "status: FAIL" in receipt
+    assert "CANDIDATE" in receipt
+    assert "status: PASS" not in receipt
+    assert not output.exists()
+
+
 def test_receipts_are_bounded() -> None:
     failure = carrier.render_failure(ValueError("x" * 10_000))
     assert len(failure) <= 3_500
