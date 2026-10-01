@@ -594,3 +594,29 @@ contains the current canonical main SHA obtained by fresh sync, and no lifecycle
 roadmap mutation is caused by the Work task. Existing marker commit
 `47f4bfa40ea07adbf3321633c519e88559b098fc` predates this trigger configuration and is
 not sufficient evidence even if manually inspected later.
+
+### 17.1 First commit-trigger conformance probe
+
+The Work task `AIOS Commit Wake ACK` (automation id
+`6abdd13291688191960494656fab3c34`) was confirmed enabled before the probe. A fresh
+post-configuration probe used Issue #1226. The repository path completed normally:
+INGRESS_REJECTED receipt comment 5924061793 projected event
+`github-v1-8e147e1f378ab983b925391997bf7f8a929f89c008afd7d44c5f8dfb7c15c037`, bridge run
+36810124287 succeeded, ledger comment 5924066856 reached EMITTED, and the Wake Bus head
+advanced exactly once to marker commit
+`d55ae745902f1fbec1618e4e02c9a5b89b639ada`.
+
+The exact marker commit satisfies the repository-visible section-17 input contract: its
+message is `AIOS Wake Bus marker <event_id>`, it changes only
+`.ai/brain-wake-marker.json`, the marker event_id matches the message, and PR #1200
+remains open on the expected same-repository head branch with base `main`.
+
+The Work task execution metadata then advanced `last_run_time` to
+`2026-10-01T03:22:19.381814Z`, after the marker commit, but no matching
+`AIOS BRAIN WAKE ACK` for that event_id was observed on PR #1200 at the subsequent
+checks. Therefore this probe is **TRIGGER_OBSERVED / ACK_NOT_OBSERVED**, not PASS. The
+repository-side transport remains PASS; the unresolved defect is inside the Work
+execution/validation/write leg. Do not infer the exact cause from automation metadata.
+The next diagnostic input is the Work run's own surfaced result/blocker for this exact
+execution; no new transport, polling, credential fallback or repository mutation is
+authorized merely because the ACK is absent.
