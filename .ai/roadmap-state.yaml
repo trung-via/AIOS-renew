@@ -1129,6 +1129,29 @@ sequence:
       failure_class: PUBLISHER_DETACHED_REMOTE_COMPATIBILITY
       return_to_phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
       return_action: REPLAY_PUBLICATION_THEN_RECONCILE_INTEGRATION_IF_REQUIRED
+    historical_repair_feasibility_audit:
+      audited_on: "2026-10-02"
+      authority: BRAIN
+      failed_run_id: RUN-263-001
+      failed_head_sha: "d6e246412e77e4adba63563652a60efee2521e1c"
+      outcome: BLOCKED
+      reason: >-
+        Runtime historical REPAIR creates an isolated workspace at the exact failed
+        HEAD and materializes verification from that historical subject. RUN-263-001
+        failed because tests/test_authoring_ingress.py at that HEAD lacks the fixture
+        remote binding later published by TASK-265. Therefore NO_CHANGE or CODE_FIX
+        REPAIR cannot observe the TASK-265 baseline fix without either repeating the
+        same NameError or mutating a path outside TASK-263 scope.
+      prohibited_shortcuts:
+        - NO_OUT_OF_SCOPE_CHERRY_PICK_OF_TASK_265_INTO_REPAIR_SUBJECT
+        - NO_VERIFICATION_OVERLAY_FROM_CURRENT_MAIN
+        - NO_REPAIR_EXPECTED_TO_REPEAT_KNOWN_BASELINE_FAILURE
+      resolution: RETRY_PRIMARY_ON_CURRENT_CANONICAL_MAIN
+      current_main_at_audit: "97af6f821e11ee5544a0e7becabe88973e1bfe14"
+      profile:
+        executor: codex
+        model: gpt-6.1-sol
+        reasoning_effort: high
     human_execution_delegation:
       selected_on: "2026-10-01"
       authority: HUMAN
