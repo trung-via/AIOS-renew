@@ -872,10 +872,29 @@ sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-acceptance-proof-phase-contract
     status: ACTIVE
+    task_id: TASK-259
+    task_revision: 1
+    authored_commit_sha: "358677181ebb6979d00f3d259659d96e56a7aeee"
+    task_blob_sha: "899af5ad0c4f9008616c0d05334981da79cb8269"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
     architecture_contract: ACCEPTANCE_PROOF_PHASE_AUTHORING_V1
+    planning_audit:
+      approved_on: "2026-10-01"
+      authority: HUMAN_BRAIN_PLANNING
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      selected_contract: ACCEPTANCE_PROOF_PHASE_AUTHORING_V1
+      reconciled_risks:
+        - STAGE2_LEDGER_MUST_BE_FINGERPRINT_BOUND
+        - TASK_SPECIFIC_COVERAGE_MUST_REMAIN_AT_AUTHOR_TASK_INGRESS
+        - PROVIDER_ATTEMPT_REGRESSION_SCOPE_MUST_BE_INCLUDED
+        - GENERIC_BP4A_MUST_NOT_BECOME_SECOND_TASK_VALIDATOR
     objective: >-
       Preserve the frozen TASK schema while making acceptance proof ownership explicit
       in the transient audited TASK_AUTHORING handoff so Runtime-owned future truth is
@@ -888,6 +907,8 @@ sequence:
       - STAGE2_MUST_RECONCILE_ALL_PROOF_LATER_OUT_OF_FINAL_ACCEPTANCE
       - VALID_FINAL_HANDOFF_CONTAINS_ONLY_CLAIM_NOW
       - INGRESS_ENFORCES_LEDGER_COVERAGE_AND_REJECTS_PROOF_LATER
+      - STAGE2_LEDGER_IS_SEMANTIC_IDENTITY_BOUND
+      - GENERIC_BP4A_REMAINS_STRUCTURAL_NOT_TASK_SEMANTIC_VALIDATOR
       - BRAIN_OWNS_SEMANTIC_CLASSIFICATION
       - RUNTIME_DOES_NOT_INTERPRET_NATURAL_LANGUAGE_ACCEPTANCE
       - NO_NEW_SEMANTIC_AUTHORITY_OR_PERSISTENT_REASONING_STORE
