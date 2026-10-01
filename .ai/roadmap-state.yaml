@@ -258,7 +258,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
+  - brain-runtime-semantic-handoff-hardening-v1-safe-local-main-reconciliation
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
@@ -627,12 +627,22 @@ sequence:
       after exact reviewed H1 source publication.
 
   - id: brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
-    status: ACTIVE
+    status: DONE
     task_id: TASK-256
     task_revision: 1
     authored_commit_sha: "e5de0520fba674a00144d5d24c90036a65cd2d55"
     task_blob_sha: "5b99b121cdbb52e061bfd08abe0c235d50aaca9e"
     authority: HUMAN_BRAIN_PLANNING
+    completed_by:
+      task_id: TASK-256
+      task_revision: 1
+      run_id: RUN-256-001
+      result_artifact_sha: "cc713fc364a3923085eaa44b9031c45471b6bbb1"
+      review_id: REVIEW-256-001
+      review_decision_sha: "b504d28f0185d347e7e5537a57751a38a09f5978"
+      reviewed_sha: "122f2a3ccbf123b0278af8008f2787148c0f6bcb"
+      published_sha: "122f2a3ccbf123b0278af8008f2787148c0f6bcb"
+      verdict: PASS
     planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
     r2_task_audit:
@@ -717,6 +727,48 @@ sequence:
       continuation RUN is admitted, while preserving existing family validators,
       idempotent non-mutating replay, Reviewer independence and all
       Runtime/Publisher boundaries.
+    return_to: brain-runtime-semantic-handoff-hardening-v1-safe-local-main-reconciliation
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-safe-local-main-reconciliation
+    status: ACTIVE
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+    audit_profile: brain-high-value-v2
+    architecture_contract: SAFE_LOCAL_MAIN_RECONCILIATION_V1
+    planning_audit:
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+    triggered_by:
+      task_id: TASK-256
+      task_revision: 1
+      run_id: RUN-256-001
+      review_id: REVIEW-256-001
+      verdict: PASS
+      published_sha: "122f2a3ccbf123b0278af8008f2787148c0f6bcb"
+    objective: >-
+      Replace manual local-main preservation and reset recovery at PRIMARY
+      synchronization with one deterministic Runtime-control-plane reconciliation
+      path that can recover only a proven clean attached-main divergence whose
+      local-only commits are canonically preserved, then retry PRIMARY only after
+      exact postconditions establish local main equals the fetched canonical main.
+    boundaries:
+      - WORKTREE_CLEAN
+      - ATTACHED_BRANCH_IS_MAIN
+      - UNIQUE_UPSTREAM_MAIN
+      - EXACT_FETCHED_UPSTREAM_SHA
+      - ALL_LOCAL_ONLY_COMMITS_HAVE_PROVEN_CANONICAL_PRESERVATION
+      - PRESERVATION_REF_IDENTITY_RECHECKED_BEFORE_RESET
+      - NO_ACTIVE_OR_UNRESOLVED_LOCAL_MUTATION_AUTHORITY
+      - RESET_TARGET_IS_EXACT_FETCHED_UPSTREAM_MAIN
+      - POSTCHECK_MAIN_HEAD_EQUALS_UPSTREAM
+      - POSTCHECK_WORKTREE_CLEAN
+      - RUNTIME_CONTROL_PLANE_OWNS_DETERMINISTIC_RECONCILIATION
+      - EXECUTOR_MUST_NOT_DECIDE_OR_PERFORM_AD_HOC_RESET
+      - RECONCILIATION_CREATES_NO_RUN_FAILURE_OR_SEMANTIC_DECISION
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
     return_to: brain-runtime-semantic-handoff-hardening-v1-repair-strategy-facts
   - id: admission-failure-v2
     status: DONE
