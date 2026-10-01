@@ -1,4 +1,4 @@
-"""Bounded workflow authority and delivery/source handoff wiring."""
+"""Legacy delivery retirement and retained bounded source handoff contracts."""
 
 from __future__ import annotations
 
@@ -17,40 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/aios-brain-wake-bridge.yml"
 
 
-def workflow():
-    # BaseLoader preserves GitHub's "on" key under YAML 1.1.
-    return yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
-
-
-def test_workflow_uses_only_completed_handoffs_and_minimum_permissions():
-    data = workflow()
-    assert set(data["on"]) == {"workflow_run"}
-    assert data["on"]["workflow_run"]["types"] == ["completed"]
-    assert set(data["on"]["workflow_run"]["workflows"]) == {v["name"] for v in (bridge.WORKFLOWS | bridge.SOURCE_WORKFLOWS).values()}
-    assert data["permissions"] == {"contents": "read", "actions": "read", "pull-requests": "read"}
-    ring = data["jobs"]["ring"]
-    assert ring["permissions"] == {"contents": "write", "pull-requests": "write"}
-    assert ring["concurrency"]["cancel-in-progress"] == "false"
-    assert ring["concurrency"]["group"] == "aios-brain-wake-1200"
-    job = data["jobs"]["project"]
-    assert job["permissions"] == {"contents": "read", "actions": "read", "pull-requests": "read"}
-    assert job["if"] == "github.repository == 'trung-via/AIOS-renew'"
-    checkout = job["steps"][0]
-    assert checkout["with"]["ref"] == "main"
-    assert checkout["with"]["persist-credentials"] == "false"
-    source = WORKFLOW.read_text()
-    assert "continue-on-error" not in source and "if: always()" not in source
-    assert source.count("contents: write") == 1
-    assert "github.rest.issues.createComment" not in source
-    assert ring["steps"][0]["with"] == {"ref": "main", "fetch-depth": "1", "persist-credentials": "false"}
-    delivery = ring["steps"][-1]
-    assert delivery["env"]["GH_TOKEN"] == "${{ github.token }}"
-    assert delivery["env"]["AIOS_WAKE_PROJECTION"] == "${{ needs.project.outputs.projection }}"
-    assert "--deliver --projection" in delivery["run"]
-    assert "separate" in source and "post-publication probe" in source
-    assert "Human/Brain architecture review" in source
-    for forbidden in ("secrets.", "actions: write", "workflow: write", "createWorkflowDispatch", "pulls.merge", "git push", "next_action"):
-        assert forbidden not in source
+def test_legacy_work_wake_bridge_workflow_is_retired():
+    # H4A0 retires delivery only; deterministic parser/projection support remains.
+    assert not WORKFLOW.exists()
 
 
 @pytest.mark.parametrize("key", list(bridge.SOURCE_WORKFLOWS))
@@ -123,12 +92,46 @@ const write = new Function('require', 'core', 'return (async () => {' + SCRIPT +
         assert pointer["issue_id"] == 4000 and pointer["issue_number"] == 1210
         assert observed["outputs"] == {"ready": "true"}
 
+        # The retained writer still feeds the historical pure projection contract.
+        # These independently reacquired objects are fixtures, with no delivery API.
+        bodies = {
+            "ingress": "AIOS BRAIN INGRESS RECEIPT\nstatus: FAIL\nreason: rejected envelope",
+            "primary_carrier": "AIOS BRAIN WAKEUP RECEIPT\nstatus: REJECTED\ndispatch_accepted: false\nexecution_outcome: not_observed\nreason: rejected admission",
+            "repair_carrier": "AIOS REPAIR WAKEUP CARRIER RECEIPT\nstatus: REJECTED\nself_host_completed: false\nrepair_run_outcome: not_asserted_by_carrier\nverification: not_asserted_by_carrier\nsemantic_review: not_asserted_by_carrier\npublication: not_asserted_by_carrier\nreason: rejected admission",
+            "terminal": f"format: AIOS_TERMINAL_ATTENTION\nversion: 1\nrun_id: RUN-260-001\nterminal_kind: FAILURE\nartifact_sha: {'a' * 40}\n",
+        }
+        issue_url = f"https://api.github.com/repos/{bridge.REPOSITORY}/issues/1210"
+        issue = {"id": 4000, "number": 1210, "url": issue_url, "title": bridge.SOURCE_TITLES[key]}
+        comment = None
+        if key == "terminal":
+            issue.update(body=bodies[key], user=dict(bridge.TRUSTED_SOURCE))
+        else:
+            assert pointer["comment_id"] == 6000
+            comment = {
+                "id": 6000, "url": f"https://api.github.com/repos/{bridge.REPOSITORY}/issues/comments/6000",
+                "issue_url": issue_url, "body": bodies[key], "user": dict(bridge.TRUSTED_SOURCE),
+            }
+        policy = bridge.load_policy(ROOT / ".ai/brain-wake-carriers.yaml")
+        inputs = {"key": key, "pointer": pointer, "issue": issue, "comment": comment, "policy": policy}
+        wake = bridge.project_source(**inputs)
+        assert wake == bridge.project_source(**inputs)
+        assert wake["attention_family"] == {
+            "ingress": "INGRESS_REJECTED", "primary_carrier": "PRIMARY_DISPATCH_REJECTED",
+            "repair_carrier": "REPAIR_DISPATCH_REJECTED", "terminal": "TERMINAL_ATTENTION",
+        }[key]
+        assert wake["selectors"] == {
+            "event_family": "issues.opened" if key == "terminal" else "issue_comment.created",
+            **{field: value for field, value in pointer.items() if field not in {"version", "source_kind"}},
+        }
+        payload = yaml.safe_load(wake["body"].split("\n", 1)[1])
+        assert set(payload) == {"version", "event_id", "attention_family", "repository", "selectors", "fresh_brain_sync_required"}
+
 
 def test_candidate_changes_are_inside_authorized_scope():
     authorized = {
-        "src/aios_renew/brain_wake_bridge.py", "tests/test_brain_wake_bridge.py",
+        ".github/workflows/aios-brain-wake-bridge.yml",
         "tests/test_brain_wake_bridge_workflow.py",
     }
-    # TASK-255 r4's admitted RUN-255-005 base and exact modify scope.
-    result = subprocess.run(["git", "diff", "--name-only", "309c37ea66bac817aa1c10da3915d741c0c58ec5", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True)
+    # TASK-260 r1's admitted RUN-260-001 base and exact modify scope.
+    result = subprocess.run(["git", "diff", "--name-only", "ee76927b3edff179d9363e3fd62c42869db790e3", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True)
     assert set(result.stdout.splitlines()) <= authorized
