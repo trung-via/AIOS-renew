@@ -620,3 +620,101 @@ execution/validation/write leg. Do not infer the exact cause from automation met
 The next diagnostic input is the Work run's own surfaced result/blocker for this exact
 execution; no new transport, polling, credential fallback or repository mutation is
 authorized merely because the ACK is absent.
+
+## 18. SHA-less synchronize payload reconstruction contract
+
+The first live Work execution proved that the ChatGPT Work GitHub normalized
+`pull_request/synchronize` payload is a bounded doorbell, not an immutable commit
+locator. The supplied event contained repository, PR number, action, actor and delivery
+identity but no exact commit SHA. Section 17 therefore failed closed before ACK exactly
+as written. This is a product-payload contract mismatch, not a repository transport
+failure.
+
+### 18.1 Stage 1 — construct
+
+The Work task MUST treat the synchronize payload only as notification that PR #1200
+changed. It MUST reconstruct immutable marker identity from GitHub before any Brain Sync
+or ACK.
+
+Bootstrap fence: commit
+`47f4bfa40ea07adbf3321633c519e88559b098fc` is the last Wake Bus marker commit that
+predates creation of the commit-update Work trigger. Commits at or before this fence are
+historical and MUST NOT be newly ACKed by this task. The first failed Work probe marker
+`d55ae745902f1fbec1618e4e02c9a5b89b639ada` is after the fence and remains eligible for
+bounded backlog recovery.
+
+For each matching supplied synchronize event:
+
+1. Require action `synchronize`, repository `trung-via/AIOS-renew`, PR #1200, and
+   `merged=false`. Do not require a SHA from the webhook payload and do not use
+   `delivery_id` as commit identity.
+2. Re-read PR #1200. Require it to be open, same repository, base `main`, same-repository
+   head branch `aios-brain-wake-bus-v1`. Record the exact current PR head SHA.
+3. Enumerate the bounded first-parent PR commit chain backward from that exact head,
+   stopping at the bootstrap fence or at the newest marker commit whose event_id already
+   has a valid `AIOS BRAIN WAKE ACK` on PR #1200. The fence or stop commit MUST be an
+   ancestor of the exact current head. Scan at most 64 commits; if the stop point cannot
+   be proven within the bound, stop without ACK and surface a blocker.
+4. Every traversed commit after the stop point MUST be a single-parent commit with exact
+   message `AIOS Wake Bus marker <event_id>`, MUST change only
+   `.ai/brain-wake-marker.json`, and MUST keep a contiguous parent chain. Any merge,
+   unrelated commit, rewritten ancestry, third-party substitution or path widening fails
+   closed.
+5. Read the marker from each exact immutable commit SHA, never from a branch alias.
+   Require exactly the bounded marker fields: `version=1`, event_id matching
+   `github-v1-[0-9a-f]{64}`, bounded `attention_family`, repository exactly
+   `trung-via/AIOS-renew`, bounded selectors, and
+   `fresh_brain_sync_required=true`. Marker event_id MUST equal the commit-message
+   event_id. Reject semantic instructions, verdict, next_action, roadmap state or other
+   authority-bearing fields.
+6. Build the unACKed candidate suffix in oldest-first order. Existing ACKs MUST form a
+   contiguous prefix after the bootstrap fence. A gap, contradictory ACK, or more than
+   8 unACKed candidates is fail-closed. The transport ledger may be read as operational
+   evidence but PENDING/EMITTED is neither required for ACK nor engineering truth.
+7. Re-read PR #1200 immediately before Brain Sync. If the head changed, perform at most
+   one complete reconstruction against the new exact head. If it changes again during
+   that reconstruction, stop without ACK. This is bounded reconciliation, not polling.
+8. If there are no unACKed valid candidates, return NOOP. Otherwise perform one fresh
+   read-only Brain Sync of canonical `main` and current AIOS canonical state. Never use
+   the Wake Bus branch as canonical engineering truth. Resolve the full main SHA actually
+   synchronized.
+9. For each candidate, oldest first, re-read PR ACK comments immediately before writing.
+   If that event_id is already ACKed, skip it. If an earlier candidate cannot be safely
+   ACKed, stop and do not ACK later candidates. If canonical main changed, refresh Brain
+   Sync before the next write.
+10. The only authorized external write is one top-level PR #1200 comment per validated
+    candidate with exactly four lines:
+
+    `AIOS BRAIN WAKE ACK`
+    `event_id: <exact marker event_id>`
+    `main_sha: <full canonical main SHA actually synchronized>`
+    `fresh_brain_sync: true`
+
+No TASK/RUN/REVIEW/publication/roadmap/code/branch/workflow mutation is authorized by
+this Work task. It must not merge PR #1200, dispatch engineering work, repair, review,
+publish or infer semantic continuation.
+
+### 18.2 Stage 2 — adversarial audit and reconciliation
+
+The audit rejects three weaker alternatives: trusting the mutable current marker file,
+assuming current PR head equals the triggering commit, or using the webhook delivery id
+as commit identity. All three can misbind a delayed/batched synchronize event.
+
+The bootstrap fence prevents the new task from ACKing historical pre-trigger marker
+commits. Exact first-parent ancestry plus one-file/message/marker validation prevents a
+force-pushed, merged or unrelated branch update from being silently reinterpreted as a
+wake. Oldest-first processing plus the contiguous-ACK-prefix invariant makes bounded
+backlog recovery deterministic: if an earlier ACK fails, later events are not allowed to
+overtake it.
+
+A remaining product-level concurrency question cannot be resolved from repository state
+alone: two Work executions might overlap. The immediate pre-write duplicate check reduces
+this risk but is not treated as an atomic lock. Therefore first success is followed by a
+bounded duplicate/reliability probe before the track may close. No repository lock,
+comment claim protocol or additional authority is introduced merely to speculate about
+that product behavior.
+
+Reconciled outcome: **CLEAR / CANDIDATE** for
+`WORK_SHALESS_SYNCHRONIZE_RECONSTRUCTION_V1`. This supersedes Section 17 step 1's SHA
+requirement while preserving all other authority boundaries. It requires no TASK-255
+production-code revision.
