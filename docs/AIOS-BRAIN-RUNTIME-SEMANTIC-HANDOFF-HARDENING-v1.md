@@ -206,89 +206,85 @@ This does not make Runtime interpret natural-language acceptance criteria. The B
 performs the semantic classification during the already-required two-stage audit;
 ingress only enforces complete declared coverage and the no-PROOF_LATER invariant.
 
-## 8. H4 — Brain attention and production semantic continuation
+## 8. H4 — Brain attention and zero-Work Human wake relay
 
-H4 is split into two bounded milestones so wake transport, semantic authority and
-Human observability remain separate.
+The proven ChatGPT Work wake path remains historical conformance evidence only.
+Production use of Work for AIOS wake/ACK/semantic continuation is rejected by current
+Human priority because Work shares the same included allowance as Codex and therefore
+can consume scarce Executor capacity merely to observe or acknowledge lifecycle
+events.
 
-### 8.1 H4A — Brain attention handshake and deterministic identity binding
+H4 instead uses a deterministic **Human Wake Relay**. The objective is not zero model
+usage; it is zero Work invocation and therefore zero additional draw on the shared
+Work/Codex allowance for wake transport itself.
 
-Extend operational attention so GitHub can reliably tell a fresh Brain **that a
-semantic checkpoint exists** without telling it **what semantic decision to make**.
+### 8.1 H4A — Deterministic Human Attention Surface
 
-A Brain-attention signal may carry only bounded selectors and procedural continuity
-facts such as:
+AIOS/GitHub must tell the Human **that a semantic checkpoint exists** without telling
+the Brain what semantic decision to make.
+
+The attention projection may carry only bounded transport/selector material such as:
 
 ```text
+event_id
 repository
 attention_family
 canonical selector(s)
 fresh_brain_sync_required: true
 ```
 
-It must not carry an authoritative `next_action`, selected correction strategy,
-roadmap successor, Reviewer verdict or publication claim.
+It must not carry an authoritative `next_action`, correction strategy, Reviewer
+verdict, roadmap successor, publication claim, copied semantic payload or model
+instruction.
 
-On receipt the consumer must perform fresh Brain Sync, Flow Resolution and Decision
-Packet composition. Any mismatch or newer canonical state invalidates the old
-attention signal for semantic continuation.
+Reuse the existing central attention projection/deduplication machinery where
+possible, but deliver the final production signal to a Human-facing GitHub surface
+that can use native GitHub notifications without invoking ChatGPT Work. The surface
+is presentation/attention only and explicitly non-canonical. Existing TASK/RUN/
+RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR/publication artifacts remain engineering
+truth.
 
-The existing terminal RESULT/FAILURE signal remains a subordinate transport. H4A may
-cover additional semantic checkpoints only when each event has an exact canonical
-selector and still requires fresh Brain Sync.
+Each unresolved attention event must have one deterministic event identity and at
+most one active Human notification projection. Duplicate source delivery must be a
+NOOP at the Human-notification layer. Resolution is determined from canonical
+successor state, never merely from notification delivery or acknowledgement.
 
-Before a production semantic action can be authored, every canonical identity that
-the existing Brain or Reviewer protocol requires from an external binding
-(for example TASK revision identity, REPAIR identity, REVIEW identity or finding-id
-slots) must be supplied by one deterministic control-plane binding. The semantic
-model must never allocate or infer canonical lifecycle identities. This binding is
-identity/control material only; it owns no flow selection, correction strategy,
-review verdict, roadmap successor or publication choice.
+The prior PR #1200 Work wake markers and ACKs remain immutable historical proof that
+GitHub -> ChatGPT Work transport functioned. They are not a production dependency.
+No active Work webhook task is required by H4A.
 
-### 8.2 H4B — Production Semantic Continuation and Human Progress Surface
+### 8.2 H4B — Regular Chat Brain resume contract
 
-After H4A closes, upgrade the proven GitHub -> ChatGPT Work wake path from ACK-only
-conformance to one bounded production semantic continuation step per unresolved wake:
+After a Human receives an AIOS attention notification, the Human may open any ChatGPT
+conversation inside the AIOS-renew Project and provide a minimal continuation intent
+such as `tiếp tục` or `kiểm tra`. The mechanism must not depend on reopening the
+same historical chat.
 
-```text
-wake
--> immutable marker reconstruction
--> fresh Brain Sync
--> Unified State / Flow Resolution
--> Decision Packet
--> exactly one authority-owned semantic action
--> existing canonical ingress
--> stop
-```
+That regular Chat invocation must:
 
-The Work invocation may occupy the authority selected by the existing Flow Card for
-that invocation only. It must not merge authorities merely because one product/model
-can perform multiple roles across separate invocations:
+1. perform fresh Brain Sync of canonical `main` and exact current lineage;
+2. treat the Human notification only as an untrusted pointer/selector;
+3. verify that the attention subject is still unresolved;
+4. resolve the current flow through existing Unified State / Flow Resolver contracts;
+5. occupy only the authority selected for that semantic step;
+6. use existing Brain or Reviewer protocols and canonical ingress surfaces;
+7. stop or request Human authority when new intent, priority or risk acceptance is
+   required.
 
-- `SEMANTIC_REVIEW` uses the existing Reviewer protocol and authors one
-  `SUBMIT_REVIEW` candidate;
-- `AUTHOR_REMEDIATION` and `AUTHOR_REPAIR` use the existing Brain protocol,
-  including the repository-owned audit profile and all authoring gates then in force;
-- deterministic execution, verification, publication and transport remain owned by
-  Runtime / Publisher surfaces and are never invoked as ad-hoc Work-side lifecycle
-  logic;
-- ambiguous state, missing identity binding, material canonical movement, or a true
-  Human intent / priority / risk decision fails closed to `HUMAN_REQUIRED`.
+Regular Chat usage is intentionally separated from the Work/Codex shared allowance;
+the Human chooses when to spend Chat reasoning by explicitly resuming the project.
+The relay therefore trades zero-touch continuation for bounded Human involvement: one
+notification plus one minimal Chat action at each semantic checkpoint.
 
-One wake may produce at most one new canonical semantic mutation. Its canonical
-successor may emit a later wake if another semantic authority is required. Work must
-not run a hidden lifecycle loop to TASK completion.
+Scheduled Chat polling is not the default H4 mechanism because it invokes a model on
+a timer, adds latency and spends usage even when nothing changed. A dedicated OpenAI
+API Brain is also not the default because it introduces usage-based API cost and
+changes the current product/cost assumptions. Either alternative requires a separate
+Human decision and audit before adoption.
 
-ACK remains historical transport-conformance evidence and is not the production
-completion marker. Production continuation must be externally observable through a
-bounded presentation-only Human progress receipt (for example on the existing Wake
-Bus PR) whose state is explicitly non-canonical. Canonical TASK/RUN/RESULT/FAILURE/
-REVIEW/REMEDIATION/REPAIR/publication artifacts remain engineering truth.
-
-H4B does not automatically advance roadmap semantics or invent a new TASK after one
-lineage reaches DONE. A planning boundary requiring new Human intent, priority or
-risk acceptance stops at `HUMAN_REQUIRED`. A later separately audited contract may
-automate only a pre-authorized exact roadmap commitment without weakening this rule.
+Human progress remains observable on the GitHub attention/progress surface. Regular
+Chat may add a bounded presentation receipt after fresh sync or semantic action, but
+that receipt is never lifecycle truth and must not become a second state database.
 
 ## 9. H5 — Integration/conformance closure
 
@@ -306,9 +302,12 @@ Before the hardening track closes, minimum conformance must cover:
 8. FINALIZE_CANDIDATE structural eligibility remains distinct from NO_CHANGE reuse;
 9. TASK candidate with PROOF_LATER acceptance cannot cross authoring ingress;
 10. successful REPAIR -> DELTA CHANGES_REQUIRED -> REMEDIATION lineage is resolvable;
-11. terminal/semantic attention can be consumed by a fresh Brain using only canonical
-    state and exact selectors;
-12. no test requires chat history, provider identity or hidden machine-local state.
+11. terminal/semantic attention produces one deduplicated Human-facing notification
+    without requiring any ChatGPT Work invocation;
+12. a fresh regular Chat Brain can resume from that notification using only canonical
+    state and exact selectors, independent of historical chat memory;
+13. no test requires provider identity, hidden machine-local state or Work as a
+    production wake dependency.
 
 Closure evidence must remain minimum-sufficient. No ceremonial full-suite rerun is
 required when focused evidence subsumes the changed boundary; a canonical full suite
@@ -322,8 +321,8 @@ Implementation should remain small and reviewable:
 2. **H2A** action-neutral REPAIR strategy fact projection.
 3. **H2B** successful-REPAIR -> REMEDIATION lineage compatibility correction.
 4. **H3** acceptance proof-phase audited handoff.
-5. **H4A** Brain attention handshake and deterministic identity binding.
-6. **H4B** Production Semantic Continuation and Human Progress Surface.
+5. **H4A** deterministic Human Attention Surface with zero Work invocation.
+6. **H4B** regular Chat Brain resume contract from fresh canonical state.
 7. **H5** integration/conformance closure.
 
 A milestone may require more than one TASK if review uncovers a bounded defect.
