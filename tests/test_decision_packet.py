@@ -370,7 +370,9 @@ def test_repair_authoring_projects_runtime_failure_without_diagnostics(phase):
     packet = compile_decision_packet(work, flow, {"kind": "REPAIR_AUTHORING",
                                                   "task": task(), "failed_run": run("RUN-002-001", A, B),
                                                   "failure": failure})
-    assert packet.as_dict()["bounded_observations"] == {
+    observations = packet.as_dict()["bounded_observations"]
+    assert set(observations) == {"phase", "error", "strategy_facts"}
+    assert {"phase": observations["phase"], "error": observations["error"]} == {
         "phase": phase, "error": {"type": failure["error"]["type"]},
     }
     for private in ("C:/private", "token=private", "private native stream", "private raw log"):
