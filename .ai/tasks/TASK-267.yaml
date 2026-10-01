@@ -1,0 +1,133 @@
+task_id: TASK-267
+revision: 1
+goal: Harden prospective Brain TASK authoring so a Stage-2 CANDIDATE explicitly covers
+  caller-owned cross-authority context, valid canonical lineage shapes, and terminal
+  lifecycle feasibility before canonical authoring, preventing the regression classes
+  exposed by TASK-257/TASK-258/TASK-264.
+problem: Brain Audit v2 requires ordered lens coverage and closure but a CLEAR lens
+  can carry no bounded proof surface showing which caller-owned authority inputs,
+  canonical lineage shapes, or normal terminal lifecycle paths were considered. This
+  allowed an implementation to rediscover Publisher remote authority, H1R tests to
+  overfit FAILURE preservation while omitting reviewed RESULT preservation, and TASK-264
+  to be sequenced as a prerequisite even though a normal remediation path could not
+  publish on the then-current control plane.
+assumptions:
+- Canonical main selects TASK-267 as the unique unauthored NEXT item before H4A3.
+- Current canonical authoring uses brain-high-value-v2 from .ai/brain-audit-profiles.yaml
+  and validates Stage-2 through src/aios_renew/brain_audit.py plus src/aios_renew/authoring_ingress.py.
+- The hardening belongs to Brain semantic authoring support and must not create a
+  second lifecycle reducer, Runtime verifier, Reviewer or Publisher.
+- The three known regression classes are caller-owned remote loss, canonical lineage-shape
+  overfitting, and prerequisite terminalization failure.
+scope:
+  inspect:
+  - .ai/roadmap-state.yaml
+  - .ai/brain-audit-profiles.yaml
+  - .ai/brain-return-contracts.yaml
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/publication.py
+  - tests/test_brain_audit.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_return_contract.py
+  - tests/test_operator.py
+  - tests/test_publication.py
+  modify:
+  - .ai/brain-audit-profiles.yaml
+  - .ai/brain-return-contracts.yaml
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  - src/aios_renew/brain_audit.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_brain_audit.py
+  - tests/test_authoring_ingress.py
+  - tests/test_brain_return_contract.py
+non_goals:
+- Change Runtime lifecycle reduction, verification ownership, review semantics, publication
+  semantics, H1R reconciliation implementation, Publisher remote implementation, or
+  the already published TASK-257 through TASK-266 lineages.
+- Implement task-scoped sticky Executor/model/effort selection; that is a separate
+  queued authority.
+- Implement H4A3 live chat conformance, H4B Brain resume, performance work, or downstream
+  adoption.
+- Store chain-of-thought, persistent model memory, unbounded audit logs, provider
+  identity, or a second semantic/lifecycle state store.
+- Require future Runtime PASS, future Reviewer PASS, or future publication success
+  as pre-authoring evidence; v3 records Brain feasibility analysis of currently supported
+  paths, not future lifecycle truth.
+constraints:
+  hard:
+  - The current canonical registry must select a new brain-high-value-v3 profile for
+    prospective audited authoring.
+  - TASK_AUTHORING Stage-2 v3 must carry bounded closed conformance sections for caller-owned
+    cross-authority context, canonical shape coverage, and terminal lifecycle feasibility.
+  - Terminal lifecycle coverage must explicitly represent PRIMARY PASS to publication,
+    CHANGES_REQUIRED through REMEDIATION and PASS to publication, and FAILURE through
+    REPAIR and PASS to publication.
+  - A conformance BLOCKER must fail closed to Stage-2 NO_DECISION rather than permit
+    CANDIDATE handoff.
+  - The conformance material remains transient audited Brain material and must never
+    enter frozen TASK bytes, Runtime EVIDENCE, REVIEW artifacts, roadmap lifecycle
+    truth, or provider memory.
+  - No deterministic component may infer a correction strategy, semantic verdict,
+    publication eligibility, roadmap successor, or Human risk acceptance from the
+    conformance matrix.
+  - brain-high-value-v2 parsing and direct protocol validation must remain supported
+    for immutable historical audit material; v3 is the canonical prospective profile,
+    not a reinterpretation of historical v2 decisions.
+  - Deterministic v3 validation may enforce only profile identity, bounded closed
+    shapes, exact path/entry coverage, lineage binding, status/closure consistency
+    and privacy limits; whether an edge, shape or path is semantically applicable
+    or feasible remains a Brain judgment.
+  - Terminal lifecycle feasibility is assessed against current canonical control-plane
+    capabilities and known blockers; it must not require evidence from a RUN, REVIEW
+    or publication that does not yet exist.
+acceptance:
+- id: AC1
+  condition: The repository exposes a prospective brain-high-value-v3 audit profile
+    and canonical new authoring selects that profile instead of v2.
+- id: AC2
+  condition: TASK_AUTHORING v3 Stage-2 requires one bounded closed cross-authority-context
+    section that makes caller-owned context propagation or explicit non-applicability/blockage
+    visible instead of allowing a bare CLEAR assertion.
+- id: AC3
+  condition: TASK_AUTHORING v3 Stage-2 requires one bounded closed canonical-shape
+    section that makes the valid lineage/state shapes considered or explicit non-applicability/blockage
+    visible instead of allowing one observed shape to stand for the family.
+- id: AC4
+  condition: TASK_AUTHORING v3 Stage-2 requires an exact terminal-lifecycle section
+    covering PRIMARY-to-publication, REMEDIATION-to-publication and REPAIR-to-publication
+    paths, and any BLOCKED required path is inconsistent with CANDIDATE closure.
+- id: AC5
+  condition: The authoring ingress rejects missing, malformed, substituted, incomplete
+    or blocker-contradicting v3 conformance material before any Git mutation, while
+    valid v3 material remains bound to the exact Decision Packet and reconciled candidate.
+- id: AC6
+  condition: The TASK_AUTHORING return contract documents the v3 conformance material
+    as bounded transient Brain semantic support and keeps it outside canonical TASK
+    bytes.
+- id: AC7
+  condition: 'Focused regression fixtures exercise the three demonstrated failure
+    classes: caller-owned remote context propagation, FAILURE plus reviewed-RESULT
+    canonical shape coverage, and a blocked normal correction/publication path that
+    must not close as CANDIDATE.'
+- id: AC8
+  condition: The v3 hardening introduces no new Planner, lifecycle router, verification
+    authority, Reviewer, Publisher, automatic correction selector, roadmap auto-advance
+    or persistent reasoning store.
+- id: AC9
+  condition: The protocol continues to parse and directly validate brain-high-value-v2
+    historical material without converting it to v3, while non-idempotent new canonical
+    authoring requires the current v3 profile.
+- id: AC10
+  condition: V3 structural validation does not derive semantic applicability or feasibility
+    and does not require future RUN, EVIDENCE, REVIEW or publication facts before
+    TASK authoring.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_audit.py tests/test_authoring_ingress.py
+    tests/test_brain_return_contract.py
+  - git diff --check
