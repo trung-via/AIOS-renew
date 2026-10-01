@@ -518,12 +518,27 @@ sequence:
   - id: brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
     status: ACTIVE
     task_id: TASK-254
-    task_revision: 1
-    authored_commit_sha: "2ea52d8237bbb1a569a8c707b638d2c8ef755f85"
-    task_blob_sha: "5b3a2c26faa3ac31e5a0f350f12f67dea99c68f4"
+    task_revision: 2
+    authored_commit_sha: "52cc11eaf41c56a3bd4a11fd2d0aa5706f142a92"
+    task_blob_sha: "6810c152240c027e86d2595eb41006687e5c8103"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
+    r2_task_audit:
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      predecessor_revision: 1
+      predecessor_disposition: SUPERSEDED_BEFORE_RUN
+      reconciled_risks:
+        - CANONICAL_SOURCE_BINDING
+        - DETERMINISTIC_DECISION_PACKET_MATERIAL
+        - EXISTING_SEMANTIC_EQUALITY_AUTHORITY
+        - MUTATION_EDGE_FRESHNESS
+        - IDEMPOTENT_REPLAY_ORDERING
     objective: >-
       Prospectively require one fresh Decision Packet-bound BP-4A two-stage audited
       CANDIDATE handoff before any new AUTHOR_TASK, AUTHOR_REMEDIATION or AUTHOR_REPAIR
