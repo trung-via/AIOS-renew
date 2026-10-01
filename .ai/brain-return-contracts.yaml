@@ -58,6 +58,30 @@ contracts:
         - State an executor-neutral goal and problem bound to the exact Decision Packet subject.
         - Make scope.modify the exact authorized production mutation surface; scope.inspect conveys read access only.
         - Give complete, observable acceptance conditions with distinct ids and no circular proof.
+        - >-
+          During Stage 2 Brain alone classifies each final acceptance id: CLAIM_NOW
+          means a concrete implementation property the Executor can truthfully
+          claim at completion before Runtime verification; PROOF_LATER means truth
+          dependent on Runtime verification/results, canonical EVIDENCE, Reviewer
+          judgment, publication, roadmap advancement or another later lifecycle fact.
+          Deterministic support checks declarations and identity only, never acceptance prose.
+        - >-
+          Emit acceptance_phase_ledger alongside construct_audit, reconciled_candidate,
+          closure and outcome in the TASK_AUTHORING Stage-2 response only. It is one
+          array of at most 256 entries, each containing exactly id (non-empty text,
+          at most 256 UTF-8 bytes) and phase (CLAIM_NOW or PROOF_LATER), with at most
+          32768 UTF-8 JSON bytes. It is transient audited semantic material bound
+          into Stage-2 and Brain decision identity; never put it or phase fields in
+          the TASK candidate, canonical TASK bytes, evidence or a reasoning store.
+        - >-
+          Before CANDIDATE handoff, reconcile every PROOF_LATER requirement out of
+          final acceptance; retain its intent on existing verification, constraint
+          or non-goal surfaces as semantically appropriate. The final ledger must
+          cover final reconciled acceptance ids exactly once, with no missing,
+          duplicate, extra or substituted ids, and every phase CLAIM_NOW. If this
+          cannot be reconciled, declare a closure BLOCKER and NO_DECISION instead
+          of handing off. REMEDIATION_AUTHORING, REPAIR_AUTHORING and other flows
+          neither require nor accept this TASK-only ledger.
         - Use minimum-sufficient-v1 verification with focused required commands; give full_suite_reason only when a full suite is necessary.
         - Do not instruct the Executor to push or publish, or include ingress envelope or publication controls.
   - selected_flow: REMEDIATION_AUTHORING

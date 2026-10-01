@@ -46,6 +46,7 @@ _ENVELOPE_KEYS = frozenset({
     "audit_profile_ref", "packet_fingerprint", "construct_fingerprint",
     "reconciled_candidate_fingerprint", "stage2_fingerprint", "construct_audit",
     "closure", "handoff_candidate", "stage1", "stage2", "audit_envelope",
+    "acceptance_phase_ledger",
 })
 _RESERVED_SEMANTIC_KEYS = _ENVELOPE_KEYS | _PRIVATE_KEYS
 _RESERVED_COMPACT_KEYS = frozenset(key.replace("_", "") for key in _RESERVED_SEMANTIC_KEYS)
@@ -376,6 +377,21 @@ def _ordered_lenses(value: Any, policy: dict[str, Any], *, closure: bool) -> lis
     return result
 
 
+def _acceptance_phase_ledger(value: Any) -> list[dict[str, str]]:
+    """Normalize declarations only; final TASK coverage and phase gate are ingress-owned."""
+    if type(value) is not list or len(value) > 256:
+        raise BrainAuditError("acceptance_phase_ledger must be an array of at most 256 entries")
+    result = []
+    for item in value:
+        entry = _fields(item, {"id", "phase"}, "acceptance phase entry")
+        criterion_id = _text(entry["id"], 256, "acceptance phase id")
+        if type(entry["phase"]) is not str or entry["phase"] not in {"CLAIM_NOW", "PROOF_LATER"}:
+            raise BrainAuditError("acceptance phase must be CLAIM_NOW or PROOF_LATER")
+        result.append({"id": criterion_id, "phase": entry["phase"]})
+    _bounded(result, 32768, "acceptance_phase_ledger")
+    return result
+
+
 def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping[str, Any],
                     stage1: Mapping[str, Any], semantic_output: Mapping[str, Any]) -> dict[str, Any]:
     """Validate one audit, reconciliation and final closure within Stage 2."""
@@ -383,8 +399,14 @@ def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
     if body["authority_owner"] != "BRAIN" or body["selected_flow"] not in policy["applicable_flows"]:
         raise BrainAuditError("profile does not apply to selected flow")
     first = _stage1(body, policy, stage1)
-    material = _fields(_normal(semantic_output, depth=0, max_depth=policy["bounds"]["max_depth"]),
-                       _STAGE2_FIELDS, "Stage-2 semantic output")
+    material = _normal(semantic_output, depth=0, max_depth=policy["bounds"]["max_depth"])
+    fields = _STAGE2_FIELDS
+    if type(material) is dict and "acceptance_phase_ledger" in material:
+        if body["selected_flow"] != "TASK_AUTHORING":
+            raise BrainAuditError("acceptance_phase_ledger is TASK_AUTHORING-only")
+        fields = fields | {"acceptance_phase_ledger"}
+        material["acceptance_phase_ledger"] = _acceptance_phase_ledger(material["acceptance_phase_ledger"])
+    material = _fields(material, fields, "Stage-2 semantic output")
     _bounded(material, policy["bounds"]["stage2_bytes"], "Stage-2 semantic material")
     for field in ("packet_fingerprint", "audit_profile_ref", "selected_flow", "construct_candidate", "construct_fingerprint"):
         if _json(material[field]) != _json(first[field]):
@@ -413,6 +435,8 @@ def validate_stage2(packet: DecisionPacket | Mapping[str, Any], profile: Mapping
         "reconciled_candidate_fingerprint": final_fingerprint,
         "handoff_candidate": reconciled if outcome == "CANDIDATE" else None,
     }
+    if "acceptance_phase_ledger" in material:
+        result["acceptance_phase_ledger"] = material["acceptance_phase_ledger"]
     result["stage2_fingerprint"] = _digest({
         "stage1_construct_fingerprint": first["construct_fingerprint"],
         "semantic_material": material,

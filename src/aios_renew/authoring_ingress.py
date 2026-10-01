@@ -1651,13 +1651,28 @@ def _validate_authoring_handoff(envelope: IngressEnvelope, repo: Path) -> _Autho
         audit = validate_stage2(packet, profile, envelope.audited_handoff["stage1"], envelope.audited_handoff["stage2"])
         if audit["outcome"] != "CANDIDATE":
             raise AuthoringIngressError("audited authoring requires Stage-2 CANDIDATE")
-        if _authoring_family_body(envelope.operation, audit["handoff_candidate"], packet, repo) != \
-                _authoring_family_body(envelope.operation, envelope.payload, packet, repo):
+        candidate = _authoring_family_body(envelope.operation, audit["handoff_candidate"], packet, repo)
+        if candidate != _authoring_family_body(envelope.operation, envelope.payload, packet, repo):
             raise AuthoringIngressError("audited candidate differs from canonical family payload")
+        if envelope.operation == "AUTHOR_TASK":
+            _validate_task_acceptance_phases(candidate, audit.get("acceptance_phase_ledger"))
         return packet.packet_fingerprint, contract["return_contract_ref"], refs
     except (ValueError, TypeError, KeyError, OSError, RecursionError, yaml.YAMLError,
             BrainSyncError, ReviewTransportError, subprocess.SubprocessError) as exc:
         raise AuthoringIngressError(f"audited authoring rejected: {exc}") from exc
+
+
+def _validate_task_acceptance_phases(task: Task, ledger: Any) -> None:
+    """Enforce exact Brain-declared coverage without interpreting acceptance prose."""
+    if ledger is None:
+        raise AuthoringIngressError("new TASK authoring requires acceptance_phase_ledger")
+    ids = [entry["id"] for entry in ledger]
+    if len(ids) != len(set(ids)):
+        raise AuthoringIngressError("acceptance_phase_ledger contains duplicate ids")
+    if set(ids) != {criterion.id for criterion in task.acceptance}:
+        raise AuthoringIngressError("acceptance_phase_ledger must exactly cover final TASK acceptance ids")
+    if any(entry["phase"] != "CLAIM_NOW" for entry in ledger):
+        raise AuthoringIngressError("final TASK acceptance requires only CLAIM_NOW; reconcile PROOF_LATER before ingress")
 
 
 def _recheck_authoring_binding(envelope: IngressEnvelope, repo: Path, binding: _AuthoringBinding) -> None:

@@ -32,6 +32,29 @@ def registry():
     return parse_return_contract_registry(REGISTRY.read_bytes())
 
 
+def test_fresh_task_provider_contract_explains_proof_phase_and_reconciliation():
+    data = registry()
+    task = next(item for item in data["contracts"] if item["selected_flow"] == "TASK_AUTHORING")
+    package = select_return_contract(data, packet(task))
+    guidance = " ".join(package["contract"]["candidate_contract"]["requirements"])
+    for instruction in (
+        "Brain alone", "CLAIM_NOW", "before Runtime verification", "PROOF_LATER",
+        "canonical EVIDENCE", "Reviewer", "publication", "roadmap", "Stage 2",
+        "acceptance_phase_ledger", "exactly id", "256", "32768", "Stage-2",
+        "Brain decision identity", "verification, constraint", "non-goal",
+        "no missing", "duplicate", "extra", "substituted", "every phase CLAIM_NOW",
+        "BLOCKER", "NO_DECISION", "transient", "never acceptance prose",
+        "never put it", "canonical TASK bytes",
+    ):
+        assert instruction in guidance
+    changed = deepcopy(task)
+    changed["candidate_contract"]["requirements"][-3] += " Changed phase guidance."
+    assert return_contract_ref(changed, data["bounds"]) != return_contract_ref(task, data["bounds"])
+    for item in data["contracts"]:
+        if item["selected_flow"] != "TASK_AUTHORING":
+            assert "acceptance_phase_ledger" not in json.dumps(item)
+
+
 def fingerprint(body):
     material = {key: value for key, value in body.items() if key != "packet_fingerprint"}
     encoded = json.dumps(material, sort_keys=True, separators=(",", ":"),

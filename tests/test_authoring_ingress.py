@@ -53,6 +53,63 @@ def test_audited_authoring_missing_handoff_is_non_mutating(tmp_path):
     assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
 
 
+@pytest.mark.parametrize("revision", (1, 2))
+@pytest.mark.parametrize("fault", ("missing", "empty", "duplicate", "extra", "substituted", "proof_later"))
+def test_task_phase_ledger_gate_rejects_before_any_git_mutation(tmp_path, monkeypatch, revision, fault):
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    envelope = new_task_envelope(main_sha)
+    if revision == 2:
+        first = execute_ingress(audited_envelope(envelope, repo), repo=repo)
+        main_sha = first.canonical_sha
+        envelope = replace(envelope, expected_state={"expected_main_sha": main_sha}, payload=V1_TASK_105_R2_SOURCE)
+    envelope = audited_envelope(envelope, repo)
+    handoff = copy.deepcopy(envelope.audited_handoff)
+    ledger = handoff["stage2"]["acceptance_phase_ledger"]
+    if fault == "missing":
+        del handoff["stage2"]["acceptance_phase_ledger"]
+    elif fault == "empty":
+        ledger.clear()
+    elif fault == "duplicate":
+        ledger.append(copy.deepcopy(ledger[0]))
+    elif fault == "extra":
+        ledger.append({"id": "EXTRA", "phase": "CLAIM_NOW"})
+    elif fault == "substituted":
+        ledger[0]["id"] = "SUBSTITUTED"
+    else:
+        ledger[0]["phase"] = "PROOF_LATER"
+    # Even temporary blob/index/commit construction must occur after the gate.
+    monkeypatch.setattr(authoring_ingress_module, "_hash_blob", lambda *a: pytest.fail("premature blob mutation"))
+    monkeypatch.setattr(authoring_ingress_module, "_git_env", lambda *a: pytest.fail("premature index mutation"))
+    monkeypatch.setattr(authoring_ingress_module, "_commit_tree", lambda *a: pytest.fail("premature commit mutation"))
+    before = git(repo, "show", f"{main_sha}:.ai/tasks/TASK-105.yaml", check=False)
+    with pytest.raises(AuthoringIngressError, match="acceptance_phase_ledger|PROOF_LATER"):
+        execute_ingress(replace(envelope, audited_handoff=handoff), repo=repo)
+    assert git(repo, "rev-parse", "HEAD") == main_sha
+    assert git(remote, "rev-parse", "refs/heads/main") == main_sha
+    assert git(repo, "show", f"{main_sha}:.ai/tasks/TASK-105.yaml", check=False) == before
+
+
+def test_task_phase_ledger_never_enters_frozen_task_bytes(tmp_path):
+    from aios_renew.task import TaskValidationError, parse_task
+
+    repo, remote, main_sha = setup_test_repo(tmp_path)
+    envelope = audited_envelope(new_task_envelope(main_sha), repo)
+    result = execute_ingress(envelope, repo=repo)
+    raw = git(repo, "show", f"{result.canonical_sha}:.ai/tasks/TASK-105.yaml")
+    assert parse_task(raw) == parse_task(envelope.payload)
+    body = yaml.safe_load(raw)
+    assert "acceptance_phase_ledger" not in body
+    assert all(set(entry) == {"id", "condition"} for entry in body["acceptance"])
+    for extra in ("acceptance_phase_ledger", "phase"):
+        changed = copy.deepcopy(body)
+        if extra == "phase":
+            changed["acceptance"][0][extra] = "CLAIM_NOW"
+        else:
+            changed[extra] = envelope.audited_handoff["stage2"][extra]
+        with pytest.raises(TaskValidationError):
+            parse_task(json.dumps(changed))
+
+
 def test_audited_authoring_semantic_formatting_and_read_only_replay(tmp_path):
     repo, remote, main_sha = setup_test_repo(tmp_path)
     envelope = audited_envelope(new_task_envelope(main_sha), repo)
@@ -328,6 +385,10 @@ def audited_envelope(envelope: IngressEnvelope, repo: Path) -> IngressEnvelope:
         "closure": [{"lens": lens["id"], "outcome": "CLEAR"} for lens in profile["lenses"]],
         "outcome": "CANDIDATE",
     }
+    if envelope.operation == "AUTHOR_TASK":
+        stage2["acceptance_phase_ledger"] = [
+            {"id": entry["id"], "phase": "CLAIM_NOW"} for entry in candidate["acceptance"]
+        ]
     return replace(envelope, audited_handoff={
         "format": "AIOS_AUDITED_AUTHORING_HANDOFF", "version": 1,
         "stage1": stage1, "stage2": stage2,
@@ -1803,6 +1864,12 @@ constraints:
     with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
         execute_ingress(rem_env, repo=repo)
     rem_env = audited_envelope(rem_env, repo)
+    assert "acceptance_phase_ledger" not in rem_env.audited_handoff["stage2"]
+    cross_flow = copy.deepcopy(rem_env.audited_handoff)
+    cross_flow["stage2"]["acceptance_phase_ledger"] = []
+    with pytest.raises(AuthoringIngressError, match="TASK_AUTHORING-only"):
+        execute_ingress(replace(rem_env, audited_handoff=cross_flow), repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(objectname)", f"refs/heads/aios/remediation/{run_id}-F1") == ""
     result = execute_ingress(rem_env, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == f"refs/heads/aios/remediation/{run_id}-F1"
@@ -2136,6 +2203,12 @@ def test_author_repair_success_and_rejections(tmp_path):
     with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
         execute_ingress(envelope, repo=repo)
     envelope = audited_envelope(envelope, repo)
+    assert "acceptance_phase_ledger" not in envelope.audited_handoff["stage2"]
+    cross_flow = copy.deepcopy(envelope.audited_handoff)
+    cross_flow["stage2"]["acceptance_phase_ledger"] = []
+    with pytest.raises(AuthoringIngressError, match="TASK_AUTHORING-only"):
+        execute_ingress(replace(envelope, audited_handoff=cross_flow), repo=repo)
+    assert git(remote, "for-each-ref", "--format=%(objectname)", f"refs/heads/aios/repair/{failed_run_id}") == ""
     result = execute_ingress(envelope, repo=repo)
     assert result.status == "CANONICALIZED"
     assert result.canonical_destination == f"refs/heads/aios/repair/{failed_run_id}"

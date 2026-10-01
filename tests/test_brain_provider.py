@@ -134,6 +134,45 @@ def test_stage2_is_self_sufficient_on_fresh_adapter(registry, profile_package):
     assert "semantic_response" not in received[0] and "attribution" not in received[0]
 
 
+@pytest.mark.parametrize("kind", ("mapping", "json"))
+@pytest.mark.parametrize("fault", (None, "missing", "invalid_phase", "cross_flow"))
+def test_provider_attempt_phase_ledger_is_bound_and_fail_closed(registry, profile_package, kind, fault):
+    flow = "ARCHITECTURE" if fault == "cross_flow" else "TASK_AUTHORING"
+    packet, package = inputs(registry, flow)
+    bindings = {} if flow == "ARCHITECTURE" else deepcopy(TASK)
+    candidate = {**bindings, "acceptance": [{"id": "AC1", "condition": "Implementation exists"}]}
+    calls, freshness = [], []
+    def callback(request):
+        calls.append(deepcopy(request))
+        if request["request_mode"] == "AUDIT_CONSTRUCT":
+            semantic = response(request, candidate)
+        else:
+            guidance = " ".join(request["return_contract_package"]["contract"]["candidate_contract"]["requirements"])
+            if flow == "TASK_AUTHORING":
+                assert "before Runtime verification" in guidance and "PROOF_LATER" in guidance
+            semantic = stage2_response(request, candidate)
+            if fault == "missing":
+                del semantic["acceptance_phase_ledger"]
+            elif fault == "invalid_phase":
+                semantic["acceptance_phase_ledger"][0]["phase"] = "UNKNOWN"
+            elif fault == "cross_flow":
+                semantic["acceptance_phase_ledger"] = []
+        return wrapper(request, provider=kind, model="model", semantic=semantic)
+    def fresh():
+        freshness.append(None)
+        return DecisionPacket(packet.as_dict())
+    provider = adapter(kind, native(kind, callback), kind, "model")
+    if fault is None:
+        result = attempt(provider, packet, package, bindings, profile_package, fresh)
+        assert result.decision["semantic_value"]["acceptance_phase_ledger"] == [{"id": "AC1", "phase": "CLAIM_NOW"}]
+        assert revalidate_decision(result.decision, calls[1]) == result.decision
+    else:
+        with pytest.raises(BrainAttemptError) as error:
+            attempt(provider, packet, package, bindings, profile_package, fresh)
+        assert error.value.reason_code == "PROVIDER_RESPONSE_INVALID"
+    assert len(calls) == 2 and len(freshness) == 1
+
+
 def test_stage2_uses_stage1_normalized_packages_after_supplier_mutation(registry, profile_package):
     packet, package, bindings = setup(registry)
     calls = []

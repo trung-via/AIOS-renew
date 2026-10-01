@@ -232,6 +232,33 @@ closure
 outcome
 ```
 
+For `TASK_AUTHORING` only, this Stage-2 response additionally requires
+`acceptance_phase_ledger`: one array of at most 256 entries with exactly `id`
+(non-empty text, at most 256 UTF-8 bytes) and `phase` (`CLAIM_NOW` or `PROOF_LATER`),
+bounded to 32768 UTF-8 JSON bytes. Other flows retain the shape above and reject
+the ledger. It is also excluded from Stage-1 and reconciled candidate bodies.
+
+Brain alone classifies phase. `CLAIM_NOW` denotes a concrete implementation
+property claimable by the Executor at completion before Runtime verification;
+`PROOF_LATER` denotes a later Runtime verification/result, EVIDENCE, Reviewer,
+publication, roadmap or lifecycle fact. Before `CANDIDATE`, Brain reconciles every
+`PROOF_LATER` requirement out of final acceptance onto existing verification,
+constraint or non-goal surfaces as semantically appropriate. Unclosed risk requires
+closure `BLOCKER` and `NO_DECISION`. Final TASK handoff requires each final
+acceptance id exactly once as `CLAIM_NOW`.
+
+The protocol copies the declared ledger into the BP-4A Stage-2 semantic material
+and result. Normalization and `stage2_fingerprint` bind it into serialized Brain
+decision identity; decision revalidation reconstructs the same material, so a
+ledger substitution cannot reuse the audited identity. BP-4A validates only shape,
+bounds and tokens, not final TASK coverage or acceptance meaning. AUTHOR_TASK
+ingress owns exact coverage and the all-`CLAIM_NOW` gate before mutation. The
+ledger remains transient cognitive support, never canonical TASK data, lifecycle
+truth, evidence or persistent reasoning. Frozen TASK acceptance remains
+`{id, condition}`. Identical historical replay needs no new ledger; prospective
+authoring cannot bypass it. The selected repository return contract supplies this
+guidance to a fresh provider without chat memory or hidden prompts.
+
 The provider does not re-supply packet/profile/return-contract/construct lineage. Deterministic support requires the exact request-fingerprint echo, enforces external bindings again on any final candidate, injects the already-known exact BP-4A lineage fields, assembles the Stage-2 input and validates it with the reviewed BP-4A validator.
 
 The provider does not calculate `construct_fingerprint`, reconciled-candidate fingerprint, Stage-2 fingerprint or final decision fingerprint.

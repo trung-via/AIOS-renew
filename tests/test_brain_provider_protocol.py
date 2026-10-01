@@ -80,12 +80,17 @@ def stage2_response(req, candidate, *, blocker=False):
     closure = [{"lens": lens, "outcome": "CLEAR"} for lens in lenses]
     if blocker:
         closure[-1] = {"lens": lenses[-1], "outcome": "BLOCKER", "blocker_summary": "Open risk"}
-    return {
+    material = {
         "request_fingerprint": req["request_fingerprint"],
         "construct_audit": [{"lens": lens, "outcome": "CLEAR"} for lens in lenses],
         "reconciled_candidate": candidate, "closure": closure,
         "outcome": "NO_DECISION" if blocker else "CANDIDATE",
     }
+    if req["decision_packet"]["selected_flow"] == "TASK_AUTHORING":
+        material["acceptance_phase_ledger"] = [
+            {"id": entry["id"], "phase": "CLAIM_NOW"} for entry in candidate.get("acceptance", [])
+        ]
+    return material
 
 
 def test_audited_round_trip_and_stale_stage2(registry, profile_package):
@@ -264,6 +269,66 @@ def test_external_binding_and_closed_response(registry, profile_package):
         validate_response(first, {**response(first, {}), "model": "x"})
     with pytest.raises(BrainProviderProtocolError):
         validate_response(first, response(first, {"task_id": "TASK-999", "revision": 1, "bad": float("nan")}))
+
+
+@pytest.mark.parametrize("blocker", (False, True))
+def test_task_phase_ledger_binds_serialized_decision_identity(registry, profile_package, blocker):
+    first = request(registry, profile_package)
+    candidate = {"task_id": "TASK-999", "revision": 1,
+                 "acceptance": [{"id": "AC1", "condition": "A property exists"}]}
+    stage1 = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]), first["return_contract_package"],
+                               first["external_bindings"], first["audit_profile_package"],
+                               request_mode="AUDIT_RECONCILE", stage1_decision=stage1)
+    material = stage2_response(second, candidate, blocker=blocker)
+    final = validate_response(second, material)
+    assert revalidate_decision(final, second) == final
+    for ledger in (
+        [], [{"id": "AC1", "phase": "PROOF_LATER"}],
+        [{"id": "OTHER", "phase": "CLAIM_NOW"}],
+        material["acceptance_phase_ledger"] * 2,
+    ):
+        # Protocol never applies the final ingress coverage/phase rule.
+        changed = validate_response(second, {**material, "acceptance_phase_ledger": ledger})
+        assert changed["decision_fingerprint"] != final["decision_fingerprint"]
+        assert changed["semantic_value"]["stage2_fingerprint"] != final["semantic_value"]["stage2_fingerprint"]
+        assert revalidate_decision(changed, second) == changed
+        tampered = deepcopy(final)
+        tampered["semantic_value"]["acceptance_phase_ledger"] = ledger
+        # Rehashing the outer envelope cannot retain the audited Stage-2 identity.
+        tampered["decision_fingerprint"] = digest({k: v for k, v in tampered.items() if k != "decision_fingerprint"})
+        with pytest.raises(BrainProviderProtocolError):
+            revalidate_decision(tampered, second)
+    missing = deepcopy(material)
+    del missing["acceptance_phase_ledger"]
+    with pytest.raises(BrainProviderProtocolError):
+        validate_response(second, missing)
+    for ledger in (None, [{"id": "AC1", "phase": "UNKNOWN"}],
+                   [{"id": "AC1", "phase": "CLAIM_NOW", "basis": "Not allowed"}]):
+        with pytest.raises(BrainProviderProtocolError):
+            validate_response(second, {**material, "acceptance_phase_ledger": ledger})
+
+
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"))
+def test_non_task_provider_stage2_rejects_task_phase_ledger(registry, profile_package, flow):
+    bindings = {"repair_id": "REPAIR-999-001"} if flow == "REPAIR_AUTHORING" else {}
+    first = request(registry, profile_package, flow=flow, bindings=bindings)
+    candidate = {**bindings, "proposal": "Bounded"}
+    stage1 = validate_response(first, response(first, candidate))
+    second = construct_request(DecisionPacket(first["decision_packet"]), first["return_contract_package"],
+                               bindings, first["audit_profile_package"], request_mode="AUDIT_RECONCILE",
+                               stage1_decision=stage1)
+    material = stage2_response(second, candidate)
+    decision = validate_response(second, material)
+    assert revalidate_decision(decision, second) == decision
+    assert "acceptance_phase_ledger" not in decision["semantic_value"]
+    with pytest.raises(BrainProviderProtocolError):
+        validate_response(second, {**material, "acceptance_phase_ledger": []})
+    altered = deepcopy(decision)
+    altered["semantic_value"]["acceptance_phase_ledger"] = []
+    altered["decision_fingerprint"] = digest({k: v for k, v in altered.items() if k != "decision_fingerprint"})
+    with pytest.raises(BrainProviderProtocolError):
+        revalidate_decision(altered, second)
 
 
 def test_direct_grammar_and_modes(registry, profile_package):

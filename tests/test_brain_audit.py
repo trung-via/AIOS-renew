@@ -16,6 +16,96 @@ from aios_renew.brain_audit import (
 REGISTRY = Path(__file__).resolve().parents[1] / ".ai" / "brain-audit-profiles.yaml"
 
 
+def test_task_phase_ledger_is_normalized_and_part_of_stage2_identity(profile):
+    supplied = packet("TASK_AUTHORING")
+    first = construct_stage1(supplied, profile, {"acceptance": [{"id": "AC1", "condition": "Exists"}]})
+    material = stage2_input(first, profile)
+    # BP-4A is deliberately not a final TASK validator: even incomplete,
+    # duplicate or PROOF_LATER declarations have a distinct semantic identity.
+    historical = validate_stage2(supplied, profile, first, material)
+    material["acceptance_phase_ledger"] = [{"id": "AC1", "phase": "CLAIM_NOW"}]
+    final = validate_stage2(supplied, profile, first, material)
+    assert final["stage2_fingerprint"] != historical["stage2_fingerprint"]
+    assert final["handoff_candidate"] == first["construct_candidate"]
+    fingerprints = {final["stage2_fingerprint"]}
+    for ledger in (
+        [], [{"id": "AC1", "phase": "PROOF_LATER"}],
+        [{"id": "OTHER", "phase": "CLAIM_NOW"}],
+        material["acceptance_phase_ledger"] * 2,
+    ):
+        result = validate_stage2(supplied, profile, first, {**material, "acceptance_phase_ledger": ledger})
+        assert result["stage2_fingerprint"] not in fingerprints
+        fingerprints.add(result["stage2_fingerprint"])
+    crlf = {**material, "acceptance_phase_ledger": [{"id": "AC1\r\nline", "phase": "CLAIM_NOW"}]}
+    lf = {**crlf, "acceptance_phase_ledger": [{"phase": "CLAIM_NOW", "id": "AC1\nline"}]}
+    assert validate_stage2(supplied, profile, first, crlf) == validate_stage2(supplied, profile, first, lf)
+
+
+@pytest.mark.parametrize("ledger", (
+    None, {}, [{"id": "AC1"}], [{"id": "AC1", "phase": "UNKNOWN"}],
+    [{"id": "", "phase": "CLAIM_NOW"}], [{"id": "x" * 257, "phase": "CLAIM_NOW"}],
+    [{"id": "AC1", "phase": "CLAIM_NOW", "condition": "Hidden semantics"}],
+    [{"id": "AC1", "phase": "CLAIM_NOW"}] * 257,
+    [{"id": "x" * 256, "phase": "CLAIM_NOW"}] * 128,
+))
+def test_task_phase_ledger_shape_and_bounds_fail_closed(profile, ledger):
+    supplied = packet("TASK_AUTHORING")
+    first = construct_stage1(supplied, profile, {"proposal": "Task"})
+    material = {**stage2_input(first, profile), "acceptance_phase_ledger": ledger}
+    with pytest.raises(BrainAuditError):
+        validate_stage2(supplied, profile, first, material)
+
+
+@pytest.mark.parametrize("flow", ("ARCHITECTURE", "REMEDIATION_AUTHORING", "REPAIR_AUTHORING"))
+def test_task_phase_ledger_is_excluded_from_other_flows_and_candidates(profile, flow):
+    supplied = packet(flow)
+    first = construct_stage1(supplied, profile, {"proposal": "Bounded"})
+    material = stage2_input(first, profile)
+    assert "acceptance_phase_ledger" not in validate_stage2(supplied, profile, first, material)
+    with pytest.raises(BrainAuditError):
+        validate_stage2(supplied, profile, first, {**material, "acceptance_phase_ledger": []})
+    with pytest.raises(BrainAuditError):
+        construct_stage1(supplied, profile, {"acceptance_phase_ledger": []})
+
+
+def test_task_phase_ledger_cannot_be_nested_in_candidate(profile):
+    supplied = packet("TASK_AUTHORING")
+    with pytest.raises(BrainAuditError):
+        construct_stage1(supplied, profile, {"acceptance_phase_ledger": []})
+    first = construct_stage1(supplied, profile, {"proposal": "Task"})
+    material = stage2_input(first, profile)
+    material["reconciled_candidate"]["acceptance_phase_ledger"] = []
+    with pytest.raises(BrainAuditError):
+        validate_stage2(supplied, profile, first, material)
+
+
+def test_stage2_reconciles_later_proof_out_of_final_acceptance(profile):
+    supplied = packet("TASK_AUTHORING")
+    candidate = {"acceptance": [
+        {"id": "AC1", "condition": "Implementation exposes the gate"},
+        {"id": "AC2", "condition": "Runtime verification passes"},
+    ], "constraints": {"hard": []}}
+    first = construct_stage1(supplied, profile, candidate)
+    material = stage2_input(first, profile)
+    material["reconciled_candidate"]["acceptance"].pop()
+    material["reconciled_candidate"]["constraints"]["hard"].append("Runtime owns verification and its results")
+    lens = material["construct_audit"][5]["lens"]
+    material["construct_audit"][5] = {
+        "lens": lens, "outcome": "RISK_FOUND", "risks": [{
+            "risk_summary": "AC2 requires future Runtime proof",
+            "counterexample": "Executor completes implementation before verification runs",
+            "candidate_anchor": "acceptance.AC2",
+            "disposition": "ADDRESSED_BY_RECONCILIATION",
+        }],
+    }
+    material["acceptance_phase_ledger"] = [{"id": "AC1", "phase": "CLAIM_NOW"}]
+    result = validate_stage2(supplied, profile, first, material)
+    assert result["outcome"] == "CANDIDATE"
+    assert result["handoff_candidate"]["acceptance"] == candidate["acceptance"][:1]
+    assert result["handoff_candidate"]["constraints"]["hard"]
+    assert result["acceptance_phase_ledger"] == [{"id": "AC1", "phase": "CLAIM_NOW"}]
+
+
 def digest(value):
     data = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
                       allow_nan=False).encode("utf-8")
