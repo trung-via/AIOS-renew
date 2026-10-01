@@ -788,3 +788,38 @@ acceptable only if the externally observable result is exactly-once ACK per even
 
 Reconciled outcome: **CLEAR / PROBE_AUTHORIZED** for
 `WORK_POST_SUCCESS_PAIR_RELIABILITY_V1`. No TASK-255 revision is required.
+
+### 19.1 Live duplicate/reliability pair result
+
+The authorized pair probe emitted two invalid-ingress events in rapid succession using
+Issues #1228 and #1229 against stable canonical main
+`912dcf8d0410840fd46a916a3e5b8121155f0334`. Their ingress FAIL receipts were comments
+5924406355 and 5924408699. Repository delivery serialized them into two contiguous marker
+commits:
+
+- `2aa79ca09bb97efc3472fcd06788313766583b96` -> event
+  `github-v1-189efb5ab0e54a7ab4b1399ec8c61d805b343a719a89cb23af7bd113e026808f`,
+  ledger 5924414883 EMITTED;
+- `6342b7a2f5ca24d5db0283d396f9c993648cafad` -> event
+  `github-v1-b227ef7fe2e9b43e9afd57a58153f366538af474ffd274e35ea0cd914f682f9a`,
+  ledger 5924417964 EMITTED.
+
+The Work automation later advanced last_run_time to
+`2026-10-01T04:01:30.344662Z`. Externally observable ACK state is exactly-once for both
+new events and oldest-first:
+
+- comment 5924467407 ACKs the first event exactly once;
+- comment 5924469974 ACKs the second event exactly once.
+
+Both ACKs carry canonical main SHA
+`912dcf8d0410840fd46a916a3e5b8121155f0334` and `fresh_brain_sync: true`. After a
+stabilization interval, the commit-update automation last_run_time did not advance again
+and no duplicate ACK appeared for either new event or any already-ACKed post-fence event.
+
+Result: **PASS** for `WORK_POST_SUCCESS_PAIR_RELIABILITY_V1`. The live evidence covers
+the architecture's bounded overlap/coalescing risk at the externally observable contract:
+two adjacent synchronize notifications yield one ACK per exact event, preserve order and
+do not duplicate historical ACKs. This closes the remaining real-conformance gate for
+the GitHub -> ChatGPT Brain Wake Automation v1. It does not grant semantic continuation
+authority to the ACK task; its authority remains wake validation + fresh Brain Sync + ACK
+only.
