@@ -299,7 +299,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+  - brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-preservation-reconciliation
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
@@ -923,8 +923,78 @@ sequence:
       - NO_AUTOMATIC_ROADMAP_ADVANCE
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
+  - id: brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-preservation-reconciliation
+    status: NEXT
+    task_id: TASK-264
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    phase: H4A2P_H1R_REVIEWED_RESULT_PRESERVATION_RECONCILIATION
+    triggered_by:
+      task_id: TASK-263
+      task_revision: 1
+      dispatch_id: task263-r1-codex61-high-20261001-001
+      operational_boundary: ADMISSION_REJECTED
+      phase: PRIMARY_SYNCHRONIZATION
+      reason: DIVERGED_MAIN_MISSING_OR_AMBIGUOUS_CANONICAL_PRESERVATION
+      run_created: false
+      executor_invoked: false
+      local_preserved_candidate:
+        source_run_id: RUN-262-004
+        reviewed_candidate_sha: "766f4805f08fd95c621f8bd081fee55afdc44f86"
+        artifacts_sha: "7ae594092fa4e7f56cde0ab5d54b0ec80055afe8"
+        review_decision_sha: "1458674ecd381a4c54a3f5ad1b994af8cf22088d"
+    blocker_for:
+      task_id: TASK-263
+      task_revision: 1
+      return_action: RETRY_PRIMARY_WITH_EXISTING_TASK_263_DELEGATION
+    objective: >-
+      Extend the already-published H1R PRIMARY pre-RUN reconciliation path only enough
+      to recognize one exact canonically reviewed PASS Result candidate as proven
+      preservation of a diverged local main, while retaining every existing destructive
+      reset safety gate and keeping review, publication, execution and roadmap authority
+      unchanged.
+    planning_audit:
+      approved_on: "2026-10-01"
+      authority: HUMAN_BRAIN_PLANNING
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      reconciled_risks:
+        - REVIEW_REF_ALONE_IS_NOT_SUFFICIENT_PRESERVATION_PROOF
+        - REVIEWED_DOES_NOT_MEAN_PUBLISHED
+        - PRESERVATION_IDENTITY_MUST_BE_UNIQUE_AND_RECHECKED_AT_RESET_EDGE
+        - EXISTING_FAILURE_PRESERVATION_PATH_MUST_REMAIN_UNCHANGED
+    boundaries:
+      - PRIMARY_PRE_RUN_ONLY
+      - EXACT_CONFIGURED_UPSTREAM_REMOTE_ONLY
+      - CLOSED_PRESERVATION_FAMILIES_NOT_GENERIC_REF_ACCEPTANCE
+      - EXACT_REVIEWED_PASS_RESULT_CANDIDATE_IDENTITY
+      - MATCHING_RUN_RESULT_ARTIFACTS_AND_REVIEW_DECISION_REQUIRED
+      - ALL_LOCAL_ONLY_COMMITS_REMAIN_CANONICALLY_REACHABLE
+      - PRESERVATION_IDENTITY_RECHECKED_BEFORE_RESET
+      - EXISTING_H1R_WORKTREE_UPSTREAM_TARGET_AND_RESTART_GATES_RETAINED
+      - REVIEWED_IS_NOT_PUBLISHED
+      - NO_PUBLICATION_OR_SEMANTIC_VERDICT_AUTHORITY
+      - NO_FAKE_FAILURE_REPAIR_OR_RUN
+      - NO_WORKFLOW_LEVEL_GIT_RECOVERY
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
+    human_execution_delegation:
+      selected_on: "2026-10-01"
+      authority: HUMAN
+      task_id: TASK-264
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+
   - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
-    status: ACTIVE
+    status: BLOCKED_BY_TASK_264
     phase: H4A2P_PUBLISHER_DETACHED_REMOTE_COMPATIBILITY
     task_id: TASK-263
     task_revision: 1
@@ -952,6 +1022,26 @@ sequence:
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
+    post_task263_hardening:
+      status: QUEUED_AFTER_TASK_263_AND_H4A2_PUBLICATION_RECOVERY
+      authority: HUMAN_BRAIN_PLANNING
+      contract: CROSS_AUTHORITY_CONTEXT_AND_CANONICAL_SHAPE_CONFORMANCE_V1
+      basis: >-
+        Root-cause audit of the TASK-258 Publisher regression and the TASK-257 H1R
+        admission regression found the same systemic class: implementation and tests
+        overfit one observed execution/lineage shape while the semantic contract is
+        broader.
+      invariants:
+        - NO_AMBIENT_REDISCOVERY_OF_CALLER_OWNED_AUTHORITY
+        - NO_IMPLEMENTATION_OR_TEST_OVERFITTING_TO_ONE_CANONICAL_LINEAGE_SHAPE
+        - CROSS_AUTHORITY_CALL_EDGES_REQUIRE_CALLER_CONTEXT_MATRIX_REGRESSION
+        - SHARED_HELPERS_MUST_PRESERVE_EXPLICIT_AUTHORITY_INPUTS
+        - FAIL_CLOSED_ON_UNSUPPORTED_CANONICAL_SHAPES
+      sequencing:
+        - AFTER_TASK_264_UNBLOCKS_TASK_263
+        - AFTER_TASK_263_REVIEW_AND_PUBLICATION
+        - AFTER_RUN_262_004_PUBLICATION_RECOVERY
+        - BEFORE_RESUMING_LATER_H4_HARDENING
     execution_delegation_policy_planning:
       approved_on: "2026-10-01"
       authority: HUMAN_BRAIN_PLANNING
