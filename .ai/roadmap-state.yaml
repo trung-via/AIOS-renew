@@ -927,9 +927,9 @@ sequence:
     status: ACTIVE
     phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
     task_id: TASK-262
-    task_revision: 1
-    authored_commit_sha: "16b8725e056e18957075c6fc6fa286f0ba1d2c75"
-    task_blob_sha: "9e1f307166c5aa94a1fb9bddc9c020f40f5a2d05"
+    task_revision: 2
+    authored_commit_sha: "79921f9e0b1e56e064b3f0c192d83d18b815acb3"
+    task_blob_sha: "aa5d38ac78c25b964462a9196784025b7e000550"
     task_authoring_audit:
       approved_on: "2026-10-01"
       profile: brain-high-value-v2
@@ -939,6 +939,40 @@ sequence:
       closure: CLEAR
       outcome: CANDIDATE
       acceptance_phase_ledger: ALL_CLAIM_NOW
+      predecessor_revision: 1
+      predecessor_disposition: TASK_CONTRACT_REVISION_REQUIRED
+    r1_lineage:
+      initial_run:
+        run_id: RUN-262-001
+        failure_artifact_sha: "031600c501b4565936931a62baf3515cb7a8bb1f"
+        failed_candidate_sha: "d5acc13a7645161df93aca7e40f54d67582bf4dd"
+        phase: EXECUTION
+        disposition: TRANSPORT_INTERRUPTED_ZERO_DELTA
+      continuation:
+        repair_authorization_sha: "f968d4ece4adc1301c96513437e5286d155888e1"
+        run_id: RUN-262-002
+        failure_artifact_sha: "4d96204bfc65949f74fa84f9be6cc64a83bf6a63"
+        failed_candidate_sha: "abe7e3f94d864c84e4933ff08fc4bd20f43944f2"
+        phase: VERIFICATION
+        disposition: TASK_CONTRACT_REVISION_REQUIRED
+        focused_verification: "65 passed in 18.31s"
+        note: >-
+          r1 required a historical TASK-260 bridge-workflow regression whose
+          changed-files assertion is permanently bound to TASK-260's old base and
+          two-file scope. That command is not a valid H4A2 minimum-sufficient check,
+          and canonical REPAIR cannot widen r1 scope to edit the historical test.
+    r2_task_audit:
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      selected_contract: DIRECT_TERMINAL_TO_BOUND_CHAT_TRANSPORT_V2
+      corrections:
+        - REMOVE_HISTORICAL_TASK260_SCOPE_GUARD_FROM_H4A2_VERIFICATION
+        - RETAIN_TERMINAL_ATTENTION_CONTENTS_READ_ISSUES_WRITE_PERMISSIONS
+        - USE_REUSABLE_LOCAL_WAKE_HANDOFF_WITHOUT_ACTIONS_WRITE
+        - PRESERVE_H4A3_AND_H4B_AS_SEPARATE_MILESTONES
     completed_subphases:
       H4A1_REMOVE_ISSUE_WORKFLOW_FANOUT_NOISE:
         task_id: TASK-261
