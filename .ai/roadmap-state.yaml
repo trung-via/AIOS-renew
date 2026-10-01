@@ -265,13 +265,16 @@ sequence:
         automation is still explicitly bound to qualifying PR comments and ignores
         commits, so no autonomous Work result may be inferred from this marker commit.
     work_commit_update_trigger:
-      status: HUMAN_PRODUCT_CONFIGURATION_REQUIRED
+      status: CONFIGURED_AWAITING_FRESH_PROBE
       authority: HUMAN
       configuration_ref: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md#17-chatgpt-work-pr-commit-update-trigger-contract
       repository: trung-via/AIOS-renew
       pull_request: 1200
       head_branch: aios-brain-wake-bus-v1
       event_class: PULL_REQUEST_COMMIT_UPDATE
+      automation_id: "6abdd13291688191960494656fab3c34"
+      configured_at_utc: "2026-10-01T03:19:36.230637Z"
+      enabled: true
       marker_path: .ai/brain-wake-marker.json
       no_polling: true
       existing_comment_ack_automation:
