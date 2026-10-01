@@ -33,6 +33,43 @@ human_priority_side_track:
   authority: HUMAN_BRAIN_PLANNING
   planning_document: docs/AIOS-EXECUTION-PROFILE-SELECTION.md
   sequence:
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
+    status: NEXT
+    phase: H4_PRE_H4A3_SYSTEMIC_HARDENING
+    task_id: TASK-267
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    contracts:
+      - CROSS_AUTHORITY_CONTEXT_AND_CANONICAL_SHAPE_CONFORMANCE_V1
+      - TERMINAL_LIFECYCLE_FEASIBILITY_GATE_V1
+    objective: >-
+      Upgrade prospective Brain authoring audit from assertion-only lens closure to a
+      bounded, deterministic v3 conformance contract that requires explicit caller-context,
+      canonical-shape and terminal-lifecycle feasibility coverage before a new authoring
+      candidate may be canonicalized, while preserving exact historical v2 replay.
+    root_cause_basis:
+      - TASK-257_H1R_IMPLEMENTATION_OVERFIT_FAILURE_ONLY_PRESERVATION_SHAPE
+      - TASK-258_PUBLISHER_LOST_CALLER_OWNED_REMOTE_CONTEXT
+      - TASK-264_PREREQUISITE_WAS_NOT_TERMINALIZABLE_ACROSS_ALLOWED_CORRECTION_PATHS
+    required_invariants:
+      - NO_AMBIENT_REDISCOVERY_OF_CALLER_OWNED_AUTHORITY
+      - NO_IMPLEMENTATION_OR_TEST_OVERFITTING_TO_ONE_CANONICAL_LINEAGE_SHAPE
+      - CROSS_AUTHORITY_CALL_EDGES_REQUIRE_CALLER_CONTEXT_MATRIX_REGRESSION
+      - SHARED_HELPERS_MUST_PRESERVE_EXPLICIT_AUTHORITY_INPUTS
+      - FAIL_CLOSED_ON_UNSUPPORTED_CANONICAL_SHAPES
+      - PREREQUISITE_MUST_BE_TERMINALIZABLE_BEFORE_BLOCKER_CLEARING_SEQUENCE_IS_ACCEPTED
+      - NORMAL_PRIMARY_REMEDIATION_AND_REPAIR_TERMINAL_PATHS_MUST_BE_COVERED_OR_EXPLICITLY_BLOCKED
+      - AUDIT_PROTOCOL_REMAINS_BRAIN_SEMANTIC_SUPPORT_NOT_LIFECYCLE_AUTHORITY
+      - RUNTIME_RETAINS_CANONICAL_VERIFICATION
+      - REVIEWER_RETAINS_SEMANTIC_VERDICT
+      - PUBLISHER_RETAINS_PUBLICATION_AUTHORITY
+    sequencing:
+      - AFTER_TASK_266_H4A2_RECOVERY
+      - BEFORE_H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
+    return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+
     - TASK-195
   return_to: bp-9-downstream-adoption
   target:
@@ -298,7 +335,8 @@ human_priority_sequence:
         - DOWNSTREAM_BRAIN_SYNC_REQUIRED
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
-next_items: []
+next_items:
+  - brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
