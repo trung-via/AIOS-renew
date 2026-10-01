@@ -206,85 +206,56 @@ This does not make Runtime interpret natural-language acceptance criteria. The B
 performs the semantic classification during the already-required two-stage audit;
 ingress only enforces complete declared coverage and the no-PROOF_LATER invariant.
 
-## 8. H4 — Brain attention and zero-Work Human wake relay
+## 8. H4 — Local Regular Chat wake and Brain resume
 
-The proven ChatGPT Work wake path remains historical conformance evidence only.
-Production use of Work for AIOS wake/ACK/semantic continuation is rejected by current
-Human priority because Work shares the same included allowance as Codex and therefore
-can consume scarce Executor capacity merely to observe or acknowledge lifecycle
-events.
+H4 now follows the reviewed planning contract in
+`docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md`.
 
-H4 instead uses a deterministic **Human Wake Relay**. The objective is not zero model
-usage; it is zero Work invocation and therefore zero additional draw on the shared
-Work/Codex allowance for wake transport itself.
+The prior ChatGPT Work wake path remains historical conformance evidence only and is
+not a production dependency. The interim `HUMAN_WAKE_RELAY_V1` is superseded by
+`LOCAL_REGULAR_CHAT_WAKE_V1`: eligible AIOS semantic attention is delivered by a
+replaceable local transport to one exact Human-bound regular ChatGPT Project
+conversation, where one bounded wake message is submitted without using ChatGPT Work.
 
-### 8.1 H4A — Deterministic Human Attention Surface
+The local transport is operational only. It owns no Brain, Reviewer, Runtime,
+Publisher, roadmap or lifecycle authority; it must not read assistant output to drive
+actions, infer `next_action`, allocate canonical identities or blindly resend an
+ambiguous submission.
 
-AIOS/GitHub must tell the Human **that a semantic checkpoint exists** without telling
-the Brain what semantic decision to make.
+### 8.1 H4A — Local Regular Chat Wake transport
 
-The attention projection may carry only bounded transport/selector material such as:
+H4A establishes and live-proves only the delivery boundary:
 
-```text
-event_id
-repository
-attention_family
-canonical selector(s)
-fresh_brain_sync_required: true
-```
+- one exact operationally bound durable ChatGPT conversation target;
+- authenticated regular-Chat validation;
+- canonical attention -> bounded local wake signal;
+- deterministic event identity and one-message dedupe;
+- no overwrite of an existing Human draft;
+- no send while the target conversation is generating;
+- exact-target recheck immediately before submission;
+- ambiguous-send fail-close with no automatic resend;
+- zero ChatGPT Work invocation;
+- no assistant-response extraction.
 
-It must not carry an authoritative `next_action`, correction strategy, Reviewer
-verdict, roadmap successor, publication claim, copied semantic payload or model
-instruction.
+The first live probe is ACK-only in semantic effect: one bounded eligible event must
+produce exactly one short wake user turn in the exact bound conversation, with no
+TASK/RUN/REVIEW/REMEDIATION/REPAIR/publication/roadmap mutation caused by the probe.
 
-Reuse the existing central attention projection/deduplication machinery where
-possible, but deliver the final production signal to a Human-facing GitHub surface
-that can use native GitHub notifications without invoking ChatGPT Work. The surface
-is presentation/attention only and explicitly non-canonical. Existing TASK/RUN/
-RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR/publication artifacts remain engineering
-truth.
+### 8.2 H4B — Regular Chat Brain resume
 
-Each unresolved attention event must have one deterministic event identity and at
-most one active Human notification projection. Duplicate source delivery must be a
-NOOP at the Human-notification layer. Resolution is determined from canonical
-successor state, never merely from notification delivery or acknowledgement.
-
-The prior PR #1200 Work wake markers and ACKs remain immutable historical proof that
-GitHub -> ChatGPT Work transport functioned. They are not a production dependency.
-No active Work webhook task is required by H4A.
-
-### 8.2 H4B — Regular Chat Brain resume contract
-
-After a Human receives an AIOS attention notification, the Human may open any ChatGPT
-conversation inside the AIOS-renew Project and provide a minimal continuation intent
-such as `tiếp tục` or `kiểm tra`. The mechanism must not depend on reopening the
-same historical chat.
-
-That regular Chat invocation must:
+After H4A passes, one real unresolved semantic checkpoint may wake the bound
+conversation. The regular Chat Brain must treat the wake turn only as a doorbell and:
 
 1. perform fresh Brain Sync of canonical `main` and exact current lineage;
-2. treat the Human notification only as an untrusted pointer/selector;
-3. verify that the attention subject is still unresolved;
-4. resolve the current flow through existing Unified State / Flow Resolver contracts;
-5. occupy only the authority selected for that semantic step;
-6. use existing Brain or Reviewer protocols and canonical ingress surfaces;
-7. stop or request Human authority when new intent, priority or risk acceptance is
-   required.
+2. verify the attention subject is still unresolved;
+3. resolve the current Unified State / Flow Card;
+4. occupy only the selected semantic authority;
+5. use existing Brain or Reviewer protocols and canonical ingress surfaces;
+6. take at most one semantic continuation step for that wake;
+7. stop at any new Human intent, priority or risk-acceptance boundary.
 
-Regular Chat usage is intentionally separated from the Work/Codex shared allowance;
-the Human chooses when to spend Chat reasoning by explicitly resuming the project.
-The relay therefore trades zero-touch continuation for bounded Human involvement: one
-notification plus one minimal Chat action at each semantic checkpoint.
-
-Scheduled Chat polling is not the default H4 mechanism because it invokes a model on
-a timer, adds latency and spends usage even when nothing changed. A dedicated OpenAI
-API Brain is also not the default because it introduces usage-based API cost and
-changes the current product/cost assumptions. Either alternative requires a separate
-Human decision and audit before adoption.
-
-Human progress remains observable on the GitHub attention/progress surface. Regular
-Chat may add a bounded presentation receipt after fresh sync or semantic action, but
-that receipt is never lifecycle truth and must not become a second state database.
+Human observability comes from the Brain response appearing directly in the same
+conversation. Conversation/session identity never becomes engineering truth.
 
 ## 9. H5 — Integration/conformance closure
 
@@ -302,12 +273,18 @@ Before the hardening track closes, minimum conformance must cover:
 8. FINALIZE_CANDIDATE structural eligibility remains distinct from NO_CHANGE reuse;
 9. TASK candidate with PROOF_LATER acceptance cannot cross authoring ingress;
 10. successful REPAIR -> DELTA CHANGES_REQUIRED -> REMEDIATION lineage is resolvable;
-11. terminal/semantic attention produces one deduplicated Human-facing notification
-    without requiring any ChatGPT Work invocation;
-12. a fresh regular Chat Brain can resume from that notification using only canonical
-    state and exact selectors, independent of historical chat memory;
-13. no test requires provider identity, hidden machine-local state or Work as a
-    production wake dependency.
+11. one eligible terminal/semantic attention event produces exactly one bounded wake
+    user turn in the exact Human-bound regular ChatGPT conversation with zero ChatGPT
+    Work invocation;
+12. duplicate, stale/resolved, wrong-chat, logged-out, existing-draft, active-generation
+    and ambiguous-submission cases fail closed without duplicate wake turns;
+13. the local wake transport never reads assistant output to select lifecycle action;
+14. the woken regular Chat Brain performs fresh canonical reconstruction before any
+    semantic action and can continue using only canonical state plus exact selectors;
+15. Human can observe the semantic result in the same bound conversation while
+    conversation/session identity remains non-canonical;
+16. no semantic or lifecycle decision depends on provider identity, hidden browser
+    state or Work as a production wake dependency.
 
 Closure evidence must remain minimum-sufficient. No ceremonial full-suite rerun is
 required when focused evidence subsumes the changed boundary; a canonical full suite
@@ -321,8 +298,8 @@ Implementation should remain small and reviewable:
 2. **H2A** action-neutral REPAIR strategy fact projection.
 3. **H2B** successful-REPAIR -> REMEDIATION lineage compatibility correction.
 4. **H3** acceptance proof-phase audited handoff.
-5. **H4A** deterministic Human Attention Surface with zero Work invocation.
-6. **H4B** regular Chat Brain resume contract from fresh canonical state.
+5. **H4A** Local Regular Chat Wake transport and ACK-only exact-chat probe.
+6. **H4B** regular Chat Brain resume from fresh canonical state.
 7. **H5** integration/conformance closure.
 
 A milestone may require more than one TASK if review uncovers a bounded defect.
