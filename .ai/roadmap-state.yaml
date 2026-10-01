@@ -118,6 +118,7 @@ human_priority_sequence:
         - WAKE_TRANSPORT_MUST_NOT_READ_ASSISTANT_OUTPUT
         - NO_BLIND_RESEND_AFTER_AMBIGUOUS_SUBMISSION
         - REGULAR_CHAT_REQUIRES_FRESH_BRAIN_SYNC
+        - REGULAR_CHAT_FRESH_SYNC_IS_MINIMUM_SUFFICIENT_AND_FLOW_SCOPED
         - NO_AUTOMATIC_ROADMAP_ADVANCE
         - NO_UNPROVEN_DESTRUCTIVE_LOCAL_RESET
         - LOCAL_RECONCILIATION_IS_RUNTIME_CONTROL_NOT_EXECUTOR_REASONING
@@ -222,6 +223,46 @@ human_priority_sequence:
           - EXISTING_BRAIN_AND_REVIEWER_PROTOCOLS_REUSED
           - HUMAN_REQUIRED_AT_NEW_INTENT_PRIORITY_OR_RISK_BOUNDARY
           - NO_AUTOMATIC_ROADMAP_ADVANCE
+      h4b_minimum_fresh_brain_sync_audit:
+        approved_on: "2026-10-01"
+        authority: HUMAN_BRAIN_PLANNING
+        profile: brain-high-value-v2
+        stage1: CONSTRUCT
+        stage1_outcome: RISK_FOUND
+        stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+        closure: CLEAR
+        outcome: CANDIDATE
+        planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+        planning_commit_sha: "b7b021b718df26e79e937c87a36d62386779a5a5"
+        selected_contract: MINIMUM_FRESH_BRAIN_SYNC_V1
+        principle: FRESH_IDENTITY_PLUS_FRESH_LIFECYCLE_PLUS_EXACT_LINEAGE_PLUS_FLOW_REQUIRED_CONTEXT_ONLY
+        always_fresh:
+          - CANONICAL_MAIN_IDENTITY
+          - EXACT_WAKE_ATTENTION_SUBJECT
+          - EXACT_CURRENT_LINEAGE
+          - SELECTED_TASK_IDENTITY_AND_REVISION
+          - SUBJECT_UNRESOLVED_STATUS
+          - UNIFIED_STATE
+          - NEXT_ACTION
+          - SELECTED_AUTHORITY
+          - FLOW_CARD
+        flow_scoped_hydration:
+          - SEMANTIC_REVIEW_EXACT_TASK_RESULT_EVIDENCE_AND_APPLICABLE_PRIOR_REVIEW
+          - REPAIR_AUTHORING_EXACT_TASK_FAILURE_FAILED_RUN_AND_CURRENT_H2_STRATEGY_FACTS
+          - REMEDIATION_AUTHORING_EXACT_SOURCE_REVIEW_FINDING_AND_PROVENANCE
+          - TASK_AUTHORING_CURRENT_ROADMAP_ITEM_AND_RELEVANT_ARCHITECTURE_CONTRACT
+        reconciled_risks:
+          - WAKE_PAYLOAD_CANNOT_BECOME_ENGINEERING_TRUTH
+          - UNCHANGED_GOVERNANCE_REUSE_REQUIRES_FRESH_EXACT_BINDING_OR_DIGEST
+          - MINIMUM_CONTEXT_MUST_EXPAND_ON_AMBIGUITY_OR_CONFLICT
+          - DETERMINISTIC_PROJECTION_CANNOT_BECOME_SECOND_LIFECYCLE_OR_SEMANTIC_AUTHORITY
+        boundaries:
+          - NO_FULL_REPOSITORY_OR_HISTORY_SCAN_FOR_CEREMONY
+          - NO_FULL_ROADMAP_OR_ALL_REFS_SCAN_UNLESS_REQUIRED_BY_AMBIGUITY
+          - NO_CHAT_MEMORY_OR_PROVIDER_SESSION_AUTHORITY
+          - NO_CACHED_SEMANTIC_JUDGMENT_AS_CANONICAL_STATE
+          - UNCHANGED_BOUND_CONTEXT_MAY_REUSE_DETERMINISTIC_PROJECTION
+          - FAIL_CLOSED_IF_UNAMBIGUOUS_CURRENT_SUBJECT_FLOW_OR_AUTHORITY_CANNOT_BE_PROVEN
     - track: verification-performance-residual-cost-v3
       status: QUEUED_AFTER_HARDENING
       objective: >-
@@ -258,7 +299,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-repair-strategy-facts
+  - brain-runtime-semantic-handoff-hardening-v1-acceptance-proof-phase-contract
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
@@ -788,12 +829,24 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-repair-strategy-facts
 
   - id: brain-runtime-semantic-handoff-hardening-v1-repair-strategy-facts
-    status: ACTIVE
+    status: DONE
     task_id: TASK-258
     task_revision: 1
     authored_commit_sha: "3a179c2619dbf7d3d0328fc3c98dd3d14e0f477e"
     task_blob_sha: "3d2297cb43d2f5633069ca37f3f92871cb717b57"
     authority: HUMAN_BRAIN_PLANNING
+    completed_by:
+      task_id: TASK-258
+      task_revision: 1
+      failed_run_id: RUN-258-001
+      repair_authorization_sha: "ed45084622dfe62c23e9273369e09af6214c9f7a"
+      run_id: RUN-258-002
+      result_artifact_sha: "06cde60aad5b525c10f3fac03e7613dd3e3e9a9a"
+      review_id: REVIEW-258-002
+      review_decision_sha: "a4745fc873ed4a4696f73ae99e2b2beeee4ac49f"
+      reviewed_sha: "3a81904c49bea51346d260b7c3b19ac89525bacf"
+      published_sha: "3a81904c49bea51346d260b7c3b19ac89525bacf"
+      verdict: PASS
     planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
     architecture_contract: PRE_BRAIN_REPAIR_STRATEGY_FACTS_V1
@@ -816,6 +869,30 @@ sequence:
       - NO_GENERIC_CORRECTION_ROUTER
       - NO_AUTOMATIC_ROADMAP_ADVANCE
     return_to: brain-runtime-semantic-handoff-hardening-v1-acceptance-proof-phase-contract
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-acceptance-proof-phase-contract
+    status: ACTIVE
+    authority: HUMAN_BRAIN_PLANNING
+    planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+    audit_profile: brain-high-value-v2
+    architecture_contract: ACCEPTANCE_PROOF_PHASE_AUTHORING_V1
+    objective: >-
+      Preserve the frozen TASK schema while making acceptance proof ownership explicit
+      in the transient audited TASK_AUTHORING handoff so Runtime-owned future truth is
+      removed from final canonical acceptance before ingress.
+    boundaries:
+      - TASK_SCHEMA_REMAINS_FROZEN
+      - TASK_AUTHORING_ONLY_ACCEPTANCE_PHASE_LEDGER
+      - EXACTLY_ONE_LEDGER_ENTRY_PER_FINAL_ACCEPTANCE_ID
+      - CLAIM_NOW_OR_PROOF_LATER_ONLY
+      - STAGE2_MUST_RECONCILE_ALL_PROOF_LATER_OUT_OF_FINAL_ACCEPTANCE
+      - VALID_FINAL_HANDOFF_CONTAINS_ONLY_CLAIM_NOW
+      - INGRESS_ENFORCES_LEDGER_COVERAGE_AND_REJECTS_PROOF_LATER
+      - BRAIN_OWNS_SEMANTIC_CLASSIFICATION
+      - RUNTIME_DOES_NOT_INTERPRET_NATURAL_LANGUAGE_ACCEPTANCE
+      - NO_NEW_SEMANTIC_AUTHORITY_OR_PERSISTENT_REASONING_STORE
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
+    return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
   - id: admission-failure-v2
     status: DONE
     completed_by:
