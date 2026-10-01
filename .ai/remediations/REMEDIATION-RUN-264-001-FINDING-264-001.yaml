@@ -1,0 +1,35 @@
+finding_id: FINDING-264-001
+action: CODE_FIX
+reviewed_sha: 89a9609316e0b84e557e2d3e316b69e01f6958b9
+modification_scope:
+- src/aios_renew/operator.py
+- tests/test_operator.py
+verification:
+  policy: minimum-sufficient-v1
+  affected:
+  - python -m pytest -q tests/test_operator.py -k "reconciliation or primary_sync
+    or synchronization_failure or wakeup_preflight"
+  - git diff --check
+constraints:
+  hard:
+  - Keep the existing H1R FAILURE-preservation path behaviorally unchanged, including
+    its canonical failure/failure-artifacts proof, drift checks, complete local-only
+    reachability proof, worktree/index/submodule/ignored-path checks, exact-target
+    reset, postconditions and restart-generation safety.
+  - Reviewed-result preservation must validate the exact canonical task/run/result/review
+    identity and candidate SHA using existing artifact/review semantics; the canonical
+    review decision must be the unique exact decision for that RUN, bind reviewed_sha
+    to local HEAD, and have verdict PASS. Missing, malformed, conflicting, moved,
+    ambiguous, cross-task, non-PASS or substituted transport must fail closed rather
+    than falling back to another preservation class.
+  - All local-only commits that would become unreachable from local main after reset
+    must remain reachable from the exact validated reviewed candidate preservation
+    identity, and that identity plus canonical target/upstream/worktree safety must
+    be rechecked at the destructive mutation edge.
+  - 'Preservation-family selection must be deterministic and closed: exactly one valid
+    supported preservation proof may authorize reconciliation; zero, multiple, conflicting
+    or mixed ambiguous proofs fail closed without resetting or creating a RUN.'
+  - The observed RUN-262-004-shaped regression must prove reviewed PASS Result preservation
+    can recover a diverged local main while negative regressions prove an unreviewed
+    candidate, non-PASS/mismatched review decision, missing/substituted artifacts,
+    ambiguous preservation and moved proof remain non-destructive.
