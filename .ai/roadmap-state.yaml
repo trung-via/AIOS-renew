@@ -281,12 +281,21 @@ sequence:
         automation_id: "6abd40a6f8d881918f2c9e7945cbf54d"
         disposition: KEEP_UNCHANGED_UNTIL_COMMIT_TRIGGER_CONFORMANCE
       fresh_post_configuration_probe:
-        status: NOT_RUN
+        status: TRIGGER_OBSERVED_ACK_NOT_OBSERVED
+        issue_number: 1226
+        ingress_receipt_comment_id: 5924061793
+        bridge_run_id: 36810124287
+        event_id: github-v1-8e147e1f378ab983b925391997bf7f8a929f89c008afd7d44c5f8dfb7c15c037
+        ledger_comment_id: 5924066856
+        marker_commit_sha: "d55ae745902f1fbec1618e4e02c9a5b89b639ada"
+        repository_transport_result: PASS
+        work_last_run_time_utc: "2026-10-01T03:22:19.381814Z"
+        matching_ack_observed: false
+        disposition: WORK_EXECUTION_RESULT_REQUIRED
         requirement: >-
-          Emit a fresh repository-generated marker commit only after the Work
-          commit-update trigger is enabled. PASS requires exactly one autonomous
-          ACK for that marker event_id after fresh canonical Brain Sync, with no
-          lifecycle or roadmap mutation caused by Work.
+          Obtain the surfaced Work execution result/blocker for this exact commit
+          event before changing architecture. Do not infer the cause from last_run_time
+          alone and do not introduce polling, credential fallback or another transport.
     r3_live_evidence:
       p1:
         issue_number: 1215
