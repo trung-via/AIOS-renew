@@ -1,0 +1,25 @@
+review_id: REVIEW-260-001
+reviewed_sha: c8653e091aa8c92aa28c271ce79d4e32f0dbc488
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-260-001 is the canonical PRIMARY RESULT for TASK-260 r1 with exact reviewed
+  candidate c8653e091aa8c92aa28c271ce79d4e32f0dbc488 and unresolved empty.
+- Runtime verification passed 305 tests with 8 skips in the focused wake-bridge suites
+  and git diff --check.
+- The candidate delta removes only .github/workflows/aios-brain-wake-bridge.yml and
+  updates tests/test_brain_wake_bridge_workflow.py; no replacement Work wake transport
+  is introduced.
+- Retained deterministic bridge parser/projection code, carrier policy and all other
+  PRIMARY, REPAIR, ingress, terminal-attention, Runtime, Reviewer and Publisher workflows
+  remain outside the delta.
+- H4A1/H4A2/H4A3/H4B remain separate later milestones; this change does not advance
+  or implement them.
