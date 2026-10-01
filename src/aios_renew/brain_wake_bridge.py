@@ -588,7 +588,13 @@ def marker_content(wake: Mapping[str, Any], policy: WakePolicy) -> bytes:
     return raw
 
 
-def _live_head(api: Any, policy: WakePolicy, previous: Mapping[str, Any] | None = None, *, same_sha: bool = False) -> Mapping[str, Any]:
+@dataclass(frozen=True)
+class _WriteTransition:
+    pre_write_head_sha: str
+    commit_sha: str
+
+
+def _live_head(api: Any, policy: WakePolicy, previous: Mapping[str, Any] | None = None, *, same_sha: bool = False, write_transition: _WriteTransition | None = None) -> Mapping[str, Any]:
     pr = _mapping(api.get("pulls/1200"))
     if type(pr.get("number")) is not int or pr["number"] != 1200 or pr.get("state") != "open" or pr.get("merged") is not False:
         raise WakeBridgeError("Wake Bus PR is closed or substituted")
@@ -603,6 +609,12 @@ def _live_head(api: Any, policy: WakePolicy, previous: Mapping[str, Any] | None 
     if head_repo["id"] != base_repo["id"] or head.get("ref") != policy.head_branch or head.get("label") != f"trung-via:{policy.head_branch}" or base.get("ref") != "main":
         raise WakeBridgeError("substituted Wake Bus head identity")
     sha = _match(head.get("sha"), SHA)
+    if write_transition is not None:
+        # Only this invocation's successful PUT permits the exact old PR SHA.
+        # Reads and completion remain pinned to the immutable returned commit.
+        if sha not in (write_transition.pre_write_head_sha, write_transition.commit_sha):
+            raise WakeBridgeError("PR head outside marker write transition")
+        sha = write_transition.commit_sha
     ref = _mapping(api.get(f"git/ref/heads/{policy.head_branch}"))
     obj = _mapping(ref.get("object"))
     if ref.get("ref") != f"refs/heads/{policy.head_branch}" or obj.get("type") != "commit" or obj.get("sha") != sha:
@@ -730,6 +742,7 @@ def deliver_wake(*, wake: Mapping[str, Any], policy: WakePolicy, api: Any) -> st
     entries = _ledgers(api)
     if entries.get(event_id) != current or any(key != event_id and entry["state"] == "PENDING" for key, (_, entry) in entries.items()):
         raise WakeBridgeError("ledger changed during delivery")
+    write_transition = None
     if old_raw != raw:
         update = {"branch": policy.head_branch, "message": f"AIOS Wake Bus marker {event_id}", "content": base64.b64encode(raw).decode("ascii")}
         if blob_sha is not None:
@@ -737,19 +750,17 @@ def deliver_wake(*, wake: Mapping[str, Any], policy: WakePolicy, api: Any) -> st
         _live_head(api, policy, head, same_sha=True)
         response = _mapping(api.write("PUT", f"contents/{policy.marker_path}", update))
         commit_sha = _match(_mapping(response.get("commit")).get("sha"), SHA)
-        written_head = _live_head(api, policy, head)
-        if written_head["sha"] != commit_sha:
-            raise WakeBridgeError("marker commit and live PR head disagree")
-        head = written_head
+        write_transition = _WriteTransition(head["sha"], commit_sha)
+        head = _live_head(api, policy, head, write_transition=write_transition)
     # This also recovers a write that succeeded before the PENDING -> EMITTED
     # transition failed: exact content completes the SAME ledger without a commit.
-    head = _live_head(api, policy, head, same_sha=True)
+    head = _live_head(api, policy, head, same_sha=True, write_transition=write_transition)
     confirmed, _ = _current_marker(api, policy, head)
     if confirmed != raw:
         raise WakeBridgeError("written marker mismatch")
     if _ledgers(api) != entries:
         raise WakeBridgeError("ledger changed before completion")
-    _live_head(api, policy, head, same_sha=True)
+    _live_head(api, policy, head, same_sha=True, write_transition=write_transition)
     emitted = api.write("PATCH", f"issues/comments/{current[0]}", {"body": _ledger_body(event_id, digest, "EMITTED")})
     if _ledger_comment(emitted) != (current[0], {**current[1], "state": "EMITTED"}):
         raise WakeBridgeError("completed ledger disagreement")

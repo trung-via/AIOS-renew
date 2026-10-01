@@ -126,9 +126,9 @@ const write = new Function('require', 'core', 'return (async () => {' + SCRIPT +
 
 def test_candidate_changes_are_inside_authorized_scope():
     authorized = {
-        ".ai/brain-wake-carriers.yaml", ".github/workflows/aios-brain-wake-bridge.yml",
         "src/aios_renew/brain_wake_bridge.py", "tests/test_brain_wake_bridge.py",
         "tests/test_brain_wake_bridge_workflow.py",
     }
-    result = subprocess.run(["git", "diff", "--name-only", "962e32bc9134290a8e578232e14308c94f5684e0", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True)
+    # TASK-255 r4's admitted RUN-255-005 base and exact modify scope.
+    result = subprocess.run(["git", "diff", "--name-only", "309c37ea66bac817aa1c10da3915d741c0c58ec5", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True)
     assert set(result.stdout.splitlines()) <= authorized
