@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = ["PyYAML>=6.0,<7"]
 
 [project.optional-dependencies]
+local-chat-wake = ["playwright>=1.51,<2"]
 bp-v4-measurement = [
     "pytest>=8.2,<9",
     "pytest-xdist>=3.6,<4",
