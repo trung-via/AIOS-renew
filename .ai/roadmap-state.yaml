@@ -1115,6 +1115,8 @@ sequence:
     phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
     task_id: TASK-266
     task_revision: 1
+    authored_commit_sha: "904b22c89f852a9bb0887748077a56239c091277"
+    task_blob_sha: "d9c0408b1cb04e9c037a7e57cab0662b28c7f3d9"
     source_task_id: TASK-262
     source_task_revision: 2
     authority: HUMAN_BRAIN_PLANNING
@@ -1144,6 +1146,17 @@ sequence:
         already reached semantic PASS with no outstanding finding. Integration is
         valid for an outstanding correction execution base, not as a substitute for
         review/publication of an already-PASS diverged candidate.
+    task_authoring_audit:
+      approved_on: "2026-10-02"
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage1_outcome: CLEAR
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "429648bd62cc9305c6a59bd6b73c4d25724349823e24d2bfa3a45d4785c37e75"
+      construct_fingerprint: "8556613e869c5e2d5b260cd8918a81589dff4aae705af856509f9a1cd3b31580"
+      acceptance_phase_ledger: ALL_CLAIM_NOW
     human_execution_delegation:
       selected_on: "2026-10-02"
       authority: HUMAN
