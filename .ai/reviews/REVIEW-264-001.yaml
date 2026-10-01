@@ -1,0 +1,37 @@
+review_id: REVIEW-264-001
+reviewed_sha: 89a9609316e0b84e557e2d3e316b69e01f6958b9
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: FAIL
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings:
+- id: FINDING-264-001
+  basis: AC2
+  action: CODE_FIX
+  location: src/aios_renew/operator.py::_reconcile_primary_divergence preservation
+    snapshot / mutation-edge proof binding
+  issue: TASK-264 adds refs/heads/aios/review/* to the global preservation snapshot
+    and folds that entire mapping into expected_proof for both reviewed-Result and
+    existing FAILURE reconciliation. On the FAILURE path, movement of any unrelated
+    review ref anywhere in the repository between proof checks now causes canonical
+    reconciliation proof drift, even though the failed candidate, failure/failure-artifacts
+    identity, upstream target, worktree and local history are unchanged. Before TASK-264,
+    unrelated review refs were not part of FAILURE preservation identity. This violates
+    the hard constraint and AC2 requirement that the existing H1R FAILURE-preservation
+    path remain behaviorally unchanged.
+  expected: Separate supported-family candidate discovery/ambiguity detection from
+    the immutable proof set used by the selected family. Preserve the existing FAILURE
+    proof identity and drift behavior exactly while still rejecting a competing reviewed
+    preservation ref for the same local HEAD. Recheck only evidence relevant to the
+    selected preservation family plus the bounded local-HEAD ambiguity condition,
+    rather than binding unrelated review refs repository-wide. Add deterministic regression
+    proving an unrelated review ref may move without changing the old FAILURE reconciliation
+    result, while a new competing review ref at the exact local HEAD still fails closed.
+    Do not weaken reviewed-Result identity, mutation-edge reproof, or any existing
+    H1R safety gate.
