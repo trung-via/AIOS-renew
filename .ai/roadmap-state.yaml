@@ -102,7 +102,7 @@ human_priority_sequence:
         - BSH-H1-AUDITED-AUTHORING-GATE
         - BSH-H2-REPAIR-STRATEGY-FACT-PROJECTION
         - BSH-H3-ACCEPTANCE-PROOF-PHASE-CONTRACT
-        - BSH-H4A-HUMAN-ATTENTION-SURFACE
+        - BSH-H4A-LOCAL-REGULAR-CHAT-WAKE
         - BSH-H4B-REGULAR-CHAT-BRAIN-RESUME
         - BSH-H5-INTEGRATION-CONFORMANCE-CLOSURE
       constraints:
@@ -113,7 +113,9 @@ human_priority_sequence:
         - REVIEWER_RETAINS_SEMANTIC_VERDICT
         - PUBLISHER_RETAINS_EXACT_REVIEWED_SOURCE_PUBLICATION
         - NO_PRODUCTION_WORK_WAKE
-        - HUMAN_ATTENTION_SURFACE_IS_NONCANONICAL
+        - EXACT_CHAT_BINDING_IS_NONCANONICAL
+        - WAKE_TRANSPORT_MUST_NOT_READ_ASSISTANT_OUTPUT
+        - NO_BLIND_RESEND_AFTER_AMBIGUOUS_SUBMISSION
         - REGULAR_CHAT_REQUIRES_FRESH_BRAIN_SYNC
         - NO_AUTOMATIC_ROADMAP_ADVANCE
       h4_production_semantic_continuation_audit:
@@ -131,26 +133,44 @@ human_priority_sequence:
         approved_on: "2026-10-01"
         authority: HUMAN_BRAIN_PLANNING
         profile: brain-high-value-v2
+        planning_commit_sha: "119bfb2ec595e73c18cd7352f740abfc8debbf49"
+        predecessor_contract: HUMAN_WAKE_RELAY_V1
+        disposition: SUPERSEDED_BY_LOCAL_REGULAR_CHAT_WAKE
+        basis: >-
+          Human approved replacing notification-plus-manual-chat-resume with a bounded
+          local transport that submits one wake turn into an exact existing regular
+          ChatGPT Project conversation while preserving zero Work usage for wake.
+      h4_local_regular_chat_wake_audit:
+        approved_on: "2026-10-01"
+        authority: HUMAN_BRAIN_PLANNING
+        profile: brain-high-value-v2
         stage1: CONSTRUCT
         stage1_outcome: RISK_FOUND
         stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
         closure: CLEAR
         outcome: CANDIDATE
-        planning_commit_sha: "119bfb2ec595e73c18cd7352f740abfc8debbf49"
-        selected_contract: HUMAN_WAKE_RELAY_V1
+        planning_document: docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+        planning_commit_sha: "909ba2f069e0cda2b72a642939b0b2ffaf4a1aa1"
+        hardening_binding_commit_sha: "cfe62963864f04d13d6caa216a9e280e00f808c3"
+        selected_contract: LOCAL_REGULAR_CHAT_WAKE_V1
         sequencing:
-          - H4A_DETERMINISTIC_HUMAN_ATTENTION_SURFACE
+          - H4A_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
+          - H4A_ACK_ONLY_EXACT_CHAT_CONFORMANCE
           - H4B_REGULAR_CHAT_BRAIN_RESUME
         required_boundaries:
           - ZERO_CHATGPT_WORK_INVOCATION_FOR_WAKE_TRANSPORT
           - WAKE_SIGNAL_IS_TRANSPORT_ONLY
-          - ONE_DEDUPLICATED_HUMAN_NOTIFICATION_PER_UNRESOLVED_EVENT
+          - EXACT_DURABLE_CHAT_TARGET_BINDING
+          - CHAT_TARGET_BINDING_IS_OPERATIONAL_NOT_CANONICAL
+          - AUTHENTICATED_REGULAR_CHAT_REQUIRED
+          - ONE_DEDUPLICATED_WAKE_TURN_PER_UNRESOLVED_EVENT
+          - BUSY_DRAFT_AND_GENERATION_FAIL_CLOSED
+          - AMBIGUOUS_SUBMISSION_NEVER_BLINDLY_RESENT
+          - WAKE_TRANSPORT_DOES_NOT_READ_ASSISTANT_OUTPUT
           - FRESH_BRAIN_SYNC_ON_CHAT_RESUME
-          - ANY_PROJECT_CHAT_MAY_RECONSTRUCT_CANONICAL_STATE
           - EXISTING_BRAIN_AND_REVIEWER_PROTOCOLS_REUSED
           - HUMAN_REQUIRED_AT_NEW_INTENT_PRIORITY_OR_RISK_BOUNDARY
-          - SCHEDULED_POLLING_NOT_DEFAULT
-          - API_BRAIN_REQUIRES_SEPARATE_HUMAN_DECISION
+          - NO_AUTOMATIC_ROADMAP_ADVANCE
     - track: verification-performance-residual-cost-v3
       status: QUEUED_AFTER_HARDENING
       objective: >-
