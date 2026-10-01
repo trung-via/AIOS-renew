@@ -926,6 +926,19 @@ sequence:
   - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
     status: ACTIVE
     phase: H4A1_REMOVE_ISSUE_WORKFLOW_FANOUT_NOISE
+    task_id: TASK-261
+    task_revision: 1
+    authored_commit_sha: "d10e2d3dc58695131d7363d742702b22dfc216f0"
+    task_blob_sha: "d5c572446458d28ef02d6965377d64789027d224"
+    task_authoring_audit:
+      approved_on: "2026-10-01"
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage1_outcome: CLEAR
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      acceptance_phase_ledger: ALL_CLAIM_NOW
     completed_subphases:
       H4A0_RETIRE_LEGACY_WORK_WAKE_BRIDGE:
         task_id: TASK-260
