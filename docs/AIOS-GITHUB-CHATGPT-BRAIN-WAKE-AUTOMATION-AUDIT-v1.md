@@ -748,3 +748,43 @@ reconstruction path: GitHub commit update -> Work wake -> deterministic immutabl
 reconstruction -> fresh Brain Sync -> ACK. The track is not yet closed because Section
 18.2 deliberately requires one bounded post-success duplicate/reliability probe to test
 idempotence/product-level overlap behavior before final conformance closure.
+
+## 19. Post-success duplicate/reliability pair probe
+
+Section 18 primary functional conformance passed. The remaining product-level risk is
+non-atomic duplicate suppression if two Work executions overlap while the same unACKed
+suffix is visible. The repository transport already serializes marker writes, so this
+probe tests the Work side without adding a second lock or changing production code.
+
+Stage 1 construct: emit two bounded invalid-ingress conformance probes in rapid
+succession against one stable canonical main. Each must independently project one
+INGRESS_REJECTED marker through the existing r4 bridge. Do not manually invoke Work,
+rerun a bridge, edit the Wake Bus branch, or add a repository lock. The two resulting PR
+synchronize webhooks may be delivered separately, coalesced, delayed or overlap; Work
+must reconstruct the exact immutable marker suffix from GitHub under Section 18.
+
+PASS requires all of the following after both repository marker deliveries have reached
+EMITTED and Work executions have quiesced:
+
+- exactly two new marker commits form a contiguous first-parent suffix after the prior
+  marker head;
+- exactly one valid four-line ACK exists for each of the two new event_ids;
+- no event_id receives a second ACK, including the already ACKed pre-probe suffix;
+- if one Work run sees both unACKed candidates, ACK order is oldest-first; if separate
+  runs each see one candidate, final PR state is still exactly-once for both;
+- every new ACK carries a canonical-main SHA obtained by fresh sync, and no Work-caused
+  TASK/RUN/REVIEW/publication/roadmap/code/branch/workflow mutation occurs;
+- any ambiguity, duplicate ACK, missing earlier ACK with later overtaking, unrelated
+  marker-path commit, or repository-side delivery failure is not PASS.
+
+Stage 2 adversarial reconciliation: this probe deliberately does not attempt to replay an
+identical GitHub webhook delivery, because that product behavior is not an authority we
+can deterministically generate. Instead it creates the strongest bounded live race that
+the current architecture can induce without changing transport semantics: two adjacent
+valid marker commits and therefore two synchronize notifications close together. If
+Work overlaps, the immediate pre-write ACK recheck is exercised. If Work serializes or
+coalesces, Section 18 backlog reconstruction is exercised. Either product behavior is
+acceptable only if the externally observable result is exactly-once ACK per event.
+
+Reconciled outcome: **CLEAR / PROBE_AUTHORIZED** for
+`WORK_POST_SUCCESS_PAIR_RELIABILITY_V1`. No TASK-255 revision is required.
