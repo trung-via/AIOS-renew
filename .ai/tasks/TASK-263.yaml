@@ -1,0 +1,107 @@
+task_id: TASK-263
+revision: 1
+goal: Restore Publisher compatibility for reviewed REMEDIATION lineage when the publication
+  control workflow validates from a detached checkout, by threading the Publisher's
+  already explicit remote identity through successful-REPAIR remediation-source validation
+  without creating any new remote-selection or publication authority.
+problem: RUN-262-004 is Runtime PASS and REVIEW-262-002 is DELTA PASS, but auto-publication
+  run 36884545239 deterministically fails before publication. The Publisher workflow
+  explicitly invokes publication with --remote origin, then checks out the canonical
+  control SHA detached. publication._validate_predecessor_lineage calls operator._validated_repair_remediation_source,
+  which ignores the Publisher's explicit remote and calls resolve_transport_remote(repo).
+  That helper intentionally requires a current branch upstream and therefore raises
+  ReviewTransportError on the detached Publisher checkout. The reviewed H4A2 candidate
+  cannot be published until this control-plane compatibility defect is corrected.
+assumptions:
+- Canonical main is c2df7fb9b528d78a59919524dbd00f5169cff80a and TASK-262 remains
+  at next_action PUBLICATION with exact reviewed candidate 766f4805f08fd95c621f8bd081fee55afdc44f86.
+- RUN-262-004 is canonical REMEDIATION RESULT with 37 focused tests passing and git
+  diff --check PASS; REVIEW-262-002 is canonical DELTA PASS.
+- 'Auto-publish run 36884545239 failed in publication lineage validation with ReviewTransportError:
+  no configured upstream Git remote for current branch while the workflow was detached,
+  even though publication was invoked with --remote origin.'
+- The publication CLI already validates and owns an explicit remote parameter. This
+  TASK reuses that caller-supplied identity; it does not infer, default, rank, or
+  persist a new remote authority.
+scope:
+  inspect:
+  - .github/workflows/aios-auto-publish.yml
+  - src/aios_renew/publication.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_publication.py
+  - tests/test_authoring_ingress.py
+  modify:
+  - src/aios_renew/publication.py
+  - src/aios_renew/operator.py
+  - tests/test_publication.py
+non_goals:
+- Modify TASK-262 H4A2 transport code, its reviewed candidate, its semantic review,
+  or its canonical RESULT/REMEDIATION lineage.
+- Directly publish RUN-262-004, update main outside Publisher, or bypass the existing
+  review-decision publication boundary.
+- Change the auto-publish workflow trigger, GitHub permissions, branch checkout strategy,
+  Publisher authority, Reviewer authority, Runtime authority, or publication eligibility
+  semantics.
+- Add a fallback that assumes origin, scans arbitrary remotes, rewrites branch upstream
+  configuration, or weakens fail-closed remote resolution for non-Publisher callers.
+- Change authoring ingress, Unified State, remediation semantics, correction integration,
+  roadmap advancement, or any downstream H4A3/H4B behavior.
+constraints:
+  hard:
+  - The Publisher's existing explicit remote argument must be the sole additional
+    input used to validate successful-REPAIR provenance on publication paths that
+    already possess that remote identity.
+  - operator._validated_repair_remediation_source may accept a bounded explicit remote
+    override, but when no override is supplied it must preserve the existing resolve_transport_remote(repo)
+    behavior exactly.
+  - Every publication.py call into successful-REPAIR remediation-source validation
+    that runs under the Publisher's explicit remote context must pass that same remote
+    through, including predecessor and correction-frontier validation paths.
+  - No code may silently substitute origin, derive a remote from repository URL, use
+    detached-observation remote selection for publication writes, or broaden remote
+    selection beyond the caller-supplied Publisher authority.
+  - Branch-based Runtime/Ingress/operator callers that do not supply an explicit remote
+    must retain their existing fail-closed branch-upstream semantics.
+  - The fix must not alter canonical RUN/RESULT/REVIEW/REMEDIATION identities, review
+    validation, candidate ancestry requirements, correction-frontier rules, publication
+    fast-forward rules, or force-with-lease semantics.
+  - Focused tests must reproduce a detached publication checkout with a valid explicit
+    remote and prove successful REMEDIATION lineage can be validated, while a direct
+    helper call without explicit remote on detached HEAD still fails closed.
+  - No TASK-263 result may itself claim RUN-262-004 is published; publication replay
+    remains a later Publisher action after this fix is reviewed and published.
+acceptance:
+- id: AC1
+  condition: A detached Publisher checkout with an explicit valid publication remote
+    can validate the same successful-REPAIR predecessor/remediation lineage that currently
+    fails solely because _validated_repair_remediation_source tries to resolve a branch
+    upstream.
+- id: AC2
+  condition: The explicit remote is threaded from publication.py into every applicable
+    successful-REPAIR remediation-source validation call without introducing a second
+    remote selector or changing publication eligibility semantics.
+- id: AC3
+  condition: Calling _validated_repair_remediation_source without an explicit remote
+    preserves current branch-upstream resolution and still fails closed on detached
+    HEAD rather than assuming origin or another remote.
+- id: AC4
+  condition: Primary publication, ordinary remediation publication, branch-based authoring/remediation
+    validation, correction-frontier validation and existing remote/adversarial checks
+    remain behaviorally unchanged except for the detached Publisher compatibility
+    fix.
+- id: AC5
+  condition: Focused regressions cover the exact detached-checkout failure family,
+    explicit-remote success, missing-explicit-remote fail-close behavior, and no remote
+    substitution/fallback.
+- id: AC6
+  condition: The candidate changes only publication.py, operator.py and tests/test_publication.py;
+    it does not modify workflow permissions/triggers, TASK-262 artifacts, Runtime/Reviewer/Publisher
+    authority boundaries, roadmap state, or H4A2/H4A3/H4B semantics.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_publication.py
+  - python -m pytest -q tests/test_authoring_ingress.py -k remediation
+  - git diff --check
