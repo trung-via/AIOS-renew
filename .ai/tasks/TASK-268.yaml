@@ -1,0 +1,113 @@
+task_id: TASK-268
+revision: 1
+goal: Canonicalize the H4A3 ACK-only exact-chat conformance procedure as a documentation-only
+  contract so TASK-268's own real canonical RESULT terminal can serve as the live
+  wake event after Human-owned local binding readiness, without changing the published
+  H4A2 transport or treating wake delivery as engineering truth.
+problem: H4A2 is published and already implements bounded local regular-chat delivery,
+  but H4A3 still requires a live exact-chat proof before H4B semantic continuation
+  is allowed. Using a fabricated synthetic RUN identity or replaying an already-resolved
+  terminal would weaken provenance, while putting future live delivery into TASK acceptance
+  would recreate a proof-phase deadlock. The next step therefore needs a small repository-owned
+  conformance procedure whose implementation is documentation-only; the real TASK-268
+  RESULT terminal is the eligible event used for the live probe, and H4A3 planning
+  closure remains separate from TASK lifecycle completion.
+assumptions:
+- Canonical main at TASK-268 authoring is e2bb17559844a29316d35cab4c52b2f83702afbe
+  and the roadmap selects TASK-268 as the unique unauthored NEXT item.
+- TASK-266 published the current H4A2 Local Regular Chat Wake transport at candidate
+  0a3ca954b11c2e5323a43f5133212407e4d26093.
+- TASK-267 published brain-high-value-v3 authoring conformance at c3f64d6a766bc21752cfe303805b858f6d2d999c.
+- The exact chat binding, authenticated browser target and AIOS_LOCAL_CHAT_WAKE_ENABLED
+  gate are Human-owned noncanonical operational prerequisites and are not committed
+  to the repository.
+- The live H4A3 observation occurs after TASK-268 produces a real canonical RESULT
+  and is Human/Brain planning-conformance evidence, not an Executor claim, Runtime
+  EVIDENCE, or substitute for semantic review.
+scope:
+  inspect:
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-266.yaml
+  - .ai/tasks/TASK-267.yaml
+  - .github/workflows/aios-local-chat-wake.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_terminal_attention.py
+  - tests/test_terminal_attention_workflow.py
+  modify:
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+non_goals:
+- Modify the published H4A2 local-chat transport, terminal-attention workflow, Runtime,
+  Reviewer, Publisher, TASK schema, or canonical lifecycle semantics.
+- Create a synthetic or fake canonical RUN, RESULT, FAILURE, REVIEW, Git ref, or RUN-like
+  transport identity solely to trigger the H4A3 probe.
+- Commit or infer any exact ChatGPT conversation URL, cookies, credentials, browser
+  profile, CDP endpoint, local state path, or provider/session identity.
+- Enable H4B semantic continuation, perform semantic review from the wake message,
+  read assistant output to drive lifecycle action, or automatically advance roadmap
+  state.
+- Treat TASK-268 lifecycle completion, Runtime verification, semantic review, or publication
+  alone as proof that H4A3 live exact-chat conformance passed.
+constraints:
+  hard:
+  - The Executor delta is documentation-only and modifies exactly docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md;
+    it must not change production transport, workflows, tests, TASKs, roadmap state,
+    Runtime, Reviewer or Publisher code.
+  - The H4A3 positive live probe uses the real canonical TASK-268 RESULT terminal-attention
+    event; it must not fabricate a RUN-like event identity or substitute a stale or
+    already-resolved historical terminal.
+  - The live probe may run only after the Human establishes the exact machine-local
+    chat binding, an authenticated regular ChatGPT target, and AIOS_LOCAL_CHAT_WAKE_ENABLED=true;
+    absent readiness leaves H4A3 open and must not fabricate failure, review, or lifecycle
+    truth.
+  - 'The live wake is ACK-only in semantic effect: the regular Chat Brain may acknowledge
+    the doorbell but must not create or mutate TASK, RUN, REVIEW, REMEDIATION, REPAIR,
+    publication, or roadmap state because of the probe.'
+  - Positive live evidence is limited to exact terminal-attention admission, the bounded
+    local transport receipt, exactly one matching outbound wake user turn in the bound
+    chat, and duplicate delivery proving NOOP with no second turn; assistant output
+    is never evidence or transport input.
+  - Busy, draft, generation, wrong-chat, logged-out and ambiguous-send behavior reuses
+    the reviewed TASK-266 deterministic evidence unless contrary live evidence appears;
+    no destructive live negative-case ceremony is required.
+  - If live evidence exposes a production transport defect, TASK-268 does not widen
+    implementation authority; a separate Human/Brain-authorized correction must be
+    created.
+  - H4A3 roadmap completion remains a Human/Brain planning mutation after live proof
+    and does not follow automatically from TASK-268 execution, verification, review,
+    publication, or transport delivery.
+acceptance:
+- id: AC1
+  condition: The candidate adds exactly one repository-owned H4A3 conformance document
+    at docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md and makes no production,
+    workflow, test, TASK, or roadmap file change.
+- id: AC2
+  condition: The document defines the real canonical TASK-268 RESULT terminal-attention
+    event as the positive live-probe source and explicitly rejects fabricated RUN
+    identity and stale or already-resolved terminal substitution.
+- id: AC3
+  condition: The document defines exact Human-owned local chat binding, authenticated
+    regular-Chat target, and AIOS_LOCAL_CHAT_WAKE_ENABLED=true as noncanonical operational
+    prerequisites without including real binding, credential, cookie, CDP, state-path,
+    or session data.
+- id: AC4
+  condition: The document defines positive conformance as exact terminal admission
+    plus local SUBMITTED receipt plus exactly one matching outbound wake user turn,
+    with duplicate delivery producing NOOP and no second wake turn.
+- id: AC5
+  condition: The document preserves ACK-only semantics, forbids assistant-output extraction
+    and lifecycle mutation from the probe, and separates H4A3 live planning proof
+    from TASK-268 Runtime verification, semantic review, publication, and automatic
+    roadmap advancement.
+- id: AC6
+  condition: The document identifies reviewed TASK-266 deterministic coverage as the
+    basis for busy, draft, generation, wrong-chat, logged-out and ambiguous-send negative
+    cases and requires a separate authorized correction if contrary live evidence
+    reveals a production defect.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - git diff --check
