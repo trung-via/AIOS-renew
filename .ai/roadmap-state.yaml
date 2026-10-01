@@ -299,7 +299,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h3-authoring-ingress-remote-fixture-correction
+  - brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
@@ -1039,7 +1039,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h3-authoring-ingress-remote-fixture-correction
-    status: NEXT
+    status: DONE
     phase: H4A2P_TASK263_BASELINE_VERIFICATION_FIXTURE_CORRECTION
     task_id: TASK-265
     task_revision: 1
@@ -1087,6 +1087,17 @@ sequence:
       closure: CLEAR
       outcome: CANDIDATE
       acceptance_phase_ledger: ALL_CLAIM_NOW
+    completed_by:
+      task_id: TASK-265
+      task_revision: 1
+      run_id: RUN-265-001
+      artifacts_sha: "61a0a874a382bb869d1e380f6a3708265daf3717"
+      review_id: REVIEW-265-001
+      review_decision_sha: "5eaaa3b4c73e26984580b158f303e1a6751e54de"
+      reviewed_sha: "7f2e2a2652f6d78a0c71c6b32a5e5b4c4d00d12c"
+      published_sha: "7f2e2a2652f6d78a0c71c6b32a5e5b4c4d00d12c"
+      publication_workflow_run_id: 36906891250
+      completed_on: "2026-10-02"
     human_execution_delegation:
       selected_on: "2026-10-02"
       authority: HUMAN
@@ -1100,7 +1111,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
-    status: BLOCKED_BY_TASK_265
+    status: NEXT
     phase: H4A2P_PUBLISHER_DETACHED_REMOTE_COMPATIBILITY
     task_id: TASK-263
     task_revision: 1
