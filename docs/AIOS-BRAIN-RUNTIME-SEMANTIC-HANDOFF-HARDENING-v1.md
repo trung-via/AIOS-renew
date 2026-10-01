@@ -206,7 +206,12 @@ This does not make Runtime interpret natural-language acceptance criteria. The B
 performs the semantic classification during the already-required two-stage audit;
 ingress only enforces complete declared coverage and the no-PROOF_LATER invariant.
 
-## 8. H4 — Brain attention handshake
+## 8. H4 — Brain attention and production semantic continuation
+
+H4 is split into two bounded milestones so wake transport, semantic authority and
+Human observability remain separate.
+
+### 8.1 H4A — Brain attention handshake and deterministic identity binding
 
 Extend operational attention so GitHub can reliably tell a fresh Brain **that a
 semantic checkpoint exists** without telling it **what semantic decision to make**.
@@ -228,11 +233,62 @@ On receipt the consumer must perform fresh Brain Sync, Flow Resolution and Decis
 Packet composition. Any mismatch or newer canonical state invalidates the old
 attention signal for semantic continuation.
 
-The existing terminal RESULT/FAILURE signal remains a subordinate transport. H4 may
-cover additional Brain-owned checkpoints (for example CHANGES_REQUIRED requiring
-semantic correction authoring or publication completion requiring Human/Brain roadmap
-reconciliation) only when each event has an exact canonical selector and still
-requires fresh Brain Sync.
+The existing terminal RESULT/FAILURE signal remains a subordinate transport. H4A may
+cover additional semantic checkpoints only when each event has an exact canonical
+selector and still requires fresh Brain Sync.
+
+Before a production semantic action can be authored, every canonical identity that
+the existing Brain or Reviewer protocol requires from an external binding
+(for example TASK revision identity, REPAIR identity, REVIEW identity or finding-id
+slots) must be supplied by one deterministic control-plane binding. The semantic
+model must never allocate or infer canonical lifecycle identities. This binding is
+identity/control material only; it owns no flow selection, correction strategy,
+review verdict, roadmap successor or publication choice.
+
+### 8.2 H4B — Production Semantic Continuation and Human Progress Surface
+
+After H4A closes, upgrade the proven GitHub -> ChatGPT Work wake path from ACK-only
+conformance to one bounded production semantic continuation step per unresolved wake:
+
+```text
+wake
+-> immutable marker reconstruction
+-> fresh Brain Sync
+-> Unified State / Flow Resolution
+-> Decision Packet
+-> exactly one authority-owned semantic action
+-> existing canonical ingress
+-> stop
+```
+
+The Work invocation may occupy the authority selected by the existing Flow Card for
+that invocation only. It must not merge authorities merely because one product/model
+can perform multiple roles across separate invocations:
+
+- `SEMANTIC_REVIEW` uses the existing Reviewer protocol and authors one
+  `SUBMIT_REVIEW` candidate;
+- `AUTHOR_REMEDIATION` and `AUTHOR_REPAIR` use the existing Brain protocol,
+  including the repository-owned audit profile and all authoring gates then in force;
+- deterministic execution, verification, publication and transport remain owned by
+  Runtime / Publisher surfaces and are never invoked as ad-hoc Work-side lifecycle
+  logic;
+- ambiguous state, missing identity binding, material canonical movement, or a true
+  Human intent / priority / risk decision fails closed to `HUMAN_REQUIRED`.
+
+One wake may produce at most one new canonical semantic mutation. Its canonical
+successor may emit a later wake if another semantic authority is required. Work must
+not run a hidden lifecycle loop to TASK completion.
+
+ACK remains historical transport-conformance evidence and is not the production
+completion marker. Production continuation must be externally observable through a
+bounded presentation-only Human progress receipt (for example on the existing Wake
+Bus PR) whose state is explicitly non-canonical. Canonical TASK/RUN/RESULT/FAILURE/
+REVIEW/REMEDIATION/REPAIR/publication artifacts remain engineering truth.
+
+H4B does not automatically advance roadmap semantics or invent a new TASK after one
+lineage reaches DONE. A planning boundary requiring new Human intent, priority or
+risk acceptance stops at `HUMAN_REQUIRED`. A later separately audited contract may
+automate only a pre-authorized exact roadmap commitment without weakening this rule.
 
 ## 9. H5 — Integration/conformance closure
 
@@ -266,8 +322,9 @@ Implementation should remain small and reviewable:
 2. **H2A** action-neutral REPAIR strategy fact projection.
 3. **H2B** successful-REPAIR -> REMEDIATION lineage compatibility correction.
 4. **H3** acceptance proof-phase audited handoff.
-5. **H4** Brain attention handshake.
-6. **H5** integration/conformance closure.
+5. **H4A** Brain attention handshake and deterministic identity binding.
+6. **H4B** Production Semantic Continuation and Human Progress Surface.
+7. **H5** integration/conformance closure.
 
 A milestone may require more than one TASK if review uncovers a bounded defect.
 Do not merge these into one mega-TASK.
