@@ -628,10 +628,10 @@ sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-audited-authoring-gate
     status: ACTIVE
-    task_id: TASK-254
-    task_revision: 3
-    authored_commit_sha: "9c3765d91aaf237dbfc30f69c9638dea53c8e6db"
-    task_blob_sha: "e8f1ef01af471e2e7e7b3dbeff9e71f1f33d6114"
+    task_id: TASK-256
+    task_revision: 1
+    authored_commit_sha: "e5de0520fba674a00144d5d24c90036a65cd2d55"
+    task_blob_sha: "5b99b121cdbb52e061bfd08abe0c235d50aaca9e"
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
     audit_profile: brain-high-value-v2
@@ -678,6 +678,38 @@ sequence:
         - NO_AUTOMATIC_CORRECTION_SELECTION
         - NO_H2_H3_H4_SCOPE_CREEP
         - STALE_OR_ALREADY_EXECUTED_AUTHORIZATION_FAIL_CLOSED
+    task254_terminal:
+      run_id: RUN-254-004
+      terminal_kind: RESULT
+      result_artifact_sha: "0e8f7bf9a6ed0090375a9072a52ce47afcd0dc00"
+      reviewed_candidate_sha: "56419eecea29be28cde1a4b2826226c5ca83ef22"
+      review_id: REVIEW-254-004
+      review_decision_sha: "a6a73f4a9178176dfc43da072c460c7c36744a71"
+      review_verdict: PASS
+      publication_outcome: INTEGRATION_REQUIRED
+      publication_main_sha: "132293dad42a7310e8584338950ac3227cedd5cf"
+      disposition: CURRENT_MAIN_INTEGRATION_TASK_REQUIRED
+    task256_integration:
+      task_id: TASK-256
+      task_revision: 1
+      authored_commit_sha: "e5de0520fba674a00144d5d24c90036a65cd2d55"
+      task_blob_sha: "5b99b121cdbb52e061bfd08abe0c235d50aaca9e"
+      source_task_id: TASK-254
+      source_task_revision: 3
+      source_run_id: RUN-254-004
+      source_reviewed_sha: "56419eecea29be28cde1a4b2826226c5ca83ef22"
+      authorized_current_main_at_authoring: "132293dad42a7310e8584338950ac3227cedd5cf"
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      boundaries:
+        - FRESH_CURRENT_MAIN_DESCENDANT
+        - PRESERVE_CURRENT_MAIN_ROADMAP_STATE
+        - NO_CORRECTION_INTEGRATION_PRIMITIVE
+        - NO_HISTORICAL_SOURCE_DIRECT_PUBLICATION
     objective: >-
       Prospectively require one fresh Decision Packet-bound BP-4A two-stage audited
       CANDIDATE handoff before any new AUTHOR_TASK, AUTHOR_REMEDIATION or AUTHOR_REPAIR
