@@ -3233,20 +3233,210 @@ def _eligible_reusable_repair_package(
     return package
 
 
+def _repair_remediation_lineages(
+    repo: Path,
+    *,
+    remote: str,
+    finding_id: str,
+    task_id: str | None = None,
+    task_revision: int | None = None,
+    source_run_id: str | None = None,
+) -> tuple[RemoteRemediationLineage, ...]:
+    """Read REPAIR semantic origins using only the Publisher-supplied remote.
+
+    Keep the transport reader's structural checks here because its public API
+    intentionally requires a branch upstream. This reader never selects a remote.
+    """
+    from .review_transport import (
+        _decode_run_task_identity, _git_cmd, _read_remote_blob, _run_task_prefix,
+    )
+
+    exact_source_requested = source_run_id is not None
+    if not finding_id or "/" in finding_id or "\\" in finding_id:
+        raise ReviewTransportError(f"invalid finding id: {finding_id!r}")
+    if task_revision is not None and (
+        isinstance(task_revision, bool)
+        or not isinstance(task_revision, int)
+        or task_revision < 1
+    ):
+        raise ReviewTransportError("invalid TASK revision")
+    if source_run_id is not None:
+        try:
+            source_prefix = _run_task_prefix(source_run_id)
+        except ReviewTransportError as exc:
+            raise ReviewTransportError("invalid source RUN id") from exc
+        if not re.fullmatch(rf"{re.escape(source_prefix)}\d{{3,}}", source_run_id):
+            raise ReviewTransportError("invalid source RUN id")
+    if source_run_id is not None:
+        task_prefix = None
+        pattern = f"refs/heads/aios/remediation/{source_run_id}-{finding_id}"
+    elif task_id is not None:
+        task_prefix = task_run_prefix(task_id)
+        pattern = f"refs/heads/aios/remediation/{task_prefix}*-{finding_id}"
+    else:
+        task_prefix = None
+        pattern = f"refs/heads/aios/remediation/*-{finding_id}"
+    code, output, _ = _git_cmd(
+        repo, "ls-remote", "--refs", remote, pattern, allow_fail=True
+    )
+    if code:
+        raise RemoteQueryError("failed to query canonical REMEDIATION refs")
+
+    observed_refs: dict[str, str] = {}
+    try:
+        observed_lines: list[tuple[str, str]] = []
+        for line in output.splitlines():
+            parts = line.split()
+            if len(parts) != 2:
+                raise ReviewTransportError("malformed canonical REMEDIATION ref result")
+            commit_sha, ref = parts
+            observed_refs[ref] = commit_sha
+            observed_lines.append((commit_sha, ref))
+
+        resolved: list[RemoteRemediationLineage] = []
+        for commit_sha, ref in observed_lines:
+            prefix = "refs/heads/aios/remediation/"
+            suffix = f"-{finding_id}"
+            if not ref.startswith(prefix) or not ref.endswith(suffix):
+                raise ReviewTransportError("canonical REMEDIATION ref name mismatch")
+            source_run_id = ref[len(prefix) : -len(suffix)]
+            if not source_run_id:
+                raise ReviewTransportError("canonical REMEDIATION ref has no source RUN")
+            if task_prefix is not None and not source_run_id.startswith(task_prefix):
+                continue
+
+            artifacts_ref = f"refs/heads/aios/artifacts/{source_run_id}"
+            if exact_source_requested:
+                failure_ref = f"refs/heads/aios/failure-artifacts/{source_run_id}"
+                failure_code, failure_output, _ = _git_cmd(
+                    repo, "ls-remote", "--refs", remote, failure_ref, allow_fail=True
+                )
+                if failure_code:
+                    raise RemoteQueryError(
+                        f"failed to query canonical source state for {source_run_id}"
+                    )
+                failure_lines = [item.split() for item in failure_output.splitlines()]
+                if failure_lines:
+                    if any(len(item) != 2 for item in failure_lines):
+                        raise ReviewTransportError(
+                            f"canonical source state is malformed for {source_run_id}"
+                        )
+                    raise ReviewTransportError(
+                        "canonical source RUN has conflicting terminal artifacts: "
+                        f"{source_run_id}"
+                    )
+            artifacts_code, artifacts_output, _ = _git_cmd(
+                repo, "ls-remote", "--refs", remote, artifacts_ref, allow_fail=True
+            )
+            artifact_lines = [item.split() for item in artifacts_output.splitlines()]
+            if (
+                artifacts_code
+                or len(artifact_lines) != 1
+                or len(artifact_lines[0]) != 2
+            ):
+                raise ReviewTransportError(
+                    f"canonical source artifacts missing or ambiguous for {source_run_id}"
+                )
+            artifacts_sha = artifact_lines[0][0]
+            run = _read_remote_blob(
+                repo, remote, artifacts_sha, ".ai/transport/run.json"
+            )
+            result = _read_remote_blob(
+                repo, remote, artifacts_sha, ".ai/transport/result.json"
+            )
+            repair = _read_remote_blob(
+                repo, remote, artifacts_sha, ".ai/transport/repair.json"
+            )
+            if run is None or result is None:
+                raise ReviewTransportError(f"canonical lineage content missing at {ref}")
+
+            run_task_id, run_revision, run_id = _decode_run_task_identity(run, ref)
+            if run_id != source_run_id:
+                raise ReviewTransportError(
+                    f"canonical RUN id mismatch at {ref}: expected {source_run_id}, "
+                    f"got {run_id}"
+                )
+            if task_id is not None and run_task_id != task_id:
+                continue
+            if task_revision is not None and run_revision != task_revision:
+                continue
+
+            _git_cmd(repo, "fetch", "--no-tags", remote, commit_sha, allow_fail=True)
+            tree_code, tree_output, _ = _git_cmd(
+                repo,
+                "ls-tree",
+                "-r",
+                "--name-only",
+                commit_sha,
+                "--",
+                ".ai/reviews",
+                ".ai/remediations",
+                allow_fail=True,
+            )
+            if tree_code:
+                raise ReviewTransportError(f"cannot inspect canonical lineage at {ref}")
+            review_paths = [
+                path
+                for path in tree_output.splitlines()
+                if path.startswith(".ai/reviews/")
+                and path.endswith((".yaml", ".yml"))
+            ]
+            remediation_paths = [
+                path
+                for path in tree_output.splitlines()
+                if path.startswith(".ai/remediations/")
+                and path.endswith((".yaml", ".yml"))
+            ]
+            if len(review_paths) != 1 or len(remediation_paths) != 1:
+                raise ReviewTransportError(
+                    f"canonical lineage at {ref} must contain exactly one REVIEW and "
+                    "REMEDIATION"
+                )
+            review = _read_remote_blob(repo, remote, commit_sha, review_paths[0])
+            remediation = _read_remote_blob(
+                repo, remote, commit_sha, remediation_paths[0]
+            )
+            if None in (review, remediation):
+                raise ReviewTransportError(f"canonical lineage content missing at {ref}")
+            resolved.append(
+                RemoteRemediationLineage(
+                    ref=ref,
+                    source_run_id=source_run_id,
+                    review=review,
+                    remediation=remediation,
+                    run=run,
+                    result=result,
+                    repair=repair,
+                    commit_sha=commit_sha,
+                    task_id=run_task_id,
+                    task_revision=run_revision,
+                )
+            )
+        return tuple(resolved)
+    except ReviewTransportError as exc:
+        exc.observed_refs = tuple(sorted(observed_refs.items()))
+        raise
+
+
 def _validated_repair_remediation_source(
     repo: Path, *, task: Task, run_data: Mapping[str, Any], run: Run,
     package: ResultPackage, review: Review, repair: bytes | None,
     repair_sources: frozenset[str] = frozenset(),
+    remote: str | None = None,
 ) -> tuple[str, Review | None] | None:
     """Validate exact successful REPAIR provenance before remediation authority.
 
     A missing wrapper on a RUN based on a canonical failed candidate cannot become
     ordinary PRIMARY provenance. No new lifecycle kind is inferred or persisted.
+    Publisher callers supply their existing remote authority; other callers
+    continue to require the current branch's configured upstream.
     """
     from . import publication as pub
     from .review_transport import resolve_transport_remote, _read_remote_blob
 
-    remote = resolve_transport_remote(repo)
+    transport_remote = remote
+    if remote is None:
+        remote = resolve_transport_remote(repo)
     if repair is None:
         if "kind" not in run_data:
             if review.mode == "DELTA":
@@ -3309,6 +3499,7 @@ def _validated_repair_remediation_source(
         repo, remote=remote, publication_run_id=source_id, child_run_data=run_data,
         child_run=run, child_head_sha=candidate_sha, lineage_bytes=repair, task=task,
         strict_source=True, repair_sources=repair_sources,
+        source_remote=transport_remote,
     )
     pub._validate_repair_package(
         repo, source_sha=candidate_sha, result_base_sha=result_base, task=task,
@@ -3319,8 +3510,11 @@ def _validated_repair_remediation_source(
     if prior is not None:
         # The prior semantic REVIEW copied in an authorization carrier must also
         # be the exact canonical Reviewer decision, not an unrelated substitute.
-        origins = resolve_remote_remediation_lineages(
-            repo, finding_id=finding_id, task_id=task.task_id, task_revision=task.revision,
+        lineage_reader = (resolve_remote_remediation_lineages
+                          if transport_remote is None else _repair_remediation_lineages)
+        remote_args = {} if transport_remote is None else {"remote": transport_remote}
+        origins = lineage_reader(
+            repo, **remote_args, finding_id=finding_id, task_id=task.task_id, task_revision=task.revision,
         )
         origins = [item for item in origins
                    if parse_review(item.review.decode("utf-8")) == prior]
@@ -3348,6 +3542,7 @@ def _derive_remediation_source_root(
     execution: RemediationExecution,
     seen: frozenset[tuple[str, str]] = frozenset(),
     repair_sources: frozenset[str] = frozenset(),
+    transport_remote: str | None = None,
 ) -> str:
     if execution.original_constraints != execution.remediation.constraints:
         raise OperatorError("REMEDIATION origin constraints mismatch")
@@ -3356,8 +3551,11 @@ def _derive_remediation_source_root(
         raise OperatorError("cyclic reviewed source lineage")
     seen = seen.union((identity,))
     try:
-        lineages = resolve_remote_remediation_lineages(
-            repo,
+        lineage_reader = (resolve_remote_remediation_lineages
+                          if transport_remote is None else _repair_remediation_lineages)
+        remote_args = {} if transport_remote is None else {"remote": transport_remote}
+        lineages = lineage_reader(
+            repo, **remote_args,
             finding_id=execution.finding.id,
             task_id=task.task_id,
             task_revision=task.revision,
@@ -3396,7 +3594,7 @@ def _derive_remediation_source_root(
             evidence = tuple(validate_evidence(item) for item in evidence_data)
             package = ResultPackage(result=result, evidence=evidence)
             repaired_source = _validated_repair_remediation_source(
-                repo, task=task, run_data=run_data, run=source_run,
+                repo, remote=transport_remote, task=task, run_data=run_data, run=source_run,
                 package=package, review=review, repair=remote.repair, repair_sources=repair_sources,
             )
             if source_execution is None:
@@ -3440,6 +3638,7 @@ def _derive_remediation_source_root(
             if source_execution is not None:
                 root = _derive_remediation_source_root(
                     repo, task=task, execution=source_execution, seen=seen, repair_sources=repair_sources,
+                    transport_remote=transport_remote,
                 )
             elif repaired_source is not None:
                 root = repaired_source[0]

@@ -624,7 +624,7 @@ def _validate_predecessor_lineage(
     if not isinstance(evidence, list):
         raise ValueError("predecessor ResultPackage evidence is invalid")
     _validated_repair_remediation_source(
-        repo, task=task, run_data=pred_run_data, run=pred_run,
+        repo, remote=remote, task=task, run_data=pred_run_data, run=pred_run,
         package=ResultPackage(result=pred_result, evidence=tuple(validate_evidence(item) for item in evidence)),
         review=prior_review,
         repair=_read_remote_blob(repo, remote, pred_artifacts_sha, ".ai/transport/repair.json"),
@@ -775,7 +775,7 @@ def _derive_publication_frontier(
             source_task = parse_task(_read_blob(repo, pred_result.head_sha,
                 f".ai/tasks/{source_run.task.id}.yaml", run_id=publication_run_id).decode("utf-8"))
             _validated_repair_remediation_source(
-                repo, task=source_task, run_data=pred_run_data, run=source_run,
+                repo, remote=remote, task=source_task, run_data=pred_run_data, run=source_run,
                 package=ResultPackage(result=pred_result, evidence=tuple(
                     validate_evidence(item) for item in source_package["evidence"])),
                 review=prior_review,
@@ -1084,9 +1084,12 @@ def _repair_review_lineage(
     seen: frozenset[str] = frozenset(),
     strict_source: bool = False,
     repair_sources: frozenset[str] = frozenset(),
+    source_remote: str | None = None,
 ) -> tuple[str, str, Review | None, str | None]:
     """Validate persisted REPAIR links and recover the applicable prior REVIEW."""
 
+    if source_remote is not None and source_remote != remote:
+        raise ValueError("successful REPAIR source remote differs from publication remote")
     lineage = _mapping(
         _json_no_duplicates(lineage_bytes, document="REPAIR execution"),
         "REPAIR execution",
@@ -1332,17 +1335,24 @@ def _repair_review_lineage(
         validate_remediation(review=prior_review, remediation=remediation, task=task)
         semantic_review = prior_review
         if strict_source:
-            from .operator import _derive_remediation_source_root, _remediation_execution_from_data
+            from .operator import (
+                _derive_remediation_source_root, _remediation_execution_from_data,
+                _repair_remediation_lineages,
+            )
             from .review_transport import resolve_remote_remediation_lineages
             origin_execution = _remediation_execution_from_data(predecessor_run_data["execution"])
             canonical_root = _derive_remediation_source_root(
                 repo, task=task, execution=origin_execution, repair_sources=repair_sources,
+                transport_remote=source_remote,
             )
             if canonical_root != root_base_sha:
                 raise ValueError("REPAIR root_base_sha does not match REMEDIATION origin")
+            lineage_reader = (resolve_remote_remediation_lineages
+                              if source_remote is None else _repair_remediation_lineages)
+            remote_args = {} if source_remote is None else {"remote": source_remote}
             reviews = [parse_review(item.review.decode("utf-8")) for item in
-                       resolve_remote_remediation_lineages(
-                           repo, finding_id=remediation.finding_id,
+                       lineage_reader(
+                           repo, **remote_args, finding_id=remediation.finding_id,
                            task_id=task.task_id, task_revision=task.revision,
                        )]
             reviews = [item for item in reviews if item.review_id == origin_execution.review_id
@@ -1386,6 +1396,7 @@ def _repair_review_lineage(
                 seen=seen,
                 strict_source=strict_source,
                 repair_sources=repair_sources,
+                source_remote=source_remote,
             )
             if predecessor_root != root_base_sha:
                 raise ValueError("conflicting REPAIR root_base_sha lineage")
