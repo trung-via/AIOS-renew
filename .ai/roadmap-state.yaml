@@ -1043,6 +1043,8 @@ sequence:
     phase: H4A2P_TASK263_BASELINE_VERIFICATION_FIXTURE_CORRECTION
     task_id: TASK-265
     task_revision: 1
+    authored_commit_sha: "3dea2a14f56f52301b33b04157fd229767b1568b"
+    task_blob_sha: "f732b18b6f3bd70029b29ec4f844185a30ddb553"
     authority: HUMAN_BRAIN_PLANNING
     triggered_by:
       task_id: TASK-263
@@ -1076,6 +1078,15 @@ sequence:
       - NO_SKIP_XFAIL_RETRY_OR_TEST_SELECTION_CHANGE
       - NO_TASK263_CANDIDATE_CHANGE
       - NO_AUTOMATIC_ROADMAP_ADVANCE
+    task_authoring_audit:
+      approved_on: "2026-10-02"
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage1_outcome: CLEAR
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      acceptance_phase_ledger: ALL_CLAIM_NOW
     human_execution_delegation:
       selected_on: "2026-10-02"
       authority: HUMAN
