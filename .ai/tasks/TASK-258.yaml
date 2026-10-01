@@ -1,0 +1,162 @@
+task_id: TASK-258
+revision: 1
+goal: Implement H2 by projecting exact, bounded, read-only and action-neutral REPAIR
+  strategy facts into the REPAIR_AUTHORING Decision Packet before Brain Stage 1, and
+  close the exact successful-REPAIR to DELTA CHANGES_REQUIRED to REMEDIATION source-lineage
+  compatibility gap without giving Runtime semantic strategy authority.
+problem: REPAIR authoring currently projects the failed subject, changed files, failure
+  phase and bounded error class, but not the deterministic pre-verification, candidate-structure,
+  acceptance-coverage and per-action structural eligibility facts already available
+  from canonical Runtime state. Brain therefore has to re-derive those facts outside
+  the audited authoring packet. Separately, canonical transport can carry a successful
+  REPAIR wrapper, but downstream remediation-source consumers do not yet treat that
+  exact reviewed REPAIR provenance as a first-class compatible source, so a DELTA
+  CHANGES_REQUIRED review after a successful REPAIR can lose correction lineage.
+assumptions:
+- H1 audited authoring and H1R safe local-main reconciliation are published, and H2
+  repair-strategy facts is the unique current roadmap NEXT commitment.
+- Canonical FAILURE transport, pre-verification candidate transport, existing REPAIR
+  authorization validation and Runtime completion/admission predicates remain the
+  engineering authorities to reuse rather than reinterpret.
+- A successful REPAIR remains an ordinary RUN plus exact REPAIR lineage sidecar; H2
+  does not create a new RUN kind or lifecycle family.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-BRAIN-TASK-AUTHORING-CONTRACT.md
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  - .ai/roadmap-state.yaml
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/publication.py
+  - tests/test_operator_correction_preflight.py
+  - tests/test_repair_preverification_eligibility.py
+  - tests/test_decision_packet.py
+  - tests/test_authoring_ingress.py
+  - tests/test_review_transport.py
+  - tests/test_publication.py
+  - tests/test_operator_unified_state.py
+  modify:
+  - src/aios_renew/correction_preflight.py
+  - src/aios_renew/decision_packet.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/operator.py
+  - src/aios_renew/review_transport.py
+  - src/aios_renew/publication.py
+  - tests/test_operator_correction_preflight.py
+  - tests/test_repair_preverification_eligibility.py
+  - tests/test_decision_packet.py
+  - tests/test_authoring_ingress.py
+  - tests/test_review_transport.py
+  - tests/test_publication.py
+  - tests/test_operator_unified_state.py
+non_goals:
+- Let Runtime, Flow Resolver, Decision Packet compilation or deterministic eligibility
+  code choose, rank, recommend, default or retry a REPAIR action.
+- Project candidate_mutation_required or any equivalent semantic conclusion about
+  whether more implementation work is needed.
+- Automatically author or execute REPAIR, choose an Executor, create a RUN, invoke
+  verification, publish, review or advance roadmap from the strategy-fact projection.
+- Create a new lifecycle family, correction router, planner, retry/failover loop,
+  semantic authority, Reviewer, Publisher or persistent strategy state store.
+- Change frozen TASK/RUN/RESULT/EVIDENCE/REVIEW/REMEDIATION semantics or reinterpret
+  historical terminal artifacts.
+- Implement H3 acceptance proof-phase authoring, H4 wake/resume hardening, H5 closure,
+  performance work, downstream adoption or unrelated correction-flow redesign.
+constraints:
+  hard:
+  - 'The H2 projection is read-only and action-neutral: computing or consuming it
+    must create no RUN, invoke no Executor or verification, acquire no mutation authority
+    and mutate no repository/runtime/canonical state.'
+  - 'The projected contract is bounded to the architecture facts: reusable_preverification_state,
+    structural_result_package, candidate_clean_committed, candidate_transportable,
+    candidate_repairable, candidate_descends_from_base, outside_task_scope, acceptance_coverage,
+    and structural eligibility for NO_CHANGE, FINALIZE_CANDIDATE, CONTINUE_IMPLEMENTATION
+    and CODE_FIX.'
+  - Every projected fact must be deterministically derived from exact canonical TASK,
+    FAILURE, failed-candidate identity and canonical transported pre-verification
+    state; missing, malformed, stale, conflicting or identity-mismatched material
+    must remain distinguishable without consulting chat memory, Executor claims or
+    machine-local transient state.
+  - Action eligibility is only a structural prerequisite expressed as ELIGIBLE or
+    INELIGIBLE. It must not encode preference, ordering, semantic necessity, mutation-required
+    judgment or an implicit correction choice.
+  - REPAIR_AUTHORING deterministic reconstruction must inject the exact strategy-fact
+    projection into the Decision Packet before Stage 1, and the existing audited-authoring
+    freshness boundary must reject publication if any bound canonical input moves
+    before mutation.
+  - Structural eligibility policy must have one deterministic source of truth shared
+    with or mechanically consistent with existing Runtime action/reuse admission predicates;
+    the projection must not fork a second independently evolving eligibility policy.
+  - Existing REPAIR execution admission and reusable pre-verification behavior remain
+    authoritative and fail closed; H2 projection must not itself authorize execution
+    or weaken current action-specific admission, scope, acceptance-coverage or reusable-state
+    checks.
+  - The successful-REPAIR lineage compatibility correction must validate the exact
+    REPAIR sidecar and its failed RUN, failed head, root/result base, TASK, authorization
+    and applicable prior semantic review before that reviewed successful REPAIR may
+    act as a source for DELTA CHANGES_REQUIRED remediation.
+  - Recognition of a successful REPAIR as a remediation source must be based on exact
+    validated repair.json lineage and its canonical review decision, not merely on
+    the absence of RUN.kind or the presence of a sidecar; negative tests must prove
+    malformed or substituted wrappers cannot fall back to ordinary PRIMARY provenance.
+  - Successful REPAIR provenance must remain distinguishable from PRIMARY and REMEDIATION
+    provenance. Missing, malformed, conflicting, ambiguous or unrelated REPAIR lineage
+    must fail closed rather than being treated as an ordinary source.
+  - No H2 result may automatically advance roadmap or become independent lifecycle
+    truth; canonical Runtime artifacts, Review decisions and Publisher state remain
+    authoritative.
+acceptance:
+- id: AC1
+  condition: For an exact canonical failed RUN in REPAIR_AUTHORING, the Decision Packet
+    presented to Brain Stage 1 contains the bounded H2 strategy-fact projection derived
+    from the same TASK/FAILURE/candidate/pre-verification identities, including every
+    minimum fact and all four structural eligibility entries required by the H2 architecture
+    contract.
+- id: AC2
+  condition: The projection distinguishes PRESENT, ABSENT and INVALID reusable pre-verification
+    state and PRESENT, MISSING and INVALID structural ResultPackage state; malformed,
+    stale, conflicting, identity-mismatched or incomplete canonical material cannot
+    be silently treated as valid or as a semantic recommendation.
+- id: AC3
+  condition: NO_CHANGE, FINALIZE_CANDIDATE, CONTINUE_IMPLEMENTATION and CODE_FIX eligibility
+    are deterministic structural ELIGIBLE/INELIGIBLE facts mechanically consistent
+    with the same Runtime action/reuse admission predicates, while no candidate_mutation_required,
+    ranking, preferred action, default action or selected action is projected.
+- id: AC4
+  condition: Producing and consuming the H2 projection is mutation-free and verification-free,
+    and audited AUTHOR_REPAIR reconstruction binds it before Stage 1 to exact canonical
+    inputs so mutation-edge drift of those inputs rejects the authoring handoff rather
+    than reusing stale facts.
+- id: AC5
+  condition: Existing REPAIR execution admission, authorization scope, reusable pre-verification
+    fast path and Executor requirements retain their current authority and fail-closed
+    behavior; structural eligibility cannot by itself create or admit a REPAIR RUN.
+- id: AC6
+  condition: A canonically reviewed successful REPAIR that receives a DELTA CHANGES_REQUIRED
+    decision can serve as the exact source of the existing AUTHOR_REMEDIATION and
+    REMEDIATION path when its REPAIR wrapper and prior correction lineage are valid,
+    without converting it to PRIMARY or introducing a new lifecycle kind.
+- id: AC7
+  condition: Missing, malformed, moved, conflicting, ambiguous or cross-TASK successful-REPAIR
+    lineage, incorrect failed-head/root/result-base bindings, substituted repair.json
+    content, or an unrelated prior REVIEW is rejected before remediation authority
+    or execution is created and cannot fall back to ordinary PRIMARY provenance.
+- id: AC8
+  condition: Focused regressions cover action-neutral projection states and drift,
+    preservation of existing REPAIR execution behavior, and successful plus adversarial
+    successful-REPAIR-to-DELTA-CHANGES_REQUIRED-to-REMEDIATION lineage cases.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_operator_correction_preflight.py tests/test_repair_preverification_eligibility.py
+  - python -m pytest -q tests/test_decision_packet.py tests/test_authoring_ingress.py
+    -k "repair or authoring"
+  - python -m pytest -q tests/test_review_transport.py tests/test_publication.py tests/test_operator_unified_state.py
+    -k "repair or remediation or delta or lineage or correction"
+  - git diff --check
