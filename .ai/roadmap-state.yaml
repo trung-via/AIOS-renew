@@ -264,6 +264,26 @@ sequence:
         ChatGPT Work delivery from PR commit-update activity; the existing Work
         automation is still explicitly bound to qualifying PR comments and ignores
         commits, so no autonomous Work result may be inferred from this marker commit.
+    work_commit_update_trigger:
+      status: HUMAN_PRODUCT_CONFIGURATION_REQUIRED
+      authority: HUMAN
+      configuration_ref: docs/AIOS-GITHUB-CHATGPT-BRAIN-WAKE-AUTOMATION-AUDIT-v1.md#17-chatgpt-work-pr-commit-update-trigger-contract
+      repository: trung-via/AIOS-renew
+      pull_request: 1200
+      head_branch: aios-brain-wake-bus-v1
+      event_class: PULL_REQUEST_COMMIT_UPDATE
+      marker_path: .ai/brain-wake-marker.json
+      no_polling: true
+      existing_comment_ack_automation:
+        automation_id: "6abd40a6f8d881918f2c9e7945cbf54d"
+        disposition: KEEP_UNCHANGED_UNTIL_COMMIT_TRIGGER_CONFORMANCE
+      fresh_post_configuration_probe:
+        status: NOT_RUN
+        requirement: >-
+          Emit a fresh repository-generated marker commit only after the Work
+          commit-update trigger is enabled. PASS requires exactly one autonomous
+          ACK for that marker event_id after fresh canonical Brain Sync, with no
+          lifecycle or roadmap mutation caused by Work.
     r3_live_evidence:
       p1:
         issue_number: 1215
