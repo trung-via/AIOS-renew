@@ -1,0 +1,27 @@
+review_id: REVIEW-261-001
+reviewed_sha: 9440bc057038f16a2e4484041529c1213b8ebe01
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-261-001 is the canonical PRIMARY RESULT for TASK-261 r1 with exact candidate
+  9440bc057038f16a2e4484041529c1213b8ebe01 and unresolved empty.
+- Runtime verification passed 99 focused demux/workflow tests, 168 carrier parser
+  tests, and git diff --check.
+- Exactly one top-level issues.opened entry remains for the H4A1 family; the four
+  existing carriers are reusable workflow_call surfaces only.
+- The new entry performs only case-sensitive literal Issue-title matching to four
+  fixed carrier filenames, with no Issue-body, lifecycle, NEXT, correction, provider/model/executor,
+  review, publication, or roadmap interpretation.
+- Carrier bodies are unchanged apart from trigger plumbing; existing event-file admission,
+  receipts, dispatch behavior, concurrency, source-selector export, fail-closed behavior
+  and route-scoped permissions remain preserved.
+- H4A2/H4A3/H4B remain separate later milestones and are not implemented or advanced
+  by this candidate.
