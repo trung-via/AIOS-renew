@@ -1,0 +1,35 @@
+review_id: REVIEW-254-004
+reviewed_sha: 56419eecea29be28cde1a4b2826226c5ca83ef22
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+  - >-
+    RUN-254-004 is the canonical successful continuation of TASK-254 r3 after
+    bounded REPAIR lineage. Runtime reports unresolved empty and exact subject
+    56419eecea29be28cde1a4b2826226c5ca83ef22.
+  - >-
+    Runtime verification passed the exact TASK-declared focused suite with
+    181 passed and passed git diff --check on the reviewed subject.
+  - >-
+    The authoring ingress requires a fresh packet-bound Stage-2 CANDIDATE,
+    exact family-payload equality, canonical input proof and mutation-edge
+    freshness while preserving exact non-mutating replay.
+  - >-
+    Explicit REPAIR_AUTHORING supersession is bounded to an exact current
+    unexecuted authorization for the same failed RUN, preserves canonical
+    EXECUTE_REPAIR lifecycle state, binds exact FAILURE and prior authorization,
+    and fails closed on stale, competing, missing or already-executed authority.
+  - >-
+    Brain-authoring dependencies are lazy on authoring paths, preserving
+    SUBMIT_REVIEW isolation and Reviewer ownership. No new Planner, lifecycle
+    router, correction selector, Runtime, Reviewer or Publisher authority is introduced.
