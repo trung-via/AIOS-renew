@@ -926,6 +926,19 @@ sequence:
   - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
     status: ACTIVE
     phase: H4A0_RETIRE_LEGACY_WORK_WAKE_BRIDGE
+    task_id: TASK-260
+    task_revision: 1
+    authored_commit_sha: "d2a5481b1a63d82f03d3678d98666631df3be4d6"
+    task_blob_sha: "6dd7274bd60b4d8deee06dd501836625f09717a8"
+    task_authoring_audit:
+      approved_on: "2026-10-01"
+      profile: brain-high-value-v2
+      stage1: CONSTRUCT
+      stage1_outcome: CLEAR
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      acceptance_phase_ledger: ALL_CLAIM_NOW
     authority: HUMAN_BRAIN_PLANNING
     planning_document: docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
     audit_profile: brain-high-value-v2
