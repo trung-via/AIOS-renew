@@ -298,8 +298,7 @@ human_priority_sequence:
         - DOWNSTREAM_BRAIN_SYNC_REQUIRED
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
-next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a2-reviewed-candidate-integration-recovery
+next_items: []
 sequence:
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
@@ -1111,7 +1110,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a2-reviewed-candidate-integration-recovery
-    status: NEXT
+    status: DONE
     phase: H4A2_LOCAL_REGULAR_CHAT_WAKE_TRANSPORT
     task_id: TASK-266
     task_revision: 1
@@ -1176,6 +1175,19 @@ sequence:
       - FRESH_RUNTIME_RESULT_AND_FRESH_SEMANTIC_REVIEW_REQUIRED
       - PRESERVE_NEWER_CANONICAL_MAIN_CHANGES_OUTSIDE_H4A2_SEMANTICS
       - FAIL_CLOSED_ON_MAIN_DRIFT_OR_MERGE_CONFLICT
+    completed_by:
+      task_id: TASK-266
+      task_revision: 1
+      run_id: RUN-266-001
+      artifacts_sha: "011a5354afcf574827d8c3c01417b8922743ffe6"
+      review_id: REVIEW-266-001
+      review_decision_sha: "3e6fda8985a466b39cade72d59ae45cafae11227"
+      reviewed_sha: "0a3ca954b11c2e5323a43f5133212407e4d26093"
+      published_sha: "0a3ca954b11c2e5323a43f5133212407e4d26093"
+      publication_workflow_run_id: 36913482426
+      completed_on: "2026-10-02"
+      source_h4a2_run: RUN-262-004
+      recovery_outcome: PUBLISHED_FRESH_CURRENT_MAIN_CANDIDATE
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
