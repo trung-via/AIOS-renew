@@ -156,7 +156,7 @@ sequence:
     task_revision: 4
     task_author_commit_sha: "b016dcabd7623b9fc2763f48ab3ae4bf71939850"
     task_blob_sha: "9d3cc4f638621ec62daa52fd0dc056c2815419f2"
-    implementation_phase: WAKE_POST_WRITE_RECONCILIATION
+    implementation_phase: WORK_COMMIT_UPDATE_CONFORMANCE
     authority: HUMAN_BRAIN_PLANNING
     r1_failure:
       run_id: RUN-255-001
@@ -233,6 +233,37 @@ sequence:
         live-conformant under observed GitHub PR read-after-write lag. TASK-255 r4 is
         canonicalized to remove that invalid equality assumption without retry,
         polling, credential, permission or transport-family changes.
+    r4_post_publication_conformance:
+      recovery:
+        source_terminal_issue: 1223
+        source_bridge_run: 36807878923
+        pending_ledger_comment_id: 5923771367
+        marker_commit_sha: "abe2baf47010534e6def6573ead44f092b6fbb19"
+        recovery_trigger: TERMINAL_CARRIER_RERUN
+        recovery_bridge_run: 36808623800
+        recovery_bridge_head_sha: "a5d33444e4c98e60a10b9558bd7f17c41b913c13"
+        result: PASS
+        ledger_state_after_recovery: EMITTED
+        second_marker_commit_created: false
+      fresh_first_attempt_probe:
+        issue_number: 1225
+        ingress_receipt_comment_id: 5923877677
+        bridge_run_id: 36808709208
+        event_id: github-v1-1fb01d7f2e1fdcc055e98823cd6e430a3304f1f9cd74f5b7731cdf9880686ec9
+        attention_family: INGRESS_REJECTED
+        ledger_comment_id: 5923883474
+        marker_commit_sha: "47f4bfa40ea07adbf3321633c519e88559b098fc"
+        result: PASS_FIRST_ATTEMPT
+        ledger_state: EMITTED
+      implication: >-
+        Published r4 closes the observed GitHub PR read-after-write lag defect:
+        the old PENDING transport recovered without a second marker commit, and a
+        fresh post-publication INGRESS_REJECTED delivery completed EMITTED in one
+        bridge attempt. Repository-side secretless PR-head marker transport is now
+        live-conformant for this failure shape. The remaining unresolved gate is
+        ChatGPT Work delivery from PR commit-update activity; the existing Work
+        automation is still explicitly bound to qualifying PR comments and ignores
+        commits, so no autonomous Work result may be inferred from this marker commit.
     r3_live_evidence:
       p1:
         issue_number: 1215
