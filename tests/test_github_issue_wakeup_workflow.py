@@ -16,9 +16,9 @@ def _workflow() -> tuple[dict, str]:
     return yaml.load(text, Loader=yaml.BaseLoader), text
 
 
-def test_issue_trigger_and_job_are_fixed_to_github_hosted_admission() -> None:
+def test_reusable_trigger_and_job_are_fixed_to_github_hosted_admission() -> None:
     workflow, text = _workflow()
-    assert workflow["on"] == {"issues": {"types": ["opened"]}}
+    assert workflow["on"] == {"workflow_call": ""}
     assert list(workflow["jobs"]) == ["admit-and-dispatch"]
     job = workflow["jobs"]["admit-and-dispatch"]
     assert job["if"] == "github.event.issue.title == '[AIOS BRAIN WAKEUP]'"

@@ -21,9 +21,9 @@ def _workflow(path: Path) -> tuple[dict, str]:
     return yaml.load(text, Loader=yaml.BaseLoader), text
 
 
-def test_issue_carrier_is_exact_opened_title_and_github_hosted_admission() -> None:
+def test_reusable_issue_carrier_retains_title_gate_and_github_hosted_admission() -> None:
     workflow, text = _workflow(CARRIER_PATH)
-    assert workflow["on"] == {"issues": {"types": ["opened"]}}
+    assert workflow["on"] == {"workflow_call": ""}
     assert workflow["jobs"]["admit"]["if"] == (
         "github.event.issue.title == '[AIOS REMEDIATION INTENT]'"
     )

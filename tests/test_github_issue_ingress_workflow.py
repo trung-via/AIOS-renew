@@ -16,9 +16,9 @@ def _workflow() -> tuple[dict, str]:
     return yaml.load(text, Loader=yaml.BaseLoader), text
 
 
-def test_workflow_has_only_the_opened_issue_trigger_and_exact_marker_gate() -> None:
+def test_workflow_is_reusable_only_and_retains_exact_marker_gate() -> None:
     workflow, _ = _workflow()
-    assert workflow["on"] == {"issues": {"types": ["opened"]}}
+    assert workflow["on"] == {"workflow_call": ""}
     job = workflow["jobs"]["deliver"]
     assert job["if"] == "github.event.issue.title == '[AIOS BRAIN INGRESS]'"
     assert "issue_comment" not in workflow["on"]

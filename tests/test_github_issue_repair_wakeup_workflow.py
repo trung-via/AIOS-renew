@@ -49,9 +49,9 @@ def _workflow(path: Path) -> tuple[dict, str]:
     return yaml.load(text, Loader=yaml.BaseLoader), text
 
 
-def test_issue_admission_is_exact_and_github_hosted() -> None:
+def test_reusable_issue_admission_is_exact_and_github_hosted() -> None:
     workflow, text = _workflow(CARRIER)
-    assert workflow["on"] == {"issues": {"types": ["opened"]}}
+    assert workflow["on"] == {"workflow_call": ""}
     admit = workflow["jobs"]["admit"]
     assert admit["if"] == "github.event.issue.title == '[AIOS REPAIR WAKEUP]'"
     assert admit["runs-on"] == "ubuntu-latest"

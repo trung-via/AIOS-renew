@@ -1,0 +1,70 @@
+name: AIOS Issue carrier entry
+
+on:
+  issues:
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      carrier: ${{ steps.title.outputs.carrier }}
+    steps:
+      - name: Match only an exact literal Issue title
+        id: title
+        shell: bash
+        env:
+          AIOS_ISSUE_TITLE: ${{ github.event.issue.title }}
+        # GitHub expression string equality ignores case; quoted Bash equality does not.
+        run: |
+          carrier=''
+          if [[ "$AIOS_ISSUE_TITLE" == '[AIOS BRAIN INGRESS]' ]]; then
+            carrier='aios-brain-ingress.yml'
+          elif [[ "$AIOS_ISSUE_TITLE" == '[AIOS BRAIN WAKEUP]' ]]; then
+            carrier='aios-brain-wakeup.yml'
+          elif [[ "$AIOS_ISSUE_TITLE" == '[AIOS REPAIR WAKEUP]' ]]; then
+            carrier='aios-brain-repair-wakeup.yml'
+          elif [[ "$AIOS_ISSUE_TITLE" == '[AIOS REMEDIATION INTENT]' ]]; then
+            carrier='aios-brain-remediation-intent.yml'
+          fi
+          printf 'carrier=%s\n' "$carrier" >> "$GITHUB_OUTPUT"
+
+  # Native reuse retains the caller's Issue event/context and invocation commit.
+  # No workflow inputs serialize an event payload.
+  # https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#github-context
+  ingress:
+    needs: route
+    if: needs.route.outputs.carrier == 'aios-brain-ingress.yml'
+    permissions:
+      contents: write
+      issues: write
+      actions: write
+    uses: ./.github/workflows/aios-brain-ingress.yml
+
+  wakeup:
+    needs: route
+    if: needs.route.outputs.carrier == 'aios-brain-wakeup.yml'
+    permissions:
+      contents: read
+      actions: write
+      issues: write
+    uses: ./.github/workflows/aios-brain-wakeup.yml
+
+  repair-wakeup:
+    needs: route
+    if: needs.route.outputs.carrier == 'aios-brain-repair-wakeup.yml'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/aios-brain-repair-wakeup.yml
+
+  remediation-intent:
+    needs: route
+    if: needs.route.outputs.carrier == 'aios-brain-remediation-intent.yml'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/aios-brain-remediation-intent.yml
