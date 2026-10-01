@@ -1,0 +1,141 @@
+task_id: TASK-266
+revision: 1
+goal: Recover the already reviewed H4A2 Local Regular Chat Wake capability onto current
+  canonical main as one fresh current-generation candidate, preserving newer canonical
+  changes and restoring a publishable lifecycle without treating the diverged RUN-262-004
+  candidate as directly publishable.
+problem: RUN-262-004 reached Runtime PASS and semantic DELTA review PASS at reviewed
+  candidate 766f4805f08fd95c621f8bd081fee55afdc44f86, but publication was blocked
+  first by the detached-Publisher defect later fixed by TASK-263. While that blocker
+  was repaired, canonical main advanced through TASK-264, TASK-265 and TASK-263 and
+  now diverges from the reviewed TASK-262 candidate. Direct Publisher replay is therefore
+  not a fast-forward. A standalone correction-integration ref is also insufficient
+  because RUN-262-004 already has PASS with no outstanding finding, so no canonical
+  correction RUN would consume that integrated base. The H4A2 final reviewed semantics
+  must instead be reconciled onto current main through a fresh task lifecycle with
+  fresh Runtime verification and semantic review.
+assumptions:
+- Canonical main at TASK-266 authoring is aa57a110776cd75613fe57bf75fa697b52b5f355
+  and the roadmap selects TASK-266 as the unique unauthored NEXT recovery item.
+- 'RUN-262-004 is the exact reviewed H4A2 source evidence: artifacts 7ae594092fa4e7f56cde0ab5d54b0ec80055afe8,
+  reviewed candidate 766f4805f08fd95c621f8bd081fee55afdc44f86, REVIEW-262-002, and
+  review decision 1458674ecd381a4c54a3f5ad1b994af8cf22088d with verdict PASS.'
+- 'The final H4A2 capability surface spans exactly seven authorized files: .github/workflows/aios-local-chat-wake.yml,
+  .github/workflows/aios-terminal-attention.yml, pyproject.toml, src/aios_renew/local_chat_wake.py,
+  tests/test_local_chat_wake.py, tests/test_local_chat_wake_workflow.py, and tests/test_terminal_attention_workflow.py.'
+- At authoring time current main lacks four of those reviewed files entirely and has
+  newer divergent content in the remaining three, so recovery must reconcile semantics
+  rather than blindly replace current files.
+- The reviewed RUN-262-004 candidate and its predecessor lineage are immutable evidence
+  only; TASK-266 is a fresh current-main implementation authority and does not retroactively
+  publish or rewrite TASK-262 lineage.
+scope:
+  inspect:
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - .ai/tasks/TASK-262.yaml
+  - .ai/roadmap-state.yaml
+  - .github/workflows/aios-local-chat-wake.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - .ai/brain-terminal-attention-carriers.yaml
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/terminal_attention.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_terminal_attention.py
+  - tests/test_terminal_attention_workflow.py
+  - pyproject.toml
+  modify:
+  - .github/workflows/aios-local-chat-wake.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - pyproject.toml
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_terminal_attention_workflow.py
+non_goals:
+- Directly publish, force-push, or relabel RUN-262-004 or its reviewed candidate as
+  current main.
+- Create a standalone correction-integration ref and treat that ref as publication
+  or semantic completion.
+- Modify Runtime, Reviewer, Publisher, TASK schema, correction-integration semantics,
+  roadmap execution semantics, or any TASK-263/TASK-264/TASK-265 implementation file.
+- Perform H4A3 live ACK-only exact-chat conformance or H4B semantic Brain resume.
+- Commit any actual ChatGPT conversation URL, browser credentials, cookies, profile
+  data, conversation content, or other machine-local binding.
+- Read assistant output or conversation history to decide lifecycle actions, reintroduce
+  ChatGPT Work, polling, schedules, workflow_run wake transport, Issue re-triggering,
+  or a generic lifecycle router.
+constraints:
+  hard:
+  - Recovery must start from current admitted canonical main and preserve every newer
+    canonical change outside the exact H4A2 semantics being restored; the old reviewed
+    candidate may be used as bounded reference evidence but must not overwrite unrelated
+    current-main state.
+  - The committed recovery delta must remain within the seven authorized H4A2 files
+    and must not mutate old TASK-262 RUN/RESULT/REVIEW/remediation artifacts or canonical
+    lifecycle refs.
+  - Production wake wiring must originate only after exact successful canonical terminal-attention
+    admission and hand off to the repository-owned local-chat-wake path; unrelated
+    Issue/artifact observability failure after admission must not suppress an otherwise
+    admitted local wake.
+  - Terminal attention must retain contents:read plus issues:write and must not require
+    actions:write, workflow_run, Work, polling, schedules, or Issue re-triggering
+    for the local wake path.
+  - Automatic local delivery remains Human-enabled through noncanonical machine-local
+    configuration; exact chat URL, CDP endpoint and transport-state binding stay outside
+    committed repository state.
+  - The browser adapter attaches only to an already-running authenticated regular
+    ChatGPT browser surface and fails closed on missing, duplicate, wrong-surface,
+    logged-out, drafted, busy, ambiguous or otherwise unprovable target state; it
+    must not launch or navigate a replacement browser/profile.
+  - Operational dedupe remains outside canonical repository state with ATTEMPTING-before-submit
+    and SUBMITTED-after-bounded-proof semantics; ambiguous attempt state blocks automatic
+    resend.
+  - Wake payload and receipts remain bounded transport metadata only and contain no
+    TASK semantics, correction strategy, verdict, roadmap successor, executor selection,
+    assistant output, conversation history, exact chat URL, credentials or private
+    browser/session material.
+  - TASK-266 must obtain its own Runtime RESULT, semantic review and Publisher outcome;
+    prior RUN-262-004 PASS evidence cannot substitute for any TASK-266 lifecycle gate.
+acceptance:
+- id: AC1
+  condition: The candidate restores the bounded local_chat_wake module and repository-owned
+    reusable self-hosted workflow on current main with no committed real chat binding
+    or credentials, while preserving unrelated newer canonical configuration.
+- id: AC2
+  condition: Terminal attention invokes the local-chat-wake path only from exact successful
+    admission outputs/status, keeps contents:read plus issues:write without actions:write,
+    and does not let later Issue, selector-export or artifact-observability failure
+    suppress an already admitted wake.
+- id: AC3
+  condition: The browser adapter attaches only to an existing configured authenticated
+    regular ChatGPT page and deterministically fails closed unless exactly one bound
+    page has an empty composer and no active generation; it never launches a browser/profile
+    or navigates an unrelated page.
+- id: AC4
+  condition: Local delivery implements ATTEMPTING-before-submit and SUBMITTED-after-proof
+    dedupe outside canonical repository state, with duplicate SUBMITTED as NOOP and
+    ATTEMPTING or ambiguous post-attempt state blocking automatic resend.
+- id: AC5
+  condition: Wake construction, submission proof and operational receipts are bounded
+    to the outbound user doorbell turn and local send/composer state; implementation
+    contains no assistant-output extraction or conversation-history-driven lifecycle
+    logic and exposes no exact chat URL or private session material.
+- id: AC6
+  condition: Deterministic focused tests cover valid delivery, duplicate NOOP, malformed
+    or missing binding, zero or multiple target pages, wrong/logged-out surface, existing
+    draft, active generation, pre-submit failure, ambiguous post-attempt failure,
+    successful submission proof, enable-gate behavior, exact admission handoff and
+    permission bounds without live ChatGPT access.
+- id: AC7
+  condition: The recovery delta is confined to the seven authorized H4A2 files, preserves
+    newer current-main changes outside H4A2 semantics, and introduces no H4A3/H4B
+    behavior, Runtime/Reviewer/Publisher authority, Work transport, polling, schedule,
+    workflow_run wake, Issue re-triggering, lifecycle router or automatic roadmap
+    advancement.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py tests/test_local_chat_wake_workflow.py
+    tests/test_terminal_attention.py tests/test_terminal_attention_workflow.py
+  - git diff --check
