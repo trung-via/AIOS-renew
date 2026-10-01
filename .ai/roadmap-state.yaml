@@ -102,8 +102,8 @@ human_priority_sequence:
         - BSH-H1-AUDITED-AUTHORING-GATE
         - BSH-H2-REPAIR-STRATEGY-FACT-PROJECTION
         - BSH-H3-ACCEPTANCE-PROOF-PHASE-CONTRACT
-        - BSH-H4A-BRAIN-ATTENTION-IDENTITY-BINDING
-        - BSH-H4B-PRODUCTION-SEMANTIC-CONTINUATION
+        - BSH-H4A-HUMAN-ATTENTION-SURFACE
+        - BSH-H4B-REGULAR-CHAT-BRAIN-RESUME
         - BSH-H5-INTEGRATION-CONFORMANCE-CLOSURE
       constraints:
         - NO_AUTOMATIC_CORRECTION_SELECTION
@@ -112,11 +112,22 @@ human_priority_sequence:
         - RUNTIME_RETAINS_CANONICAL_VERIFICATION
         - REVIEWER_RETAINS_SEMANTIC_VERDICT
         - PUBLISHER_RETAINS_EXACT_REVIEWED_SOURCE_PUBLICATION
-        - ONE_SEMANTIC_ACTION_PER_WAKE
-        - MODEL_MUST_NOT_ALLOCATE_CANONICAL_IDENTITIES
-        - HUMAN_PROGRESS_SURFACE_IS_NONCANONICAL
+        - NO_PRODUCTION_WORK_WAKE
+        - HUMAN_ATTENTION_SURFACE_IS_NONCANONICAL
+        - REGULAR_CHAT_REQUIRES_FRESH_BRAIN_SYNC
         - NO_AUTOMATIC_ROADMAP_ADVANCE
       h4_production_semantic_continuation_audit:
+        approved_on: "2026-10-01"
+        authority: HUMAN_BRAIN_PLANNING
+        profile: brain-high-value-v2
+        predecessor_contract: PRODUCTION_SEMANTIC_CONTINUATION_V1
+        disposition: SUPERSEDED_BY_HUMAN_COST_BOUNDARY
+        basis: >-
+          Live TASK-254 observation showed event-triggered ChatGPT Work invocations
+          continue to consume the same included allowance shared with Codex after
+          Executor activity has stopped, including ACK/NOOP work. Human rejected Work
+          as the production wake mechanism to protect Executor capacity.
+      h4_zero_work_human_wake_audit:
         approved_on: "2026-10-01"
         authority: HUMAN_BRAIN_PLANNING
         profile: brain-high-value-v2
@@ -125,20 +136,21 @@ human_priority_sequence:
         stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
         closure: CLEAR
         outcome: CANDIDATE
-        planning_commit_sha: "987695cfe2efc4ebd3031c6e227cf49103061a3f"
-        selected_contract: PRODUCTION_SEMANTIC_CONTINUATION_V1
+        planning_commit_sha: "119bfb2ec595e73c18cd7352f740abfc8debbf49"
+        selected_contract: HUMAN_WAKE_RELAY_V1
         sequencing:
-          - H4A_ATTENTION_AND_DETERMINISTIC_IDENTITY_BINDING
-          - H4B_ONE_STEP_SEMANTIC_CONTINUATION_AND_HUMAN_PROGRESS_SURFACE
+          - H4A_DETERMINISTIC_HUMAN_ATTENTION_SURFACE
+          - H4B_REGULAR_CHAT_BRAIN_RESUME
         required_boundaries:
+          - ZERO_CHATGPT_WORK_INVOCATION_FOR_WAKE_TRANSPORT
           - WAKE_SIGNAL_IS_TRANSPORT_ONLY
-          - FRESH_BRAIN_SYNC_AND_FLOW_RESOLUTION_REQUIRED
-          - ONE_CANONICAL_SEMANTIC_MUTATION_MAX_PER_WAKE
+          - ONE_DEDUPLICATED_HUMAN_NOTIFICATION_PER_UNRESOLVED_EVENT
+          - FRESH_BRAIN_SYNC_ON_CHAT_RESUME
+          - ANY_PROJECT_CHAT_MAY_RECONSTRUCT_CANONICAL_STATE
           - EXISTING_BRAIN_AND_REVIEWER_PROTOCOLS_REUSED
-          - EXECUTOR_RUNTIME_PUBLISHER_REMAIN_SEPARATE
-          - ACK_IS_NOT_PRODUCTION_COMPLETION
-          - CANONICAL_IDENTITIES_REQUIRE_DETERMINISTIC_EXTERNAL_BINDING
           - HUMAN_REQUIRED_AT_NEW_INTENT_PRIORITY_OR_RISK_BOUNDARY
+          - SCHEDULED_POLLING_NOT_DEFAULT
+          - API_BRAIN_REQUIRES_SEPARATE_HUMAN_DECISION
     - track: verification-performance-residual-cost-v3
       status: QUEUED_AFTER_HARDENING
       objective: >-
