@@ -141,7 +141,8 @@ def test_audited_authoring_rechecks_movement_after_audit_and_at_publication(tmp_
             return commit
         monkeypatch.setattr(authoring_ingress_module, "_commit_tree", move_input)
     else:
-        original = authoring_ingress_module.validate_stage2
+        from aios_renew import brain_audit
+        original = brain_audit.validate_stage2
         def move_ref(*args, **kwargs):
             audit = original(*args, **kwargs)
             if movement == "main":
@@ -152,7 +153,7 @@ def test_audited_authoring_rechecks_movement_after_audit_and_at_publication(tmp_
             else:
                 git(remote, "update-ref", "refs/heads/aios/repair/RUN-OTHER", main_sha)
             return audit
-        monkeypatch.setattr(authoring_ingress_module, "validate_stage2", move_ref)
+        monkeypatch.setattr(brain_audit, "validate_stage2", move_ref)
     with pytest.raises(AuthoringIngressError, match="freshness"):
         execute_ingress(envelope, repo=repo)
     assert not (repo / ".ai/tasks/TASK-105.yaml").exists()
@@ -1186,6 +1187,7 @@ def test_submit_review_accepts_code_fix_zero_delta_failure_continuation(
     zero_failure = {
         "kind": "FAILURE",
         "run_id": zero_run_id,
+        "continuation_of": first_run_id,
         "task": {"id": "TASK-105", "revision": 1},
         "executor": "codex",
         "base_sha": failed_code_sha,
@@ -2153,8 +2155,8 @@ def test_author_repair_success_and_rejections(tmp_path):
     assert replay.replayed is True
 
     # Exact replay needs no transient material. A changed authorization cannot
-    # reuse that path or the previous authoring packet. Current projection
-    # authorities do not provide a REPAIR_AUTHORING flow after authorization.
+    # reuse that path or the previous authoring packet. Supersession needs a
+    # fresh audit bound to the current authorization and exact FAILURE.
     assert execute_ingress(replace(envelope, audited_handoff=None), repo=repo).replayed
     failure_ref = f"refs/heads/aios/failure-artifacts/{failed_run_id}"
     failure_sha = git(repo, "ls-remote", "--refs", "origin", failure_ref).split()[0]
@@ -2162,8 +2164,16 @@ def test_author_repair_success_and_rejections(tmp_path):
                       expected_state={**envelope.expected_state,
                                       "expected_current_repair_sha": result.canonical_sha,
                                       "expected_failure_artifacts_sha": failure_sha})
-    with pytest.raises(AuthoringIngressError, match="selected flow"):
+    with pytest.raises(AuthoringIngressError, match="Stage-1 packet, profile or construct lineage mismatch"):
         execute_ingress(changed, repo=repo)
+    with pytest.raises(AuthoringIngressError, match="requires audited_handoff"):
+        execute_ingress(replace(changed, audited_handoff=None), repo=repo)
+    fresh_changed = audited_envelope(replace(changed, audited_handoff=None), repo)
+    packet, _, _, _ = authoring_ingress_module._compose_authoring_packet(fresh_changed, repo)
+    assert packet.as_dict()["subject"]["current_repair_authorization_sha"] == result.canonical_sha
+    assert packet.as_dict()["subject"]["failure_artifacts_sha"] == failure_sha
+    assert fresh_changed.audited_handoff["stage1"]["packet_fingerprint"] != envelope.audited_handoff["stage1"]["packet_fingerprint"]
+    authoring_ingress_module._validate_authoring_handoff(fresh_changed, repo)
     assert git(repo, "ls-remote", "--refs", "origin", result.canonical_destination).split()[0] == result.canonical_sha
 
     # Stale expected_failed_head_sha rejection
@@ -3362,6 +3372,16 @@ findings:
     issue: The reviewed sample needs correction.
     expected: Correct the sample.
 """
+    # Unified State reconstructs the predecessor through the canonical Reviewer
+    # decision ref, not the REVIEW copy in the remediation fixture commit.
+    execute_ingress(
+        IngressEnvelope(
+            "AIOS_INGRESS_ENVELOPE", 1, "SUBMIT_REVIEW",
+            {"run_id": source_run_id},
+            {"expected_candidate_sha": reviewed_sha}, review_source,
+        ),
+        repo=repo,
+    )
     review_dir = repo / ".ai" / "reviews"
     remediation_dir = repo / ".ai" / "remediations"
     review_dir.mkdir(parents=True, exist_ok=True)

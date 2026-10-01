@@ -13,7 +13,7 @@ import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -62,15 +62,9 @@ from .run import (
 from .task import Task, TaskValidationError, parse_task
 from .verification_contract import MINIMUM_SUFFICIENT_V1
 from .unified_state import observe_unified_state
-from .brain_sync import BrainSyncError, observe_brain_sync
-from .brain_context import compose_brain_work_context, resolve_flow
-from .decision_packet import DecisionPacket, compile_decision_packet
-from .brain_audit import parse_profile_registry, validate_stage2
-from .brain_return_contract import (
-    _normalize as normalize_return_value,
-    parse_return_contract_registry,
-    select_return_contract,
-)
+
+if TYPE_CHECKING:
+    from .decision_packet import DecisionPacket
 
 
 class AuthoringIngressError(ValueError):
@@ -1429,6 +1423,8 @@ def _canonical_repair_supersession(observed: Mapping[str, Any]) -> dict[str, Any
     BP-3 uses this same canonical reconstruction as ingress. No handoff or
     Human text can supply the prior strategy or the failed subject identity.
     """
+    from .brain_sync import observe_brain_sync
+
     unified, selected = observed.get("unified_state"), observed.get("selected_task")
     if (observed.get("next_action") != "EXECUTE_REPAIR"
             or observed.get("selection_status") != "SELECTED"
@@ -1494,6 +1490,12 @@ def _compose_authoring_packet(
     envelope: IngressEnvelope, repo: Path
 ) -> tuple[DecisionPacket, dict[str, Any], dict[str, Any], _AuthoringRefs]:
     """Deterministic ingress glue over existing projection/compiler owners."""
+    from .brain_sync import observe_brain_sync
+    from .brain_context import compose_brain_work_context, resolve_flow
+    from .decision_packet import compile_decision_packet
+    from .brain_audit import parse_profile_registry
+    from .brain_return_contract import parse_return_contract_registry, select_return_contract
+
     remote, refs = _authoring_refs(repo)
     main_sha = refs["refs/heads/main"]
     _prove_authoring_inputs(repo, main_sha, remote)
@@ -1502,7 +1504,15 @@ def _compose_authoring_packet(
         raise AuthoringIngressError("Brain Sync canonical main moved during authoring")
     flow = _AUTHORING_FLOWS[envelope.operation]
     request = {"flow_selector": flow} if envelope.operation == "AUTHOR_TASK" else None
-    if envelope.operation == "AUTHOR_REPAIR" and snapshot.next_action == "EXECUTE_REPAIR":
+    unified = snapshot.unified_state
+    if (envelope.operation == "AUTHOR_REPAIR"
+            and snapshot.next_action == "EXECUTE_REPAIR"
+            and unified is not None
+            and unified.get("failed_run_id") == envelope.identity["failed_run_id"]
+            and refs.get(f"refs/heads/aios/repair/{envelope.identity['failed_run_id']}") is not None):
+        # EXECUTE_REPAIR alone does not identify supersession. The explicit
+        # side-flow reconstructs this exact RUN's current unexecuted authority
+        # and then checks the envelope's predecessor and FAILURE CAS bindings.
         request = {"flow_selector": "REPAIR_AUTHORING"}
     context = compose_brain_work_context(snapshot, current_request=request)
     resolution = resolve_flow(context)
@@ -1579,6 +1589,8 @@ def _compose_authoring_packet(
 
 
 def _authoring_family_body(operation: str, value: Any, packet: DecisionPacket, repo: Path) -> Any:
+    from .brain_return_contract import _normalize as normalize_return_value
+
     # Strict Brain representation plus family normalization; no new normalizer.
     if isinstance(value, str):
         value = yaml.safe_load(value)
@@ -1600,6 +1612,9 @@ def _authoring_family_body(operation: str, value: Any, packet: DecisionPacket, r
 
 
 def _validate_authoring_handoff(envelope: IngressEnvelope, repo: Path) -> _AuthoringBinding:
+    from .brain_sync import BrainSyncError
+    from .brain_audit import validate_stage2
+
     if envelope.audited_handoff is None:
         raise AuthoringIngressError("new authoring mutation requires audited_handoff")
     try:
@@ -1618,6 +1633,8 @@ def _validate_authoring_handoff(envelope: IngressEnvelope, repo: Path) -> _Autho
 
 
 def _recheck_authoring_binding(envelope: IngressEnvelope, repo: Path, binding: _AuthoringBinding) -> None:
+    from .brain_sync import BrainSyncError
+
     try:
         packet, _, contract, refs = _compose_authoring_packet(envelope, repo)
         if (packet.packet_fingerprint, contract["return_contract_ref"], refs) != binding:
