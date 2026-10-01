@@ -257,7 +257,7 @@ def test_explicit_repair_rejects_changed_canonical_authority_before_material_com
     monkeypatch.setattr(ingress, "_authoring_refs", lambda repo: ("origin", refs))
     monkeypatch.setattr(ingress, "_prove_authoring_inputs", lambda *args: None)
     fresh = replace(source, next_action="WAIT") if fault == "lifecycle" else source
-    monkeypatch.setattr(ingress, "observe_brain_sync", lambda **kwargs: fresh)
+    monkeypatch.setattr("aios_renew.brain_sync.observe_brain_sync", lambda **kwargs: fresh)
 
     def authorization(*args, **kwargs):
         if fault == "competing":
