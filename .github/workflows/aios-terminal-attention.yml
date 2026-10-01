@@ -25,6 +25,7 @@ on:
 permissions:
   contents: read
   issues: write
+  actions: write
 
 concurrency:
   group: aios-terminal-attention-${{ github.repository }}
@@ -66,6 +67,32 @@ jobs:
           --repo .
           --remote origin
           --output "$GITHUB_OUTPUT"
+
+      - name: Dispatch bounded local doorbell after successful admission
+        if: success() && steps.admission.outcome == 'success' && vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          AIOS_RUN_ID: ${{ steps.admission.outputs.run_id }}
+          AIOS_TERMINAL_KIND: ${{ steps.admission.outputs.terminal_kind }}
+          AIOS_ARTIFACT_SHA: ${{ steps.admission.outputs.artifact_sha }}
+        with:
+          script: |
+            if (context.repo.owner !== 'trung-via' || context.repo.repo !== 'AIOS-renew') {
+              throw new Error('Unexpected repository identity');
+            }
+            const run = process.env.AIOS_RUN_ID;
+            const kind = process.env.AIOS_TERMINAL_KIND;
+            const sha = process.env.AIOS_ARTIFACT_SHA;
+            if (!/^RUN-[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(run) ||
+                !/^(RESULT|FAILURE)$/.test(kind) || !/^[0-9a-f]{40}$/.test(sha)) {
+              throw new Error('Invalid admitted doorbell selectors');
+            }
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner, repo: context.repo.repo,
+              workflow_id: 'aios-local-chat-wake.yml', ref: 'main',
+              inputs: {event_id: `terminal:${kind}:${run}:${sha}`, repository: 'trung-via/AIOS-renew'},
+            });
 
       - name: Create or reuse the strict Brain-attention Issue
         id: notify

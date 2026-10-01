@@ -1,0 +1,56 @@
+name: AIOS local regular chat wake transport
+
+on:
+  workflow_dispatch:
+    inputs:
+      event_id:
+        description: "Bounded admitted terminal doorbell identity"
+        required: true
+        type: string
+      repository:
+        description: "Fixed repository identity"
+        required: true
+        type: choice
+        options:
+          - trung-via/AIOS-renew
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aios-local-chat-wake
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    # Human-controlled operational gate; absent/false does no local work.
+    if: >-
+      vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true' &&
+      github.repository == 'trung-via/AIOS-renew' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.repository == 'trung-via/AIOS-renew'
+    runs-on: [self-hosted, windows, x64, aios-renew]
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact published transport source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install attach-only transport dependency
+        shell: powershell
+        run: python -m pip install --disable-pip-version-check '.[local-chat-wake]'
+      - name: Deliver bounded local doorbell
+        # AIOS_LOCAL_CHAT_WAKE_CONFIG is inherited from the runner machine.
+        # Chat binding, endpoint and persistent state are never GitHub inputs.
+        env:
+          AIOS_WAKE_EVENT_ID: ${{ inputs.event_id }}
+          AIOS_WAKE_REPOSITORY: ${{ inputs.repository }}
+        shell: powershell
+        run: |
+          python -m aios_renew.local_chat_wake --event-id $env:AIOS_WAKE_EVENT_ID --repository $env:AIOS_WAKE_REPOSITORY
+          exit $LASTEXITCODE
