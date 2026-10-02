@@ -2928,6 +2928,37 @@ sequence:
           local_wake_workflow_after_publication: NOT_CREATED
           result: FAIL
           failure_class: PUBLICATION_SUCCESS_SOURCE_NOTIFICATION_GAP
+      additional_live_blocker:
+        code: DEFERRED_RECHECK_DRIVER_NOT_OBSERVED
+        authority: HUMAN_BRAIN_PLANNING
+        exact_observation: >-
+          After failed ingress Issue #1391, local wake workflow 37041668446 projected
+          the exact INGRESS_OR_CARRIER_REJECTION event and the self-hosted
+          deliver-projected job completed with status DEFERRED and reason
+          LANE_IN_FLIGHT. This is a valid pre-submit defer, not proof of Chat submission.
+          GitHub reports zero schedule-triggered runs for the local regular-chat wake
+          workflow, so the configured five-minute recheck driver has not been observed
+          in production and the deferred event received no autonomous recheck from that
+          mechanism.
+        contrast_proof:
+          submitted_probe_source_issue_number: 1389
+          submitted_probe_local_wake_workflow_run_id: 37039125505
+          submitted_probe_receipt_status: SUBMITTED
+          submitted_probe_receipt_reason: EXACT_USER_TURN_PROVEN
+          deferred_source_issue_number: 1391
+          deferred_local_wake_workflow_run_id: 37041668446
+          deferred_receipt_status: DEFERRED
+          deferred_receipt_reason: LANE_IN_FLIGHT
+          schedule_triggered_local_wake_runs_observed: 0
+        interpretation: >-
+          The green GitHub workflow conclusion is expected for DEFERRED because the
+          transport treats durable admission/defer as a successful workflow operation;
+          it must not be interpreted as proof that a user turn was sent. The missing
+          autonomous recheck is the actual live gap. Because Human/Brain subsequently
+          canonicalized TASK-280, a later fresh recheck may legitimately resolve this
+          exact rejected-authoring attention as superseded rather than submit it.
+        disposition: NEW_REVIEWED_IMPLEMENTATION_CHANGE_REQUIRED
+        task_binding: UNBOUND
       live_blocker:
         code: PUBLICATION_SUCCESS_SOURCE_NOTIFICATION_GAP
         authority: HUMAN_BRAIN_PLANNING
