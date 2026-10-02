@@ -1404,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_BOUNDED_RECOVERY_353_AUTHORIZED
+      status: HUMAN_REVALIDATION_REQUIRED_AFTER_BROWSER_RESTART
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1818,6 +1818,28 @@ sequence:
         h4a3_proof_effect: READINESS_ONLY
         consumes_authority_on_success: true
         next_boundary: HUMAN_EXECUTE_BOUNDED_RECOVERY_353
+      browser_restart_observation:
+        source: HUMAN_SCREENSHOT_PLUS_LOCAL_CDP_VERSION
+        observed_on: "2026-10-02"
+        cdp_9222_restored: true
+        exact_bound_chat_visually_open: true
+        composer_visually_empty_after_restart: true
+        previously_visible_run_275_unsent_draft_no_longer_present: true
+        prior_recovery_353_authority_consumed: false
+        interpretation: >-
+          Closing and reopening the Chrome CDP carrier changed the browser-local
+          composer surface before the authorized #353 recovery executed. The exact
+          RUN-275 unsent draft that was a required recovery precondition is no longer
+          visually present. Therefore the previously authorized mutation must not run:
+          its COMPOSER_EQUALS_EXACT_RUN_275_DOORBELL precondition is false. The local
+          operational state must be revalidated read-only before any state-only cleanup
+          can be separately authorized.
+        governance_constraint: >-
+          Do not run the previously issued recovery353 mutation script, do not click
+          Send, do not replay RUN-275 or RUN-268, and do not remove either ATTEMPTING
+          entry until the current external state and absence of exact outbound user turns
+          are re-proven after browser restart.
+        next_boundary: HUMAN_READ_ONLY_REVALIDATION_AFTER_BROWSER_RESTART
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
