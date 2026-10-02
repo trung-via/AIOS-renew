@@ -2671,19 +2671,29 @@ sequence:
       - REGRESSION_MUST_COVER_TERMINAL_NEWLINE_AND_NON_NORMALIZED_METADATA_BYTES
       - NO_AUTOMATIC_ROADMAP_ADVANCE
     selected_contract: H1R_EXACT_REVIEW_BLOB_BYTES_V1
+    authored_commit_sha: "217d34b10d83066c66b8ab35e8e558bc03940f17"
+    task_blob_sha: "c1a7879899079d60f150b339711c96750477ef2f"
     task_authoring_audit:
-      status: AUDITED_CANDIDATE_PENDING_INGRESS
+      status: CANONICALIZED
       profile: brain-high-value-v3
       stage1: CONSTRUCT
       stage1_outcome: RISK_FOUND
       stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
       closure: CLEAR
       outcome: CANDIDATE
-      packet_fingerprint: "05d464c0a49eb495912348a4e9c6a056de574d8360fbbdaf2e1e622bc348e5b6"
-      construct_fingerprint: "921bdf00aeca2322e40ea323841e6d553d1d5d63be046a04e31ce8bf873eba61"
+      packet_fingerprint: "7dc4f6e844d5de02a68abe36a7e6ce55882286cdb6e4549e19646e62f4897800"
+      construct_fingerprint: "44bd3e0b0f5bd552aeef98a08bb55387118af79e229ff17b2851488bbbf4b4b6"
       reconciled_candidate_fingerprint: "8623d98968124d2f40f3fb2b1f3cbbd30e2286e009482d76d80766fbb278472c"
-      stage2_fingerprint: "d19fbc4495abb0a73d035eeb526be2bc62ee3a0f0fa00234d904698db22aa70c"
+      stage2_fingerprint: "53b4db91c2356d9f303b5d03099e27102397811306013e50dfe35e2fbbb55663"
       acceptance_phase_ledger: ALL_CLAIM_NOW
+      ingress_issue: 1366
+      ingress_workflow_run_id: 37005254111
+      superseded_failed_ingress:
+        issue: 1365
+        workflow_run_id: 37004280240
+        reason: STALE_STAGE1_PACKET_BINDING_AFTER_ROADMAP_AUDIT_MUTATION
+        run_created: false
+        executor_invoked: false
       reconciled_risks:
         - DO_NOT_WEAKEN_METADATA_BYTE_EQUALITY
         - FIX_H1R_READ_BOUNDARY_NOT_GLOBAL_PUBLICATION_SEMANTICS
@@ -2692,7 +2702,7 @@ sequence:
         - KEEP_ACCEPTANCE_CLAIMABLE_BEFORE_FUTURE_TASK269_RETRY
         - PRESERVE_HOST_PORTABILITY_AND_EXACT_BYTES
         - DO_NOT_DUPLICATE_METADATA_VALIDATION_AUTHORITY
-    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+    execution_profile_status: AWAITING_HUMAN_SELECTION
     sequencing:
       - AFTER_H4A3_LIVE_PROOF
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
