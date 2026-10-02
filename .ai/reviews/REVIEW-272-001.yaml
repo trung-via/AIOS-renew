@@ -1,0 +1,20 @@
+review_id: REVIEW-272-001
+reviewed_sha: 3388903579278081774e8ae5b980e4aa41ddc6c1
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+  - RUN-272-001 is the canonical PRIMARY RESULT for TASK-272 r1 with exact candidate 3388903579278081774e8ae5b980e4aa41ddc6c1, unresolved empty, and explicit Codex gpt-6.1-sol high execution profile.
+  - Runtime verification passed both required commands: python -m pytest -q tests/test_local_chat_wake.py with 229 passed and 52 skipped, and git diff --check.
+  - The candidate is exactly one commit ahead of the execution base f268a0e6f5b28566e7fa8e636b70efe1ae0fdc87 and changes only src/aios_renew/local_chat_wake.py and tests/test_local_chat_wake.py.
+  - ACCOUNT preserves both legacy data-testid selectors and adds only the bounded visible button aria-label profile fallback; COMPOSER preserves the legacy prompt-textarea selector and adds only the bounded main-form contenteditable role=textbox aria-multiline=true fallback.
+  - CSS selector unions preserve single DOM identity when legacy and fallback branches overlap, while zero or multiple visible account/composer candidates remain fail-closed. INSERT now also rechecks exactly-one composer after focus before mutation.
+  - Existing exact-URL, attach-only, login/nonregular, generation, draft, outbound-user-turn, dedupe, SEND and STOP behavior remains unchanged, and new fixtures are synthetic.
+  - The terminal-attention local-chat-wake attempt for RUN-272-001 returned BLOCKED SURFACE_UNPROVEN because the terminal carrier used the already-published transport source at f268a0e6f5b28566e7fa8e636b70efe1ae0fdc87 rather than the not-yet-published TASK-272 candidate. That operational outcome is not Runtime verification or semantic evidence for TASK-272 and does not establish or refute post-publication H4A3 live conformance.
