@@ -567,7 +567,11 @@ sequence:
         repository: trung-via/AIOS-renew
         expected_attached_branch: main
         expected_local_head: "31eb283ad8eb07695f26e940509696c38e62b3a4"
-        expected_canonical_main: "e732266afbc9a4306c3736b2e3914f71414dd152"
+        pre_exception_reset_anchor: "e732266afbc9a4306c3736b2e3914f71414dd152"
+        execution_target_rule: >-
+          The exact remote main SHA is bound only at Human execution time after this
+          planning exception is canonical. That bound SHA must be a descendant of the
+          pre-exception reset anchor and must contain this exception unchanged.
         common_base_sha: "0d688c4c310abc0e1dd7d736b143203118245f50"
         local_only_commit_count: 1
         preserved_run_id: RUN-268-001
@@ -586,19 +590,24 @@ sequence:
         - HEAD_ATTACHED_TO_MAIN
         - UNIQUE_CONFIGURED_UPSTREAM_MAIN
         - LOCAL_HEAD_EQUALS_EXACT_REVIEWED_CANDIDATE
-        - REMOTE_MAIN_EQUALS_EXACT_CANONICAL_TARGET
+        - REMOTE_MAIN_EXACT_SHA_BOUND_AT_EXECUTION
+        - BOUND_REMOTE_MAIN_DESCENDS_FROM_PRE_EXCEPTION_RESET_ANCHOR
+        - BOUND_REMOTE_MAIN_CONTAINS_THIS_CANONICAL_EXCEPTION
         - EXACT_REVIEW_CANDIDATE_ARTIFACTS_AND_DECISION_REFS_MATCH
         - REVIEW_DECISION_BINDS_REVIEWED_SHA_AND_PASS
         - ALL_LOCAL_ONLY_COMMITS_REACHABLE_FROM_EXACT_REVIEWED_CANDIDATE
         - NO_RUN269_RESULT269_FAILURE269_OR_REVIEW269_EXISTS
       authorized_mutation: >-
-        Human may perform one exact local control reset of attached clean main from
-        31eb283ad8eb07695f26e940509696c38e62b3a4 to
-        e732266afbc9a4306c3736b2e3914f71414dd152 after all preconditions are freshly
-        revalidated. This is operational control recovery only; it creates no TASK, RUN,
-        FAILURE, RESULT, REVIEW, publication or roadmap lifecycle truth.
+        Human may perform one exact two-step local control recovery after all preconditions
+        are freshly revalidated: first reset attached clean main from
+        31eb283ad8eb07695f26e940509696c38e62b3a4 to the pre-exception anchor
+        e732266afbc9a4306c3736b2e3914f71414dd152, then fast-forward only to the exact
+        remote-main SHA freshly bound at execution time. No merge, rebase, cherry-pick,
+        force push or non-fast-forward mutation is authorized. This is operational
+        control recovery only; it creates no TASK, RUN, FAILURE, RESULT, REVIEW,
+        publication or roadmap lifecycle truth.
       required_postconditions:
-        - LOCAL_HEAD_EQUALS_EXACT_CANONICAL_MAIN
+        - LOCAL_HEAD_EQUALS_EXACT_EXECUTION_BOUND_REMOTE_MAIN
         - LOCAL_WORKTREE_AND_INDEX_COMPLETELY_CLEAN
         - UPSTREAM_BINDING_UNCHANGED
         - RUN268_REVIEW_ARTIFACT_AND_DECISION_REFS_UNCHANGED
