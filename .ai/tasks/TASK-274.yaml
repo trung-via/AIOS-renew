@@ -1,0 +1,123 @@
+task_id: TASK-274
+revision: 1
+goal: Restore H4A3 exact-terminal local-chat wake delivery by making the regular-chat
+  composer insertion and pre-send proof compatible with the observed live application-managed
+  contenteditable surface while preserving exact payload identity, Human interaction
+  safety, fail-closed ambiguity handling, and ACK-only authority.
+problem: The exact RUN-268-001 wake replay passed terminal-attention admission and
+  reached the bound regular Project chat, but local-chat-wake returned INSERT_BLOCKED.
+  Privacy-safe diagnostics prove the exact doorbell was inserted into the live composer
+  DOM and persisted under local ATTEMPTING state without being sent. The live DOM
+  renders logical lines with block-separated text semantics and no visible Send control
+  appeared after the direct DOM insertion, so the current exact innerText postcondition
+  and DOM-only insertion path do not together prove application-level composer acceptance.
+assumptions:
+- Canonical roadmap state records workflow run 36963244174 attempt 2 as terminal-attention
+  PASS and local wake BLOCKED with INSERT_BLOCKED for the exact RUN-268-001 RESULT
+  identity.
+- The local operational event is ATTEMPTING with no lock or pending write, the exact
+  bound page remains uniquely identifiable, and privacy-safe diagnostics prove the
+  unsent composer content is canonically equivalent to the fixed doorbell without
+  exporting conversation text.
+- The failed attempt did not click Send and did not create a matching outbound user
+  turn; H4A3 therefore remains open and the exact source is not consumed.
+- Normal local-chat-wake delivery must continue to refuse any pre-existing ATTEMPTING
+  event unless a separately bounded Human recovery procedure has reconciled the exact
+  known unsent attempt.
+- The future H4A3 replay and duplicate NOOP proof remain post-publication Human/Brain
+  planning operations, not TASK-274 execution or acceptance facts.
+scope:
+  inspect:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - .ai/roadmap-state.yaml
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+non_goals:
+- Perform, simulate as evidence, or claim the live H4A3 replay, exact user-turn proof,
+  duplicate NOOP proof, roadmap closure, TASK-270 continuation, or H4A4/H4A5/H4B advancement.
+- Change terminal-attention admission, workflows, repository enable gates, exact chat
+  binding ownership, canonical lifecycle state, Runtime verification authority, Reviewer
+  authority, or Publisher authority.
+- Read, parse, store, export, or use assistant output, conversation history, credentials,
+  cookies, browser profile data, private chat identifiers, or raw live page contents
+  as engineering truth.
+- Automatically resend, automatically clear an ATTEMPTING event, automatically erase
+  a composer draft, or infer that an ambiguous prior attempt is safe from absence
+  of a later user turn alone.
+- Introduce a second transport, generic browser navigation, generic DOM heuristics,
+  or unbounded whitespace normalization.
+- Implement generalized deferred wake recovery, ambiguity reconciliation, multi-project
+  lane isolation, queue compaction or any other H4A4 behavior.
+constraints:
+  hard:
+  - 'The insertion path must be application-compatible: after insertion the implementation
+    must prove the exact bound page and guarded regular-chat surface still hold and
+    that the application exposes exactly one visible enabled Send control before any
+    click can occur.'
+  - Canonical-equivalent composer proof must preserve the exact doorbell characters,
+    logical line contents and logical line order. It may accept only the exact logical
+    text itself or a representation whose additional or omitted separators are deterministically
+    attributable one-for-one to DOM block boundaries corresponding to those same logical
+    line boundaries; generic trim, split, arbitrary repeated-newline collapse, whitespace
+    collapse, case folding, substring or fuzzy matching is forbidden.
+  - The same exact canonical-equivalence contract must protect the post-insert boundary
+    and the pre-send click boundary so a representation accepted for insertion cannot
+    be widened or substituted before click.
+  - Existing exact-chat uniqueness, authenticated-account, login/nonregular, active-generation,
+    empty-draft, focus-race, Human-edit, send-ambiguity, outbound-turn, dedupe and
+    privacy guards must remain fail closed.
+  - Normal deliver() handling of ATTEMPTING must remain ATTEMPT_REQUIRES_HUMAN; TASK-274
+    must not make ordinary delivery reset or retry an ambiguous attempt.
+  - The H4A3 conformance document must define a bounded Human-only recovery procedure
+    for this exact RUN-268-001 INSERT_BLOCKED attempt. The procedure must require
+    the canonical observation that the failure occurred before Send click, exact ATTEMPTING
+    identity, exact bound-page uniqueness, exact unsent-doorbell equivalence, absence
+    of a matching outbound user turn, and no lock/pending-write ambiguity before Human
+    removal of only this exact draft/event is permitted; it must explicitly deny reuse
+    for any other ATTEMPTING state.
+  - No file outside scope.modify may change. Executor must not push, publish, mutate
+    roadmap state, clear the live Human draft/state, or perform a live ChatGPT submission.
+acceptance:
+- id: AC1
+  condition: Local-chat-wake has a bounded application-compatible insertion behavior
+    for the fixed doorbell such that synthetic application-state coverage demonstrates
+    the application-visible composer state is activated rather than treating raw DOM
+    text mutation alone as insertion success.
+- id: AC2
+  condition: The composer text-equivalence contract accepts only the exact logical
+    doorbell or the explicitly bounded DOM-block-separator equivalent of the same
+    logical line boundaries and rejects missing, extra, reordered, case-changed, generically
+    trimmed/collapsed or otherwise substituted payloads.
+- id: AC3
+  condition: Submission cannot click unless the exact target and surface remain valid,
+    the post-insert payload satisfies the same exact equivalence contract, and exactly
+    one visible enabled Send control is present; zero, multiple or disabled Send controls
+    fail closed without click.
+- id: AC4
+  condition: Existing pre-insert empty-draft and focus/Human-edit race protection
+    remains effective, and synthetic regression coverage shows Human text is never
+    cleared or overwritten by the insertion correction.
+- id: AC5
+  condition: Normal delivery continues to block ATTEMPTING events without retry, and
+    the H4A3 conformance document defines a one-attempt Human recovery procedure whose
+    preconditions bind the exact RUN-268-001 pre-click INSERT_BLOCKED lineage and
+    cannot authorize any other ATTEMPTING event.
+- id: AC6
+  condition: Regression fixtures are synthetic and contain no private live chat/session
+    data or assistant output, while preserving the existing exact-chat, authentication,
+    generation, dedupe and privacy boundaries.
+- id: AC7
+  condition: The candidate changes only src/aios_renew/local_chat_wake.py, tests/test_local_chat_wake.py
+    and docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md, and introduces no workflow,
+    terminal-attention, Runtime, Reviewer, Publisher, roadmap-advancement, retry/failover
+    or H4A4 behavior.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py
+  - git diff --check
