@@ -1129,7 +1129,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_ATTEMPT_RECONCILIATION_REQUIRED
+      status: ENGINEERING_INSERTION_PROOF_DEFECT_CONFIRMED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1200,6 +1200,71 @@ sequence:
           content, but exact payload identity has not yet been proven because the diagnostic
           intentionally did not read or export composer text.
         next_boundary: HUMAN_PRIVACY_SAFE_PAYLOAD_AND_ATTEMPT_STATE_RECONCILIATION
+      payload_and_attempt_reconciliation:
+        source: HUMAN_LOCAL_PRIVACY_SAFE_DIAGNOSTIC
+        observed_on: "2026-10-02"
+        local_event_state: ATTEMPTING
+        state_lock_present: false
+        state_pending_present: false
+        target_ok: true
+        composer_count: 1
+        text_content_length: 163
+        inner_text_length: 169
+        text_content_matches_expected_without_breaks: true
+        normalized_inner_text_matches_expected: true
+        send_visible_count: 0
+        send_enabled: null
+        wake_submitted: false
+        semantic_effect: NONE
+        h4a3_proof_effect: NONE
+        root_cause_conclusion: >-
+          The exact H4A3 doorbell was inserted into the live composer but was not sent.
+          The adapter persisted ATTEMPTING before insertion, then its post-insert exact
+          innerText check rejected the browser's block-separated rendering. The expected
+          doorbell is 166 characters with three logical line breaks; the observed
+          textContent is the exact 163-character concatenation without those breaks and
+          the observed innerText is 169 characters, consistent with one extra rendered
+          separator per logical break. The privacy-safe diagnostic also proves exact
+          normalized payload equivalence without exporting composer contents.
+        defect_boundary:
+          - LOCAL_CHAT_WAKE_INSERT_POSTCONDITION
+          - LOCAL_CHAT_WAKE_PRE_SEND_TEXT_EQUIVALENCE
+        ruled_out:
+          - TARGET_PAGE_IDENTITY_FAILURE
+          - ACCOUNT_OR_COMPOSER_AMBIGUITY
+          - ACTIVE_GENERATION
+          - INSERTTEXT_CAPABILITY_UNAVAILABLE
+          - HUMAN_DRAFT_PREEXISTING_BEFORE_ATTEMPT
+          - SEND_CLICK_OR_USER_TURN_CREATED
+        local_recovery_requirement: >-
+          The current ATTEMPTING state and exact unsent doorbell draft must remain
+          fail-closed until a reviewed correction defines and verifies a bounded Human
+          recovery procedure. Do not delete state or draft ad hoc and do not replay the
+          terminal again yet.
+        proposed_correction:
+          proposed_task_id: TASK-274
+          status: HUMAN_APPROVAL_REQUIRED
+          objective: >-
+            Make local-chat-wake insertion and pre-send proof accept only exact
+            canonical-equivalent live composer representations of the fixed doorbell,
+            including block-separated contenteditable rendering, while preserving
+            exact payload identity, Human-draft protection, fail-closed ATTEMPTING
+            recovery, no-send-on-ambiguity, and all H4A3 ACK-only boundaries.
+          brain_audit:
+            profile: brain-high-value-v3
+            stage1: CONSTRUCT
+            stage1_outcome: RISK_FOUND
+            stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+            closure: CLEAR
+            outcome: PROPOSAL_PENDING_HUMAN_APPROVAL
+            reconciled_risks:
+              - DO_NOT_USE_GENERIC_WHITESPACE_NORMALIZATION
+              - REQUIRE_EXACT_LINE_CONTENT_AND_ORDER_WITH_BOUNDED_RENDER_SEPARATOR_EQUIVALENCE
+              - APPLY_THE_SAME_EQUIVALENCE_AT_INSERT_AND_PRE_SEND_GATES
+              - PRESERVE_HUMAN_DRAFT_AND_FOCUS_RACE_FAIL_CLOSED_BEHAVIOR
+              - DO_NOT_AUTO_CLEAR_ATTEMPTING_OR_COMPOSER_DRAFT
+              - H4A3_LIVE_REPLAY_REMAINS_POST_PUBLICATION_HUMAN_BRAIN_OPERATION
+        next_boundary: HUMAN_APPROVAL_REQUIRED_FOR_TASK_274
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
