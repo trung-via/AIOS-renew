@@ -1129,7 +1129,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: READY_FOR_EXACT_TERMINAL_REPLAY
+      status: HUMAN_INSERT_DIAGNOSTIC_REQUIRED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1139,6 +1139,28 @@ sequence:
         state_mutated: false
         semantic_effect: NONE
         h4a3_proof_effect: READINESS_ONLY
+      exact_terminal_replay_attempt_2:
+        workflow_run_id: 36963244174
+        workflow_run_number: 348
+        workflow_attempt: 2
+        requested_run_id: RUN-268-001
+        requested_terminal_kind: RESULT
+        requested_artifact_sha: "1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        transport_checkout_sha: "dc435f7d799ba8208869afcef3b54fedc712adc3"
+        terminal_attention_admission: PASS
+        local_wake_status: BLOCKED
+        local_wake_reason: INSERT_BLOCKED
+        wake_submitted: false
+        exact_h4a3_source_consumed: false
+        semantic_effect: NONE
+        h4a3_proof_effect: NONE
+        interpretation: >-
+          The exact target page was unique before replay and terminal attention
+          admitted the exact RUN-268-001 RESULT. The local adapter reached its
+          insertion boundary but could not prove a safe insertion. INSERT_BLOCKED
+          is intentionally non-specific and does not by itself distinguish a
+          transient Human/UI race from a live composer insertion incompatibility.
+        next_boundary: HUMAN_READ_ONLY_INSERT_DIAGNOSTIC
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
