@@ -1535,7 +1535,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: TASK_276_REVIEWED_PUBLISHED_POST_SEND_RECONCILIATION_READY
+      status: POST_SEND_RECONCILED_DUPLICATE_NOOP_PENDING
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -2235,6 +2235,34 @@ sequence:
         publication_workflow_run_id: 36993428945
         status: REVIEWED_PUBLISHED
         next_boundary: HUMAN_ONLY_WORKFLOW_354_POST_SEND_RECONCILIATION
+      workflow_354_post_send_reconciliation_result:
+        source: HUMAN_LOCAL_BOUNDED_RECONCILIATION
+        observed_on: "2026-10-02"
+        workflow_run_id: 36984172510
+        workflow_attempt: 1
+        exact_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        event_state_before: ATTEMPTING
+        event_state_after: SUBMITTED
+        bounded_user_turn_result: EXACT
+        composer_empty: true
+        prove_send: true
+        target_page_unique: true
+        other_events_preserved: true
+        send_clicked_by_reconciliation: false
+        replay_performed: false
+        assistant_output_read: false
+        reconciliation: PASS
+        semantic_effect: NONE
+        h4a3_proof_effect: POST_SEND_STATE_RECONCILED
+        interpretation: >-
+          Under the reviewed TASK-276 section 4.2 exception, the Human re-proved the exact
+          bound page, empty composer, one exact bounded outbound user turn and the scoped
+          post-send control condition, then changed only the exact RUN-268 operational
+          event from ATTEMPTING to SUBMITTED. No Send click, replay, assistant-output read,
+          canonical lifecycle mutation or other-event mutation occurred. This records a
+          later Human operational reconciliation and does not rewrite workflow #354's
+          historical BLOCKED / LOCAL_FAILURE receipt.
+        next_boundary: DUPLICATE_EXACT_TERMINAL_DELIVERY_NOOP_OBSERVATION
 
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
