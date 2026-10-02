@@ -933,10 +933,28 @@ sequence:
     verification_intent:
       - python -m pytest -q tests/test_local_chat_wake.py
       - git diff --check
+    authored_commit_sha: "4ec40b8b1ece448f8d25751031b5b51c12d6856b"
+    task_blob_sha: "febe138c530ea8dad39df16e6aae558eec69ba14"
     task_authoring_audit:
-      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
-      required_profile: brain-high-value-v3
-    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "5d363759a1786705b28eecda148916e828e253080f3ebb820d228acbdb662570"
+      construct_fingerprint: "4241a60f094097b3cf6616ed74c11191e3fb2f8f19ae371092f822ef5ceb8556"
+      reconciled_candidate_fingerprint: "ce87d8607bfecb331c0d5add21faf51c49c3459c56548df25e8251a8e7862650"
+      acceptance_phase_ledger: ALL_CLAIM_NOW
+      ingress_issue: 1337
+      ingress_workflow_run_id: 36959754603
+      reconciled_risks:
+        - DO_NOT_WEAKEN_AUTHENTICATED_ACCOUNT_PROOF
+        - COMPOSER_FALLBACK_REMAINS_MAIN_FORM_SCOPED_AND_EXACTLY_ONE
+        - PRESERVE_LEGACY_SELECTOR_COMPATIBILITY_WITHOUT_DUPLICATE_LOGICAL_MATCH
+        - SEND_AND_STOP_FROZEN_ABSENT_POST_INSERT_DEFECT_EVIDENCE
+        - SYNTHETIC_FIXTURES_ONLY_NO_PRIVATE_LIVE_IDENTIFIERS
+    execution_profile_status: HUMAN_SELECTION_REQUIRED
     sequencing:
       - AFTER_TASK_271_PROJECT_SCOPED_EXACT_CHAT_ROUTE_FIX
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
