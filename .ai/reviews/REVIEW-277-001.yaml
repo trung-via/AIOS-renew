@@ -1,0 +1,36 @@
+review_id: REVIEW-277-001
+reviewed_sha: adcc7ed64ca8798ff5280be1af7d6c2ab67eb67c
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-277-001 is the canonical PRIMARY RESULT for TASK-277 r1 with artifact 4443611f6fa09bb240e05b7554fcefdf85ea1b86,
+  candidate adcc7ed64ca8798ff5280be1af7d6c2ab67eb67c, unresolved empty, and git diff
+  --check verification PASS.
+- The candidate changes exactly docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+  and introduces no production transport, workflow, test, Runtime, Reviewer, Publisher,
+  machine-local-state or roadmap mutation.
+- The normal H4A3 positive path remains unchanged and still requires a genuine SUBMITTED
+  / EXACT_USER_TURN_PROVEN receipt for ordinary cases.
+- Section 4.3 adds exactly one evidence-equivalent alternative bound only to workflow
+  36984172510 attempt 1 and terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253.
+  It preserves BLOCKED / LOCAL_FAILURE as immutable historical receipt and explicitly
+  forbids fabricating historical success.
+- 'The alternative requires the complete seven-fact chain: exact admission PASS; recorded
+  pre-proof Send; preserved historical failure receipt; reviewed TASK-276 bounded
+  exact-turn proof; safeguarded Human reconciliation; duplicate NOOP / ALREADY_SUBMITTED;
+  and post-duplicate EXACT one-turn proof with unique target and empty composer.'
+- Partial evidence, current SUBMITTED state alone, visual-only observation, screenshots,
+  assistant output, page-global text, duplicate receipt alone, unrelated events or
+  other weak substitutions are explicitly rejected.
+- The document keeps ACK-only, privacy, assistant-output exclusion, TASK-266 negative-case
+  reuse and separate-authorized-correction boundaries intact. Satisfying section 4.3
+  is Human/Brain planning-conformance evidence only, creates no Runtime EVIDENCE or
+  lifecycle success, and does not automatically close H4A3 or advance H4A4/H4A5/H4B.
