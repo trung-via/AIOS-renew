@@ -566,7 +566,28 @@ sequence:
       - NO_AUTOMATIC_TERMINAL_REPLAY_BEFORE_HUMAN_LOCAL_READINESS
       - NO_FAKE_RUN_OR_NEW_TERMINAL_FOR_H4A3_PROBE
       - NO_AUTOMATIC_ROADMAP_ADVANCE
-    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+    authored_commit_sha: "a65a443bdc22564a6c9b82084291ad4cf9698008"
+    task_blob_sha: "0fb3910e9f60384581aa31b159b0435e4334587b"
+    task_authoring_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "f997ac37b9c87210a7a794acc447bcb116aa37f85df026b06d260a21405b8737"
+      construct_fingerprint: "52cb8d552eab8c58582677f1bc36a9a4e8bae112053725e38b3da8c40651c010"
+      reconciled_candidate_fingerprint: "ec3106b43b8124b0c72ebc0133646ce62e795ec9bdce18ad12b4219f89ce6ae1"
+      acceptance_phase_ledger: ALL_CLAIM_NOW
+      ingress_issue: 1327
+      ingress_workflow_run_id: 36947958280
+      reconciled_risks:
+        - SUCCESSFUL_PRIMARY_DIVERGENCE_NOT_REPAIR_OR_REMEDIATION
+        - PRESERVE_CURRENT_MAIN_H4A4_H4A5_PLANNING
+        - HISTORICAL_SOURCE_NOT_CURRENT_PUBLICATION_AUTHORITY
+        - LIVE_REPLAY_REQUIRES_FRESH_TERMINAL_ADMISSION_AND_HUMAN_READINESS
+        - INTEGRATED_DOCUMENT_MUST_MATCH_CURRENT_H4A3_H4A4_H4A5_H4B_SEQUENCE
+    execution_profile_status: HUMAN_SELECTION_REQUIRED
     sequencing:
       - AFTER_TASK_268_REVIEW_PASS_AND_PUBLICATION_INTEGRATION_REQUIRED
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
