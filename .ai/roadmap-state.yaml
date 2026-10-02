@@ -1129,7 +1129,16 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_TARGET_PAGE_UNIQUENESS_REQUIRED
+      status: READY_FOR_EXACT_TERMINAL_REPLAY
+      target_page_uniqueness_observation:
+        source: HUMAN_LOCAL_READ_ONLY_CHECK
+        observed_on: "2026-10-02"
+        exact_target_page_count: 1
+        target_page_uniqueness: PASS
+        wake_submitted: false
+        state_mutated: false
+        semantic_effect: NONE
+        h4a3_proof_effect: READINESS_ONLY
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
@@ -1186,9 +1195,7 @@ sequence:
         wake_submitted: false
         semantic_effect: NONE
         h4a3_proof_effect: READINESS_BLOCKER_ONLY
-        human_action_required: >-
-          Keep exactly one browser page whose normalized URL equals the Human-owned
-          bound chat URL before replaying the exact RUN-268-001 terminal source.
+        human_action_required: RESOLVED_BY_HUMAN_TARGET_PAGE_UNIQUENESS_PASS
       prior_prepublication_surface_observation:
         source_run_id: RUN-272-001
         terminal_artifact_sha: "4ef03bc07cab5c9a062ab63fbdda0339030d737d"
