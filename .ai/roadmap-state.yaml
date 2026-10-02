@@ -1404,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: USER_TURN_PROOF_METADATA_DIAGNOSTIC_REQUIRED
+      status: OUTBOUND_USER_TURN_SELECTOR_DRIFT_CONFIRMED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -2018,6 +2018,53 @@ sequence:
           shape, not Send-control readiness.
         root_cause_status: STRONGLY_NARROWED_NOT_YET_PROVEN
         next_boundary: HUMAN_READ_ONLY_USER_TURN_METADATA_DIAGNOSTIC
+      user_turn_metadata_observation:
+        source: HUMAN_LOCAL_READ_ONLY_USER_TURN_METADATA
+        observed_on: "2026-10-02"
+        configured_user_turn_selector: "[data-message-author-role=\"user\"]"
+        configured_exact_locator_count: 0
+        configured_user_turn_count: 0
+        configured_user_turn_visible_count: 0
+        global_exact_locator_count: 1
+        event_containing_visible_count: 40
+        expected_length: 166
+        lenfish_event_candidate_count: 5
+        nearest_event_candidate:
+          tag: SPAN
+          data_message_author_role: null
+          data_testid: null
+          role: null
+          aria_label: null
+          text_length: 68
+          inner_length: 68
+          text_equals_expected: false
+          inner_equals_expected: false
+        nearest_candidate_ancestor_sample:
+          sampled_nodes: 5
+          data_message_author_role_present: false
+          data_testid_present: false
+          role_present: false
+          aria_label_present: false
+        interpretation: >-
+          The exact RUN-268 doorbell is discoverable exactly once by the page text
+          engine, but the transport's configured user-turn container selector resolves
+          zero elements. This confirms selector/structure drift at outbound user-turn
+          discovery after successful automatic Send. The nearest event-text node is only
+          a nested fragment and does not itself equal the full 166-character doorbell,
+          so replacing the configured selector with a page-global exact-text locator
+          would be unsafe and would not preserve the outbound-user-turn boundary.
+        root_cause_status: PROVEN_AT_CONFIGURED_USER_TURN_SELECTOR_BOUNDARY
+        remaining_unknown: >-
+          A stable bounded structural container for the current user turn has not yet
+          been identified. The sampled five ancestors expose none of the historical
+          author-role or obvious test/role/aria markers.
+        prohibitions:
+          - DO_NOT_REPLAY_RUN_268
+          - DO_NOT_CLEAR_RUN_268_ATTEMPTING_STATE
+          - DO_NOT_USE_PAGE_GLOBAL_EXACT_TEXT_AS_PRODUCTION_USER_TURN_PROOF
+          - DO_NOT_PARSE_OR_MATCH_ASSISTANT_OUTPUT
+          - DO_NOT_DELETE_THE_VISIBLE_USER_TURN
+        next_boundary: HUMAN_READ_ONLY_FULL_USER_TURN_CONTAINER_STRUCTURE_DIAGNOSTIC
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
