@@ -1451,10 +1451,31 @@ sequence:
     verification_intent:
       - python -m pytest -q tests/test_local_chat_wake.py
       - git diff --check
+    authored_commit_sha: "1fc45dd3bea93ba4d4785e42bf9843e29260fb82"
+    task_blob_sha: "f65c3802f47cbe6f26b277d3457bf153b226e0fc"
     task_authoring_audit:
-      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
-      required_profile: brain-high-value-v3
-    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "46d21484e3aaa488df837a1c20487c4d79e6c7db028e813b5225f44f167b85bf"
+      construct_fingerprint: "6fa1d23050d5f0c99f0c18862ae3b058c337d643381661ea8cf7e7bddc166ac4"
+      reconciled_candidate_fingerprint: "8d7438c7a07a0b042eefcf14aeb64e9f5c5d5e767b1db91e3939d76b79ddb4d8"
+      stage2_fingerprint: "54f7ea12d395b051cdc721785aa63caa6c386bbd987e43e8300d867a221600b2"
+      acceptance_phase_ledger: ALL_CLAIM_NOW
+      ingress_issue: 1354
+      ingress_workflow_run_id: 36989759253
+      reconciled_risks:
+        - PRESERVE_HUMAN_ONLY_POST_SEND_RECONCILIATION_AUTHORITY
+        - REQUIRE_UNIQUE_DATA_TURN_KEY_CONTAINMENT_FOR_CURRENT_BUBBLE_BRANCH
+        - PRESERVE_HISTORICAL_USER_ROLE_COMPATIBILITY_WITHOUT_BRANCH_AMBIGUITY
+        - SHARE_ONE_BOUNDED_RESOLVER_BETWEEN_DUPLICATE_CHECK_AND_POST_SEND_PROOF
+        - DO_NOT_CHANGE_TASK_274_INSERTION_OR_TASK_275_SEND_LOGIC
+        - KEEP_EXISTING_RUN_268_ATTEMPTING_AND_NEVER_BLINDLY_REPLAY
+        - SYNTHETIC_FIXTURES_ONLY_NO_PRIVATE_LIVE_CHAT_DATA
+    execution_profile_status: AWAITING_HUMAN_SELECTION
     sequencing:
       - AFTER_TASK_275_SEND_CONTROL_SELECTOR_COMPATIBILITY_FIX
       - AFTER_WORKFLOW_354_POST_SEND_SELECTOR_DRIFT_DIAGNOSIS
