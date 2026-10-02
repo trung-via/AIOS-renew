@@ -1535,7 +1535,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: DUPLICATE_NOOP_OBSERVED_FINAL_USER_TURN_COUNT_PENDING
+      status: FINAL_OPERATIONAL_PROOF_OBSERVED_SUBMITTED_RECEIPT_GAP_REMAINS
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -2286,6 +2286,38 @@ sequence:
           H4A3 still requires one final Human read-only observation that the bound chat
           continues to contain exactly one matching outbound user turn after this duplicate.
         next_boundary: HUMAN_READ_ONLY_POST_DUPLICATE_EXACT_USER_TURN_COUNT
+      post_duplicate_exact_user_turn_observation:
+        source: HUMAN_LOCAL_READ_ONLY_POST_DUPLICATE_PROBE
+        observed_on: "2026-10-02"
+        exact_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        target_page_unique: true
+        composer_count: 1
+        composer_empty: true
+        bounded_user_turn_result: EXACT
+        post_duplicate_exact_turn_proof: true
+        semantic_effect: NONE
+        h4a3_proof_effect: EXACTLY_ONE_MATCHING_USER_TURN_AFTER_DUPLICATE_PROVEN
+        interpretation: >-
+          The Human read-only post-duplicate probe confirms the exact bound page remains
+          unique, the composer remains empty, and the reviewed bounded resolver still
+          returns EXACT for the RUN-268 doorbell after duplicate delivery returned
+          NOOP / ALREADY_SUBMITTED. This proves the duplicate created no second matching
+          user turn.
+        conformance_assessment: >-
+          Three required live effects are now directly observed and the post-send state
+          is safely reconciled, but the published H4A3 contract still explicitly requires
+          a matching local status SUBMITTED / reason EXACT_USER_TURN_PROVEN receipt.
+          Workflow #354 attempt 1 historically returned BLOCKED / LOCAL_FAILURE, and
+          section 4.2 explicitly forbids rewriting or treating the later Human
+          reconciliation as that historical receipt. Therefore H4A3 must remain open
+          unless a separately authorized reviewed conformance-contract correction defines
+          an evidence-equivalent closure path without fabricating the historical receipt.
+        remaining_gap:
+          required_observation: LOCAL_WAKE_RECEIPT_SUBMITTED
+          historical_observation: BLOCKED_LOCAL_FAILURE
+          reconciliation_may_substitute: false
+          duplicate_noop_may_substitute: false
+        next_boundary: HUMAN_DECISION_ON_H4A3_SUBMITTED_RECEIPT_CONTRACT_GAP
 
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
