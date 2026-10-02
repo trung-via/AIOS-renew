@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-live-dom-surface-compatibility-fix
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -872,8 +872,80 @@ sequence:
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-live-dom-surface-compatibility-fix
     status: NEXT
+    phase: H4A3_LIVE_DOM_SURFACE_COMPATIBILITY_FIX
+    task_id: TASK-272
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    objective: >-
+      Correct the published local-chat wake surface recognizer for the currently
+      observed regular Project-chat DOM without weakening exact-chat, attach-only,
+      draft/generation, privacy, dedupe, or ACK-only safety. The fix is limited to
+      the proven account/composer selector incompatibility discovered by H4A3
+      read-only readiness diagnostics.
+    observed_live_blocker:
+      source: HUMAN_H4A3_READ_ONLY_DOM_PREFLIGHT
+      canonical_main_at_observation: "1e55c214c00e93ca5ba100caa21ab03ef75a9f61"
+      exact_url_match: true
+      visible_main_count: 1
+      current_account_selector_visible_count: 0
+      observed_profile_aria_candidate_visible_count: 1
+      current_composer_selector_visible_count: 0
+      observed_structural_composer_candidate_visible_count: 1
+      observed_structural_composer_shape: MAIN_FORM_CONTENTEDITABLE_ROLE_TEXTBOX_ARIA_MULTILINE
+      login_visible_count: 0
+      nonregular_visible_count: 0
+      generation_stop_visible_count: 0
+      observed_empty_state_send_selectors_visible_count: 0
+      wake_submitted: false
+      local_event_state_created: false
+      semantic_effect: NONE
+      h4a3_proof_effect: NONE
+    architecture_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      reconciled_risks:
+        - DO_NOT_DROP_AUTHENTICATED_ACCOUNT_PROOF
+        - COMPOSER_SELECTOR_MUST_REMAIN_EXACTLY_ONE_AND_FORM_SCOPED
+        - PRESERVE_LEGACY_SELECTOR_COMPATIBILITY_WITHOUT_DUPLICATE_MATCH
+        - DO_NOT_TREAT_EMPTY_STATE_SEND_ABSENCE_AS_PROVEN_SEND_DEFECT
+        - NO_LIVE_CHAT_CONTENT_OR_PRIVATE_IDENTIFIERS_IN_REPOSITORY
+        - H4A3_REPLAY_REMAINS_BLOCKED_UNTIL_REVIEWED_PUBLICATION
+    selected_contract: LIVE_REGULAR_CHAT_SURFACE_SELECTOR_COMPATIBILITY_V1
+    correction_boundaries:
+      - ACCOUNT_PROOF_MAY_ADD_BOUNDED_VISIBLE_PROFILE_ARIA_FALLBACK
+      - COMPOSER_PROOF_MAY_ADD_BOUNDED_MAIN_FORM_TEXTBOX_MULTILINE_FALLBACK
+      - EXISTING_EXACT_URL_PAGE_UNIQUENESS_LOGIN_NONREGULAR_AND_GENERATION_GUARDS_REMAIN
+      - EXISTING_SEND_AND_STOP_SELECTORS_REMAIN_UNCHANGED_ABSENT_POST_INSERT_DEFECT_EVIDENCE
+      - EXISTING_INSERT_CLICK_PROVE_RECHECKS_REMAIN_FAIL_CLOSED
+      - NO_NAVIGATION_NO_ASSISTANT_OUTPUT_EXTRACTION_NO_GENERIC_DOM_HEURISTIC
+      - SYNTHETIC_FIXTURES_ONLY
+    expected_scope:
+      modify:
+        - src/aios_renew/local_chat_wake.py
+        - tests/test_local_chat_wake.py
+    verification_intent:
+      - python -m pytest -q tests/test_local_chat_wake.py
+      - git diff --check
+    task_authoring_audit:
+      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
+      required_profile: brain-high-value-v3
+    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+    sequencing:
+      - AFTER_TASK_271_PROJECT_SCOPED_EXACT_CHAT_ROUTE_FIX
+      - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
+      - BEFORE_TASK_270_H1R_EXACT_BLOB_FIX
+      - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+    status: BLOCKED_BY_TASK_272_DOM_SURFACE_FIX
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -965,7 +1037,7 @@ sequence:
       expires_on_task_change: true
     execution_profile_status: HUMAN_SELECTED
     sequencing:
-      - AFTER_TASK_271_PROJECT_SCOPED_EXACT_CHAT_ROUTE_FIX
+      - AFTER_TASK_272_LIVE_DOM_SURFACE_COMPATIBILITY_FIX
       - BEFORE_TASK_270_H1R_EXACT_BLOB_FIX
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
