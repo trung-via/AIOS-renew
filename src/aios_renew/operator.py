@@ -3690,7 +3690,9 @@ def _prove_primary_reviewed_result(
 ) -> tuple[str, dict[str, str], tuple[str, ...]]:
     """Read-only preservation proof; no publication eligibility is inferred."""
     from . import publication as pub
-    from .authoring_ingress import _validate_metadata_commit, _validate_repair_review_semantics
+    from .authoring_ingress import (
+        _read_commit_blob, _validate_metadata_commit, _validate_repair_review_semantics,
+    )
     from .review_transport import (
         REPAIR_SUPERSESSION_PREFIX, _bind_result_identity,
         _decode_run_task_identity, _performance_json_mapping, _run_task_prefix,
@@ -3789,7 +3791,11 @@ def _prove_primary_reviewed_result(
             paths = [p for p in paths if p.endswith((".yaml", ".yml"))]
             if len(paths) != 1:
                 raise ValueError("canonical review decision is missing or ambiguous")
-            content = pub._read_blob(observer, decision_sha, paths[0], run_id=source_run_id)
+            # Structural validation requires the exact blob bytes, including
+            # terminal whitespace; publication's text reader strips stdout.
+            content = _read_commit_blob(observer, decision_sha, paths[0])
+            if content is None:
+                raise ValueError("canonical review decision content is missing")
             decision = parse_review(content.decode("utf-8", errors="strict"))
             if decision.reviewed_sha != source_sha:
                 raise ValueError("canonical review decision candidate mismatch")

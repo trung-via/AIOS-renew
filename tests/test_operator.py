@@ -13801,3 +13801,169 @@ def test_primary_reviewed_result_reproves_moved_transport_at_mutation_edge(
     assert edge_snapshot is not None
     assert _reconciliation_snapshot(repo) == edge_snapshot
     assert not any(root == repo and args[0] == "reset" for root, args in calls)
+
+
+# TASK-270: RUN-268 preservation before TASK-269 must retain exact REVIEW bytes.
+def _reviewed_blob_divergence(
+    root: Path, *, line_ending: bytes = b"\n", trailing_space: bytes = b"",
+) -> tuple:
+    repo = make_repo(root)
+    remote = root / "upstream.git"
+    task_path = repo / ".ai/tasks/TASK-268.yaml"
+    task_path.write_text(TASK_SOURCE.replace("TASK-101", "TASK-268"), encoding="utf-8")
+    base = commit_setup_state(repo, ".ai/tasks/TASK-268.yaml", message="authorized TASK-268")
+    git(repo, "push", "--quiet", "origin", f"{base}:refs/heads/main")
+    (repo / "OUTPUT.txt").write_text("reviewed output\n", encoding="utf-8")
+    candidate = commit_setup_state(repo, "OUTPUT.txt", message="RUN-268 candidate")
+    target = publish_upstream(repo, {"NEW_MAIN.txt": "canonical advancement\n"})
+    state = runtime_paths(repo)
+    run = {
+        "run_id": "RUN-268-001", "task": {"id": "TASK-268", "revision": 1},
+        "executor": "codex", "base_sha": base, "workspace": str(repo),
+        "head_sha": None, "status": "ACTIVE",
+    }
+    package = canonical_result_payload("RUN-268-001", candidate, changed_files=["OUTPUT.txt"])
+    package["result"]["claims"] = [{
+        "id": "C1", "satisfies": ["AC1"], "claim": "The output exists.",
+        "evidence": [package["evidence"][0]["evidence_id"]],
+    }]
+    run_path = state.runs / "RUN-268-001.json"
+    result_path = state.results / "RUN-268-001.json"
+    run_path.write_bytes(json.dumps(run).encode("utf-8"))
+    result_path.write_bytes(json.dumps(package).encode("utf-8"))
+    transport_module.transport_post_pass(
+        repo, run_id="RUN-268-001", head_sha=candidate,
+        run_path=run_path, result_path=result_path,
+    )
+    review = {
+        "review_id": "REVIEW-268-001", "reviewed_sha": candidate, "mode": "PRIMARY",
+        "verdict": "PASS", "acceptance": {"AC1": "PASS"}, "findings": [],
+    }
+    content = json.dumps(review, indent=2).encode("utf-8").replace(b"\n", line_ending)
+    content += trailing_space + line_ending
+    decision = _reviewed_preservation_metadata(repo, candidate, {
+        ".ai/reviews/REVIEW-268-001.yaml": content,
+    })
+    git(repo, "push", "--quiet", "origin", f"{decision}:refs/heads/aios/review-decision/RUN-268-001")
+    with RepositoryLock(state.lock):
+        pass
+    return repo, remote, candidate, target, content, decision
+
+
+@pytest.mark.parametrize(("line_ending", "trailing_space"), [
+    pytest.param(b"\n", b"", id="terminal-lf"),
+    pytest.param(b"\n", b"  ", id="trailing-spaces"),
+    pytest.param(b"\r\n", b"", id="crlf"),
+])
+def test_primary_reviewed_result_preserves_exact_review_blob_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, line_ending: bytes, trailing_space: bytes,
+) -> None:
+    from aios_renew import authoring_ingress as ingress
+
+    repo, remote, candidate, target, content, decision = _reviewed_blob_divergence(
+        tmp_path, line_ending=line_ending, trailing_space=trailing_space,
+    )
+    review_path = ".ai/reviews/REVIEW-268-001.yaml"
+    assert ingress._read_commit_blob(repo, decision, review_path) == content
+    # The old reader loses bytes even though the canonical decision is valid.
+    assert publication_module._read_blob(repo, decision, review_path, run_id="RUN-268-001") != content
+    before = _reconciliation_snapshot(repo)
+    refs_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    validations = []
+    calls = []
+    real_validate = ingress._validate_metadata_commit
+    real_git = operator_module._git
+
+    def record_validation(root, commit_sha, **kwargs):
+        validations.append((commit_sha, kwargs))
+        return real_validate(root, commit_sha, **kwargs)
+
+    def record_git(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("preservation cannot admit, invoke or publish")
+
+    monkeypatch.setattr(ingress, "_validate_metadata_commit", record_validation)
+    monkeypatch.setattr(operator_module, "_git", record_git)
+    for name in ("run_task", "run_repair", "run_remediation", "_restart_primary_invocation"):
+        monkeypatch.setattr(operator_module, name, forbidden)
+    monkeypatch.setattr(publication_module, "publish_review_decision", forbidden)
+    outcome = operator_module._preflight_primary_sync(repo, argv=["run", "TASK-269"], runner=forbidden)
+    assert outcome.preflight_sha == target and outcome.restart_code is None
+    # Both the initial proof and the mutation-edge reproof use the unchanged validator.
+    assert validations == [(decision, {
+        "expected_parent_sha": candidate, "metadata_path": review_path,
+        "metadata_bytes": content, "operation": "SUBMIT_REVIEW",
+    })] * 2
+    after = _reconciliation_snapshot(repo)
+    assert after[:2] == ("refs/heads/main", target) and after[3] == ""
+    assert after[5] == before[5] and after[-1] == before[-1]
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before
+    assert ingress._read_commit_blob(remote, decision, review_path) == content
+    mutations = [args for root, args in calls if root == repo and args[0] in {
+        "reset", "merge", "rebase", "cherry-pick", "stash", "clean", "commit", "push", "update-ref",
+    }]
+    assert mutations == [("reset", "--hard", target)]
+    assert not list(runtime_paths(repo).runs.glob("RUN-269-*.json"))
+
+
+@pytest.mark.parametrize("substitution", ["whitespace", "acceptance-content"])
+@pytest.mark.parametrize("proof_read", [1, 3], ids=["initial-proof", "mutation-edge"])
+def test_primary_reviewed_result_rejects_different_review_blob_bytes_non_destructively(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: str, proof_read: int,
+) -> None:
+    from aios_renew import authoring_ingress as ingress
+
+    repo, remote, candidate, _, content, decision = _reviewed_blob_divergence(tmp_path)
+    review_path = ".ai/reviews/REVIEW-268-001.yaml"
+    if substitution == "whitespace":
+        substituted_content = content[:-1] + b"  \r\n"
+        assert operator_module.parse_review(substituted_content.decode("utf-8")) == operator_module.parse_review(
+            content.decode("utf-8"),
+        )
+    else:
+        substituted_review = json.loads(content)
+        substituted_review["acceptance"]["AC1"] = "FAIL"
+        substituted_content = json.dumps(substituted_review, indent=2).encode("utf-8") + b"\n"
+    substituted_decision = _reviewed_preservation_metadata(repo, candidate, {review_path: substituted_content})
+    assert substituted_decision != decision and substituted_content != content
+    real_read = ingress._read_commit_blob
+    assert real_read(repo, substituted_decision, review_path) == substituted_content
+    before = _reconciliation_snapshot(repo)
+    refs_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
+    reads = []
+    calls = []
+    real_git = operator_module._git
+
+    def substitute_proof_read(root, commit_sha, path):
+        actual = real_read(root, commit_sha, path)
+        if commit_sha == decision and path == review_path:
+            # Inject only the proof input; the real validator independently reads
+            # the canonical blob and must reject the unequal supplied bytes.
+            supplied = substituted_content if len(reads) + 1 == proof_read else actual
+            reads.append((actual, supplied))
+            return supplied
+        return actual
+
+    def record_git(root, *args, **kwargs):
+        calls.append((Path(root), args))
+        return real_git(root, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("rejected preservation cannot admit or invoke")
+
+    monkeypatch.setattr(ingress, "_read_commit_blob", substitute_proof_read)
+    monkeypatch.setattr(operator_module, "_git", record_git)
+    monkeypatch.setattr(operator_module, "run_task", forbidden)
+    monkeypatch.setattr(operator_module, "_restart_primary_invocation", forbidden)
+    with pytest.raises(OperatorError, match="SUBMIT_REVIEW structural validation failed: metadata content mismatch"):
+        operator_module._preflight_primary_sync(repo, argv=["run", "TASK-269"], runner=forbidden)
+    assert len(reads) == proof_read + 1
+    assert reads[proof_read - 1] == (content, substituted_content)
+    assert reads[proof_read] == (content, content)
+    assert _reconciliation_snapshot(repo) == before
+    assert git(remote, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before
+    assert not any(root == repo and args[0] == "reset" for root, args in calls)
+    assert not list(runtime_paths(repo).runs.glob("RUN-269-*.json"))
