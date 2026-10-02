@@ -1,0 +1,222 @@
+task_id: TASK-279
+revision: 1
+goal: Implement H4A5 complete Brain-attention-family coverage by generalizing the
+  reviewed H4A4 local wake intake from terminal RESULT/FAILURE events to one bounded
+  selector-only attention contract covering every approved attention family, while
+  preserving durable lane semantics and keeping all semantic routing authority with
+  fresh Brain Sync/Human/Brain.
+problem: After TASK-278, durable local wake delivery, lane isolation, pre-send freshness,
+  ambiguity holds and generation-safe bindings are published, but the production event
+  grammar is still terminal RESULT|FAILURE only. Important conditions such as ingress
+  rejection, dispatch rejection, pre-AIOS operational failure, review follow-up, correction-authoring
+  rejection, publication failure/success requiring planning, and canonical staleness
+  can therefore require Human/Brain attention without entering the same durable exact-chat
+  wake path. H4A5 must close that coverage gap with deterministic family identities
+  and exact source selectors, while preventing ordinary progress signals or transport
+  metadata from becoming semantic next-action authority.
+assumptions:
+- TASK-278 reviewed publication at a874675fca0f761f1fa6719e5ef7d79c5f003692 established
+  the H4A4 durable wake/lane contract and its exact browser/privacy guards.
+- Canonical roadmap selects H4A5 as the unique NEXT and Human binds TASK-279 revision
+  1 with Codex GPT-6.1 Sol xhigh for the entire task lifecycle.
+- Existing Operational Receipt v2 artifacts are subordinate operational evidence and
+  may identify dispatch/pre-AIOS boundaries, but they are not canonical RUN/FAILURE
+  truth.
+- Canonical terminal RESULT/FAILURE attention remains a valid existing family source
+  and must be preserved without semantic regression.
+- H4B regular-Chat Brain resume remains a later milestone; TASK-279 ends at complete,
+  durable, selector-only attention delivery coverage.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/brain-terminal-attention-carriers.yaml
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4A4-DURABLE-WAKE-RECOVERY-CONFORMANCE-v1.md
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/terminal_attention.py
+  - src/aios_renew/operational_receipt.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/github_issue_wakeup.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/github_issue_remediation_intent.py
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-brain-remediation-intent.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - .github/workflows/aios-approved-remediation-wakeup.yml
+  - .github/workflows/aios-auto-publish.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  modify:
+  - .ai/brain-attention-families.yaml
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/operational_receipt.py
+  - src/aios_renew/github_issue_ingress.py
+  - src/aios_renew/github_issue_wakeup.py
+  - src/aios_renew/github_issue_repair_wakeup.py
+  - src/aios_renew/github_issue_remediation_intent.py
+  - .github/workflows/aios-brain-ingress.yml
+  - .github/workflows/aios-brain-wakeup.yml
+  - .github/workflows/aios-brain-repair-wakeup.yml
+  - .github/workflows/aios-brain-remediation-intent.yml
+  - .github/workflows/aios-self-hosted-wakeup.yml
+  - .github/workflows/aios-self-hosted-repair-wakeup.yml
+  - .github/workflows/aios-approved-remediation-wakeup.yml
+  - .github/workflows/aios-auto-publish.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_brain_attention.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_operational_receipt.py
+  - tests/test_terminal_attention_workflow.py
+  - tests/test_github_issue_ingress.py
+  - tests/test_github_issue_ingress_workflow.py
+  - tests/test_github_issue_wakeup.py
+  - tests/test_github_issue_wakeup_workflow.py
+  - tests/test_github_issue_repair_wakeup.py
+  - tests/test_github_issue_repair_wakeup_workflow.py
+  - tests/test_github_issue_remediation_intent.py
+  - tests/test_github_issue_remediation_intent_workflow.py
+  - tests/test_self_hosted_wakeup.py
+  - tests/test_publication.py
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+non_goals:
+- Implement H4B semantic Brain resume, automatically continue a lifecycle after wake,
+  or parse assistant output/ACK content.
+- Encode or infer authoritative next_action, correction strategy, review verdict,
+  roadmap successor, Executor, model, effort or publication decision in an attention
+  event.
+- Fabricate a RUN, canonical FAILURE, REVIEW, REMEDIATION, REPAIR or publication artifact
+  for a pre-AIOS/workflow/carrier failure.
+- Replace Runtime, Unified State, Reviewer, Publisher or Human/Brain planning with
+  a generic attention router or event-sourced control plane.
+- Treat RUNNER_STARTED, Executor in-progress, Runtime verification in-progress, DISPATCH_ACCEPTED,
+  auto-publication start or similar ordinary progress as wake-worthy events.
+- Broaden H4A4 browser inspection to assistant output or conversation-history scraping,
+  weaken exact target/composer/Send/user-turn proof, or permit blind resend after
+  ambiguous submission.
+- Commit machine-local chat/CDP/state bindings or provider/session secrets to the
+  repository.
+- Activate or retarget downstream repositories such as Python Agent.
+constraints:
+  hard:
+  - Define one repository-owned deterministic attention-family registry/projector
+    with stable versioned family identifiers and per-family exact selector schemas;
+    source workflows may supply bounded facts but may not each invent independent
+    semantic classification rules.
+  - 'Cover at least the canonical roadmap matrix: INGRESS_OR_CARRIER_REJECTION, PRIMARY_REMEDIATION_REPAIR_DISPATCH_REJECTION,
+    PRE_AIOS_OPERATIONAL_FAILURE_REQUIRING_DIAGNOSIS, RUN_RESULT_REQUIRING_SEMANTIC_REVIEW,
+    RUN_FAILURE_REQUIRING_CORRECTION_REASONING, REVIEW_INGRESS_REJECTION, REVIEW_CHANGES_REQUIRED_OR_BLOCKED,
+    REMEDIATION_OR_REPAIR_AUTHORING_REJECTION, PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE,
+    PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING, CANONICAL_CONFLICT_OR_STALENESS,
+    and WAKE_DELIVERY_RECOVERY_FOR_UNRESOLVED_ATTENTION.'
+  - Attention identity must be deterministic from family plus immutable exact source
+    selectors sufficient for fresh reconstruction. The payload is selector-only and
+    must reject next_action, verdict, correction action/strategy, roadmap successor,
+    model/effort selection, free-form executable commands and private browser bindings.
+  - Preserve the existing terminal RESULT/FAILURE source identity and map it into
+    the generic family contract without weakening canonical artifact/ref validation,
+    exact RUN binding or H4A4 dedupe/freshness semantics.
+  - Pre-AIOS, carrier and workflow failures remain operational observations. Their
+    attention event must explicitly preserve run_created=false where applicable and
+    must never create or imply canonical FAILURE/RUN lineage.
+  - Only source conditions that actually require Human/Brain semantic attention may
+    enqueue. RUNNER_STARTED, executor/verification progress, DISPATCH_ACCEPTED, auto-publication
+    start and equivalent progress boundaries must deterministically produce no wake.
+  - Review follow-up must distinguish exact ingress rejection from canonical CHANGES_REQUIRED/BLOCKED
+    decisions using immutable review/run selectors, without treating PASS as correction
+    attention; successful publication may wake only as a planning-attention event
+    and never auto-advance roadmap.
+  - Publication failure attention must bind the exact review-decision/source RUN and
+    failed publication attempt evidence without turning workflow conclusion alone
+    into canonical publication truth.
+  - Canonical conflict/staleness attention must bind the exact prepared subject and
+    stale/conflicting canonical predecessor facts; it may request fresh reconstruction
+    but may not choose a replacement task/candidate or retry action.
+  - Every generic attention event must enter the existing H4A4 machine-local lane
+    queue and inherit per-lane isolation, generation safety, one-flight rule, durable
+    pre-submit deferral, post-submit ambiguity no-resend, exact outbound-user-turn
+    proof, safe compaction and pre-send freshness barrier.
+  - Freshness for each family must revalidate only its exact source selectors against
+    canonical or bounded operational evidence and classify unresolved, resolved/superseded,
+    or unknown/conflict. It must not run Brain Sync semantic flow selection or consume
+    Unified State next_action.
+  - Wake-delivery recovery attention must not recursively generate unbounded attention.
+    Recovery events are deduped/bounded to the original unresolved attention identity
+    and cannot create a second semantic subject.
+  - 'Keep local wake/browser privacy guarantees unchanged: no assistant-output extraction,
+    no chat-history scrape, no navigation, no draft clearing, no private binding material
+    in GitHub payloads/artifacts.'
+  - Runtime remains canonical verification authority. Executor may add deterministic/synthetic
+    workflow tests and a Human conformance procedure, but may not claim live ChatGPT
+    delivery or Human planning reconciliation passed.
+  - Executor changes are limited to the authorized modify surface. No roadmap mutation,
+    semantic review, publication, downstream activation or live browser submission
+    is part of implementation.
+acceptance:
+- id: AC1
+  condition: A versioned deterministic generic attention contract and registry covers
+    every H4A5 required attention family with exact per-family selector schemas, deterministic
+    event identity, bounded serialization and rejection of unknown/malformed/substituted
+    family or selector combinations.
+- id: AC2
+  condition: 'The generic attention payload is selector-only: tests prove next_action,
+    correction strategy/action, review verdict, roadmap successor, Executor/model/effort,
+    executable command text and private browser binding fields cannot enter the transport
+    contract.'
+- id: AC3
+  condition: Canonical RUN RESULT and FAILURE retain exact existing terminal provenance
+    and enter respectively the semantic-review and correction-reasoning attention
+    families without weakening H4A4 canonical freshness, dedupe or no-resend behavior.
+- id: AC4
+  condition: Ingress/carrier rejection, review-ingress rejection, CHANGES_REQUIRED/BLOCKED
+    review follow-up, and REMEDIATION/REPAIR authoring rejection each produce exactly
+    one deterministic attention identity from their exact source selectors; PASS review
+    does not masquerade as correction attention.
+- id: AC5
+  condition: PRIMARY/REMEDIATION/REPAIR dispatch rejection and pre-AIOS operational
+    failure coverage is derived from bounded carrier/admission/Operational Receipt
+    evidence, preserves run_created=false when no RUN exists, and deterministic tests
+    prove DISPATCH_ACCEPTED, RUNNER_STARTED and other ordinary progress do not wake.
+- id: AC6
+  condition: Publication dispatch/execution failure, successful publication requiring
+    Human/Brain planning, and canonical conflict/staleness each have exact source-bound
+    attention projections; publication success never advances roadmap automatically
+    and workflow status alone never substitutes for canonical reviewed/published identity.
+- id: AC7
+  condition: All generic attention families enter the existing H4A4 per-project durable
+    lane path and retain pre-send exact-source freshness, Human canonical supersession
+    to resolved NOOP, independent-lane isolation, generation safety, one-flight ordering,
+    ambiguity no-resend and safe duplicate-preserving compaction.
+- id: AC8
+  condition: Wake-delivery recovery is bounded to an already unresolved original attention
+    identity and cannot recursively create unbounded new attention subjects; malformed,
+    stale, conflicting or missing source evidence fails closed without silently dropping
+    the original attention.
+- id: AC9
+  condition: Regression coverage proves the non-wake progress matrix, privacy/assistant-output
+    exclusions, no generic semantic router, no pre-AIOS RUN/FAILURE fabrication, no
+    actions-write/self-dispatch dependency for local wake delivery, and no downstream
+    activation.
+- id: AC10
+  condition: The candidate changes only TASK-authorized files and provides a bounded
+    H4A5 Human conformance procedure for representative family emission, non-wake
+    progress, stale-source suppression, two-lane delivery and recovery behavior without
+    claiming live conformance or H4B resume has occurred.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_attention.py tests/test_local_chat_wake.py
+    tests/test_local_chat_wake_workflow.py tests/test_operational_receipt.py tests/test_terminal_attention_workflow.py
+    tests/test_github_issue_ingress.py tests/test_github_issue_ingress_workflow.py
+    tests/test_github_issue_wakeup.py tests/test_github_issue_wakeup_workflow.py tests/test_github_issue_repair_wakeup.py
+    tests/test_github_issue_repair_wakeup_workflow.py tests/test_github_issue_remediation_intent.py
+    tests/test_github_issue_remediation_intent_workflow.py tests/test_self_hosted_wakeup.py
+    tests/test_publication.py
+  - git diff --check
