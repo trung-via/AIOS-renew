@@ -1,0 +1,127 @@
+task_id: TASK-276
+revision: 1
+goal: Restore H4A3 post-send exact outbound-user-turn proof by making local-chat-wake
+  discovery compatible with the observed current regular Project-chat user-message
+  structure while preserving exact doorbell identity, fail-closed ambiguity handling,
+  historical user-role compatibility, privacy, dedupe and ACK-only authority.
+problem: Fresh H4A3 workflow 354 admitted the exact RUN-268-001 RESULT and automatic
+  Send functionally succeeded, but local-chat-wake returned BLOCKED/LOCAL_FAILURE
+  before persisting SUBMITTED because its outbound user-turn proof still searches
+  only [data-message-author-role="user"]. Canonical planning records that selector
+  resolving zero elements while the exact doorbell is present once. A subsequent privacy-safe
+  Human diagnostic proves the exact doorbell is contained by exactly one visible [data-user-message-bubble]
+  and one unique [data-turn-key] ancestor. The remaining defect is therefore bounded
+  to outbound user-turn structural discovery/proof after Send.
+assumptions:
+- Canonical roadmap state records workflow 36984172510 (#354) as exact RUN-268-001
+  RESULT admission PASS, automatic Send functionally observed, local wake BLOCKED/LOCAL_FAILURE,
+  composer empty, and the exact event still ATTEMPTING.
+- Canonical planning records the configured [data-message-author-role="user"] selector
+  resolving zero outbound containers while page-level exact doorbell discovery resolves
+  exactly once; page-global exact-text search is diagnostic evidence only and is not
+  an authorized production proof.
+- The Human-approved privacy-safe structural diagnostic records two visible [data-user-message-bubble]
+  elements total, exactly one bubble matching the complete RUN-268 doorbell, and that
+  exact bubble having one unique [data-turn-key] ancestor.
+- The existing visible RUN-268 user turn and ATTEMPTING operational entry must be
+  preserved until reviewed publication and bounded Human post-send reconciliation;
+  no replay is authorized by this TASK.
+- Historical [data-message-author-role="user"] support remains a compatibility requirement
+  for synthetic regression coverage even though the current live DOM uses the new
+  bubble marker.
+scope:
+  inspect:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - .ai/roadmap-state.yaml
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+non_goals:
+- Replay RUN-268-001, create another outbound wake turn, delete the existing user
+  turn, clear or rewrite the current ATTEMPTING entry during Executor execution, or
+  claim H4A3 live conformance from synthetic tests.
+- Use page-global exact text, conversation-wide text search, assistant content, generated
+  CSS classes, visual coordinates, generic proximity, or an unrestricted role/text
+  heuristic as production outbound-user-turn proof.
+- Change TASK-274 composer insertion/text-equivalence behavior or TASK-275 Send-control
+  discovery, readiness, click or post-send control proof.
+- Introduce generalized ambiguous-submission recovery, automatic resend, durable deferred
+  recovery, multi-project lanes, browser supervision or other H4A4 behavior.
+- Change terminal-attention admission, Runtime verification, Reviewer, Publisher,
+  workflow dispatch, canonical lifecycle semantics or roadmap advancement.
+- Read, parse, store or export assistant output, conversation history, credentials,
+  cookies, browser profile data, private chat identifiers or raw live chat contents
+  as engineering truth.
+constraints:
+  hard:
+  - 'Outbound-user-turn discovery must begin from user-specific bounded containers
+    only: the historical [data-message-author-role="user"] branch and the current
+    [data-user-message-bubble] compatibility branch. Page-global exact-text discovery
+    is never an eligible production branch.'
+  - A current-shape [data-user-message-bubble] candidate is eligible only when it
+    is visible, its complete text is exactly the fixed doorbell after CRLF-to-LF normalization
+    only, and its ancestor chain contains exactly one [data-turn-key] container. No
+    trim, whitespace collapse, substring, case folding or assistant-content matching
+    is permitted.
+  - The historical user-role branch must retain complete exact-doorbell matching and
+    remain compatible with existing supported fixtures. If distinct eligible candidates,
+    zero eligible candidates, multiple exact bubbles, or ambiguous turn containment
+    are observed, proof fails closed rather than selecting one.
+  - Pre-send duplicate detection and post-send submission proof must use one shared
+    bounded outbound-user-turn resolution contract so the same current-shape turn
+    that proves a successful Send also blocks a later blind resend.
+  - Post-send proof must preserve the existing exact target/account/composer guards,
+    require an empty composer and the existing scoped Send-control postcondition,
+    and must never depend on assistant generation or assistant output.
+  - Normal deliver() handling of any existing ATTEMPTING event remains ATTEMPT_REQUIRES_HUMAN.
+    TASK-276 production code must not automatically convert, delete, clear or resend
+    the current RUN-268 event.
+  - The H4A3 conformance document may define one Human-only post-send proof reconciliation
+    for workflow 36984172510 attempt 1 only. It must require the exact RUN-268 event
+    to remain ATTEMPTING, no lock/pending ambiguity, the exact bound page and empty
+    composer, exactly one bounded matching outbound user turn under the reviewed resolver,
+    the existing post-send Send-control proof, and the recorded fact that workflow
+    354 clicked Send before proof failed. Only then may Human change that one external
+    operational entry from ATTEMPTING to SUBMITTED without replay; the exception must
+    be non-reusable and must not fabricate the historical workflow receipt.
+  - No file outside scope.modify may change. Executor must not perform live ChatGPT
+    submission, mutate machine-local wake state, publish, or mutate roadmap state.
+acceptance:
+- id: AC1
+  condition: Local-chat-wake has one bounded outbound-user-turn resolution contract
+    that supports both the historical [data-message-author-role="user"] container
+    and the current visible [data-user-message-bubble] container without page-global
+    text fallback.
+- id: AC2
+  condition: The current bubble branch accepts only the complete exact doorbell after
+    CRLF-to-LF normalization and exactly one [data-turn-key] ancestor, and fails closed
+    for zero, multiple, hidden, text-mismatched or structurally ambiguous candidates.
+- id: AC3
+  condition: Pre-send OUTBOUND_ALREADY_PRESENT detection and post-send submission
+    proof use the same bounded resolver, while existing exact-target, account/composer,
+    empty-composer and scoped Send-control postconditions remain enforced.
+- id: AC4
+  condition: Synthetic regression coverage preserves the historical user-role shape,
+    proves the current data-user-message-bubble plus unique-turn shape, and rejects
+    page-global/assistant-like text, duplicate bubbles, ambiguous turn containment
+    and partial or whitespace-normalized payload substitutes.
+- id: AC5
+  condition: Normal ATTEMPTING handling remains fail closed with no automatic recovery
+    or resend, and the H4A3 conformance document defines a one-attempt Human-only
+    workflow-354 post-send reconciliation that can change only the exact RUN-268 external
+    entry from ATTEMPTING to SUBMITTED after bounded proof and cannot fabricate the
+    original receipt or authorize another send.
+- id: AC6
+  condition: The candidate changes only src/aios_renew/local_chat_wake.py, tests/test_local_chat_wake.py
+    and docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md and introduces no Send/composer,
+    workflow, terminal-attention, Runtime, Reviewer, Publisher, generalized recovery,
+    multi-project-lane or roadmap-advancement behavior.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py
+  - git diff --check
