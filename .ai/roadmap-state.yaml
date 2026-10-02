@@ -304,6 +304,29 @@ human_priority_sequence:
           separated so the first milestone can prove exactly-once delivery effects and
           project isolation before broadening the event grammar. This avoids a mega-task
           and keeps transport from becoming an implicit lifecycle router.
+        human_finalization:
+          status: HUMAN_APPROVED_FINAL
+          finalized_on: "2026-10-02"
+          finalized_against_main_sha: "683770b17b2ddc8ab53027cbdb1985ee354bbd03"
+          decision: FINALIZE_H4A3_H4A4_H4A5_H4B_H5_SEQUENCE
+          approved_sequence:
+            - H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
+            - H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
+            - H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
+            - H4B_REGULAR_CHAT_BRAIN_RESUME
+            - H5_INTEGRATION_CONFORMANCE_CLOSURE
+          invariants:
+            - TASK_268_H4A3_SCOPE_REMAINS_UNCHANGED
+            - H4A4_STARTS_ONLY_AFTER_H4A3_LIVE_PROOF_CLOSES
+            - H4A5_STARTS_ONLY_AFTER_H4A4_CLOSES
+            - H4B_REMAINS_BLOCKED_UNTIL_H4A5_CLOSES
+            - HUMAN_INTERVENTION_SUPERSESSION_REMAINS_MANDATORY
+            - MULTI_PROJECT_WAKE_ISOLATION_REMAINS_MANDATORY
+            - NO_AUTOMATIC_ROADMAP_ADVANCE
+          note: >-
+            Human explicitly finalized this roadmap after the two-stage audit. This
+            planning decision does not itself create or execute a TASK, RUN, REVIEW,
+            publication or downstream activation.
       h4b_minimum_fresh_brain_sync_audit:
         approved_on: "2026-10-01"
         authority: HUMAN_BRAIN_PLANNING
