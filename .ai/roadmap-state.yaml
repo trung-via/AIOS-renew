@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-live-dom-surface-compatibility-fix
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -873,7 +873,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-live-dom-surface-compatibility-fix
-    status: NEXT
+    status: DONE
     phase: H4A3_LIVE_DOM_SURFACE_COMPATIBILITY_FIX
     task_id: TASK-272
     task_revision: 1
@@ -965,6 +965,20 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
     execution_profile_status: HUMAN_SELECTED
+    completed_by:
+      task_id: TASK-272
+      task_revision: 1
+      run_id: RUN-272-001
+      result_artifact_sha: "4ef03bc07cab5c9a062ab63fbdda0339030d737d"
+      reviewed_candidate_sha: "3388903579278081774e8ae5b980e4aa41ddc6c1"
+      review_id: REVIEW-272-001
+      review_decision_sha: "7b4e8fd3621c13265d96ada99fc5148918ba4e57"
+      review_verdict: PASS
+      publication_sha: "3388903579278081774e8ae5b980e4aa41ddc6c1"
+      verification:
+        - "python -m pytest -q tests/test_local_chat_wake.py => 229 passed, 52 skipped"
+        - "git diff --check => PASS"
+      unresolved: []
     sequencing:
       - AFTER_TASK_271_PROJECT_SCOPED_EXACT_CHAT_ROUTE_FIX
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
@@ -973,7 +987,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
-    status: BLOCKED_BY_TASK_272_DOM_SURFACE_FIX
+    status: NEXT
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -1000,7 +1014,20 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_LOCAL_BINDING_METADATA_REQUIRED
+      status: HUMAN_POST_FIX_PREFLIGHT_REQUIRED
+      dom_surface_fix:
+        task_id: TASK-272
+        status: REVIEWED_PUBLISHED
+        publication_sha: "3388903579278081774e8ae5b980e4aa41ddc6c1"
+      latest_operational_observation:
+        source_run_id: RUN-272-001
+        terminal_artifact_sha: "4ef03bc07cab5c9a062ab63fbdda0339030d737d"
+        local_wake_status: BLOCKED
+        local_wake_reason: SURFACE_UNPROVEN
+        transport_source_sha: "f268a0e6f5b28566e7fa8e636b70efe1ae0fdc87"
+        note: PRE_PUBLICATION_TRANSPORT_SOURCE_DID_NOT_INCLUDE_TASK_272_FIX
+        semantic_effect: NONE
+        h4a3_proof_effect: NONE
       route_fix:
         task_id: TASK-271
         status: REVIEWED_PUBLISHED
