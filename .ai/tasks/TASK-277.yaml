@@ -1,0 +1,124 @@
+task_id: TASK-277
+revision: 1
+goal: 'Amend only the H4A3 ACK-only exact-chat conformance document so the exact workflow
+  #354 attempt-1 post-send proof-loss case may satisfy Human/Brain planning conformance
+  through one bounded evidence-equivalent closure path, while preserving the historical
+  BLOCKED / LOCAL_FAILURE receipt, the normal SUBMITTED-receipt rule for all ordinary
+  cases, ACK-only authority, and zero production-transport change.'
+problem: 'The published H4A3 positive procedure requires a matching local SUBMITTED
+  / EXACT_USER_TURN_PROVEN receipt. Workflow 36984172510 attempt 1 admitted the exact
+  RUN-268 RESULT and automatic Send occurred, but the transport returned BLOCKED /
+  LOCAL_FAILURE because its then-published post-send outbound-turn selector could
+  not discover the already-created user turn. TASK-276 subsequently supplied the reviewed
+  bounded resolver, and Human post-send reconciliation plus duplicate NOOP plus a
+  post-duplicate exact-turn probe now establish the intended one-turn deduplicated
+  transport effect. Section 4.2 correctly preserves #354''s historical failure receipt
+  and forbids treating reconciliation as that receipt, leaving a documentation-level
+  conformance gap that must be closed without fabrication, another Send, or generalized
+  recovery.'
+assumptions:
+- Canonical planning records workflow 36984172510 (#354) attempt 1 as exact RUN-268-001
+  RESULT admission PASS, automatic Send functionally observed, and historical local
+  wake BLOCKED / LOCAL_FAILURE.
+- TASK-276 is reviewed and published at 53e75c22451457048adc21821788d54d5d43e0c1 and
+  supplies the reviewed bounded outbound-user-turn resolver used by later Human proof.
+- 'Human post-send reconciliation for #354 passed: the exact event moved from ATTEMPTING
+  to SUBMITTED only after bounded proof, with no Send click, replay, assistant-output
+  read, or other-event mutation.'
+- Duplicate delivery of the same exact admitted event returned NOOP / ALREADY_SUBMITTED,
+  and the subsequent Human read-only probe still resolved the exact bounded user turn
+  as EXACT with one unique target page and an empty composer.
+- 'The historical #354 BLOCKED / LOCAL_FAILURE receipt is immutable operational history
+  and must remain distinct from the later Human reconciliation and duplicate observation.'
+scope:
+  inspect:
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-268.yaml
+  - .ai/tasks/TASK-276.yaml
+  modify:
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+non_goals:
+- Modify local-chat-wake production code, terminal-attention or local-wake workflows,
+  tests, Runtime, Reviewer, Publisher, TASK schema, lifecycle semantics, or machine-local
+  operational state.
+- 'Rewrite, relabel, suppress, or fabricate workflow #354 attempt 1 as having returned
+  SUBMITTED / EXACT_USER_TURN_PROVEN.'
+- Perform another RUN-268 replay, click Send, create another outbound user turn, inspect
+  assistant output, or rerun destructive live negative cases.
+- Create a generic post-send reconciliation, ambiguous-submission recovery, resend,
+  retry, durable queue, multi-project lane, or other H4A4 policy.
+- Automatically close H4A3, advance TASK-270/H4A4/H4A5/H4B, or treat TASK-277 execution,
+  verification, review, or publication as the Human/Brain roadmap closure decision.
+- Commit private chat URLs, turn-key values, raw conversation text, assistant content,
+  credentials, cookies, browser profile data, CDP endpoints, state paths, or provider/session
+  identity.
+constraints:
+  hard:
+  - The normal H4A3 positive path must continue to require a genuine matching local
+    SUBMITTED / EXACT_USER_TURN_PROVEN receipt; TASK-277 may add only an exact-case
+    alternative and must not weaken the default rule.
+  - The alternative closure path is bound only to workflow 36984172510 attempt 1 and
+    event terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253; it
+    is not reusable for another workflow, attempt, event, repository or future ambiguous
+    submission.
+  - The alternative path must preserve the historical BLOCKED / LOCAL_FAILURE receipt
+    and must not call the later Human SUBMITTED state, duplicate NOOP, or any planning
+    note a historical transport receipt.
+  - 'The alternative path must require the complete bounded evidence chain together:
+    exact terminal admission PASS; the canonical planning record that workflow #354
+    attempt 1 clicked Send before outbound proof failed; preservation of the original
+    BLOCKED / LOCAL_FAILURE receipt; reviewed TASK-276 bounded resolver proof of exactly
+    one matching outbound user turn; the Human section-4.2 ATTEMPTING-to-SUBMITTED
+    reconciliation after all published safeguards with no replay, Send or assistant-output
+    read; duplicate delivery of the same exact admitted identity returning NOOP /
+    ALREADY_SUBMITTED; and the post-duplicate Human read-only proof showing the same
+    exact bounded turn remains EXACT, the target page is unique and the composer is
+    empty.'
+  - No single constituent fact, current SUBMITTED state, Human visual observation,
+    assistant response, duplicate receipt alone, or partial subset of the evidence
+    chain may substitute for the complete alternative path. Missing, conflicting or
+    ambiguous evidence leaves H4A3 open.
+  - Satisfying the alternative path means only that Human/Brain may assess H4A3 planning
+    conformance without fabricating the historical receipt. It creates no Runtime
+    EVIDENCE, no lifecycle success, no Reviewer or Publisher authority, and no automatic
+    roadmap mutation.
+  - The document must preserve ACK-only semantics, assistant-output exclusion, reviewed
+    TASK-266 negative-case reuse, and the rule that contrary live evidence requiring
+    production change is handled through a separately authorized correction.
+  - Executor implementation is documentation-only and may modify exactly docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md.
+    Executor must not perform live browser actions, mutate machine-local wake state,
+    publish, or mutate roadmap state.
+acceptance:
+- id: AC1
+  condition: The candidate changes exactly docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+    and defines both the unchanged normal SUBMITTED-receipt path and one exact workflow-354
+    evidence-equivalent alternative path.
+- id: AC2
+  condition: The alternative path is explicitly bound to workflow 36984172510 attempt
+    1 and the exact RUN-268 event, while preserving its historical BLOCKED / LOCAL_FAILURE
+    receipt and forbidding any fabricated historical SUBMITTED / EXACT_USER_TURN_PROVEN
+    receipt.
+- id: AC3
+  condition: The alternative path requires the complete exact admission, recorded
+    pre-proof Send, preserved historical failure receipt, reviewed TASK-276 bounded-turn
+    proof, safeguarded Human reconciliation, duplicate NOOP and post-duplicate exact-turn
+    evidence chain, and explicitly rejects current-state-only, partial, visual-only,
+    assistant-output or other weak substitutions.
+- id: AC4
+  condition: The document defines the alternative only as Human/Brain planning-conformance
+    evidence and states that it creates no Runtime EVIDENCE, lifecycle success, Reviewer/Publisher
+    authority, generic recovery/resend policy, or automatic roadmap advancement.
+- id: AC5
+  condition: The document preserves ACK-only semantics, privacy boundaries, assistant-output
+    exclusion and reviewed TASK-266 negative-case reuse, and still requires a separately
+    authorized correction for contrary live production evidence.
+- id: AC6
+  condition: The candidate introduces no production transport, workflow, test, Runtime,
+    Reviewer, Publisher, machine-local-state or roadmap change and performs no live
+    replay, Send, browser action or H4A3 closure mutation.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - git diff --check
