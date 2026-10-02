@@ -1,0 +1,50 @@
+review_id: REVIEW-280-001
+reviewed_sha: 2b558594c67167fb6e75216ad9b44135e7afaff2
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: FAIL
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings:
+- id: F-280-001
+  basis: AC1
+  action: CODE_FIX
+  location: ".github/workflows/aios-auto-publish.yml \u2014 jobs.local-chat-wake.permissions"
+  issue: 'The new publisher direct handoff calls ./.github/workflows/aios-local-chat-wake.yml
+    with the caller job limited to contents: read. The called reusable workflow contains
+    jobs that request actions: read. GitHub reusable-workflow permissions may only
+    be maintained or reduced across the call chain, not elevated. The repository''s
+    existing terminal-attention caller uses the same contents-only call shape and
+    the current live RUN-280 terminal-attention carrier is observed as Startup failure,
+    providing a concrete same-shape production counterexample. Therefore the candidate
+    does not yet prove that an eligible publication event can enter the reusable local
+    wake boundary from the publisher run.'
+  expected: 'Keep the direct selector-only reusable handoff and minimum-sufficient
+    permissions, but make the caller/callee permission chain valid without actions:write
+    or new authority. Within TASK-280 scope, grant only the read permission actually
+    required by the called workflow (including actions: read where required) or an
+    equivalent least-privilege correction that does not modify local wake semantics.
+    Add deterministic workflow-contract coverage for the permission ceiling so this
+    cannot regress.'
+notes:
+- RUN-280-001 is a canonical PRIMARY RESULT for TASK-280 r1 with artifact 9240f875b2dbda81f23fd014de769700e0e55a95
+  and candidate 2b558594c67167fb6e75216ad9b44135e7afaff2.
+- Runtime verification passed 267 tests in 441.80s plus git diff --check; unresolved
+  is empty.
+- The candidate changes exactly the five TASK-authorized files and its central brain_attention
+  projection, bounded source evidence, identity equivalence, selector-only payload,
+  dedupe, no-actions-write and conformance-document boundaries are otherwise semantically
+  consistent with TASK-280.
+- The current screenshot/live repository state also shows AIOS terminal attention
+  carrier startup failure for RUN-280-001 while the schedule-triggered local wake
+  workflow later runs successfully. The terminal-carrier defect is separate existing
+  H4A5 transport debt and is not authorization to widen this TASK's modification scope.
+- GitHub's reusable-workflow contract states GITHUB_TOKEN permissions can only be
+  maintained or reduced across nested calls; a called workflow cannot elevate above
+  the caller's permission ceiling.
