@@ -1046,9 +1046,28 @@ sequence:
     verification_intent:
       - python -m pytest -q tests/test_terminal_attention.py
       - git diff --check
+    authored_commit_sha: "8f8f48a194fff4a0b4cefd7a88e59fb5a68bf521"
+    task_blob_sha: "a75c406bcebd525755551edc8ac93a91f355d12f"
     task_authoring_audit:
-      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
-      required_profile: brain-high-value-v3
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "c45681dddf6cacd6fac33c0916f41926c9c069ce6854f8c0713345e1dce33b05"
+      construct_fingerprint: "47ba00be987b8115b671ced7946c060cd6b7e30db2abfe0facb5f3ca6148fc3a"
+      reconciled_candidate_fingerprint: "1cae685ec775dadae04c9f5a3d14bb36e3a46836c2a9e8c774b7042b591fb412"
+      stage2_fingerprint: "e00f45625fe995608f75e51cac962de562804f40c90218b474f2040834c9d9aa"
+      acceptance_phase_ledger: ALL_CLAIM_NOW
+      ingress_issue: 1341
+      ingress_workflow_run_id: 36964545447
+      reconciled_risks:
+        - PRESERVE_INDEPENDENT_ADMISSION_PROOF_BEYOND_WORKFLOW_JOB_GUARD
+        - PRESERVE_SHORT_MAIN_COMPATIBILITY_WHILE_ADDING_EXACT_FULL_MAIN_REF
+        - REJECT_TAG_SUFFIX_CASE_AND_NEAR_MATCH_REFS
+        - KEEP_H4A3_LIVE_REPLAY_OUTSIDE_EXECUTOR_ACCEPTANCE
+        - SYNTHETIC_FIXTURES_ONLY_NO_RAW_LIVE_EVENT_PAYLOAD
     human_execution_delegation:
       selected_on: "2026-10-02"
       authority: HUMAN
