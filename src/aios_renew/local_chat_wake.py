@@ -39,6 +39,8 @@ STOP = '[data-testid="stop-button"]'
 NONREGULAR = '[data-workspace-type="team"], [data-workspace-type="enterprise"], [data-workspace-type="business"], [data-testid="work-composer"]'
 LOGIN = '[data-testid="login-button"], a[href^="/auth/login"]'
 USER_TURN = '[data-message-author-role="user"]'
+USER_BUBBLE = '[data-user-message-bubble]'
+TURN_CONTAINER = '[data-turn-key]'
 REASONS = frozenset({
     "INVALID_INPUT", "INVALID_CHAT_BINDING", "INVALID_LOCAL_PATH",
     "CONFIG_OR_STATE_IN_REPOSITORY", "LOCAL_METADATA_INVALID", "BINDING_MISSING",
@@ -291,6 +293,51 @@ PROVE_SEND = """({composer, send}) => {
 }"""
 
 
+# One contract for pre-send dedupe and post-send proof. Only user-specific
+# containers are read; return a fixed status, never browser text or turn keys.
+RESOLVE_USER_TURN = """({text, userTurn, userBubble, turnContainer}) => {
+  const candidates = [...document.querySelectorAll(userTurn + ', ' + userBubble)];
+  const exact = [];
+  for (const candidate of candidates) {
+    // A user marker inside an explicitly non-user turn is not user proof.
+    for (let node = candidate; node; node = node.parentElement) {
+      const role = node.getAttribute('data-message-author-role');
+      if (role !== null && role !== 'user') return 'AMBIGUOUS';
+    }
+    if (candidate.querySelector(
+        '[data-message-author-role]:not([data-message-author-role="user"])')) return 'AMBIGUOUS';
+    if (candidate.textContent.replace(/\\r\\n/g, '\\n') === text) exact.push(candidate);
+  }
+  if (!exact.length) return 'ABSENT';
+  // CSS union identity permits one element carrying both markers, but never
+  // selects between distinct containers (including nested exact containers).
+  if (exact.length !== 1) return 'AMBIGUOUS';
+  const candidate = exact[0];
+  if (candidates.some(e => e !== candidate &&
+      (e.contains(candidate) || candidate.contains(e)))) return 'AMBIGUOUS';
+  if (!candidate.getClientRects().length ||
+      getComputedStyle(candidate).visibility !== 'visible') return 'AMBIGUOUS';
+  if (candidate.matches(userBubble)) {
+    const turns = [];
+    for (let parent = candidate.parentElement; parent; parent = parent.parentElement)
+      if (parent.matches(turnContainer)) turns.push(parent);
+    if (turns.length !== 1) return 'AMBIGUOUS';
+    // A turn with more than one user bubble cannot identify one outbound turn.
+    if (candidates.filter(e => e.matches(userBubble) && turns[0].contains(e)).length !== 1)
+      return 'AMBIGUOUS';
+  }
+  return 'EXACT';
+}"""
+
+# Wait only for absence to resolve. An observed ambiguity ends proof immediately;
+# it must not be silently retried until one candidate happens to remain.
+WAIT_USER_TURN = "args => { const resolved = (" + RESOLVE_USER_TURN + """
+)(args);
+  if (resolved === 'AMBIGUOUS') throw new Error('SUBMISSION_UNPROVEN');
+  return resolved === 'EXACT';
+}"""
+
+
 class BrowserAdapter:
     """Attach only; never create pages, navigate, launch, or close a browser."""
 
@@ -335,11 +382,11 @@ class BrowserAdapter:
 
     def arguments(self, text):
         return dict(url=self.binding.chat_url, text=text, composer=COMPOSER,
-                    account=ACCOUNT, stop=STOP, nonregular=NONREGULAR, login=LOGIN, send=SEND)
+                    account=ACCOUNT, stop=STOP, nonregular=NONREGULAR, login=LOGIN, send=SEND,
+                    userTurn=USER_TURN, userBubble=USER_BUBBLE, turnContainer=TURN_CONTAINER)
 
     def user_turn(self, text):
-        # Compare only the exact outbound user doorbell, never assistant content.
-        return self.page.locator(USER_TURN).get_by_text(text, exact=True)
+        return self.page.evaluate(RESOLVE_USER_TURN, self.arguments(text))
 
     def check(self, text):
         if self.select_page(self.browser, self.binding.chat_url) is not self.page:
@@ -354,7 +401,7 @@ class BrowserAdapter:
             raise WakeBlocked("GENERATION_ACTIVE")
         if self.visible(COMPOSER).text_content() != "":
             raise WakeBlocked("DRAFT_PRESENT")
-        if self.user_turn(text).count():
+        if self.user_turn(text) != "ABSENT":
             raise WakeBlocked("OUTBOUND_ALREADY_PRESENT")
 
     def submit(self, text):
@@ -378,10 +425,12 @@ class BrowserAdapter:
             raise WakeBlocked("SEND_BLOCKED")
 
     def prove(self, text):
-        self.user_turn(text).wait_for(state="visible", timeout=5000)
+        try:
+            self.page.wait_for_function(WAIT_USER_TURN, arg=self.arguments(text), timeout=5000)
+        except Exception:
+            raise WakeBlocked("SUBMISSION_UNPROVEN") from None
         if (self.select_page(self.browser, self.binding.chat_url) is not self.page
-                or self.user_turn(text).count() != 1 or self.visible(COMPOSER).count() != 1
-                or self.user_turn(text).text_content().replace("\r\n", "\n") != text
+                or self.user_turn(text) != "EXACT" or self.visible(COMPOSER).count() != 1
                 or self.visible("main").count() != 1 or self.visible(ACCOUNT).count() != 1
                 or self.visible(LOGIN).count() or self.visible(NONREGULAR).count()
                 or self.visible(COMPOSER).text_content() != ""):

@@ -136,6 +136,17 @@ def test_ambiguous_attempt_never_resends_or_exposes_private_browser_data(binding
     assert adapter.submits == 1
 
 
+def test_existing_attempting_entry_is_preserved_without_browser_or_recovery(binding):
+    data = {"version": 1, "events": {EVENT: "ATTEMPTING",
+            "terminal:RESULT:RUN-fixture-other:" + "b" * 40: "SUBMITTED"}}
+    binding.state_path.write_text(json.dumps(data))
+    assert wake.deliver(EVENT, wake.REPOSITORY, binding,
+                        lambda _: pytest.fail("ATTEMPTING must not attach or resend")) == {
+        "event_id": EVENT, "status": "BLOCKED", "reason": "ATTEMPT_REQUIRES_HUMAN",
+    }
+    assert json.loads(binding.state_path.read_text()) == data
+
+
 def test_pre_submit_failure_has_no_attempt_or_composer_modification(binding):
     adapter = FakeAdapter(binding, "check")
     assert wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "DRAFT_PRESENT"
@@ -293,27 +304,17 @@ class Locator:
         assert visible is True
         return self
 
-    def get_by_text(self, text, *, exact):
-        assert self.selector == wake.USER_TURN and exact is True
-        assert text == self.page.payload
-        return Locator(self.page, "outbound")
-
     def count(self):
         return self.page.counts.get(self.selector, 0)
 
     def text_content(self):
-        # Only the composer and the exact outbound user match are readable.
-        assert self.selector in {wake.COMPOSER, "outbound"}
-        return self.page.draft if self.selector == wake.COMPOSER else self.page.outbound
+        # Outbound text stays inside the bounded browser resolver.
+        assert self.selector == wake.COMPOSER
+        return self.page.draft
 
     def get_attribute(self, name):
         assert self.selector == wake.COMPOSER and name == "aria-disabled"
         return "true" if self.page.disabled else None
-
-    def wait_for(self, *, state, timeout):
-        assert state == "visible" and timeout <= 5000
-        if self.count() != 1:
-            raise RuntimeError("not visible")
 
 
 class Page:
@@ -324,13 +325,19 @@ class Page:
         self.send_enabled = self.disabled = False
         self.counts = {"main": 1, wake.COMPOSER: 1, wake.ACCOUNT: 1}
         self.evaluations = []
+        self.resolutions = []
         self.race = None
 
     def locator(self, selector):
-        assert selector in {"main", wake.COMPOSER, wake.ACCOUNT, wake.STOP, wake.NONREGULAR, wake.LOGIN, wake.USER_TURN}
+        assert selector in {"main", wake.COMPOSER, wake.ACCOUNT, wake.STOP, wake.NONREGULAR, wake.LOGIN}
         return Locator(self, selector)
 
     def wait_for_function(self, script, *, arg, timeout):
+        if script == wake.WAIT_USER_TURN:
+            assert arg["text"] == self.payload and timeout == 5000
+            if self.evaluate(wake.RESOLVE_USER_TURN, arg) != "EXACT":
+                raise RuntimeError("bounded outbound proof absent")
+            return
         assert script == wake.ACCEPT_INSERT and arg["text"] == self.payload and timeout == 3000
         if self.counts.get(wake.SEND, 0) != 1 or not self.send_enabled or self.draft != self.payload:
             raise RuntimeError("scoped readiness absent")
@@ -338,6 +345,12 @@ class Page:
     def evaluate(self, script, args):
         assert args["text"] == self.payload
         assert args["composer"] == wake.COMPOSER and args["account"] == wake.ACCOUNT
+        if script == wake.RESOLVE_USER_TURN:
+            self.resolutions.append(script)
+            count = self.counts.get("outbound", 0)
+            if not count or self.outbound.replace("\r\n", "\n") != args["text"]:
+                return "ABSENT"
+            return "EXACT" if count == 1 else "AMBIGUOUS"
         self.evaluations.append(script)
         if script == wake.INSERT:
             if self.race == "insert":
@@ -622,6 +635,160 @@ def test_exact_submission_proof_reads_only_outbound_and_composer(binding):
     page.counts[wake.STOP] = 1
     adapter.prove(page.payload)
     assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK, wake.PROVE_SEND]
+    assert len(page.resolutions) >= 4
+    assert set(page.resolutions) == {wake.RESOLVE_USER_TURN}
+
+
+@pytest.mark.parametrize("scenario,expected", [
+    ("legacy", "EXACT"), ("legacy_child", "EXACT"),
+    ("bubble", "EXACT"), ("both", "EXACT"), ("crlf", "EXACT"),
+    ("other_bubble", "EXACT"),
+    ("zero", "ABSENT"), ("page_only", "ABSENT"), ("assistant_only", "ABSENT"),
+    ("partial", "ABSENT"), ("prefix", "ABSENT"), ("suffix", "ABSENT"),
+    ("spaces", "ABSENT"), ("double_newline", "ABSENT"), ("case", "ABSENT"),
+    ("cr_only", "ABSENT"), ("hidden", "AMBIGUOUS"), ("no_rects", "AMBIGUOUS"),
+    ("hidden_legacy", "AMBIGUOUS"), ("no_turn", "AMBIGUOUS"),
+    ("nested_turns", "AMBIGUOUS"), ("duplicate_bubbles", "AMBIGUOUS"),
+    ("duplicate_same_turn", "AMBIGUOUS"), ("hidden_duplicate", "AMBIGUOUS"),
+    ("duplicate_legacy", "AMBIGUOUS"), ("mixed_distinct", "AMBIGUOUS"),
+    ("nested_markers", "AMBIGUOUS"), ("nested_mismatched_marker", "AMBIGUOUS"),
+    ("other_bubble_same_turn", "AMBIGUOUS"), ("assistant_ancestor", "AMBIGUOUS"),
+    ("both_no_turn", "AMBIGUOUS"), ("assistant_descendant", "AMBIGUOUS"),
+])
+def test_bounded_outbound_resolver_and_shared_pre_post_send_contract(binding, scenario, expected):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is needed for the isolated JavaScript DOM harness")
+    args = wake.BrowserAdapter(binding).arguments(wake.doorbell(EVENT, wake.REPOSITORY))
+    harness = r"""
+const input = JSON.parse(require('fs').readFileSync(0, 'utf8')), args = input.args;
+const nodes = [];
+function element(attrs = {}, parentElement = null, body = '') {
+  const e = {attrs, parentElement, body, hidden: false, noRects: false,
+    getAttribute(name) {return this.attrs[name] ?? null;},
+    getClientRects() {return this.noRects ? [] : [1];},
+    matches(selector) {
+      if (selector === args.userTurn) return this.attrs['data-message-author-role'] === 'user';
+      if (selector === args.userBubble) return 'data-user-message-bubble' in this.attrs;
+      if (selector === args.turnContainer) return 'data-turn-key' in this.attrs;
+      throw Error('unbounded selector');
+    },
+    contains(child) {
+      for (let p = child; p; p = p.parentElement) if (p === this) return true;
+      return false;
+    },
+    querySelector(selector) {
+      if (selector !== '[data-message-author-role]:not([data-message-author-role="user"])')
+        throw Error('unbounded descendant query');
+      return nodes.find(e => e !== this && this.contains(e) &&
+        'data-message-author-role' in e.attrs && e.attrs['data-message-author-role'] !== 'user') ?? null;
+    },
+    get textContent() {
+      if (this.unreadable) throw Error('unbounded text read');
+      return this.body + nodes.filter(n => n.parentElement === this).map(n => n.textContent).join('');
+    }
+  };
+  nodes.push(e); return e;
+}
+const root = element(), turn = element({'data-turn-key': 'fixture'}, root);
+const bubble = parent => element({'data-user-message-bubble': ''}, parent, args.text);
+const legacy = parent => element({'data-message-author-role': 'user'}, parent, args.text);
+// Unmarked page text and assistant output must never be read, even if exact.
+const pageText = element({}, root, args.text), assistant = element(
+  {'data-message-author-role': 'assistant'}, root, args.text);
+pageText.unreadable = assistant.unreadable = true;
+const name = input.scenario;
+let candidate;
+if (['zero', 'page_only', 'assistant_only'].includes(name)) {
+  // No user-specific candidates, despite page-global exact text.
+} else if (['legacy', 'legacy_child', 'hidden_legacy', 'duplicate_legacy'].includes(name)) {
+  candidate = legacy(root); // Historical fixtures need no turn-key ancestor.
+  if (name === 'legacy_child') {candidate.body = ''; element({}, candidate, args.text);}
+  if (name === 'hidden_legacy') candidate.hidden = true;
+  if (name === 'duplicate_legacy') legacy(root);
+} else {
+  candidate = bubble(turn);
+  if (['both', 'both_no_turn'].includes(name)) candidate.attrs['data-message-author-role'] = 'user';
+  if (name === 'crlf') candidate.body = args.text.replace(/\n/g, '\r\n');
+  if (name === 'partial') candidate.body = args.text.split('\n')[1];
+  if (name === 'prefix') candidate.body = ' ' + args.text;
+  if (name === 'suffix') candidate.body = args.text + '\n';
+  if (name === 'spaces') candidate.body = args.text.replace(/\n/g, ' ');
+  if (name === 'double_newline') candidate.body = args.text.replace(/\n/g, '\n\n');
+  if (name === 'case') candidate.body = args.text.toLowerCase();
+  if (name === 'cr_only') candidate.body = args.text.replace(/\n/g, '\r');
+  if (name === 'hidden') candidate.hidden = true;
+  if (name === 'no_rects') candidate.noRects = true;
+  if (['no_turn', 'both_no_turn'].includes(name)) candidate.parentElement = root;
+  if (name === 'nested_turns') candidate.parentElement = element({'data-turn-key': 'nested'}, turn);
+  if (['duplicate_bubbles', 'hidden_duplicate'].includes(name)) {
+    const duplicate = bubble(element({'data-turn-key': 'second'}, root));
+    duplicate.hidden = name === 'hidden_duplicate';
+  }
+  if (name === 'duplicate_same_turn') bubble(turn);
+  if (name === 'mixed_distinct') legacy(root);
+  if (['nested_markers', 'nested_mismatched_marker'].includes(name)) {
+    const wrapper = element({'data-message-author-role': 'user'}, turn,
+      name === 'nested_mismatched_marker' ? 'extra' : '');
+    candidate.parentElement = wrapper;
+  }
+  if (['other_bubble', 'other_bubble_same_turn'].includes(name)) {
+    bubble(name === 'other_bubble' ? element({'data-turn-key': 'other'}, root) : turn).body =
+      'Unrelated synthetic user message';
+  }
+  if (name === 'assistant_ancestor') candidate.parentElement = assistant;
+  if (name === 'assistant_descendant') {
+    const child = element({'data-message-author-role': 'assistant'}, candidate, args.text);
+    child.unreadable = true;
+  }
+}
+global.getComputedStyle = e => ({visibility: e.hidden ? 'hidden' : 'visible'});
+global.document = {querySelectorAll(selector) {
+  if (selector !== args.userTurn + ', ' + args.userBubble) throw Error('page-global discovery');
+  return nodes.filter(e => e.matches(args.userTurn) || e.matches(args.userBubble));
+}};
+const resolved = eval('(' + input.resolve + ')')(args);
+let waited = false, waitRejected = false;
+try {waited = eval('(' + input.wait + ')')(args);}
+catch (error) {
+  if (error.message !== 'SUBMISSION_UNPROVEN') throw error;
+  waitRejected = true;
+}
+process.stdout.write(JSON.stringify({resolved, waited, waitRejected}));
+"""
+    process = subprocess.run(
+        [node, "-e", harness], input=json.dumps({"args": args, "scenario": scenario,
+                                               "resolve": wake.RESOLVE_USER_TURN,
+                                               "wait": wake.WAIT_USER_TURN}),
+        capture_output=True, text=True, check=True, timeout=10,
+    )
+    result = json.loads(process.stdout)
+    assert result == {"resolved": expected, "waited": expected == "EXACT",
+                      "waitRejected": expected == "AMBIGUOUS"}
+
+    class ResolvedPage(Page):
+        def evaluate(self, script, arguments):
+            if script == wake.RESOLVE_USER_TURN:
+                assert arguments == args
+                self.resolutions.append(script)
+                return result["resolved"]
+            return super().evaluate(script, arguments)
+
+    page = ResolvedPage(binding.chat_url)
+    adapter = adapter_for(binding, page)
+    if expected == "ABSENT":
+        adapter.check(page.payload)
+    else:
+        with pytest.raises(wake.WakeBlocked, match="OUTBOUND_ALREADY_PRESENT"):
+            adapter.check(page.payload)
+    if expected == "EXACT":
+        adapter.prove(page.payload)
+        assert page.evaluations == [wake.PROVE_SEND]
+    else:
+        with pytest.raises(wake.WakeBlocked, match="SUBMISSION_UNPROVEN"):
+            adapter.prove(page.payload)
+        assert not page.evaluations
+    assert set(page.resolutions) == {wake.RESOLVE_USER_TURN}
 
 
 @pytest.mark.parametrize("condition", ["missing_turn", "duplicate_turn", "wrong_text", "draft", "send_enabled", "send_multiple", "wrong_chat", "second_target"])
@@ -634,7 +801,7 @@ def test_submission_proof_fails_closed(binding, condition):
     elif condition == "duplicate_turn":
         page.counts["outbound"] = 2
     elif condition == "wrong_text":
-        # Locator text matching normalizes whitespace; proof requires exact text.
+        # No whitespace-normalized substitute is eligible for bounded proof.
         page.outbound = page.payload.replace("\n", " ")
     elif condition == "draft":
         page.draft = "Human draft"

@@ -4,6 +4,7 @@ Status: conformance procedure; live proof is not asserted by this document.
 Implementation authority: TASK-269 revision 1, current-main documentation integration only.
 Bounded insertion correction: TASK-274 revision 1.
 Exact-form Send compatibility and one-attempt recovery procedure: TASK-275 revision 1.
+Bounded outbound-user-turn compatibility and one-attempt post-send reconciliation: TASK-276 revision 1.
 Reviewed semantic source: TASK-268 revision 1; historical source is not publication authority.
 Live observation and planning closure authority: Human/Brain.
 
@@ -117,7 +118,9 @@ The existing adapter attaches only to the already-running target. This procedure
 does not authorize a replacement browser/profile, navigation of an unrelated
 chat, general draft clearing, bypass of the enable gate, or ChatGPT Work fallback.
 The sole Human draft/event removal exception is workflow `36973913060`, attempt
-`1` (#352), in section 4.1; ordinary delivery has no recovery or clearing authority.
+`1` (#352), in section 4.1. Section 4.2 separately permits one Human-only
+post-send status reconciliation for workflow `36984172510`, attempt `1` (#354);
+ordinary delivery has no recovery, reconciliation or clearing authority.
 
 ## 4. Positive observation procedure
 
@@ -169,7 +172,9 @@ does not establish the positive proof.
 If submission is ambiguous, stop. `ATTEMPTING`, `BLOCKED`, uncertain state writes,
 or inability to prove submission must not be treated as `SUBMITTED`; never blindly
 resend. Preserve the bounded operational receipt for Human inspection without
-exposing local configuration or session material.
+exposing local configuration or session material. The sole post-send metadata
+exception is the reviewed, Human-only procedure in section 4.2; it does not
+replace the original receipt or itself establish positive conformance.
 
 ### 4.1. One-attempt Human recovery of the known pre-click INSERT_BLOCKED
 
@@ -253,6 +258,96 @@ planning, fresh exact-source admission/readiness and the ACK-only boundary in
 sections 2–4. The exact user-turn and duplicate NOOP proof remain later
 Human/Brain observations; H4A3 remains open and no H4A4/H4A5/H4B advancement is
 authorized by this exception.
+
+### 4.2. One-attempt Human post-send reconciliation of workflow 354
+
+This exception applies **only** to workflow run `36984172510`, attempt `1`
+(#354), for the exact section 2 event:
+
+```text
+terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253
+```
+
+Canonical planning records exact RESULT admission PASS, automatic Send
+functionally observed, local wake `BLOCKED / LOCAL_FAILURE`, an empty composer,
+and this external operational entry still `ATTEMPTING`. The historical
+user-role selector found zero containers. A Human-approved privacy-safe
+structural diagnostic records two visible `[data-user-message-bubble]` elements
+total, exactly one complete doorbell match, and exactly one `[data-turn-key]`
+ancestor for that matching bubble. Page-global exact-text discovery is diagnostic
+only and is never eligible production proof. Preserve the existing user turn and
+`ATTEMPTING` entry until reviewed TASK-276 publication and this bounded Human
+procedure; no replay is authorized by TASK-276.
+
+TASK-276 supplies the resolver and this procedure. Its Executor does not inspect
+the live chat, submit, reconcile machine-local state, or claim live conformance.
+After successful review and eligible publication of TASK-276, the Human MUST
+privately establish **all** of these preconditions before any state change:
+
+1. Fresh canonical reconstruction retains the exact RUN-268-001 RESULT lineage
+   in section 2 and binds the recorded successful admission and **Send click
+   before outbound proof failed** to workflow `36984172510`, attempt `1`.
+   The current turn, an empty composer, `LOCAL_FAILURE`, or admission alone
+   cannot substitute for that recorded click fact. Any contrary or uncertain
+   history stops reconciliation.
+2. The Human-owned external operational state still contains this exact event
+   as `ATTEMPTING`, attributable to that one historical attempt. No intervening
+   delivery, state reset, or competing writer exists. Pause competing delivery
+   and Human edits for the inspection and update. There must be no `.lock`,
+   `.pending`, in-flight wake, or uncertain write; do not remove a lock/pending
+   file or clear an entry to manufacture these preconditions.
+3. Re-prove the unchanged exact private binding and external state used by #354,
+   exactly one matching page with the complete bound conversation URL, one
+   authenticated account indicator, one enabled regular-chat composer, one main
+   surface, and no login or nonregular surface. No navigation or binding
+   substitution is permitted. The exact composer must be empty; do not clear
+   it. Any draft or changed/ambiguous page, account or composer stops the procedure.
+4. The **reviewed shared bounded resolver** proves exactly one matching outbound
+   user turn. Discovery begins only at `[data-message-author-role="user"]` or
+   `[data-user-message-bubble]`, never page-global text or assistant output.
+   The complete container text must equal the fixed four-line doorbell in
+   section 4 after CRLF-to-LF normalization only. No trim, whitespace collapse,
+   substring, case folding, or partial payload is allowed. Historical user-role
+   containers retain exact matching; a current bubble additionally must be
+   visible and have exactly one `[data-turn-key]` ancestor. A single element
+   with both markers is considered once and must satisfy the bubble rules.
+   Zero or multiple exact containers, hidden exact matches, nested user markers,
+   non-user role ancestry/descendants, multiple bubbles in the matching turn, or ambiguous
+   turn containment stops reconciliation. Another nonmatching bubble in a
+   separate turn is not a match. Export only bounded guard/match statuses,
+   never turn-key values, raw chat text or history.
+5. Re-prove the existing post-send Send-control condition: the exact composer's
+   unique enclosing form has either zero visible scoped Send controls or
+   exactly one disabled scoped Send control, under the unchanged reviewed
+   `[data-testid="send-button"]` / `button[type="submit"][aria-label="Send"]`
+   union and enabled/`aria-disabled` rules. Multiple forms or controls, an
+   enabled Send control, or unproven containment stops reconciliation. No
+   page-global Send query or click is permitted. Assistant generation and ACK
+   contents are neither input nor proof; do not read them.
+
+Immediately before updating state, recheck all bounded page, empty-composer,
+outbound-turn and Send-control proofs, the exact entry still `ATTEMPTING`, and
+absence of lock/pending/concurrent-write ambiguity. Only if every condition
+holds may the Human change **only this one exact external event value** from
+`ATTEMPTING` to `SUBMITTED`. Preserve the schema and every other entry. Do not
+delete the event, reset the file, modify a draft/user turn, or mutate canonical
+lifecycle or roadmap state. If an update cannot be completed unambiguously,
+stop without automatic recovery or resend.
+
+This consumes the exception for workflow `36984172510`, attempt `1` only. It is
+non-reusable: it cannot authorize another workflow/attempt, another event, or a
+later uncertain attempt of this same event. Normal `deliver()` still returns
+`ATTEMPT_REQUIRES_HUMAN` for any existing `ATTEMPTING` entry before attaching,
+and never automatically converts, clears, deletes, or resends it.
+
+Reconciliation records a later Human operational status change, **not** a
+historical workflow `SUBMITTED / EXACT_USER_TURN_PROVEN` receipt. Preserve #354's
+original `BLOCKED / LOCAL_FAILURE`; do not rewrite or fabricate its receipt,
+Runtime EVIDENCE, or live-conformance success. This procedure does not click Send
+or authorize any further delivery, including the duplicate observation in
+section 4. Any later observation requires separate Human/Brain planning and
+current source/readiness checks. H4A3 remains open until Human/Brain assesses
+the required conformance proof; no H4A4/H4A5/H4B advancement follows here.
 
 ## 5. Negative-case basis and contrary live observations
 
