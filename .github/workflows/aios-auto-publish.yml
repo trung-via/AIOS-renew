@@ -143,6 +143,8 @@ jobs:
     uses: ./.github/workflows/aios-local-chat-wake.yml
     permissions:
       contents: read
+      # Cover the reusable workflow's declared job permissions.
+      actions: read
     with:
       event_id: ${{ needs.publish.outputs.event_id }}
       repository: trung-via/AIOS-renew

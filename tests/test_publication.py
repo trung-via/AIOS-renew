@@ -1945,7 +1945,7 @@ def test_publication_direct_handoff_reuses_only_existing_selector_boundary():
     handoff = parsed["jobs"]["local-chat-wake"]
     assert handoff["needs"] == "publish"
     assert handoff["uses"] == "./.github/workflows/aios-local-chat-wake.yml"
-    assert handoff["permissions"] == {"contents": "read"}
+    assert handoff["permissions"] == {"contents": "read", "actions": "read"}
     assert handoff["with"] == {"event_id": "${{ needs.publish.outputs.event_id }}", "repository": brain.REPOSITORY}
     assert set(handoff) == {"needs", "if", "uses", "permissions", "with"}
     for forbidden in ("actions: write", "repository_dispatch", "createWorkflowDispatch", "gh workflow run",
@@ -1953,6 +1953,29 @@ def test_publication_direct_handoff_reuses_only_existing_selector_boundary():
                       "review_verdict", "roadmap_successor", "cdp_endpoint", "assistant_output",
                       "PUBLICATION_PROVEN", "PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING"):
         assert forbidden not in text
+
+
+def test_publication_reusable_handoff_covers_callee_permission_ceiling() -> None:
+    parsed, _ = publication_workflow()
+    handoff = parsed["jobs"]["local-chat-wake"]
+    caller_permissions = handoff["permissions"]
+    assert set(caller_permissions.values()) == {"read"}
+    callee = yaml.load(
+        Path(handoff["uses"]).read_text(encoding="utf-8"), Loader=yaml.BaseLoader
+    )
+    levels = {"none": 0, "read": 1, "write": 2}
+    required_permissions = set()
+    # The call chain must cover declared permissions even on gated/skipped jobs.
+    for job_name, job in callee["jobs"].items():
+        permissions = job.get("permissions", callee.get("permissions", {}))
+        assert isinstance(permissions, dict), job_name
+        for permission, level in permissions.items():
+            assert levels[level] <= levels[caller_permissions.get(permission, "none")], (
+                job_name, permission, level
+            )
+            if level != "none":
+                required_permissions.add(permission)
+    assert set(caller_permissions) == required_permissions
 
 
 @pytest.mark.parametrize("prior_failed", [False, True])
