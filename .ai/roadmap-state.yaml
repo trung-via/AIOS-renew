@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-project-scoped-exact-chat-route-fix
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -749,8 +749,88 @@ sequence:
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-project-scoped-exact-chat-route-fix
     status: NEXT
+    phase: H4A3_PROJECT_SCOPED_EXACT_CHAT_ROUTE_FIX
+    task_id: TASK-271
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    objective: >-
+      Correct the published H4A2 exact-chat URL recognizer so the attach-only wake
+      transport accepts both standalone regular-chat routes and the observed
+      Project-scoped regular-chat route family, while preserving exact project/chat
+      identity, fail-closed browser attachment, privacy, dedupe and ACK-only boundaries.
+    observed_live_blocker:
+      source: HUMAN_H4A3_READINESS_PREFLIGHT
+      canonical_main_at_observation: "24eeb008cce5c469e527daf29c9e1515062bfba5"
+      observed_route_shape: "https://chatgpt.com/g/<project-segment>/c/<conversation-uuid>"
+      current_supported_shape: "https://chatgpt.com/c/<conversation-uuid>"
+      current_code_anchor: src/aios_renew/local_chat_wake.py::normalize_chat
+      local_observation: CHAT_TARGET_COUNT_0
+      wake_submitted: false
+      local_event_state_created: false
+      run_failure: false
+      semantic_failure: false
+    architecture_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      reconciled_risks:
+        - DO_NOT_GENERALIZE_TO_ARBITRARY_CHATGPT_PATHS
+        - PRESERVE_FULL_PROJECT_AND_CONVERSATION_IDENTITY
+        - STANDALONE_CHAT_ROUTE_MUST_NOT_REGRESS
+        - WRONG_PROJECT_WITH_SAME_CONVERSATION_ID_MUST_NOT_MATCH
+        - NO_PRIVATE_LIVE_PROJECT_OR_CONVERSATION_IDENTIFIER_IN_REPOSITORY
+        - H4A3_LIVE_PROOF_REMAINS_BLOCKED_UNTIL_REVIEWED_PUBLICATION
+    selected_contract: PROJECT_SCOPED_EXACT_CHAT_ROUTE_COMPATIBILITY_V1
+    required_route_families:
+      - "https://chatgpt.com/c/<conversation-uuid>"
+      - "https://chatgpt.com/g/<project-segment>/c/<conversation-uuid>"
+    route_constraints:
+      - HTTPS_ONLY
+      - EXACT_CHATGPT_COM_HOST_ONLY
+      - PROJECT_SEGMENT_IS_ONE_ASCII_PATH_SEGMENT_BEGINNING_G_DASH
+      - PROJECT_SEGMENT_ALPHANUMERIC_OR_HYPHEN_ONLY
+      - CONVERSATION_ID_IS_CANONICAL_UUID_SHAPE
+      - NO_QUERY
+      - NO_FRAGMENT
+      - NO_EXTRA_PATH_COMPONENTS
+      - NO_PERCENT_ENCODED_PATH_SUBSTITUTION
+      - NORMALIZATION_PRESERVES_FULL_PROJECT_SEGMENT_AND_CONVERSATION_ID
+      - TRAILING_SLASH_ONLY_MAY_NORMALIZE_AWAY
+    preserved_boundaries:
+      - ATTACH_ONLY_NO_BROWSER_LAUNCH_OR_NAVIGATION
+      - EXACTLY_ONE_BOUND_PAGE_REQUIRED
+      - WRONG_PROJECT_OR_WRONG_CHAT_REJECTED
+      - NO_ASSISTANT_OUTPUT_EXTRACTION
+      - HUMAN_DRAFT_AND_GENERATION_SAFETY_UNCHANGED
+      - LOCAL_STATE_AND_DEDUPE_SEMANTICS_UNCHANGED
+      - NO_CHAT_URL_OR_SESSION_DATA_IN_CANONICAL_ARTIFACTS
+      - NO_LIFECYCLE_OR_ROADMAP_AUTHORITY_FROM_WAKE
+    expected_scope:
+      modify:
+        - src/aios_renew/local_chat_wake.py
+        - tests/test_local_chat_wake.py
+    verification_intent:
+      - python -m pytest -q tests/test_local_chat_wake.py
+      - git diff --check
+    task_authoring_audit:
+      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
+      required_profile: brain-high-value-v3
+    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+    sequencing:
+      - AFTER_TASK_269_REVIEWED_PUBLICATION_RECOVERY_COMPLETE
+      - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
+      - BEFORE_TASK_270_H1R_EXACT_BLOB_FIX
+      - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+    status: BLOCKED_BY_TASK_271_PROJECT_ROUTE_FIX
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -831,7 +911,7 @@ sequence:
       expires_on_task_change: true
     execution_profile_status: HUMAN_SELECTED
     sequencing:
-      - AFTER_TASK_269_REVIEWED_PUBLICATION_RECOVERY_COMPLETE
+      - AFTER_TASK_271_PROJECT_SCOPED_EXACT_CHAT_ROUTE_FIX
       - BEFORE_TASK_270_H1R_EXACT_BLOB_FIX
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
