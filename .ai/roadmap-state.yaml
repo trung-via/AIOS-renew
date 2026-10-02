@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-exact-blob-preservation-fix
+  - brain-runtime-semantic-handoff-hardening-v1-h4a4-durable-wake-recovery-multi-project-isolation
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -2630,7 +2630,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-exact-blob-preservation-fix
-    status: NEXT
+    status: DONE
     phase: H1R_REVIEWED_RESULT_EXACT_BLOB_PRESERVATION_FIX
     task_id: TASK-270
     task_revision: 1
@@ -2712,14 +2712,33 @@ sequence:
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
-    execution_profile_status: HUMAN_SELECTED
+    execution_profile_status: COMPLETED
+    completed_by:
+      task_id: TASK-270
+      task_revision: 1
+      primary_run_id: RUN-270-001
+      primary_failure_artifact_sha: "997d54ea466658fb6dab2f432e7ba7f5e19bf6d7"
+      failed_candidate_sha: "712de01430e1d5fe518a5374ccf32df126319406"
+      repair_id: REPAIR-270-001
+      repair_authorization_sha: "9a43f217f80c5891fe857fe12012f5e4fb5aa13c"
+      repair_run_id: RUN-270-002
+      result_artifact_sha: "ca017e3c97b6e88ee84d12357cf76e991f176ea6"
+      verification_evidence:
+        - RUN-270-002-V001
+        - RUN-270-002-V002
+      review_id: REVIEW-270-002
+      review_decision_sha: "0839e2d6b79f039a40be804169eb1133ecef2134"
+      verdict: PASS
+      reviewed_sha: "3da7212498d905e92560a7d1b7c81866a08e04a8"
+      published_sha: "3da7212498d905e92560a7d1b7c81866a08e04a8"
+      publication_workflow_run_id: 37013546636
     sequencing:
       - AFTER_H4A3_LIVE_PROOF
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a4-durable-wake-recovery-multi-project-isolation
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a4-durable-wake-recovery-multi-project-isolation
-    status: QUEUED_AFTER_TASK_270
+    status: NEXT
     phase: H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
