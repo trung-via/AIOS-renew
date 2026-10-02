@@ -2901,7 +2901,7 @@ sequence:
       completed_on: "2026-10-02"
       verification_summary: "RUN-279-002: 800 passed, 516 skipped; git diff --check passed. RUN-279-003: git diff --check passed."
     live_conformance:
-      status: PARTIAL
+      status: BLOCKED
       procedure: docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
       observed_on: "2026-10-03"
       representative_family_proofs:
@@ -2914,13 +2914,41 @@ sequence:
           local_wake_outcome: SUCCESS
           human_observation: EXACT_BOUND_REGULAR_CHAT_WAKE_OBSERVED
           result: PASS
+        - family: PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+          replay_authorization: HUMAN
+          replay_issue_number: 1390
+          review_run_id: RUN-279-003
+          review_decision_sha: "f988b721c889123dcd63e97e2a0fea55ae34f756"
+          replay_ingress_status: IDEMPOTENT
+          publication_workflow_run_id: 37040170067
+          publication_outcome: SUCCESS
+          publication_attention_artifact_id: 11242411027
+          published_sha: "dc93e5b435d2208b78a286ac670323fa351e64ce"
+          local_wake_workflow_after_publication: NOT_CREATED
+          result: FAIL
+          failure_class: PUBLICATION_SUCCESS_SOURCE_NOTIFICATION_GAP
+      live_blocker:
+        code: PUBLICATION_SUCCESS_SOURCE_NOTIFICATION_GAP
+        authority: HUMAN_BRAIN_PLANNING
+        exact_observation: >-
+          aios-auto-publish run 37040170067 completed SUCCESS and exported artifact
+          11242411027, while no AIOS local regular chat wake transport run was created
+          after its completion. Existing workflow configuration names auto-publish as
+          a workflow_run source, so the production trigger edge must be diagnosed and
+          corrected without adding semantic routing authority.
+        prior_same_shape_observation:
+          publication_workflow_run_id: 37038406848
+          local_wake_workflow_after_publication: NOT_OBSERVED
+        run_created_by_probe: false
+        executor_invoked_by_probe: false
+        disposition: NEW_REVIEWED_IMPLEMENTATION_CHANGE_REQUIRED
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
-        The Human observed the selector-only wake in the exact bound regular Chat,
-        while GitHub evidence independently proves the expected ingress rejection,
-        run_created=false source boundary, generic attention projection and successful
-        local wake workflow. This partial live proof does not close H4A5, authorize
-        H4B, advance the roadmap, or become canonical engineering-state truth.
+        The carrier-rejection representative live proof passed, but the separately
+        authorized publication-success replay exposed a production source-notification
+        gap before local wake admission. H4A5 remains blocked and cannot close or
+        authorize H4B until a reviewed implementation change fixes that edge and the
+        bounded Human conformance procedure is resumed.
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
