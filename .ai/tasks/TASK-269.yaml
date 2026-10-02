@@ -1,0 +1,123 @@
+task_id: TASK-269
+revision: 1
+goal: Integrate the semantically reviewed TASK-268 H4A3 ACK-only exact-chat conformance
+  contract onto current canonical main as a fresh current-main descendant documentation
+  candidate, preserving the Human-approved H4A4/H4A5 wake-reliability roadmap that
+  advanced after RUN-268-001 while keeping TASK-268's reviewed live-proof boundaries
+  intact.
+problem: RUN-268-001 produced reviewed candidate 31eb283ad8eb07695f26e940509696c38e62b3a4
+  and REVIEW-268-001 returned PRIMARY PASS for AC1-AC6, but Publisher correctly returned
+  INTEGRATION_REQUIRED because current main advanced independently through Human/Brain
+  planning commits. Direct publication of the historical reviewed candidate would
+  discard newer canonical planning state. The reviewed H4A3 document must therefore
+  be realized again on current main, with its sequencing language reconciled to the
+  now-canonical H4A3 -> H4A4 -> H4A5 -> H4B order, before the separate Human-owned
+  live exact-terminal replay is attempted.
+assumptions:
+- Canonical main at TASK-269 authoring is e1915c4191c30acb1804b80d17e0d64fd467daf9
+  and the roadmap selects TASK-269 as the unique unauthored NEXT recovery item.
+- RUN-268-001 is the canonical PRIMARY RESULT for TASK-268 r1 with RESULT artifact
+  commit 1f3d0dac34c7cff6d768d580f31513df08ebb253, candidate 31eb283ad8eb07695f26e940509696c38e62b3a4,
+  unresolved empty, and Runtime verification git diff --check PASS.
+- REVIEW-268-001 at decision commit 7a52a4c82490a4f0a3684b3517404a7cd42bd778 is PRIMARY
+  PASS for AC1-AC6 with no findings.
+- Publication workflow run 36947006121 returned INTEGRATION_REQUIRED rather than a
+  RUN or semantic failure because current main diverged from the TASK-268 execution
+  branch.
+- The reviewed TASK-268 conformance document blob is 3836cabc48139bec19e1a9dd80caecacdc34ba9b
+  and remains immutable historical semantic input rather than direct publication authority.
+- Current-main changes after the TASK-268 execution base are Human/Brain planning
+  changes in .ai/roadmap-state.yaml, docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md,
+  and docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md; those current canonical changes remain
+  authoritative and outside TASK-269 modification scope.
+- The exact RUN-268-001 terminal-attention replay is a later Human/Brain operational
+  conformance step after reviewed publication and local readiness; TASK-269 neither
+  performs nor claims that live proof.
+scope:
+  inspect:
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md@31eb283ad8eb07695f26e940509696c38e62b3a4
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-268.yaml
+  - refs/heads/aios/artifacts/RUN-268-001
+  - refs/heads/aios/review-decision/RUN-268-001
+  - refs/heads/aios/terminal-attention/RESULT/RUN-268-001/1f3d0dac34c7cff6d768d580f31513df08ebb253
+  modify:
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+non_goals:
+- Publish, merge, rebase, cherry-pick, force-update, or otherwise move the historical
+  TASK-268 reviewed candidate directly onto main.
+- Use the correction/remediation integration primitive, REPAIR, or REMEDIATION for
+  this successful PRIMARY publication divergence.
+- Modify the H4A2 local-chat wake transport, terminal-attention workflow, tests, Runtime,
+  Reviewer, Publisher, TASK schema, or canonical lifecycle semantics.
+- Modify .ai/roadmap-state.yaml or the Human-approved H4A4/H4A5 planning documents
+  or sequencing.
+- Perform the H4A3 live exact-chat wake replay, enable the Human gate, create local
+  binding, inspect assistant output, or claim live H4A3 conformance.
+- Create a synthetic RUN, RESULT, FAILURE, REVIEW, terminal identity, attention ref,
+  or replacement live-probe source.
+- Advance H4A3, H4A4, H4A5, H4B, H5, VPRC, or downstream adoption automatically.
+constraints:
+  hard:
+  - The TASK-269 candidate must descend from canonical TASK-269 authoring main e1915c4191c30acb1804b80d17e0d64fd467daf9
+    and may modify only docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md; all
+    inherited current-main planning and product state must remain unchanged.
+  - 'Preserve the reviewed TASK-268 conformance substance: the real canonical TASK-268
+    RESULT terminal is the positive source; Human-owned exact binding, authenticated
+    regular Chat target and enable gate are prerequisites; positive proof requires
+    exact terminal admission, local SUBMITTED/EXACT_USER_TURN_PROVEN, exactly one
+    matching outbound user wake turn, and duplicate NOOP/ALREADY_SUBMITTED with no
+    second turn.'
+  - 'Preserve ACK-only authority boundaries: no assistant-output extraction, no wake-driven
+    TASK/RUN/REVIEW/REMEDIATION/REPAIR/publication/roadmap mutation, no fake terminal
+    identity, and no conversion of missing Human local readiness into engineering
+    failure or conformance PASS.'
+  - Reconcile sequencing prose with current canonical planning so H4A3 live proof
+    closes before H4A4, H4A4 closes before H4A5, and H4B remains blocked until H4A5
+    closes; the integrated document must not imply that H4B becomes eligible immediately
+    after H4A3.
+  - The historical TASK-268 reviewed candidate and document are immutable semantic/reference
+    inputs only. TASK-269 must create a fresh normally verifiable and reviewable current-main
+    descendant rather than treating historical source as current publication truth.
+  - The later live probe must continue to use exact canonical terminal identity terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253
+    through the existing terminal-attention workflow_dispatch replay surface only
+    after TASK-269 publication and Human local readiness; TASK-269 implementation
+    must not dispatch or replay it.
+  - Reviewed TASK-266 deterministic coverage remains the basis for busy, draft, generation,
+    wrong-chat, logged-out and ambiguous-send negative cases; contrary live evidence
+    requires separate Human/Brain-authorized correction and does not widen TASK-269
+    scope.
+  - Executor implementation must not push or publish. Runtime retains canonical verification,
+    Reviewer retains the semantic verdict, Publisher retains exact eligible reviewed-source
+    publication, and Human/Brain retain H4A3 live-proof and roadmap authority.
+acceptance:
+- id: AC1
+  condition: 'The completed candidate is a descendant of the TASK-269 current-main
+    authoring state and changes exactly one path: docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md.'
+- id: AC2
+  condition: 'The integrated document preserves the reviewed TASK-268 positive-proof
+    contract: exact real RUN-268-001 RESULT provenance, Human-owned local readiness,
+    matching SUBMITTED/EXACT_USER_TURN_PROVEN receipt, exactly one matching outbound
+    user wake turn, and duplicate NOOP/ALREADY_SUBMITTED with no second turn.'
+- id: AC3
+  condition: The integrated document preserves ACK-only/no-assistant-output/no-lifecycle-mutation
+    boundaries and clearly states that missing local readiness or skipped delivery
+    leaves H4A3 open rather than creating engineering failure or conformance success.
+- id: AC4
+  condition: The integrated document is consistent with current canonical sequencing
+    H4A3 -> H4A4 -> H4A5 -> H4B and does not state or imply that H4B becomes eligible
+    solely from H4A3 closure.
+- id: AC5
+  condition: The integrated document preserves reviewed TASK-266 deterministic negative-case
+    reuse and the requirement for a separately authorized correction if contrary live
+    evidence reveals a production transport defect.
+- id: AC6
+  condition: The candidate introduces no transport/workflow/test/Runtime/Reviewer/Publisher/roadmap
+    change, does not perform the live terminal replay, and does not reinterpret the
+    historical TASK-268 PASS as direct publication authority.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - git diff --check
