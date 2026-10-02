@@ -1404,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_BOUNDED_RECOVERY_REQUIRED_AFTER_TASK_275_PUBLICATION
+      status: HUMAN_RECONCILIATION_REQUIRED_FOR_POST_TASK275_ATTEMPT
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1749,6 +1749,44 @@ sequence:
           publication_workflow_run_id: 36978258995
           status: REVIEWED_PUBLISHED
         next_boundary: HUMAN_BOUNDED_RECOVERY_OF_WORKFLOW_352_ATTEMPT_1
+      post_task275_terminal_attention_observation:
+        source: GITHUB_TERMINAL_ATTENTION_PLUS_HUMAN_LOCAL_SCREENSHOT
+        observed_on: "2026-10-02"
+        workflow_run_id: 36977612901
+        workflow_run_number: 353
+        workflow_attempt: 1
+        source_run_id: RUN-275-001
+        terminal_kind: RESULT
+        terminal_artifact_sha: "d379c4fdd0eaab7134cae5ab3fa682796f5a7818"
+        local_wake_status: BLOCKED
+        local_wake_reason: INSERT_BLOCKED
+        transport_source_sha: "51b2f2436f7ccfb3a915d3ce31990be62deba9a6"
+        human_visual_exact_unsent_doorbell_for_run_275_present: true
+        h4a3_preflight_for_run_268_afterward:
+          event_state_attempting: true
+          isolated_state_exact_event_only: false
+          matching_outbound_user_turn_count: 0
+          preflight: FAIL_CLOSED
+          send_shape_matches_352: true
+          surface_payload_ready: false
+          target_page_unique: true
+          unique_form: true
+        interpretation: >-
+          The prompt now visible in the composer is a different later doorbell for
+          RUN-275-001 RESULT, created by terminal-attention workflow #353 after TASK-275
+          execution. It is not the earlier RUN-268-001 draft. The #353 local transport
+          stopped at INSERT_BLOCKED before publication of TASK-275, so the unsent draft
+          and likely additional ATTEMPTING operational entry interfere with the planned
+          #352 recovery preflight. This does not consume RUN-268-001, does not prove a
+          user turn, and is not a TASK-275 RUN failure.
+        governance_constraint: >-
+          The published section 4.1 recovery authority is bound only to workflow #352
+          attempt 1 / RUN-268-001. It does not authorize deleting the RUN-275-001 #353
+          draft or any additional operational state entry. Do not click Send, manually
+          delete the new draft, reset state, or replay either terminal until the #353
+          local state/draft is reconciled read-only and a distinct Human recovery
+          authority is established.
+        next_boundary: HUMAN_READ_ONLY_RECONCILIATION_OF_WORKFLOW_353_ATTEMPT_1
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
