@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-outbound-user-turn-structural-compatibility-fix
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -1376,8 +1376,95 @@ sequence:
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-outbound-user-turn-structural-compatibility-fix
     status: NEXT
+    phase: H4A3_OUTBOUND_USER_TURN_STRUCTURAL_COMPATIBILITY_FIX
+    task_id: TASK-276
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    objective: >-
+      Restore H4A3 post-send proof for the current regular Project-chat DOM by adding a
+      bounded outbound user-turn compatibility boundary for the observed
+      data-user-message-bubble structure while preserving exact doorbell identity,
+      unique turn containment, the historical data-message-author-role=user shape,
+      fail-closed ambiguity handling, privacy, dedupe and ACK-only authority.
+    observed_case:
+      workflow_run_id: 36984172510
+      workflow_run_number: 354
+      workflow_attempt: 1
+      exact_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+      terminal_attention_admission: PASS
+      automatic_send_functionally_observed: true
+      local_wake_status: BLOCKED
+      local_wake_reason: LOCAL_FAILURE
+      local_event_state: ATTEMPTING
+      composer_empty: true
+      configured_user_turn_selector: "[data-message-author-role=\"user\"]"
+      configured_selector_count: 0
+      global_exact_doorbell_count: 1
+      visible_user_message_bubble_count: 2
+      exact_expected_user_message_bubble_count: 1
+      exact_bubble_has_unique_turn_container: true
+      exact_bubble_marker_present: true
+      wake_replay_authorized: false
+      semantic_effect: NONE
+      h4a3_proof_effect: DEFECT_DIAGNOSIS_ONLY
+    root_cause: >-
+      Automatic Send succeeded and the exact RUN-268 doorbell exists once in the bound
+      chat, but the transport's historical [data-message-author-role="user"] outbound
+      container selector resolves zero elements in the current live DOM. A privacy-safe
+      ancestor diagnostic proves the exact doorbell is contained by one visible
+      [data-user-message-bubble] and that exact bubble belongs to one unique
+      [data-turn-key] container. The remaining defect is therefore bounded to
+      outbound-user-turn structural discovery/proof after Send, not target identity,
+      insertion, Send readiness, click execution or assistant generation.
+    architecture_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      reconciled_risks:
+        - DO_NOT_USE_PAGE_GLOBAL_EXACT_TEXT_AS_PRODUCTION_USER_TURN_PROOF
+        - DATA_USER_MESSAGE_BUBBLE_ALONE_IS_NOT_SUFFICIENT_WITHOUT_EXACT_PAYLOAD_MATCH
+        - REQUIRE_UNIQUE_STRUCTURAL_TURN_CONTAINMENT_FOR_THE_COMPATIBILITY_BRANCH
+        - PRESERVE_HISTORICAL_DATA_MESSAGE_AUTHOR_ROLE_USER_COMPATIBILITY_WHEN_UNAMBIGUOUS
+        - ZERO_OR_MULTIPLE_MATCHING_OUTBOUND_CANDIDATES_FAIL_CLOSED
+        - DO_NOT_READ_PARSE_OR_MATCH_ASSISTANT_OUTPUT
+        - PRESERVE_EXISTING_ATTEMPTING_STATE_AND_NEVER_BLINDLY_REPLAY_RUN_268
+        - KEEP_POST_FIX_RECONCILIATION_AND_DUPLICATE_NOOP_PROOF_HUMAN_BRAIN_OWNED
+        - DO_NOT_EXPAND_INTO_H4A4_RECOVERY_OR_MULTI_PROJECT_ROUTING
+    selected_contract: BOUNDED_OUTBOUND_USER_TURN_STRUCTURAL_COMPATIBILITY_V1
+    expected_scope:
+      inspect:
+        - src/aios_renew/local_chat_wake.py
+        - tests/test_local_chat_wake.py
+        - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+        - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+        - .ai/roadmap-state.yaml
+      modify:
+        - src/aios_renew/local_chat_wake.py
+        - tests/test_local_chat_wake.py
+        - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+    verification_intent:
+      - python -m pytest -q tests/test_local_chat_wake.py
+      - git diff --check
+    task_authoring_audit:
+      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
+      required_profile: brain-high-value-v3
+    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+    sequencing:
+      - AFTER_TASK_275_SEND_CONTROL_SELECTOR_COMPATIBILITY_FIX
+      - AFTER_WORKFLOW_354_POST_SEND_SELECTOR_DRIFT_DIAGNOSIS
+      - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
+      - BEFORE_TASK_270_H1R_EXACT_BLOB_FIX
+      - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+    status: BLOCKED_BY_TASK_276_OUTBOUND_USER_TURN_SELECTOR_FIX
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -1404,7 +1491,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: OUTBOUND_USER_TURN_SELECTOR_DRIFT_CONFIRMED
+      status: ENGINEERING_OUTBOUND_USER_TURN_STRUCTURAL_SELECTOR_DEFECT_CONFIRMED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -2065,6 +2152,35 @@ sequence:
           - DO_NOT_PARSE_OR_MATCH_ASSISTANT_OUTPUT
           - DO_NOT_DELETE_THE_VISIBLE_USER_TURN
         next_boundary: HUMAN_READ_ONLY_FULL_USER_TURN_CONTAINER_STRUCTURE_DIAGNOSTIC
+      user_turn_structure_observation:
+        source: HUMAN_LOCAL_PRIVACY_SAFE_USER_BUBBLE_DIAGNOSTIC
+        observed_on: "2026-10-02"
+        exact_global_doorbell_count: 1
+        user_message_bubble_count: 2
+        visible_user_message_bubble_count: 2
+        exact_expected_bubble_count: 1
+        exact_bubble_has_unique_turn_container: true
+        exact_bubble_marker_present: true
+        stable_primary_candidate_marker: "data-user-message-bubble"
+        bounded_turn_container_marker: "data-turn-key"
+        historical_selector_marker_present_on_exact_ancestor_chain: false
+        interpretation: >-
+          The exact outbound RUN-268 doorbell has one bounded current-DOM user-message
+          bubble and one unique structural turn container. This closes the prior structural
+          uncertainty without making page-global text search a production proof and without
+          inspecting assistant output. A reviewed compatibility correction may therefore
+          support this bounded branch while preserving the historical user-role branch and
+          fail closing on zero or multiple exact candidates.
+        semantic_effect: NONE
+        h4a3_proof_effect: DEFECT_BOUNDARY_CONFIRMED
+        prohibitions:
+          - DO_NOT_REPLAY_RUN_268
+          - DO_NOT_CLEAR_RUN_268_ATTEMPTING_STATE
+          - DO_NOT_DELETE_THE_EXISTING_USER_TURN
+          - DO_NOT_READ_OR_MATCH_ASSISTANT_OUTPUT
+          - DO_NOT_ADVANCE_H4A3_BEFORE_REVIEWED_TASK_276_PUBLICATION_AND_RECONCILIATION
+        next_boundary: TASK_276_AUTHORING_AND_REVIEWED_PUBLICATION
+
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
