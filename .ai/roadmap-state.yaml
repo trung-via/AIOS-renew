@@ -2702,7 +2702,17 @@ sequence:
         - KEEP_ACCEPTANCE_CLAIMABLE_BEFORE_FUTURE_TASK269_RETRY
         - PRESERVE_HOST_PORTABILITY_AND_EXACT_BYTES
         - DO_NOT_DUPLICATE_METADATA_VALIDATION_AUTHORITY
-    execution_profile_status: AWAITING_HUMAN_SELECTION
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-270
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
     sequencing:
       - AFTER_H4A3_LIVE_PROOF
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
