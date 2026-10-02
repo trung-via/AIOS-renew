@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-workflow-dispatch-main-ref-admission-fix
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -986,8 +986,89 @@ sequence:
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-workflow-dispatch-main-ref-admission-fix
     status: NEXT
+    phase: H4A3_WORKFLOW_DISPATCH_MAIN_REF_ADMISSION_FIX
+    task_id: TASK-273
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    objective: >-
+      Correct the terminal-attention workflow_dispatch main-ref admission mismatch exposed
+      by H4A3 live replay #348 without weakening exact terminal identity, canonical-main
+      execution, remote ref validation, push-event admission, local wake gating, or ACK-only
+      conformance semantics.
+    observed_case:
+      workflow_run_id: 36963244174
+      workflow_run_number: 348
+      event: workflow_dispatch
+      head_branch: main
+      head_sha: "b86798e211d8da6ddef23df2917615ebe77e557d"
+      boundary: TERMINAL_ATTENTION_ADMISSION_REJECTED
+      exact_error: "workflow_dispatch must execute from main"
+      admit_and_notify: FAILURE
+      local_chat_wake: SKIPPED
+      semantic_effect: NONE
+      h4a3_proof_effect: NONE
+    root_cause: >-
+      The workflow job-level gate admitted the manual replay on canonical main, but
+      terminal_attention.admit_event compares the workflow_dispatch event ref only with
+      the stripped branch name "main". The live dispatch proves that exact comparison is
+      incompatible with the current GitHub event framing. The correction must recognize
+      only exact canonical-main-equivalent dispatch ref forms and continue to reject
+      non-main branches, tags and near matches.
+    architecture_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      reconciled_risks:
+        - DO_NOT_TRUST_WORKFLOW_JOB_GUARD_AS_THE_ONLY_ADMISSION_PROOF
+        - DO_NOT_ACCEPT_ARBITRARY_REF_SUFFIX_OR_FUZZY_MAIN_MATCHES
+        - PRESERVE_EXACT_TERMINAL_ARTIFACT_SIGNAL_AND_REMOTE_ANCESTRY_VALIDATION
+        - PRESERVE_PUSH_EVENT_ADMISSION_SEMANTICS
+        - NO_H4A3_LIVE_REPLAY_OR_ROADMAP_CLOSURE_INSIDE_EXECUTOR_TASK
+    selected_contract: WORKFLOW_DISPATCH_CANONICAL_MAIN_REF_COMPATIBILITY_V1
+    correction_boundaries:
+      - WORKFLOW_DISPATCH_REF_NORMALIZATION_IS_EXACT_AND_BOUNDED_TO_CANONICAL_MAIN_EQUIVALENCE
+      - NON_MAIN_BRANCH_TAG_EMPTY_AND_NEAR_MATCH_REFS_FAIL_CLOSED
+      - EXACT_INPUT_KEY_SET_REMAINS_REQUIRED
+      - REMOTE_TERMINAL_SIGNAL_MAIN_ANCESTRY_AND_CONFLICT_CHECKS_REMAIN_UNCHANGED
+      - PUSH_EVENT_PATH_REMAINS_UNCHANGED
+      - WORKFLOW_LOCAL_CHAT_WAKE_AND_LIFECYCLE_AUTHORITY_REMAIN_UNCHANGED
+      - NO_LIVE_REPLAY_BY_EXECUTOR
+    expected_scope:
+      modify:
+        - src/aios_renew/terminal_attention.py
+        - tests/test_terminal_attention.py
+    verification_intent:
+      - python -m pytest -q tests/test_terminal_attention.py
+      - git diff --check
+    task_authoring_audit:
+      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
+      required_profile: brain-high-value-v3
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-273
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
+    sequencing:
+      - AFTER_TASK_272_LIVE_DOM_SURFACE_COMPATIBILITY_FIX
+      - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
+      - BEFORE_TASK_270_H1R_EXACT_BLOB_FIX
+      - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+    status: BLOCKED_BY_TASK_273_WORKFLOW_DISPATCH_MAIN_REF_FIX
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -1014,7 +1095,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: READY_FOR_EXACT_TERMINAL_REPLAY
+      status: BLOCKED_BY_TASK_273_WORKFLOW_DISPATCH_MAIN_REF_FIX
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
@@ -1028,6 +1109,22 @@ sequence:
           canonical main containing TASK-272 publication, the local wake source matches
           published main, and the post-fix browser preflight passed. No H4A3 live replay
           or positive conformance proof is claimed by this readiness observation.
+      exact_terminal_replay_observation:
+        workflow_run_id: 36963244174
+        workflow_run_number: 348
+        event: workflow_dispatch
+        requested_run_id: RUN-268-001
+        requested_terminal_kind: RESULT
+        requested_artifact_sha: "1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        workflow_head_branch: main
+        workflow_head_sha: "b86798e211d8da6ddef23df2917615ebe77e557d"
+        admission_status: REJECTED
+        exact_error: "workflow_dispatch must execute from main"
+        local_chat_wake: SKIPPED
+        wake_submitted: false
+        semantic_effect: NONE
+        h4a3_proof_effect: NONE
+        blocking_task: TASK-273
       dom_surface_fix:
         task_id: TASK-272
         status: REVIEWED_PUBLISHED
