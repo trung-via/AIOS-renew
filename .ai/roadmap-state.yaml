@@ -1535,7 +1535,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: POST_SEND_RECONCILED_DUPLICATE_NOOP_PENDING
+      status: DUPLICATE_NOOP_OBSERVED_FINAL_USER_TURN_COUNT_PENDING
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -2263,6 +2263,29 @@ sequence:
           later Human operational reconciliation and does not rewrite workflow #354's
           historical BLOCKED / LOCAL_FAILURE receipt.
         next_boundary: DUPLICATE_EXACT_TERMINAL_DELIVERY_NOOP_OBSERVATION
+      duplicate_delivery_observation_after_reconciliation:
+        source: GITHUB_TERMINAL_ATTENTION_WORKFLOW_RERUN
+        observed_on: "2026-10-02"
+        workflow_run_id: 36984172510
+        workflow_run_number: 354
+        workflow_attempt: 2
+        rerun_job: admit-and-notify
+        exact_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        terminal_attention_admission: PASS
+        local_wake_status: NOOP
+        local_wake_reason: ALREADY_SUBMITTED
+        workflow_conclusion: success
+        semantic_effect: NONE
+        h4a3_proof_effect: DUPLICATE_DEDUPE_PASS
+        interpretation: >-
+          After Human post-send reconciliation persisted the exact RUN-268 event as
+          SUBMITTED, the same workflow_dispatch terminal-attention attempt was re-run from
+          the admission job. Admission revalidated successfully and the local wake returned
+          NOOP / ALREADY_SUBMITTED. Because deliver() returns this outcome before browser
+          attachment or submission, the duplicate transport itself did not invoke Send.
+          H4A3 still requires one final Human read-only observation that the bound chat
+          continues to contain exactly one matching outbound user turn after this duplicate.
+        next_boundary: HUMAN_READ_ONLY_POST_DUPLICATE_EXACT_USER_TURN_COUNT
 
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
