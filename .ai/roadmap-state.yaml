@@ -1225,10 +1225,15 @@ sequence:
           textContent is the exact 163-character concatenation without those breaks and
           the observed innerText is 169 characters, consistent with one extra rendered
           separator per logical break. The privacy-safe diagnostic also proves exact
-          normalized payload equivalence without exporting composer contents.
+          normalized payload equivalence without exporting composer contents. In addition,
+          no visible send control existed after the DOM contained the exact normalized
+          payload, so a correction must prove both canonical text equivalence and
+          application-level composer state activation rather than merely loosening the
+          post-insert string comparison.
         defect_boundary:
           - LOCAL_CHAT_WAKE_INSERT_POSTCONDITION
           - LOCAL_CHAT_WAKE_PRE_SEND_TEXT_EQUIVALENCE
+          - LOCAL_CHAT_WAKE_COMPOSER_APPLICATION_STATE_SYNCHRONIZATION
         ruled_out:
           - TARGET_PAGE_IDENTITY_FAILURE
           - ACCOUNT_OR_COMPOSER_AMBIGUITY
@@ -1245,11 +1250,13 @@ sequence:
           proposed_task_id: TASK-274
           status: HUMAN_APPROVAL_REQUIRED
           objective: >-
-            Make local-chat-wake insertion and pre-send proof accept only exact
-            canonical-equivalent live composer representations of the fixed doorbell,
-            including block-separated contenteditable rendering, while preserving
-            exact payload identity, Human-draft protection, fail-closed ATTEMPTING
-            recovery, no-send-on-ambiguity, and all H4A3 ACK-only boundaries.
+            Make local-chat-wake insert the fixed doorbell through a bounded
+            application-compatible composer path and prove only exact canonical-equivalent
+            live representations, including block-separated contenteditable rendering.
+            The correction must also prove that the application recognizes the inserted
+            payload sufficiently to expose exactly one enabled send control before click,
+            while preserving exact payload identity, Human-draft protection, fail-closed
+            ATTEMPTING recovery, no-send-on-ambiguity, and all H4A3 ACK-only boundaries.
           brain_audit:
             profile: brain-high-value-v3
             stage1: CONSTRUCT
@@ -1260,6 +1267,8 @@ sequence:
             reconciled_risks:
               - DO_NOT_USE_GENERIC_WHITESPACE_NORMALIZATION
               - REQUIRE_EXACT_LINE_CONTENT_AND_ORDER_WITH_BOUNDED_RENDER_SEPARATOR_EQUIVALENCE
+              - DO_NOT_TREAT_DOM_TEXT_MUTATION_AS_APPLICATION_STATE_SUCCESS
+              - REQUIRE_EXACTLY_ONE_ENABLED_SEND_CONTROL_BEFORE_CLICK
               - APPLY_THE_SAME_EQUIVALENCE_AT_INSERT_AND_PRE_SEND_GATES
               - PRESERVE_HUMAN_DRAFT_AND_FOCUS_RACE_FAIL_CLOSED_BEHAVIOR
               - DO_NOT_AUTO_CLEAR_ATTEMPTING_OR_COMPOSER_DRAFT
