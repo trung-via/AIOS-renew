@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-task268-publication-integration-recovery
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -496,8 +496,84 @@ sequence:
       - BEFORE_H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-task268-publication-integration-recovery
     status: NEXT
+    phase: H4A3_TASK268_PUBLICATION_INTEGRATION_RECOVERY
+    task_id: TASK-269
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    source_task_id: TASK-268
+    source_task_revision: 1
+    source_run_id: RUN-268-001
+    source_result_artifact_sha: "1f3d0dac34c7cff6d768d580f31513df08ebb253"
+    source_review_id: REVIEW-268-001
+    source_review_decision_sha: "7a52a4c82490a4f0a3684b3517404a7cd42bd778"
+    source_reviewed_sha: "31eb283ad8eb07695f26e940509696c38e62b3a4"
+    source_document_blob_sha: "3836cabc48139bec19e1a9dd80caecacdc34ba9b"
+    publication_failure:
+      workflow_run_id: 36947006121
+      outcome: INTEGRATION_REQUIRED
+      observed_main_sha: "7c3a7c1aae45adfcce8298e80516aa8ca6cef829"
+      reason: REVIEWED_CANDIDATE_AND_CURRENT_MAIN_DIVERGED
+      run_failure: false
+      semantic_failure: false
+    architecture_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      reconciled_risks:
+        - HISTORICAL_REVIEWED_SOURCE_MUST_NOT_REPLACE_CURRENT_MAIN
+        - PRIMARY_PUBLICATION_DIVERGENCE_MUST_NOT_USE_REPAIR_OR_CORRECTION_INTEGRATION
+        - CURRENT_MAIN_PLANNING_AND_H4A4_H4A5_DOCS_MUST_BE_PRESERVED
+        - LIVE_WAKE_REPLAY_MUST_REVALIDATE_EXACT_CANONICAL_TERMINAL
+        - MISSING_HUMAN_LOCAL_READINESS_MUST_NOT_BECOME_ENGINEERING_FAILURE
+    selected_strategy:
+      publication_recovery: FRESH_CURRENT_MAIN_DESCENDANT_INTEGRATION_TASK
+      integration_task: TASK-269
+      integration_scope: EXACT_TASK268_CONFORMANCE_DOCUMENT_ONLY
+      correction_primitive: FORBIDDEN_FOR_PRIMARY_DIVERGENCE
+      historical_source_direct_publication: FORBIDDEN
+      live_probe_recovery: EXACT_TERMINAL_WORKFLOW_DISPATCH_REPLAY_AFTER_PUBLICATION_AND_HUMAN_READINESS
+    exact_terminal_replay:
+      run_id: RUN-268-001
+      terminal_kind: RESULT
+      artifact_sha: "1f3d0dac34c7cff6d768d580f31513df08ebb253"
+      event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+      signal_ref: "refs/heads/aios/terminal-attention/RESULT/RUN-268-001/1f3d0dac34c7cff6d768d580f31513df08ebb253"
+      replay_surface: AIOS_TERMINAL_ATTENTION_WORKFLOW_DISPATCH
+      current_eligibility_revalidation_required: true
+      permitted_only_after:
+        - TASK_269_REVIEWED_PUBLICATION_SUCCESS
+        - HUMAN_EXACT_CHAT_BINDING_READY
+        - AUTHENTICATED_BOUND_REGULAR_CHAT_OPEN
+        - AIOS_LOCAL_CHAT_WAKE_ENABLED_TRUE
+      positive_observations:
+        - ADMISSION_SUCCESS
+        - LOCAL_RECEIPT_SUBMITTED_EXACT_USER_TURN_PROVEN
+        - EXACTLY_ONE_MATCHING_WAKE_USER_TURN
+        - SECOND_EXACT_REPLAY_NOOP_ALREADY_SUBMITTED_WITH_NO_SECOND_TURN
+    constraints:
+      - NO_FORCE_PUBLISH_OR_BACKWARD_MAIN_MOVEMENT
+      - NO_REPAIR_FOR_SUCCESSFUL_RUN268
+      - NO_CORRECTION_INTEGRATION_PRIMITIVE_FOR_PRIMARY_DIVERGENCE
+      - NO_HISTORICAL_SOURCE_DIRECT_PUBLICATION
+      - PRESERVE_CURRENT_MAIN_PLANNING_AND_H4A4_H4A5_STATE
+      - NO_PRODUCTION_WAKE_TRANSPORT_CHANGE_IN_TASK269
+      - NO_AUTOMATIC_TERMINAL_REPLAY_BEFORE_HUMAN_LOCAL_READINESS
+      - NO_FAKE_RUN_OR_NEW_TERMINAL_FOR_H4A3_PROBE
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
+    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+    sequencing:
+      - AFTER_TASK_268_REVIEW_PASS_AND_PUBLICATION_INTEGRATION_REQUIRED
+      - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+    status: BLOCKED_BY_TASK_269_PUBLICATION
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -575,7 +651,7 @@ sequence:
       expires_on_task_change: true
     execution_profile_status: HUMAN_SELECTED
     sequencing:
-      - AFTER_TASK_267_BRAIN_AUDIT_V3_PUBLICATION
+      - AFTER_TASK_269_REVIEWED_PUBLICATION_RECOVERY
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
