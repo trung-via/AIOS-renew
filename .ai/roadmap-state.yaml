@@ -1404,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_STATE_ONLY_RECOVERY_352_APPROVAL_REQUIRED
+      status: HUMAN_STATE_ONLY_RECOVERY_352_AUTHORIZED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1926,7 +1926,11 @@ sequence:
           - DO_NOT_REPLAY_ANY_TERMINAL
           - DO_NOT_RESET_OR_DELETE_STATE_FILE
           - DO_NOT_NAVIGATE_OR_CHANGE_BINDING
-        status: HUMAN_APPROVAL_REQUIRED
+        status: HUMAN_APPROVED
+        approved_on: "2026-10-02"
+        authority: HUMAN
+        consumes_authority_on_success: true
+        next_boundary: HUMAN_EXECUTE_STATE_ONLY_RECOVERY_352
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
