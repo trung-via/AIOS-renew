@@ -241,6 +241,51 @@ The first live probe is ACK-only in semantic effect: one bounded eligible event 
 produce exactly one short wake user turn in the exact bound conversation, with no
 TASK/RUN/REVIEW/REMEDIATION/REPAIR/publication/roadmap mutation caused by the probe.
 
+#### H4A.4 — Durable deferred recovery and multi-project isolation
+
+Before semantic continuation is enabled for sustained unattended use, safe fail-close
+delivery must also become eventual delivery for retry-safe pre-submit conditions.
+Durable operational recovery is permitted only outside canonical engineering truth.
+
+H4A.4 requires:
+
+- per-project/repository wake lanes with Human-owned machine-local exact-chat binding,
+  queue/state/lock isolation and rejection of duplicate chat/state ownership;
+- no global busy condition: generation or draft state in one exact target chat cannot
+  block an independently bound project chat;
+- durable `PENDING/DEFERRED` handling for proven pre-submit transient conditions with no
+  silent attention loss;
+- a fresh canonical unresolved/resolved check immediately before every deferred send;
+- Human/Brain canonical continuation of the same exact subject to supersede the delayed
+  wake as `RESOLVED_NOOP`, while unrelated Human conversation does not consume it;
+- one in-flight wake per lane, with later pending events freshly pruned against
+  canonical state before delivery;
+- binding-generation checks so a Human binding change cannot redirect an in-flight
+  attempt silently;
+- post-send ambiguity held separately from pre-submit deferral: never auto-resend;
+  proof-only reconciliation may inspect only the exact outbound wake user turn or fresh
+  canonical resolution;
+- safe operational receipt compaction only after canonical resolution makes later
+  duplicate source delivery independently classifiable as NOOP.
+
+The operational reconciler may decide only whether an exact attention subject is still
+eligible for delivery. It cannot infer `next_action`, review verdict, correction
+strategy, roadmap successor, model selection or lifecycle transition.
+
+#### H4A.5 — Complete attention-family coverage
+
+After H4A.4, the local wake boundary must support the complete already-approved Brain
+attention matrix rather than only terminal `RESULT|FAILURE` events. Every attention
+family carries deterministic identity and exact canonical selectors sufficient for
+fresh Brain reconstruction, but never an authoritative semantic action.
+
+Coverage includes ingress/carrier rejection, dispatch rejection, pre-AIOS operational
+failure requiring diagnosis, RUN RESULT/FAILURE, review ingress rejection,
+CHANGES_REQUIRED/BLOCKED follow-up, REMEDIATION/REPAIR authoring rejection, publication
+failure, publication-success planning attention, canonical conflict/staleness and
+wake-delivery recovery. Runner-started, Executor/verification in-progress, accepted
+dispatch and auto-publication start remain non-wake progress signals.
+
 ### 8.2 H4B — Regular Chat Brain resume
 
 After H4A passes, one real unresolved semantic checkpoint may wake the bound
@@ -308,14 +353,30 @@ Before the hardening track closes, minimum conformance must cover:
 11. one eligible terminal/semantic attention event produces exactly one bounded wake
     user turn in the exact Human-bound regular ChatGPT conversation with zero ChatGPT
     Work invocation;
-12. duplicate, stale/resolved, wrong-chat, logged-out, existing-draft, active-generation
-    and ambiguous-submission cases fail closed without duplicate wake turns;
-13. the local wake transport never reads assistant output to select lifecycle action;
-14. the woken regular Chat Brain performs fresh canonical reconstruction before any
+12. duplicate and stale/resolved events produce no duplicate wake turn;
+13. retry-safe pre-submit busy/draft/generation/temporary-unavailable conditions enter
+    durable deferred delivery and are retried only after exact target and canonical
+    subject revalidation;
+14. Human/Brain handling of the same exact subject while a wake is deferred closes the
+    delayed wake as `RESOLVED_NOOP`; unrelated Human chat activity leaves it pending;
+15. two independently bound project lanes remain isolated: a busy/generating chat in
+    one lane does not block or receive another lane's wake, and duplicate chat/state
+    bindings are rejected;
+16. binding changes are generation-safe and cannot redirect an ambiguous attempt;
+17. ambiguous post-send attempts never auto-resend and may close automatically only by
+    exact outbound-user-turn proof or fresh canonical resolution;
+18. pending/submitted operational state cannot silently evict unresolved events or turn
+    into a second engineering-state database;
+19. all approved Brain-attention families reach the same wake boundary with exact
+    selectors, while ordinary in-progress signals remain non-wake;
+20. wrong-chat, logged-out, existing-draft and active-generation conditions preserve
+    Human text and fail/defer without duplicate delivery;
+21. the local wake transport never reads assistant output to select lifecycle action;
+22. the woken regular Chat Brain performs fresh canonical reconstruction before any
     semantic action and can continue using only canonical state plus exact selectors;
-15. Human can observe the semantic result in the same bound conversation while
+23. Human can observe the semantic result in the same bound conversation while
     conversation/session identity remains non-canonical;
-16. no semantic or lifecycle decision depends on provider identity, hidden browser
+24. no semantic or lifecycle decision depends on provider identity, hidden browser
     state or Work as a production wake dependency.
 
 Closure evidence must remain minimum-sufficient. No ceremonial full-suite rerun is
@@ -330,9 +391,11 @@ Implementation should remain small and reviewable:
 2. **H2A** action-neutral REPAIR strategy fact projection.
 3. **H2B** successful-REPAIR -> REMEDIATION lineage compatibility correction.
 4. **H3** acceptance proof-phase audited handoff.
-5. **H4A** Local Regular Chat Wake transport and ACK-only exact-chat probe.
-6. **H4B** regular Chat Brain resume from fresh canonical state.
-7. **H5** integration/conformance closure.
+5. **H4A0-H4A3** Local Regular Chat Wake transport and ACK-only exact-chat probe.
+6. **H4A4** durable deferred recovery, Human supersession and multi-project isolation.
+7. **H4A5** complete Brain-attention-family coverage over the same safe wake boundary.
+8. **H4B** regular Chat Brain resume from fresh canonical state.
+9. **H5** integration/conformance closure.
 
 A milestone may require more than one TASK if review uncovers a bounded defect.
 Do not merge these into one mega-TASK.
@@ -361,6 +424,33 @@ before this baseline was canonicalized:
   and VPRC close; no local workaround or silent pin change is authorized.
 
 Closure outcome: **CLEAR / CANDIDATE** for this architecture baseline.
+
+## 11.1 H4A.4/H4A.5 extension audit — 2026-10-02
+
+A fresh two-stage Human/Brain planning audit was performed after live-design review of
+deferred wake failure, concurrent project chats and Human intervention races.
+
+Stage 1 `CONSTRUCT` found material risks: stranded fail-closed attention, single-binding
+cross-project coupling, Human-vs-delayed-wake duplication, pre-send TOCTOU, unsafe
+post-send retry, binding-change redirection, finite-ledger exhaustion, same-lane wake
+flooding and terminal-only attention coverage.
+
+Stage 2 `ADVERSARIAL_AUDIT_AND_RECONCILE` closed those risks with:
+
+- `DURABLE_DEFERRED_WAKE_RECOVERY_V1`;
+- `PRE_SEND_FRESHNESS_BARRIER_V1`;
+- `AMBIGUOUS_SUBMISSION_PROOF_ONLY_V1`;
+- `MULTI_PROJECT_WAKE_ISOLATION_V1`;
+- `HUMAN_INTERVENTION_SUPERSESSION_V1`;
+- `ATTENTION_FAMILY_COVERAGE_V1`.
+
+The extension deliberately splits implementation into H4A.4 and H4A.5 so recovery,
+isolation and supersession are proven before the broader attention-family envelope.
+No transport component gains Planner, Brain, Reviewer, Runtime, Publisher or roadmap
+authority. Downstream repositories remain inactive until their later reviewed pin and
+Human-owned binding.
+
+Closure: **CLEAR / CANDIDATE**.
 
 ## 12. Downstream and VPRC handoff
 
