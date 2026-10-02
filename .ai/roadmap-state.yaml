@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-send-control-selector-compatibility-fix
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -1241,8 +1241,106 @@ sequence:
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-send-control-selector-compatibility-fix
     status: NEXT
+    phase: H4A3_SEND_CONTROL_SELECTOR_COMPATIBILITY_FIX
+    task_id: TASK-275
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    objective: >-
+      Correct local-chat-wake Send-control discovery for the observed live regular
+      Project-chat composer so the transport can prove and click exactly one visible
+      enabled Send control when the current UI exposes BUTTON[type="submit"][aria-label="Send"]
+      without data-testid="send-button", while preserving exact target/composer scoping,
+      compatibility with the historical data-testid shape, no generic global button
+      heuristics, fail-closed ambiguity, Human-draft/generation safety, dedupe, privacy
+      and ACK-only authority.
+    observed_case:
+      workflow_run_id: 36973913060
+      workflow_run_number: 352
+      workflow_attempt: 1
+      exact_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+      terminal_attention_admission: PASS
+      local_wake_status: BLOCKED
+      local_wake_reason: INSERT_BLOCKED
+      exact_unsent_doorbell_visible_in_composer: true
+      configured_send_selector: "[data-testid=\"send-button\"]"
+      configured_send_visible_count: 0
+      actual_send_control:
+        tag: BUTTON
+        type: submit
+        aria_label: Send
+        data_testid: null
+        disabled: false
+        aria_disabled: null
+        width: 36
+        height: 36
+      wake_submitted: false
+      exact_h4a3_source_consumed: false
+      semantic_effect: NONE
+      h4a3_proof_effect: NONE
+    root_cause: >-
+      The exact doorbell was staged in the fresh bound composer and ChatGPT rendered a
+      visible enabled submit button, but the transport's fixed
+      [data-testid="send-button"] selector matched zero elements because the live button
+      no longer carries that data-testid. The defect is bounded to Send-control
+      discovery/application-ready proof, not target identity, composer insertion,
+      application rendering or button enabledness.
+    architecture_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      reconciled_risks:
+        - DO_NOT_USE_ARIA_LABEL_SEND_AS_A_GLOBAL_SELECTOR
+        - SCOPE_DISCOVERY_TO_THE_EXACT_BOUND_COMPOSER_FORM_OR_BOUNDED_CONTROL_SURFACE
+        - REQUIRE_EXACTLY_ONE_VISIBLE_ENABLED_SEND_CONTROL
+        - PRESERVE_HISTORICAL_DATA_TESTID_COMPATIBILITY_WHEN_UNAMBIGUOUS
+        - ZERO_OR_MULTIPLE_CANDIDATES_FAIL_CLOSED
+        - PRESERVE_PRE_SEND_EXACT_TARGET_AND_PAYLOAD_REVALIDATION
+        - NO_AUTO_CLEAR_OF_CURRENT_ATTEMPTING_STATE_OR_UNSENT_DRAFT
+        - NO_LIVE_H4A3_REPLAY_BY_EXECUTOR
+    selected_contract: BOUNDED_SEND_CONTROL_DISCOVERY_COMPATIBILITY_V1
+    expected_scope:
+      inspect:
+        - src/aios_renew/local_chat_wake.py
+        - tests/test_local_chat_wake.py
+        - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+        - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+        - .ai/roadmap-state.yaml
+      modify:
+        - src/aios_renew/local_chat_wake.py
+        - tests/test_local_chat_wake.py
+        - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+    verification_intent:
+      - python -m pytest -q tests/test_local_chat_wake.py
+      - git diff --check
+    task_authoring_audit:
+      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
+      required_profile: brain-high-value-v3
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-275
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
+    sequencing:
+      - AFTER_TASK_274_LIVE_COMPOSER_INSERTION_PROOF_FIX
+      - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
+      - BEFORE_TASK_270_H1R_EXACT_BLOB_FIX
+      - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+    status: BLOCKED_BY_TASK_275_SEND_CONTROL_SELECTOR_FIX
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -1590,7 +1688,7 @@ sequence:
           - SEND_CONTROL_DISABLED
         proposed_correction:
           proposed_task_id: TASK-275
-          status: HUMAN_APPROVAL_REQUIRED
+          status: HUMAN_APPROVED
           objective: >-
             Update local-chat-wake to discover the live Send control through a
             bounded regular-chat selector contract that accepts the current visible
@@ -1606,7 +1704,7 @@ sequence:
             - ZERO_OR_MULTIPLE_CANDIDATES_FAIL_CLOSED
             - NO_LIVE_H4A3_REPLAY_BY_EXECUTOR
             - DO_NOT_CLEAR_CURRENT_ATTEMPTING_STATE_OR_UNSENT_DRAFT_AUTOMATICALLY
-        next_boundary: HUMAN_APPROVAL_REQUIRED_FOR_TASK_275
+        next_boundary: TASK_275_AUTHORING_AND_EXECUTION
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
