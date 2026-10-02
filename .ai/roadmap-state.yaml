@@ -818,10 +818,29 @@ sequence:
     verification_intent:
       - python -m pytest -q tests/test_local_chat_wake.py
       - git diff --check
+    authored_commit_sha: "9ea26e9222d3648973e95d077b1bdf5c688c2b16"
+    task_blob_sha: "860d4183b636851eb009ff7b554b4390714ad837"
     task_authoring_audit:
-      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
-      required_profile: brain-high-value-v3
-    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "239e8c7652512f8d024335118f1051e214cfcd92f7f05ad68d4d8e855a5d48c8"
+      construct_fingerprint: "ad02d0f89a151844a9b327168d9b16c56e3e764d8d688fad7c1d8a2846f685cc"
+      reconciled_candidate_fingerprint: "a6bcf78d22c209f711c194368b47906a6a973a1f68b2688677193725ad4485f4"
+      acceptance_phase_ledger: ALL_CLAIM_NOW
+      ingress_issue: 1332
+      ingress_workflow_run_id: 36954142707
+      reconciled_risks:
+        - NO_MANUAL_URL_REWRITE_OR_NAVIGATION_FALLBACK
+        - NO_GENERIC_G_ROUTE_ACCEPTANCE
+        - PRESERVE_PROJECT_PLUS_CONVERSATION_IDENTITY
+        - REJECT_ENCODED_EXTRA_QUERY_FRAGMENT_ALIASES
+        - LIVE_H4A3_PROOF_REMAINS_POST_PUBLICATION
+        - SYNTHETIC_FIXTURES_ONLY_NO_PRIVATE_BINDING_DATA
+    execution_profile_status: HUMAN_SELECTION_REQUIRED
     sequencing:
       - AFTER_TASK_269_REVIEWED_PUBLICATION_RECOVERY_COMPLETE
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
