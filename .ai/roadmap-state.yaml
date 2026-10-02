@@ -1269,7 +1269,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_POST_TASK274_INSERT_DIAGNOSTIC_REQUIRED
+      status: ENGINEERING_SEND_CONTROL_SELECTOR_DEFECT_CONFIRMED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1557,6 +1557,56 @@ sequence:
           be inspected read-only before choosing a correction.
         root_cause_status: STRONGLY_NARROWED_NOT_YET_PROVEN
         next_boundary: HUMAN_READ_ONLY_SEND_CONTROL_METADATA_DIAGNOSTIC
+      send_control_metadata_observation:
+        source: HUMAN_LOCAL_READ_ONLY_DOM_METADATA
+        observed_on: "2026-10-02"
+        configured_send_selector: "[data-testid=\"send-button\"]"
+        configured_send_visible_count: 0
+        actual_visible_send_candidate:
+          tag: BUTTON
+          type: submit
+          aria_label: Send
+          data_testid: null
+          disabled: false
+          aria_disabled: null
+          width: 36
+          height: 36
+        exact_unsent_doorbell_still_visible_in_composer: true
+        interpretation: >-
+          The live application rendered a visible enabled submit button with
+          aria-label "Send" and no data-testid attribute, while the transport's
+          configured selector [data-testid="send-button"] matched zero visible
+          elements. This proves the H4A3 #352 failure is caused by bounded
+          send-control selector drift after successful exact doorbell staging,
+          not by absence of application-level send readiness.
+        root_cause_status: PROVEN
+        defect_boundary:
+          - LOCAL_CHAT_WAKE_SEND_CONTROL_DISCOVERY
+          - LOCAL_CHAT_WAKE_APPLICATION_READY_PROOF
+        ruled_out:
+          - TARGET_PAGE_IDENTITY_FAILURE
+          - COMPOSER_INSERTION_FAILURE
+          - APPLICATION_SEND_CONTROL_NOT_RENDERED
+          - SEND_CONTROL_DISABLED
+        proposed_correction:
+          proposed_task_id: TASK-275
+          status: HUMAN_APPROVAL_REQUIRED
+          objective: >-
+            Update local-chat-wake to discover the live Send control through a
+            bounded regular-chat selector contract that accepts the current visible
+            enabled BUTTON[type="submit"][aria-label="Send"] shape while preserving
+            exact target/composer scoping, uniqueness, no generic button heuristics,
+            no click on ambiguity, existing data-testid compatibility where valid,
+            and all current Human-draft/generation/dedupe/privacy boundaries.
+          constraints:
+            - DO_NOT_USE_ARIA_LABEL_ALONE_GLOBALLY
+            - SCOPE_SEND_DISCOVERY_TO_THE_EXACT_BOUND_COMPOSER_FORM_OR_BOUNDED_NEARBY_CONTROL_SURFACE
+            - REQUIRE_EXACTLY_ONE_VISIBLE_ENABLED_SEND_CONTROL
+            - PRESERVE_EXISTING_DATA_TESTID_SELECTOR_AS_COMPATIBILITY_BRANCH_IF_UNAMBIGUOUS
+            - ZERO_OR_MULTIPLE_CANDIDATES_FAIL_CLOSED
+            - NO_LIVE_H4A3_REPLAY_BY_EXECUTOR
+            - DO_NOT_CLEAR_CURRENT_ATTEMPTING_STATE_OR_UNSENT_DRAFT_AUTOMATICALLY
+        next_boundary: HUMAN_APPROVAL_REQUIRED_FOR_TASK_275
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
