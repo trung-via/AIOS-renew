@@ -1,0 +1,51 @@
+review_id: REVIEW-279-002
+reviewed_sha: ecceb0183e13a50158df34ef6109a7120faa2c5a
+mode: PRIMARY
+verdict: CHANGES_REQUIRED
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+  AC9: PASS
+  AC10: FAIL
+findings:
+- id: F-279-001
+  basis: AC10
+  action: CODE_FIX
+  location: "docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md \u2014 Family/source\
+    \ matrix, PRE_AIOS_OPERATIONAL_FAILURE_REQUIRING_DIAGNOSIS row"
+  issue: The conformance contract states that malformed delivery input uses a bounded
+    UNATTRIBUTED operational marker. That contradicts canonical REPAIR-279-001 and
+    the repaired workflows, which intentionally removed invented UNATTRIBUTED fallback
+    identities and preserve the exact admitted dispatch/correction/repair delivery
+    selector. A malformed or missing delivery identity must fail closed and must not
+    create an attention subject. The published Human proof procedure would therefore
+    describe behavior the implementation explicitly forbids.
+  expected: 'Align the H4A5 conformance document with the repaired selector/provenance
+    contract: remove the UNATTRIBUTED fallback claim and state that malformed, missing,
+    or noncanonical delivery identity fails closed with no eligible projected attention
+    until exact bounded provenance exists. Preserve the exact-delivery implementation
+    and all H4A5 authority boundaries; do not reintroduce an invented fallback identity.'
+notes:
+- RUN-279-002 is the successful canonical REPAIR RESULT for Runtime-verification failure
+  RUN-279-001; no prior semantic REVIEW finding existed, so this remains a PRIMARY
+  semantic review.
+- Canonical REPAIR-279-001 at cbea7a26dcd82bfa1ffc3fb524a774447d132dfd limited the
+  repair to three self-hosted wake workflows plus tests/test_github_issue_remediation_intent_workflow.py
+  and explicitly prohibited an invented UNATTRIBUTED delivery fallback.
+- 'The repair delta ecceb0183e13a50158df34ef6109a7120faa2c5a matches that authorization:
+  exact admitted environment delivery selectors are restored and the legacy remediation-intent
+  artifact contract remains untouched.'
+- Runtime verification passed the original TASK-279 command with 800 passed and 516
+  skipped, plus git diff --check; unresolved is empty.
+- The selector-only 12-family registry, terminal RESULT/FAILURE compatibility, canonical/source
+  freshness, H4A4 durable lane integration, no-resend/recovery semantics, non-wake
+  progress exclusions, publication/review authority boundaries, and read-only local
+  fan-in are otherwise semantically consistent with TASK-279.
+- The remaining finding is documentation/proof-contract semantic drift, not a request
+  to change the repaired exact-delivery implementation.
