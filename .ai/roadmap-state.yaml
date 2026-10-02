@@ -2823,7 +2823,8 @@ sequence:
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
     status: NEXT
     phase: H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
-    task_id: TASK-279
+    implementation_task_id: TASK-279
+    task_id: TASK-280
     task_revision: 1
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
