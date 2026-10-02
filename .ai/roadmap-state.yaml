@@ -1540,6 +1540,23 @@ sequence:
           privacy-safe read-only diagnostic is required to distinguish staged exact draft
           without application acceptance from an earlier insertion-boundary rejection.
         next_boundary: HUMAN_PRIVACY_SAFE_POST_TASK274_INSERT_DIAGNOSTIC
+      human_visual_send_control_observation:
+        source: HUMAN_SCREENSHOT_OBSERVATION
+        observed_on: "2026-10-02"
+        exact_unsent_doorbell_visible_in_composer: true
+        visible_send_control_observed_by_human: true
+        prior_privacy_safe_selector_count: 0
+        current_send_selector: "[data-testid=\"send-button\"]"
+        interpretation: >-
+          Human visual evidence shows the exact unsent doorbell staged in the bound
+          composer while a blue send control is visibly rendered. The prior read-only
+          diagnostic reported SEND_VISIBLE_COUNT=0 using the transport's fixed
+          [data-testid="send-button"] selector. This is strong evidence of send-control
+          discovery/selector drift or equivalent DOM reachability mismatch, not proof
+          that the application failed to render a send control. Exact DOM metadata must
+          be inspected read-only before choosing a correction.
+        root_cause_status: STRONGLY_NARROWED_NOT_YET_PROVEN
+        next_boundary: HUMAN_READ_ONLY_SEND_CONTROL_METADATA_DIAGNOSTIC
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
