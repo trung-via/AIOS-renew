@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-receipt-equivalent-closure-contract
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -1508,7 +1508,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
-    status: NEXT
+    status: BLOCKED_BY_TASK_277_RECEIPT_EQUIVALENT_CLOSURE_CONTRACT
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -2317,7 +2317,19 @@ sequence:
           historical_observation: BLOCKED_LOCAL_FAILURE
           reconciliation_may_substitute: false
           duplicate_noop_may_substitute: false
-        next_boundary: HUMAN_DECISION_ON_H4A3_SUBMITTED_RECEIPT_CONTRACT_GAP
+        next_boundary: TASK_277_AUTHORING_AND_REVIEWED_PUBLICATION
+      proposed_receipt_equivalent_closure_contract:
+        task_id: TASK-277
+        revision: 1
+        authority: HUMAN_BRAIN_PLANNING
+        approved_on: "2026-10-02"
+        selected_contract: H4A3_EXACT_WORKFLOW_354_EVIDENCE_EQUIVALENT_CLOSURE_V1
+        scope: DOCUMENTATION_ONLY
+        historical_receipt_rewrite_forbidden: true
+        production_transport_change_forbidden: true
+        roadmap_auto_close_forbidden: true
+        status: HUMAN_APPROVED_PENDING_AUTHORING
+        next_boundary: TASK_277_AUTHORING_AND_REVIEWED_PUBLICATION
 
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
@@ -2454,6 +2466,76 @@ sequence:
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-receipt-equivalent-closure-contract
+    status: NEXT
+    phase: H4A3_RECEIPT_EQUIVALENT_CLOSURE_CONTRACT
+    task_id: TASK-277
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    objective: >-
+      Amend only the repository-owned H4A3 conformance document so the exact workflow
+      #354 post-send proof-loss case may be assessed through a bounded evidence-equivalent
+      closure path after reviewed publication, without rewriting or fabricating its
+      historical BLOCKED / LOCAL_FAILURE receipt, changing production wake transport,
+      generalizing recovery, or automatically closing H4A3.
+    observed_case:
+      workflow_run_id: 36984172510
+      workflow_run_number: 354
+      historical_attempt: 1
+      duplicate_attempt: 2
+      exact_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+      terminal_attention_admission: PASS
+      historical_local_wake_status: BLOCKED
+      historical_local_wake_reason: LOCAL_FAILURE
+      automatic_send_functionally_observed: true
+      post_send_reconciliation: PASS
+      reconciled_event_state: SUBMITTED
+      bounded_user_turn_result: EXACT
+      duplicate_local_wake_status: NOOP
+      duplicate_local_wake_reason: ALREADY_SUBMITTED
+      post_duplicate_exact_turn_proof: PASS
+      remaining_gap: LOCAL_WAKE_RECEIPT_SUBMITTED_NOT_HISTORICALLY_PRESENT
+    selected_contract: H4A3_EXACT_WORKFLOW_354_EVIDENCE_EQUIVALENT_CLOSURE_V1
+    architecture_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      reconciled_risks:
+        - PRESERVE_HISTORICAL_BLOCKED_LOCAL_FAILURE_RECEIPT
+        - DO_NOT_TREAT_LOCAL_SUBMITTED_STATE_ALONE_AS_SUBMISSION_PROOF
+        - BIND_ALTERNATIVE_PATH_TO_EXACT_WORKFLOW_354_ATTEMPT_1_AND_RUN_268_EVENT
+        - REQUIRE_COMPLETE_EVIDENCE_CHAIN_NOT_PARTIAL_FACT_SUBSTITUTION
+        - DO_NOT_GENERALIZE_INTO_H4A4_RECOVERY_OR_RESEND_POLICY
+        - KEEP_H4A3_CLOSURE_AS_SEPARATE_HUMAN_BRAIN_PLANNING_MUTATION
+        - KEEP_ACCEPTANCE_CLAIMABLE_BEFORE_RUNTIME_REVIEW_PUBLICATION
+        - NO_PRIVATE_CHAT_SESSION_OR_ASSISTANT_OUTPUT_IN_CANONICAL_DOC
+    expected_scope:
+      inspect:
+        - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+        - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+        - .ai/roadmap-state.yaml
+        - .ai/tasks/TASK-268.yaml
+        - .ai/tasks/TASK-276.yaml
+      modify:
+        - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+    verification_intent:
+      - git diff --check
+    task_authoring_audit:
+      status: AUDITED_CANDIDATE_PENDING_INGRESS
+      required_profile: brain-high-value-v3
+    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+    sequencing:
+      - AFTER_TASK_276_REVIEWED_PUBLICATION_AND_WORKFLOW_354_RECONCILIATION
+      - AFTER_DUPLICATE_NOOP_AND_POST_DUPLICATE_EXACT_TURN_PROOF
+      - BEFORE_H4A3_HUMAN_BRAIN_CLOSURE_ASSESSMENT
+      - BEFORE_TASK_270_H1R_EXACT_BLOB_FIX
+      - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-exact-blob-preservation-fix
     status: QUEUED_AFTER_H4A3_BEFORE_H4A4
