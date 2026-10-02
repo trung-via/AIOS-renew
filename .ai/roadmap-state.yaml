@@ -1014,7 +1014,20 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_POST_FIX_PREFLIGHT_REQUIRED
+      status: READY_FOR_EXACT_TERMINAL_REPLAY
+      post_fix_preflight_observation:
+        source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
+        observed_on: "2026-10-02"
+        local_main_sha: "0f3ecea1e320aab652ae0eadde06862fbfb3c42b"
+        published_wake_source_match: PASS
+        browser_preflight: PASS
+        semantic_effect: NONE
+        h4a3_proof_effect: READINESS_ONLY
+        note: >-
+          Human-provided local output confirms the checkout fast-forwarded to the
+          canonical main containing TASK-272 publication, the local wake source matches
+          published main, and the post-fix browser preflight passed. No H4A3 live replay
+          or positive conformance proof is claimed by this readiness observation.
       dom_surface_fix:
         task_id: TASK-272
         status: REVIEWED_PUBLISHED
