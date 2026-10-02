@@ -1,0 +1,155 @@
+task_id: TASK-280
+revision: 1
+goal: Repair the H4A5 publication-attention source-notification gap by giving the
+  reviewed Publisher a deterministic direct selector-only handoff into the existing
+  local regular-Chat wake lane after publication source projection, so eligible publication
+  outcomes do not depend on a downstream workflow_run trigger while preserving H4A4/H4A5
+  authority, freshness and dedupe semantics.
+problem: Live H4A5 conformance replay proved that aios-auto-publish can successfully
+  replay the exact PASS review, publish/reconfirm the reviewed candidate, and export
+  an immutable publication attention source artifact, yet GitHub created no downstream
+  AIOS local regular chat wake transport run after publisher completion. The current
+  local wake workflow lists auto-publish as a workflow_run producer, but this production
+  edge is not reliable in the observed chained automation path. H4A5 therefore cannot
+  close and H4B remains blocked until publication attention enters the existing lane
+  through a reviewed deterministic edge that does not create a new router or self-dispatch
+  control plane.
+assumptions:
+- Canonical main 3ff540b2fcb1e0dc1c99aaff24e4445a13e8beae records the Human-approved
+  TASK-280 binding and the exact PUBLICATION_SUCCESS_SOURCE_NOTIFICATION_GAP live
+  blocker.
+- TASK-279 is reviewed and published; its selector-only attention registry/projector
+  and H4A4 durable lane remain authoritative and are extended rather than replaced.
+- 'Live replay Issue #1390 was idempotent, created no new RUN, and publication workflow
+  37040170067 completed SUCCESS with attention artifact 11242411027 while no post-publication
+  local wake workflow was created.'
+- The existing local wake workflow already exposes a workflow_call event_id/repository
+  doorbell into the exact H4A4 lane; changing browser/CDP transport is not required
+  for this blocker.
+- Human selected Codex GPT-6.1 Sol xhigh for the entire TASK-280 lifecycle.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-279.yaml
+  - .ai/brain-attention-families.yaml
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/local_chat_wake.py
+  - .github/workflows/aios-auto-publish.yml
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_brain_attention.py
+  - tests/test_publication.py
+  - tests/test_local_chat_wake_workflow.py
+  modify:
+  - src/aios_renew/brain_attention.py
+  - .github/workflows/aios-auto-publish.yml
+  - tests/test_brain_attention.py
+  - tests/test_publication.py
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+non_goals:
+- Implement H4B regular-Chat semantic resume or automatically perform Human/Brain
+  planning after a publication wake.
+- Modify local browser/CDP targeting, composer/Send guards, lane persistence, binding
+  registry, ambiguity policy, or H4A4 freshness semantics.
+- Add a generic lifecycle router, Planner, retry/failover authority, Reviewer, Publisher
+  replacement, or transport-owned next_action.
+- Use actions:write self-dispatch, repository_dispatch, workflow-dispatch API calls,
+  PAT/GitHub App secrets, Issues/comments, polling, or ChatGPT Work as the publication
+  wake bridge.
+- Treat publication dispatch acceptance, auto-publication start, workflow success
+  alone, or a source artifact alone as canonical publication truth.
+- Change TASK-279 history, close H4A5 automatically, advance to H4B, or activate any
+  downstream repository.
+- Perform a live ChatGPT wake probe during Executor implementation or claim Human
+  live conformance from deterministic tests.
+constraints:
+  hard:
+  - The publication workflow must not rely on a downstream workflow_run event to deliver
+    publication attention. After the existing canonical publication attempt is projected
+    and its bounded source artifact is exported, the same reviewed publisher run must
+    expose at most one exact selector-only attention identity and hand it to the existing
+    reusable local regular-chat wake boundary.
+  - The direct handoff must reuse the repository-owned brain_attention projector and
+    the existing aios-local-chat-wake workflow_call/event_id contract; neither the
+    publisher workflow nor YAML expressions may independently classify attention families
+    or construct semantic next actions.
+  - For any publication source outcome that projects an eligible H4A5 event, including
+    publication success, publication execution failure, or canonical conflict when
+    produced by the existing publication projector, the direct identity must be derived
+    from the exact same bounded source document and immutable selectors used by artifact-based
+    projection. Do not hard-code a success-only synthetic identity.
+  - When a projected family requires immutable source-pointer fields, the direct path
+    must bind the exact current workflow_run_id, run_attempt, uploaded artifact_id
+    and source_digest. When the family omits pointer fields, its direct event identity
+    must still be byte-for-byte canonical-equivalent to later artifact collection
+    of that same source.
+  - Preserve the publication attention artifact and 90-day bounded evidence contract.
+    The direct handoff may use current-run outputs from already-produced bounded source
+    evidence; it must not read workflow logs or private machine/browser state.
+  - The existing workflow_run fan-in may remain as compatibility/fallback for producer
+    paths where GitHub emits it. If both direct and workflow_run paths observe the
+    same publication source, they must yield the same event_id so H4A4 persistent
+    dedupe permits at most one user wake turn.
+  - Publication success remains eligible only after exact PASS review lineage and
+    exact reviewed-candidate inclusion in canonical main are proven by the existing
+    publisher/projector. The wake carries selectors only and must never mark roadmap
+    DONE, choose H4B, select an Executor/model, or claim planning completion.
+  - AUTO_PUBLICATION_STARTED, dispatch acceptance and other ordinary progress remain
+    non-wake. The direct bridge occurs only after bounded publication source projection;
+    source/projection failure fails closed and must not fabricate an attention identity.
+  - 'Keep GitHub permissions minimum-sufficient: no actions:write, no new secret,
+    no token-bearing dispatch bridge. Calling the existing repository-local reusable
+    wake workflow is a transport handoff, not new lifecycle authority.'
+  - Do not modify src/aios_renew/local_chat_wake.py or .github/workflows/aios-local-chat-wake.yml
+    unless a deterministic proof shows the published workflow_call contract itself
+    is insufficient; such a need would exceed this TASK's final modify scope and must
+    fail closed for Human/Brain reconsideration.
+  - Executor changes only the authorized files, updates the H4A5 conformance document
+    to describe the repaired publication direct-handoff proof, and leaves live proof
+    status unclaimed. Runtime owns canonical verification; Reviewer owns the semantic
+    verdict; Publisher remains the only publication authority.
+acceptance:
+- id: AC1
+  condition: A successful exact publication source can produce one canonical PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+    event and enter the existing reusable local wake boundary from the publisher run
+    without requiring a downstream workflow_run trigger.
+- id: AC2
+  condition: The direct publication path uses the central brain_attention projector
+    and exact bounded source evidence; tests prove direct and artifact-collected projection
+    of the same publication source produce the same event identity, including exact
+    pointer binding where required.
+- id: AC3
+  condition: Eligible publication failure/conflict outcomes produced by the existing
+    projector are not silently excluded by a success-only bridge, while AUTO_PUBLICATION_STARTED,
+    dispatch accepted and unproven/malformed source states produce no wake identity.
+- id: AC4
+  condition: The publisher hands only an event_id plus fixed repository identity into
+    the existing aios-local-chat-wake workflow_call boundary. No semantic next_action,
+    review verdict, correction strategy, roadmap successor, Executor/model/effort,
+    browser binding, logs or assistant output enters that handoff.
+- id: AC5
+  condition: No actions:write/self-dispatch, repository_dispatch, PAT/App secret,
+    Issue/comment bridge, polling or ChatGPT Work is introduced; the publication source
+    artifact remains bounded and retained as subordinate evidence.
+- id: AC6
+  condition: If the legacy workflow_run fan-in also fires for the same publication
+    source, the resulting event_id is identical and existing durable lane dedupe/no-resend
+    semantics guarantee at most one user wake turn; no second lane or duplicate queue
+    is added.
+- id: AC7
+  condition: Exact publication truth remains owned by existing canonical review/publication
+    checks and the direct wake cannot advance roadmap state. Existing H4A3/H4A4 chat-target,
+    freshness, generation, ambiguity and privacy guards remain unchanged.
+- id: AC8
+  condition: The candidate changes only the five authorized files and updates the
+    bounded Human H4A5 conformance procedure so the publication-success live probe
+    is rerun only after reviewed publication of TASK-280; deterministic tests do not
+    claim live regular-Chat conformance or H4B readiness.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_attention.py tests/test_publication.py tests/test_local_chat_wake_workflow.py
+  - git diff --check
