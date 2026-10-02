@@ -954,7 +954,17 @@ sequence:
         - PRESERVE_LEGACY_SELECTOR_COMPATIBILITY_WITHOUT_DUPLICATE_LOGICAL_MATCH
         - SEND_AND_STOP_FROZEN_ABSENT_POST_INSERT_DEFECT_EVIDENCE
         - SYNTHETIC_FIXTURES_ONLY_NO_PRIVATE_LIVE_IDENTIFIERS
-    execution_profile_status: HUMAN_SELECTION_REQUIRED
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-272
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
     sequencing:
       - AFTER_TASK_271_PROJECT_SCOPED_EXACT_CHAT_ROUTE_FIX
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
