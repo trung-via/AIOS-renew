@@ -215,6 +215,85 @@ exactly one wake user turn in the exact bound conversation, with duplicate deliv
 busy/draft/generation, wrong-chat and ambiguous-send cases failing closed. No lifecycle
 mutation is permitted in this probe.
 
+### H4A.4 — Durable deferred wake recovery and multi-project isolation
+
+After the exact-chat probe passes, harden safe delivery into eventual delivery without
+moving semantic authority into transport.
+
+The transport must distinguish retry-safe **pre-submit deferral** from uncertain
+**post-submit ambiguity**:
+
+- `GENERATION_ACTIVE`, `DRAFT_PRESENT`, temporarily unavailable target/CDP and other
+  proven pre-submit conditions may enter a durable operational `DEFERRED` state and be
+  rechecked without consuming Brain authority;
+- every deferred attempt must freshly revalidate the exact canonical attention subject
+  immediately before insertion/submission; if Human/Brain activity has already produced
+  a canonical successor or superseding state for that exact subject, the wake becomes
+  `RESOLVED_NOOP`;
+- Human chat activity alone never resolves an event. Only canonical state may prove the
+  subject resolved, superseded or still actionable;
+- once submission may have happened, the event enters an ambiguity hold. It is never
+  automatically resent. Recovery may perform **proof-only reconciliation** by looking
+  only for the exact outbound wake user turn; exact proof may mark it submitted, while
+  absence or uncertainty keeps the hold;
+- operational queue/receipt state stays outside repository engineering truth and cannot
+  select `next_action`, correction strategy, review verdict, roadmap successor or
+  Executor;
+- submitted/resolved operational records may be compacted only when fresh canonical
+  reconciliation makes later source redelivery safe to classify as NOOP; unresolved
+  records are never silently evicted.
+
+Wake delivery becomes lane-scoped. A machine-local Human-owned registry maps each
+supported project/repository lane to one exact regular-Chat conversation, local state
+and lock. Active mappings must reject duplicate chat identity or state ownership across
+independent lanes. Busy state in one exact chat never creates a global `BRAIN_BUSY`
+condition for another lane.
+
+A pending pre-submit event follows the current explicitly Human-owned binding generation.
+A binding change during preflight aborts that attempt and re-resolves the new generation.
+An ambiguous post-submit attempt remains bound to the generation on which it was
+attempted until exact proof, canonical resolution or Human reconciliation closes it.
+
+Within one lane, only one wake may be in submission/Brain-generation flight at a time.
+Additional events remain pending. After each completion the transport revalidates every
+pending subject, discards stale/resolved subjects as NOOP, and submits only the next
+still-unresolved event. It must not semantically coalesce unrelated attention subjects.
+
+This milestone must preserve project independence even when multiple target chats share
+one authenticated browser/CDP session. Page-state checks are scoped to the exact target
+page; global browser activity is not a substitute for target-chat state.
+
+### H4A.5 — Complete attention-family coverage
+
+After H4A.4 proves durable lane behavior, generalize the local wake intake from the
+current terminal `RESULT|FAILURE` grammar to the bounded Brain-attention matrix already
+owned by AIOS. The transport still carries selectors only and never a semantic action.
+
+Coverage must include at least:
+
+- ingress/carrier rejection requiring Brain attention;
+- PRIMARY/REMEDIATION/REPAIR dispatch rejection;
+- pre-AIOS operational failure requiring diagnosis;
+- canonical RUN `RESULT` and `FAILURE`;
+- review ingress rejection;
+- `CHANGES_REQUIRED` or `BLOCKED` review follow-up;
+- REMEDIATION/REPAIR authoring rejection;
+- publication dispatch/execution failure;
+- successful publication when Human/Brain roadmap reconciliation or another semantic
+  commitment is required;
+- canonical conflict/staleness invalidating a prepared Brain candidate;
+- wake-delivery recovery for an unresolved attention event.
+
+Every family requires deterministic event identity, exact immutable/source selectors
+sufficient for fresh canonical reconstruction, per-lane dedupe and the same pre-send
+freshness barrier. Ordinary progress signals such as runner started, Executor in
+progress, verification in progress, dispatch accepted and auto-publication start remain
+non-wake events.
+
+H4A.5 adds coverage, not routing authority. A generic attention envelope may identify
+the attention family and canonical subject but cannot encode an authoritative next
+action, Reviewer verdict, correction strategy, roadmap successor or model selection.
+
 ### H4B — Regular Chat Brain resume
 
 After H4A transport conformance passes, prove that one real unresolved canonical semantic
@@ -240,8 +319,22 @@ Hardening integration cannot close until live evidence proves:
   regular ChatGPT conversation;
 - duplicate delivery does not duplicate the wake turn;
 - stale/resolved events do not produce a new wake;
+- retry-safe pre-submit blockage is durably deferred and later delivered when the exact
+  lane becomes eligible, without silently dropping the attention event;
+- Human/Brain canonical continuation while a wake is deferred causes pre-send
+  reconciliation to close that exact event as `RESOLVED_NOOP`, while unrelated Human
+  chat activity leaves it pending;
+- two independently bound project lanes can progress concurrently: busy/generation in
+  one target chat does not block an idle target chat in another lane;
+- same-chat or same-state multi-project binding is rejected before delivery;
 - wrong chat, logged-out state, existing draft and active generation fail closed;
-- uncertain submission does not auto-resend;
+- uncertain post-submit state never auto-resends and may only close automatically by
+  exact outbound proof or fresh canonical resolution;
+- binding changes are generation-safe across pending and ambiguous attempts;
+- unresolved queue entries are never silently evicted and operational compaction cannot
+  weaken duplicate suppression;
+- the complete audited attention-family matrix reaches the same local wake boundary,
+  while ordinary in-progress signals remain non-wake;
 - the transport never reads assistant output to choose lifecycle action;
 - the woken regular Chat performs fresh canonical reconstruction before semantic action;
 - Human can observe the semantic result in that exact conversation;
@@ -272,3 +365,60 @@ Outcome: **CANDIDATE**.
 This candidate changes only the planned wake transport. It does not claim implementation
 or conformance, does not alter current TASK lineage and does not advance the active
 roadmap milestone automatically.
+## 12. H4A.4/H4A.5 two-stage extension audit — 2026-10-02
+
+Stage 1 — CONSTRUCT: **RISK_FOUND**.
+
+The first-pass candidate added durable deferred delivery, per-project lanes and Human
+supersession. The construct audit identified these material failure modes in the
+published H4A.2/H4A.3 shape:
+
+- transient pre-submit fail-close can strand an otherwise valid canonical attention
+  event indefinitely because no retry/reconciliation loop exists;
+- a single repository/config/state binding is insufficient for independent concurrent
+  project chats;
+- Human can manually continue the exact subject while its automatic wake is deferred,
+  creating a duplicate-delivery race unless canonical state is rechecked before send;
+- an unresolved-to-resolved transition can occur after an earlier queue check but before
+  browser insertion/click (pre-send TOCTOU);
+- post-send uncertainty cannot safely share the same retry behavior as pre-submit
+  blockage;
+- changing a Human-owned chat binding while an event is pending can redirect an attempt
+  unless the attempt is bound to a checked binding generation;
+- fixed operational event capacity can become a long-running availability failure if
+  unresolved records are silently evicted or all historical receipts are retained
+  forever;
+- multiple pending events in one chat can flood the composer or become stale while an
+  earlier Brain turn is still generating;
+- terminal-only `RESULT|FAILURE` intake cannot close the already-approved full Brain
+  attention matrix;
+- a shared global lock/busy interpretation can incorrectly serialize independent
+  project lanes.
+
+Stage 2 — ADVERSARIAL_AUDIT_AND_RECONCILE: **CLEAR**.
+
+The candidate is reconciled by five authority-preserving contracts:
+
+1. `DURABLE_DEFERRED_WAKE_RECOVERY_V1` — retry only proven pre-submit transient
+   blockage; retain unresolved events; use condition-based rechecks and bounded
+   operational escalation without semantic interpretation.
+2. `PRE_SEND_FRESHNESS_BARRIER_V1` — freshly revalidate the exact canonical attention
+   subject immediately before every deferred submission. Canonical Human/Brain progress
+   resolves/supersedes the event; mere chat activity does not.
+3. `AMBIGUOUS_SUBMISSION_PROOF_ONLY_V1` — once send acceptance is uncertain, never
+   auto-resend. Reconciliation may prove the exact outbound user turn or observe
+   canonical resolution, otherwise the event remains held for Human attention.
+4. `MULTI_PROJECT_WAKE_ISOLATION_V1` — Human-owned machine-local unique lane bindings,
+   per-lane queue/state/lock and exact-page checks prevent one busy project/chat from
+   blocking or receiving another project's wake.
+5. `ATTENTION_FAMILY_COVERAGE_V1` — a later bounded H4A.5 generalizes selectors across
+   the approved attention matrix without turning transport into a lifecycle router.
+
+Adversarial reconciliation additionally requires safe binding-generation changes,
+one in-flight wake per lane, pending-event canonical pruning after each Brain turn,
+safe compaction only after canonical resolution, and no automatic downstream project
+activation. Python Agent or another repository adopts the capability only through its
+own later reviewed downstream pin/binding.
+
+Closure: **CLEAR**.
+Outcome: **CANDIDATE** for roadmap insertion as H4A.4 then H4A.5 before H4B.
