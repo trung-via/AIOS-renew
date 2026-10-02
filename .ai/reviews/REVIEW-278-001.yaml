@@ -1,0 +1,45 @@
+review_id: REVIEW-278-001
+reviewed_sha: a874675fca0f761f1fa6719e5ef7d79c5f003692
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- RUN-278-001 is the canonical PRIMARY RESULT for TASK-278 r1 with artifact b0d5542396fb358b810280b101443c998acb1b61,
+  candidate a874675fca0f761f1fa6719e5ef7d79c5f003692, unresolved empty, and exact
+  required verification passing.
+- Runtime verification passed 373 tests with 516 skipped across local wake, local
+  wake workflow and terminal-attention workflow coverage; git diff --check also passed.
+- The candidate changes exactly the five TASK-authorized files and keeps terminal
+  intake bounded to existing RESULT/FAILURE identities.
+- Persistence distinguishes PENDING/DEFERRED from AMBIGUOUS/SUBMITTED/RESOLVED_NOOP;
+  v1 SUBMITTED remains no-send dedupe and v1 ATTEMPTING migrates to generationless
+  AMBIGUOUS, never retry-safe deferral.
+- Every send path uses canonical freshness and binding-generation barriers before
+  attachment/insertion and immediately before possible Send; durable AMBIGUOUS state
+  and flight metadata are written before the possible click.
+- 'Post-submit ambiguity has no automatic resend path: only exact bounded outbound
+  user-turn proof on the original generation or exact canonical resolution may close
+  it; uncertainty remains Human-held.'
+- Canonical freshness uses a disposable read-only Git observation surface and exact
+  artifact/candidate/review-decision or repair lineage. It does not consume next_action,
+  choose correction strategy, inspect review verdict semantics, infer roadmap successor,
+  or mutate canonical state.
+- The machine-local lane registry enforces exact repository selection, unique conversation
+  identity and non-overlapping state ownership, with per-lane lock/inbox/state isolation
+  and generation snapshots for proof-only reconciliation.
+- Scheduled recovery is Human-gated, read-only, has no actions-write/self-dispatch
+  or ChatGPT Work authority, accepts no new event id, and drains only previously admitted
+  machine-local work.
+- Compaction requires fresh exact canonical resolution and preserves permanent event
+  digests; unresolved/deferred/ambiguous records are not evicted. The conformance
+  document explicitly states that synthetic verification does not itself close H4A4
+  live conformance or advance H4A5/H4B.
