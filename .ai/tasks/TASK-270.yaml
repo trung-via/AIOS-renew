@@ -1,0 +1,127 @@
+task_id: TASK-270
+revision: 1
+goal: Permanently correct the H1R PRIMARY reviewed-RESULT preservation path so canonical
+  REVIEW metadata is read and revalidated byte-exactly, including terminal whitespace/newlines,
+  without weakening metadata equality, canonical lineage, mutation-edge reproof, or
+  Runtime-only destructive reconciliation authority.
+problem: 'After H4A3 closed, TASK-270 is the unique canonical NEXT. The TASK-269 primary
+  dispatch failed before RUN creation during PRIMARY_SYNCHRONIZATION with ''invalid
+  canonical reviewed RESULT preservation: SUBMIT_REVIEW structural validation failed:
+  metadata content mismatch''. Canonical planning traces the defect to the H1R reviewed-result
+  proof: operator._prove_primary_reviewed_result reads canonical REVIEW metadata through
+  publication._read_blob, whose publication Git helper strips stdout. The resulting
+  normalized bytes are then passed to authoring_ingress._validate_metadata_commit,
+  which correctly compares them byte-for-byte against the canonical blob and rejects
+  a valid decision carrying terminal newline/whitespace. This is a read-boundary defect
+  in preservation proof, not a reason to weaken metadata equality or bypass H1R.'
+assumptions:
+- H4A3 planning conformance is closed and canonical roadmap selects TASK-270 as the
+  unique NEXT before H4A4.
+- TASK-264 already introduced the closed reviewed-PASS Result preservation class for
+  PRIMARY divergence and its H1R safety, authority, topology, provenance, complete-history
+  and mutation-edge gates remain authoritative.
+- TASK-269 dispatch task269-r1-codex61-high-20261002-001 failed at PRIMARY_SYNCHRONIZATION
+  before RUN creation or Executor invocation; this pre-AIOS operational rejection
+  did not create a canonical FAILURE or authorize REPAIR.
+- The observed reviewed source is RUN-268-001 candidate 31eb283ad8eb07695f26e940509696c38e62b3a4
+  with review decision 7a52a4c82490a4f0a3684b3517404a7cd42bd778.
+- authoring_ingress._validate_metadata_commit intentionally requires exact metadata
+  bytes and must remain fail-closed; the defect is that H1R supplies normalized bytes
+  rather than the exact canonical blob bytes.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-264.yaml
+  - src/aios_renew/operator.py
+  - src/aios_renew/publication.py
+  - src/aios_renew/authoring_ingress.py
+  - tests/test_operator.py
+  modify:
+  - src/aios_renew/operator.py
+  - tests/test_operator.py
+non_goals:
+- Weaken, remove, normalize, canonicalize, or otherwise relax authoring_ingress._validate_metadata_commit
+  byte equality, sole-parent/path/blob-mode checks, or REVIEW structural validation.
+- Change Publisher publication semantics or general publication blob reading outside
+  the H1R reviewed-RESULT proof unless separately authorized by a future TASK.
+- Change TASK-269 implementation, replay its failed dispatch inside the Executor,
+  fabricate a TASK-269 RUN/FAILURE/REPAIR, or treat the pre-RUN admission rejection
+  as engineering lifecycle truth.
+- Broaden H1R beyond PRIMARY pre-RUN synchronization, add a generic recovery/router/retry/failover
+  mechanism, or move destructive reconciliation authority out of Runtime.
+- Change existing FAILURE-preservation semantics, reviewed-RESULT qualification rules,
+  local-only reachability requirements, worktree/index/submodule/ignored-path gates,
+  exact upstream target checks, mutation-edge reproof, reset postconditions, or restart-generation
+  safety.
+- Infer publication, semantic PASS, roadmap completion, or downstream eligibility
+  from reviewed preservation evidence.
+- Advance H4A4 or mutate roadmap semantics automatically from Executor, verification,
+  review, publication, workflow or provider outcomes.
+constraints:
+  hard:
+  - Fix only the H1R reviewed-RESULT metadata read/use boundary so the bytes supplied
+    to _validate_metadata_commit are the exact canonical REVIEW blob bytes. The implementation
+    must not strip, trim, normalize line endings/Unicode/whitespace, or decode and
+    re-encode in a way that can change those bytes.
+  - Keep _validate_metadata_commit and its byte-equality requirement behaviorally
+    unchanged. A metadata mismatch must still fail closed before reset, RUN creation
+    or Executor invocation.
+  - 'The correction must remain within the already-published reviewed-RESULT preservation
+    class introduced by TASK-264: exact local HEAD, unique canonical review/artifacts/review-decision
+    identity, canonical RUN/ResultPackage/REVIEW semantics, PASS verdict, complete
+    local-only history reachability and mutation-edge identity reproof remain required.'
+  - Keep the existing FAILURE preservation class and all other preservation-family
+    selection behavior unchanged; zero, multiple, mixed, conflicting, stale or moved
+    proofs must remain non-destructive.
+  - Runtime remains the sole owner of destructive H1R reset/reconciliation. Executor
+    code may repair the proof implementation but may not choose or perform a roadmap/lifecycle
+    continuation outside the existing Runtime path.
+  - Regression coverage must reproduce the observed byte-loss mechanism using canonical
+    review-decision metadata with a terminal newline and at least one additional valid
+    non-normalized byte shape such as retained trailing spaces or CRLF, proving exact
+    bytes survive the H1R read/validation boundary.
+  - Negative regression coverage must prove a true metadata-content substitution/mismatch
+    still rejects non-destructively and that no normalization is used to make unequal
+    bytes compare equal.
+  - Preserve the existing TASK-264 adversarial regressions for malformed, substituted,
+    ambiguous, moved, non-PASS and conflicting reviewed-result proofs and the existing
+    H1R mutation-edge/topology safety tests.
+  - Executor may modify only src/aios_renew/operator.py and tests/test_operator.py.
+    No workflow, publication, authoring-ingress, Runtime authority contract, review,
+    publisher, task-schema or roadmap file may be changed by the Executor.
+acceptance:
+- id: AC1
+  condition: H1R PRIMARY reviewed-RESULT preservation validates canonical REVIEW metadata
+    with exact blob bytes, including terminal newline/whitespace, and no text normalization
+    occurs before _validate_metadata_commit byte comparison.
+- id: AC2
+  condition: A RUN-268/TASK-269-shaped regression that previously failed only because
+    the canonical review blob ended in terminal whitespace now passes reviewed-RESULT
+    preservation while retaining the exact candidate, artifacts, review-decision and
+    TASK/RUN bindings.
+- id: AC3
+  condition: Regression coverage proves canonical REVIEW metadata with terminal LF
+    and at least one additional valid non-normalized byte shape is accepted byte-exactly,
+    while a separately constructed genuinely different metadata blob/commit is rejected
+    non-destructively; tests must not weaken or bypass _validate_metadata_commit.
+- id: AC4
+  condition: TASK-264 reviewed-result qualification, complete local-only reachability,
+    configured-upstream/target/worktree safety, preservation-family ambiguity checks
+    and mutation-edge reproof remain behaviorally unchanged.
+- id: AC5
+  condition: The existing FAILURE-preservation class remains behaviorally unchanged
+    and no reviewed preservation outcome is treated as publication, semantic verdict,
+    lifecycle completion, roadmap advancement or generic retry/failover authority.
+- id: AC6
+  condition: The implementation changes only src/aios_renew/operator.py and tests/test_operator.py
+    and introduces no workflow-level recovery, Publisher/Reviewer change, authoring-ingress
+    validation weakening, new persistent reconciliation state, generic router or automatic
+    downstream continuation.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_operator.py -k "reviewed_result or reconciliation
+    or primary_sync or synchronization_failure"
+  - git diff --check
