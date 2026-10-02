@@ -1,0 +1,23 @@
+review_id: REVIEW-280-002
+reviewed_sha: aa0648049194d8d51b2b04cd23b1bd0d46e71db5
+mode: DELTA
+verdict: PASS
+acceptance:
+  AC1: PASS
+findings: []
+prior_finding_id: F-280-001
+notes:
+- DELTA review is bounded to F-280-001 from REVIEW-280-001; AC2-AC8 were already assessed
+  PASS in the PRIMARY review.
+- RUN-280-002 is the canonical REMEDIATION RESULT for TASK-280 r1. Its integrated
+  execution base is 9462e4c09a1c9ba4f99215b936f381212f6c8070 and its candidate aa0648049194d8d51b2b04cd23b1bd0d46e71db5
+  is exactly one descendant commit.
+- The remediation changes only .github/workflows/aios-auto-publish.yml and tests/test_publication.py,
+  exactly matching the authorized remediation scope.
+- 'The publisher reusable-workflow caller now grants contents: read plus actions:
+  read, matching the called local-chat-wake jobs'' declared read ceiling without actions:write
+  or any new authority, secret, dispatch bridge, or local-wake semantic change.'
+- The regression test now proves every declared non-none callee permission is covered
+  by the caller and that the caller permission set is exactly the required read set.
+- Runtime verification RUN-280-002-V001 passed 139 tests in 375.25s; RUN-280-002-V002
+  git diff --check passed; unresolved is empty.
