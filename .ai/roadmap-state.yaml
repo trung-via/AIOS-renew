@@ -587,7 +587,17 @@ sequence:
         - HISTORICAL_SOURCE_NOT_CURRENT_PUBLICATION_AUTHORITY
         - LIVE_REPLAY_REQUIRES_FRESH_TERMINAL_ADMISSION_AND_HUMAN_READINESS
         - INTEGRATED_DOCUMENT_MUST_MATCH_CURRENT_H4A3_H4A4_H4A5_H4B_SEQUENCE
-    execution_profile_status: HUMAN_SELECTION_REQUIRED
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-269
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
     sequencing:
       - AFTER_TASK_268_REVIEW_PASS_AND_PUBLICATION_INTEGRATION_REQUIRED
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
