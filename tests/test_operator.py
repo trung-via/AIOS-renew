@@ -13685,6 +13685,8 @@ def test_primary_reviewed_result_rejects_invalid_proofs_without_reset_or_run(
                 "verdict": "PASS", "acceptance": {"AC1": "PASS"}, "findings": [],
             }).encode(),
         })
+        # Import the replacement's object closure without changing other refs.
+        git(remote, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", str(repo), replacement)
         git(remote, "update-ref", "refs/heads/aios/review-decision/RUN-262-003", replacement)
     elif gate in {"non-pass", "wrong-reviewed-sha", "substituted-decision", "ambiguous-decision",
                   "wrong-prior-finding", "wrong-decision-path"}:
@@ -13701,6 +13703,7 @@ def test_primary_reviewed_result_rejects_invalid_proofs_without_reset_or_run(
         elif gate == "wrong-decision-path":
             documents = {".ai/reviews/SUBSTITUTE.yaml": json.dumps(review).encode()}
         replacement = _reviewed_preservation_metadata(repo, base if gate == "substituted-decision" else candidate, documents)
+        git(remote, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", str(repo), replacement)
         git(remote, "update-ref", decision_ref, replacement)
     elif gate == "decision-alias":
         git(remote, "update-ref", "-d", decision_ref)
@@ -13745,6 +13748,7 @@ def test_primary_reviewed_result_rejects_invalid_proofs_without_reset_or_run(
             replacement = transport_module._create_artifacts_commit(
                 repo, run_path=run_path, result_path=result_path, run_id="RUN-262-004",
             )
+        git(remote, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", str(repo), replacement)
         git(remote, "update-ref", artifact_ref, replacement)
     before = _reconciliation_snapshot(repo)
     refs_before = git(remote, "for-each-ref", "--format=%(refname) %(objectname)")
