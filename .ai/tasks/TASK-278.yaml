@@ -1,0 +1,174 @@
+task_id: TASK-278
+revision: 1
+goal: Implement H4A4 durable deferred regular-Chat wake recovery and multi-project
+  lane isolation so retry-safe pre-submit blockage is eventually rechecked without
+  losing attention, while post-submit ambiguity never blind-resends and all transport
+  state remains operational rather than canonical engineering truth.
+problem: 'After H4A3 exact-chat conformance and TASK-270 closure, the published local
+  wake transport is still a one-shot single-binding path: one machine-local chat/CDP/state
+  tuple, a bounded v1 event map with ATTEMPTING or SUBMITTED, and fail-closed exits
+  for transient pre-submit conditions. This can strand an unresolved canonical attention
+  event when generation, a Human draft, temporary target/CDP unavailability, or another
+  retry-safe pre-submit condition clears later; it also lacks a Human-owned multi-project
+  lane registry, per-lane state/lock isolation, binding-generation safety, canonical
+  pre-send supersession checks, proof-only ambiguity reconciliation, and safe resolved-record
+  compaction. H4A4 must add those operational guarantees without turning wake transport
+  into a Planner, lifecycle reducer, correction selector, Reviewer, Publisher, or
+  canonical state store.'
+assumptions:
+- Canonical roadmap selects H4A4 as the unique NEXT and binds TASK-278 revision 1
+  after reviewed publication and explicit Human/Brain closure of TASK-270.
+- The reviewed H4A3 transport already proves exact regular-chat target, composer,
+  Send-control and bounded outbound-user-turn guards; H4A4 extends recovery and isolation
+  around those guards rather than replacing them.
+- The current production wake grammar is terminal RESULT or FAILURE attention only;
+  H4A5, not TASK-278, owns expansion to the complete attention-family matrix.
+- Machine-local chat binding, CDP endpoint, queue/state files and locks remain Human-owned
+  operational configuration outside repository engineering truth.
+- Existing persisted v1 SUBMITTED and ATTEMPTING records may exist on the Human machine
+  and must be handled without weakening duplicate suppression or authorizing a resend
+  of an uncertain historical attempt.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/terminal_attention.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_terminal_attention_workflow.py
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - docs/AIOS-H4A4-DURABLE-WAKE-RECOVERY-CONFORMANCE-v1.md
+non_goals:
+- Generalize terminal RESULT or FAILURE wake intake to review, publication, carrier
+  rejection, correction-authoring or other H4A5 attention families.
+- Parse assistant output, conversation history or ACK content, or implement H4B semantic
+  Brain continuation in the transport.
+- Create or infer TASK, RUN, RESULT, FAILURE, REVIEW, REMEDIATION, REPAIR, next_action,
+  correction strategy, review verdict, publication eligibility or roadmap progression.
+- Invoke ChatGPT Work, add a second Planner/router, or create generic engineering
+  retry/failover authority; retries are limited to operational wake delivery proven
+  pre-submit.
+- Automatically activate or pin Python Agent or another downstream repository; downstream
+  adoption remains separately reviewed.
+- Blindly resend an event after Send may have occurred, clear a Human draft, navigate
+  away from an unrelated chat, or use assistant generation/output as submission proof.
+- Commit chat URLs, turn identifiers, CDP endpoints, credentials, cookies, browser-profile
+  data, machine-local state paths or other private binding material.
+- Perform live browser submission, mutate Human machine-local binding/state, or claim
+  live H4A4 conformance during Executor implementation.
+constraints:
+  hard:
+  - Keep the production source-event grammar bounded to the existing exact terminal
+    RESULT or FAILURE identity for H4A4. Any broader attention-family grammar belongs
+    to H4A5.
+  - All queue, binding, generation, lock, retry and receipt state must remain machine-local
+    operational state. Repository files and canonical lifecycle artifacts must not
+    become a wake-delivery database.
+  - 'Preserve existing v1 persistent dedupe safely: a prior SUBMITTED record must
+    remain no-send duplicate proof, and a prior ATTEMPTING record must enter or remain
+    a non-resend ambiguity/Human hold rather than becoming retry-safe DEFERRED. Migration
+    must fail closed on malformed or uncertain state.'
+  - Only conditions proven to occur before any possible submission may enter durable
+    retry-safe deferral. Deferred retries must never clear or overwrite Human text,
+    and every retry must repeat the exact target/account/composer/generation guards
+    before insertion.
+  - Immediately before every deferred or fresh submission, deterministically revalidate
+    the exact canonical terminal attention subject and its immutable selectors. A
+    canonical successor or superseding state for that exact subject closes the event
+    as RESOLVED_NOOP; unrelated Human chat activity alone never resolves it.
+  - 'Canonical freshness projection is observation-only: it may classify only exact
+    subject unresolved, resolved/superseded, or conflict/unknown from canonical identities.
+    It must not consume or emit next_action, choose correction strategy, assign a
+    review verdict, infer roadmap successor, choose Executor/model, or mutate canonical
+    state.'
+  - Once submission may have occurred, automatic resend is forbidden. Ambiguity reconciliation
+    may close only by exact bounded proof of the original outbound wake user turn
+    or by fresh canonical resolution/supersession; absence or uncertainty keeps the
+    event held for Human attention.
+  - Use a Human-owned machine-local lane registry keyed by repository identity. Active
+    lanes must have unique exact chat identity and unique state ownership, with per-lane
+    queue/state/lock isolation; busy or generation state in one lane must not create
+    a global BRAIN_BUSY or block an independent lane.
+  - Binding changes must be generation-safe. A pre-submit pending/deferred attempt
+    may follow the current Human-owned binding only after generation recheck; an ambiguous
+    post-submit attempt remains bound to the generation on which submission may have
+    occurred until proof, canonical resolution or Human reconciliation closes it.
+  - Within one lane permit at most one submission/Brain-generation flight at a time.
+    Additional events remain pending, are freshly canonically revalidated after each
+    completion, and are never semantically coalesced merely because they share a repository
+    or terminal family.
+  - Unresolved, deferred or ambiguous records are never silently evicted. Compaction
+    may remove or summarize only safely resolved/submitted operational records after
+    fresh canonical reconciliation preserves later source-redelivery NOOP behavior
+    and duplicate suppression.
+  - The repository-owned recheck mechanism must operate only under the existing Human
+    enable gate, must not synthesize new attention subjects, must not require actions-write
+    or ChatGPT Work authority, and must drain only already admitted machine-local
+    pending/deferred work for the exact lane.
+  - Preserve the reviewed H4A3 exact-chat, account, composer, Send-control, exact
+    outbound-user-turn, no-navigation, no-Human-draft-overwrite and assistant-output-exclusion
+    guards. H4A4 recovery may reuse them but may not weaken or replace them with page-global
+    text, coordinates or generic heuristics.
+  - Executor changes are limited to the authorized modify surface and deterministic/synthetic
+    tests plus the H4A4 conformance procedure. Executor must not perform a live ChatGPT
+    Send, edit Human machine-local configuration/state, publish, review, or mutate
+    roadmap state.
+acceptance:
+- id: AC1
+  condition: Local wake persistence implements a durable operational state machine
+    that distinguishes retry-safe pre-submit pending/deferred work from post-submit
+    ambiguity and submitted/resolved outcomes, with fail-closed migration that preserves
+    existing v1 SUBMITTED dedupe and never auto-resends existing v1 ATTEMPTING records.
+- id: AC2
+  condition: Every fresh or deferred send path performs an immediate canonical freshness
+    barrier on the exact terminal subject before insertion/submission, converts an
+    exact canonical successor or supersession to RESOLVED_NOOP, leaves unrelated Human
+    chat activity non-resolving, and fails closed on conflicting or unknown canonical
+    identity without semantic routing.
+- id: AC3
+  condition: Post-submit ambiguous attempts are never automatically resent and can
+    close only through the same bounded exact outbound-user-turn proof already used
+    by H4A3 or exact canonical resolution/supersession; unresolved ambiguity remains
+    Human-visible and bound to its attempted binding generation.
+- id: AC4
+  condition: A Human-owned multi-project lane registry enforces unique chat and state
+    ownership, per-lane locks/queues and generation-safe bindings, and deterministic
+    regression coverage proves a busy/deferred lane cannot block, consume, redirect
+    or mutate another independent lane.
+- id: AC5
+  condition: Each lane enforces one in-flight wake, preserves additional pending events
+    without semantic coalescing, freshly revalidates them after completion, never
+    evicts unresolved/deferred/ambiguous work, and compacts only safely resolved/submitted
+    records without weakening future duplicate suppression.
+- id: AC6
+  condition: The local wake workflow supports bounded automatic rechecks of already
+    admitted pending/deferred work under the existing Human enable gate while preserving
+    read-only repository permissions, no actions-write self-dispatch authority, no
+    ChatGPT Work invocation and no creation of new attention subjects during drain.
+- id: AC7
+  condition: Regression coverage preserves all reviewed H4A3 exact target/composer/Send/outbound-user-turn/privacy
+    guards and keeps production intake terminal RESULT or FAILURE only, with no assistant-output
+    read, lifecycle next-action inference, correction selection, review/publication
+    authority or downstream activation.
+- id: AC8
+  condition: The candidate changes only src/aios_renew/local_chat_wake.py, .github/workflows/aios-local-chat-wake.yml,
+    tests/test_local_chat_wake.py, tests/test_local_chat_wake_workflow.py and docs/AIOS-H4A4-DURABLE-WAKE-RECOVERY-CONFORMANCE-v1.md;
+    the conformance document defines bounded Human live proofs for deferred recovery,
+    Human canonical supersession, two-lane isolation, binding-generation safety, ambiguity
+    no-resend and safe compaction without itself claiming those live proofs passed.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py tests/test_local_chat_wake_workflow.py
+    tests/test_terminal_attention_workflow.py
+  - git diff --check
