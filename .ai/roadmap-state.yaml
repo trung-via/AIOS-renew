@@ -2670,9 +2670,28 @@ sequence:
       - NO_GENERIC_RETRY_FAILOVER_OR_SECOND_ROUTER
       - REGRESSION_MUST_COVER_TERMINAL_NEWLINE_AND_NON_NORMALIZED_METADATA_BYTES
       - NO_AUTOMATIC_ROADMAP_ADVANCE
+    selected_contract: H1R_EXACT_REVIEW_BLOB_BYTES_V1
     task_authoring_audit:
-      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
-      required_profile: brain-high-value-v3
+      status: AUDITED_CANDIDATE_PENDING_INGRESS
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "05d464c0a49eb495912348a4e9c6a056de574d8360fbbdaf2e1e622bc348e5b6"
+      construct_fingerprint: "921bdf00aeca2322e40ea323841e6d553d1d5d63be046a04e31ce8bf873eba61"
+      reconciled_candidate_fingerprint: "8623d98968124d2f40f3fb2b1f3cbbd30e2286e009482d76d80766fbb278472c"
+      stage2_fingerprint: "d19fbc4495abb0a73d035eeb526be2bc62ee3a0f0fa00234d904698db22aa70c"
+      acceptance_phase_ledger: ALL_CLAIM_NOW
+      reconciled_risks:
+        - DO_NOT_WEAKEN_METADATA_BYTE_EQUALITY
+        - FIX_H1R_READ_BOUNDARY_NOT_GLOBAL_PUBLICATION_SEMANTICS
+        - PRESERVE_CANONICAL_REVIEW_BLOB_PROVENANCE
+        - COVER_LF_CRLF_TRAILING_WHITESPACE_WITHOUT_NORMALIZATION
+        - KEEP_ACCEPTANCE_CLAIMABLE_BEFORE_FUTURE_TASK269_RETRY
+        - PRESERVE_HOST_PORTABILITY_AND_EXACT_BYTES
+        - DO_NOT_DUPLICATE_METADATA_VALIDATION_AUTHORITY
     execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
     sequencing:
       - AFTER_H4A3_LIVE_PROOF
