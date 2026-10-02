@@ -164,16 +164,20 @@ def test_receipt_never_fabricates_downstream_semantic_success() -> None:
 
 
 def test_remediation_workflows_persist_exact_run_receipt_artifact() -> None:
-    for path, job_name, receipt_file in (
+    for path, job_name, receipt_file, artifact_name, retention_days in (
         (
             INTENT_PATH,
             "approve-and-wake",
             "aios-remediation-intent-operational-receipt-v2.json",
+            "aios-operational-receipt-v2",
+            "30",
         ),
         (
             WAKEUP_PATH,
             "wakeup",
             "aios-remediation-operational-receipt-v2.json",
+            "aios-operational-receipt-v2-remediation-attempt-${{ github.run_attempt }}",
+            "90",
         ),
     ):
         workflow, text = _workflow(path)
@@ -190,10 +194,10 @@ def test_remediation_workflows_persist_exact_run_receipt_artifact() -> None:
             "uses": "actions/upload-artifact@v4",
             "env": {"AIOS_OPERATIONAL_RECEIPT_PATH": receipt_path},
             "with": {
-                "name": "aios-operational-receipt-v2-remediation-attempt-${{ github.run_attempt }}",
+                "name": artifact_name,
                 "path": "${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}",
                 "if-no-files-found": "error",
-                "retention-days": "90",
+                "retention-days": retention_days,
             },
         }
         assert "AIOS_OPERATIONAL_RECEIPT_PATH" not in job["env"]
