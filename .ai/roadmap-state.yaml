@@ -2942,6 +2942,26 @@ sequence:
         run_created_by_probe: false
         executor_invoked_by_probe: false
         disposition: NEW_REVIEWED_IMPLEMENTATION_CHANGE_REQUIRED
+      blocker_resolution:
+        task_id: TASK-280
+        task_revision: 1
+        authority: HUMAN_BRAIN_PLANNING
+        objective: >-
+          Replace the live-failed publication-success workflow_run notification edge
+          with a deterministic direct selector-only handoff from the reviewed Publisher
+          source into the existing local regular-Chat wake lane, without creating a new
+          semantic router or weakening H4A4/H4A5 freshness and dedupe semantics.
+        human_execution_delegation:
+          selected_on: "2026-10-03"
+          authority: HUMAN
+          task_id: TASK-280
+          executor: codex
+          model: gpt-6.1-sol
+          reasoning_effort: xhigh
+          scope: ENTIRE_TASK_LIFECYCLE
+          override_authority: HUMAN_ONLY
+          expires_on_task_change: true
+        execution_profile_status: HUMAN_SELECTED
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
         The carrier-rejection representative live proof passed, but the separately
