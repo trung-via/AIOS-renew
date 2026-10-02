@@ -1,0 +1,118 @@
+task_id: TASK-271
+revision: 1
+goal: Restore H4A3 live-probe eligibility by extending the local regular-chat wake
+  transport's exact URL recognition to the Project-scoped regular-chat route family
+  observed during Human readiness preflight, while preserving the existing standalone
+  chat route and all exact-identity, attach-only, privacy, dedupe and ACK-only safety
+  boundaries.
+problem: The published H4A2 local wake transport currently accepts only https://chatgpt.com/c/<conversation-uuid>.
+  The Human H4A3 readiness preflight reached an authenticated Project conversation
+  whose browser URL uses https://chatgpt.com/g/<project-segment>/c/<conversation-uuid>;
+  canonical normalize_chat therefore rejects the live target and exact target discovery
+  returns zero before any wake is submitted. H4A3 cannot proceed until that bounded
+  route-shape incompatibility is corrected without broadening the transport to arbitrary
+  ChatGPT paths.
+assumptions:
+- Canonical main at TASK-271 authoring contains the Human/Brain planning blocker brain-runtime-semantic-handoff-hardening-v1-h4a3-project-scoped-exact-chat-route-fix
+  and keeps H4A3 blocked pending this correction.
+- The observed H4A3 readiness case established only the generic Project-scoped route
+  shape https://chatgpt.com/g/<project-segment>/c/<conversation-uuid>; no private
+  live project slug, conversation UUID, credential, cookie or session identifier is
+  required as TASK input or test data.
+- src/aios_renew/local_chat_wake.py currently recognizes only the standalone /c/<conversation-uuid>
+  route and BrowserAdapter otherwise preserves full normalized URL identity for target
+  selection and JavaScript location guards.
+- The failed readiness preflight submitted no wake, created no local event state,
+  created no RUN or FAILURE, and does not itself constitute H4A3 live conformance
+  evidence.
+- The GitHub enable gate, machine-local binding ownership, loopback CDP requirement,
+  exact-page uniqueness, draft/generation safety, outbound proof and persistent dedupe
+  semantics remain valid and are outside this route-compatibility correction.
+scope:
+  inspect:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - .ai/roadmap-state.yaml
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+non_goals:
+- Support arbitrary chatgpt.com paths, generic /g/ pages, GPT landing pages, Project
+  landing pages, Work/Business/Enterprise surfaces, query-bearing URLs, fragments,
+  or unrelated browser targets.
+- Launch, close, replace, or navigate the Human browser; change the CDP endpoint contract;
+  or infer a target from chat title, page text, assistant output, history, or partial
+  URL matching.
+- Change AIOS_LOCAL_CHAT_WAKE_ENABLED, AIOS_LOCAL_CHAT_WAKE_CONFIG ownership, local
+  state schema, dedupe semantics, doorbell payload, terminal-attention admission,
+  workflow routing, Runtime, Reviewer, Publisher, or roadmap authority.
+- Commit or test with the Human's actual project identifier, conversation UUID, account
+  data, credentials, cookies, session material, or machine-local paths.
+- Perform or claim the H4A3 live terminal replay, create H4A3 conformance evidence,
+  close H4A3, author TASK-270, or advance H4A4/H4A5/H4B.
+- Introduce a generic URL router, browser discovery heuristic, retry/failover controller,
+  navigation fallback, or second transport authority.
+constraints:
+  hard:
+  - 'Exact chat normalization must accept only two regular-chat route families on
+    lowercase https://chatgpt.com: /c/<canonical-conversation-uuid> and /g/<project-segment>/c/<canonical-conversation-uuid>,
+    with an optional trailing slash as the only removable URL variation.'
+  - For the Project-scoped route, <project-segment> must be exactly one nonempty ASCII
+    path segment beginning with g- and containing only ASCII letters, digits, and
+    hyphens; percent-encoded substitution, slash injection, empty segments, extra
+    path components, query strings, fragments, userinfo, alternate hosts or schemes
+    must fail closed.
+  - Normalization must preserve the complete Project segment and conversation UUID.
+    Two Project-scoped URLs that share a conversation UUID but differ in project segment
+    are distinct bindings and must never match each other.
+  - The existing standalone /c/<conversation-uuid> behavior, canonical trailing-slash
+    normalization and exact target-page uniqueness must remain compatible.
+  - BrowserAdapter target selection and same-turn insert/send guards must continue
+    to compare the complete normalized bound URL; no title-based, substring, UUID-only,
+    DOM-content or navigation-based fallback may be introduced.
+  - All new regression fixtures must use synthetic project/conversation identities.
+    No actual Human project slug, conversation UUID, chat URL, credential, cookie,
+    session value, runner path or local binding value may enter repository content
+    or Runtime evidence.
+  - The correction must not change workflow inputs, Human enable gating, machine-local
+    configuration ownership, loopback-only CDP validation, state ATTEMPTING/SUBMITTED
+    semantics, duplicate NOOP behavior, assistant-output prohibition, draft/generation
+    safety, or lifecycle authority boundaries.
+  - Regression coverage must include accepted standalone and Project-scoped forms,
+    trailing-slash normalization, wrong-project/same-conversation non-match, duplicate
+    exact targets, and rejection of malformed Project routes including extra segments,
+    bad project segments, query/fragment and percent-encoded path substitutions.
+  - No file outside scope.modify may change. Executor implementation must not push,
+    publish, perform the H4A3 live replay, or mutate roadmap state.
+acceptance:
+- id: AC1
+  condition: The local chat URL normalizer accepts both authorized regular-chat route
+    families and returns a stable full normalized URL that removes only an optional
+    trailing slash.
+- id: AC2
+  condition: Project-scoped normalization preserves both project-segment and conversation
+    identity and rejects malformed, encoded, extra-component, query, fragment, wrong-host
+    and wrong-scheme forms rather than degrading them to a standalone or partial identity.
+- id: AC3
+  condition: Exact browser target selection treats a different Project segment with
+    the same conversation UUID as unrelated, continues to require exactly one full-URL
+    match, and performs no navigation or title/content-based target inference.
+- id: AC4
+  condition: Existing standalone-chat attach-only, surface, draft/generation, submission-proof
+    and duplicate-dedupe behavior remains unchanged by the route compatibility correction.
+- id: AC5
+  condition: Focused regression fixtures cover the authorized Project-scoped route
+    and bounded rejection/mismatch cases using only synthetic identities and expose
+    no Human live chat or machine-local data.
+- id: AC6
+  condition: The implementation delta is confined to src/aios_renew/local_chat_wake.py
+    and tests/test_local_chat_wake.py and introduces no workflow, lifecycle, review,
+    publication, roadmap, live-probe, retry/failover or second-router behavior.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py
+  - git diff --check
