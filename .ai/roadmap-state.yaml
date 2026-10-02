@@ -1404,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: POST_SEND_PROOF_DEFECT_DIAGNOSTIC_REQUIRED
+      status: USER_TURN_PROOF_METADATA_DIAGNOSTIC_REQUIRED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1999,6 +1999,25 @@ sequence:
           - DO_NOT_CLICK_SEND
           - DO_NOT_TREAT_ASSISTANT_REPLY_AS_CONFORMANCE_PROOF
         next_boundary: HUMAN_READ_ONLY_POST_SEND_DIAGNOSTIC_FOR_WORKFLOW_354
+      post_send_diagnostic_354:
+        source: HUMAN_LOCAL_READ_ONLY_POST_SEND_DIAGNOSTIC
+        observed_on: "2026-10-02"
+        event_state: ATTEMPTING
+        event_count: 1
+        composer_empty: true
+        generation_active: false
+        lock_present: false
+        pending_present: false
+        prove_send: true
+        exact_user_turn_locator_count: 0
+        exact_user_turn_wait: ERROR_TIMEOUT
+        human_visual_exact_user_turn_present: true
+        interpretation: >-
+          Auto-send succeeded, but the required exact user-turn proof did not resolve.
+          The remaining defect is bounded to outbound user-turn discovery or exact text
+          shape, not Send-control readiness.
+        root_cause_status: STRONGLY_NARROWED_NOT_YET_PROVEN
+        next_boundary: HUMAN_READ_ONLY_USER_TURN_METADATA_DIAGNOSTIC
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
