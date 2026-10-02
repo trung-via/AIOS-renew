@@ -45,7 +45,7 @@ direct admitted handoff. Missing or unproven sources do not authorize submission
 | --- | --- |
 | INGRESS_OR_CARRIER_REJECTION | One rejected immutable Issue event: Issue ID/number, body digest, structural operation/subject and its exact source attempt. Malformed envelopes retain the generic UNKNOWN operation. |
 | PRIMARY_REMEDIATION_REPAIR_DISPATCH_REJECTION | Explicit failed dispatch step or exact admission/preflight rejection receipt, fixed operation and delivery identity. An ordinary downstream workflow failure is insufficient. |
-| PRE_AIOS_OPERATIONAL_FAILURE_REQUIRING_DIAGNOSIS | Operational Receipt v2 with a workflow-owned PRE_AIOS failure cause and no created RUN or invoked Executor. Malformed delivery input uses the bounded UNATTRIBUTED operational marker, bound to the exact attempt. |
+| PRE_AIOS_OPERATIONAL_FAILURE_REQUIRING_DIAGNOSIS | Operational Receipt v2 with a workflow-owned PRE_AIOS failure cause and no created RUN or invoked Executor. Requires the exact admitted dispatch/correction/repair delivery selector and bounded provenance. Malformed, missing or noncanonical delivery identity fails closed, creating no attention subject and no eligible projected attention until exact bounded provenance exists. No fallback identity is invented. |
 | RUN_RESULT_REQUIRING_SEMANTIC_REVIEW | Existing exact RESULT artifact/ref and RUN/candidate identity. |
 | RUN_FAILURE_REQUIRING_CORRECTION_REASONING | Existing exact FAILURE artifact/ref and failed RUN/candidate identity. |
 | REVIEW_INGRESS_REJECTION | Rejected SUBMIT_REVIEW envelope with its exact RUN and prepared reviewed subject selectors. |
