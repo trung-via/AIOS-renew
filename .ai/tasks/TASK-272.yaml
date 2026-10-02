@@ -1,0 +1,118 @@
+task_id: TASK-272
+revision: 1
+goal: Restore H4A3 live-probe eligibility by updating only the proven stale authenticated-account
+  and composer DOM selectors in the local regular-chat wake transport, preserving
+  exact chat identity, attach-only operation, fail-closed surface proof, draft/generation
+  safety, outbound proof, dedupe, privacy, and ACK-only authority.
+problem: After TASK-271 published Project-scoped URL support, Human read-only H4A3
+  diagnostics proved that the exact bound chat URL and main surface are correct, but
+  the current ACCOUNT and COMPOSER selectors no longer match the live regular Project-chat
+  DOM. The observed live page has exactly one visible profile-control candidate reachable
+  via a case-insensitive aria-label containing profile, and exactly one visible composer
+  candidate structurally scoped as main form [contenteditable=true][role=textbox][aria-multiline=true].
+  The current selectors return zero for both, causing SURFACE_UNPROVEN before any
+  wake submission. Empty-state diagnostics did not prove a SEND or STOP selector defect,
+  so those controls must remain unchanged in this correction.
+assumptions:
+- Canonical main at TASK-272 authoring contains TASK-271 reviewed publication and
+  the Human/Brain planning blocker brain-runtime-semantic-handoff-hardening-v1-h4a3-live-dom-surface-compatibility-fix.
+- 'The H4A3 diagnostics were read-only: exact URL match true, one visible main, current
+  account selector count zero, current composer selector count zero, one visible profile
+  aria candidate, one visible structural composer candidate, no visible login/nonregular/stop
+  marker, no wake submission, and no local event state creation.'
+- The observed structural composer candidate is a visible div inside main and form
+  with contenteditable=true, role=textbox, aria-multiline=true; exact Human chat content,
+  URL, Project identifier and account data are not needed as repository inputs.
+- The observed empty-state send selector count of zero is not sufficient evidence
+  of a send-control defect because the send control may be rendered or enabled only
+  after insertion; existing SEND and STOP behavior remains outside this correction
+  absent post-insert defect evidence.
+- The exact terminal RESULT identity for RUN-268-001 remains the planned H4A3 live
+  source after this correction is reviewed and published.
+scope:
+  inspect:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - .ai/roadmap-state.yaml
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+non_goals:
+- Remove or weaken authenticated-account proof, exact-chat proof, main-surface proof,
+  login rejection, nonregular-workspace rejection, generation detection, draft detection,
+  user-turn proof, state persistence, or dedupe.
+- Replace bounded selectors with generic contenteditable, generic textbox, generic
+  button, text-content, page-title, visual-position-only, or arbitrary heuristic matching.
+- Change SEND or STOP selectors, insertion/click semantics, workflow inputs, terminal-attention
+  admission, local state schema, Runtime, Reviewer, Publisher, or roadmap authority
+  without new post-insert defect evidence.
+- Read assistant output, chat history, account name, project slug, conversation UUID,
+  credentials, cookies, session state, or other private content for target inference.
+- Perform or claim the H4A3 live terminal replay, create H4A3 conformance evidence,
+  close H4A3, author TASK-270, or advance H4A4/H4A5/H4B.
+- Introduce navigation, browser launch/close behavior, generic retry/failover, selector
+  auto-learning, mutation-based probing, or a second local wake authority.
+constraints:
+  hard:
+  - Authenticated account proof must continue to require exactly one visible account
+    marker. The correction may preserve existing data-testid account selectors and
+    add only a bounded button aria-label profile fallback proven by the read-only
+    live diagnostic; zero or multiple visible matches must still fail closed.
+  - 'Composer proof must continue to require exactly one visible composer. The correction
+    may preserve the existing #prompt-textarea selector and add only a bounded structural
+    fallback scoped to main form [contenteditable=true][role=textbox][aria-multiline=true];
+    zero or multiple visible matches must still fail closed.'
+  - If old and new selector branches match the same DOM element, the effective selector
+    must not manufacture a duplicate logical composer/account match; tests must cover
+    compatibility behavior.
+  - INSERT, CLICK, check and prove must continue to re-evaluate the same complete
+    account/composer selector contracts at their existing safety boundaries. No one-time
+    preflight-only relaxation is allowed.
+  - Existing SEND and STOP selectors and their timing semantics remain unchanged in
+    TASK-272 because empty-state absence is not post-insert defect evidence.
+  - Exact full normalized bound URL equality, exactly-one target page selection, attach-only
+    browser behavior, loopback CDP, login/nonregular rejection, generation guard,
+    draft guard, outbound exact-user-turn proof and persistent dedupe remain unchanged.
+  - All regression fixtures must be synthetic and must not contain the Human's live
+    chat URL, Project identifier, conversation UUID, account label value, credentials,
+    cookies, runner path or local binding path.
+  - Regression coverage must include legacy selector compatibility, new account fallback
+    success, new structural composer fallback success, duplicate/ambiguous account
+    failure, duplicate/ambiguous composer failure, wrong-surface structural lookalikes
+    outside main/form rejection, and preservation of existing draft/generation/submission-proof/dedupe
+    behavior.
+  - No file outside scope.modify may change. Executor must not push, publish, perform
+    a live H4A3 replay, or mutate roadmap state.
+acceptance:
+- id: AC1
+  condition: A regular chat surface with exactly one visible bounded profile aria
+    fallback and exactly one visible bounded main-form multiline textbox composer
+    passes the account/composer portions of surface proof while the current exact
+    URL/main/login/nonregular/generation guards remain enforced.
+- id: AC2
+  condition: Existing legacy account/composer selector shapes remain compatible, and
+    combining legacy plus fallback selectors does not create duplicate logical matches
+    when a single element satisfies both branches.
+- id: AC3
+  condition: Zero or multiple visible bounded account markers, zero or multiple bounded
+    composer candidates, or structurally similar editable elements outside the authorized
+    main-form scope still fail closed as SURFACE_UNPROVEN.
+- id: AC4
+  condition: INSERT, CLICK, check and prove use the same updated bounded account/composer
+    contracts and retain exact-url, no-draft, no-generation, login/nonregular, send-proof
+    and outbound-user-turn safety checks.
+- id: AC5
+  condition: SEND and STOP selectors and timing behavior are unchanged, all new fixtures
+    are synthetic, and focused tests cover both compatibility and ambiguity/rejection
+    cases without reading assistant output or private live identifiers.
+- id: AC6
+  condition: The candidate changes only src/aios_renew/local_chat_wake.py and tests/test_local_chat_wake.py
+    and introduces no workflow, lifecycle, roadmap, live-replay, navigation, generic
+    heuristic, retry/failover or second-authority behavior.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py
+  - git diff --check
