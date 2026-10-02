@@ -2,6 +2,7 @@
 
 Status: conformance procedure; live proof is not asserted by this document.
 Implementation authority: TASK-269 revision 1, current-main documentation integration only.
+Bounded insertion correction and recovery procedure: TASK-274 revision 1.
 Reviewed semantic source: TASK-268 revision 1; historical source is not publication authority.
 Live observation and planning closure authority: Human/Brain.
 
@@ -113,7 +114,9 @@ terminal substitution.
 
 The existing adapter attaches only to the already-running target. This procedure
 does not authorize a replacement browser/profile, navigation of an unrelated
-chat, draft clearing, bypass of the enable gate, or ChatGPT Work fallback.
+chat, general draft clearing, bypass of the enable gate, or ChatGPT Work fallback.
+The sole Human draft/event removal exception is the exact historical pre-click
+attempt in section 4.1; ordinary delivery has no recovery or clearing authority.
 
 ## 4. Positive observation procedure
 
@@ -166,6 +169,79 @@ If submission is ambiguous, stop. `ATTEMPTING`, `BLOCKED`, uncertain state write
 or inability to prove submission must not be treated as `SUBMITTED`; never blindly
 resend. Preserve the bounded operational receipt for Human inspection without
 exposing local configuration or session material.
+
+### 4.1. One-attempt Human recovery of the known pre-click INSERT_BLOCKED
+
+This exception applies **only** to workflow run `36963244174`, attempt `2`,
+whose terminal-attention admission was PASS and whose local receipt was
+`BLOCKED / INSERT_BLOCKED` for
+`terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253`.
+Its transport checkout was `dc435f7d799ba8208869afcef3b54fedc712adc3`.
+These identifiers bind the historical attempt, not just a reusable event string.
+TASK-274 supplies this bounded procedure and synthetic insertion correction;
+its Executor does not perform recovery, a live submission, or H4A3 replay.
+
+Before either removal, the Human MUST privately establish **all** preconditions:
+
+1. Fresh canonical reconstruction retains the exact RUN-268-001 RESULT lineage
+   in section 2 and the recorded workflow attempt above. The canonical replay
+   observation and privacy-safe reconciliation establish that this specific
+   failure occurred **before Send click**, with no submission and no source
+   consumption. `INSERT_BLOCKED` alone, absence of a user turn alone, or a text
+   length alone is insufficient. Any contrary or uncertain observation stops
+   recovery and leaves H4A3 open.
+2. The Human-owned external state contains this exact event as `ATTEMPTING`,
+   attributable to that single historical attempt. There has been no intervening
+   delivery or state reset. No `.lock` or `.pending` file, in-flight local wake,
+   other state writer, or uncertain write exists. Pause competing delivery and
+   Human edits for this bounded inspection/removal; do not remove a lock or
+   pending file to manufacture these preconditions.
+3. The unchanged private binding identifies exactly one bound page, with the
+   exact complete conversation URL, one authenticated account indicator, one
+   regular-chat composer and one main surface; no login, nonregular surface,
+   active generation, or disabled composer is present. No navigation or binding
+   substitution is permitted. The known unsent attempt has no visible Send
+   control; an unexpected control/state change requires fresh Human assessment
+   rather than assuming it is the historical unchanged draft.
+4. The unsent composer equals the entire fixed four-line doorbell in section 4,
+   using the insertion correction's **same exact equivalence contract**: exact
+   logical text and text content, or exactly one flat P/DIV block (or root text
+   node) per logical line, with exact characters/order and only zero, one, or two
+   rendered newlines at each proven DOM block boundary. Every boundary must
+   touch a block; block children must be text nodes and blocks visible. No
+   leading/trailing separator, trim, generic repeated-newline collapse,
+   whitespace/case folding, substring, substituted line, extra node or nested
+   block normalization is allowed. Private comparison produces only bounded
+   match/guard booleans; do not export composer or conversation text.
+5. Bounded inspection of the **exact outbound user doorbell only** proves there
+   is no matching outbound user turn in that bound page. Do not read assistant
+   output or scrape history. This absence is corroboration of the independent
+   pre-click observation in item 1, never an independent resend license.
+
+If every condition holds, the Human may remove **only that exact unsent draft**
+from that exact composer. Immediately before removal, recheck unchanged payload,
+page/surface, absence of matching outbound user turn and no concurrent write or
+edit. Any Human-added content blocks removal; preserve it. Do not click Send.
+Then privately confirm the composer is empty, the exact bound page and guards
+still hold, and no matching outbound user turn has appeared. Recheck the same
+historical event is still `ATTEMPTING` and that lock/pending/write ambiguity is
+still absent. Only then may the Human remove **that single event entry** from
+the external operational state, preserving its schema and every other entry.
+Do not delete/reinitialize the state file or change canonical lifecycle state.
+If either step cannot be completed unambiguously, stop without automatic retry.
+
+This consumes the exception for that one historical attempt. It cannot authorize
+any other `ATTEMPTING` event, another workflow attempt, or a subsequent attempt
+of the same event, even if its receipt says `INSERT_BLOCKED`. Normal `deliver()`
+continues to return `ATTEMPT_REQUIRES_HUMAN` without attaching, clearing, resetting,
+or retrying any existing `ATTEMPTING` entry. No generalized recovery is introduced.
+
+Recovery is not replay permission or positive conformance. After reviewed
+publication of TASK-274, any later one-shot replay requires separate Human/Brain
+planning, fresh exact-source admission/readiness and the ACK-only boundary in
+sections 2–4. The exact user-turn and duplicate NOOP proof remain later
+Human/Brain observations; H4A3 remains open and no H4A4/H4A5/H4B advancement is
+authorized by this exception.
 
 ## 5. Negative-case basis and contrary live observations
 

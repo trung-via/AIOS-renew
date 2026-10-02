@@ -353,6 +353,8 @@ class Page:
             self.draft = ""
             self.counts["outbound"] = 1
             self.send_enabled = False
+        elif script == wake.ACCEPT_INSERT:
+            return self.draft == args["text"] and self.send_enabled
         else:
             pytest.fail("unexpected browser script")
         return True
@@ -448,7 +450,7 @@ def test_bounded_surface_compatibility_and_union_identity(binding, account_shape
     adapter.check(page.payload)
     adapter.submit(page.payload)
     adapter.prove(page.payload)
-    assert page.evaluations == [wake.INSERT, wake.CLICK]
+    assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK]
 
 
 @pytest.mark.parametrize("kind", ["account", "composer"])
@@ -615,7 +617,7 @@ def test_exact_submission_proof_reads_only_outbound_and_composer(binding):
     # Generation after send is permitted without extracting its output.
     page.counts[wake.STOP] = 1
     adapter.prove(page.payload)
-    assert page.evaluations == [wake.INSERT, wake.CLICK]
+    assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK]
 
 
 @pytest.mark.parametrize("condition", ["missing_turn", "duplicate_turn", "wrong_text", "draft", "send_enabled", "wrong_chat", "second_target"])
@@ -652,6 +654,56 @@ def test_human_draft_race_blocks_without_clearing_human_text(binding, stage):
     assert page.counts.get("outbound", 0) == 0
 
 
+@pytest.mark.parametrize("send_count,enabled", [(0, False), (2, True), (1, False)])
+def test_application_acceptance_blocks_before_click(binding, send_count, enabled):
+    class UnacceptedPage(Page):
+        def evaluate(self, script, args):
+            result = super().evaluate(script, args)
+            if script == wake.INSERT:
+                self.counts[wake.SEND] = send_count
+                self.send_enabled = enabled
+            return result
+
+    page = UnacceptedPage(binding.chat_url)
+    with pytest.raises(wake.WakeBlocked, match="INSERT_BLOCKED"):
+        adapter_for(binding, page).submit(page.payload)
+    assert wake.CLICK not in page.evaluations
+    assert page.draft == page.payload and page.counts.get("outbound", 0) == 0
+
+
+def test_target_uniqueness_rechecked_after_staging(binding):
+    page = Page(binding.chat_url)
+    adapter = adapter_for(binding, page)
+    evaluate = page.evaluate
+
+    def duplicate_after_insert(script, args):
+        result = evaluate(script, args)
+        if script == wake.INSERT:
+            adapter.browser.contexts[0].pages.append(Page(binding.chat_url))
+        return result
+
+    page.evaluate = duplicate_after_insert
+    with pytest.raises(wake.WakeBlocked, match="TARGET_PAGE_NOT_UNIQUE"):
+        adapter.submit(page.payload)
+    assert page.evaluations == [wake.INSERT] and page.draft == page.payload
+
+
+def test_human_edit_during_application_wait_is_preserved(binding, monkeypatch):
+    page = Page(binding.chat_url)
+    wait = Locator.wait_for
+
+    def edit_while_waiting(locator, **kwargs):
+        wait(locator, **kwargs)
+        if locator.selector == wake.SEND:
+            page.draft += " Human edit"
+
+    monkeypatch.setattr(Locator, "wait_for", edit_while_waiting)
+    with pytest.raises(wake.WakeBlocked, match="INSERT_BLOCKED"):
+        adapter_for(binding, page).submit(page.payload)
+    assert page.draft == page.payload + " Human edit"
+    assert wake.CLICK not in page.evaluations and page.counts.get("outbound", 0) == 0
+
+
 def test_client_attaches_and_disconnects_without_browser_launch(monkeypatch, binding):
     page = Page(binding.chat_url)
     browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[page])])
@@ -670,15 +722,15 @@ def test_client_attaches_and_disconnects_without_browser_launch(monkeypatch, bin
 
 
 def test_scripts_guard_identity_surface_and_human_edit_in_same_turn():
-    for script in (wake.INSERT, wake.CLICK):
-        for guard in ("location.href.replace", "visible(account).length !== 1", "visible(stop).length",
+    for script in (wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK):
+        for guard in ("location.href.replace", "visible(account).length === 1", "visible(stop).length",
                       "visible(nonregular).length", "visible(login).length"):
             assert guard in script
     assert "box.textContent === ''" in wake.INSERT
-    assert "visible(composer).length !== 1" in wake.INSERT
+    assert "visible(composer)[0] === box" in wake.INSERT
     assert wake.INSERT.index("box.focus()") < wake.INSERT.index("if (!empty() ||") < wake.INSERT.index("document.execCommand")
-    assert "boxes[0].innerText.replace" in wake.CLICK
-    assert "buttons[0].click()" in wake.CLICK
+    assert "equivalent(boxes[0])" in wake.CLICK
+    assert "visible(send)[0].click()" in wake.CLICK
 
 
 @pytest.mark.parametrize("scenario", [
@@ -687,6 +739,17 @@ def test_scripts_guard_identity_surface_and_human_edit_in_same_turn():
     "fallback", "overlap", "legacy_accounts", "hidden_extras", "login", "missing_composer",
     "duplicate_account", "duplicate_composer", "focus_account_ambiguous", "focus_composer_ambiguous",
     "send_account_missing", "send_account_ambiguous", "send_composer_missing", "send_composer_ambiguous",
+    "dom_only", "input_edit", "input_navigation", "input_busy", "input_login", "input_main_missing",
+    "insert_disabled", "send_zero", "send_multiple", "send_aria_disabled", "send_busy", "send_login",
+    "blocks_double", "blocks_missing_separator", "blocks_mixed", "blocks_root_text",
+    "flat_double", "trailing_newline", "leading_space", "case_changed", "missing_line",
+    "extra_line", "reordered_lines", "collapsed_spaces", "blocks_triple", "blocks_extra_node",
+    "blocks_nested", "blocks_hidden", "blocks_trailing", "blocks_substituted",
+    "send_flat_double", "send_trailing_newline", "send_blocks_substituted",
+    "send_blocks_double", "send_blocks_missing_separator", "send_surface_disabled",
+    "blocks_single", "flat_missing_separator", "flat_triple", "trailing_space", "crlf",
+    "blocks_hidden_extra", "native_edit", "focus_lost", "selection_missing",
+    "insert_multiple", "insert_aria_disabled",
 ])
 def test_real_browser_scripts_on_synthetic_dom(binding, scenario):
     node = shutil.which("node")
@@ -701,14 +764,34 @@ const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const args = input.args;
 global.location = {href: args.url};
 global.getComputedStyle = e => ({visibility: e.hidden ? 'hidden' : 'visible'});
-let clicks = 0, inserts = 0;
+let clicks = 0, inserts = 0, notifications = 0, appText = '';
 const element = () => ({getClientRects: () => [1], getAttribute: () => null});
-const box = Object.assign(element(), {textContent: '', innerText: '', focus() {
+const textNode = text => ({nodeType: 3, textContent: text});
+const box = Object.assign(element(), {textContent: '', innerText: '', childNodes: [], focus() {
+  document.activeElement = box;
   if (input.scenario === 'focus_draft') box.textContent = box.innerText = 'Human draft';
   if (input.scenario === 'focus_navigation') location.href = 'https://example.invalid/';
   if (input.scenario === 'focus_project') location.href = input.other_url;
   if (input.scenario === 'focus_account_ambiguous') elements[accountLegacy].push(element());
   if (input.scenario === 'focus_composer_ambiguous') elements[composerLegacy].push(element());
+  if (input.scenario === 'focus_lost') document.activeElement = null;
+}, dispatchEvent(event) {
+  if (event.type !== 'input' || !event.bubbles || !event.composed ||
+      event.inputType !== 'insertText' || event.data !== args.text) throw Error('bad notification');
+  notifications++;
+  if (input.scenario === 'input_edit') setFlat(args.text + ' Human edit');
+  if (input.scenario === 'input_navigation') location.href = input.other_url;
+  if (input.scenario === 'input_busy') elements[args.stop] = [element()];
+  if (input.scenario === 'input_login') elements[args.login] = [element()];
+  if (input.scenario === 'input_main_missing') elements.main = [];
+  if (input.scenario !== 'dom_only') {
+    appText = box.innerText;
+    elements[args.send] = [button];
+    button.disabled = input.scenario === 'insert_disabled';
+    if (input.scenario === 'insert_multiple') elements[args.send].push(element());
+    if (input.scenario === 'insert_aria_disabled') button.getAttribute = () => 'true';
+  }
+  return true;
 }});
 const button = Object.assign(element(), {disabled: false, click() {clicks++;}});
 const accountLegacy = '[data-testid="profile-button"]';
@@ -724,7 +807,7 @@ const elements = {
   [accountLegacy]: fallback || otherLegacy ? [] : [account],
   [accountOtherLegacy]: otherLegacy ? [account] : [],
   [accountFallback]: fallback || overlap ? [account] : [],
-  [args.send]: [button], [args.stop]: [], [args.nonregular]: [], [args.login]: [], main: [element()]};
+  [args.send]: [], [args.stop]: [], [args.nonregular]: [], [args.login]: [], main: [element()]};
 // CSS selector lists produce a union of element identities, not branch counts.
 const select = selector => [...new Set(selector.split(',').flatMap(branch => elements[branch.trim()] || []))];
 const replace = (selector, matches) => {
@@ -732,11 +815,57 @@ const replace = (selector, matches) => {
 };
 global.document = {
   querySelectorAll: select,
+  createRange: () => ({selectNodeContents(node) {
+    if (node !== box || box.textContent !== '') throw Error('unsafe selection');
+  }, collapse(value) {if (value !== true) throw Error('noncollapsed selection');}}),
   execCommand: (command, unused, text) => {
     if (command !== 'insertText') throw Error('unexpected modification');
-    inserts++; box.textContent = box.innerText = text; return true;
+    inserts++; setRepresentation(input.scenario.startsWith('send_') ? 'valid' : input.scenario, text);
+    if (input.scenario === 'native_edit') setFlat(text + ' Human edit');
+    return true;
   },
 };
+global.window = {getSelection: () => input.scenario === 'selection_missing' ? null :
+  ({removeAllRanges() {}, addRange() {}})};
+global.InputEvent = class {constructor(type, options) {this.type = type; Object.assign(this, options);}};
+function setFlat(text) {
+  box.textContent = box.innerText = text; box.childNodes = [textNode(text)];
+}
+function setRepresentation(scenario, text) {
+  const name = scenario.replace(/^send_/, '');
+  const lines = text.split('\n');
+  if (name.startsWith('blocks_')) {
+    const contents = name === 'blocks_substituted' ? lines.map((s, i) => i === 2 ? s + ' ' : s) : lines;
+    box.childNodes = contents.map((line, i) => Object.assign(element(), {
+      nodeType: 1, tagName: name === 'blocks_mixed' && i % 2 ? 'DIV' : 'P',
+      textContent: line, childNodes: [textNode(line)]}));
+    if (name === 'blocks_root_text') box.childNodes[0] = textNode(contents[0]);
+    box.textContent = contents.join('');
+    box.innerText = contents.join(name === 'blocks_missing_separator' ? '' :
+      name === 'blocks_single' ? '\n' : name === 'blocks_triple' ? '\n\n\n' : '\n\n');
+    if (name === 'blocks_mixed') box.innerText = contents[0] + '\n' + contents[1] + '\n\n' + contents[2] + contents[3];
+    if (name === 'blocks_extra_node') box.childNodes.push(textNode(''));
+    if (name === 'blocks_nested') box.childNodes[1].childNodes = [{nodeType: 1}];
+    if (name === 'blocks_hidden') box.childNodes[1].hidden = true;
+    if (name === 'blocks_trailing') box.innerText += '\n';
+    if (name === 'blocks_hidden_extra') {
+      box.childNodes.push(Object.assign(textNode('extra'), {hidden: true}));
+      box.textContent += 'extra';
+      box.innerText = text;
+    }
+    return;
+  }
+  const substitutions = {
+    flat_double: text.replace(/\n/g, '\n\n'), trailing_newline: text + '\n',
+    leading_space: ' ' + text, case_changed: text.toLowerCase(),
+    missing_line: lines.slice(1).join('\n'), extra_line: text + '\nextra',
+    reordered_lines: [lines[1], lines[0], ...lines.slice(2)].join('\n'),
+    collapsed_spaces: text.replace(/ /g, ''),
+    flat_missing_separator: lines.join(''), flat_triple: lines.join('\n\n\n'),
+    trailing_space: text + ' ', crlf: lines.join('\r\n'),
+  };
+  setFlat(substitutions[name] === undefined ? text : substitutions[name]);
+}
 if (input.scenario === 'draft') box.textContent = box.innerText = 'Human draft';
 if (input.scenario === 'busy') elements[args.stop] = [element()];
 if (input.scenario === 'wrong_surface') replace(args.nonregular, [element()]);
@@ -751,28 +880,66 @@ if (input.scenario === 'hidden_extras') {
 }
 if (input.scenario === 'wrong_project') location.href = input.other_url;
 const inserted = eval('(' + input.insert + ')')(args);
+const accepted = inserted && eval('(' + input.accept + ')')(args);
 if (input.scenario === 'send_edit') box.textContent = box.innerText = args.text + ' Human edit';
 if (input.scenario === 'send_disabled') button.disabled = true;
+if (input.scenario === 'send_zero') elements[args.send] = [];
+if (input.scenario === 'send_multiple') elements[args.send] = [button, element()];
+if (input.scenario === 'send_aria_disabled') button.getAttribute = () => 'true';
+if (input.scenario === 'send_surface_disabled') box.getAttribute = () => 'true';
+if (input.scenario === 'send_busy') elements[args.stop] = [element()];
+if (input.scenario === 'send_login') elements[args.login] = [element()];
+if (['send_flat_double', 'send_trailing_newline', 'send_blocks_substituted',
+     'send_blocks_double', 'send_blocks_missing_separator'].includes(input.scenario))
+  setRepresentation(input.scenario, args.text);
 if (input.scenario === 'send_project') location.href = input.other_url;
 if (input.scenario === 'send_account_missing') replace(args.account, []);
 if (input.scenario === 'send_account_ambiguous') replace(args.account, [account, element()]);
 if (input.scenario === 'send_composer_missing') replace(args.composer, []);
 if (input.scenario === 'send_composer_ambiguous') replace(args.composer, [box, element()]);
-const sent = inserted ? eval('(' + input.click + ')')(args) : false;
-process.stdout.write(JSON.stringify({inserted, sent, inserts, clicks, draft: box.textContent}));
+const sent = accepted ? eval('(' + input.click + ')')(args) : false;
+process.stdout.write(JSON.stringify({inserted, accepted, sent, inserts, clicks,
+                                   notifications, appText, draft: box.textContent}));
 """
     process = subprocess.run(
         [node, "-e", harness], input=json.dumps({"args": arguments, "scenario": scenario,
                                                "other_url": synthetic_project_url(project="g-fixture-project-2"),
-                                               "insert": wake.INSERT, "click": wake.CLICK}),
+                                               "insert": wake.INSERT, "accept": wake.ACCEPT_INSERT,
+                                               "click": wake.CLICK}),
         capture_output=True, text=True, check=True, timeout=10,
     )
     result = json.loads(process.stdout)
-    if scenario in {"valid", "fallback", "overlap", "legacy_accounts", "hidden_extras"}:
-        assert result == {"inserted": True, "sent": True, "inserts": 1, "clicks": 1, "draft": payload}
+    if scenario in {"valid", "fallback", "overlap", "legacy_accounts", "hidden_extras",
+                    "blocks_double", "blocks_single", "blocks_missing_separator", "blocks_mixed", "blocks_root_text",
+                    "send_blocks_double", "send_blocks_missing_separator"}:
+        assert result["inserted"] is result["accepted"] is result["sent"] is True
+        assert result["inserts"] == result["notifications"] == result["clicks"] == 1
+        assert result["appText"]  # Application state was activated by the input notification.
+        if not scenario.startswith("blocks_") and not scenario.startswith("send_blocks_"):
+            assert result["draft"] == result["appText"] == payload
     else:
         assert result["sent"] is False and result["clicks"] == 0
-        if not scenario.startswith("send_"):
+        if scenario in {"draft", "focus_draft", "focus_navigation", "focus_project", "busy",
+                        "wrong_surface", "logged_out", "wrong_project", "login", "missing_composer",
+                        "duplicate_account", "duplicate_composer", "focus_account_ambiguous",
+                        "focus_composer_ambiguous", "focus_lost", "selection_missing"}:
             assert result["inserted"] is False and result["inserts"] == 0
-        if scenario in {"draft", "focus_draft", "send_edit"}:
-            assert "Human" in result["draft"]
+        if scenario in {"flat_double", "trailing_newline", "leading_space", "case_changed",
+                        "missing_line", "extra_line", "reordered_lines", "collapsed_spaces",
+                        "blocks_triple", "blocks_extra_node", "blocks_nested", "blocks_hidden",
+                        "blocks_trailing", "blocks_substituted", "blocks_hidden_extra",
+                        "flat_missing_separator", "flat_triple", "trailing_space", "crlf",
+                        "native_edit", "input_edit", "input_navigation", "input_busy",
+                        "input_login", "input_main_missing"}:
+            assert result["inserted"] is False and result["accepted"] is False
+        if scenario in {"send_flat_double", "send_trailing_newline", "send_blocks_substituted"}:
+            assert result["accepted"] is True  # A later payload substitution is rejected at click.
+        if scenario == "dom_only":
+            assert result["inserted"] is True and result["accepted"] is False
+            assert result["draft"] == payload and result["appText"] == ""
+        if scenario in {"insert_disabled", "insert_multiple", "insert_aria_disabled"}:
+            assert result["accepted"] is False
+        if scenario in {"draft", "focus_draft"}:
+            assert result["draft"] == "Human draft" and result["notifications"] == 0
+        if scenario in {"send_edit", "input_edit", "native_edit"}:
+            assert result["draft"] == payload + " Human edit"

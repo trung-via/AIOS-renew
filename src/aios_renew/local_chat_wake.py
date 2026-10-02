@@ -184,41 +184,83 @@ class State:
             raise WakeBlocked("STATE_WRITE_UNCERTAIN") from None
 
 
-# Inspection and insertion share one browser event-loop turn, so a delayed
-# fill() cannot overwrite a draft typed after preflight. Focus handlers are
-# synchronous; recheck the empty composer after focus before inserting.
-INSERT = """({url, text, composer, account, stop, nonregular, login, send}) => {
+# Shared by staging, application acceptance, and the final click boundary.
+# No text is exported, trimmed, or generically whitespace-normalized.
+_COMPOSER_GUARDS = """
   const visible = selector => [...document.querySelectorAll(selector)].filter(
     e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
+  const equivalent = box => {
+    if (box.innerText === text && box.textContent === text) return true;
+    // Only one flat P/DIV (or root text node) per exact logical line is
+    // supported. Each optional/doubled separator must map to a block boundary.
+    const lines = text.split('\\n'), nodes = [...box.childNodes];
+    const block = node => node.nodeType === 1 && ['P', 'DIV'].includes(node.tagName);
+    if (nodes.length !== lines.length || !nodes.some(block)) return false;
+    if (!nodes.every((node, i) => node.textContent === lines[i] &&
+        (node.nodeType === 3 || (block(node) &&
+          [...node.childNodes].every(child => child.nodeType === 3) &&
+          node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden'))))
+      return false;
+    let offset = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (box.innerText.slice(offset, offset + lines[i].length) !== lines[i]) return false;
+      offset += lines[i].length;
+      if (i + 1 < lines.length) {
+        if (!block(nodes[i]) && !block(nodes[i + 1])) return false;
+        // Zero, one, or two newlines at this proven boundary only.
+        for (let n = 0; n < 2 && box.innerText[offset] === '\\n'; n++) offset++;
+      }
+    }
+    return offset === box.innerText.length;
+  };
+  const surface = box => location.href.replace(/\\/$/, '') === url &&
+    visible(composer).length === 1 && visible(composer)[0] === box &&
+    box.getAttribute('aria-disabled') !== 'true' &&
+    visible(account).length === 1 && !visible(stop).length &&
+    !visible(nonregular).length && !visible(login).length && visible('main').length === 1;
+  const ready = () => {
+    const boxes = visible(composer), buttons = visible(send);
+    return boxes.length === 1 && surface(boxes[0]) && equivalent(boxes[0]) &&
+      buttons.length === 1 && !buttons[0].disabled &&
+      buttons[0].getAttribute('aria-disabled') !== 'true';
+  };
+"""
+
+# Inspection and native editing share one event-loop turn. Never fill, replace,
+# clear, or retry a draft. Focus handlers must leave the same empty surface.
+INSERT = """({url, text, composer, account, stop, nonregular, login, send}) => {
+""" + _COMPOSER_GUARDS + """
   const boxes = visible(composer);
-  if (location.href.replace(/\\/$/, '') !== url || boxes.length !== 1 ||
-      visible(account).length !== 1 || visible(stop).length ||
-      visible(nonregular).length || visible(login).length ||
-      visible('main').length !== 1) return false;
+  if (boxes.length !== 1 || !surface(boxes[0])) return false;
   const box = boxes[0];
   const empty = () => box.textContent === '' && box.getAttribute('aria-disabled') !== 'true';
   if (!empty()) return false;
   box.focus();
-  if (!empty() || location.href.replace(/\\/$/, '') !== url ||
-      visible(stop).length || visible(login).length || visible(nonregular).length ||
-      visible(account).length !== 1 || visible(composer).length !== 1 ||
-      visible(composer)[0] !== box) return false;
+  if (!empty() || !surface(box) || document.activeElement !== box) return false;
+  // Bind the native edit to the empty composer, never an unrelated selection.
+  const selection = window.getSelection(), range = document.createRange();
+  if (!selection) return false;
+  range.selectNodeContents(box);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
   if (!document.execCommand('insertText', false, text)) return false;
-  return box.innerText.replace(/\\r\\n/g, '\\n').replace(/\\n+$/, '') === text;
+  if (!surface(box) || !equivalent(box)) return false;
+  // Notify the application-managed editor as well as performing the native edit.
+  // A DOM-only mutation is staged text, not proof of application acceptance.
+  box.dispatchEvent(new InputEvent('input', {
+    bubbles: true, composed: true, inputType: 'insertText', data: text
+  }));
+  return surface(box) && equivalent(box);
 }"""
 
+ACCEPT_INSERT = """({url, text, composer, account, stop, nonregular, login, send}) => {
+""" + _COMPOSER_GUARDS + "return ready(); }"
+
 CLICK = """({url, text, composer, account, stop, nonregular, login, send}) => {
-  const visible = selector => [...document.querySelectorAll(selector)].filter(
-    e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
-  const boxes = visible(composer), buttons = visible(send);
-  if (location.href.replace(/\\/$/, '') !== url || boxes.length !== 1 ||
-      boxes[0].innerText.replace(/\\r\\n/g, '\\n').replace(/\\n+$/, '') !== text ||
-      boxes[0].getAttribute('aria-disabled') === 'true' ||
-      visible(account).length !== 1 || visible(stop).length ||
-      visible(nonregular).length || visible(login).length ||
-      visible('main').length !== 1 || buttons.length !== 1 || buttons[0].disabled ||
-      buttons[0].getAttribute('aria-disabled') === 'true') return false;
-  buttons[0].click();
+""" + _COMPOSER_GUARDS + """
+  if (!ready()) return false;
+  visible(send)[0].click();
   return true;
 }"""
 
@@ -293,8 +335,17 @@ class BrowserAdapter:
         self.check(text)
         if not self.page.evaluate(INSERT, self.arguments(text)):
             raise WakeBlocked("INSERT_BLOCKED")
-        # Await only the send control, never response content.
-        self.visible(SEND).wait_for(state="visible", timeout=3000)
+        # Allow the application to render its Send control after the input event.
+        # Await only that control, never response content. Missing/ambiguous
+        # controls are insertion failure, even if DOM text was staged correctly.
+        try:
+            self.visible(SEND).wait_for(state="visible", timeout=3000)
+        except Exception:
+            raise WakeBlocked("INSERT_BLOCKED") from None
+        if self.select_page(self.browser, self.binding.chat_url) is not self.page:
+            raise WakeBlocked("TARGET_PAGE_CHANGED")
+        if not self.page.evaluate(ACCEPT_INSERT, self.arguments(text)):
+            raise WakeBlocked("INSERT_BLOCKED")
         if self.select_page(self.browser, self.binding.chat_url) is not self.page:
             raise WakeBlocked("TARGET_PAGE_CHANGED")
         if not self.page.evaluate(CLICK, self.arguments(text)):
