@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-workflow-dispatch-main-ref-admission-fix
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -987,7 +987,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-workflow-dispatch-main-ref-admission-fix
-    status: NEXT
+    status: DONE
     phase: H4A3_WORKFLOW_DISPATCH_MAIN_REF_ADMISSION_FIX
     task_id: TASK-273
     task_revision: 1
@@ -1079,6 +1079,21 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
     execution_profile_status: HUMAN_SELECTED
+    completed_by:
+      task_id: TASK-273
+      task_revision: 1
+      run_id: RUN-273-001
+      result_artifact_sha: "303519701995db595268adfccdf0ad9f3d16b793"
+      reviewed_candidate_sha: "ce51081c5aa8cee419d25d397df24b1cee29d373"
+      review_id: REVIEW-273-001
+      review_decision_sha: "9f3b08118fa4567e6987b880fb7ec6660042f4e2"
+      review_verdict: PASS
+      publication_sha: "ce51081c5aa8cee419d25d397df24b1cee29d373"
+      publication_workflow_run_id: 36965315903
+      verification:
+        - "python -m pytest -q tests/test_terminal_attention.py => 46 passed"
+        - "git diff --check => PASS"
+      unresolved: []
     sequencing:
       - AFTER_TASK_272_LIVE_DOM_SURFACE_COMPATIBILITY_FIX
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
@@ -1087,7 +1102,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
-    status: BLOCKED_BY_TASK_273_WORKFLOW_DISPATCH_MAIN_REF_FIX
+    status: NEXT
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -1114,7 +1129,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: BLOCKED_BY_TASK_273_WORKFLOW_DISPATCH_MAIN_REF_FIX
+      status: HUMAN_TARGET_PAGE_UNIQUENESS_REQUIRED
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
@@ -1144,11 +1159,37 @@ sequence:
         semantic_effect: NONE
         h4a3_proof_effect: NONE
         blocking_task: TASK-273
+        resolution: TASK_273_REVIEWED_PUBLISHED
+        resolution_publication_sha: "ce51081c5aa8cee419d25d397df24b1cee29d373"
+      workflow_dispatch_fix:
+        task_id: TASK-273
+        status: REVIEWED_PUBLISHED
+        run_id: RUN-273-001
+        result_artifact_sha: "303519701995db595268adfccdf0ad9f3d16b793"
+        review_id: REVIEW-273-001
+        review_decision_sha: "9f3b08118fa4567e6987b880fb7ec6660042f4e2"
+        publication_sha: "ce51081c5aa8cee419d25d397df24b1cee29d373"
       dom_surface_fix:
         task_id: TASK-272
         status: REVIEWED_PUBLISHED
         publication_sha: "3388903579278081774e8ae5b980e4aa41ddc6c1"
       latest_operational_observation:
+        source_run_id: RUN-273-001
+        terminal_artifact_sha: "303519701995db595268adfccdf0ad9f3d16b793"
+        workflow_run_id: 36964994712
+        workflow_run_number: 349
+        transport_source_sha: "b69392c3d74aa37630e8a312d41fdb237a7444db"
+        terminal_attention_admission: PASS
+        local_wake_status: BLOCKED
+        local_wake_reason: TARGET_PAGE_NOT_UNIQUE
+        exact_h4a3_source_consumed: false
+        wake_submitted: false
+        semantic_effect: NONE
+        h4a3_proof_effect: READINESS_BLOCKER_ONLY
+        human_action_required: >-
+          Keep exactly one browser page whose normalized URL equals the Human-owned
+          bound chat URL before replaying the exact RUN-268-001 terminal source.
+      prior_prepublication_surface_observation:
         source_run_id: RUN-272-001
         terminal_artifact_sha: "4ef03bc07cab5c9a062ab63fbdda0339030d737d"
         local_wake_status: BLOCKED
