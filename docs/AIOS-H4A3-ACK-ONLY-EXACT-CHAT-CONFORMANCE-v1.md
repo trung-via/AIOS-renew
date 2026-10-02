@@ -5,6 +5,7 @@ Implementation authority: TASK-269 revision 1, current-main documentation integr
 Bounded insertion correction: TASK-274 revision 1.
 Exact-form Send compatibility and one-attempt recovery procedure: TASK-275 revision 1.
 Bounded outbound-user-turn compatibility and one-attempt post-send reconciliation: TASK-276 revision 1.
+Exact workflow-354 evidence-equivalent planning-conformance path: TASK-277 revision 1.
 Reviewed semantic source: TASK-268 revision 1; historical source is not publication authority.
 Live observation and planning closure authority: Human/Brain.
 
@@ -163,18 +164,22 @@ TASK-269 implementation neither dispatches nor performs this replay.
    matching wake user turn, with no second turn. Do not reset/delete dedupe state,
    alter the identity, or resend an uncertain attempt to obtain this observation.
 
-Positive conformance requires all four observations together: exact terminal
-admission, matching local `SUBMITTED` receipt, exactly one matching user turn in
-the exact bound chat, and duplicate `NOOP` with no second turn. A receipt alone,
+Normal positive conformance requires all four observations together: exact terminal
+admission, genuine matching local `SUBMITTED / EXACT_USER_TURN_PROVEN` receipt,
+exactly one matching user turn in the exact bound chat, and duplicate `NOOP`
+with no second turn. A receipt alone,
 message in another chat, screenshot without exact identity, or assistant reply
-does not establish the positive proof.
+does not establish the positive proof. This normal rule remains unchanged for
+all ordinary cases. Section 4.3 defines the sole exact-case evidence-equivalent
+alternative; it does not weaken this rule or supply a missing historical receipt.
 
 If submission is ambiguous, stop. `ATTEMPTING`, `BLOCKED`, uncertain state writes,
 or inability to prove submission must not be treated as `SUBMITTED`; never blindly
 resend. Preserve the bounded operational receipt for Human inspection without
 exposing local configuration or session material. The sole post-send metadata
 exception is the reviewed, Human-only procedure in section 4.2; it does not
-replace the original receipt or itself establish positive conformance.
+replace the original receipt or itself establish positive conformance. Only the
+complete section 4.3 chain may support the exact-case alternative assessment.
 
 ### 4.1. One-attempt Human recovery of the known pre-click INSERT_BLOCKED
 
@@ -349,6 +354,99 @@ section 4. Any later observation requires separate Human/Brain planning and
 current source/readiness checks. H4A3 remains open until Human/Brain assesses
 the required conformance proof; no H4A4/H4A5/H4B advancement follows here.
 
+### 4.3. Exact workflow-354 evidence-equivalent planning-conformance path
+
+After successful review and eligible publication of TASK-277, Human/Brain may
+assess this one alternative to the normal section 4 receipt path. It applies
+**only** to workflow `36984172510` (#354), historical attempt `1`, repository
+`trung-via/AIOS-renew`, and this exact admitted event:
+
+```text
+terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253
+```
+
+The alternative requires **all seven facts together**, with their provenance,
+identity and chronological relationship established from the recorded canonical
+planning and bounded Human observations:
+
+1. Exact terminal-attention admission **PASS** for #354 attempt `1`, retaining
+   the section 2 TASK-268 revision-1 / RUN-268-001 RESULT lineage, artifact SHA
+   and matching attention refs. Workflow success, an Issue, or an event string
+   alone is insufficient.
+2. The canonical planning record that this exact historical attempt automatically
+   **clicked Send before outbound-user-turn proof failed**. Admission, the current
+   turn, an empty composer or `LOCAL_FAILURE` cannot replace this recorded fact.
+3. Preservation of that attempt's original **`BLOCKED / LOCAL_FAILURE`** local
+   receipt as immutable operational history. #354 attempt `1` did not return
+   `SUBMITTED / EXACT_USER_TURN_PROVEN`; no such historical receipt may be
+   fabricated, relabeled, suppressed or inferred.
+4. Bounded proof under the reviewed TASK-276 shared resolver, reviewed and
+   published at `53e75c22451457048adc21821788d54d5d43e0c1`, of **exactly one**
+   matching outbound **user** turn in the unchanged exact Human-bound chat.
+   Require the complete four-line section 4 doorbell, including this event and
+   repository, with CRLF-to-LF normalization only and all section 4.2 item 4
+   structural/visibility/uniqueness guards. Page-global text discovery remains
+   diagnostic only and cannot supply this proof.
+5. The later Human section-4.2 reconciliation **PASS**, performed only after
+   reviewed TASK-276 publication and **all** published safeguards: the attributable
+   exact entry was still `ATTEMPTING`, with no intervening delivery/state reset,
+   lock/pending/in-flight/concurrent-writer or uncertain-write ambiguity; the
+   unchanged exact private binding, unique authenticated regular-chat page,
+   empty composer, exact bounded user turn and scoped post-send Send-control
+   condition were re-proven and rechecked immediately before the update.
+   Only that event changed from `ATTEMPTING` to `SUBMITTED`, preserving the schema
+   and every other event. There was no replay, Send click, draft/user-turn change,
+   assistant-output read, or canonical lifecycle/roadmap mutation. This is a
+   later safeguarded Human operational change, never the historical receipt.
+6. Subsequent duplicate delivery of the **same exact admitted identity**, recorded
+   as workflow `36984172510` attempt `2`, with fresh exact admission **PASS**, the
+   same Human binding and preserved persistent dedupe state, returned
+   **`NOOP / ALREADY_SUBMITTED`**. This is the later duplicate observation, not
+   attempt `1` submission proof or a replacement receipt. No state reset,
+   altered identity or blind resend may be used to obtain it.
+7. The **post-duplicate Human read-only proof**, using the same reviewed bounded
+   resolver and exact binding, still returns **`EXACT`** for that complete
+   outbound user doorbell: exactly one matching turn, one unique target page,
+   one composer and an empty composer. This establishes no second matching turn
+   after the duplicate. The duplicate NOOP alone, which returns before browser
+   attachment/submission, does not establish this final exact-turn observation.
+
+The evidence chain is indivisible. No single constituent, current `SUBMITTED`
+state, reconciliation alone, duplicate receipt alone, partial subset, visual-only
+Human observation or screenshot, assistant response/ACK, page-global text,
+partial payload, whitespace-normalized match, unrelated chat/event, or overall
+workflow success may substitute. Missing, conflicting or ambiguous evidence
+leaves H4A3 open. Keep the original failure receipt, later Human reconciliation,
+duplicate outcome and post-duplicate proof distinct; neither later `SUBMITTED`
+state, duplicate NOOP nor a planning note is a historical transport receipt.
+
+This path is non-reusable for another workflow, attempt, event, repository or
+future ambiguous submission, including a later uncertain attempt of this same
+event. Attempt `2` is only the recorded duplicate constituent above; it does not
+receive its own alternative-path authority. TASK-277 authorizes documentation
+only: it performs and authorizes no new replay, Send, browser action, machine-local
+state update or H4A3 closure mutation. Assessment uses the already recorded chain;
+it does not require another delivery or destructive negative-case exercise.
+No generic recovery, reconciliation, resend/retry, durable queue, multi-project
+lane or other H4A4 policy is created, and production transport remains unchanged.
+
+Satisfaction means only that **Human/Brain may assess H4A3 planning conformance**
+through this bounded evidence-equivalent chain without fabricating the historical
+receipt. It creates no Runtime EVIDENCE, canonical lifecycle success, Reviewer
+verdict/authority, Publisher authority or automatic roadmap advancement. Separate
+Human/Brain assessment and an explicit planning closure decision remain required;
+TASK-277 execution, verification, review or publication does not close H4A3 or
+advance TASK-270, H4A4, H4A5 or H4B.
+
+The ACK-only, assistant-output exclusion, privacy and reviewed TASK-266
+negative-case boundaries in sections 3, 5 and 6 apply unchanged. Record only
+sanitized canonical identities, provenance and bounded guard/match/status facts;
+do not commit private chat URLs, turn-key values, raw conversation or assistant
+content, credentials, cookies, browser profile data, CDP endpoints, state paths
+or provider/session identity. Contrary live evidence is not overridden by this
+alternative and still requires the separately authorized correction in section 5
+if a production change is needed.
+
 ## 5. Negative-case basis and contrary live observations
 
 Use the reviewed TASK-266 deterministic coverage as the existing basis for busy,
@@ -373,8 +471,8 @@ not be discarded because deterministic coverage exists. Stop the probe and give
 Human/Brain only bounded, sanitized operational observations. If those observations
 reveal a production transport defect, a **separate Human/Brain-authorized
 correction** must be created. Neither TASK-268's documentation-only authority nor
-TASK-269's integration authority widens to patch transport, workflows, tests,
-Runtime, Reviewer, or Publisher.
+TASK-269's integration authority nor TASK-277's conformance-contract authority
+widens to patch transport, workflows, tests, Runtime, Reviewer, or Publisher.
 
 ## 6. ACK-only semantics and distinct completion owners
 
@@ -399,10 +497,11 @@ Keep the completion boundaries distinct:
 | TASK-269 implementation | Executor integrates and commits only this conformance document on current main, preserving inherited planning; no replay or live-delivery success claim |
 | TASK-269 canonical verification and EVIDENCE | Runtime verifies this integration TASK and produces its canonical RESULT; future live readiness/delivery is not a prerequisite and that RESULT does not replace RUN-268-001 as the probe source |
 | Semantic review and publication | Reviewer retains the semantic verdict and Publisher retains exact eligible reviewed-source publication of TASK-269; historical PASS, a delivered doorbell, or an ACK cannot substitute for either |
-| H4A3 live planning proof | Human/Brain assesses the four required observations and the reviewed negative-case basis; sanitized notes may record canonical event identity, admission, bounded receipt statuses, exact-chat match/count, and duplicate outcome without private chat/session data |
+| TASK-277 implementation | Executor amends and commits only this conformance document; no live replay, Send, browser action, machine-local state update, publication or H4A3 closure mutation |
+| H4A3 live planning proof | Human/Brain assesses either the unchanged normal four-observation path with a genuine matching success receipt or the complete exact-case section 4.3 chain, together with the reviewed negative-case basis; sanitized notes retain distinct historical receipt, later reconciliation and duplicate/post-duplicate facts without private chat/session data |
 | H4A3 roadmap closure and successor sequencing | Separate Human/Brain planning mutations: H4A3 live proof closes before H4A4, H4A4 closes before H4A5, and H4B stays blocked until H4A5 closes; never automatic from execution, Runtime verification, review, publication, wake delivery, or an assistant ACK |
 
-This document's existence, TASK-268 or TASK-269 lifecycle completion, and the
+This document's existence, TASK-268, TASK-269 or TASK-277 lifecycle completion, and the
 published H4A2 transport do not alone establish H4A3 live conformance. Live
 observations are Human/Brain planning-conformance material, not Executor claims or Runtime
 EVIDENCE. H4A3 remains open until that planning authority assesses the actual
