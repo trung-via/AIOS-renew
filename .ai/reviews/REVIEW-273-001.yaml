@@ -1,0 +1,19 @@
+review_id: REVIEW-273-001
+reviewed_sha: ce51081c5aa8cee419d25d397df24b1cee29d373
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+  - RUN-273-001 is the canonical PRIMARY RESULT for TASK-273 r1 with exact candidate ce51081c5aa8cee419d25d397df24b1cee29d373, unresolved empty, and explicit Codex gpt-6.1-sol high execution profile.
+  - Runtime verification passed both required commands: python -m pytest -q tests/test_terminal_attention.py with 46 passed, and git diff --check.
+  - The candidate is exactly one commit ahead of execution base b69392c3d74aa37630e8a312d41fdb237a7444db and changes only src/aios_renew/terminal_attention.py and tests/test_terminal_attention.py.
+  - workflow_dispatch admission now accepts exactly policy.main_ref and its exact stripped branch-name equivalent, preserving compatibility for refs/heads/main and main without suffix, substring, case-folding, whitespace normalization, or heuristic matching.
+  - Representative non-main branches, tags, malformed values, case variants, near matches, missing/extra dispatch inputs, and invalid selector values are covered by synthetic regression tests, while push-event and validate_remote_admission logic are unchanged.
+  - Terminal-attention run 349 admitted RUN-273-001's RESULT through the unchanged push-event path; its separate local-chat-wake delivery failure is an operational wake outcome, not Runtime verification or semantic evidence for TASK-273, and TASK-273 explicitly excludes live H4A3 replay/closure from its acceptance.
