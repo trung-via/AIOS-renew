@@ -1404,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: READY_FOR_POST_TASK275_FRESH_EXACT_REPLAY
+      status: POST_SEND_PROOF_DEFECT_DIAGNOSTIC_REQUIRED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1954,6 +1954,51 @@ sequence:
           user turn exists. Local wake state is now clean for a fresh exact replay using
           the published TASK-275 transport.
         next_boundary: FRESH_EXACT_RUN_268_RESULT_REPLAY_WITH_TASK_275_PUBLISHED
+      fresh_exact_replay_354_observation:
+        source: GITHUB_TERMINAL_ATTENTION_PLUS_HUMAN_VISUAL_BOUND_CHAT
+        observed_on: "2026-10-02"
+        workflow_run_id: 36984172510
+        workflow_run_number: 354
+        workflow_attempt: 1
+        workflow_head_sha: "e92c6ca61901d0165bd6a2e9d4297440bcb93cc8"
+        source_run_id: RUN-268-001
+        terminal_kind: RESULT
+        terminal_artifact_sha: "1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        terminal_attention_admission: PASS
+        local_wake_status: BLOCKED
+        local_wake_reason: LOCAL_FAILURE
+        task_275_transport_present: true
+        human_visual_exact_user_turn_present: true
+        human_visual_assistant_generation_started: true
+        auto_send_functionally_observed: true
+        bounded_submitted_receipt_observed: false
+        duplicate_noop_observed: false
+        semantic_effect: NONE
+        h4a3_proof_effect: CONTRARY_LIVE_EVIDENCE
+        interpretation: >-
+          Workflow #354 used the published TASK-275 transport and the exact RUN-268
+          RESULT source. Human visual evidence shows the exact doorbell left the composer
+          as a user turn and triggered assistant generation, so insertion and automatic
+          Send click functionally succeeded. However the local transport returned
+          BLOCKED/LOCAL_FAILURE before persisting the required SUBMITTED receipt. Under
+          the H4A3 contract this is not positive conformance: the attempt is ambiguous
+          until post-send proof and external state are reconciled. Do not replay because
+          the outbound user turn already exists and local state is expected to remain
+          ATTEMPTING if failure occurred before the final SUBMITTED write.
+        likely_failure_boundary: POST_SEND_BOUNDED_PROOF_OR_DEPENDENCY_EXCEPTION
+        root_cause_status: NOT_YET_PROVEN
+        required_next_observation:
+          - READ_ONLY_EXTERNAL_STATE_FOR_EXACT_RUN_268_EVENT
+          - READ_ONLY_EXACT_OUTBOUND_USER_TURN_MATCH_COUNT
+          - READ_ONLY_CURRENT_COMPOSER_EMPTYNESS
+          - READ_ONLY_SCOPED_SEND_CONTROL_POST_SUBMISSION_SHAPE
+        prohibitions:
+          - DO_NOT_REPLAY_RUN_268
+          - DO_NOT_DELETE_THE_VISIBLE_USER_TURN
+          - DO_NOT_CLEAR_OR_EDIT_LOCAL_STATE
+          - DO_NOT_CLICK_SEND
+          - DO_NOT_TREAT_ASSISTANT_REPLY_AS_CONFORMANCE_PROOF
+        next_boundary: HUMAN_READ_ONLY_POST_SEND_DIAGNOSTIC_FOR_WORKFLOW_354
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
