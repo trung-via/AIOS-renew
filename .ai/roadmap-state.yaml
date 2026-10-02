@@ -2525,10 +2525,34 @@ sequence:
         - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
     verification_intent:
       - git diff --check
+    authored_commit_sha: "3152f1d7042df3b8ff97f12f7a07598ce4530468"
+    task_blob_sha: "f8e69cf2ddb946630decf57002a24aac744a8b29"
     task_authoring_audit:
-      status: AUDITED_CANDIDATE_PENDING_INGRESS
-      required_profile: brain-high-value-v3
-    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+      status: CANONICALIZED
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "e2805db6a3281587abb84b5f9df6e085457eada1ed2383e9b953946c316792a5"
+      construct_fingerprint: "2cc7f76e9aca421d13606ce778ea4d898c628baadf2db844737e2afe7535dc1f"
+      reconciled_candidate_fingerprint: "8d3fafa115019622f3dd012725694c5a56a7b810a8ead4e3f88ebb4edf3ae261"
+      stage2_fingerprint: "fcb5eb6f30fc80fbd67ff2cfc385f6c465fa8bf98822e9e7d39c1cb513daf152"
+      acceptance_phase_ledger: ALL_CLAIM_NOW
+      ingress_issue: 1361
+      ingress_workflow_run_id: 37002009788
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-277
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
     sequencing:
       - AFTER_TASK_276_REVIEWED_PUBLICATION_AND_WORKFLOW_354_RECONCILIATION
       - AFTER_DUPLICATE_NOOP_AND_POST_DUPLICATE_EXACT_TURN_PROOF
