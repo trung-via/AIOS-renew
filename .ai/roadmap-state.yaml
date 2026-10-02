@@ -1269,7 +1269,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: READY_FOR_FRESH_EXACT_TERMINAL_REPLAY
+      status: HUMAN_POST_TASK274_INSERT_DIAGNOSTIC_REQUIRED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1513,6 +1513,33 @@ sequence:
         semantic_effect: NONE
         h4a3_proof_effect: READINESS_ONLY
         next_boundary: FRESH_EXACT_RUN_268_RESULT_REPLAY
+      fresh_exact_terminal_dispatch_352:
+        workflow_run_id: 36973913060
+        workflow_run_number: 352
+        workflow_attempt: 1
+        workflow_head_sha: "6afdf74700f338797c0faa2230e65966b7c9d270"
+        referenced_local_wake_workflow_sha: "6afdf74700f338797c0faa2230e65966b7c9d270"
+        transport_checkout_sha: "6afdf74700f338797c0faa2230e65966b7c9d270"
+        task_274_fix_present: true
+        requested_run_id: RUN-268-001
+        requested_terminal_kind: RESULT
+        requested_artifact_sha: "1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        terminal_attention_admission: PASS
+        local_wake_status: BLOCKED
+        local_wake_reason: INSERT_BLOCKED
+        wake_submitted: false
+        exact_h4a3_source_consumed: false
+        semantic_effect: NONE
+        h4a3_proof_effect: NONE
+        interpretation: >-
+          Fresh dispatch #352 used the fresh Human-owned chat binding, isolated state,
+          current main and the reviewed TASK-274 transport source. Therefore this
+          INSERT_BLOCKED is contrary live evidence against TASK-274's intended positive
+          insertion path and cannot be dismissed as stale workflow source or inherited
+          ATTEMPTING state. The fixed public reason remains intentionally coarse, so a
+          privacy-safe read-only diagnostic is required to distinguish staged exact draft
+          without application acceptance from an earlier insertion-boundary rejection.
+        next_boundary: HUMAN_PRIVACY_SAFE_POST_TASK274_INSERT_DIAGNOSTIC
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
