@@ -1,0 +1,121 @@
+task_id: TASK-275
+revision: 1
+goal: Restore H4A3 local-chat wake submission by making Send-control discovery compatible
+  with the observed live regular Project-chat control while preserving exact target/composer
+  scoping, ambiguity fail-close behavior, Human interaction safety, dedupe, privacy
+  and ACK-only authority.
+problem: Fresh H4A3 workflow dispatch 352 used the fresh isolated chat binding and
+  the reviewed TASK-274 transport, staged the exact RUN-268-001 doorbell in the composer,
+  then returned INSERT_BLOCKED before click. Human visual evidence and a privacy-safe
+  DOM metadata diagnostic prove ChatGPT rendered one visible enabled BUTTON[type="submit"][aria-label="Send"]
+  with no data-testid, while local-chat-wake still discovers only [data-testid="send-button"].
+  The published transport therefore cannot prove application readiness for the current
+  Send-control shape even though the exact doorbell and usable submit control are
+  present.
+assumptions:
+- Canonical roadmap state records workflow 36973913060 (#352) as terminal-attention
+  PASS, local wake BLOCKED/INSERT_BLOCKED, exact source unconsumed, and TASK-274 source
+  present.
+- The current fresh binding uses isolated local operational state and the exact unsent
+  RUN-268-001 doorbell remains staged in the bound composer; no successful submission
+  is claimed.
+- Read-only metadata proves the configured [data-testid="send-button"] selector matches
+  zero visible controls while one visible enabled BUTTON[type="submit"][aria-label="Send"]
+  without data-testid is rendered on the same live composer surface.
+- 'Normal ATTEMPTING handling remains fail closed and the current #352 state/draft
+  must not be cleared or retried by Executor code.'
+- Future live H4A3 replay and duplicate NOOP proof remain post-publication Human/Brain
+  operations, not TASK-275 execution or acceptance facts.
+scope:
+  inspect:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - .ai/roadmap-state.yaml
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+non_goals:
+- Perform, simulate as canonical evidence, or claim the live H4A3 replay, exact outbound
+  user-turn proof, duplicate NOOP proof, roadmap closure, TASK-270 continuation or
+  H4A4/H4A5/H4B advancement.
+- Change the TASK-274 composer insertion/text-equivalence contract except where necessary
+  to consume the bounded Send-control resolver at existing application-ready/click/proof
+  gates.
+- Use a global aria-label=Send selector, generic button proximity heuristic, visual-coordinate
+  click, text search across unrelated controls or any selector that can target controls
+  outside the exact bound composer control surface.
+- Automatically clear or retry the current ATTEMPTING event, erase the current unsent
+  draft, resend an ambiguous attempt, or infer safety from absence of assistant output.
+- Introduce browser launch/navigation, a second wake transport, desktop-app transport,
+  durable deferred recovery, multi-project lane orchestration or other H4A4 behavior.
+- Read, parse, store or export assistant output, conversation history, credentials,
+  cookies, browser profile data, private chat identifiers or raw live chat contents
+  as engineering truth.
+constraints:
+  hard:
+  - Send discovery must be scoped first to the exact proven composer element and then
+    to its exact enclosing form; only controls contained by that form are eligible.
+    If no unique enclosing form exists, discovery fails closed rather than falling
+    back to the page or a proximity search.
+  - Within that exact enclosing form, the resolver may recognize only the historical
+    [data-testid="send-button"] shape and the observed button[type="submit"][aria-label="Send"]
+    shape. A union may identify the same element once, but two distinct eligible elements
+    remain ambiguous and fail closed.
+  - Exactly one visible enabled eligible Send control may satisfy readiness. Zero,
+    multiple, disabled or aria-disabled candidates fail closed without click.
+  - The same exact-form-scoped Send resolver and uniqueness/enabledness checks must
+    protect application-ready proof immediately after insertion and the final pre-click
+    gate. Post-submission proof may accept the control becoming absent or non-enabled,
+    but must use the same scoped resolver and must reject multiple or still-enabled
+    eligible controls.
+  - Existing exact-chat uniqueness, authenticated-account, login/nonregular, active-generation,
+    empty-draft, focus/Human-edit, exact doorbell equivalence, outbound-turn, dedupe
+    and privacy guards remain fail closed.
+  - 'Normal deliver() handling of an existing ATTEMPTING event must remain ATTEMPT_REQUIRES_HUMAN;
+    TASK-275 must not auto-recover the current #352 attempt.'
+  - 'The H4A3 conformance document must define a one-attempt Human-only recovery procedure
+    for workflow 36973913060 attempt 1. Before any local cleanup it must re-prove
+    exact event ATTEMPTING, exact fresh binding/page uniqueness, exact unsent-doorbell
+    equivalence, no matching outbound turn, no state lock/pending write, and the canonical
+    fact that #352 returned INSERT_BLOCKED before CLICK was reachable; it must explicitly
+    deny reuse for any other attempt.'
+  - No file outside scope.modify may change. Executor must not push, publish, mutate
+    roadmap state, clear the live Human draft/state or perform a live ChatGPT submission.
+acceptance:
+- id: AC1
+  condition: Local-chat-wake resolves Send controls only inside the exact unique form
+    enclosing the proven composer and recognizes both the historical [data-testid="send-button"]
+    shape and the current exact button[type="submit"][aria-label="Send"] shape without
+    page-level or proximity fallback.
+- id: AC2
+  condition: Send readiness and click remain fail closed when the bounded surface
+    contains zero eligible controls, multiple eligible controls, a disabled or aria-disabled
+    control, or only matching controls outside the exact composer control surface.
+- id: AC3
+  condition: Application-ready proof and the final pre-click gate use the same exact-form-scoped
+    Send resolver with exactly-one-visible-enabled semantics, while post-submission
+    proof uses that same scoped resolver and rejects multiple or still-enabled eligible
+    controls.
+- id: AC4
+  condition: Synthetic regression coverage distinguishes the live aria-label/type-submit
+    shape from unrelated page buttons and preserves the historical data-testid shape
+    without introducing a generic global Send selector or coordinate/proximity click
+    behavior.
+- id: AC5
+  condition: Normal delivery continues to block ATTEMPTING events without retry, and
+    the H4A3 conformance document defines a one-attempt Human recovery procedure whose
+    preconditions bind exactly workflow 36973913060 attempt 1 and cannot authorize
+    any other ATTEMPTING event.
+- id: AC6
+  condition: The candidate changes only src/aios_renew/local_chat_wake.py, tests/test_local_chat_wake.py
+    and docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md and introduces no workflow,
+    terminal-attention, Runtime, Reviewer, Publisher, browser-supervisor, deferred-retry,
+    multi-project-lane or roadmap-advancement behavior.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py
+  - git diff --check
