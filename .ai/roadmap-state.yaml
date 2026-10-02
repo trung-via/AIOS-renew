@@ -1404,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_STATE_ONLY_RECOVERY_352_AUTHORIZED
+      status: READY_FOR_POST_TASK275_FRESH_EXACT_REPLAY
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1931,6 +1931,29 @@ sequence:
         authority: HUMAN
         consumes_authority_on_success: true
         next_boundary: HUMAN_EXECUTE_STATE_ONLY_RECOVERY_352
+      state_only_recovery_352_result:
+        source: HUMAN_LOCAL_BOUNDED_MUTATION
+        observed_on: "2026-10-02"
+        recovery_preconditions: PASS
+        run_268_attempting_event_removed: PASS
+        state_schema_preserved: PASS
+        composer_untouched: PASS
+        run_268_outbound_absent: PASS
+        recovery_352: PASS
+        authority_consumed: true
+        semantic_effect: NONE
+        h4a3_proof_effect: READINESS_ONLY
+        resulting_local_state:
+          event_count: 0
+          composer_empty: true
+          run_268_matching_outbound_user_turn_count: 0
+        interpretation: >-
+          The Human-authorized state-only recovery for workflow #352 attempt 1 completed
+          successfully. The sole RUN-268 ATTEMPTING entry was removed while the state
+          schema and empty composer were preserved, and no matching RUN-268 outbound
+          user turn exists. Local wake state is now clean for a fresh exact replay using
+          the published TASK-275 transport.
+        next_boundary: FRESH_EXACT_RUN_268_RESULT_REPLAY_WITH_TASK_275_PUBLISHED
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
