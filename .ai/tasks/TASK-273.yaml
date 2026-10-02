@@ -1,0 +1,97 @@
+task_id: TASK-273
+revision: 1
+goal: Restore H4A3 exact-terminal workflow_dispatch replay by making terminal-attention
+  admission recognize only exact canonical-main-equivalent dispatch ref forms while
+  preserving exact terminal identity, remote lineage validation, push-event admission,
+  local wake gating, and ACK-only authority.
+problem: H4A3 live workflow_dispatch replay run 36963244174 (#348) executed from the
+  repository main branch and passed the workflow-level canonical-main guard, but terminal_attention.admit_event
+  rejected the dispatch with 'workflow_dispatch must execute from main'. The dispatch
+  parser currently accepts only the stripped short branch-name form 'main', while
+  the production framing is incompatible with that single representation. Existing
+  tests also encode the short form, so the correction must support exact canonical-main
+  equivalence without broadening admission to non-main refs.
+assumptions:
+- Canonical main at TASK-273 authoring contains the Human/Brain H4A3 blocker recording
+  workflow run 36963244174 and keeps TASK-268's RESULT as the exact future replay
+  source.
+- The terminal-attention workflow admits workflow_dispatch only when github.ref is
+  refs/heads/main and checks out published main before invoking reviewed admission
+  code.
+- The failed replay did not admit the terminal or invoke local-chat-wake, so it is
+  an operational pre-delivery rejection rather than a new AIOS RUN failure or H4A3
+  proof.
+- Existing terminal-attention unit coverage models workflow_dispatch with the short
+  branch-name ref 'main'; live replay demonstrates that the current parser contract
+  is insufficient for the production event framing.
+- The H4A3 live replay remains a post-publication Human/Brain operation and is not
+  part of TASK-273 execution or acceptance.
+scope:
+  inspect:
+  - src/aios_renew/terminal_attention.py
+  - tests/test_terminal_attention.py
+  - .github/workflows/aios-terminal-attention.yml
+  - .ai/brain-terminal-attention-carriers.yaml
+  - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+  - .ai/roadmap-state.yaml
+  modify:
+  - src/aios_renew/terminal_attention.py
+  - tests/test_terminal_attention.py
+non_goals:
+- Change terminal-attention workflow triggers, permissions, job routing, issue creation,
+  local-chat-wake handoff, or Human enable gates.
+- Change RESULT/FAILURE terminal identity, signal-ref grammar, canonical artifact
+  refs, remote main ancestry checks, competing-terminal rejection, or event SHA binding.
+- Change push-event admission semantics.
+- Log, persist, export, or add repository fixtures containing raw live GitHub event
+  payloads, credentials, runner-local paths, browser data, or private chat/session
+  data.
+- Perform or claim the H4A3 live replay, duplicate-delivery proof, H4A3 closure, TASK-270
+  authoring, or H4A4/H4A5/H4B advancement.
+- Introduce fuzzy ref matching, suffix matching, generic normalization, retry/failover,
+  a second carrier, or a new lifecycle authority.
+constraints:
+  hard:
+  - 'workflow_dispatch admission must normalize only the two exact canonical-main-equivalent
+    forms represented by the policy and current compatibility surface: policy.main_ref
+    (refs/heads/main) and its exact stripped branch name main. Both must resolve to
+    the same canonical policy main identity; no other ref form may be accepted.'
+  - Any branch or tag other than canonical main, including refs/tags/main, refs/heads/main2,
+    refs/heads/foo/main and empty or malformed refs, must continue to fail closed.
+  - The workflow_dispatch input mapping must still contain exactly run_id, terminal_kind
+    and artifact_sha and continue to use the existing strict selector validation.
+  - validate_remote_admission must retain exact canonical terminal ref, opposite-terminal
+    conflict, signal-ref, published-main ancestry, event-SHA ancestry and reviewed-carrier
+    checks unchanged.
+  - Push-event grammar and immutable attention-ref creation/update checks must remain
+    unchanged.
+  - No file outside scope.modify may change. Executor must not push, publish, perform
+    a live H4A3 replay, mutate roadmap state, or alter local-chat-wake behavior.
+acceptance:
+- id: AC1
+  condition: workflow_dispatch events using either exact canonical-main-equivalent
+    ref form, refs/heads/main or main, pass the dispatch-ref gate and proceed to the
+    existing exact selector and remote-admission checks.
+- id: AC2
+  condition: Non-main branches, tags, empty or malformed refs, case variants and near
+    matches such as refs/heads/main2 or refs/heads/foo/main remain rejected before
+    terminal delivery.
+- id: AC3
+  condition: The workflow_dispatch input-key contract and strict run_id, terminal_kind
+    and artifact_sha selector validation remain unchanged.
+- id: AC4
+  condition: Push-event admission and exact remote terminal/signal/main-ancestry/conflict
+    validation remain behaviorally unchanged.
+- id: AC5
+  condition: Regression coverage is synthetic, covers the canonical full-main dispatch
+    ref and representative rejection cases, and introduces no raw live event or private
+    operational data.
+- id: AC6
+  condition: The candidate changes only src/aios_renew/terminal_attention.py and tests/test_terminal_attention.py
+    and introduces no workflow, local-chat-wake, lifecycle, retry/failover, publication
+    or roadmap behavior.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_terminal_attention.py
+  - git diff --check
