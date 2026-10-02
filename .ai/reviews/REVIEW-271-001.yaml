@@ -1,0 +1,20 @@
+review_id: REVIEW-271-001
+reviewed_sha: eab56fffd2e1167206090fbf7bb7f8c1316cf4ed
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+  - RUN-271-001 is the canonical PRIMARY RESULT for TASK-271 r1 with exact candidate eab56fffd2e1167206090fbf7bb7f8c1316cf4ed, unresolved empty, and explicit Codex gpt-6.1-sol high execution profile.
+  - Runtime verification passed both required commands: python -m pytest -q tests/test_local_chat_wake.py with 160 passed and 24 skipped, and git diff --check.
+  - The candidate is exactly one commit ahead of the TASK-271 execution base and changes only src/aios_renew/local_chat_wake.py and tests/test_local_chat_wake.py.
+  - Exact URL recognition now accepts the existing standalone /c/<uuid> route and the bounded /g/<g-project-segment>/c/<uuid> route while preserving the complete normalized Project segment plus conversation identity and rejecting alternate origins, query/fragment, extra path components, malformed segments, encoded substitutions, and invalid conversation forms.
+  - Browser target selection and same-turn insert/send identity guards continue to use complete normalized URL equality; regression coverage includes wrong-project/same-conversation and duplicate exact-target cases without navigation or title/content inference.
+  - Existing attach-only, surface, draft/generation, outbound-proof and duplicate-dedupe behavior remains covered by the focused test suite, and all new Project route fixtures are synthetic.
+  - The terminal-attention local-chat-wake attempt for RUN-271-001 returned BLOCKED LOCAL_METADATA_INVALID. That operational local delivery outcome is not Runtime verification or semantic evidence for TASK-271 and does not establish H4A3 live conformance; H4A3 remains a separate post-publication Human/Brain proof.
