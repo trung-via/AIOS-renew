@@ -1,0 +1,21 @@
+review_id: REVIEW-274-001
+reviewed_sha: d07f55b98270fe9d744adcad7bba1b439949d526
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+findings: []
+notes:
+  - RUN-274-001 is the canonical PRIMARY RESULT for TASK-274 r1 with result artifact 759af1d365b771146e405cd0c0f085ab59c41ede, candidate d07f55b98270fe9d744adcad7bba1b439949d526, unresolved empty, and explicit Codex gpt-6.1-sol high execution profile.
+  - Runtime verification passed both required commands: python -m pytest -q tests/test_local_chat_wake.py with 239 passed and 146 skipped, and git diff --check.
+  - The candidate is exactly one commit ahead of execution base 191acd413c24e56bb53a9bf04428938bbd0a436f and changes only src/aios_renew/local_chat_wake.py, tests/test_local_chat_wake.py, and docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md.
+  - The insertion correction preserves exact target/surface guards, requires exact or explicitly bounded DOM-block-separator equivalence, dispatches an input notification after the native edit, and requires exactly one visible enabled Send control before click; the same bounded equivalence and surface checks are re-applied at the click boundary.
+  - Synthetic regression coverage includes application-state activation versus DOM-only staging, zero/multiple/disabled Send controls, target duplication after staging, Human edits during insertion/application wait, bounded block-separator equivalence, and rejection of substituted or generically normalized payload variants.
+  - Normal ATTEMPTING delivery remains fail closed. The documentation adds only a Human-only one-attempt recovery procedure bound to workflow 36963244174 attempt 2 and the exact RUN-268-001 RESULT lineage; it does not create automatic recovery, replay authority, H4A3 completion, or H4A4 behavior.
+  - Terminal-attention run 350 admitted RUN-274-001's RESULT but local wake returned DRAFT_PRESENT because the prior exact RUN-268-001 unsent draft is intentionally still present. This is an operational attention-delivery outcome, not a TASK-274 RUN failure or semantic defect, and no live H4A3 replay is claimed by TASK-274.
