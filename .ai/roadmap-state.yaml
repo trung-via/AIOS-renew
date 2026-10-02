@@ -1404,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_STATE_ONLY_RECOVERY_353_AUTHORIZED
+      status: HUMAN_STATE_ONLY_RECOVERY_352_APPROVAL_REQUIRED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1880,6 +1880,53 @@ sequence:
           authority: HUMAN
           consumes_authority_on_success: true
         next_boundary: HUMAN_EXECUTE_STATE_ONLY_RECOVERY_353
+      state_only_recovery_353_result:
+        source: HUMAN_LOCAL_BOUNDED_MUTATION
+        observed_on: "2026-10-02"
+        recovery_preconditions: PASS
+        run_275_attempting_event_removed: PASS
+        run_268_attempting_preserved: PASS
+        state_schema_preserved: PASS
+        composer_untouched: PASS
+        recovery_353: PASS
+        authority_consumed: true
+        semantic_effect: NONE
+        h4a3_proof_effect: READINESS_ONLY
+        resulting_local_state:
+          exact_remaining_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+          exact_remaining_status: ATTEMPTING
+          composer_empty: true
+          run_268_matching_outbound_user_turn_count: 0
+        interpretation: >-
+          The post-TASK-275 stranded RUN-275 ATTEMPTING entry has been removed under
+          Human state-only recovery authority. RUN-268 remains the sole ATTEMPTING event,
+          the composer remains empty and no matching RUN-268 outbound user turn exists.
+          The original published section 4.1 recovery for #352 cannot be executed as
+          written because its exact-unsent-draft precondition is no longer true after the
+          earlier Human draft deletion/browser restart. A separate state-only recovery
+          authority for the exact #352 RUN-268 ATTEMPTING entry is therefore required.
+        next_boundary: HUMAN_APPROVAL_FOR_STATE_ONLY_RECOVERY_352
+      proposed_state_only_recovery_352:
+        workflow_run_id: 36973913060
+        workflow_run_number: 352
+        workflow_attempt: 1
+        exact_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        canonical_pre_click_fact: INSERT_BLOCKED_BEFORE_CLICK_REACHABLE
+        current_local_state:
+          exact_event_status: ATTEMPTING
+          event_count: 1
+          composer_empty: true
+          matching_outbound_user_turn_count: 0
+        allowed_mutation:
+          - REMOVE_ONLY_RUN_268_ATTEMPTING_ENTRY_FROM_EXTERNAL_STATE
+        required_preservation:
+          - PRESERVE_STATE_SCHEMA
+          - DO_NOT_TOUCH_COMPOSER
+          - DO_NOT_CLICK_SEND
+          - DO_NOT_REPLAY_ANY_TERMINAL
+          - DO_NOT_RESET_OR_DELETE_STATE_FILE
+          - DO_NOT_NAVIGATE_OR_CHANGE_BINDING
+        status: HUMAN_APPROVAL_REQUIRED
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
