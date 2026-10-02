@@ -1404,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_RECONCILIATION_REQUIRED_FOR_POST_TASK275_ATTEMPT
+      status: HUMAN_BOUNDED_RECOVERY_353_AUTHORIZED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1787,6 +1787,37 @@ sequence:
           local state/draft is reconciled read-only and a distinct Human recovery
           authority is established.
         next_boundary: HUMAN_READ_ONLY_RECONCILIATION_OF_WORKFLOW_353_ATTEMPT_1
+      human_recovery_authority_353:
+        approved_on: "2026-10-02"
+        authority: HUMAN
+        workflow_run_id: 36977612901
+        workflow_run_number: 353
+        workflow_attempt: 1
+        exact_event_id: "terminal:RESULT:RUN-275-001:d379c4fdd0eaab7134cae5ab3fa682796f5a7818"
+        exact_preserved_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        allowed_mutation:
+          - REMOVE_ONLY_EXACT_UNSENT_RUN_275_DOORBELL_FROM_BOUND_COMPOSER
+          - REMOVE_ONLY_RUN_275_ATTEMPTING_ENTRY_FROM_EXTERNAL_STATE
+        required_preservation:
+          - PRESERVE_RUN_268_ATTEMPTING_ENTRY_UNCHANGED
+          - PRESERVE_STATE_SCHEMA_AND_ALL_OTHER_ENTRIES
+          - DO_NOT_CLICK_SEND
+          - DO_NOT_REPLAY_ANY_TERMINAL
+          - DO_NOT_RESET_OR_DELETE_STATE_FILE
+          - DO_NOT_NAVIGATE_OR_CHANGE_BINDING
+        preconditions:
+          - EXACT_RUN_275_EVENT_IS_ATTEMPTING
+          - EXACT_RUN_268_EVENT_IS_ATTEMPTING
+          - STATE_CONTAINS_ONLY_THESE_TWO_ATTEMPTING_EVENTS
+          - NO_PREEXISTING_LOCK_OR_PENDING_WRITE
+          - EXACT_BOUND_PAGE_IS_UNIQUE_AND_IDLE
+          - COMPOSER_EQUALS_EXACT_RUN_275_DOORBELL
+          - NO_MATCHING_RUN_275_OUTBOUND_USER_TURN
+          - NO_MATCHING_RUN_268_OUTBOUND_USER_TURN
+        semantic_effect: NONE
+        h4a3_proof_effect: READINESS_ONLY
+        consumes_authority_on_success: true
+        next_boundary: HUMAN_EXECUTE_BOUNDED_RECOVERY_353
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
