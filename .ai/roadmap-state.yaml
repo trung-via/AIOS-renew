@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a4-durable-wake-recovery-multi-project-isolation
+  - brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -2738,7 +2738,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a4-durable-wake-recovery-multi-project-isolation
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a4-durable-wake-recovery-multi-project-isolation
-    status: NEXT
+    status: DONE
     phase: H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     task_id: TASK-278
     task_revision: 1
@@ -2773,7 +2773,23 @@ sequence:
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
-    execution_profile_status: HUMAN_SELECTED
+    execution_profile_status: COMPLETED
+    completed_by:
+      task_id: TASK-278
+      task_revision: 1
+      run_id: RUN-278-001
+      artifacts_sha: "b0d5542396fb358b810280b101443c998acb1b61"
+      verification_evidence:
+        - RUN-278-001-V001
+        - RUN-278-001-V002
+      review_id: REVIEW-278-001
+      review_decision_sha: "ef9ddafd4262274e9e3e7f91dbfabceaacee3e1d"
+      verdict: PASS
+      reviewed_sha: "a874675fca0f761f1fa6719e5ef7d79c5f003692"
+      published_sha: "a874675fca0f761f1fa6719e5ef7d79c5f003692"
+      publication_workflow_run_id: 37019187278
+      completed_on: "2026-10-02"
+      verification_summary: "373 passed, 516 skipped; git diff --check passed"
     required_capabilities:
       - DURABLE_PENDING_AND_DEFERRED_OPERATIONAL_QUEUE
       - RETRY_SAFE_PRE_SUBMIT_CONDITION_RECHECK
@@ -2805,7 +2821,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
-    status: QUEUED_AFTER_H4A4
+    status: NEXT
     phase: H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
