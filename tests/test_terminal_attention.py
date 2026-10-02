@@ -324,8 +324,9 @@ def test_downstream_workflow_must_bind_the_exact_pin_provenance(
     ) == "UNAVAILABLE"
 
 
+@pytest.mark.parametrize("dispatch_ref", ["refs/heads/main", "main"])
 def test_push_and_dispatch_admission_revalidate_remote_binding(
-    tmp_path: Path,
+    tmp_path: Path, dispatch_ref: str,
 ) -> None:
     repo, _, main_sha = make_repo(tmp_path)
     item = artifact_selector(repo)
@@ -371,7 +372,7 @@ def test_push_and_dispatch_admission_revalidate_remote_binding(
     ).selector == item
 
     dispatch_event = {
-        "ref": "main",
+        "ref": dispatch_ref,
         "inputs": {
             "run_id": item.run_id,
             "terminal_kind": item.terminal_kind,
@@ -390,6 +391,93 @@ def test_push_and_dispatch_admission_revalidate_remote_binding(
     assert replay_ref == item.signal_ref
     assert push_sha is None
     assert delivery == "WORKFLOW_DISPATCH_REPLAY"
+    admission = validate_remote_admission(
+        repo,
+        remote="origin",
+        item=replay,
+        signal_ref=replay_ref,
+        push_signal_sha=push_sha,
+        event_sha=main_sha,
+        policy=policy,
+    )
+    assert admission.selector == item
+    assert admission.signal_sha == main_sha
+    assert admission.delivery == delivery
+
+
+@pytest.mark.parametrize(
+    "dispatch_ref",
+    [
+        "feature",
+        "refs/heads/feature",
+        "refs/tags/main",
+        "refs/heads/main2",
+        "refs/heads/foo/main",
+        "main2",
+        "foo/main",
+        "MAIN",
+        "refs/heads/Main",
+        "Refs/heads/main",
+        "refs/heads/main/",
+        "refs/heads//main",
+        "refs/heads/main\n",
+        " main",
+        "main ",
+        "",
+        None,
+        1,
+        [],
+        {},
+    ],
+)
+def test_dispatch_rejects_every_noncanonical_main_ref(dispatch_ref: object) -> None:
+    policy = load_policy(POLICY_PATH)
+    # Deliberately omit inputs: the ref gate must reject before selector parsing.
+    event = {
+        "ref": dispatch_ref,
+        "repository": {"full_name": policy.repository},
+    }
+    with pytest.raises(TerminalAttentionError, match="must execute from main"):
+        admit_event(
+            event_name="workflow_dispatch",
+            event=event,
+            repository=policy.repository,
+            event_sha="b" * 40,
+            policy=policy,
+        )
+
+
+@pytest.mark.parametrize("dispatch_ref", ["refs/heads/main", "main"])
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("run_id", "RUN-", "run_id"),
+        ("terminal_kind", "result", "terminal_kind"),
+        ("artifact_sha", "A" * 40, "artifact_sha"),
+    ],
+)
+def test_dispatch_main_forms_retain_strict_selector_validation(
+    dispatch_ref: str, field: str, value: str, error: str,
+) -> None:
+    policy = load_policy(POLICY_PATH)
+    inputs = {
+        "run_id": "RUN-113-001",
+        "terminal_kind": "RESULT",
+        "artifact_sha": "a" * 40,
+    }
+    inputs[field] = value
+    with pytest.raises(TerminalAttentionError, match=error):
+        admit_event(
+            event_name="workflow_dispatch",
+            event={
+                "ref": dispatch_ref,
+                "inputs": inputs,
+                "repository": {"full_name": policy.repository},
+            },
+            repository=policy.repository,
+            event_sha="b" * 40,
+            policy=policy,
+        )
 
 
 def test_downstream_policy_binds_exact_dispatch_event_without_changing_semantics(
@@ -461,10 +549,13 @@ def test_terminal_attention_rejects_malformed_policy_repository(
         load_policy(write_policy(tmp_path, repository))
 
 
-def test_event_repository_and_dispatch_fields_are_not_extensible() -> None:
+@pytest.mark.parametrize("dispatch_ref", ["refs/heads/main", "main"])
+def test_event_repository_and_dispatch_fields_are_not_extensible(
+    dispatch_ref: str,
+) -> None:
     policy = load_policy(POLICY_PATH)
     event = {
-        "ref": "main",
+        "ref": dispatch_ref,
         "inputs": {
             "run_id": "RUN-113-001",
             "terminal_kind": "RESULT",
@@ -482,6 +573,16 @@ def test_event_repository_and_dispatch_fields_are_not_extensible() -> None:
             policy=policy,
         )
     event["inputs"].pop("executor")
+    artifact_sha = event["inputs"].pop("artifact_sha")
+    with pytest.raises(TerminalAttentionError, match="inputs"):
+        admit_event(
+            event_name="workflow_dispatch",
+            event=event,
+            repository=policy.repository,
+            event_sha="b" * 40,
+            policy=policy,
+        )
+    event["inputs"]["artifact_sha"] = artifact_sha
     event["repository"]["full_name"] = "attacker/fork"
     with pytest.raises(TerminalAttentionError, match="repository"):
         admit_event(

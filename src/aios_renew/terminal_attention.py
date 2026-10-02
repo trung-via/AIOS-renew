@@ -448,7 +448,11 @@ def admit_event(
             raise TerminalAttentionError("push event is not an immutable attention-ref creation/update")
         return parse_signal_ref(ref, prefix=policy.signal_prefix), ref, event_sha, "REF_EVENT"
     if event_name == "workflow_dispatch":
-        if event.get("ref") != policy.main_ref.removeprefix("refs/heads/"):
+        ref = event.get("ref")
+        if not isinstance(ref, str) or ref not in (
+            policy.main_ref,
+            policy.main_ref.removeprefix("refs/heads/"),
+        ):
             raise TerminalAttentionError("workflow_dispatch must execute from main")
         inputs = _mapping(event.get("inputs"), "workflow_dispatch inputs")
         if set(inputs) != {"run_id", "terminal_kind", "artifact_sha"}:
