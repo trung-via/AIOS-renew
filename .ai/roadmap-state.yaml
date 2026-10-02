@@ -1269,7 +1269,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_RECOVERY_AUTHORIZATION_REQUIRED
+      status: READY_FOR_FRESH_EXACT_TERMINAL_REPLAY
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1496,6 +1496,23 @@ sequence:
           ATTEMPTING state. A new Human/Brain authorization or reviewed contract change
           is required before removing this ATTEMPTING entry or any draft it may own.
         next_boundary: HUMAN_DECISION_ON_NEW_BOUNDED_RECOVERY_AUTHORITY
+      fresh_chat_rebind_observation:
+        source: HUMAN_LOCAL_FRESH_BINDING_PREFLIGHT
+        observed_on: "2026-10-02"
+        fresh_chat_target: PASS
+        fresh_chat_idle_surface: PASS
+        fresh_chat_empty_draft: PASS
+        fresh_state_isolation: PASS
+        old_state_not_reused: PASS
+        fresh_chat_preflight: PASS
+        fresh_chat_rebind: PASS
+        old_binding_state_preserved: true
+        sensitive_binding_material_recorded: false
+        wake_submitted: false
+        exact_h4a3_source_consumed: false
+        semantic_effect: NONE
+        h4a3_proof_effect: READINESS_ONLY
+        next_boundary: FRESH_EXACT_RUN_268_RESULT_REPLAY
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
