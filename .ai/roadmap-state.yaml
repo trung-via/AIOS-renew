@@ -1404,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_REVALIDATION_REQUIRED_AFTER_BROWSER_RESTART
+      status: HUMAN_STATE_ONLY_RECOVERY_353_APPROVAL_REQUIRED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1840,6 +1840,43 @@ sequence:
           entry until the current external state and absence of exact outbound user turns
           are re-proven after browser restart.
         next_boundary: HUMAN_READ_ONLY_REVALIDATION_AFTER_BROWSER_RESTART
+      browser_restart_revalidation:
+        source: HUMAN_LOCAL_READ_ONLY_REVALIDATION
+        observed_on: "2026-10-02"
+        run_268_state: ATTEMPTING
+        run_275_state: ATTEMPTING
+        event_count: 2
+        lock_present: false
+        pending_present: false
+        target_page_unique: true
+        composer_count: 1
+        composer_empty: true
+        run_268_outbound_count: 0
+        run_275_outbound_count: 0
+        revalidation: true
+        interpretation: >-
+          After Chrome/CDP restart, the exact bound page is unique, the composer is empty,
+          neither RUN-268 nor RUN-275 has a matching outbound user turn, and external
+          state still contains exactly the two expected ATTEMPTING entries with no
+          lock/pending ambiguity. The RUN-275 draft is therefore absent while its
+          ATTEMPTING state remains stranded. A state-only cleanup of the exact RUN-275
+          entry would be strictly narrower than the previously authorized draft+state
+          recovery and would preserve the RUN-268 attempt unchanged.
+        proposed_state_only_recovery:
+          exact_event_id: "terminal:RESULT:RUN-275-001:d379c4fdd0eaab7134cae5ab3fa682796f5a7818"
+          exact_preserved_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+          allowed_mutation:
+            - REMOVE_ONLY_RUN_275_ATTEMPTING_ENTRY_FROM_EXTERNAL_STATE
+          required_preservation:
+            - PRESERVE_RUN_268_ATTEMPTING_ENTRY_UNCHANGED
+            - PRESERVE_STATE_SCHEMA
+            - DO_NOT_TOUCH_COMPOSER
+            - DO_NOT_CLICK_SEND
+            - DO_NOT_REPLAY_ANY_TERMINAL
+            - DO_NOT_RESET_OR_DELETE_STATE_FILE
+            - DO_NOT_NAVIGATE_OR_CHANGE_BINDING
+          status: HUMAN_APPROVAL_REQUIRED
+        next_boundary: HUMAN_APPROVAL_FOR_STATE_ONLY_RECOVERY_353
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
