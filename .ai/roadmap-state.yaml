@@ -1269,7 +1269,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_FRESH_DISPATCH_REQUIRED
+      status: HUMAN_RECOVERY_AUTHORIZATION_REQUIRED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1461,6 +1461,41 @@ sequence:
           INSERT_BLOCKED does not test the reviewed TASK-274 correction and is not
           evidence that the published fix failed.
         next_boundary: FRESH_WORKFLOW_DISPATCH_FROM_CURRENT_MAIN
+      fresh_exact_terminal_dispatch_351:
+        workflow_run_id: 36971235008
+        workflow_run_number: 351
+        workflow_attempt: 1
+        workflow_head_sha: "7f756cdb6c936d0828b8107d6b9add9ac54c60c8"
+        referenced_local_wake_workflow_sha: "7f756cdb6c936d0828b8107d6b9add9ac54c60c8"
+        requested_run_id: RUN-268-001
+        requested_terminal_kind: RESULT
+        requested_artifact_sha: "1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        terminal_attention_admission: PASS
+        local_wake_status: BLOCKED
+        local_wake_reason: ATTEMPT_REQUIRES_HUMAN
+        transport_checkout_sha: "b5ba73edcfe1555caffba55fe9e41f6747485f4f"
+        task_274_fix_present: true
+        task_274_insertion_path_exercised: false
+        wake_submitted: false
+        exact_h4a3_source_consumed: false
+        semantic_effect: NONE
+        h4a3_proof_effect: NONE
+        interpretation: >-
+          Fresh dispatch #351 used the current published workflow lineage and checked
+          out source containing TASK-274, but deliver() stopped before browser attach
+          because the exact event was already present in local operational state.
+          Given deliver() returns NOOP for SUBMITTED and ATTEMPT_REQUIRES_HUMAN for any
+          other existing valid event state, this proves the exact event is ATTEMPTING.
+          The immediately preceding stale rerun #348 attempt 3 wrote ATTEMPTING before
+          returning INSERT_BLOCKED, after the earlier one-attempt recovery had already
+          been consumed. Therefore #351 did not exercise TASK-274's new insertion path
+          and is not evidence that TASK-274 failed.
+        governance_constraint: >-
+          Section 4.1's published recovery exception was explicitly single-use and
+          cannot authorize recovery of workflow #348 attempt 3 or any subsequent
+          ATTEMPTING state. A new Human/Brain authorization or reviewed contract change
+          is required before removing this ATTEMPTING entry or any draft it may own.
+        next_boundary: HUMAN_DECISION_ON_NEW_BOUNDED_RECOVERY_AUTHORITY
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
