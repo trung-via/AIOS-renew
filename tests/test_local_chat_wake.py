@@ -18,9 +18,66 @@ def synthetic_url(number=1):
     return "https://chatgpt.com" + "/c/" + str(UUID(int=number))
 
 
-@pytest.fixture
-def binding(tmp_path):
-    return wake.Binding(synthetic_url(), "http://" + "127.0.0.1:9222", tmp_path / "state.json")
+def synthetic_project_url(number=1, project="g-fixture-project-1"):
+    return "https://chatgpt.com/g/" + project + "/c/" + str(UUID(int=number))
+
+
+@pytest.fixture(params=[synthetic_url(), synthetic_project_url()], ids=["standalone", "project"])
+def binding(tmp_path, request):
+    return wake.Binding(request.param, "http://" + "127.0.0.1:9222", tmp_path / "state.json")
+
+
+@pytest.mark.parametrize("url", [
+    synthetic_url(), synthetic_project_url(),
+    synthetic_project_url(project="g-Fixture-ABC-123"),
+    synthetic_project_url(project="g-"),
+])
+@pytest.mark.parametrize("suffix", ["", "/"])
+def test_normalize_chat_preserves_full_identity_except_optional_trailing_slash(url, suffix):
+    assert wake.normalize_chat(url + suffix) == url
+    assert wake.normalize_chat(wake.normalize_chat(url + suffix)) == url
+
+
+@pytest.mark.parametrize("path", [
+    "/g//c/", "/g/fixture-project/c/", "/g/G-fixture-project/c/",
+    "/g/g-fixture_project/c/", "/g/g-fixture.project/c/", "/g/g-fixture\u00e9/c/",
+    "/g/g-fixture project/c/", "/g/g-fixture/project/c/",
+    "/g/g-fixture-project/extra/c/", "/g/g-fixture-project/",
+    "/g/g-fixture-project/c/c/", "/g/g-fixture-project//c/",
+    "/g/%67-fixture-project/c/", "/g/g-fixture%2Dproject/c/",
+    "/g/g-fixture%2Fproject/c/", "/g/g-fixture-project/%63/",
+])
+def test_malformed_project_paths_fail_closed(path):
+    url = "https://chatgpt.com" + path + str(UUID(int=1))
+    with pytest.raises(wake.WakeBlocked, match="INVALID_CHAT_BINDING"):
+        wake.normalize_chat(url)
+
+
+@pytest.mark.parametrize("base", [synthetic_url(), synthetic_project_url()])
+@pytest.mark.parametrize("suffix", ["//", "/extra", "?fixture=value", "?", "#fixture", "#"])
+def test_extra_components_queries_and_fragments_fail_closed(base, suffix):
+    with pytest.raises(wake.WakeBlocked, match="INVALID_CHAT_BINDING"):
+        wake.normalize_chat(base + suffix)
+
+
+@pytest.mark.parametrize("origin", [
+    "http://chatgpt.com", "HTTPS://chatgpt.com", "https://CHATGPT.COM",
+    "https://www.chatgpt.com", "https://chatgpt.com.example.invalid",
+    "https://chatgpt.com:443", "https://fixture@chatgpt.com", "https://example.invalid",
+])
+def test_project_wrong_origin_fails_closed(origin):
+    path = "/g/g-fixture-project-1/c/" + str(UUID(int=1))
+    with pytest.raises(wake.WakeBlocked, match="INVALID_CHAT_BINDING"):
+        wake.normalize_chat(origin + path)
+
+
+@pytest.mark.parametrize("conversation", [
+    "", "fixture", str(UUID(int=1)).replace("-", ""),
+    str(UUID(int=10)).upper(), "%30" + str(UUID(int=1))[1:],
+])
+def test_project_invalid_or_encoded_conversation_fails_closed(conversation):
+    with pytest.raises(wake.WakeBlocked, match="INVALID_CHAT_BINDING"):
+        wake.normalize_chat("https://chatgpt.com/g/g-fixture-project-1/c/" + conversation)
 
 
 class FakeAdapter:
@@ -315,7 +372,9 @@ def test_zero_or_multiple_target_pages_block(binding, number):
 
 
 def test_duplicate_target_across_contexts_blocks(binding):
-    browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[Page(binding.chat_url)]) for _ in range(2)])
+    browser = SimpleNamespace(contexts=[
+        SimpleNamespace(pages=[Page(binding.chat_url + suffix)]) for suffix in ("", "/")
+    ])
     with pytest.raises(wake.WakeBlocked, match="TARGET_PAGE_NOT_UNIQUE"):
         wake.BrowserAdapter.select_page(browser, binding.chat_url)
 
@@ -327,6 +386,40 @@ def test_unrelated_pages_are_ignored_without_navigation(binding):
     assert adapter.select_page(adapter.browser, binding.chat_url) is target
     adapter.check(target.payload)
     assert not target.evaluations and all(not p.evaluations for p in unrelated)
+
+
+@pytest.mark.parametrize("unrelated_url", [
+    synthetic_project_url(project="g-fixture-project-2"),
+    synthetic_project_url(project="g-Fixture-project-1"),
+    synthetic_project_url(number=2), synthetic_url(),
+    synthetic_project_url() + "/extra", synthetic_project_url() + "?fixture=value",
+    synthetic_project_url() + "#fixture",
+    synthetic_project_url(project="%67-fixture-project-1"),
+])
+def test_project_selection_requires_complete_identity_without_inference(unrelated_url):
+    url = synthetic_project_url()
+    unrelated = Page(unrelated_url)
+    browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[unrelated])])
+    with pytest.raises(wake.WakeBlocked, match="TARGET_PAGE_NOT_UNIQUE"):
+        wake.BrowserAdapter.select_page(browser, url)
+    target = Page(url + "/")
+    browser.contexts.append(SimpleNamespace(pages=[target]))
+    assert wake.BrowserAdapter.select_page(browser, url) is target
+    assert not unrelated.evaluations and not target.evaluations
+
+
+def test_project_change_with_same_conversation_blocks_before_insert_or_proof(tmp_path):
+    url = synthetic_project_url()
+    binding = wake.Binding(url, "http://127.0.0.1:9222", tmp_path / "state.json")
+    page = Page(url)
+    adapter = adapter_for(binding, page)
+    page.url = synthetic_project_url(project="g-fixture-project-2")
+    with pytest.raises(wake.WakeBlocked, match="TARGET_PAGE_NOT_UNIQUE"):
+        adapter.submit(page.payload)
+    assert page.evaluations == []
+    page.counts["outbound"] = 1
+    with pytest.raises(wake.WakeBlocked, match="TARGET_PAGE_NOT_UNIQUE"):
+        adapter.prove(page.payload)
 
 
 @pytest.mark.parametrize("condition,reason", [
@@ -430,7 +523,10 @@ def test_scripts_guard_identity_surface_and_human_edit_in_same_turn():
     assert "buttons[0].click()" in wake.CLICK
 
 
-@pytest.mark.parametrize("scenario", ["valid", "draft", "focus_draft", "focus_navigation", "busy", "wrong_surface", "logged_out", "send_edit", "send_disabled"])
+@pytest.mark.parametrize("scenario", [
+    "valid", "draft", "focus_draft", "focus_navigation", "busy", "wrong_surface",
+    "logged_out", "send_edit", "send_disabled", "wrong_project", "focus_project", "send_project",
+])
 def test_real_browser_scripts_on_synthetic_dom(binding, scenario):
     node = shutil.which("node")
     if not node:
@@ -449,6 +545,7 @@ const element = () => ({getClientRects: () => [1], getAttribute: () => null});
 const box = Object.assign(element(), {textContent: '', innerText: '', focus() {
   if (input.scenario === 'focus_draft') box.textContent = box.innerText = 'Human draft';
   if (input.scenario === 'focus_navigation') location.href = 'https://example.invalid/';
+  if (input.scenario === 'focus_project') location.href = input.other_url;
 }});
 const button = Object.assign(element(), {disabled: false, click() {clicks++;}});
 const elements = {[args.composer]: [box], [args.account]: [element()],
@@ -464,14 +561,17 @@ if (input.scenario === 'draft') box.textContent = box.innerText = 'Human draft';
 if (input.scenario === 'busy') elements[args.stop] = [element()];
 if (input.scenario === 'wrong_surface') elements[args.nonregular] = [element()];
 if (input.scenario === 'logged_out') elements[args.account] = [];
+if (input.scenario === 'wrong_project') location.href = input.other_url;
 const inserted = eval('(' + input.insert + ')')(args);
 if (input.scenario === 'send_edit') box.textContent = box.innerText = args.text + ' Human edit';
 if (input.scenario === 'send_disabled') button.disabled = true;
+if (input.scenario === 'send_project') location.href = input.other_url;
 const sent = inserted ? eval('(' + input.click + ')')(args) : false;
 process.stdout.write(JSON.stringify({inserted, sent, inserts, clicks, draft: box.textContent}));
 """
     process = subprocess.run(
         [node, "-e", harness], input=json.dumps({"args": arguments, "scenario": scenario,
+                                               "other_url": synthetic_project_url(project="g-fixture-project-2"),
                                                "insert": wake.INSERT, "click": wake.CLICK}),
         capture_output=True, text=True, check=True, timeout=10,
     )
@@ -480,7 +580,7 @@ process.stdout.write(JSON.stringify({inserted, sent, inserts, clicks, draft: box
         assert result == {"inserted": True, "sent": True, "inserts": 1, "clicks": 1, "draft": payload}
     else:
         assert result["sent"] is False and result["clicks"] == 0
-        if scenario not in {"send_edit", "send_disabled"}:
+        if scenario not in {"send_edit", "send_disabled", "send_project"}:
             assert result["inserted"] is False and result["inserts"] == 0
         if scenario in {"draft", "focus_draft", "send_edit"}:
             assert "Human" in result["draft"]

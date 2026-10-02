@@ -23,7 +23,10 @@ from urllib.parse import urlsplit
 
 REPOSITORY = "trung-via/AIOS-renew"
 EVENT_PATTERN = re.compile(r"terminal:(RESULT|FAILURE):RUN-[A-Za-z0-9][A-Za-z0-9._-]{0,95}:[0-9a-f]{40}")
-CHAT_PATH = re.compile(r"/c/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/?")
+CHAT_PATH = re.compile(
+    r"(?:/g/g-[A-Za-z0-9-]*)?/c/"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/?"
+)
 MAX_EVENTS = 256
 MAX_BYTES = 65536
 COMPOSER = '#prompt-textarea[contenteditable="true"]'
