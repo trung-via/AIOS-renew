@@ -34,7 +34,7 @@ COMPOSER = ('#prompt-textarea[contenteditable="true"], '
             'main form [contenteditable="true"][role="textbox"][aria-multiline="true"]')
 ACCOUNT = ('[data-testid="profile-button"], [data-testid="accounts-profile-button"], '
            'button[aria-label*="profile" i]')
-SEND = '[data-testid="send-button"]'
+SEND = '[data-testid="send-button"], button[type="submit"][aria-label="Send"]'
 STOP = '[data-testid="stop-button"]'
 NONREGULAR = '[data-workspace-type="team"], [data-workspace-type="enterprise"], [data-workspace-type="business"], [data-testid="work-composer"]'
 LOGIN = '[data-testid="login-button"], a[href^="/auth/login"]'
@@ -184,11 +184,27 @@ class State:
             raise WakeBlocked("STATE_WRITE_UNCERTAIN") from None
 
 
-# Shared by staging, application acceptance, and the final click boundary.
-# No text is exported, trimmed, or generically whitespace-normalized.
-_COMPOSER_GUARDS = """
+# Shared by application acceptance, click, and post-submission proof. Never
+# query Send on the document: only the proven composer's unique enclosing form.
+_SEND_GUARDS = """
   const visible = selector => [...document.querySelectorAll(selector)].filter(
     e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
+  const sendControls = box => {
+    const boxes = visible(composer);
+    if (boxes.length !== 1 || boxes[0] !== box) return null;
+    const forms = [];
+    for (let parent = box.parentElement; parent; parent = parent.parentElement)
+      if (parent.tagName === 'FORM') forms.push(parent);
+    if (forms.length !== 1 || !forms[0].contains(box)) return null;
+    return [...forms[0].querySelectorAll(send)].filter(e => forms[0].contains(e) &&
+      e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
+  };
+  const enabled = button => !button.disabled && button.getAttribute('aria-disabled') !== 'true';
+"""
+
+# Shared by staging, application acceptance, and the final click boundary.
+# No text is exported, trimmed, or generically whitespace-normalized.
+_COMPOSER_GUARDS = _SEND_GUARDS + """
   const equivalent = box => {
     if (box.innerText === text && box.textContent === text) return true;
     // Only one flat P/DIV (or root text node) per exact logical line is
@@ -219,10 +235,10 @@ _COMPOSER_GUARDS = """
     visible(account).length === 1 && !visible(stop).length &&
     !visible(nonregular).length && !visible(login).length && visible('main').length === 1;
   const ready = () => {
-    const boxes = visible(composer), buttons = visible(send);
-    return boxes.length === 1 && surface(boxes[0]) && equivalent(boxes[0]) &&
-      buttons.length === 1 && !buttons[0].disabled &&
-      buttons[0].getAttribute('aria-disabled') !== 'true';
+    const boxes = visible(composer);
+    if (boxes.length !== 1 || !surface(boxes[0]) || !equivalent(boxes[0])) return null;
+    const buttons = sendControls(boxes[0]);
+    return buttons && buttons.length === 1 && enabled(buttons[0]) ? buttons[0] : null;
   };
 """
 
@@ -255,13 +271,23 @@ INSERT = """({url, text, composer, account, stop, nonregular, login, send}) => {
 }"""
 
 ACCEPT_INSERT = """({url, text, composer, account, stop, nonregular, login, send}) => {
-""" + _COMPOSER_GUARDS + "return ready(); }"
+""" + _COMPOSER_GUARDS + "return Boolean(ready()); }"
 
 CLICK = """({url, text, composer, account, stop, nonregular, login, send}) => {
 """ + _COMPOSER_GUARDS + """
-  if (!ready()) return false;
-  visible(send)[0].click();
+  const button = ready();
+  if (!button) return false;
+  button.click();
   return true;
+}"""
+
+PROVE_SEND = """({composer, send}) => {
+""" + _SEND_GUARDS + """
+  const boxes = visible(composer);
+  if (boxes.length !== 1) return false;
+  const buttons = sendControls(boxes[0]);
+  return buttons !== null && (buttons.length === 0 ||
+    (buttons.length === 1 && !enabled(buttons[0])));
 }"""
 
 
@@ -336,10 +362,10 @@ class BrowserAdapter:
         if not self.page.evaluate(INSERT, self.arguments(text)):
             raise WakeBlocked("INSERT_BLOCKED")
         # Allow the application to render its Send control after the input event.
-        # Await only that control, never response content. Missing/ambiguous
+        # Await scoped readiness, never response content. Missing/ambiguous
         # controls are insertion failure, even if DOM text was staged correctly.
         try:
-            self.visible(SEND).wait_for(state="visible", timeout=3000)
+            self.page.wait_for_function(ACCEPT_INSERT, arg=self.arguments(text), timeout=3000)
         except Exception:
             raise WakeBlocked("INSERT_BLOCKED") from None
         if self.select_page(self.browser, self.binding.chat_url) is not self.page:
@@ -360,8 +386,7 @@ class BrowserAdapter:
                 or self.visible(LOGIN).count() or self.visible(NONREGULAR).count()
                 or self.visible(COMPOSER).text_content() != ""):
             raise WakeBlocked("SUBMISSION_UNPROVEN")
-        buttons = self.visible(SEND)
-        if buttons.count() > 1 or (buttons.count() == 1 and buttons.is_enabled()):
+        if not self.page.evaluate(PROVE_SEND, self.arguments(text)):
             raise WakeBlocked("SUBMISSION_UNPROVEN")
 
 

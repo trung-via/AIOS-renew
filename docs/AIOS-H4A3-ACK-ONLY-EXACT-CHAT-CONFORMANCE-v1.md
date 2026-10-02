@@ -2,7 +2,8 @@
 
 Status: conformance procedure; live proof is not asserted by this document.
 Implementation authority: TASK-269 revision 1, current-main documentation integration only.
-Bounded insertion correction and recovery procedure: TASK-274 revision 1.
+Bounded insertion correction: TASK-274 revision 1.
+Exact-form Send compatibility and one-attempt recovery procedure: TASK-275 revision 1.
 Reviewed semantic source: TASK-268 revision 1; historical source is not publication authority.
 Live observation and planning closure authority: Human/Brain.
 
@@ -115,8 +116,8 @@ terminal substitution.
 The existing adapter attaches only to the already-running target. This procedure
 does not authorize a replacement browser/profile, navigation of an unrelated
 chat, general draft clearing, bypass of the enable gate, or ChatGPT Work fallback.
-The sole Human draft/event removal exception is the exact historical pre-click
-attempt in section 4.1; ordinary delivery has no recovery or clearing authority.
+The sole Human draft/event removal exception is workflow `36973913060`, attempt
+`1` (#352), in section 4.1; ordinary delivery has no recovery or clearing authority.
 
 ## 4. Positive observation procedure
 
@@ -172,23 +173,27 @@ exposing local configuration or session material.
 
 ### 4.1. One-attempt Human recovery of the known pre-click INSERT_BLOCKED
 
-This exception applies **only** to workflow run `36963244174`, attempt `2`,
-whose terminal-attention admission was PASS and whose local receipt was
+This Human-only exception applies **only** to workflow run `36973913060`, attempt
+`1` (#352), whose terminal-attention admission was PASS and whose local receipt was
 `BLOCKED / INSERT_BLOCKED` for
 `terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253`.
-Its transport checkout was `dc435f7d799ba8208869afcef3b54fedc712adc3`.
+Its transport checkout was `6afdf74700f338797c0faa2230e65966b7c9d270`, with the
+reviewed TASK-274 insertion correction present and a fresh isolated local
+binding/state.
 These identifiers bind the historical attempt, not just a reusable event string.
-TASK-274 supplies this bounded procedure and synthetic insertion correction;
+TASK-275 supplies this bounded procedure and exact-form Send compatibility;
 its Executor does not perform recovery, a live submission, or H4A3 replay.
 
-Before either removal, the Human MUST privately establish **all** preconditions:
+Before any local cleanup, the Human MUST privately establish **all** preconditions:
 
 1. Fresh canonical reconstruction retains the exact RUN-268-001 RESULT lineage
    in section 2 and the recorded workflow attempt above. The canonical replay
-   observation and privacy-safe reconciliation establish that this specific
-   failure occurred **before Send click**, with no submission and no source
-   consumption. `INSERT_BLOCKED` alone, absence of a user turn alone, or a text
-   length alone is insufficient. Any contrary or uncertain observation stops
+   observation and privacy-safe reconciliation must re-prove the canonical fact
+   that **#352 returned `INSERT_BLOCKED` before `CLICK` was reachable**, with no
+   submission and no source consumption. Bind this fact to workflow `36973913060`
+   attempt `1`, its admitted source and transport checkout; it is not inferred
+   from the current draft. `INSERT_BLOCKED` alone, absence of a user turn alone,
+   or a text length alone is insufficient. Any contrary or uncertain observation stops
    recovery and leaves H4A3 open.
 2. The Human-owned external state contains this exact event as `ATTEMPTING`,
    attributable to that single historical attempt. There has been no intervening
@@ -196,13 +201,18 @@ Before either removal, the Human MUST privately establish **all** preconditions:
    other state writer, or uncertain write exists. Pause competing delivery and
    Human edits for this bounded inspection/removal; do not remove a lock or
    pending file to manufacture these preconditions.
-3. The unchanged private binding identifies exactly one bound page, with the
-   exact complete conversation URL, one authenticated account indicator, one
+3. Re-prove the exact fresh private binding used by #352 and its isolated state;
+   it identifies exactly one bound page, with the exact complete conversation
+   URL, one authenticated account indicator, one
    regular-chat composer and one main surface; no login, nonregular surface,
    active generation, or disabled composer is present. No navigation or binding
-   substitution is permitted. The known unsent attempt has no visible Send
-   control; an unexpected control/state change requires fresh Human assessment
-   rather than assuming it is the historical unchanged draft.
+   substitution is permitted. Re-prove the unique enclosing form of that exact
+   composer and privately inspect only its bounded Send-control metadata. The
+   recorded #352 observation was one visible enabled `BUTTON[type="submit"]`
+   with exact `aria-label="Send"` and no `data-testid`, while the historical
+   `[data-testid="send-button"]` matched zero visible controls. This explains
+   the pre-click block; it is not submission proof or permission to click.
+   Any unexpected control/state change requires fresh Human assessment.
 4. The unsent composer equals the entire fixed four-line doorbell in section 4,
    using the insertion correction's **same exact equivalence contract**: exact
    logical text and text content, or exactly one flat P/DIV block (or root text
@@ -230,14 +240,15 @@ the external operational state, preserving its schema and every other entry.
 Do not delete/reinitialize the state file or change canonical lifecycle state.
 If either step cannot be completed unambiguously, stop without automatic retry.
 
-This consumes the exception for that one historical attempt. It cannot authorize
-any other `ATTEMPTING` event, another workflow attempt, or a subsequent attempt
-of the same event, even if its receipt says `INSERT_BLOCKED`. Normal `deliver()`
+This consumes the exception for workflow `36973913060` attempt `1` only. It cannot
+authorize any other `ATTEMPTING` event, workflow `36963244174` attempt `2`, another
+workflow attempt, or a subsequent attempt of the same event, even if its receipt
+says `INSERT_BLOCKED`. Normal `deliver()`
 continues to return `ATTEMPT_REQUIRES_HUMAN` without attaching, clearing, resetting,
 or retrying any existing `ATTEMPTING` entry. No generalized recovery is introduced.
 
 Recovery is not replay permission or positive conformance. After reviewed
-publication of TASK-274, any later one-shot replay requires separate Human/Brain
+publication of TASK-275, any later one-shot replay requires separate Human/Brain
 planning, fresh exact-source admission/readiness and the ACK-only boundary in
 sections 2–4. The exact user-turn and duplicate NOOP proof remain later
 Human/Brain observations; H4A3 remains open and no H4A4/H4A5/H4B advancement is

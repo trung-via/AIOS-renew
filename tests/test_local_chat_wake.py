@@ -310,10 +310,6 @@ class Locator:
         assert self.selector == wake.COMPOSER and name == "aria-disabled"
         return "true" if self.page.disabled else None
 
-    def is_enabled(self):
-        assert self.selector == wake.SEND
-        return self.page.send_enabled
-
     def wait_for(self, *, state, timeout):
         assert state == "visible" and timeout <= 5000
         if self.count() != 1:
@@ -331,8 +327,13 @@ class Page:
         self.race = None
 
     def locator(self, selector):
-        assert selector in {"main", wake.COMPOSER, wake.ACCOUNT, wake.STOP, wake.NONREGULAR, wake.LOGIN, wake.SEND, wake.USER_TURN}
+        assert selector in {"main", wake.COMPOSER, wake.ACCOUNT, wake.STOP, wake.NONREGULAR, wake.LOGIN, wake.USER_TURN}
         return Locator(self, selector)
+
+    def wait_for_function(self, script, *, arg, timeout):
+        assert script == wake.ACCEPT_INSERT and arg["text"] == self.payload and timeout == 3000
+        if self.counts.get(wake.SEND, 0) != 1 or not self.send_enabled or self.draft != self.payload:
+            raise RuntimeError("scoped readiness absent")
 
     def evaluate(self, script, args):
         assert args["text"] == self.payload
@@ -354,7 +355,10 @@ class Page:
             self.counts["outbound"] = 1
             self.send_enabled = False
         elif script == wake.ACCEPT_INSERT:
-            return self.draft == args["text"] and self.send_enabled
+            return self.draft == args["text"] and self.counts.get(wake.SEND, 0) == 1 and self.send_enabled
+        elif script == wake.PROVE_SEND:
+            count = self.counts.get(wake.SEND, 0)
+            return count == 0 or (count == 1 and not self.send_enabled)
         else:
             pytest.fail("unexpected browser script")
         return True
@@ -433,11 +437,11 @@ def composer_element(shape="fallback", ancestors=("main", "form"), **overrides):
     return surface_element(ancestors=ancestors, **attrs)
 
 
-def test_bounded_selector_contracts_and_unchanged_send_stop():
+def test_bounded_selector_contracts_and_unchanged_stop():
     assert wake.ACCOUNT == ('[data-testid="profile-button"], '
                             '[data-testid="accounts-profile-button"], ' + PROFILE_ARIA)
     assert wake.COMPOSER == LEGACY_COMPOSER + ", " + STRUCTURAL_COMPOSER
-    assert wake.SEND == '[data-testid="send-button"]'
+    assert wake.SEND == '[data-testid="send-button"], button[type="submit"][aria-label="Send"]'
     assert wake.STOP == '[data-testid="stop-button"]'
 
 
@@ -450,7 +454,7 @@ def test_bounded_surface_compatibility_and_union_identity(binding, account_shape
     adapter.check(page.payload)
     adapter.submit(page.payload)
     adapter.prove(page.payload)
-    assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK]
+    assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK, wake.PROVE_SEND]
 
 
 @pytest.mark.parametrize("kind", ["account", "composer"])
@@ -617,10 +621,10 @@ def test_exact_submission_proof_reads_only_outbound_and_composer(binding):
     # Generation after send is permitted without extracting its output.
     page.counts[wake.STOP] = 1
     adapter.prove(page.payload)
-    assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK]
+    assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK, wake.PROVE_SEND]
 
 
-@pytest.mark.parametrize("condition", ["missing_turn", "duplicate_turn", "wrong_text", "draft", "send_enabled", "wrong_chat", "second_target"])
+@pytest.mark.parametrize("condition", ["missing_turn", "duplicate_turn", "wrong_text", "draft", "send_enabled", "send_multiple", "wrong_chat", "second_target"])
 def test_submission_proof_fails_closed(binding, condition):
     page = Page(binding.chat_url)
     adapter = adapter_for(binding, page)
@@ -636,6 +640,8 @@ def test_submission_proof_fails_closed(binding, condition):
         page.draft = "Human draft"
     elif condition == "send_enabled":
         page.send_enabled = True
+    elif condition == "send_multiple":
+        page.counts[wake.SEND] = 2
     elif condition == "wrong_chat":
         page.url = synthetic_url(2)
     else:
@@ -690,14 +696,13 @@ def test_target_uniqueness_rechecked_after_staging(binding):
 
 def test_human_edit_during_application_wait_is_preserved(binding, monkeypatch):
     page = Page(binding.chat_url)
-    wait = Locator.wait_for
+    wait = Page.wait_for_function
 
-    def edit_while_waiting(locator, **kwargs):
-        wait(locator, **kwargs)
-        if locator.selector == wake.SEND:
-            page.draft += " Human edit"
+    def edit_while_waiting(target, script, **kwargs):
+        wait(target, script, **kwargs)
+        page.draft += " Human edit"
 
-    monkeypatch.setattr(Locator, "wait_for", edit_while_waiting)
+    monkeypatch.setattr(Page, "wait_for_function", edit_while_waiting)
     with pytest.raises(wake.WakeBlocked, match="INSERT_BLOCKED"):
         adapter_for(binding, page).submit(page.payload)
     assert page.draft == page.payload + " Human edit"
@@ -730,7 +735,147 @@ def test_scripts_guard_identity_surface_and_human_edit_in_same_turn():
     assert "visible(composer)[0] === box" in wake.INSERT
     assert wake.INSERT.index("box.focus()") < wake.INSERT.index("if (!empty() ||") < wake.INSERT.index("document.execCommand")
     assert "equivalent(boxes[0])" in wake.CLICK
-    assert "visible(send)[0].click()" in wake.CLICK
+    assert "const button = ready();" in wake.CLICK and "button.click()" in wake.CLICK
+    for script in (wake.ACCEPT_INSERT, wake.CLICK, wake.PROVE_SEND):
+        assert wake._SEND_GUARDS in script
+        assert "forms[0].querySelectorAll(send)" in script
+        assert "visible(send)" not in script
+        assert "document.querySelectorAll(send)" not in script
+
+
+@pytest.mark.parametrize("shape", ["legacy", "live", "both"])
+@pytest.mark.parametrize("phase", ["ready", "click", "proof"])
+@pytest.mark.parametrize("scenario,ready,proven", [
+    ("single", True, False),
+    ("absent", False, True),
+    ("disabled", False, True),
+    ("aria_disabled", False, True),
+    ("multiple", False, False),
+    ("multiple_disabled", False, False),
+    ("mixed_shapes", False, False),
+    ("hidden_extra", True, False),
+    ("hidden_only", False, True),
+    ("outside_only", False, True),
+    ("other_form_only", False, True),
+    ("outside_extra", True, False),
+    ("unrelated_inside", False, True),
+    ("no_form", False, False),
+    ("nested_forms", False, False),
+    ("no_composer", False, False),
+    ("multiple_composers", False, False),
+])
+def test_exact_form_send_resolver_on_synthetic_dom(binding, shape, phase, scenario, ready, proven):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is needed for the isolated JavaScript DOM harness")
+    args = wake.BrowserAdapter(binding).arguments(wake.doorbell(EVENT, wake.REPOSITORY))
+    harness = r"""
+const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const args = input.args;
+global.location = {href: args.url};
+global.getComputedStyle = e => ({visibility: e.hidden ? 'hidden' : 'visible'});
+let clicks = 0, formQueries = 0;
+const element = (tagName, attrs = {}, parentElement = null) => ({
+  tagName, attrs, parentElement, disabled: false,
+  getAttribute(name) {return this.attrs[name] ?? null;},
+  getClientRects() {return this.noRects ? [] : [1];},
+  click() {clicks++;}
+});
+const main = element('MAIN'), form = element('FORM', {}, main);
+const otherForm = element('FORM', {}, main), nested = element('FORM', {}, form);
+const box = Object.assign(element('DIV', {}, form), {
+  innerText: args.text, textContent: args.text, childNodes: []
+});
+let boxes = [box], controls = [];
+const legacy = '[data-testid="send-button"]';
+const live = 'button[type="submit"][aria-label="Send"]';
+function matches(e, branch) {
+  if (branch === legacy) return e.attrs['data-testid'] === 'send-button';
+  if (branch === live) return e.tagName === 'BUTTON' && e.attrs.type === 'submit' &&
+    e.attrs['aria-label'] === 'Send';
+  throw Error('unbounded selector');
+}
+function contains(root, e) {
+  for (let parent = e.parentElement; parent; parent = parent.parentElement)
+    if (parent === root) return true;
+  return false;
+}
+for (const root of [form, otherForm, nested]) {
+  root.contains = e => contains(root, e);
+  root.querySelectorAll = selector => {
+    if (root !== form || selector !== args.send) throw Error('wrong control surface');
+    formQueries++;
+    // CSS union deduplicates an element matching both exact branches.
+    return controls.filter(e => contains(root, e) &&
+      selector.split(',').some(branch => matches(e, branch.trim())));
+  };
+}
+function control(shape = input.shape, parent = form) {
+  const attrs = {};
+  if (shape !== 'live') attrs['data-testid'] = 'send-button';
+  if (shape !== 'legacy') Object.assign(attrs, {type: 'submit', 'aria-label': 'Send'});
+  return element('BUTTON', attrs, parent);
+}
+function configure(name) {
+  box.parentElement = form; boxes = [box]; controls = [control()];
+  if (name === 'absent') controls = [];
+  if (name === 'disabled') controls[0].disabled = true;
+  if (name === 'aria_disabled') controls[0].attrs['aria-disabled'] = 'true';
+  if (name === 'multiple') controls.push(control());
+  if (name === 'multiple_disabled') {
+    controls.push(control()); controls.forEach(e => e.disabled = true);
+  }
+  if (name === 'mixed_shapes') controls = [control('legacy'), control('live')];
+  if (name === 'hidden_extra') {
+    controls.push(Object.assign(control(), {hidden: true}));
+    controls.push(Object.assign(control(), {noRects: true}));
+  }
+  if (name === 'hidden_only') controls[0].hidden = true;
+  if (name === 'outside_only') controls = [control('legacy', main), control('live', main)];
+  if (name === 'other_form_only') controls = [control('legacy', otherForm), control('live', otherForm)];
+  if (name === 'outside_extra') controls.push(control('legacy', main), control('live', otherForm));
+  if (name === 'unrelated_inside') controls = [
+    element('BUTTON', {type: 'button', 'aria-label': 'Send'}, form),
+    element('BUTTON', {type: 'submit', 'aria-label': 'send'}, form),
+    element('BUTTON', {type: 'submit', 'aria-label': 'Send feedback'}, form),
+    element('DIV', {type: 'submit', 'aria-label': 'Send'}, form),
+    element('BUTTON', {type: 'submit', 'aria-label': 'Other'}, form)
+  ];
+  if (name === 'no_form') box.parentElement = main;
+  if (name === 'nested_forms') box.parentElement = nested;
+  if (name === 'no_composer') boxes = [];
+  if (name === 'multiple_composers') boxes.push(element('DIV', {}, form));
+}
+global.document = {querySelectorAll(selector) {
+  if (selector === args.send) throw Error('global Send discovery');
+  if (selector === args.composer) return boxes;
+  if (selector === args.account) return [element('BUTTON')];
+  if (selector === 'main') return [main];
+  if ([args.stop, args.login, args.nonregular].includes(selector)) return [];
+  throw Error('unexpected page query');
+}};
+configure(input.phase === 'click' ? 'single' : input.scenario);
+if (input.phase === 'click') {
+  if (!eval('(' + input.accept + ')')(args)) throw Error('baseline readiness failed');
+  configure(input.scenario); // Re-resolve after a change at the final click boundary.
+}
+if (input.phase === 'proof') box.innerText = box.textContent = '';
+const script = input.phase === 'ready' ? input.accept : input.phase === 'click' ? input.click : input.proof;
+const result = eval('(' + script + ')')(args);
+process.stdout.write(JSON.stringify({result, clicks, formQueries}));
+"""
+    process = subprocess.run(
+        [node, "-e", harness], input=json.dumps({"args": args, "shape": shape,
+                                               "phase": phase, "scenario": scenario,
+                                               "accept": wake.ACCEPT_INSERT, "click": wake.CLICK,
+                                               "proof": wake.PROVE_SEND}),
+        capture_output=True, text=True, check=True, timeout=10,
+    )
+    result = json.loads(process.stdout)
+    assert result["result"] is (proven if phase == "proof" else ready)
+    assert result["clicks"] == (1 if phase == "click" and ready else 0)
+    if scenario not in {"no_form", "nested_forms", "no_composer", "multiple_composers"}:
+        assert result["formQueries"] >= 1
 
 
 @pytest.mark.parametrize("scenario", [
@@ -786,9 +931,9 @@ const box = Object.assign(element(), {textContent: '', innerText: '', childNodes
   if (input.scenario === 'input_main_missing') elements.main = [];
   if (input.scenario !== 'dom_only') {
     appText = box.innerText;
-    elements[args.send] = [button];
+    replace(args.send, [button]);
     button.disabled = input.scenario === 'insert_disabled';
-    if (input.scenario === 'insert_multiple') elements[args.send].push(element());
+    if (input.scenario === 'insert_multiple') replace(args.send, [button, element()]);
     if (input.scenario === 'insert_aria_disabled') button.getAttribute = () => 'true';
   }
   return true;
@@ -813,8 +958,14 @@ const select = selector => [...new Set(selector.split(',').flatMap(branch => ele
 const replace = (selector, matches) => {
   for (const branch of selector.split(',')) elements[branch.trim()] = matches;
 };
+const form = {tagName: 'FORM', parentElement: null,
+  contains: e => e === box || select(args.send).includes(e), querySelectorAll: select};
+box.parentElement = form;
 global.document = {
-  querySelectorAll: select,
+  querySelectorAll: selector => {
+    if (selector === args.send) throw Error('page-level Send discovery');
+    return select(selector);
+  },
   createRange: () => ({selectNodeContents(node) {
     if (node !== box || box.textContent !== '') throw Error('unsafe selection');
   }, collapse(value) {if (value !== true) throw Error('noncollapsed selection');}}),
@@ -883,8 +1034,8 @@ const inserted = eval('(' + input.insert + ')')(args);
 const accepted = inserted && eval('(' + input.accept + ')')(args);
 if (input.scenario === 'send_edit') box.textContent = box.innerText = args.text + ' Human edit';
 if (input.scenario === 'send_disabled') button.disabled = true;
-if (input.scenario === 'send_zero') elements[args.send] = [];
-if (input.scenario === 'send_multiple') elements[args.send] = [button, element()];
+if (input.scenario === 'send_zero') replace(args.send, []);
+if (input.scenario === 'send_multiple') replace(args.send, [button, element()]);
 if (input.scenario === 'send_aria_disabled') button.getAttribute = () => 'true';
 if (input.scenario === 'send_surface_disabled') box.getAttribute = () => 'true';
 if (input.scenario === 'send_busy') elements[args.stop] = [element()];
