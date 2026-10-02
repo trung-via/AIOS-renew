@@ -33,11 +33,41 @@ attempt, artifact ownership, name and bounded single-file archive. It never read
 workflow logs. Existing Operational Receipt v2 may include execution-profile facts;
 the projector excludes those facts from attention transport.
 
-The local workflow receives completed-source notifications through `workflow_run`,
-uses published-main projection code with `contents: read` and `actions: read`, and
-passes eligible identities into the existing local lane. It neither dispatches
-itself nor requests actions-write permission. The terminal workflow retains its
-direct admitted handoff. Missing or unproven sources do not authorize submission.
+The local workflow retains completed-source `workflow_run` fan-in for compatible
+producers, using published-main projection code with `contents: read` and
+`actions: read`. Publication also has a direct edge in the reviewed publisher run:
+canonical review/publication capture writes the bounded source and its digest;
+the existing upload retains that exact `source.json` for 90 days; only successful
+capture and upload permit `brain_attention publication-event` to project it.
+The shared `project_source` classifier validates the capture digest and current
+workflow run, attempt and uploaded artifact ID, and exposes at most one `event_id`.
+No YAML expression classifies a family or constructs an attention identity.
+
+The publisher passes only that `event_id` and fixed `trung-via/AIOS-renew` identity
+to `aios-local-chat-wake.yml` through its existing `workflow_call` boundary, under
+the existing Human enable gate with `contents: read`. The reusable delivery job
+runs within the publisher run; it requires no separate downstream `workflow_run`
+notification. The terminal workflow retains its direct admitted handoff. No
+self-dispatch, actions-write permission, new secret, Issue/comment bridge or
+polling mechanism is added. Missing, changed, malformed or unproven source evidence,
+failed upload, and multiple eligible identities fail closed with no direct handoff.
+
+The bridge preserves every eligible outcome produced by the publication projector,
+including publication failure and canonical conflict; it is not gated on publisher
+job success. Progress such as `AUTO_PUBLICATION_STARTED` or dispatch acceptance
+projects no identity. Failure/conflict families retain the exact current run,
+attempt, artifact ID and source digest. Pointer-free families, including publication
+success, retain the same canonical identity regardless of collection path. If the
+legacy fan-in also observes that source, its identity is identical, and existing
+durable lane dedupe, tombstones and ambiguity no-resend rules apply to one subject.
+
+The existing freshness reader still requires completed producer evidence for
+pointer-bearing families. A direct failure/conflict intake may therefore be held
+as `DEFERRED` / `CANONICAL_UNKNOWN` while its publisher run is active. Its admitted
+identity remains in the same durable lane for the existing bounded recheck after
+completion. This does not weaken source, chat-target, generation or Send guards.
+Exact PASS lineage and canonical-main inclusion remain publication-success gates;
+the handoff cannot publish a candidate, reconcile planning or change roadmap state.
 
 ## Family/source matrix
 
@@ -108,6 +138,44 @@ real already admitted immutable sources. Do not fabricate a RUN, FAILURE, REVIEW
 publication or dispatch merely to populate the matrix. If a representative source
 is unavailable, record that live case as unproved and retain synthetic coverage.
 Any replay must be separately authorized and must not launch another execution.
+
+### Repaired publication-success live probe
+
+The prior Issue #1390 replay was idempotent and created no new RUN. Publisher run
+`37040170067` completed successfully and exported artifact `11242411027`, but no
+post-publication local wake workflow was created. That is the recorded
+`PUBLICATION_SUCCESS_SOURCE_NOTIFICATION_GAP` blocker, not live conformance.
+
+Rerun the publication-success probe only after TASK-280 has received exact review
+and its reviewed candidate has been published into canonical main. Executor
+implementation, Runtime deterministic checks, a source artifact, or a successful
+publisher workflow alone does not satisfy this prerequisite or prove a regular-Chat
+user turn. Until the Human live procedure succeeds, H4A5 remains blocked and H4B
+readiness remains unclaimed.
+
+After reviewed publication, Human may separately authorize one bounded replay of
+an existing exact eligible PASS review, retaining the no-new-RUN/no-Executor
+condition. Check that the publisher projects canonical publication truth, exports
+the attempt-specific source artifact, and exposes exactly one selector-only identity
+after upload. Record its run ID, attempt, artifact ID, source digest and event ID.
+Observe the reusable `local-chat-wake` delivery job within that same publisher run
+enter the existing lane even when no downstream wake workflow run is created.
+
+In the exact already-bound authenticated regular Chat, observe one bounded wake
+user turn, subject to the unchanged draft, generation, freshness and ambiguity
+guards. If legacy `workflow_run` fan-in also fires, reconstruct the same artifact
+and record an identical event ID and a duplicate NOOP, with at most one user turn
+across both paths. Repeat observation/replay only under the bounded Human procedure;
+an ambiguous Send must remain held with zero additional Sends. Retain sanitized
+identity, lane alias, generation and fixed status/reason proof only.
+
+Assess direct failure/conflict representatives through the same boundary when
+existing exact sources are available, including any pre-completion deferral and
+existing recheck. Do not manufacture publication failure/conflict or a new execution
+for coverage. Neither this procedure update nor deterministic identity/dedupe tests
+claims live regular-Chat conformance, planning completion, H4A5 closure or H4B readiness.
+
+### Remaining bounded cases
 
 1. **Representative emissions:** select a carrier rejection, one proven operational
    rejection/failure, RESULT, FAILURE, non-PASS review, correction-authoring rejection,

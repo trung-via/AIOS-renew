@@ -21,6 +21,8 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    outputs:
+      event_id: ${{ steps.attention.outputs.event_id }}
     steps:
       - name: Check out current canonical publication control plane
         uses: actions/checkout@v4
@@ -82,6 +84,7 @@ jobs:
             --control-sha "$control_sha" > "$AIOS_PUBLICATION_REPORT"
 
       - name: Project canonical review and exact publication attempt
+        id: attention-source
         if: always() && steps.publication.outputs.run_id != '' && steps.publication.outputs.decision_sha != ''
         env:
           PYTHONPATH: src
@@ -93,8 +96,10 @@ jobs:
           python -m aios_renew.brain_attention publication
           --run-id "$AIOS_RUN_ID" --decision-sha "$AIOS_DECISION_SHA"
           --report "$AIOS_PUBLICATION_REPORT" --source "$AIOS_ATTENTION_SOURCE_PATH"
+          --output "$GITHUB_OUTPUT"
 
       - name: Export bounded publication attention observations
+        id: attention-artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -102,3 +107,42 @@ jobs:
           path: ${{ runner.temp }}/aios-attention-publication/source.json
           if-no-files-found: ignore
           retention-days: 90
+
+      - name: Project one exact identity from the exported publication source
+        id: attention
+        # Projection/upload failures leave no doorbell, even if publication ran.
+        if: >-
+          always() &&
+          steps.attention-source.outcome == 'success' &&
+          steps.attention-source.outputs.source_digest != '' &&
+          steps.attention-artifact.outcome == 'success' &&
+          steps.attention-artifact.outputs.artifact-id != ''
+        env:
+          PYTHONPATH: src
+          AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-publication/source.json
+          AIOS_SOURCE_RUN: ${{ github.run_id }}
+          AIOS_SOURCE_ATTEMPT: ${{ github.run_attempt }}
+          AIOS_SOURCE_ARTIFACT: ${{ steps.attention-artifact.outputs.artifact-id }}
+          AIOS_SOURCE_DIGEST: ${{ steps.attention-source.outputs.source_digest }}
+          AIOS_SOURCE_REPOSITORY: ${{ github.repository }}
+        run: >-
+          python -m aios_renew.brain_attention publication-event
+          --source "$AIOS_ATTENTION_SOURCE_PATH" --workflow-run-id "$AIOS_SOURCE_RUN"
+          --attempt "$AIOS_SOURCE_ATTEMPT" --artifact-id "$AIOS_SOURCE_ARTIFACT"
+          --source-digest "$AIOS_SOURCE_DIGEST" --repository "$AIOS_SOURCE_REPOSITORY"
+          --output "$GITHUB_OUTPUT"
+
+  local-chat-wake:
+    needs: publish
+    # Eligible failure/conflict observations survive a failed publication job.
+    if: >-
+      always() &&
+      needs.publish.outputs.event_id != '' &&
+      github.repository == 'trung-via/AIOS-renew' &&
+      vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true'
+    uses: ./.github/workflows/aios-local-chat-wake.yml
+    permissions:
+      contents: read
+    with:
+      event_id: ${{ needs.publish.outputs.event_id }}
+      repository: trung-via/AIOS-renew

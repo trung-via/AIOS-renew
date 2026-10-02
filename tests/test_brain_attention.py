@@ -222,6 +222,232 @@ class Artifacts:
         return self.successor
 
 
+def publication_artifacts(source):
+    """Exercise the real bounded artifact reader with a synthetic completed run."""
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr("source.json", brain.canonical(source))
+    name = "aios-attention-source-v1-publication-attempt-2"
+    reader = brain.ArtifactSources(brain.REPOSITORY)
+
+    def request(path, binary=False):
+        if path == "/actions/runs/100/attempts/2":
+            return dict(id=100, run_attempt=2, status="completed", event="push",
+                        path=".github/workflows/aios-auto-publish.yml",
+                        head_repository=dict(full_name=brain.REPOSITORY))
+        if path == "/actions/runs/100/artifacts?per_page=100":
+            return dict(total_count=1, artifacts=[dict(id=200, name=name)])
+        if path == "/actions/artifacts/200":
+            return dict(id=200, name=name, expired=False, size_in_bytes=len(archive.getvalue()),
+                        workflow_run=dict(id=100))
+        assert path == "/actions/artifacts/200/zip" and binary is True
+        return archive.getvalue()
+
+    reader.request = request
+    return reader
+
+
+@pytest.mark.parametrize("outcome,family", [
+    ("PUBLISHED", brain.PUBLICATION_SUCCESS), ("ALREADY_PUBLISHED", brain.PUBLICATION_SUCCESS),
+    ("ALREADY_INCLUDED", brain.PUBLICATION_SUCCESS), ("FAILED", brain.PUBLICATION_FAILURE),
+    ("INTEGRATION_REQUIRED", brain.CONFLICT),
+])
+def test_direct_publication_and_artifact_collection_share_exact_identity(monkeypatch, tmp_path, outcome, family):
+    sources = Sources("PASS")
+    sources.is_included = family == brain.PUBLICATION_SUCCESS
+    monkeypatch.setattr(brain, "GitSources", lambda *args: sources)
+    report_path, source_path, output_path = [tmp_path / name for name in ("report.json", "source.json", "capture.out")]
+    report_path.write_text(json.dumps(dict(source_run=IDENTITY["run_id"], reviewed_sha=IDENTITY["reviewed_sha"],
+        prior_main_sha="e" * 40, outcome=outcome, detail="private publisher diagnostic")), encoding="utf-8")
+    assert brain.main(["publication", "--report", str(report_path), "--source", str(source_path),
+        "--run-id", IDENTITY["run_id"], "--decision-sha", IDENTITY["decision_sha"], "--output", str(output_path)]) == 0
+    source = brain.load_json(source_path.read_bytes(), brain.MAX_SOURCE_BYTES)
+    source_digest = brain.digest(source)
+    assert output_path.read_text(encoding="utf-8") == "source_digest=" + source_digest + "\n"
+    event_id = brain.publication_event(source_path, 100, 2, 200, source_digest)
+    assert brain.collect(100, 2, artifacts=publication_artifacts(source)) == [event_id]
+    item = brain.parse_event_id(event_id)
+    assert item.family == family
+    assert "private" not in item.render() and "detail" not in item.selectors
+    pointer = dict(workflow_run_id=100, run_attempt=2, artifact_id=200, source_digest=source_digest)
+    if family == brain.PUBLICATION_SUCCESS:
+        assert set(item.selectors).isdisjoint(pointer)
+        assert brain.publication_event(source_path, 101, 3, 201, source_digest) == event_id
+    else:
+        assert {key: item.selectors[key] for key in pointer} == pointer
+        for changed in ((101, 2, 200), (100, 3, 200), (100, 2, 201)):
+            assert brain.publication_event(source_path, *changed, source_digest) != event_id
+    with pytest.raises(brain.AttentionError):
+        brain.publication_event(source_path, 100, 2, 200, "0" * 64)
+    direct_output = tmp_path / "direct.out"
+    assert brain.main(["publication-event", "--source", str(source_path), "--workflow-run-id", "100",
+        "--attempt", "2", "--artifact-id", "200", "--source-digest", source_digest,
+        "--repository", brain.REPOSITORY, "--output", str(direct_output)]) == 0
+    assert direct_output.read_text(encoding="utf-8") == "event_id=" + event_id + "\n"
+
+
+@pytest.mark.parametrize("boundary", sorted(brain.NON_WAKE) + [None])
+def test_direct_publication_progress_and_empty_source_emit_no_identity(tmp_path, boundary):
+    source = brain.source_document([] if boundary is None else [dict(boundary=boundary)])
+    path = tmp_path / "source.json"
+    path.write_bytes(brain.canonical(source))
+    assert brain.publication_event(path, 100, 2, 200, brain.digest(source)) == ""
+    assert brain.collect(100, 2, artifacts=publication_artifacts(source)) == []
+
+
+@pytest.mark.parametrize("case", ["digest", "run", "attempt", "artifact", "repository", "missing",
+    "size", "duplicate_key", "schema", "selector", "semantic_field", "multiple"])
+def test_direct_publication_rejects_unproven_or_malformed_source_without_output(tmp_path, capsys, case):
+    source = brain.source_document([dict(boundary="PUBLICATION_PROVEN", **IDENTITY,
+                                        published_sha=IDENTITY["reviewed_sha"])])
+    path, output = tmp_path / "source.json", tmp_path / "direct.out"
+    if case == "schema":
+        source["version"] = 2
+    elif case == "selector":
+        source["observations"][0]["published_sha"] = "f" * 40
+    elif case == "semantic_field":
+        source["observations"][0]["next_action"] = "private strategy"
+    elif case == "multiple":
+        source["observations"].append(dict(boundary="PUBLICATION_FAILED", **IDENTITY, stage="EXECUTION"))
+    raw = brain.canonical(source)
+    if case == "size":
+        raw = b" " * (brain.MAX_SOURCE_BYTES + 1)
+    elif case == "duplicate_key":
+        raw = raw[:-1] + b',"version":1}'
+    if case != "missing":
+        path.write_bytes(raw)
+    args = ["publication-event", "--source", str(path), "--workflow-run-id", "0" if case == "run" else "100",
+        "--attempt", "0" if case == "attempt" else "2", "--artifact-id", "0" if case == "artifact" else "200",
+        "--source-digest", "0" * 64 if case == "digest" else brain.digest(source),
+        "--repository", "other/repository" if case == "repository" else brain.REPOSITORY, "--output", str(output)]
+    assert brain.main(args) == 1
+    assert not output.exists()
+    assert capsys.readouterr().err == "attention source rejected: SOURCE_UNPROVEN\n"
+
+
+@pytest.mark.parametrize("case", ["not_included", "no_main", "wrong_run", "wrong_candidate",
+                                 "unknown_outcome", "missing_report", "unproven_review"])
+def test_publication_capture_cannot_export_identity_without_exact_canonical_proof(monkeypatch, tmp_path, case):
+    sources = Sources("PASS")
+    sources.is_included = case != "not_included"
+    if case == "no_main":
+        sources.values.clear()
+    elif case == "unproven_review":
+        sources.identity = dict(IDENTITY, decision_sha="f" * 40)
+    monkeypatch.setattr(brain, "GitSources", lambda *args: sources)
+    report = dict(source_run="RUN-wrong-001" if case == "wrong_run" else IDENTITY["run_id"],
+        reviewed_sha="f" * 40 if case == "wrong_candidate" else IDENTITY["reviewed_sha"],
+        prior_main_sha="e" * 40, outcome="UNKNOWN" if case == "unknown_outcome" else "PUBLISHED", detail="private")
+    report_path, source_path, output = [tmp_path / name for name in ("report.json", "source.json", "capture.out")]
+    if case != "missing_report":
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+    assert brain.main(["publication", "--report", str(report_path), "--source", str(source_path),
+        "--run-id", IDENTITY["run_id"], "--decision-sha", IDENTITY["decision_sha"], "--output", str(output)]) == 1
+    assert not source_path.exists() and not output.exists()
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_direct_and_fan_in_publication_share_durable_dedupe_and_no_resend(tmp_path, ambiguous):
+    source = brain.source_document([dict(boundary="PUBLICATION_PROVEN", **IDENTITY,
+                                        published_sha=IDENTITY["reviewed_sha"])])
+    path = tmp_path / "source.json"
+    path.write_bytes(brain.canonical(source))
+    direct = brain.publication_event(path, 100, 2, 200, brain.digest(source))
+    collected = brain.collect(100, 2, artifacts=publication_artifacts(source))[0]
+    binding = wake.Binding("https://chatgpt.com/c/11111111-1111-1111-1111-111111111111",
+                           "http://127.0.0.1:9222", tmp_path / "lane.json", 1)
+    clicks = []
+
+    class Adapter:
+        def __init__(self, binding):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def check(self, text):
+            pass
+
+        def submit(self, text, before_insert, before_click):
+            before_insert()
+            before_click()
+            clicks.append(text)
+
+        def prove(self, text):
+            if ambiguous:
+                raise wake.WakeBlocked("SUBMISSION_UNPROVEN")
+
+    projection = SimpleNamespace(observe=lambda event_id: "UNRESOLVED")
+    first = wake.deliver(direct, brain.REPOSITORY, binding, Adapter, projection)
+    second = wake.deliver(collected, brain.REPOSITORY, binding, Adapter, projection)
+    assert first["status"] == ("BLOCKED" if ambiguous else "SUBMITTED")
+    assert second["status"] == ("BLOCKED" if ambiguous else "NOOP")
+    assert clicks == [wake.doorbell(direct, brain.REPOSITORY)]
+    state = wake.read_json(binding.state_path)
+    assert list(state["events"]) == [direct]
+    assert state["events"][direct]["status"] == ("AMBIGUOUS" if ambiguous else "SUBMITTED")
+
+
+@pytest.mark.parametrize("family", [brain.PUBLICATION_FAILURE, brain.CONFLICT])
+def test_direct_pointer_outcome_is_retained_until_existing_completed_source_guard_allows_recheck(tmp_path, family):
+    observation = (dict(boundary="PUBLICATION_FAILED", **IDENTITY, stage="EXECUTION")
+        if family == brain.PUBLICATION_FAILURE else dict(boundary="CANONICAL_CONFLICT",
+            prepared_sha=IDENTITY["reviewed_sha"], prepared_digest=brain.digest(IDENTITY),
+            predecessor_ref="refs/heads/main", predecessor_sha="e" * 40, observed_sha="d" * 40))
+    path = tmp_path / "source.json"
+    source = brain.write_source(path, [observation])
+    event_id = brain.publication_event(path, 100, 2, 200, brain.digest(source))
+    reader = publication_artifacts(source)
+    request, completed = reader.request, [False]
+
+    def current_run_request(api_path, binary=False):
+        value = request(api_path, binary)
+        if api_path == "/actions/runs/100/attempts/2" and not completed[0]:
+            value["status"] = "in_progress"
+        return value
+
+    reader.request = current_run_request
+    sources = Sources("PASS")
+
+    def observe(identity):
+        try:
+            return brain.freshness(brain.parse_event_id(identity), sources, reader)
+        except brain.AttentionError:
+            return "UNKNOWN"
+
+    checked = []
+
+    class DraftAdapter:
+        def __init__(self, binding):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def check(self, text):
+            checked.append(text)
+            raise wake.WakeBlocked("DRAFT_PRESENT")
+
+    binding = wake.Binding("https://chatgpt.com/c/11111111-1111-1111-1111-111111111111",
+                           "http://127.0.0.1:9222", tmp_path / "lane.json", 1)
+    projection = SimpleNamespace(observe=observe)
+    first = wake.deliver(event_id, brain.REPOSITORY, binding, DraftAdapter, projection)
+    assert first["status"] == "DEFERRED" and first["reason"] == "CANONICAL_UNKNOWN"
+    assert checked == []
+    completed[0] = True
+    assert brain.collect(100, 2, artifacts=reader) == [event_id]
+    receipts = wake.operate(brain.REPOSITORY, binding, adapter_factory=DraftAdapter, projection=projection)
+    assert receipts == [dict(event_id=event_id, status="DEFERRED", reason="DRAFT_PRESENT")]
+    assert checked == [wake.doorbell(event_id, brain.REPOSITORY)]
+    assert list(wake.read_json(binding.state_path)["events"]) == [event_id]
+
+
 def test_review_followup_requires_all_exact_finding_successors_and_pass_never_becomes_correction():
     item = source_event(dict(boundary="REVIEW_FOLLOWUP", **IDENTITY))[0]
     sources = Sources()

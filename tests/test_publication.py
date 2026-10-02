@@ -1,10 +1,13 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
+from aios_renew import brain_attention as brain
 import aios_renew.publication as publication_module
 from aios_renew.publication import PublicationError, publish_review_decision
 from aios_renew.review_transport import transport_failure, transport_post_pass
@@ -1894,6 +1897,123 @@ def test_workflow_has_canonical_trigger_and_minimum_authority() -> None:
     assert "aios remediate" not in workflow
     assert "aios repair" not in workflow
     assert "pytest" not in workflow
+
+
+def publication_workflow():
+    text = Path(".github/workflows/aios-auto-publish.yml").read_text(encoding="utf-8")
+    return yaml.load(text, Loader=yaml.BaseLoader), text
+
+
+def publication_condition(expression, context, prior_failed=False):
+    # Include the implicit success gate so an eligible failed publisher is covered.
+    if prior_failed and "always()" not in expression:
+        return False
+    expression = expression.replace("always()", "True")
+    expression = re.sub(r"\b(?:needs|steps|vars|github)(?:\.[A-Za-z0-9_-]+)+",
+                        lambda match: repr(context.get(match[0], "")), expression)
+    return bool(eval("(" + expression.replace("&&", " and ") + ")", {"__builtins__": {}}, {}))
+
+
+def test_publication_direct_handoff_reuses_only_existing_selector_boundary():
+    parsed, text = publication_workflow()
+    assert set(parsed["on"]) == {"push", "workflow_dispatch"}
+    assert parsed["permissions"] == {"contents": "write"}
+    assert set(parsed["jobs"]) == {"publish", "local-chat-wake"}
+    publish_job = parsed["jobs"]["publish"]
+    assert publish_job["outputs"] == {"event_id": "${{ steps.attention.outputs.event_id }}"}
+    steps = publish_job["steps"]
+    by_id = {step["id"]: step for step in steps if "id" in step}
+    assert steps.index(by_id["publication"]) < steps.index(by_id["attention-source"])
+    assert steps.index(by_id["attention-source"]) < steps.index(by_id["attention-artifact"]) < steps.index(by_id["attention"])
+    assert "aios_renew.brain_attention publication" in by_id["attention-source"]["run"]
+    assert '--output "$GITHUB_OUTPUT"' in by_id["attention-source"]["run"]
+    assert by_id["attention-artifact"]["uses"] == "actions/upload-artifact@v4"
+    assert by_id["attention-artifact"]["with"] == {
+        "name": "aios-attention-source-v1-publication-attempt-${{ github.run_attempt }}",
+        "path": "${{ runner.temp }}/aios-attention-publication/source.json",
+        "if-no-files-found": "ignore", "retention-days": "90",
+    }
+    direct = by_id["attention"]
+    assert "aios_renew.brain_attention publication-event" in direct["run"]
+    assert direct["env"] == {
+        "PYTHONPATH": "src", "AIOS_ATTENTION_SOURCE_PATH": "${{ runner.temp }}/aios-attention-publication/source.json",
+        "AIOS_SOURCE_RUN": "${{ github.run_id }}", "AIOS_SOURCE_ATTEMPT": "${{ github.run_attempt }}",
+        "AIOS_SOURCE_ARTIFACT": "${{ steps.attention-artifact.outputs.artifact-id }}",
+        "AIOS_SOURCE_DIGEST": "${{ steps.attention-source.outputs.source_digest }}",
+        "AIOS_SOURCE_REPOSITORY": "${{ github.repository }}",
+    }
+    handoff = parsed["jobs"]["local-chat-wake"]
+    assert handoff["needs"] == "publish"
+    assert handoff["uses"] == "./.github/workflows/aios-local-chat-wake.yml"
+    assert handoff["permissions"] == {"contents": "read"}
+    assert handoff["with"] == {"event_id": "${{ needs.publish.outputs.event_id }}", "repository": brain.REPOSITORY}
+    assert set(handoff) == {"needs", "if", "uses", "permissions", "with"}
+    for forbidden in ("actions: write", "repository_dispatch", "createWorkflowDispatch", "gh workflow run",
+                      "secrets.", "issues:", "comments", "workflow_run", "schedule:", "next_action",
+                      "review_verdict", "roadmap_successor", "cdp_endpoint", "assistant_output",
+                      "PUBLICATION_PROVEN", "PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING"):
+        assert forbidden not in text
+
+
+@pytest.mark.parametrize("prior_failed", [False, True])
+@pytest.mark.parametrize("changed,value,allowed", [
+    (None, None, True), ("steps.attention-source.outcome", "failure", False),
+    ("steps.attention-source.outcome", "skipped", False),
+    ("steps.attention-source.outputs.source_digest", "", False),
+    ("steps.attention-artifact.outcome", "failure", False),
+    ("steps.attention-artifact.outcome", "skipped", False),
+    ("steps.attention-artifact.outputs.artifact-id", "", False),
+])
+def test_publication_direct_projection_requires_exact_export_even_after_failure(prior_failed, changed, value, allowed):
+    parsed, _ = publication_workflow()
+    steps = {step["id"]: step for step in parsed["jobs"]["publish"]["steps"] if "id" in step}
+    context = {"steps.attention-source.outcome": "success", "steps.attention-source.outputs.source_digest": "a" * 64,
+               "steps.attention-artifact.outcome": "success", "steps.attention-artifact.outputs.artifact-id": "200"}
+    if changed:
+        context[changed] = value
+    assert publication_condition(steps["attention"]["if"], context, prior_failed) is allowed
+    context.update({"steps.publication.outputs.run_id": "RUN-fixture-001", "steps.publication.outputs.decision_sha": "b" * 40})
+    assert publication_condition(steps["attention-source"]["if"], context, prior_failed)
+
+
+@pytest.mark.parametrize("prior_failed", [False, True])
+@pytest.mark.parametrize("changed,value,allowed", [
+    (None, None, True), ("needs.publish.outputs.event_id", "", False),
+    ("github.repository", "other/repository", False),
+    ("vars.AIOS_LOCAL_CHAT_WAKE_ENABLED", "", False),
+    ("vars.AIOS_LOCAL_CHAT_WAKE_ENABLED", "false", False),
+    ("vars.AIOS_LOCAL_CHAT_WAKE_ENABLED", "TRUE", False),
+])
+def test_publication_reusable_handoff_preserves_human_gate_without_success_only_filter(prior_failed, changed, value, allowed):
+    parsed, _ = publication_workflow()
+    context = {"needs.publish.outputs.event_id": "exact-projected-identity", "github.repository": brain.REPOSITORY,
+               "vars.AIOS_LOCAL_CHAT_WAKE_ENABLED": "true"}
+    if changed:
+        context[changed] = value
+    assert publication_condition(parsed["jobs"]["local-chat-wake"]["if"], context, prior_failed) is allowed
+
+
+def test_exact_reviewed_publication_and_replay_export_same_direct_planning_identity(tmp_path: Path) -> None:
+    lineage = make_lineage(tmp_path)
+    event_ids = []
+    for index, outcome in enumerate(("PUBLISHED", "ALREADY_PUBLISHED")):
+        report = publish(lineage)
+        assert report.outcome == outcome
+        report_path = tmp_path / "report.json"
+        report_path.write_text(json.dumps({name: getattr(report, name) for name in
+            ("source_run", "reviewed_sha", "prior_main_sha", "outcome", "detail")}), encoding="utf-8")
+        source_path = tmp_path / "source.json"
+        source = brain.capture_publication(report_path, source_path, lineage["run_id"],
+                                           lineage["decision_sha"], repo=lineage["repo"])
+        event_id = brain.publication_event(source_path, 100 + index, 1, 200 + index, brain.digest(source))
+        item = brain.parse_event_id(event_id)
+        assert item.family == brain.PUBLICATION_SUCCESS
+        assert dict(item.selectors) == dict(run_id=lineage["run_id"],
+            artifact_sha=git(lineage["remote"], "rev-parse", "refs/heads/aios/artifacts/" + lineage["run_id"]),
+            decision_sha=lineage["decision_sha"], reviewed_sha=lineage["candidate_sha"],
+            published_sha=lineage["candidate_sha"], source_boundary="PUBLICATION_PROVEN")
+        event_ids.append(event_id)
+    assert event_ids[0] == event_ids[1]
 
 
 def make_predecessor_lineage(

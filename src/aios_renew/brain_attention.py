@@ -383,6 +383,7 @@ def write_source(path, observations):
     temp = target.with_suffix(".tmp")
     temp.write_bytes(canonical(source))
     os.replace(temp, target)
+    return source
 
 
 def _issue_observation(event, carrier, operation="UNKNOWN", subject_id="NONE"):
@@ -885,8 +886,7 @@ def capture_publication(report_path, source_path, run_id, decision_sha, repo="."
     sources = GitSources(Path(repo), _git, "origin")
     identity, review = sources.review(run_id, decision_sha)
     if review["verdict"] in {"CHANGES_REQUIRED", "BLOCKED"}:
-        write_source(source_path, [dict(boundary="REVIEW_FOLLOWUP", **identity)])
-        return
+        return write_source(source_path, [dict(boundary="REVIEW_FOLLOWUP", **identity)])
     report = load_json(Path(report_path).read_bytes(), MAX_SOURCE_BYTES)
     if (set(report) != {"source_run", "reviewed_sha", "prior_main_sha", "outcome", "detail"}
             or report["source_run"] != run_id or report["reviewed_sha"] != identity["reviewed_sha"]):
@@ -907,7 +907,25 @@ def capture_publication(report_path, source_path, run_id, decision_sha, repo="."
         observation = dict(boundary="PUBLICATION_FAILED", **identity, stage="EXECUTION")
     else:
         raise AttentionError("UNKNOWN_PUBLICATION_OUTCOME")
-    write_source(source_path, [observation])
+    return write_source(source_path, [observation])
+
+
+def publication_event(source_path, workflow_run_id, attempt, artifact_id, source_digest, repository=REPOSITORY):
+    """Project the already-exported publisher source through the shared classifier.
+
+    The capture digest and upload artifact ID are current-run outputs. No completed
+    workflow notification, artifact search, logs or synthetic pointer is needed.
+    """
+    if repository != REPOSITORY:
+        raise AttentionError("REPOSITORY_SUBSTITUTION")
+    with Path(source_path).open("rb") as stream:
+        source = load_json(stream.read(MAX_SOURCE_BYTES + 1), MAX_SOURCE_BYTES)
+    pointer = dict(workflow_run_id=workflow_run_id, run_attempt=attempt,
+                   artifact_id=artifact_id, source_digest=source_digest)
+    items = project_source(source, pointer)
+    if len(items) > 1:
+        raise AttentionError("PUBLICATION_SOURCE_CAPACITY")
+    return items[0].event_id if items else ""
 
 
 def collect(run_id, attempt, repository=REPOSITORY, artifacts=None):
@@ -956,6 +974,15 @@ def main(argv=None):
     publication.add_argument("--source", required=True)
     publication.add_argument("--run-id", required=True)
     publication.add_argument("--decision-sha", required=True)
+    publication.add_argument("--output", default=os.environ.get("GITHUB_OUTPUT"))
+    publication_identity = sub.add_parser("publication-event")
+    publication_identity.add_argument("--source", required=True)
+    publication_identity.add_argument("--workflow-run-id", type=int, required=True)
+    publication_identity.add_argument("--attempt", type=int, required=True)
+    publication_identity.add_argument("--artifact-id", type=int, required=True)
+    publication_identity.add_argument("--source-digest", required=True)
+    publication_identity.add_argument("--repository", required=True)
+    publication_identity.add_argument("--output", default=os.environ.get("GITHUB_OUTPUT"))
     dispatch = sub.add_parser("dispatch")
     dispatch.add_argument("--source", required=True)
     dispatch.add_argument("--operation", choices=("PRIMARY", "REMEDIATION", "REPAIR", "PUBLICATION"), required=True)
@@ -976,7 +1003,15 @@ def main(argv=None):
             receipt = load_json(Path(args.receipt).read_bytes(), MAX_SOURCE_BYTES)
             write_source(args.source, [operational_observation(receipt)])
         elif args.command == "publication":
-            capture_publication(args.report, args.source, args.run_id, args.decision_sha)
+            source = capture_publication(args.report, args.source, args.run_id, args.decision_sha)
+            if args.output:
+                with Path(args.output).open("a", encoding="utf-8") as stream:
+                    stream.write("source_digest=" + digest(source) + "\n")
+        elif args.command == "publication-event":
+            event_id = publication_event(args.source, args.workflow_run_id, args.attempt,
+                                         args.artifact_id, args.source_digest, args.repository)
+            with Path(args.output).open("a", encoding="utf-8") as stream:
+                stream.write("event_id=" + event_id + "\n")
         elif args.operation == "PUBLICATION":
             identity, review = GitSources(Path("."), _git, "origin").review(args.run_id)
             if review["verdict"] != "PASS":
