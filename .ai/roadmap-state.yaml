@@ -840,7 +840,17 @@ sequence:
         - REJECT_ENCODED_EXTRA_QUERY_FRAGMENT_ALIASES
         - LIVE_H4A3_PROOF_REMAINS_POST_PUBLICATION
         - SYNTHETIC_FIXTURES_ONLY_NO_PRIVATE_BINDING_DATA
-    execution_profile_status: HUMAN_SELECTION_REQUIRED
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-271
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
     sequencing:
       - AFTER_TASK_269_REVIEWED_PUBLICATION_RECOVERY_COMPLETE
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
