@@ -631,11 +631,20 @@ sequence:
         - NO_REINTERPRETATION_OF_RUN268_AS_PUBLISHED
         - NO_REUSE_IF_ANY_EXACT_SHA_OR_REF_DRIFTS
         - NO_AUTOMATIC_ROADMAP_ADVANCE
-      expiry: >-
-        Single-use exception for the exact TASK-269 pre-AIOS synchronization blocker.
-        It expires immediately after successful postcondition verification or on any
-        identity/topology/provenance drift. Any later occurrence requires fresh Human
-        authority.
+      observed_outcome:
+        status: CONSUMED_SUCCESS
+        human_reported_on: "2026-10-02"
+        execution_bound_remote_main_sha: "7b101c3794dc57df44aa796e11f404270e89b38d"
+        postcheck: PASS
+        observed_local_head: "7b101c3794dc57df44aa796e11f404270e89b38d"
+        postconditions_revalidated_from_canonical_state:
+          - RUN268_REVIEW_REF_UNCHANGED
+          - RUN268_ARTIFACTS_REF_UNCHANGED
+          - RUN268_REVIEW_DECISION_REF_UNCHANGED
+          - TASK269_CANONICAL_BLOB_UNCHANGED
+          - NO_RUN269_RESULT269_FAILURE269_OR_REVIEW269_EXISTS
+        lifecycle_effect: NONE
+      expiry: CONSUMED
       follow_up_required: >-
         After TASK-269 reaches reviewed publication, create a separately audited bounded
         maintenance blocker for the exact-byte reviewed-RESULT preservation defect before
