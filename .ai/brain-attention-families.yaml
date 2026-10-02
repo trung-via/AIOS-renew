@@ -1,0 +1,214 @@
+# Selector-only schemas. Classification and identity live in brain_attention.py.
+# All fields are mandatory; additional fields and nested values are rejected.
+format: AIOS_BRAIN_ATTENTION_FAMILIES
+version: 1
+selector_types:
+  sha:
+    type: string
+    pattern: '[0-9a-f]{40}'
+  digest:
+    type: string
+    pattern: '[0-9a-f]{64}'
+  run:
+    type: string
+    pattern: RUN-[A-Za-z0-9][A-Za-z0-9._-]{0,95}
+  delivery:
+    type: string
+    pattern: '[A-Za-z0-9][A-Za-z0-9_-]{0,127}'
+  subject:
+    type: string
+    pattern: (?:NONE|(?:RUN|TASK)-[A-Za-z0-9][A-Za-z0-9._-]{0,95})
+  canonical_ref:
+    type: string
+    pattern: refs/heads/(?:main|aios/(?:review|failure|artifacts|failure-artifacts|review-decision|repair|remediation|task)/[A-Za-z0-9._-]{1,128})
+  execution_operation:
+    type: string
+    enum:
+    - PRIMARY
+    - REMEDIATION
+    - REPAIR
+  carrier:
+    type: string
+    enum:
+    - INGRESS
+    - PRIMARY
+    - REMEDIATION
+    - REPAIR
+  ingress_operation:
+    type: string
+    enum:
+    - AUTHOR_REMEDIATION
+    - AUTHOR_REPAIR
+    - AUTHOR_TASK
+    - SUBMIT_REVIEW
+    - UNKNOWN
+  review_operation:
+    type: string
+    enum:
+    - SUBMIT_REVIEW
+  correction_operation:
+    type: string
+    enum:
+    - AUTHOR_REMEDIATION
+    - AUTHOR_REPAIR
+  publication_stage:
+    type: string
+    enum:
+    - DISPATCH
+    - EXECUTION
+  positive:
+    type: integer
+    minimum: 1
+    maximum: 9007199254740991
+  'false':
+    type: literal
+    value: false
+  original:
+    type: attention_identity
+    maximum_bytes: 8192
+    excluded_family: WAKE_DELIVERY_RECOVERY_FOR_UNRESOLVED_ATTENTION
+  literal:CANONICAL_CONFLICT:
+    type: literal
+    value: CANONICAL_CONFLICT
+  literal:CARRIER_REJECTED:
+    type: literal
+    value: CARRIER_REJECTED
+  literal:DISPATCH_REJECTED:
+    type: literal
+    value: DISPATCH_REJECTED
+  literal:PRE_AIOS_FAILED:
+    type: literal
+    value: PRE_AIOS_FAILED
+  literal:PUBLICATION_FAILED:
+    type: literal
+    value: PUBLICATION_FAILED
+  literal:PUBLICATION_PROVEN:
+    type: literal
+    value: PUBLICATION_PROVEN
+  literal:REVIEW_FOLLOWUP:
+    type: literal
+    value: REVIEW_FOLLOWUP
+families:
+  RUN_RESULT_REQUIRING_SEMANTIC_REVIEW:
+    run_id: run
+    artifact_sha: sha
+  RUN_FAILURE_REQUIRING_CORRECTION_REASONING:
+    run_id: run
+    artifact_sha: sha
+  INGRESS_OR_CARRIER_REJECTION:
+    workflow_run_id: positive
+    run_attempt: positive
+    artifact_id: positive
+    source_digest: digest
+    issue_id: positive
+    issue_number: positive
+    body_digest: digest
+    operation: ingress_operation
+    subject_id: subject
+    subject_sha: sha
+    finding_id: delivery
+    carrier: carrier
+    run_created: 'false'
+    source_boundary: literal:CARRIER_REJECTED
+  REVIEW_INGRESS_REJECTION:
+    workflow_run_id: positive
+    run_attempt: positive
+    artifact_id: positive
+    source_digest: digest
+    issue_id: positive
+    issue_number: positive
+    body_digest: digest
+    operation: review_operation
+    subject_id: subject
+    subject_sha: sha
+    finding_id: delivery
+    run_created: 'false'
+    source_boundary: literal:CARRIER_REJECTED
+  REMEDIATION_OR_REPAIR_AUTHORING_REJECTION:
+    workflow_run_id: positive
+    run_attempt: positive
+    artifact_id: positive
+    source_digest: digest
+    issue_id: positive
+    issue_number: positive
+    body_digest: digest
+    operation: correction_operation
+    subject_id: subject
+    subject_sha: sha
+    finding_id: delivery
+    run_created: 'false'
+    source_boundary: literal:CARRIER_REJECTED
+  PRIMARY_REMEDIATION_REPAIR_DISPATCH_REJECTION:
+    workflow_run_id: positive
+    run_attempt: positive
+    artifact_id: positive
+    source_digest: digest
+    operation: execution_operation
+    delivery_id: delivery
+    run_created: 'false'
+    subject_id: subject
+    subject_sha: sha
+    finding_id: delivery
+    source_boundary: literal:DISPATCH_REJECTED
+  PRE_AIOS_OPERATIONAL_FAILURE_REQUIRING_DIAGNOSIS:
+    workflow_run_id: positive
+    run_attempt: positive
+    artifact_id: positive
+    source_digest: digest
+    operation: execution_operation
+    delivery_id: delivery
+    run_created: 'false'
+    subject_id: subject
+    subject_sha: sha
+    finding_id: delivery
+    source_boundary: literal:PRE_AIOS_FAILED
+  REVIEW_CHANGES_REQUIRED_OR_BLOCKED:
+    run_id: run
+    artifact_sha: sha
+    decision_sha: sha
+    reviewed_sha: sha
+    source_boundary: literal:REVIEW_FOLLOWUP
+  PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE:
+    workflow_run_id: positive
+    run_attempt: positive
+    artifact_id: positive
+    source_digest: digest
+    run_id: run
+    artifact_sha: sha
+    decision_sha: sha
+    reviewed_sha: sha
+    stage: publication_stage
+    source_boundary: literal:PUBLICATION_FAILED
+  PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING:
+    run_id: run
+    artifact_sha: sha
+    decision_sha: sha
+    reviewed_sha: sha
+    published_sha: sha
+    source_boundary: literal:PUBLICATION_PROVEN
+  CANONICAL_CONFLICT_OR_STALENESS:
+    workflow_run_id: positive
+    run_attempt: positive
+    artifact_id: positive
+    source_digest: digest
+    prepared_sha: sha
+    prepared_digest: digest
+    predecessor_ref: canonical_ref
+    predecessor_sha: sha
+    observed_sha: sha
+    source_boundary: literal:CANONICAL_CONFLICT
+  WAKE_DELIVERY_RECOVERY_FOR_UNRESOLVED_ATTENTION:
+    original_event_id: original
+non_wake:
+- ADMISSION_ACCEPTED
+- AIOS_INVOKED
+- AUTO_PUBLICATION_STARTED
+- CARRIER_ADMITTED
+- DISPATCH_ACCEPTED
+- DISPATCH_REQUEST_ACCEPTED
+- EXECUTOR_IN_PROGRESS
+- RUNNER_STARTED
+- RUN_ATTRIBUTED
+- SELF_HOST_COMPLETED
+- TERMINAL_POINTER
+- VERIFICATION_IN_PROGRESS

@@ -359,10 +359,10 @@ def test_repair_workflow_persists_exact_run_receipt_artifact() -> None:
         "uses": "actions/upload-artifact@v4",
         "env": {"AIOS_OPERATIONAL_RECEIPT_PATH": receipt_path},
         "with": {
-            "name": "aios-operational-receipt-v2",
+            "name": "aios-operational-receipt-v2-repair-attempt-${{ github.run_attempt }}",
             "path": "${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}",
             "if-no-files-found": "error",
-            "retention-days": "30",
+            "retention-days": "90",
         },
     }
     assert "AIOS_OPERATIONAL_RECEIPT_PATH" not in job["env"]

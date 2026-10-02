@@ -1,4 +1,4 @@
-"""Durable machine-local, attach-only terminal doorbells; no lifecycle authority."""
+"""Durable machine-local, attach-only selector doorbells; no lifecycle authority."""
 
 from __future__ import annotations
 
@@ -19,7 +19,19 @@ from typing import Iterator
 from urllib.parse import urlsplit
 
 REPOSITORY = "trung-via/AIOS-renew"
-EVENT_PATTERN = re.compile(r"terminal:(RESULT|FAILURE):RUN-[A-Za-z0-9][A-Za-z0-9._-]{0,95}:[0-9a-f]{40}")
+class _EventGrammar:
+    """Strict shared registry grammar, including unchanged H4A4 terminal IDs."""
+
+    @staticmethod
+    def fullmatch(value):
+        from .brain_attention import AttentionError, parse_event_id
+        try:
+            return parse_event_id(value)
+        except (AttentionError, TypeError, ValueError):
+            return None
+
+
+EVENT_PATTERN = _EventGrammar()
 CHAT_PATH = re.compile(
     r"(?:/g/g-[A-Za-z0-9-]*)?/c/"
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/?"
@@ -373,6 +385,21 @@ class CanonicalFreshness:
         return process.stdout.decode("utf-8", errors="strict").strip()
 
     def observe(self, event_id):
+        from .brain_attention import RECOVERY, parse_event_id
+        try:
+            item = parse_event_id(event_id)
+            if item.family == RECOVERY:
+                return self.observe(item.selectors["original_event_id"])
+            if not event_id.startswith("terminal:"):
+                from .brain_attention import ArtifactSources, GitSources, freshness
+                with tempfile.TemporaryDirectory(prefix="aios-attention-observe-") as location:
+                    path = Path(location)
+                    self.git(path, "init", "--bare", "--quiet")
+                    sources = GitSources(path, self.git, self.remote)
+                    repository = self.remote.removeprefix("https://github.com/").removesuffix(".git")
+                    return freshness(item, sources, ArtifactSources(repository, self.deadline))
+        except Exception:
+            return "UNKNOWN"
         from .terminal_attention import _load_yaml
 
         _, kind, run_id, artifact_sha = event_id.split(":")
@@ -904,10 +931,30 @@ def operate(repository, binding, event_id=None, adapter_factory=BrowserAdapter,
     state = State(external_path(str(binding.state_path)), repository)
     if binding.repository != repository:
         raise WakeBlocked("REGISTRY_CONFLICT")
+    from .brain_attention import RECOVERY, parse_event_id
+    recovery = None
     if event_id is not None:
         doorbell(event_id, repository)
-        _admit_inbox(state, event_id)
+        requested = parse_event_id(event_id)
+        if requested.family == RECOVERY:
+            recovery = requested.selectors["original_event_id"]
+            event_id = recovery
+    if event_id is not None:
+        doorbell(event_id, repository)
+        if recovery is None:
+            _admit_inbox(state, event_id)
     with state.locked() as data:
+        if recovery is not None:
+            original = data["events"].get(recovery)
+            if original is None or original["status"] not in {"PENDING", "DEFERRED", "AMBIGUOUS"}:
+                raise WakeBlocked("INVALID_INPUT")
+            # Missing/conflicting source evidence retains the original untouched.
+            if _fresh(projection, recovery) == "RESOLVED":
+                data["events"][recovery] = record("RESOLVED_NOOP")
+                if data["flight"] and data["flight"]["event_id"] == recovery:
+                    data["flight"] = None
+                state.write(data)
+                return [dict(event_id=recovery, status="NOOP", reason="CANONICALLY_RESOLVED")]
         _remember_binding(data, binding)
         _consume_inbox(state, data)
         if event_id is not None:
@@ -952,8 +999,11 @@ def deliver(event_id: str, repository: str, binding: Binding, adapter_factory=Br
     doorbell(event_id, repository)
     receipt = dict(event_id=event_id, status="BLOCKED", reason="LOCAL_FAILURE")
     try:
+        from .brain_attention import RECOVERY, parse_event_id
+        item = parse_event_id(event_id)
+        original = item.selectors["original_event_id"] if item.family == RECOVERY else event_id
         receipts = operate(repository, binding, event_id, adapter_factory, projection, binding_provider)
-        return next(r for r in receipts if r["event_id"] == event_id)
+        return next(r for r in receipts if r["event_id"] == original)
     except WakeBlocked as exc:
         return dict(receipt, reason=str(exc))
     except Exception:

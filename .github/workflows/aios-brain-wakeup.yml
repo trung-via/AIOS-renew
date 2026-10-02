@@ -39,6 +39,7 @@ jobs:
         env:
           AIOS_PROFILE_POLICY: ${{ github.workspace }}/.ai/executor-profiles.yaml
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-brain-wakeup-receipt.txt
+          AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-primary/source.json
         run: >-
           python -m aios_renew.github_issue_wakeup
           --event "$GITHUB_EVENT_PATH"
@@ -83,6 +84,27 @@ jobs:
                 effort_source: process.env.AIOS_EFFORT_SOURCE,
               },
             });
+
+      - name: Observe rejected PRIMARY dispatch
+        if: always() && steps.admission.outcome == 'success' && steps.dispatch.outcome == 'failure'
+        env:
+          AIOS_DELIVERY_ID: ${{ steps.admission.outputs.dispatch_id }}
+          AIOS_TASK_ID: ${{ steps.admission.outputs.task_id }}
+          AIOS_TASK_COMMIT_SHA: ${{ steps.admission.outputs.task_commit_sha }}
+          AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-primary/source.json
+        run: >-
+          python -m aios_renew.brain_attention dispatch --operation PRIMARY
+          --delivery-id "$AIOS_DELIVERY_ID" --subject-id "$AIOS_TASK_ID"
+          --subject-sha "$AIOS_TASK_COMMIT_SHA" --source "$AIOS_ATTENTION_SOURCE_PATH"
+
+      - name: Export bounded PRIMARY attention observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-attention-source-v1-primary-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aios-attention-primary/source.json
+          if-no-files-found: ignore
+          retention-days: 90
 
       - name: Post bounded carrier receipt
         if: always()

@@ -7,10 +7,29 @@ from pathlib import Path
 import pytest
 
 from aios_renew.operational_receipt import (
+    OperationalReceipt,
+    OperationalReceiptError,
     new_admission_blocker,
     project_delivery_receipt,
     workflow_failure_receipt,
 )
+
+
+def test_operational_flags_cannot_substitute_for_canonical_run_creation():
+    for flags in ({"run_created": 1}, {"executor_invoked": "false"}, {"run_id": "RUN-fixture-001"}):
+        receipt = OperationalReceipt("PRIMARY", "fixture-delivery", "ADMISSION_REJECTED", {}, **flags)
+        with pytest.raises(OperationalReceiptError):
+            receipt.as_dict()
+
+
+def test_attention_projection_excludes_execution_profile_and_retains_explicit_no_run():
+    receipt = workflow_failure_receipt("REPAIR", "fixture-delivery", "CONTROL_SOURCE_DIRTY",
+                                       selectors={"executor": "codex", "model": "private-model", "reasoning_effort": "private-effort"})
+    observation = receipt.attention_observation()
+    assert observation["boundary"] == "PRE_AIOS_FAILED"
+    assert observation["run_created"] is False and observation["operation"] == "REPAIR"
+    assert "run_id" not in observation and "executor" not in observation
+    assert "private" not in json.dumps(observation)
 
 
 def _journal(root: Path, family_dir: str, delivery_id: str, payload: dict) -> None:

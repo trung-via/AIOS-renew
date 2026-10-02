@@ -9,8 +9,101 @@ from uuid import UUID
 import pytest
 
 from aios_renew import local_chat_wake as wake
+from aios_renew import brain_attention as attention
 
 EVENT = "terminal:RESULT:RUN-fixture-001:" + "a" * 40
+
+
+def generic_event():
+    return attention.project_observation(
+        dict(boundary="PUBLICATION_FAILED", run_id="RUN-fixture-001", artifact_sha="a" * 40,
+             decision_sha="b" * 40, reviewed_sha="c" * 40, stage="EXECUTION"),
+        dict(workflow_run_id=1, run_attempt=1, artifact_id=2, source_digest="d" * 64)).event_id
+
+
+def test_generic_attention_uses_durable_deferral_freshness_and_duplicate_preserving_compaction(binding):
+    event = generic_event()
+    adapter = RecoveryAdapter(binding, "DRAFT_PRESENT")
+    assert deliver(event, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "DEFERRED"
+    assert stored(binding)["events"][event]["status"] == "DEFERRED"
+    assert not adapter.inserts and not adapter.submits
+    result = deliver(event, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("UNKNOWN"))
+    assert result["reason"] == "CANONICAL_UNKNOWN" and event in stored(binding)["events"]
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: pytest.fail("resolved source must not attach"),
+                 projection=Projection("RESOLVED"), compact=True)
+    assert event not in stored(binding)["events"]
+    assert wake.event_digest(event) in stored(binding)["tombstones"]
+    assert deliver(event, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("UNKNOWN"))["status"] == "NOOP"
+    assert not adapter.submits
+
+
+def test_generic_two_lane_isolation_and_generation_change_preserve_order(binding):
+    event = generic_event()
+    other = wake.Binding(synthetic_url(48), binding.cdp_endpoint, binding.state_path.with_name("generic-other.json"), 1, "fixture/other")
+    blocked = RecoveryAdapter(binding, "GENERATION_ACTIVE")
+    assert deliver(event, wake.REPOSITORY, binding, lambda _: blocked)["status"] == "DEFERRED"
+    frozen = binding.state_path.read_bytes()
+    active = RecoveryAdapter(other)
+    assert deliver(event, other.repository, other, lambda _: active)["status"] == "SUBMITTED"
+    assert binding.state_path.read_bytes() == frozen and not blocked.submits
+    replacement = wake.Binding(synthetic_url(49), binding.cdp_endpoint, binding.state_path, binding.generation + 1, wake.REPOSITORY)
+    current = [binding]
+    racing = RecoveryAdapter(binding, race=lambda stage: current.__setitem__(0, replacement))
+    assert deliver(event, wake.REPOSITORY, binding, lambda _: racing, binding_provider=lambda: current[0])["reason"] == "BINDING_GENERATION_CHANGED"
+    assert not racing.inserts and not racing.submits
+    assert stored(binding)["events"][event]["generation"] is None
+
+
+def test_recovery_reuses_existing_subject_and_never_enqueues_its_own_identity(binding):
+    event = generic_event()
+    adapter = RecoveryAdapter(binding, "DRAFT_PRESENT")
+    deliver(event, wake.REPOSITORY, binding, lambda _: adapter)
+    recovery = attention.attention(attention.RECOVERY, dict(original_event_id=event)).event_id
+    before = binding.state_path.read_bytes()
+    assert deliver(recovery, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("UNKNOWN"))["reason"] == "CANONICAL_UNKNOWN"
+    assert binding.state_path.read_bytes() == before
+    adapter.block = None
+    assert deliver(recovery, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "SUBMITTED"
+    assert list(stored(binding)["events"]) == [event]
+    assert recovery not in stored(binding)["events"] and len(adapter.submits) == 1
+    assert deliver(recovery, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "BLOCKED"
+    assert len(adapter.submits) == 1
+
+
+def test_recovery_of_ambiguous_generic_attention_is_proof_only_on_original_generation(binding):
+    event = generic_event()
+    adapter = RecoveryAdapter(binding, proof=False)
+    assert deliver(event, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "BLOCKED"
+    recovery = attention.attention(attention.RECOVERY, dict(original_event_id=event)).event_id
+    assert deliver(recovery, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "BLOCKED"
+    assert len(adapter.submits) == 1 and stored(binding)["events"][event]["status"] == "AMBIGUOUS"
+    assert stored(binding)["events"][event]["generation"] == binding.generation
+    adapter.proof = True
+    assert deliver(recovery, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "SUBMITTED"
+    assert len(adapter.submits) == 1
+
+
+def test_recovery_without_an_existing_original_or_with_canonical_resolution_never_sends(binding):
+    event = generic_event()
+    recovery = attention.attention(attention.RECOVERY, dict(original_event_id=event)).event_id
+    adapter = RecoveryAdapter(binding, "DRAFT_PRESENT")
+    assert deliver(recovery, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "BLOCKED"
+    assert not binding.state_path.exists()
+    deliver(event, wake.REPOSITORY, binding, lambda _: adapter)
+    assert deliver(recovery, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("RESOLVED"))["status"] == "NOOP"
+    assert stored(binding)["events"][event]["status"] == "RESOLVED_NOOP"
+    assert not adapter.inserts and not adapter.submits
+
+
+def test_every_non_recovery_attention_family_enters_same_durable_lane_path(binding):
+    from test_brain_attention import examples
+    for index, item in enumerate(examples()[:-1]):
+        lane = wake.Binding(binding.chat_url, binding.cdp_endpoint,
+                            binding.state_path.with_name(f"family-{index}.json"), binding.generation, binding.repository)
+        adapter = RecoveryAdapter(lane, "DRAFT_PRESENT")
+        assert deliver(item.event_id, lane.repository, lane, lambda _: adapter)["status"] == "DEFERRED"
+        assert stored(lane)["events"][item.event_id]["status"] == "DEFERRED"
+        assert not adapter.inserts and not adapter.submits
 
 
 class Projection:

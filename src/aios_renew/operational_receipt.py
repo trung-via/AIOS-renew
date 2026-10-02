@@ -85,6 +85,10 @@ class OperationalReceipt:
         _validate_family_delivery(self.family, self.delivery_id)
         if self.boundary not in BOUNDARIES:
             raise OperationalReceiptError("invalid operational boundary")
+        if type(self.run_created) is not bool or type(self.executor_invoked) is not bool:
+            raise OperationalReceiptError("invalid operational attribution flags")
+        if self.run_id is not None and self.run_created is not True:
+            raise OperationalReceiptError("RUN attribution requires run_created=true")
         selectors = _bounded_selectors(self.selectors)
         delivery_field = _DELIVERY_FIELDS[self.family][0]
         payload: dict[str, Any] = {
@@ -137,6 +141,11 @@ class OperationalReceipt:
 
     def render(self) -> str:
         return json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
+
+    def attention_observation(self) -> dict[str, Any]:
+        """Project only proven boundaries through the shared attention registry."""
+        from .brain_attention import operational_observation
+        return operational_observation(self.as_dict())
 
 
 def workflow_failure_receipt(

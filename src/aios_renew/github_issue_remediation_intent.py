@@ -512,6 +512,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         _write_text(args.output, request.github_outputs())
         _write_text(args.receipt, render_admitted(request))
     except GitHubIssueRemediationIntentError as exc:
+        from .brain_attention import observe_carrier_rejection
+        observe_carrier_rejection(args.event, "REMEDIATION")
         try:
             _write_text(args.receipt, render_rejection(exc))
         except GitHubIssueRemediationIntentError:

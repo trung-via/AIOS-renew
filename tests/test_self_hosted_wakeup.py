@@ -241,10 +241,10 @@ def test_workflow_persists_run_scoped_receipt_artifact() -> None:
     assert upload["uses"] == "actions/upload-artifact@v4"
     assert upload["env"] == {"AIOS_OPERATIONAL_RECEIPT_PATH": receipt_path}
     assert upload["with"] == {
-        "name": "aios-operational-receipt-v2",
+        "name": "aios-operational-receipt-v2-primary-attempt-${{ github.run_attempt }}",
         "path": "${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}",
         "if-no-files-found": "error",
-        "retention-days": 30,
+        "retention-days": 90,
     }
     assert "AIOS_OPERATIONAL_RECEIPT_PATH" not in job["env"]
     for step in job["steps"]:

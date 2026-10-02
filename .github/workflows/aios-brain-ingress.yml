@@ -37,6 +37,7 @@ jobs:
         continue-on-error: true
         env:
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-brain-ingress-receipt.txt
+          AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-ingress/source.json
         run: |
           python -m aios_renew.github_issue_ingress --event "$GITHUB_EVENT_PATH" --policy .ai/brain-ingress-carriers.yaml --repo . --output "$GITHUB_OUTPUT" > "$AIOS_RECEIPT_PATH"
 
@@ -82,6 +83,45 @@ jobs:
                 executor: '',
               },
             });
+
+      - name: Observe rejected publication dispatch
+        if: always() && steps.ingress.outcome == 'success' && steps.ingress.outputs.publication_run_id != '' && steps.dispatch.outcome == 'failure'
+        env:
+          AIOS_PUBLICATION_RUN_ID: ${{ steps.ingress.outputs.publication_run_id }}
+          AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-dispatch/source.json
+        run: >-
+          python -m aios_renew.brain_attention dispatch --operation PUBLICATION
+          --run-id "$AIOS_PUBLICATION_RUN_ID" --source "$AIOS_ATTENTION_SOURCE_PATH"
+
+      - name: Observe rejected REPAIR dispatch
+        if: always() && steps.ingress.outcome == 'success' && steps.ingress.outputs.repair_sha != '' && steps.repair_dispatch.outcome == 'failure'
+        env:
+          AIOS_DELIVERY_ID: ${{ steps.ingress.outputs.repair_dispatch_id }}
+          AIOS_FAILED_RUN_ID: ${{ steps.ingress.outputs.failed_run_id }}
+          AIOS_REPAIR_SHA: ${{ steps.ingress.outputs.repair_sha }}
+          AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-dispatch/source.json
+        run: >-
+          python -m aios_renew.brain_attention dispatch --operation REPAIR
+          --delivery-id "$AIOS_DELIVERY_ID" --subject-id "$AIOS_FAILED_RUN_ID"
+          --subject-sha "$AIOS_REPAIR_SHA" --source "$AIOS_ATTENTION_SOURCE_PATH"
+
+      - name: Export bounded ingress attention observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-attention-source-v1-ingress-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aios-attention-ingress/source.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Export bounded dispatch attention observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-attention-source-v1-dispatch-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aios-attention-dispatch/source.json
+          if-no-files-found: ignore
+          retention-days: 90
 
       - name: Post bounded transport receipt
         if: always()

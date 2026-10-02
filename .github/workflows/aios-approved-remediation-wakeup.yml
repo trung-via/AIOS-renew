@@ -67,12 +67,12 @@ jobs:
         run: |
           function Write-OperationalFailure([string]$Reason) {
             if ([string]::IsNullOrWhiteSpace($env:AIOS_OPERATIONAL_RECEIPT_PATH)) { return }
-            if ($env:AIOS_CORRECTION_DISPATCH_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { return }
+            $boundedDelivery = if ($env:AIOS_CORRECTION_DISPATCH_ID -match '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { $env:AIOS_CORRECTION_DISPATCH_ID } else { 'UNATTRIBUTED' }
             $selectors = @{}
             if ($env:AIOS_SOURCE_RUN_ID -match '^RUN-[A-Za-z0-9_-]+-[0-9]{3,}$') { $selectors.source_run_id = $env:AIOS_SOURCE_RUN_ID }
             if ($env:AIOS_FINDING_ID -match '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { $selectors.finding_id = $env:AIOS_FINDING_ID }
             if ($env:AIOS_EXECUTOR -in @('codex', 'antigravity')) { $selectors.executor = $env:AIOS_EXECUTOR }
-            $receipt = [ordered]@{format='AIOS_OPERATIONAL_RECEIPT';version=2;kind='OPERATIONAL_RECEIPT';family='REMEDIATION';delivery=@{kind='correction_dispatch_id';id=$env:AIOS_CORRECTION_DISPATCH_ID};boundary='OPERATIONAL_FAILED';selectors=$selectors;run_created=$false;executor_invoked=$false;cause=@{authority='WORKFLOW';phase='PRE_AIOS';reason_code=$Reason}}
+            $receipt = [ordered]@{format='AIOS_OPERATIONAL_RECEIPT';version=2;kind='OPERATIONAL_RECEIPT';family='REMEDIATION';delivery=@{kind='correction_dispatch_id';id=$boundedDelivery};boundary='OPERATIONAL_FAILED';selectors=$selectors;run_created=$false;executor_invoked=$false;cause=@{authority='WORKFLOW';phase='PRE_AIOS';reason_code=$Reason}}
             if ($env:AIOS_CONTROL_SHA -match '^[0-9a-f]{40}$') { $receipt.control_sha = $env:AIOS_CONTROL_SHA }
             Set-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Value ($receipt | ConvertTo-Json -Compress -Depth 5) -Encoding utf8
           }
@@ -134,12 +134,12 @@ jobs:
         run: |
           function Write-OperationalState([string]$Boundary, [string]$Reason) {
             if ([string]::IsNullOrWhiteSpace($env:AIOS_OPERATIONAL_RECEIPT_PATH)) { return }
-            if ($env:AIOS_CORRECTION_DISPATCH_ID -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { return }
+            $boundedDelivery = if ($env:AIOS_CORRECTION_DISPATCH_ID -match '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { $env:AIOS_CORRECTION_DISPATCH_ID } else { 'UNATTRIBUTED' }
             $selectors = @{}
             if ($env:AIOS_SOURCE_RUN_ID -match '^RUN-[A-Za-z0-9_-]+-[0-9]{3,}$') { $selectors.source_run_id = $env:AIOS_SOURCE_RUN_ID }
             if ($env:AIOS_FINDING_ID -match '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$') { $selectors.finding_id = $env:AIOS_FINDING_ID }
             if ($env:AIOS_EXECUTOR -in @('codex', 'antigravity')) { $selectors.executor = $env:AIOS_EXECUTOR }
-            $receipt = [ordered]@{format='AIOS_OPERATIONAL_RECEIPT';version=2;kind='OPERATIONAL_RECEIPT';family='REMEDIATION';delivery=@{kind='correction_dispatch_id';id=$env:AIOS_CORRECTION_DISPATCH_ID};boundary=$Boundary;selectors=$selectors;run_created=$false;executor_invoked=$false}
+            $receipt = [ordered]@{format='AIOS_OPERATIONAL_RECEIPT';version=2;kind='OPERATIONAL_RECEIPT';family='REMEDIATION';delivery=@{kind='correction_dispatch_id';id=$boundedDelivery};boundary=$Boundary;selectors=$selectors;run_created=$false;executor_invoked=$false}
             if ($env:AIOS_CONTROL_SHA -match '^[0-9a-f]{40}$') { $receipt.control_sha = $env:AIOS_CONTROL_SHA }
             if ($Reason) { $receipt.cause = @{authority='WORKFLOW';phase='PRE_AIOS';reason_code=$Reason} }
             Set-Content -LiteralPath $env:AIOS_OPERATIONAL_RECEIPT_PATH -Value ($receipt | ConvertTo-Json -Compress -Depth 5) -Encoding utf8
@@ -189,10 +189,10 @@ jobs:
         env:
           AIOS_OPERATIONAL_RECEIPT_PATH: ${{ runner.temp }}/aios-remediation-operational-receipt-v2.json
         with:
-          name: aios-operational-receipt-v2
+          name: aios-operational-receipt-v2-remediation-attempt-${{ github.run_attempt }}
           path: ${{ env.AIOS_OPERATIONAL_RECEIPT_PATH }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
 
       - name: Remove transient control source
         if: always()

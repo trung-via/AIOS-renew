@@ -359,8 +359,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             if outputs:
                 _write_outputs(args.output, outputs)
     except (GitHubIssueIngressError, AuthoringIngressError, OSError) as exc:
+        from .brain_attention import observe_carrier_rejection
+        observe_carrier_rejection(args.event, "INGRESS")
         print(render_failure(exc))
         return 1
+    from .brain_attention import observe_ingress_success
+    observe_ingress_success(delivery, args.repo)
     print(delivery.render_receipt())
     return 0
 

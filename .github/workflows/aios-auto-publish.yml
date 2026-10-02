@@ -29,12 +29,15 @@ jobs:
           fetch-depth: 0
 
       - name: Publish or replay exact canonical review decision
+        id: publication
         env:
           AIOS_EVENT_NAME: ${{ github.event_name }}
           AIOS_DECISION_REF: ${{ github.ref }}
           AIOS_DECISION_SHA: ${{ github.sha }}
           AIOS_REPLAY_RUN_ID: ${{ inputs.run_id }}
           PYTHONPATH: src
+          AIOS_PUBLICATION_REPORT: ${{ runner.temp }}/aios-publication-report.json
+          AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-publication/source.json
         shell: bash
         run: |
           set -euo pipefail
@@ -65,6 +68,9 @@ jobs:
             fi
           fi
 
+          # Preserve exact attempt framing before publication can fail.
+          printf 'run_id=%s\ndecision_sha=%s\n' "$run_id" "$decision_sha" >> "$GITHUB_OUTPUT"
+
           git fetch --no-tags origin refs/heads/main
           control_sha="$(git rev-parse FETCH_HEAD)"
           git checkout --detach "$control_sha"
@@ -73,4 +79,26 @@ jobs:
             --remote origin \
             --run-id "$run_id" \
             --decision-sha "$decision_sha" \
-            --control-sha "$control_sha"
+            --control-sha "$control_sha" > "$AIOS_PUBLICATION_REPORT"
+
+      - name: Project canonical review and exact publication attempt
+        if: always() && steps.publication.outputs.run_id != '' && steps.publication.outputs.decision_sha != ''
+        env:
+          PYTHONPATH: src
+          AIOS_RUN_ID: ${{ steps.publication.outputs.run_id }}
+          AIOS_DECISION_SHA: ${{ steps.publication.outputs.decision_sha }}
+          AIOS_PUBLICATION_REPORT: ${{ runner.temp }}/aios-publication-report.json
+          AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-publication/source.json
+        run: >-
+          python -m aios_renew.brain_attention publication
+          --run-id "$AIOS_RUN_ID" --decision-sha "$AIOS_DECISION_SHA"
+          --report "$AIOS_PUBLICATION_REPORT" --source "$AIOS_ATTENTION_SOURCE_PATH"
+
+      - name: Export bounded publication attention observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-attention-source-v1-publication-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aios-attention-publication/source.json
+          if-no-files-found: ignore
+          retention-days: 90

@@ -43,7 +43,7 @@ def admitted_context(job_result="success", terminal_kind="RESULT"):
 
 def test_reusable_entry_accepts_only_bounded_identity_and_fixed_repository():
     parsed, text = workflow()
-    assert set(parsed["on"]) == {"workflow_call", "schedule"}
+    assert set(parsed["on"]) == {"workflow_call", "schedule", "workflow_run"}
     call = parsed["on"]["workflow_call"]
     assert set(call) == {"inputs"}
     assert set(call["inputs"]) == {"event_id", "repository"}
@@ -53,7 +53,7 @@ def test_reusable_entry_accepts_only_bounded_identity_and_fixed_repository():
     job = parsed["jobs"]["deliver"]
     assert job["runs-on"] == ["self-hosted", "windows", "x64", "aios-renew"]
     assert int(job["timeout-minutes"]) <= 5
-    for forbidden in ("workflow_dispatch", "workflow_run", "issues:", "actions: write",
+    for forbidden in ("workflow_dispatch", "issues:", "actions: write",
                       "aios run", "aios repair", "aios remediate", "upload-artifact", "playwright install",
                       "new_page", "launch_persistent_context", "secrets."):
         assert forbidden not in text
@@ -185,5 +185,34 @@ def test_timer_rechecks_only_admitted_local_work_under_human_gate(enabled, allow
     assert "--drain --compact --rechecks 4 --interval 15" in command
     assert "--event-id" not in command
     assert "AIOS_WAKE_EVENT_ID" not in job["steps"][-1]["env"]
+    assert job["permissions"] == {"contents": "read", "actions": "read"}
     for forbidden in ("actions: write", "createWorkflowDispatch", "next_action", "ChatGPT Work", "upload-artifact"):
         assert forbidden not in text
+
+
+def test_source_fan_in_is_read_only_bounded_and_enters_the_existing_local_lane():
+    parsed, text = workflow()
+    trigger = parsed["on"]["workflow_run"]
+    assert trigger["types"] == ["completed"]
+    assert set(trigger["workflows"]) == {
+        "AIOS Issue carrier entry", "AIOS self-hosted primary wakeup", "AIOS self-hosted REPAIR wakeup",
+        "AIOS approved remediation wakeup", "AIOS auto-publish reviewed candidate",
+    }
+    assert parsed["jobs"]["project"]["permissions"] == {"contents": "read", "actions": "read"}
+    project = parsed["jobs"]["project"]
+    assert "head_repository.full_name == 'trung-via/AIOS-renew'" in project["if"]
+    assert "vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true'" in project["if"]
+    steps = project["steps"]
+    assert steps[0]["with"] == {"ref": "main", "persist-credentials": "false"}
+    assert "aios_renew.brain_attention collect" in steps[-1]["run"]
+    assert steps[-1]["env"]["AIOS_SOURCE_ATTEMPT"] == "${{ github.event.workflow_run.run_attempt }}"
+    local = parsed["jobs"]["deliver-projected"]
+    assert local["needs"] == "project"
+    assert "has_events == 'true'" in local["if"]
+    assert local["strategy"]["fail-fast"] == "false"
+    assert "aios_renew.local_chat_wake --event-id" in local["steps"][-1]["run"]
+    assert "aios_renew.local_chat_wake --drain" in parsed["jobs"]["recheck"]["steps"][-1]["run"]
+    assert "workflow_run.conclusion" not in text
+    assert "createWorkflowDispatch" not in text and "actions: write" not in text
+    assert "aios run" not in text and "aios repair" not in text and "aios remediate" not in text
+    assert "chatgpt.com" not in text and "cdp_endpoint" not in text and "next_action" not in text

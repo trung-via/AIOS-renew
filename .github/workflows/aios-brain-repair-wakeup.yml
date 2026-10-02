@@ -46,6 +46,7 @@ jobs:
         env:
           AIOS_PROFILE_POLICY: ${{ github.workspace }}/.ai/executor-profiles.yaml
           AIOS_RECEIPT_PATH: ${{ runner.temp }}/aios-repair-wakeup-receipt.txt
+          AIOS_ATTENTION_SOURCE_PATH: ${{ runner.temp }}/aios-attention-repair/source.json
         run: >-
           python -m aios_renew.github_issue_repair_wakeup
           --event "$GITHUB_EVENT_PATH"
@@ -53,6 +54,15 @@ jobs:
           --profile-policy "$AIOS_PROFILE_POLICY"
           --output "$GITHUB_OUTPUT"
           --receipt "$AIOS_RECEIPT_PATH"
+
+      - name: Export bounded REPAIR carrier attention observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-attention-source-v1-repair-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aios-attention-repair/source.json
+          if-no-files-found: ignore
+          retention-days: 90
 
   dispatch:
     needs: admit
