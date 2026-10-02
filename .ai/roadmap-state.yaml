@@ -1475,7 +1475,17 @@ sequence:
         - DO_NOT_CHANGE_TASK_274_INSERTION_OR_TASK_275_SEND_LOGIC
         - KEEP_EXISTING_RUN_268_ATTEMPTING_AND_NEVER_BLINDLY_REPLAY
         - SYNTHETIC_FIXTURES_ONLY_NO_PRIVATE_LIVE_CHAT_DATA
-    execution_profile_status: AWAITING_HUMAN_SELECTION
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-276
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
     sequencing:
       - AFTER_TASK_275_SEND_CONTROL_SELECTOR_COMPATIBILITY_FIX
       - AFTER_WORKFLOW_354_POST_SEND_SELECTOR_DRIFT_DIAGNOSIS
