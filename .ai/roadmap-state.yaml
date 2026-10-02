@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-exact-blob-preservation-fix
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -1508,7 +1508,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
-    status: NEXT
+    status: DONE
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -1535,7 +1535,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: TASK_277_REVIEWED_PUBLISHED_CLOSURE_ASSESSMENT_READY
+      status: CLOSED_EVIDENCE_EQUIVALENT_CONFORMANCE_PASS
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1864,7 +1864,46 @@ sequence:
             exact target/composer scoping, uniqueness, no generic button heuristics,
             no click on ambiguity, existing data-testid compatibility where valid,
             and all current Human-draft/generation/dedupe/privacy boundaries.
-          constraints:
+          closure_assessment:
+      assessed_on: "2026-10-02"
+      authority: HUMAN_BRAIN_PLANNING
+      contract: H4A3_EXACT_WORKFLOW_354_EVIDENCE_EQUIVALENT_CLOSURE_V1
+      contract_publication_sha: "adcc7ed64ca8798ff5280be1af7d6c2ab67eb67c"
+      exact_scope:
+        repository: trung-via/AIOS-renew
+        workflow_run_id: 36984172510
+        historical_attempt: 1
+        duplicate_attempt: 2
+        event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+      evidence_chain:
+        exact_terminal_admission_pass: true
+        recorded_send_before_post_send_proof_failure: true
+        historical_blocked_local_failure_preserved: true
+        reviewed_task_276_bounded_exact_turn_proof: true
+        safeguarded_human_reconciliation_pass: true
+        duplicate_noop_already_submitted_pass: true
+        post_duplicate_exact_one_turn_proof_pass: true
+      negative_case_basis: TASK_266_REVIEWED_DETERMINISTIC_COVERAGE_REUSED
+      historical_receipt_rewritten: false
+      assistant_output_used_as_evidence: false
+      new_send_or_replay_required_for_closure: false
+      runtime_lifecycle_effect: NONE
+      reviewer_or_publisher_authority_effect: NONE
+      assessment: PASS
+      result: H4A3_LIVE_PLANNING_CONFORMANCE_CLOSED
+      successor: brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-exact-blob-preservation-fix
+      interpretation: >-
+        Human/Brain assessed the complete exact workflow-354 evidence-equivalent chain
+        under the reviewed and published TASK-277 section 4.3 contract. All seven required
+        facts are present with preserved chronology and identity: exact admission PASS,
+        recorded automatic Send before post-send proof failure, immutable historical
+        BLOCKED / LOCAL_FAILURE, reviewed TASK-276 bounded exact-turn proof, safeguarded
+        Human ATTEMPTING-to-SUBMITTED reconciliation, duplicate NOOP / ALREADY_SUBMITTED,
+        and a post-duplicate EXACT one-turn proof with unique target and empty composer.
+        No historical SUBMITTED receipt is fabricated. This closes H4A3 planning
+        conformance only; it creates no new Runtime, Reviewer, Publisher or transport
+        truth and authorizes no replay, Send or automatic downstream advancement.
+    constraints:
             - DO_NOT_USE_ARIA_LABEL_ALONE_GLOBALLY
             - SCOPE_SEND_DISCOVERY_TO_THE_EXACT_BOUND_COMPOSER_FORM_OR_BOUNDED_NEARBY_CONTROL_SURFACE
             - REQUIRE_EXACTLY_ONE_VISIBLE_ENABLED_SEND_CONTROL
@@ -2590,7 +2629,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-exact-blob-preservation-fix
-    status: QUEUED_AFTER_H4A3_BEFORE_H4A4
+    status: NEXT
     phase: H1R_REVIEWED_RESULT_EXACT_BLOB_PRESERVATION_FIX
     task_id: TASK-270
     task_revision: 1
