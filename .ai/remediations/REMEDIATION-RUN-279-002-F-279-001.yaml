@@ -1,0 +1,10 @@
+finding_id: F-279-001
+action: CODE_FIX
+reviewed_sha: ecceb0183e13a50158df34ef6109a7120faa2c5a
+modification_scope:
+- docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+verification:
+  policy: minimum-sufficient-v1
+  affected:
+  - git diff --check
+constraints: []
