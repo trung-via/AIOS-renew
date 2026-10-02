@@ -1269,7 +1269,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: READY_FOR_EXACT_TERMINAL_REPLAY
+      status: HUMAN_FRESH_DISPATCH_REQUIRED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1437,6 +1437,30 @@ sequence:
         h4a3_proof_effect: READINESS_ONLY
         exception_consumed: true
         next_boundary: EXACT_RUN_268_RESULT_REPLAY
+      exact_terminal_replay_attempt_3:
+        workflow_run_id: 36963244174
+        workflow_run_number: 348
+        workflow_attempt: 3
+        requested_run_id: RUN-268-001
+        requested_terminal_kind: RESULT
+        requested_artifact_sha: "1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        terminal_attention_admission: PASS
+        local_wake_status: BLOCKED
+        local_wake_reason: INSERT_BLOCKED
+        transport_checkout_sha: "191acd413c24e56bb53a9bf04428938bbd0a436f"
+        task_274_publication_sha: "d07f55b98270fe9d744adcad7bba1b439949d526"
+        transport_includes_task_274_fix: false
+        wake_submitted: false
+        exact_h4a3_source_consumed: false
+        semantic_effect: NONE
+        h4a3_proof_effect: NONE
+        interpretation: >-
+          Re-running workflow run 36963244174 reused historical workflow execution
+          context and the local-chat-wake checkout resolved to pre-publication source
+          191acd413c24e56bb53a9bf04428938bbd0a436f. Therefore the repeated
+          INSERT_BLOCKED does not test the reviewed TASK-274 correction and is not
+          evidence that the published fix failed.
+        next_boundary: FRESH_WORKFLOW_DISPATCH_FROM_CURRENT_MAIN
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
