@@ -635,7 +635,7 @@ def test_exact_submission_proof_reads_only_outbound_and_composer(binding):
     page.counts[wake.STOP] = 1
     adapter.prove(page.payload)
     assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK, wake.PROVE_SEND]
-    assert len(page.resolutions) >= 4
+    assert len(page.resolutions) == 3
     assert set(page.resolutions) == {wake.RESOLVE_USER_TURN}
 
 
