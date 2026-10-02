@@ -1184,9 +1184,30 @@ sequence:
     verification_intent:
       - python -m pytest -q tests/test_local_chat_wake.py
       - git diff --check
+    authored_commit_sha: "1d658739f1ffb9bc755a359b66ce953f617e1967"
+    task_blob_sha: "8056527b7a61f3b63a69b38af7bca762796b04ce"
     task_authoring_audit:
-      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
-      required_profile: brain-high-value-v3
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      packet_fingerprint: "91b2beb8fb1a3df1eb4f7d5a4c780ffdacf30b6557b3bf25a70c1910faebdfb8"
+      construct_fingerprint: "e8248440648a95a66bd023f1a6785a1f8678f57a3e0693a29e124c6c846a9b54"
+      reconciled_candidate_fingerprint: "375a351dc15c7cc9615a0c79b47e4dd35af9bc9b6d8dd4f3b8d3b15d4153232f"
+      stage2_fingerprint: "7f0fdb194a9cfb803ed7bbe393bcadfea6d8d2894256d2cd63955c9743d26154"
+      acceptance_phase_ledger: ALL_CLAIM_NOW
+      ingress_issue: 1345
+      ingress_workflow_run_id: 36968895008
+      reconciled_risks:
+        - PRESERVE_HUMAN_ONLY_ATTEMPTING_RECOVERY_AUTHORITY
+        - DO_NOT_EXPAND_INTO_H4A4_DURABLE_RECOVERY_OR_MULTI_PROJECT_ROUTING
+        - PRESERVE_RUN_268_EXACT_SOURCE_AND_KEEP_BROWSER_FAILURE_OPERATIONAL_ONLY
+        - DO_NOT_USE_GENERIC_WHITESPACE_NORMALIZATION
+        - DO_NOT_TREAT_DOM_MUTATION_AS_APPLICATION_STATE_SUCCESS
+        - KEEP_LIVE_H4A3_REPLAY_OUTSIDE_EXECUTOR_ACCEPTANCE
+        - SYNTHETIC_FIXTURES_ONLY_NO_PRIVATE_LIVE_CHAT_DATA
     human_execution_delegation:
       selected_on: "2026-10-02"
       authority: HUMAN
