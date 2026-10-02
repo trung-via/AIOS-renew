@@ -1,0 +1,43 @@
+review_id: REVIEW-275-001
+reviewed_sha: 30871b4b07272b1d9ab1cd7e72a1a76bf4ed4e50
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-275-001 is the canonical PRIMARY RESULT for TASK-275 r1 with result artifact
+  d379c4fdd0eaab7134cae5ab3fa682796f5a7818, candidate 30871b4b07272b1d9ab1cd7e72a1a76bf4ed4e50,
+  unresolved empty, and the Human-selected Codex gpt-6.1-sol high execution profile.
+- 'Runtime verification passed both required commands: python -m pytest -q tests/test_local_chat_wake.py
+  with 241 passed and 452 skipped in 3.99s, and git diff --check.'
+- The candidate is exactly one commit ahead of execution base 51b2f2436f7ccfb3a915d3ce31990be62deba9a6
+  and changes only src/aios_renew/local_chat_wake.py, tests/test_local_chat_wake.py,
+  and docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md.
+- 'Send discovery is no longer page-global: the implementation proves one composer,
+  walks to exactly one enclosing FORM, and queries only that form for the exact compatibility
+  union [data-testid="send-button"], button[type="submit"][aria-label="Send"]. Zero,
+  multiple, disabled, aria-disabled, missing-form, nested-form, and outside-form candidates
+  fail closed.'
+- Application-ready proof and final click use the same scoped resolver and exact doorbell/surface
+  revalidation. Post-submission proof uses the same form-scoped resolver and rejects
+  ambiguous or still-enabled eligible controls while allowing the expected absent
+  or disabled post-send state.
+- Synthetic Node-backed regression coverage executes the actual browser JavaScript
+  across historical/current selector shapes, identity-union behavior, outside/unrelated
+  controls, disabled and ambiguous candidates, form/composer ambiguity, readiness-to-click
+  races, and proof semantics without private live chat/session material.
+- Normal ATTEMPTING handling remains ATTEMPT_REQUIRES_HUMAN. The documentation replaces
+  the earlier consumed recovery exception with a Human-only one-attempt procedure
+  bound exactly to workflow 36973913060 attempt 1 (#352), and does not authorize Executor
+  cleanup, replay, H4A3 closure, browser supervision, deferred retry, or H4A4 behavior.
+- Terminal-attention workflow 353 admitted RUN-275-001 RESULT but its local wake returned
+  INSERT_BLOCKED while the published control plane still referenced pre-TASK-275 main
+  51b2f2436f7ccfb3a915d3ce31990be62deba9a6. That operational attention-delivery outcome
+  does not test the unpublished TASK-275 candidate and is not a semantic defect in
+  RUN-275-001.
