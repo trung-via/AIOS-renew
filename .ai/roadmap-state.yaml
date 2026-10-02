@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-live-composer-insertion-proof-fix
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -1101,8 +1101,112 @@ sequence:
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-live-composer-insertion-proof-fix
     status: NEXT
+    phase: H4A3_LIVE_COMPOSER_INSERTION_PROOF_FIX
+    task_id: TASK-274
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    objective: >-
+      Correct local-chat-wake insertion and pre-send proof for the observed live
+      regular Project-chat composer so the fixed exact doorbell is inserted through
+      an application-compatible path, canonical-equivalent block rendering is proven
+      without generic whitespace normalization, and exactly one enabled Send control
+      is proven before click, while preserving Human draft/race protection,
+      fail-closed ATTEMPTING recovery, exact-chat identity, privacy, dedupe and
+      ACK-only authority.
+    observed_case:
+      workflow_run_id: 36963244174
+      workflow_run_number: 348
+      workflow_attempt: 2
+      exact_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+      terminal_attention_admission: PASS
+      local_wake_status: BLOCKED
+      local_wake_reason: INSERT_BLOCKED
+      local_event_state: ATTEMPTING
+      state_lock_present: false
+      state_pending_present: false
+      target_page_count: 1
+      target_ok: true
+      composer_text_content_length: 163
+      composer_inner_text_length: 169
+      text_content_matches_expected_without_breaks: true
+      normalized_inner_text_matches_expected: true
+      send_visible_count: 0
+      wake_submitted: false
+      semantic_effect: NONE
+      h4a3_proof_effect: NONE
+    root_cause: >-
+      The exact doorbell was inserted into the live contenteditable DOM but the
+      current post-insert string check rejected the browser's block-separated
+      rendering, while the ChatGPT application had not yet exposed a visible Send
+      control. The correction must therefore prove both exact bounded text
+      equivalence and application-level composer activation; raw DOM mutation alone
+      is insufficient.
+    architecture_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      reconciled_risks:
+        - DO_NOT_USE_GENERIC_WHITESPACE_NORMALIZATION
+        - REQUIRE_EXACT_LINE_CONTENT_AND_ORDER_WITH_BOUNDED_RENDER_SEPARATOR_EQUIVALENCE
+        - DO_NOT_TREAT_DOM_TEXT_MUTATION_AS_APPLICATION_STATE_SUCCESS
+        - REQUIRE_EXACTLY_ONE_ENABLED_SEND_CONTROL_BEFORE_CLICK
+        - APPLY_THE_SAME_EQUIVALENCE_AT_INSERT_AND_PRE_SEND_GATES
+        - PRESERVE_HUMAN_DRAFT_AND_FOCUS_RACE_FAIL_CLOSED_BEHAVIOR
+        - DO_NOT_AUTO_CLEAR_ATTEMPTING_OR_COMPOSER_DRAFT
+        - H4A3_LIVE_REPLAY_REMAINS_POST_PUBLICATION_HUMAN_BRAIN_OPERATION
+    selected_contract: LOCAL_CHAT_WAKE_APPLICATION_COMPATIBLE_INSERTION_PROOF_V1
+    correction_boundaries:
+      - EXACT_DOORBELL_IDENTITY_AND_LINE_ORDER_ONLY
+      - BLOCK_RENDER_SEPARATOR_EQUIVALENCE_MUST_BE_EXPLICIT_AND_BOUNDED
+      - NO_GENERIC_TRIM_SPLIT_OR_WHITESPACE_COLLAPSE
+      - APPLICATION_STATE_MUST_EXPOSE_EXACTLY_ONE_ENABLED_SEND_CONTROL_BEFORE_CLICK
+      - EXISTING_EXACT_CHAT_ACCOUNT_LOGIN_NONREGULAR_GENERATION_AND_DRAFT_GUARDS_REMAIN
+      - ATTEMPTING_NORMAL_DELIVERY_REMAINS_FAIL_CLOSED
+      - HUMAN_RECOVERY_MUST_BE_EXPLICIT_BOUNDED_AND_NONAUTOMATIC
+      - NO_ASSISTANT_OUTPUT_EXTRACTION
+      - NO_LIVE_H4A3_REPLAY_BY_EXECUTOR
+    expected_scope:
+      inspect:
+        - src/aios_renew/local_chat_wake.py
+        - tests/test_local_chat_wake.py
+        - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+        - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+      modify:
+        - src/aios_renew/local_chat_wake.py
+        - tests/test_local_chat_wake.py
+        - docs/AIOS-H4A3-ACK-ONLY-EXACT-CHAT-CONFORMANCE-v1.md
+    verification_intent:
+      - python -m pytest -q tests/test_local_chat_wake.py
+      - git diff --check
+    task_authoring_audit:
+      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
+      required_profile: brain-high-value-v3
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-274
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
+    sequencing:
+      - AFTER_TASK_273_WORKFLOW_DISPATCH_MAIN_REF_FIX
+      - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
+      - BEFORE_TASK_270_H1R_EXACT_BLOB_FIX
+      - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
+    status: BLOCKED_BY_TASK_274_LIVE_COMPOSER_INSERTION_PROOF_FIX
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -1248,7 +1352,7 @@ sequence:
           terminal again yet.
         proposed_correction:
           proposed_task_id: TASK-274
-          status: HUMAN_APPROVAL_REQUIRED
+          status: HUMAN_APPROVED
           objective: >-
             Make local-chat-wake insert the fixed doorbell through a bounded
             application-compatible composer path and prove only exact canonical-equivalent
@@ -1273,7 +1377,7 @@ sequence:
               - PRESERVE_HUMAN_DRAFT_AND_FOCUS_RACE_FAIL_CLOSED_BEHAVIOR
               - DO_NOT_AUTO_CLEAR_ATTEMPTING_OR_COMPOSER_DRAFT
               - H4A3_LIVE_REPLAY_REMAINS_POST_PUBLICATION_HUMAN_BRAIN_OPERATION
-        next_boundary: HUMAN_APPROVAL_REQUIRED_FOR_TASK_274
+        next_boundary: TASK_274_AUTHORING_AND_EXECUTION
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
