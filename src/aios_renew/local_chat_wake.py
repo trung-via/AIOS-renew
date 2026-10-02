@@ -29,8 +29,11 @@ CHAT_PATH = re.compile(
 )
 MAX_EVENTS = 256
 MAX_BYTES = 65536
-COMPOSER = '#prompt-textarea[contenteditable="true"]'
-ACCOUNT = '[data-testid="profile-button"], [data-testid="accounts-profile-button"]'
+# CSS selector unions return each element once, even when both branches match.
+COMPOSER = ('#prompt-textarea[contenteditable="true"], '
+            'main form [contenteditable="true"][role="textbox"][aria-multiline="true"]')
+ACCOUNT = ('[data-testid="profile-button"], [data-testid="accounts-profile-button"], '
+           'button[aria-label*="profile" i]')
 SEND = '[data-testid="send-button"]'
 STOP = '[data-testid="stop-button"]'
 NONREGULAR = '[data-workspace-type="team"], [data-workspace-type="enterprise"], [data-workspace-type="business"], [data-testid="work-composer"]'
@@ -198,7 +201,8 @@ INSERT = """({url, text, composer, account, stop, nonregular, login, send}) => {
   box.focus();
   if (!empty() || location.href.replace(/\\/$/, '') !== url ||
       visible(stop).length || visible(login).length || visible(nonregular).length ||
-      visible(account).length !== 1 || visible(composer)[0] !== box) return false;
+      visible(account).length !== 1 || visible(composer).length !== 1 ||
+      visible(composer)[0] !== box) return false;
   if (!document.execCommand('insertText', false, text)) return false;
   return box.innerText.replace(/\\r\\n/g, '\\n').replace(/\\n+$/, '') === text;
 }"""

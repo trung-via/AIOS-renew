@@ -336,6 +336,7 @@ class Page:
 
     def evaluate(self, script, args):
         assert args["text"] == self.payload
+        assert args["composer"] == wake.COMPOSER and args["account"] == wake.ACCOUNT
         self.evaluations.append(script)
         if script == wake.INSERT:
             if self.race == "insert":
@@ -362,6 +363,162 @@ def adapter_for(binding, *pages):
     adapter.browser = SimpleNamespace(contexts=[SimpleNamespace(pages=list(pages))])
     adapter.page = pages[0] if pages else None
     return adapter
+
+
+# A selector double for the three bounded account and two composer branches.
+# It models CSS union identity and visibility without any live browser content.
+LEGACY_COMPOSER = '#prompt-textarea[contenteditable="true"]'
+STRUCTURAL_COMPOSER = 'main form [contenteditable="true"][role="textbox"][aria-multiline="true"]'
+PROFILE_ARIA = 'button[aria-label*="profile" i]'
+
+
+def surface_element(tag="div", ancestors=(), visible=True, **attrs):
+    return SimpleNamespace(tag=tag, ancestors=ancestors, visible=visible, attrs=attrs)
+
+
+def surface_matches(element, branch):
+    attrs = element.attrs
+    if branch in ('[data-testid="profile-button"]', '[data-testid="accounts-profile-button"]'):
+        return attrs.get("data-testid") == branch.split('"')[1]
+    if branch == PROFILE_ARIA:
+        return element.tag == "button" and "profile" in attrs.get("aria-label", "").lower()
+    if branch == LEGACY_COMPOSER:
+        return attrs.get("id") == "prompt-textarea" and attrs.get("contenteditable") == "true"
+    if branch == STRUCTURAL_COMPOSER:
+        ancestors = element.ancestors
+        scoped = "main" in ancestors and "form" in ancestors[ancestors.index("main") + 1:]
+        return scoped and all(attrs.get(key) == value for key, value in (
+            ("contenteditable", "true"), ("role", "textbox"), ("aria-multiline", "true")))
+    pytest.fail("unexpected selector branch")
+
+
+class SurfaceLocator(Locator):
+    def count(self):
+        if self.selector in {wake.ACCOUNT, wake.COMPOSER}:
+            # Select each element once, rather than summing branch counts.
+            return sum(element.visible and any(surface_matches(element, branch.strip())
+                       for branch in self.selector.split(",")) for element in self.page.elements)
+        return super().count()
+
+
+class SurfacePage(Page):
+    def __init__(self, url, elements):
+        super().__init__(url)
+        self.elements = elements
+
+    def locator(self, selector):
+        super().locator(selector)  # Preserve the fixture's read boundary.
+        return SurfaceLocator(self, selector)
+
+
+def account_element(shape="fallback", **overrides):
+    attrs = {"aria-label": "Open FiXtUrE PROFILE menu"} if shape != "legacy" else {}
+    if shape in {"legacy", "both"}:
+        attrs["data-testid"] = "profile-button"
+    if shape == "legacy_accounts":
+        attrs = {"data-testid": "accounts-profile-button"}
+    attrs.update(overrides)
+    return surface_element(tag="button", **attrs)
+
+
+def composer_element(shape="fallback", ancestors=("main", "form"), **overrides):
+    attrs = {"contenteditable": "true"}
+    if shape != "legacy":
+        attrs.update({"role": "textbox", "aria-multiline": "true"})
+    if shape in {"legacy", "both"}:
+        attrs["id"] = "prompt-textarea"
+    attrs.update(overrides)
+    return surface_element(ancestors=ancestors, **attrs)
+
+
+def test_bounded_selector_contracts_and_unchanged_send_stop():
+    assert wake.ACCOUNT == ('[data-testid="profile-button"], '
+                            '[data-testid="accounts-profile-button"], ' + PROFILE_ARIA)
+    assert wake.COMPOSER == LEGACY_COMPOSER + ", " + STRUCTURAL_COMPOSER
+    assert wake.SEND == '[data-testid="send-button"]'
+    assert wake.STOP == '[data-testid="stop-button"]'
+
+
+@pytest.mark.parametrize("account_shape", ["legacy", "legacy_accounts", "fallback", "both"])
+@pytest.mark.parametrize("composer_shape", ["legacy", "fallback", "both"])
+def test_bounded_surface_compatibility_and_union_identity(binding, account_shape, composer_shape):
+    page = SurfacePage(binding.chat_url, [account_element(account_shape), composer_element(composer_shape)])
+    adapter = adapter_for(binding, page)
+    assert adapter.visible(wake.ACCOUNT).count() == adapter.visible(wake.COMPOSER).count() == 1
+    adapter.check(page.payload)
+    adapter.submit(page.payload)
+    adapter.prove(page.payload)
+    assert page.evaluations == [wake.INSERT, wake.CLICK]
+
+
+@pytest.mark.parametrize("kind", ["account", "composer"])
+@pytest.mark.parametrize("number", [0, 2])
+def test_bounded_surface_zero_or_ambiguous_matches_block_check_and_prove(binding, kind, number):
+    accounts = [account_element() for _ in range(number if kind == "account" else 1)]
+    composers = [composer_element() for _ in range(number if kind == "composer" else 1)]
+    # Distinct legacy/fallback elements also constitute ambiguity.
+    if number == 2:
+        (accounts if kind == "account" else composers)[0] = (
+            account_element("legacy") if kind == "account" else composer_element("legacy"))
+    page = SurfacePage(binding.chat_url, accounts + composers)
+    adapter = adapter_for(binding, page)
+    with pytest.raises(wake.WakeBlocked, match="SURFACE_UNPROVEN"):
+        adapter.submit(page.payload)
+    assert page.evaluations == []
+    page.counts["outbound"] = 1
+    with pytest.raises(wake.WakeBlocked, match="SUBMISSION_UNPROVEN"):
+        adapter.prove(page.payload)
+
+
+@pytest.mark.parametrize("ancestors", [(), ("form",), ("main",), ("form", "main")])
+def test_structural_composer_lookalikes_outside_main_form_fail_closed(binding, ancestors):
+    page = SurfacePage(binding.chat_url, [account_element(), composer_element(ancestors=ancestors)])
+    with pytest.raises(wake.WakeBlocked, match="SURFACE_UNPROVEN"):
+        adapter_for(binding, page).submit(page.payload)
+    assert page.evaluations == []
+
+
+@pytest.mark.parametrize("attrs", [
+    {"contenteditable": "false"}, {"role": "searchbox"}, {"aria-multiline": "false"},
+    {"contenteditable": None}, {"role": None}, {"aria-multiline": None},
+])
+def test_structural_composer_requires_every_attribute(binding, attrs):
+    page = SurfacePage(binding.chat_url, [account_element(), composer_element(**attrs)])
+    with pytest.raises(wake.WakeBlocked, match="SURFACE_UNPROVEN"):
+        adapter_for(binding, page).check(page.payload)
+
+
+@pytest.mark.parametrize("tag,label", [("div", "fixture profile"), ("button", "fixture settings")])
+def test_profile_fallback_requires_button_and_profile_aria(binding, tag, label):
+    page = SurfacePage(binding.chat_url, [
+        surface_element(tag=tag, **{"aria-label": label}), composer_element()])
+    with pytest.raises(wake.WakeBlocked, match="SURFACE_UNPROVEN"):
+        adapter_for(binding, page).check(page.payload)
+
+
+def test_hidden_bounded_matches_do_not_create_ambiguity(binding):
+    hidden_account, hidden_composer = account_element("legacy"), composer_element("legacy")
+    hidden_account.visible = hidden_composer.visible = False
+    page = SurfacePage(binding.chat_url, [account_element(), composer_element(), hidden_account, hidden_composer])
+    adapter_for(binding, page).check(page.payload)
+
+
+@pytest.mark.parametrize("condition,reason", [
+    ("draft", "DRAFT_PRESENT"), ("generation", "GENERATION_ACTIVE"),
+    ("login", "SURFACE_UNPROVEN"), ("nonregular", "SURFACE_UNPROVEN"),
+    ("outbound", "OUTBOUND_ALREADY_PRESENT"),
+])
+def test_fallback_surface_retains_preflight_safety(binding, condition, reason):
+    page = SurfacePage(binding.chat_url, [account_element(), composer_element()])
+    if condition == "draft":
+        page.draft = "Synthetic Human draft"
+    else:
+        selector = {"generation": wake.STOP, "login": wake.LOGIN,
+                    "nonregular": wake.NONREGULAR, "outbound": "outbound"}[condition]
+        page.counts[selector] = 1
+    with pytest.raises(wake.WakeBlocked, match=reason):
+        adapter_for(binding, page).submit(page.payload)
+    assert page.evaluations == []
 
 
 @pytest.mark.parametrize("number", [0, 2])
@@ -518,6 +675,7 @@ def test_scripts_guard_identity_surface_and_human_edit_in_same_turn():
                       "visible(nonregular).length", "visible(login).length"):
             assert guard in script
     assert "box.textContent === ''" in wake.INSERT
+    assert "visible(composer).length !== 1" in wake.INSERT
     assert wake.INSERT.index("box.focus()") < wake.INSERT.index("if (!empty() ||") < wake.INSERT.index("document.execCommand")
     assert "boxes[0].innerText.replace" in wake.CLICK
     assert "buttons[0].click()" in wake.CLICK
@@ -526,6 +684,9 @@ def test_scripts_guard_identity_surface_and_human_edit_in_same_turn():
 @pytest.mark.parametrize("scenario", [
     "valid", "draft", "focus_draft", "focus_navigation", "busy", "wrong_surface",
     "logged_out", "send_edit", "send_disabled", "wrong_project", "focus_project", "send_project",
+    "fallback", "overlap", "legacy_accounts", "hidden_extras", "login", "missing_composer",
+    "duplicate_account", "duplicate_composer", "focus_account_ambiguous", "focus_composer_ambiguous",
+    "send_account_missing", "send_account_ambiguous", "send_composer_missing", "send_composer_ambiguous",
 ])
 def test_real_browser_scripts_on_synthetic_dom(binding, scenario):
     node = shutil.which("node")
@@ -539,19 +700,38 @@ const fs = require('fs');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const args = input.args;
 global.location = {href: args.url};
-global.getComputedStyle = () => ({visibility: 'visible'});
+global.getComputedStyle = e => ({visibility: e.hidden ? 'hidden' : 'visible'});
 let clicks = 0, inserts = 0;
 const element = () => ({getClientRects: () => [1], getAttribute: () => null});
 const box = Object.assign(element(), {textContent: '', innerText: '', focus() {
   if (input.scenario === 'focus_draft') box.textContent = box.innerText = 'Human draft';
   if (input.scenario === 'focus_navigation') location.href = 'https://example.invalid/';
   if (input.scenario === 'focus_project') location.href = input.other_url;
+  if (input.scenario === 'focus_account_ambiguous') elements[accountLegacy].push(element());
+  if (input.scenario === 'focus_composer_ambiguous') elements[composerLegacy].push(element());
 }});
 const button = Object.assign(element(), {disabled: false, click() {clicks++;}});
-const elements = {[args.composer]: [box], [args.account]: [element()],
+const accountLegacy = '[data-testid="profile-button"]';
+const accountOtherLegacy = '[data-testid="accounts-profile-button"]';
+const accountFallback = 'button[aria-label*="profile" i]';
+const composerLegacy = '#prompt-textarea[contenteditable="true"]';
+const composerFallback = 'main form [contenteditable="true"][role="textbox"][aria-multiline="true"]';
+const account = element();
+const fallback = input.scenario === 'fallback', overlap = input.scenario === 'overlap';
+const otherLegacy = input.scenario === 'legacy_accounts';
+const elements = {
+  [composerLegacy]: fallback ? [] : [box], [composerFallback]: fallback || overlap ? [box] : [],
+  [accountLegacy]: fallback || otherLegacy ? [] : [account],
+  [accountOtherLegacy]: otherLegacy ? [account] : [],
+  [accountFallback]: fallback || overlap ? [account] : [],
   [args.send]: [button], [args.stop]: [], [args.nonregular]: [], [args.login]: [], main: [element()]};
+// CSS selector lists produce a union of element identities, not branch counts.
+const select = selector => [...new Set(selector.split(',').flatMap(branch => elements[branch.trim()] || []))];
+const replace = (selector, matches) => {
+  for (const branch of selector.split(',')) elements[branch.trim()] = matches;
+};
 global.document = {
-  querySelectorAll: selector => elements[selector] || [],
+  querySelectorAll: select,
   execCommand: (command, unused, text) => {
     if (command !== 'insertText') throw Error('unexpected modification');
     inserts++; box.textContent = box.innerText = text; return true;
@@ -559,13 +739,25 @@ global.document = {
 };
 if (input.scenario === 'draft') box.textContent = box.innerText = 'Human draft';
 if (input.scenario === 'busy') elements[args.stop] = [element()];
-if (input.scenario === 'wrong_surface') elements[args.nonregular] = [element()];
-if (input.scenario === 'logged_out') elements[args.account] = [];
+if (input.scenario === 'wrong_surface') replace(args.nonregular, [element()]);
+if (input.scenario === 'login') replace(args.login, [element()]);
+if (input.scenario === 'logged_out') replace(args.account, []);
+if (input.scenario === 'missing_composer') replace(args.composer, []);
+if (input.scenario === 'duplicate_account') replace(args.account, [account, element()]);
+if (input.scenario === 'duplicate_composer') replace(args.composer, [box, element()]);
+if (input.scenario === 'hidden_extras') {
+  elements[accountFallback].push(Object.assign(element(), {hidden: true}));
+  elements[composerFallback].push(Object.assign(element(), {getClientRects: () => []}));
+}
 if (input.scenario === 'wrong_project') location.href = input.other_url;
 const inserted = eval('(' + input.insert + ')')(args);
 if (input.scenario === 'send_edit') box.textContent = box.innerText = args.text + ' Human edit';
 if (input.scenario === 'send_disabled') button.disabled = true;
 if (input.scenario === 'send_project') location.href = input.other_url;
+if (input.scenario === 'send_account_missing') replace(args.account, []);
+if (input.scenario === 'send_account_ambiguous') replace(args.account, [account, element()]);
+if (input.scenario === 'send_composer_missing') replace(args.composer, []);
+if (input.scenario === 'send_composer_ambiguous') replace(args.composer, [box, element()]);
 const sent = inserted ? eval('(' + input.click + ')')(args) : false;
 process.stdout.write(JSON.stringify({inserted, sent, inserts, clicks, draft: box.textContent}));
 """
@@ -576,11 +768,11 @@ process.stdout.write(JSON.stringify({inserted, sent, inserts, clicks, draft: box
         capture_output=True, text=True, check=True, timeout=10,
     )
     result = json.loads(process.stdout)
-    if scenario == "valid":
+    if scenario in {"valid", "fallback", "overlap", "legacy_accounts", "hidden_extras"}:
         assert result == {"inserted": True, "sent": True, "inserts": 1, "clicks": 1, "draft": payload}
     else:
         assert result["sent"] is False and result["clicks"] == 0
-        if scenario not in {"send_edit", "send_disabled", "send_project"}:
+        if not scenario.startswith("send_"):
             assert result["inserted"] is False and result["inserts"] == 0
         if scenario in {"draft", "focus_draft", "send_edit"}:
             assert "Human" in result["draft"]
