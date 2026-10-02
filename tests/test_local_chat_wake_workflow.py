@@ -43,17 +43,17 @@ def admitted_context(job_result="success", terminal_kind="RESULT"):
 
 def test_reusable_entry_accepts_only_bounded_identity_and_fixed_repository():
     parsed, text = workflow()
-    assert set(parsed["on"]) == {"workflow_call"}
+    assert set(parsed["on"]) == {"workflow_call", "schedule"}
     call = parsed["on"]["workflow_call"]
     assert set(call) == {"inputs"}
     assert set(call["inputs"]) == {"event_id", "repository"}
     assert all(value["type"] == "string" and value["required"] == "true" for value in call["inputs"].values())
     assert parsed["permissions"] == {"contents": "read"}
-    assert parsed["concurrency"] == {"group": "aios-local-chat-wake", "cancel-in-progress": "false"}
+    assert "concurrency" not in parsed  # GitHub's replaceable pending slot loses intake.
     job = parsed["jobs"]["deliver"]
     assert job["runs-on"] == ["self-hosted", "windows", "x64", "aios-renew"]
     assert int(job["timeout-minutes"]) <= 5
-    for forbidden in ("workflow_dispatch", "workflow_run", "schedule:", "issues:", "actions: write",
+    for forbidden in ("workflow_dispatch", "workflow_run", "issues:", "actions: write",
                       "aios run", "aios repair", "aios remediate", "upload-artifact", "playwright install",
                       "new_page", "launch_persistent_context", "secrets."):
         assert forbidden not in text
@@ -154,6 +154,7 @@ def test_binding_is_machine_local_and_dependency_is_isolated():
     delivery = steps[-1]
     assert delivery["env"] == {
         "AIOS_WAKE_EVENT_ID": "${{ inputs.event_id }}", "AIOS_WAKE_REPOSITORY": "${{ inputs.repository }}",
+        "AIOS_LOCAL_CHAT_WAKE_ENABLED": "${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}",
     }
     assert "python -m aios_renew.local_chat_wake" in delivery["run"]
     assert "exit $LASTEXITCODE" in delivery["run"]
@@ -163,3 +164,26 @@ def test_binding_is_machine_local_and_dependency_is_isolated():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert not any("playwright" in item for item in project["dependencies"])
     assert project["optional-dependencies"]["local-chat-wake"] == ["playwright>=1.51,<2"]
+
+
+@pytest.mark.parametrize("enabled,allowed", [(None, False), ("false", False), ("true", True)])
+def test_timer_rechecks_only_admitted_local_work_under_human_gate(enabled, allowed):
+    parsed, text = workflow()
+    job = parsed["jobs"]["recheck"]
+    context = {"vars.AIOS_LOCAL_CHAT_WAKE_ENABLED": enabled,
+               "github.repository": "trung-via/AIOS-renew", "github.event_name": "schedule"}
+    assert bool(condition(job["if"], context)) is allowed
+    context["github.event_name"] = "push"
+    assert not condition(job["if"], context)
+    context["github.event_name"] = "schedule"
+    context["github.repository"] = "other/project"
+    assert not condition(job["if"], context)
+    assert parsed["on"]["schedule"] == [{"cron": "*/5 * * * *"}]
+    assert parsed["permissions"] == {"contents": "read"}
+    assert int(job["timeout-minutes"]) == 5
+    command = job["steps"][-1]["run"]
+    assert "--drain --compact --rechecks 4 --interval 15" in command
+    assert "--event-id" not in command
+    assert "AIOS_WAKE_EVENT_ID" not in job["steps"][-1]["env"]
+    for forbidden in ("actions: write", "createWorkflowDispatch", "next_action", "ChatGPT Work", "upload-artifact"):
+        assert forbidden not in text

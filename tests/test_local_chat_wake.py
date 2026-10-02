@@ -13,6 +13,413 @@ from aios_renew import local_chat_wake as wake
 EVENT = "terminal:RESULT:RUN-fixture-001:" + "a" * 40
 
 
+class Projection:
+    def __init__(self, value="UNRESOLVED"):
+        self.value, self.calls = value, []
+
+    def observe(self, event_id):
+        self.calls.append(event_id)
+        return self.value(event_id) if callable(self.value) else self.value
+
+
+def deliver(event_id, repository, binding, adapter_factory=wake.BrowserAdapter, **kwargs):
+    kwargs.setdefault("projection", Projection())
+    return wake.deliver(event_id, repository, binding, adapter_factory, **kwargs)
+
+
+def stored(binding):
+    return json.loads(binding.state_path.read_text())
+
+
+class RecoveryAdapter:
+    """Model only the transport boundaries, with no assistant content."""
+
+    def __init__(self, binding, block=None, proof=True, generation="BUSY", race=None):
+        self.binding, self.block, self.proof = binding, block, proof
+        self.generation, self.race = generation, race
+        self.submits, self.proofs, self.inserts = [], [], []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def check(self, text):
+        if self.block:
+            raise wake.WakeBlocked(self.block)
+
+    def submit(self, text, before_insert=lambda: None, before_click=lambda: None):
+        if self.race:
+            self.race("insert")
+        before_insert()
+        self.inserts.append(text)
+        if self.race:
+            self.race("click")
+        before_click()
+        event_id = text.splitlines()[1].split(": ", 1)[1]
+        assert stored(self.binding)["events"][event_id]["status"] == "AMBIGUOUS"
+        self.submits.append(text)
+
+    def prove(self, text):
+        self.proofs.append(text)
+        if not self.proof:
+            raise wake.WakeBlocked("SUBMISSION_UNPROVEN")
+
+    def generation_state(self):
+        return self.generation
+
+
+def canonical_fixture(monkeypatch, kind="RESULT"):
+    """Exact synthetic canonical ref/blob observations; no network or reducer."""
+    run_id, artifact, head, successor = "RUN-fixture-001", "a" * 40, "b" * 40, "c" * 40
+    task = {"id": "TASK-fixture", "revision": 1}
+    root = "refs/heads/aios/"
+    terminal = root + ("artifacts/" if kind == "RESULT" else "failure-artifacts/") + run_id
+    candidate = root + ("review/" if kind == "RESULT" else "failure/") + run_id
+    refs = {terminal: artifact, candidate: head}
+    blobs = {(artifact, ".ai/transport/run.json"): dict(run_id=run_id, task=task, head_sha=None),
+             (artifact, ".ai/transport/result.json"): {"result": {"head_sha": head}, "evidence": []},
+             (artifact, ".ai/transport/failure.json"): dict(kind="FAILURE", run_id=run_id, task=task, failed_head_sha=head)}
+    calls, drift = [], []
+    def git(self, path, *args):
+        calls.append(args)
+        if args[0] == "ls-remote":
+            current = dict(refs)
+            if drift and sum(call[0] == "ls-remote" for call in calls) > 1:
+                current[candidate] = "d" * 40
+            return "\n".join(f"{sha}\t{ref}" for ref, sha in current.items())
+        if args[0] == "show":
+            sha, name = args[1].split(":", 1)
+            return json.dumps(blobs[(sha, name)])
+        if args[0] == "ls-tree":
+            return ".ai/reviews/REVIEW-fixture-001.yaml"
+        if args[0] == "rev-parse":
+            return successor
+        assert args[0] in {"init", "fetch"}
+        return ""
+    monkeypatch.setattr(wake.CanonicalFreshness, "git", git)
+    projection = wake.CanonicalFreshness(wake.REPOSITORY)
+    return SimpleNamespace(projection=projection, refs=refs, blobs=blobs, calls=calls, drift=drift,
+                           event=f"terminal:{kind}:{run_id}:{artifact}", run_id=run_id, artifact=artifact,
+                           head=head, successor=successor, task=task, root=root, terminal=terminal, candidate=candidate)
+
+
+@pytest.mark.parametrize("kind", ["RESULT", "FAILURE"])
+def test_canonical_observer_exact_terminal_and_no_checkout_or_semantic_mutation(monkeypatch, kind):
+    fixture = canonical_fixture(monkeypatch, kind)
+    assert fixture.projection.observe(fixture.event) == "UNRESOLVED"
+    assert all(call[0] in {"init", "fetch", "ls-remote", "show"} for call in fixture.calls)
+    fetches = [call for call in fixture.calls if call[0] == "fetch"]
+    assert fetches and all("--no-write-fetch-head" in call and "--refmap=" in call for call in fetches)
+
+
+@pytest.mark.parametrize("kind", ["RESULT", "FAILURE"])
+@pytest.mark.parametrize("conflict", ["missing", "opposite", "artifact", "head", "task", "run", "drift"])
+def test_canonical_observer_conflicts_and_unknown_identities_fail_closed(monkeypatch, kind, conflict):
+    fixture = canonical_fixture(monkeypatch, kind)
+    if conflict == "missing":
+        del fixture.refs[fixture.terminal]
+    if conflict == "opposite":
+        family = "failure-artifacts/" if kind == "RESULT" else "artifacts/"
+        fixture.refs[fixture.root + family + fixture.run_id] = "d" * 40
+    if conflict == "artifact":
+        fixture.refs[fixture.terminal] = "d" * 40
+    if conflict == "head":
+        fixture.refs[fixture.candidate] = "d" * 40
+    if conflict == "task":
+        fixture.blobs[(fixture.artifact, ".ai/transport/run.json")]["task"] = {"id": "TASK-fixture", "revision": True}
+    if conflict == "run":
+        fixture.blobs[(fixture.artifact, ".ai/transport/run.json")]["run_id"] = "RUN-other-001"
+    if conflict == "drift":
+        fixture.drift.append(True)
+    assert fixture.projection.observe(fixture.event) == "UNKNOWN"
+
+
+@pytest.mark.parametrize("mismatch", [None, "id", "head", "missing-fields"])
+def test_only_exact_canonical_review_successor_resolves_result(monkeypatch, mismatch):
+    fixture = canonical_fixture(monkeypatch)
+    fixture.refs[fixture.root + "review-decision/" + fixture.run_id] = fixture.successor
+    review = dict(review_id="REVIEW-fixture-001", reviewed_sha=fixture.head,
+                  mode="PRIMARY", verdict="PASS", acceptance={}, findings=[])
+    if mismatch == "id":
+        review["review_id"] = "REVIEW-other-001"
+    if mismatch == "head":
+        review["reviewed_sha"] = "d" * 40
+    if mismatch == "missing-fields":
+        del review["findings"]
+    fixture.blobs[(fixture.successor, ".ai/reviews/REVIEW-fixture-001.yaml")] = review
+    assert fixture.projection.observe(fixture.event) == ("RESOLVED" if mismatch is None else "UNKNOWN")
+
+
+@pytest.mark.parametrize("mismatch", [None, "run", "head", "task"])
+def test_only_exact_human_repair_authorization_resolves_failure(monkeypatch, mismatch):
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.refs[fixture.root + "repair/" + fixture.run_id] = fixture.successor
+    authorization = dict(failed_run_id=fixture.run_id, failed_head_sha=fixture.head, task=fixture.task)
+    if mismatch == "run":
+        authorization["failed_run_id"] = "RUN-other-001"
+    if mismatch == "head":
+        authorization["failed_head_sha"] = "d" * 40
+    if mismatch == "task":
+        authorization["task"] = {"id": "TASK-other", "revision": 1}
+    fixture.blobs[(fixture.successor, ".ai/transport/repair.json")] = authorization
+    assert fixture.projection.observe(fixture.event) == ("RESOLVED" if mismatch is None else "UNKNOWN")
+
+
+@pytest.mark.parametrize("mismatch", [None, "gap", "artifact", "predecessor", "identity"])
+def test_repair_supersession_is_exact_contiguous_identity_observation(monkeypatch, mismatch):
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.refs[fixture.root + "repair/" + fixture.run_id] = fixture.successor
+    child = "d" * 40
+    suffix = "3" if mismatch == "gap" else "2"
+    fixture.refs[fixture.root + "repair-supersession/" + fixture.run_id + "/" + suffix] = child
+    authorization = dict(failed_run_id=fixture.run_id, failed_head_sha=fixture.head, task=fixture.task)
+    fixture.blobs[(fixture.successor, ".ai/transport/repair.json")] = authorization
+    fixture.blobs[(child, ".ai/transport/repair.json")] = dict(authorization)
+    metadata = dict(format="AIOS_REPAIR_SUPERSESSION", version=1, failed_run_id=fixture.run_id,
+                    authorization_revision=2, predecessor_repair_sha=fixture.successor, failure_artifacts_sha=fixture.artifact)
+    if mismatch == "artifact":
+        metadata["failure_artifacts_sha"] = "e" * 40
+    if mismatch == "predecessor":
+        metadata["predecessor_repair_sha"] = "e" * 40
+    if mismatch == "identity":
+        fixture.blobs[(child, ".ai/transport/repair.json")]["failed_head_sha"] = "e" * 40
+    fixture.blobs[(child, ".ai/transport/repair-supersession.json")] = metadata
+    assert fixture.projection.observe(fixture.event) == ("RESOLVED" if mismatch is None else "UNKNOWN")
+
+
+def test_canonical_remote_failure_is_sanitized_unknown(monkeypatch):
+    def unavailable(*_):
+        raise RuntimeError("private network details")
+    monkeypatch.setattr(wake.CanonicalFreshness, "git", unavailable)
+    assert wake.CanonicalFreshness(wake.REPOSITORY).observe(EVENT) == "UNKNOWN"
+
+
+@pytest.mark.parametrize("reason", ["DRAFT_PRESENT", "GENERATION_ACTIVE", "TARGET_PAGE_NOT_UNIQUE", "SURFACE_UNPROVEN"])
+def test_deferred_attention_survives_and_repeats_freshness_before_retry(binding, reason):
+    adapter, projection = RecoveryAdapter(binding, reason), Projection()
+    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter, projection=projection)["status"] == "DEFERRED"
+    assert stored(binding)["events"][EVENT]["status"] == "DEFERRED"
+    assert not adapter.inserts
+    adapter.block = None
+    projection.calls.clear()
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=projection)
+    assert receipts[-1]["status"] == "SUBMITTED"
+    assert len(projection.calls) >= 3  # Preflight, insertion, click.
+    assert len(adapter.submits) == 1
+
+
+@pytest.mark.parametrize("boundary", ["insert", "click"])
+@pytest.mark.parametrize("classification", ["RESOLVED", "UNKNOWN"])
+def test_immediate_barrier_catches_canonical_race_without_sending(binding, boundary, classification):
+    projection = Projection()
+    def race(at):
+        if at == boundary:
+            projection.value = classification
+    adapter = RecoveryAdapter(binding, race=race)
+    result = deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter, projection=projection)
+    assert result["status"] == ("NOOP" if classification == "RESOLVED" else "DEFERRED")
+    assert not adapter.submits
+    assert stored(binding)["events"][EVENT]["status"] == ("RESOLVED_NOOP" if classification == "RESOLVED" else "DEFERRED")
+
+
+def test_human_chat_activity_is_not_canonical_resolution(binding):
+    adapter = RecoveryAdapter(binding, "DRAFT_PRESENT")
+    deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)
+    adapter.block = "GENERATION_ACTIVE"  # Unrelated Human activity remains only a block.
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=Projection())
+    assert stored(binding)["events"][EVENT]["status"] == "DEFERRED"
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: pytest.fail("resolved subject must not attach"), projection=Projection("RESOLVED"))
+    assert stored(binding)["events"][EVENT]["status"] == "RESOLVED_NOOP"
+
+
+def test_ambiguity_is_proof_only_on_original_generation_and_never_redirects(binding):
+    old = wake.Binding(binding.chat_url, binding.cdp_endpoint, binding.state_path, 1)
+    current = wake.Binding(synthetic_url(99), binding.cdp_endpoint, binding.state_path, 2)
+    adapter = RecoveryAdapter(old, proof=False)
+    assert deliver(EVENT, wake.REPOSITORY, old, lambda _: adapter)["status"] == "BLOCKED"
+    contacted = []
+    def factory(bound):
+        contacted.append(bound)
+        assert bound == old
+        return adapter
+    wake.operate(wake.REPOSITORY, current, adapter_factory=factory, projection=Projection())
+    assert contacted == [old]
+    assert stored(old)["events"][EVENT]["generation"] == 1
+    assert stored(old)["events"][EVENT]["status"] == "AMBIGUOUS"
+    assert len(adapter.submits) == 1
+    adapter.proof = True
+    wake.operate(wake.REPOSITORY, current, adapter_factory=factory, projection=Projection())
+    assert stored(old)["events"][EVENT]["status"] == "SUBMITTED"
+    assert len(adapter.submits) == 1
+
+
+@pytest.mark.parametrize("boundary", ["insert", "click"])
+def test_pending_binding_change_aborts_before_click_and_retry_follows_current_generation(binding, boundary):
+    old = wake.Binding(binding.chat_url, binding.cdp_endpoint, binding.state_path, 1)
+    new = wake.Binding(synthetic_url(88), binding.cdp_endpoint, binding.state_path, 2)
+    selected = [old]
+    def race(at):
+        if at == boundary:
+            selected[0] = new
+    adapter = RecoveryAdapter(old, race=race)
+    receipt = deliver(EVENT, wake.REPOSITORY, old, lambda _: adapter, binding_provider=lambda: selected[0])
+    assert receipt["reason"] == "BINDING_GENERATION_CHANGED"
+    assert not adapter.submits
+    replacement = RecoveryAdapter(new)
+    wake.operate(wake.REPOSITORY, new, adapter_factory=lambda b: replacement if b == new else pytest.fail("wrong generation"), projection=Projection())
+    assert len(replacement.submits) == 1
+    assert stored(new)["events"][EVENT]["generation"] == 2
+
+
+def test_generation_reuse_and_rollback_fail_closed(binding):
+    first = wake.Binding(binding.chat_url, binding.cdp_endpoint, binding.state_path, 3)
+    adapter = RecoveryAdapter(first, "DRAFT_PRESENT")
+    deliver(EVENT, wake.REPOSITORY, first, lambda _: adapter)
+    before = binding.state_path.read_bytes()
+    for bad in (wake.Binding(synthetic_url(55), binding.cdp_endpoint, binding.state_path, 3),
+                wake.Binding(binding.chat_url, binding.cdp_endpoint, binding.state_path, 2)):
+        assert deliver(EVENT, wake.REPOSITORY, bad, lambda _: pytest.fail("must not attach"))["reason"] == "BINDING_GENERATION_CHANGED"
+        assert binding.state_path.read_bytes() == before
+
+
+def test_fifo_flight_preserves_distinct_subjects_and_revalidates_after_completion(binding):
+    second = EVENT.replace("RUN-fixture-001", "RUN-fixture-002")
+    third = EVENT.replace("RESULT:RUN-fixture-001", "FAILURE:RUN-fixture-003")
+    adapter = RecoveryAdapter(binding)
+    deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)
+    assert deliver(second, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "DEFERRED"
+    assert deliver(third, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "DEFERRED"
+    assert len(adapter.submits) == 1
+    assert list(stored(binding)["events"]) == [EVENT, second, third]
+    adapter.generation = "IDLE"
+    projection = Projection(lambda key: "RESOLVED" if key == second else "UNRESOLVED")
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=projection)
+    assert stored(binding)["events"][second]["status"] == "RESOLVED_NOOP"
+    assert stored(binding)["events"][third]["status"] == "SUBMITTED"
+    assert len(adapter.submits) == 2
+
+
+def test_unobserved_generation_completion_does_not_release_lane(binding):
+    adapter = RecoveryAdapter(binding, generation="IDLE")
+    deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)
+    second = EVENT.replace("001", "002")
+    deliver(second, wake.REPOSITORY, binding, lambda _: adapter)
+    assert len(adapter.submits) == 1
+    assert stored(binding)["flight"]["seen_busy"] is False
+    assert stored(binding)["events"][second]["status"] == "DEFERRED"
+
+
+def test_busy_lock_preserves_intake_in_lane_inbox_and_other_lane_progresses(binding):
+    other = wake.Binding(synthetic_url(42), binding.cdp_endpoint, binding.state_path.with_name("other.json"), 1, "fixture/other")
+    lock = binding.state_path.with_name(binding.state_path.name + ".lock")
+    lock.touch()
+    assert deliver(EVENT, wake.REPOSITORY, binding)["reason"] == "STATE_LOCKED_OR_UNAVAILABLE"
+    inbox = binding.state_path.with_name(binding.state_path.name + ".queue")
+    assert len(list(inbox.iterdir())) == 1
+    frozen = next(inbox.iterdir()).read_bytes()
+    adapter = RecoveryAdapter(other)
+    assert deliver(EVENT, other.repository, other, lambda _: adapter)["status"] == "SUBMITTED"
+    assert next(inbox.iterdir()).read_bytes() == frozen
+    assert lock.exists() and not binding.state_path.exists()
+    lock.unlink()
+    recovered = RecoveryAdapter(binding)
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: recovered, projection=Projection())
+    assert len(recovered.submits) == 1
+    assert not list(inbox.iterdir())
+
+
+@pytest.mark.parametrize("block", ["DRAFT_PRESENT", "GENERATION_ACTIVE", "TARGET_PAGE_NOT_UNIQUE"])
+def test_deferred_lane_cannot_mutate_consume_or_redirect_independent_lane(binding, block):
+    other = wake.Binding(synthetic_url(44), binding.cdp_endpoint, binding.state_path.with_name("other.json"), 1, "fixture/other")
+    blocked = RecoveryAdapter(binding, block)
+    deliver(EVENT, wake.REPOSITORY, binding, lambda _: blocked)
+    frozen = binding.state_path.read_bytes()
+    adapter = RecoveryAdapter(other)
+    result = deliver(EVENT, other.repository, other, lambda b: adapter if b == other else pytest.fail("cross-lane binding"))
+    assert result["status"] == "SUBMITTED"
+    assert binding.state_path.read_bytes() == frozen
+    assert not blocked.submits
+
+
+def test_compaction_requires_fresh_resolution_and_keeps_permanent_duplicate_digest(binding):
+    adapter = RecoveryAdapter(binding, "DRAFT_PRESENT")
+    deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)
+    second = EVENT.replace("001", "002")
+    adapter.block, adapter.proof = None, False
+    deliver(second, wake.REPOSITORY, binding, lambda _: adapter)
+    before = stored(binding)
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=Projection("UNKNOWN"), compact=True)
+    assert set(stored(binding)["events"]) == set(before["events"])
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: pytest.fail("resolution does not inspect browser"), projection=Projection("RESOLVED"), compact=True)
+    data = stored(binding)
+    assert not data["events"] and data["flight"] is None
+    assert set(data["tombstones"]) == {wake.event_digest(EVENT), wake.event_digest(second)}
+    result = deliver(EVENT, wake.REPOSITORY, binding, lambda _: pytest.fail("compacted duplicate must not resend"), projection=Projection("UNRESOLVED"))
+    assert result["reason"] == "COMPACTED_DUPLICATE"
+
+
+def test_submitted_unresolved_record_cannot_be_compacted(binding):
+    adapter = RecoveryAdapter(binding)
+    deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=Projection(), compact=True)
+    assert stored(binding)["events"][EVENT]["status"] == "SUBMITTED"
+    assert not stored(binding)["tombstones"]
+
+
+@pytest.mark.parametrize("duplicate", ["chat", "state", "lock", "queue-child", "config"])
+def test_registry_rejects_duplicate_chat_and_all_state_ownership(monkeypatch, binding, duplicate):
+    path = binding.state_path.parent / "registry.json"
+    first = dict(chat_url=binding.chat_url, cdp_endpoint=binding.cdp_endpoint, state_path=str(binding.state_path), generation=1)
+    second = dict(first, chat_url=synthetic_url(9), state_path=str(binding.state_path.with_name("other.json")))
+    if duplicate == "chat":
+        second["chat_url"] = synthetic_project_url(number=int(UUID(binding.chat_url.rsplit("/", 1)[-1])))
+    if duplicate == "state":
+        second["state_path"] = first["state_path"]
+    if duplicate == "lock":
+        second["state_path"] = first["state_path"] + ".lock"
+    if duplicate == "queue-child":
+        second["state_path"] = str(binding.state_path.with_name(binding.state_path.name + ".queue") / "child")
+    if duplicate == "config":
+        second["state_path"] = str(path)
+    path.write_text(json.dumps(dict(version=2, lanes={wake.REPOSITORY: first, "fixture/other": second})))
+    monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_CONFIG", str(path))
+    with pytest.raises(wake.WakeBlocked):
+        wake.load_binding()
+
+
+def test_registry_selects_only_exact_repository_and_generation(monkeypatch, binding):
+    path = binding.state_path.parent / "registry.json"
+    lanes = {wake.REPOSITORY: dict(chat_url=binding.chat_url, cdp_endpoint=binding.cdp_endpoint, state_path=str(binding.state_path), generation=7),
+             "fixture/other": dict(chat_url=synthetic_url(8), cdp_endpoint=binding.cdp_endpoint, state_path=str(binding.state_path.with_name("other.json")), generation=11)}
+    path.write_text(json.dumps(dict(version=2, lanes=lanes)))
+    monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_CONFIG", str(path))
+    assert wake.load_binding().generation == 7
+    assert wake.load_binding("fixture/other").generation == 11
+    with pytest.raises(wake.WakeBlocked, match="BINDING_MISSING"):
+        wake.load_binding("fixture/unknown")
+
+
+def test_drain_is_gate_bound_and_does_not_admit_any_subject(monkeypatch, binding, capsys):
+    monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_ENABLED", "false")
+    monkeypatch.setattr(wake, "load_binding", lambda *_: pytest.fail("closed gate must not read registry"))
+    assert wake.main(["--drain", "--repository", wake.REPOSITORY]) == 1
+    assert json.loads(capsys.readouterr().out)["reason"] == "ENABLE_GATE_CLOSED"
+    monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_ENABLED", "true")
+    monkeypatch.setattr(wake, "load_binding", lambda *_: binding)
+    monkeypatch.setattr(wake, "CanonicalFreshness", lambda *_: Projection())
+    assert wake.main(["--drain", "--compact", "--rechecks", "2", "--interval", "0", "--repository", wake.REPOSITORY]) == 0
+    assert stored(binding)["events"] == {}
+    assert not binding.state_path.with_name(binding.state_path.name + ".queue").exists()
+
+
+@pytest.mark.parametrize("arguments", [["--drain", "--event-id", EVENT], ["--drain", "--rechecks", "9"], ["--drain", "--interval", "31"], ["--compact", "--event-id", EVENT]])
+def test_drain_bounds_and_admission_modes_fail_closed(arguments, capsys):
+    assert wake.main(arguments + ["--repository", wake.REPOSITORY]) == 1
+    assert json.loads(capsys.readouterr().out)["reason"] == "INVALID_INPUT"
+
+
 def synthetic_url(number=1):
     # Generated fixture identity, never an operational conversation binding.
     return "https://chatgpt.com" + "/c/" + str(UUID(int=number))
@@ -95,11 +502,16 @@ class FakeAdapter:
         if self.failure == "check":
             raise wake.WakeBlocked("DRAFT_PRESENT")
 
-    def submit(self, text):
-        assert json.loads(self.binding.state_path.read_text())["events"][EVENT] == "ATTEMPTING"
+    def submit(self, text, before_insert=lambda: None, before_click=lambda: None):
+        before_insert()
+        before_click()
+        assert json.loads(self.binding.state_path.read_text())["events"][EVENT]["status"] == "AMBIGUOUS"
         self.submits += 1
         if self.failure == "submit":
             raise RuntimeError("private browser exception " + self.binding.chat_url)
+
+    def generation_state(self):
+        return "BUSY"
 
     def prove(self, text):
         self.proofs += 1
@@ -109,16 +521,18 @@ class FakeAdapter:
 
 def test_delivery_persists_attempt_before_submit_and_submitted_after_proof(binding):
     adapter = FakeAdapter(binding)
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter) == {
+    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter) == {
         "event_id": EVENT, "status": "SUBMITTED", "reason": "EXACT_USER_TURN_PROVEN",
     }
     assert adapter.submits == adapter.proofs == 1
-    assert json.loads(binding.state_path.read_text()) == {"version": 1, "events": {EVENT: "SUBMITTED"}}
+    data = json.loads(binding.state_path.read_text())
+    assert data["version"] == 2
+    assert data["events"][EVENT]["status"] == "SUBMITTED"
 
     def forbidden(_):
         pytest.fail("duplicate must not connect to the browser")
 
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding, forbidden) == {
+    assert deliver(EVENT, wake.REPOSITORY, binding, forbidden) == {
         "event_id": EVENT, "status": "NOOP", "reason": "ALREADY_SUBMITTED",
     }
 
@@ -126,13 +540,14 @@ def test_delivery_persists_attempt_before_submit_and_submitted_after_proof(bindi
 @pytest.mark.parametrize("failure", ["submit", "proof"])
 def test_ambiguous_attempt_never_resends_or_exposes_private_browser_data(binding, failure):
     adapter = FakeAdapter(binding, failure)
-    receipt = wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)
+    receipt = deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)
     assert receipt["status"] == "BLOCKED"
     assert set(receipt) == {"event_id", "status", "reason"}
     assert binding.chat_url not in json.dumps(receipt)
     assert binding.cdp_endpoint not in json.dumps(receipt)
-    assert json.loads(binding.state_path.read_text())["events"][EVENT] == "ATTEMPTING"
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "ATTEMPT_REQUIRES_HUMAN"
+    assert json.loads(binding.state_path.read_text())["events"][EVENT]["status"] == "AMBIGUOUS"
+    adapter.failure = "proof"
+    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "ATTEMPT_REQUIRES_HUMAN"
     assert adapter.submits == 1
 
 
@@ -140,17 +555,19 @@ def test_existing_attempting_entry_is_preserved_without_browser_or_recovery(bind
     data = {"version": 1, "events": {EVENT: "ATTEMPTING",
             "terminal:RESULT:RUN-fixture-other:" + "b" * 40: "SUBMITTED"}}
     binding.state_path.write_text(json.dumps(data))
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding,
+    assert deliver(EVENT, wake.REPOSITORY, binding,
                         lambda _: pytest.fail("ATTEMPTING must not attach or resend")) == {
         "event_id": EVENT, "status": "BLOCKED", "reason": "ATTEMPT_REQUIRES_HUMAN",
     }
-    assert json.loads(binding.state_path.read_text()) == data
+    migrated = json.loads(binding.state_path.read_text())
+    assert migrated["events"][EVENT] == wake.record("AMBIGUOUS")
+    assert migrated["events"]["terminal:RESULT:RUN-fixture-other:" + "b" * 40]["status"] == "SUBMITTED"
 
 
 def test_pre_submit_failure_has_no_attempt_or_composer_modification(binding):
     adapter = FakeAdapter(binding, "check")
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "DRAFT_PRESENT"
-    assert not binding.state_path.exists()
+    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "DRAFT_PRESENT"
+    assert json.loads(binding.state_path.read_text())["events"][EVENT]["status"] == "DEFERRED"
     assert adapter.submits == adapter.proofs == 0
 
 
@@ -162,19 +579,19 @@ def test_pre_submit_failure_has_no_attempt_or_composer_modification(binding):
 ])
 def test_ambiguous_state_fails_before_browser_connection(binding, data):
     binding.state_path.write_text(json.dumps(data))
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: pytest.fail("must not attach"))["reason"] == "STATE_AMBIGUOUS"
+    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: pytest.fail("must not attach"))["reason"] == "STATE_AMBIGUOUS"
 
 
 def test_corrupt_state_and_stale_lock_block(binding):
     binding.state_path.write_text("not-json")
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding)["reason"] == "LOCAL_METADATA_INVALID"
+    assert deliver(EVENT, wake.REPOSITORY, binding)["reason"] == "LOCAL_METADATA_INVALID"
     binding.state_path.with_name("state.json.lock").touch()
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding)["reason"] == "STATE_LOCKED_OR_UNAVAILABLE"
+    assert deliver(EVENT, wake.REPOSITORY, binding)["reason"] == "STATE_LOCKED_OR_UNAVAILABLE"
 
 
 def test_interrupted_pending_write_blocks_before_browser_connection(binding):
     binding.state_path.with_name("state.json.pending").write_text("interrupted")
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: pytest.fail("must not attach"))["reason"] == "STATE_WRITE_UNCERTAIN"
+    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: pytest.fail("must not attach"))["reason"] == "STATE_WRITE_UNCERTAIN"
 
 
 def test_state_write_failure_prevents_submit(binding, monkeypatch):
@@ -182,7 +599,7 @@ def test_state_write_failure_prevents_submit(binding, monkeypatch):
     def unavailable(self, data):
         raise wake.WakeBlocked("STATE_WRITE_UNCERTAIN")
     monkeypatch.setattr(wake.State, "write", unavailable)
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "STATE_WRITE_UNCERTAIN"
+    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "STATE_WRITE_UNCERTAIN"
     assert adapter.submits == 0
 
 
@@ -190,20 +607,21 @@ def test_final_state_write_failure_keeps_attempting_and_prevents_resend(binding,
     adapter = FakeAdapter(binding)
     original = wake.State.write
     def unavailable_after_proof(self, data):
-        if data["events"][EVENT] == "SUBMITTED":
+        if data["events"][EVENT]["status"] == "SUBMITTED":
             raise wake.WakeBlocked("STATE_WRITE_UNCERTAIN")
         original(self, data)
     monkeypatch.setattr(wake.State, "write", unavailable_after_proof)
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "STATE_WRITE_UNCERTAIN"
-    assert json.loads(binding.state_path.read_text())["events"][EVENT] == "ATTEMPTING"
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "ATTEMPT_REQUIRES_HUMAN"
-    assert adapter.submits == adapter.proofs == 1
+    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "STATE_WRITE_UNCERTAIN"
+    assert json.loads(binding.state_path.read_text())["events"][EVENT]["status"] == "AMBIGUOUS"
+    adapter.failure = "proof"
+    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter)["reason"] == "ATTEMPT_REQUIRES_HUMAN"
+    assert adapter.submits == 1
 
 
 def test_bounded_state_never_evicts_old_events(binding):
     events = {f"terminal:RESULT:RUN-fixture-{i}:" + "a" * 40: "SUBMITTED" for i in range(wake.MAX_EVENTS)}
     binding.state_path.write_text(json.dumps({"version": 1, "events": events}))
-    assert wake.deliver(EVENT, wake.REPOSITORY, binding)["reason"] == "STATE_CAPACITY_REQUIRES_HUMAN"
+    assert deliver(EVENT, wake.REPOSITORY, binding)["reason"] == "STATE_CAPACITY_REQUIRES_HUMAN"
     assert json.loads(binding.state_path.read_text())["events"] == events
 
 
@@ -279,8 +697,9 @@ def test_doorbell_and_receipt_have_only_bounded_fields(monkeypatch, capsys):
         with pytest.raises(wake.WakeBlocked):
             wake.doorbell(event, wake.REPOSITORY)
     with pytest.raises(wake.WakeBlocked):
-        wake.doorbell(EVENT, "other/repository")
+        wake.doorbell(EVENT, "other/repository;command")
     monkeypatch.delenv("AIOS_LOCAL_CHAT_WAKE_CONFIG", raising=False)
+    monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_ENABLED", "true")
     assert wake.main(["--event-id", EVENT, "--repository", wake.REPOSITORY]) == 1
     assert json.loads(capsys.readouterr().out) == {
         "event_id": EVENT, "status": "BLOCKED", "reason": "BINDING_MISSING",

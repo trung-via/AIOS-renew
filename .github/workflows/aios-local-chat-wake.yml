@@ -1,6 +1,8 @@
 name: AIOS local regular chat wake transport
 
 on:
+  schedule:
+    - cron: '*/5 * * * *'
   workflow_call:
     inputs:
       event_id:
@@ -15,9 +17,8 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: aios-local-chat-wake
-  cancel-in-progress: false
+# Machine-local per-lane locks serialize state. GitHub concurrency would replace
+# pending source deliveries and can lose events before durable admission.
 
 jobs:
   deliver:
@@ -49,7 +50,39 @@ jobs:
         env:
           AIOS_WAKE_EVENT_ID: ${{ inputs.event_id }}
           AIOS_WAKE_REPOSITORY: ${{ inputs.repository }}
+          AIOS_LOCAL_CHAT_WAKE_ENABLED: ${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}
         shell: powershell
         run: |
           python -m aios_renew.local_chat_wake --event-id $env:AIOS_WAKE_EVENT_ID --repository $env:AIOS_WAKE_REPOSITORY
+          exit $LASTEXITCODE
+  recheck:
+    # This timer drains only previously admitted machine-local subjects.
+    if: >-
+      vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true' &&
+      github.repository == 'trung-via/AIOS-renew' &&
+      github.event_name == 'schedule'
+    runs-on: [self-hosted, windows, x64, aios-renew]
+    timeout-minutes: 5
+    steps:
+      - name: Check out published transport source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install attach-only transport dependency
+        shell: powershell
+        run: |
+          python -m pip install --disable-pip-version-check '.[local-chat-wake]'
+          exit $LASTEXITCODE
+      - name: Recheck admitted lane work
+        env:
+          AIOS_WAKE_REPOSITORY: ${{ github.repository }}
+          AIOS_LOCAL_CHAT_WAKE_ENABLED: ${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}
+        shell: powershell
+        run: |
+          python -m aios_renew.local_chat_wake --drain --compact --rechecks 4 --interval 15 --repository $env:AIOS_WAKE_REPOSITORY
           exit $LASTEXITCODE
