@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-task268-publication-integration-recovery
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -497,7 +497,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-task268-publication-integration-recovery
-    status: NEXT
+    status: DONE
     phase: H4A3_TASK268_PUBLICATION_INTEGRATION_RECOVERY
     task_id: TASK-269
     task_revision: 1
@@ -729,13 +729,28 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
     execution_profile_status: HUMAN_SELECTED
+    completed_by:
+      task_id: TASK-269
+      task_revision: 1
+      run_id: RUN-269-001
+      result_artifact_sha: "1915f12d1c47d067e83774e1ce40cfb5dcf24343"
+      reviewed_sha: "04918324030d654efde18b68fbf72d6fb2ebd358"
+      review_id: REVIEW-269-001
+      review_decision_sha: "38ecc0872bf35e0fa7ec1589638cdf5e1419d72f"
+      review_mode: PRIMARY
+      verdict: PASS
+      publication_workflow_run_id: 36950443322
+      published_sha: "04918324030d654efde18b68fbf72d6fb2ebd358"
+      completed_on: "2026-10-02"
+      verification_summary: "git diff --check passed"
+      unresolved: []
     sequencing:
       - AFTER_TASK_268_REVIEW_PASS_AND_PUBLICATION_INTEGRATION_REQUIRED
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
-    status: BLOCKED_BY_TASK_269_PUBLICATION
+    status: NEXT
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -762,6 +777,9 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
+      status: HUMAN_LOCAL_READINESS_REQUIRED
+      source_publication_recovery: TASK_269_REVIEWED_PUBLISHED
+      source_publication_sha: "04918324030d654efde18b68fbf72d6fb2ebd358"
       trigger: TASK_268_CANONICAL_RESULT_TERMINAL_ATTENTION
       semantic_effect: ACK_ONLY_NO_LIFECYCLE_MUTATION
       human_prerequisites:
@@ -813,13 +831,64 @@ sequence:
       expires_on_task_change: true
     execution_profile_status: HUMAN_SELECTED
     sequencing:
-      - AFTER_TASK_269_REVIEWED_PUBLICATION_RECOVERY
+      - AFTER_TASK_269_REVIEWED_PUBLICATION_RECOVERY_COMPLETE
+      - BEFORE_TASK_270_H1R_EXACT_BLOB_FIX
       - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
 
+  - id: brain-runtime-semantic-handoff-hardening-v1-h1r-reviewed-result-exact-blob-preservation-fix
+    status: QUEUED_AFTER_H4A3_BEFORE_H4A4
+    phase: H1R_REVIEWED_RESULT_EXACT_BLOB_PRESERVATION_FIX
+    task_id: TASK-270
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-02"
+    objective: >-
+      Permanently correct the reviewed-RESULT H1R preservation path so canonical REVIEW
+      metadata is validated byte-exactly without text-normalization loss, eliminating the
+      bootstrap exception used for TASK-269 while preserving every existing H1R safety,
+      authority, provenance and fail-closed boundary.
+    observed_case:
+      task_id: TASK-269
+      failed_dispatch_id: task269-r1-codex61-high-20261002-001
+      failed_workflow_run_id: 36948303352
+      boundary: ADMISSION_REJECTED
+      phase: PRIMARY_SYNCHRONIZATION
+      run_created: false
+      executor_invoked: false
+      exact_error: >-
+        invalid canonical reviewed RESULT preservation: SUBMIT_REVIEW structural validation
+        failed: metadata content mismatch
+      preserved_run_id: RUN-268-001
+      reviewed_candidate_sha: "31eb283ad8eb07695f26e940509696c38e62b3a4"
+      review_decision_sha: "7a52a4c82490a4f0a3684b3517404a7cd42bd778"
+    root_cause: >-
+      publication._read_blob() obtains Git blob text through a shared helper that strips
+      terminal whitespace, while _validate_metadata_commit() requires exact metadata
+      bytes. A canonical REVIEW blob with a terminal newline is therefore normalized
+      before exact-byte comparison and rejected despite valid immutable provenance.
+    planning_constraints:
+      - FIX_EXACT_BLOB_READ_OR_CALL_EDGE_WITHOUT_WEAKENING_METADATA_BYTE_EQUALITY
+      - PRESERVE_FAILURE_AND_REVIEWED_RESULT_H1R_PRESERVATION_CLASSES
+      - PRESERVE_RUNTIME_ONLY_DESTRUCTIVE_RECONCILIATION_AUTHORITY
+      - PRESERVE_WORKTREE_UPSTREAM_TOPOLOGY_AND_PROVENANCE_RECHECKS
+      - NO_AD_HOC_RESET_OR_BOOTSTRAP_EXCEPTION_AS_STEADY_STATE
+      - NO_PUBLICATION_REVIEW_OR_LIFECYCLE_AUTHORITY_CHANGE
+      - NO_GENERIC_RETRY_FAILOVER_OR_SECOND_ROUTER
+      - REGRESSION_MUST_COVER_TERMINAL_NEWLINE_AND_NON_NORMALIZED_METADATA_BYTES
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
+    task_authoring_audit:
+      status: PENDING_FRESH_TASK_AUTHORING_AUDIT
+      required_profile: brain-high-value-v3
+    execution_profile_status: NOT_SELECTABLE_UNTIL_TASK_AUTHORED
+    sequencing:
+      - AFTER_H4A3_LIVE_PROOF
+      - BEFORE_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a4-durable-wake-recovery-multi-project-isolation
+
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a4-durable-wake-recovery-multi-project-isolation
-    status: QUEUED_AFTER_H4A3
+    status: QUEUED_AFTER_TASK_270
     phase: H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
@@ -868,6 +937,7 @@ sequence:
       - NO_AUTOMATIC_DOWNSTREAM_PROJECT_ACTIVATION
     sequencing:
       - AFTER_H4A3_LIVE_PROOF
+      - AFTER_TASK_270_H1R_REVIEWED_RESULT_EXACT_BLOB_FIX
       - BEFORE_H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
