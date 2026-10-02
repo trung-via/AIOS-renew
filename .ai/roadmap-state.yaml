@@ -518,6 +518,119 @@ sequence:
       reason: REVIEWED_CANDIDATE_AND_CURRENT_MAIN_DIVERGED
       run_failure: false
       semantic_failure: false
+    pre_aios_dispatch_failure:
+      dispatch_id: task269-r1-codex61-high-20261002-001
+      workflow_run_id: 36948303352
+      boundary: ADMISSION_REJECTED
+      phase: PRIMARY_SYNCHRONIZATION
+      reason: PRIMARY_SYNCHRONIZATION_REJECTED
+      exact_error: >-
+        invalid canonical reviewed RESULT preservation: SUBMIT_REVIEW structural validation
+        failed: metadata content mismatch
+      run_created: false
+      executor_invoked: false
+      observed_control_sha: "e732266afbc9a4306c3736b2e3914f71414dd152"
+      root_cause_class: REVIEWED_RESULT_EXACT_BLOB_NORMALIZATION_DEFECT
+      root_cause_basis: >-
+        The H1R reviewed-RESULT preservation proof reads canonical REVIEW content through
+        publication._read_blob(), whose shared text Git helper strips terminal whitespace,
+        then compares those normalized bytes against the exact Git blob in
+        _validate_metadata_commit(). REVIEW-268-001 is a valid canonical REVIEW blob with
+        a terminal newline, so the exact-byte comparison rejects the same canonical
+        content after normalization.
+    bootstrap_reconciliation_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR
+      outcome: CANDIDATE
+      selected_contract: BOOTSTRAP_REVIEWED_RESULT_LOCAL_MAIN_RECONCILIATION_EXCEPTION_V1
+      reconciled_risks:
+        - EXCEPTION_MUST_NOT_BYPASS_CANONICAL_REVIEWED_RESULT_PROVENANCE
+        - RESET_TARGET_MUST_BE_EXACT_CURRENT_CANONICAL_MAIN
+        - LOCAL_ONLY_HISTORY_MUST_REMAIN_CANONICALLY_PRESERVED
+        - PRE_AIOS_FAILURE_MUST_NOT_FABRICATE_RUN_OR_FAILURE
+        - TASK269_EXECUTION_SELECTION_MUST_SURVIVE_RETRY
+        - EXCEPTION_MUST_EXPIRE_AFTER_ONE_EXACT_RECOVERY
+    bootstrap_reconciliation_exception:
+      contract: BOOTSTRAP_REVIEWED_RESULT_LOCAL_MAIN_RECONCILIATION_EXCEPTION_V1
+      approved_on: "2026-10-02"
+      authority: HUMAN
+      purpose: >-
+        Break the circular pre-AIOS synchronization blocker for TASK-269 without
+        weakening H1R generally: the persistent local control checkout is preserved by
+        the exact reviewed PASS RESULT lineage of RUN-268-001, but the published H1R
+        proof implementation cannot consume that lineage because of the exact-byte
+        normalization defect above.
+      exact_scope:
+        repository: trung-via/AIOS-renew
+        expected_attached_branch: main
+        expected_local_head: "31eb283ad8eb07695f26e940509696c38e62b3a4"
+        expected_canonical_main: "e732266afbc9a4306c3736b2e3914f71414dd152"
+        common_base_sha: "0d688c4c310abc0e1dd7d736b143203118245f50"
+        local_only_commit_count: 1
+        preserved_run_id: RUN-268-001
+        reviewed_candidate_ref: refs/heads/aios/review/RUN-268-001
+        reviewed_candidate_sha: "31eb283ad8eb07695f26e940509696c38e62b3a4"
+        artifacts_ref: refs/heads/aios/artifacts/RUN-268-001
+        artifacts_sha: "1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        review_decision_ref: refs/heads/aios/review-decision/RUN-268-001
+        review_decision_sha: "7a52a4c82490a4f0a3684b3517404a7cd42bd778"
+        review_id: REVIEW-268-001
+        review_verdict: PASS
+        failed_dispatch_id: task269-r1-codex61-high-20261002-001
+        failed_workflow_run_id: 36948303352
+      required_preconditions:
+        - LOCAL_WORKTREE_AND_INDEX_COMPLETELY_CLEAN
+        - HEAD_ATTACHED_TO_MAIN
+        - UNIQUE_CONFIGURED_UPSTREAM_MAIN
+        - LOCAL_HEAD_EQUALS_EXACT_REVIEWED_CANDIDATE
+        - REMOTE_MAIN_EQUALS_EXACT_CANONICAL_TARGET
+        - EXACT_REVIEW_CANDIDATE_ARTIFACTS_AND_DECISION_REFS_MATCH
+        - REVIEW_DECISION_BINDS_REVIEWED_SHA_AND_PASS
+        - ALL_LOCAL_ONLY_COMMITS_REACHABLE_FROM_EXACT_REVIEWED_CANDIDATE
+        - NO_RUN269_RESULT269_FAILURE269_OR_REVIEW269_EXISTS
+      authorized_mutation: >-
+        Human may perform one exact local control reset of attached clean main from
+        31eb283ad8eb07695f26e940509696c38e62b3a4 to
+        e732266afbc9a4306c3736b2e3914f71414dd152 after all preconditions are freshly
+        revalidated. This is operational control recovery only; it creates no TASK, RUN,
+        FAILURE, RESULT, REVIEW, publication or roadmap lifecycle truth.
+      required_postconditions:
+        - LOCAL_HEAD_EQUALS_EXACT_CANONICAL_MAIN
+        - LOCAL_WORKTREE_AND_INDEX_COMPLETELY_CLEAN
+        - UPSTREAM_BINDING_UNCHANGED
+        - RUN268_REVIEW_ARTIFACT_AND_DECISION_REFS_UNCHANGED
+        - TASK269_CANONICAL_BLOB_UNCHANGED
+      retry_after_success:
+        task_id: TASK-269
+        task_revision: 1
+        task_blob_sha: "0fb3910e9f60384581aa31b159b0435e4334587b"
+        task_commit_sha: "a65a443bdc22564a6c9b82084291ad4cf9698008"
+        executor: codex
+        model: gpt-6.1-sol
+        reasoning_effort: high
+        preserve_human_selection: true
+        require_new_dispatch_id: true
+      constraints:
+        - HUMAN_EXPLICIT_OPERATION_ONLY
+        - NO_EXECUTOR_OR_WORKFLOW_SELECTED_AD_HOC_RESET
+        - NO_FORCE_PUSH_OR_REMOTE_MAIN_MUTATION
+        - NO_REVIEW_ARTIFACT_OR_DECISION_REF_MUTATION
+        - NO_FAKE_RUN_FAILURE_RESULT_OR_REPAIR
+        - NO_REINTERPRETATION_OF_RUN268_AS_PUBLISHED
+        - NO_REUSE_IF_ANY_EXACT_SHA_OR_REF_DRIFTS
+        - NO_AUTOMATIC_ROADMAP_ADVANCE
+      expiry: >-
+        Single-use exception for the exact TASK-269 pre-AIOS synchronization blocker.
+        It expires immediately after successful postcondition verification or on any
+        identity/topology/provenance drift. Any later occurrence requires fresh Human
+        authority.
+      follow_up_required: >-
+        After TASK-269 reaches reviewed publication, create a separately audited bounded
+        maintenance blocker for the exact-byte reviewed-RESULT preservation defect before
+        entering H4A4 implementation.
     architecture_audit:
       profile: brain-high-value-v3
       stage1: CONSTRUCT
