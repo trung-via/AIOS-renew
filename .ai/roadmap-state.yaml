@@ -1129,7 +1129,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_INSERT_DIAGNOSTIC_REQUIRED
+      status: HUMAN_ATTEMPT_RECONCILIATION_REQUIRED
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1161,6 +1161,45 @@ sequence:
           is intentionally non-specific and does not by itself distinguish a
           transient Human/UI race from a live composer insertion incompatibility.
         next_boundary: HUMAN_READ_ONLY_INSERT_DIAGNOSTIC
+      insert_diagnostic_observation:
+        source: HUMAN_LOCAL_READ_ONLY_DIAGNOSTIC
+        observed_on: "2026-10-02"
+        before_focus:
+          url_exact: true
+          composer_count: 1
+          account_count: 1
+          stop_count: 0
+          nonregular_count: 0
+          login_count: 0
+          main_count: 1
+          contenteditable_attr: "true"
+          is_content_editable: true
+          aria_disabled: null
+          text_content_length: 163
+          inner_text_length: 169
+          exec_command_exists: true
+          insert_text_supported: true
+          insert_text_enabled: true
+        after_focus:
+          active_element_is_composer: true
+          selection_inside_composer: true
+          text_content_length: 163
+          inner_text_length: 169
+          insert_text_supported: true
+          insert_text_enabled: true
+        pre_insert_guard: false
+        failure_stage: FOCUS_OR_SURFACE_GUARD
+        wake_submitted: false
+        state_mutated_by_diagnostic: false
+        interpretation: >-
+          The live composer was already non-empty before diagnostic focus and remained
+          non-empty after focus, while exact target identity, account/composer uniqueness,
+          idle state and insertText capability all remained available. This does not support
+          an execCommand capability failure. The observed 163/169 text-length pair is
+          structurally consistent with a four-line payload rendered as block-separated
+          content, but exact payload identity has not yet been proven because the diagnostic
+          intentionally did not read or export composer text.
+        next_boundary: HUMAN_PRIVACY_SAFE_PAYLOAD_AND_ATTEMPT_STATE_RECONCILIATION
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
