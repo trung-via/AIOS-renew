@@ -2872,7 +2872,55 @@ sequence:
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
-    execution_profile_status: HUMAN_SELECTED
+    execution_profile_status: COMPLETED
+    completed_by:
+      task_id: TASK-279
+      task_revision: 1
+      primary_run_id: RUN-279-001
+      primary_failure_artifact_sha: "fb7162f098538ad6e6f023ae9341ac680e2abbe1"
+      failed_candidate_sha: "06b23c9ee0625d0be038a2d7e13175e986ba26b6"
+      repair_id: REPAIR-279-001
+      repair_authorization_sha: "cbea7a26dcd82bfa1ffc3fb524a774447d132dfd"
+      repair_run_id: RUN-279-002
+      result_artifact_sha: "2eb08e11dba8805947ff99a471c16457fdafacb4"
+      verification_evidence:
+        - RUN-279-002-V001
+        - RUN-279-002-V002
+      primary_review_id: REVIEW-279-002
+      primary_review_decision_sha: "92030ae228d15ec930989035ea687d08796bfd44"
+      primary_review_verdict: CHANGES_REQUIRED
+      remediation_authorization_sha: "4dace1183b3706180b42358e2060daf6c5ade112"
+      remediation_run_id: RUN-279-003
+      remediation_result_artifact_sha: "1126b3d1b3cb8cf9101ed6279acad394de568948"
+      final_review_id: REVIEW-279-003
+      final_review_decision_sha: "f988b721c889123dcd63e97e2a0fea55ae34f756"
+      verdict: PASS
+      reviewed_sha: "dc93e5b435d2208b78a286ac670323fa351e64ce"
+      published_sha: "dc93e5b435d2208b78a286ac670323fa351e64ce"
+      publication_workflow_run_id: 37038406848
+      completed_on: "2026-10-02"
+      verification_summary: "RUN-279-002: 800 passed, 516 skipped; git diff --check passed. RUN-279-003: git diff --check passed."
+    live_conformance:
+      status: PARTIAL
+      procedure: docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+      observed_on: "2026-10-03"
+      representative_family_proofs:
+        - family: INGRESS_OR_CARRIER_REJECTION
+          source_issue_number: 1389
+          source_workflow_run_id: 37039065441
+          source_outcome: EXPECTED_REJECTION
+          source_run_created: false
+          local_wake_workflow_run_id: 37039125505
+          local_wake_outcome: SUCCESS
+          human_observation: EXACT_BOUND_REGULAR_CHAT_WAKE_OBSERVED
+          result: PASS
+      remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
+      note: >-
+        The Human observed the selector-only wake in the exact bound regular Chat,
+        while GitHub evidence independently proves the expected ingress rejection,
+        run_created=false source boundary, generic attention projection and successful
+        local wake workflow. This partial live proof does not close H4A5, authorize
+        H4B, advance the roadmap, or become canonical engineering-state truth.
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
