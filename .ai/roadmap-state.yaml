@@ -1032,7 +1032,7 @@ sequence:
         task_id: TASK-271
         status: REVIEWED_PUBLISHED
         publication_sha: "eab56fffd2e1167206090fbf7bb7f8c1316cf4ed"
-      latest_operational_observation:
+      prior_operational_observation:
         source_run_id: RUN-271-001
         terminal_artifact_sha: "7fa2c6f731005e8883f5d015ff3db1a2723b8925"
         local_wake_status: BLOCKED
