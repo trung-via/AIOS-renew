@@ -1269,7 +1269,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: HUMAN_BOUNDED_RECOVERY_REQUIRED
+      status: READY_FOR_EXACT_TERMINAL_REPLAY
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1420,6 +1420,23 @@ sequence:
           publication_sha: "d07f55b98270fe9d744adcad7bba1b439949d526"
           status: REVIEWED_PUBLISHED
         next_boundary: HUMAN_BOUNDED_RECOVERY_OF_KNOWN_ATTEMPT
+      bounded_recovery_observation:
+        source: HUMAN_LOCAL_BOUNDED_RECOVERY
+        observed_on: "2026-10-02"
+        exact_event_id: "terminal:RESULT:RUN-268-001:1f3d0dac34c7cff6d768d580f31513df08ebb253"
+        historical_workflow_run_id: 36963244174
+        historical_workflow_attempt: 2
+        recovery_preconditions: PASS
+        exact_unsent_draft_removed: PASS
+        exact_attempting_event_removed: PASS
+        bounded_recovery: PASS
+        send_clicked: false
+        replay_performed: false
+        user_turn_created_by_recovery: false
+        semantic_effect: NONE
+        h4a3_proof_effect: READINESS_ONLY
+        exception_consumed: true
+        next_boundary: EXACT_RUN_268_RESULT_REPLAY
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
