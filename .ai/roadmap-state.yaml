@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-send-control-selector-compatibility-fix
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -1242,7 +1242,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-send-control-selector-compatibility-fix
-    status: NEXT
+    status: DONE
     phase: H4A3_SEND_CONTROL_SELECTOR_COMPATIBILITY_FIX
     task_id: TASK-275
     task_revision: 1
@@ -1354,6 +1354,21 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
     execution_profile_status: HUMAN_SELECTED
+    completed_by:
+      task_id: TASK-275
+      task_revision: 1
+      run_id: RUN-275-001
+      result_artifact_sha: "d379c4fdd0eaab7134cae5ab3fa682796f5a7818"
+      reviewed_candidate_sha: "30871b4b07272b1d9ab1cd7e72a1a76bf4ed4e50"
+      review_id: REVIEW-275-001
+      review_decision_sha: "0c4374a9b7071560682e5b9d2c593c642432c600"
+      review_verdict: PASS
+      publication_sha: "30871b4b07272b1d9ab1cd7e72a1a76bf4ed4e50"
+      publication_workflow_run_id: 36978258995
+      verification:
+        - "python -m pytest -q tests/test_local_chat_wake.py => 241 passed, 452 skipped"
+        - "git diff --check => PASS"
+      unresolved: []
     sequencing:
       - AFTER_TASK_274_LIVE_COMPOSER_INSERTION_PROOF_FIX
       - BEFORE_H4A3_LIVE_EXACT_CHAT_PROOF
@@ -1362,7 +1377,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
-    status: BLOCKED_BY_TASK_275_SEND_CONTROL_SELECTOR_FIX
+    status: NEXT
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -1389,7 +1404,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: ENGINEERING_SEND_CONTROL_SELECTOR_DEFECT_CONFIRMED
+      status: HUMAN_BOUNDED_RECOVERY_REQUIRED_AFTER_TASK_275_PUBLICATION
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -1710,7 +1725,7 @@ sequence:
           - SEND_CONTROL_DISABLED
         proposed_correction:
           proposed_task_id: TASK-275
-          status: HUMAN_APPROVED
+          status: REVIEWED_PUBLISHED
           objective: >-
             Update local-chat-wake to discover the live Send control through a
             bounded regular-chat selector contract that accepts the current visible
@@ -1726,7 +1741,14 @@ sequence:
             - ZERO_OR_MULTIPLE_CANDIDATES_FAIL_CLOSED
             - NO_LIVE_H4A3_REPLAY_BY_EXECUTOR
             - DO_NOT_CLEAR_CURRENT_ATTEMPTING_STATE_OR_UNSENT_DRAFT_AUTOMATICALLY
-        next_boundary: TASK_275_AUTHORING_AND_EXECUTION
+        resolution:
+          task_id: TASK-275
+          run_id: RUN-275-001
+          review_id: REVIEW-275-001
+          publication_sha: "30871b4b07272b1d9ab1cd7e72a1a76bf4ed4e50"
+          publication_workflow_run_id: 36978258995
+          status: REVIEWED_PUBLISHED
+        next_boundary: HUMAN_BOUNDED_RECOVERY_OF_WORKFLOW_352_ATTEMPT_1
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
         observed_on: "2026-10-02"
