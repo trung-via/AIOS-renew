@@ -2740,6 +2740,8 @@ sequence:
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a4-durable-wake-recovery-multi-project-isolation
     status: NEXT
     phase: H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
+    task_id: TASK-278
+    task_revision: 1
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
     planning_document: docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
@@ -2761,6 +2763,17 @@ sequence:
       stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
       closure: CLEAR
       outcome: CANDIDATE
+    human_execution_delegation:
+      selected_on: "2026-10-02"
+      authority: HUMAN
+      task_id: TASK-278
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
     required_capabilities:
       - DURABLE_PENDING_AND_DEFERRED_OPERATIONAL_QUEUE
       - RETRY_SAFE_PRE_SUBMIT_CONDITION_RECHECK
