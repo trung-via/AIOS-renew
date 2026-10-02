@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4a3-receipt-equivalent-closure-contract
+  - brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -1508,7 +1508,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-ack-only-exact-chat-conformance
-    status: BLOCKED_BY_TASK_277_RECEIPT_EQUIVALENT_CLOSURE_CONTRACT
+    status: NEXT
     phase: H4A3_ACK_ONLY_EXACT_CHAT_CONFORMANCE
     task_id: TASK-268
     task_revision: 1
@@ -1535,7 +1535,7 @@ sequence:
         - LIVE_PROBE_MUST_NOT_READ_ASSISTANT_OUTPUT_OR_MUTATE_LIFECYCLE
         - NEGATIVE_BROWSER_CASES_REUSE_PUBLISHED_DETERMINISTIC_H4A2_EVIDENCE
     live_probe:
-      status: FINAL_OPERATIONAL_PROOF_OBSERVED_SUBMITTED_RECEIPT_GAP_REMAINS
+      status: TASK_277_REVIEWED_PUBLISHED_CLOSURE_ASSESSMENT_READY
       target_page_uniqueness_observation:
         source: HUMAN_LOCAL_READ_ONLY_CHECK
         observed_on: "2026-10-02"
@@ -2330,6 +2330,21 @@ sequence:
         roadmap_auto_close_forbidden: true
         status: HUMAN_APPROVED_PENDING_AUTHORING
         next_boundary: TASK_277_AUTHORING_AND_REVIEWED_PUBLICATION
+      task_277_resolution:
+        task_id: TASK-277
+        run_id: RUN-277-001
+        result_artifact_sha: "4443611f6fa09bb240e05b7554fcefdf85ea1b86"
+        candidate_sha: "adcc7ed64ca8798ff5280be1af7d6c2ab67eb67c"
+        review_id: REVIEW-277-001
+        review_decision_sha: "bc6ee4d0e3dca8a0fc5781f7617dabddc65f1196"
+        publication_sha: "adcc7ed64ca8798ff5280be1af7d6c2ab67eb67c"
+        publication_workflow_run_id: 37002826466
+        verification: GIT_DIFF_CHECK_PASS
+        semantic_review: PASS
+        status: REVIEWED_PUBLISHED
+        conformance_contract: H4A3_EXACT_WORKFLOW_354_EVIDENCE_EQUIVALENT_CLOSURE_V1
+        h4a3_closed_by_this_task: false
+        next_boundary: HUMAN_BRAIN_H4A3_CLOSURE_ASSESSMENT
 
       post_fix_preflight_observation:
         source: HUMAN_LOCAL_H4A3_POST_FIX_PREFLIGHT
@@ -2468,7 +2483,7 @@ sequence:
 
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a3-receipt-equivalent-closure-contract
-    status: NEXT
+    status: DONE
     phase: H4A3_RECEIPT_EQUIVALENT_CLOSURE_CONTRACT
     task_id: TASK-277
     task_revision: 1
@@ -2552,7 +2567,20 @@ sequence:
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
-    execution_profile_status: HUMAN_SELECTED
+    execution_profile_status: COMPLETED
+    completed_by:
+      task_id: TASK-277
+      run_id: RUN-277-001
+      result_artifact_sha: "4443611f6fa09bb240e05b7554fcefdf85ea1b86"
+      candidate_sha: "adcc7ed64ca8798ff5280be1af7d6c2ab67eb67c"
+      review_id: REVIEW-277-001
+      review_decision_sha: "bc6ee4d0e3dca8a0fc5781f7617dabddc65f1196"
+      review_ingress_issue: 1364
+      publication_sha: "adcc7ed64ca8798ff5280be1af7d6c2ab67eb67c"
+      publication_workflow_run_id: 37002826466
+      verification:
+        - "git diff --check: PASS"
+      semantic_review: PASS
     sequencing:
       - AFTER_TASK_276_REVIEWED_PUBLICATION_AND_WORKFLOW_354_RECONCILIATION
       - AFTER_DUPLICATE_NOOP_AND_POST_DUPLICATE_EXACT_TURN_PROOF
