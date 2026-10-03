@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+  - brain-runtime-semantic-handoff-hardening-v1-h4b-stale-flight-liveness-hardening
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -3966,7 +3966,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
-    status: NEXT
+    status: IMPLEMENTATION_HARDENING_REQUIRED
     phase: H4B_REGULAR_CHAT_BRAIN_RESUME
     task_id: TASK-285
     task_revision: 1
@@ -4048,21 +4048,21 @@ sequence:
         that exact regular-Chat user turn, so successful review/publication cannot be
         used retrospectively as live semantic-resume proof.
     current_live_blocker:
-      code: H4B_REAL_UNRESOLVED_RESULT_LIVE_PROOF_UNPROVED
+      code: H4B_PERMANENT_STALE_FLIGHT_LIVENESS_HARDENING_PENDING
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-285
-      root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
+      root_cause_class: MISSED_TRANSIENT_BUSY_CAN_STALE_SUBMITTED_FLIGHT
       lane_recovery_status: CLEAN_AFTER_HUMAN_STATE_ONLY_RECONCILIATION
       latest_completed_hardening_task: TASK-286
-      next_action: OBSERVE_NEXT_NATURAL_REAL_UNRESOLVED_RESULT_CHECKPOINT
+      next_action: AUTHOR_PERMANENT_STALE_FLIGHT_LIVENESS_HARDENING_TASK
       prohibitions:
         - NO_RETROSPECTIVE_RECLASSIFICATION_OF_REVIEW_OR_PUBLICATION_AS_RESULT_RESUME_PROOF
         - NO_REPLAY_OF_RESOLVED_RUN_285_OR_RUN_286_ATTENTION
         - NO_FABRICATED_CHECKPOINT
-        - NO_BLIND_REPLAY_OR_REDRAIN
-        - NO_NEW_EXECUTOR_SOLELY_TO_MANUFACTURE_LIVE_EVIDENCE
+        - NO_TIME_ONLY_COMPLETION_HEURISTIC
+        - NO_ASSISTANT_CONTENT_SCRAPING
         - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: H4B_REAL_UNRESOLVED_CANONICAL_SEMANTIC_CHECKPOINT_LIVE_OBSERVATION
+    remaining_gate: PERMANENT_STALE_FLIGHT_LIVENESS_HARDENING_THEN_H4B_REAL_UNRESOLVED_CANONICAL_SEMANTIC_CHECKPOINT_LIVE_OBSERVATION
     sequencing:
       - AFTER_H4A5_CLOSED
       - BEFORE_H5_INTEGRATION_CONFORMANCE_CLOSURE
@@ -4082,6 +4082,68 @@ sequence:
       - NO_AUTOMATIC_ROADMAP_ADVANCE
       - NO_H5_START_BEFORE_H4B_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-stale-flight-liveness-hardening
+    status: HUMAN_APPROVED_PENDING_AUTHORING
+    phase: H4B_STALE_FLIGHT_LIVENESS_HARDENING
+    planned_task_id: TASK-287
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-03"
+    parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+    objective: >-
+      Permanently harden local regular-Chat lane liveness so a proven SUBMITTED wake
+      cannot hold the lane indefinitely merely because the transient BUSY generation
+      state was missed, while preserving exactly-once delivery, post-submit ambiguity
+      fail-close behavior, Human precedence and transport-only authority.
+    evidence_basis:
+      stale_holder_run_id: RUN-285-001
+      stale_holder_family: PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+      stale_holder_status: SUBMITTED
+      stale_holder_seen_busy: false
+      exact_user_turn: EXACT
+      browser_generation_state: IDLE
+      downstream_observation:
+        run_286_result: DEFERRED_LANE_IN_FLIGHT
+        run_286_publication: DEFERRED_LANE_IN_FLIGHT
+      human_state_only_recovery:
+        status: APPLIED
+        cleared_flight_only: true
+        preserved_submitted_record: true
+        event_count_before: 7
+        event_count_after: 7
+      post_recovery_run_286_publication: NOOP_CANONICALLY_RESOLVED
+    human_priority_change:
+      decision: FIX_PERMANENTLY_BEFORE_H4B_LIVE_PROOF
+      supersedes_prior_next_action: OBSERVE_NEXT_NATURAL_REAL_UNRESOLVED_RESULT_CHECKPOINT
+      prospective_only: true
+    semantic_design:
+      selected_contract: EXACT_TURN_BOUND_CONTENT_FREE_COMPLETION_WITNESS
+      requirements:
+        - PRESERVE_EXISTING_BUSY_THEN_IDLE_RELEASE
+        - NEVER_RELEASE_FROM_IDLE_ALONE_WHEN_SEEN_BUSY_FALSE
+        - ALLOW_RELEASE_WITHOUT_SEEN_BUSY_ONLY_FROM_EXACT_SUBMITTED_TURN_BOUND_COMPLETION_PROOF
+        - COMPLETION_PROOF_MUST_BE_STRUCTURAL_AND_CONTENT_FREE
+        - CURRENT_TARGET_MUST_BE_EXACT_AUTHENTICATED_REGULAR_CHAT_AND_IDLE
+        - AMBIGUOUS_MISSING_INTERVENING_OR_UNPROVEN_TURN_STRUCTURE_MUST_HOLD
+        - PRESERVE_SUBMITTED_DEDUPE_RECORD_WHEN_FLIGHT_RELEASES
+        - FRESH_CANONICAL_BARRIER_REMAINS_REQUIRED_BEFORE_ANY_LATER_PENDING_SEND
+      privacy_boundary:
+        - NO_ASSISTANT_TEXT
+        - NO_ASSISTANT_HTML_OR_RAW_CONTENT
+        - NO_CHAT_HISTORY_EXPORT
+        - NO_ACCOUNT_SESSION_COOKIE_CREDENTIAL_EXPORT
+    non_goals:
+      - CHANGE_CANONICAL_ATTENTION_OR_LIFECYCLE_AUTHORITY
+      - ADD_TIME_ONLY_COOLDOWN_OR_TIMEOUT_HEURISTIC
+      - ADD_RETRY_OR_FAILOVER_AUTHORITY
+      - ADD_SECOND_WAKE_TRANSPORT
+      - REPLAY_RESOLVED_RUN_285_OR_RUN_286
+      - CLOSE_H4B_OR_START_H5_FROM_THIS_TASK
+    current_live_blocker:
+      code: TASK_287_AUTHORING_PENDING
+      authority: BRAIN
+      next_action: AUTHOR_AUDITED_TASK
+    remaining_gate: TASK_287_CANONICAL_AUTHORING_AND_HUMAN_EXECUTION_SELECTION
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
     status: DONE
