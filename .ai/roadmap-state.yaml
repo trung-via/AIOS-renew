@@ -4084,9 +4084,20 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-stale-flight-liveness-hardening
-    status: HUMAN_APPROVED_PENDING_AUTHORING
+    status: NEXT
     phase: H4B_STALE_FLIGHT_LIVENESS_HARDENING
-    planned_task_id: TASK-287
+    task_id: TASK-287
+    task_revision: 1
+    task_author_commit_sha: "ae7f5afd6f629ba7b5699408be7c829d54e54bb4"
+    task_blob_sha: "f7eb8c9b9117b678cbc86d60193eb55fd1c8af51"
+    authoring_issue_number: 1418
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    packet_fingerprint: "09b742909928a75b3aed194606f51b4dc4c195fad3059c2ef827c3903ed9eb75"
+    construct_fingerprint: "f2decac070961525ffac64fc414391097c2ffb6d2ef4abeec6542b302e160ec2"
+    reconciled_candidate_fingerprint: "19b0e9b53e9ea414c079362ea7ae88c10e68bcd729d8eb2149390edd3caf0cb4"
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-03"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
@@ -4140,10 +4151,18 @@ sequence:
       - REPLAY_RESOLVED_RUN_285_OR_RUN_286
       - CLOSE_H4B_OR_START_H5_FROM_THIS_TASK
     current_live_blocker:
-      code: TASK_287_AUTHORING_PENDING
-      authority: BRAIN
-      next_action: AUTHOR_AUDITED_TASK
-    remaining_gate: TASK_287_CANONICAL_AUTHORING_AND_HUMAN_EXECUTION_SELECTION
+      code: H4B_TASK_287_EXECUTOR_SELECTION_PENDING
+      authority: HUMAN
+      task_binding: TASK-287
+      root_cause_class: MISSED_TRANSIENT_BUSY_CAN_STALE_SUBMITTED_FLIGHT
+      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT
+      prohibitions:
+        - NO_PRIMARY_BEFORE_HUMAN_EXECUTION_SELECTION
+        - NO_EXECUTOR_REUSE_FROM_TASK_286
+        - NO_TIME_ONLY_COMPLETION_HEURISTIC
+        - NO_ASSISTANT_CONTENT_SCRAPING
+        - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
+    remaining_gate: TASK_287_HUMAN_EXECUTION_SELECTION
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
     status: DONE
