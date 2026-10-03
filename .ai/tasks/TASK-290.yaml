@@ -1,0 +1,124 @@
+task_id: TASK-290
+revision: 1
+goal: Eliminate phantom same-lane head-of-line blocking in local regular-Chat wake
+  delivery by separating real durable in-flight state from pass-local event deferral,
+  so an event-specific CANONICAL_UNKNOWN cannot manufacture LANE_IN_FLIGHT for later
+  independent subjects while exactly-once delivery and single-user-turn serialization
+  remain intact.
+problem: After TASK-289 was reviewed and published, live machine-local state showed
+  flight=null, queue empty, four RESOLVED_NOOP records including the formerly stale
+  RUN-288-001 FAILURE, two DEFERRED records, and the RUN-289-001 publication-success
+  attention still DEFERRED/LANE_IN_FLIGHT. Production _drain_locked initializes held
+  from real flight/AMBIGUOUS state but then unconditionally sets held=True after every
+  non-NOOP receipt. Therefore the earlier CANONICAL_CONFLICT_OR_STALENESS event returning
+  CANONICAL_UNKNOWN creates a pass-local pseudo-flight even though data.flight remains
+  null; all later unresolved events take the held branch and persist LANE_IN_FLIGHT.
+  Repeated finite drains preserve insertion order and reproduce the same blockage,
+  creating deterministic head-of-line starvation unrelated to any actual submitted
+  wake.
+assumptions:
+- Canonical main at TASK-290 authoring is 82cc94178c11d8ee605f15007c63bc3866b562a4.
+- TASK-289 completed through RUN-289-001, REVIEW-289-001 PASS, Runtime verification
+  534 passed and 610 skipped plus git diff --check, and exact publication at d0a8a5f51db5145bc6797345248bed4f13136317.
+- Read-only live state after TASK-289 publication shows FLIGHT=null, queue_file_count=0,
+  SUBMITTED=4, DEFERRED=2, RESOLVED_NOOP=4; RUN-288-001 FAILURE is no longer non-resolved.
+- The two remaining deferred subjects are an older CANONICAL_CONFLICT_OR_STALENESS
+  event with reason CANONICAL_UNKNOWN followed by RUN-289-001 publication-success
+  attention with reason LANE_IN_FLIGHT.
+- The current lane contract still requires at most one actual user-turn submission
+  per finite pass and no blind resend after ambiguous submission.
+- H4B remains UNPROVED; TASK-290 is a transport-liveness prerequisite and must not
+  manufacture or close the H4B semantic-resume proof.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-289.yaml
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+non_goals:
+- Allow more than one actual user-turn submission in one finite lane pass or permit
+  simultaneous same-chat sends.
+- Remove durable flight, ambiguous-attempt proof-only handling, submission dedupe,
+  or exactly-once barriers.
+- Bypass DRAFT_PRESENT, GENERATION_ACTIVE, target/surface uncertainty, binding-generation
+  changes, outbound-already-present, insertion/send uncertainty, or other lane-wide
+  safety conditions.
+- Change canonical freshness semantics, Brain attention identity, TASK/RUN/RESULT/FAILURE/REVIEW/publication
+  contracts, or Runtime lifecycle reduction.
+- Create a semantic priority selector, generic lifecycle router, retry/failover authority,
+  or automatic correction selector.
+- Rewrite existing machine-local event records directly, run an unrestricted live
+  drain from Executor execution, close H4B, or start H5.
+constraints:
+  hard:
+  - LANE_IN_FLIGHT may be emitted or persisted only when the current durable lane
+    state proves a real active flight or ambiguous submitted attempt; a pass-local
+    boolean derived from an unrelated deferred receipt is insufficient.
+  - An event that fails fresh canonical observation with CANONICAL_UNKNOWN remains
+    DEFERRED/CANONICAL_UNKNOWN but must not create a pass-wide hold; the drain continues
+    in stable admission order to independently revalidate later subjects.
+  - Among subjects that remain canonically unresolved, the first send-eligible subject
+    in stable admission order may attempt delivery even when earlier subjects are
+    individually CANONICAL_UNKNOWN. This is deterministic eligibility scanning, not
+    semantic prioritization.
+  - A later subject that is canonically RESOLVED may become RESOLVED_NOOP independently
+    of earlier deferred subjects and without browser attachment.
+  - A successful or ambiguous actual submission must create the existing durable flight
+    before the possible click and then serialize later unresolved sends exactly as
+    today; at most one actual user-turn submission is allowed per finite pass.
+  - Pre-submit lane-wide safety blockers other than CANONICAL_UNKNOWN may stop later
+    sends for that pass, but later unresolved subjects must retain the proven blocker
+    reason rather than being mislabeled LANE_IN_FLIGHT when no durable flight exists.
+    Later subjects must still be independently eligible for canonical RESOLVED_NOOP
+    classification.
+  - Preserve fresh canonical checks, binding-generation checks, exact-target/surface
+    guards, immediate pre-click revalidation, proof-only ambiguity, permanent dedupe,
+    bounded retries, and per-project lane isolation.
+  - Executor changes only the four scope.modify files. Runtime owns verification;
+    Reviewer owns semantic verdict; Publisher owns exact reviewed publication; Human/Brain
+    owns post-publication live-state observation and any roadmap/H4B decision.
+acceptance:
+- id: AC1
+  condition: The candidate removes the overloaded pass-local held semantics so LANE_IN_FLIGHT
+    classification is tied only to real durable flight/ambiguous-attempt state, without
+    weakening the existing pre-click durable uncertainty boundary or introducing a
+    router.
+- id: AC2
+  condition: Focused regression coverage models flight=null with an earlier DEFERRED/CANONICAL_UNKNOWN
+    subject and a later canonically UNRESOLVED healthy subject; the earlier event
+    remains CANONICAL_UNKNOWN, the later event becomes the one submitted subject,
+    exactly one user turn is attempted, and the durable flight points only to that
+    submitted later event.
+- id: AC3
+  condition: Focused coverage proves later canonically RESOLVED subjects still become
+    RESOLVED_NOOP independently of earlier unknown/deferred subjects without browser
+    attachment, preserving per-event freshness and dedupe.
+- id: AC4
+  condition: Focused counterexamples prove lane-wide pre-submit blockers such as draft,
+    active generation, target/surface uncertainty or binding change prevent unsafe
+    later sends but do not fabricate LANE_IN_FLIGHT when durable flight is absent;
+    resolved later subjects may still NOOP.
+- id: AC5
+  condition: Existing real-flight and ambiguous-submission fixtures continue to serialize
+    later unresolved subjects as LANE_IN_FLIGHT, preserve exactly-once/no-resend behavior,
+    and enforce at most one actual submission per finite pass.
+- id: AC6
+  condition: The four-file candidate documents NON_BLOCKING_PER_EVENT_WAKE_V1, keeps
+    H4B UNPROVED, reports unresolved empty in the structural RESULT, and leaves minimum-sufficient
+    verification to Runtime using the unchanged focused suite plus git diff --check.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py tests/test_h4b_regular_chat_brain_resume.py
+  - git diff --check
