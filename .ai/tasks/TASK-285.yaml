@@ -1,0 +1,131 @@
+task_id: TASK-285
+revision: 1
+goal: Establish H4B Regular Chat Brain Resume conformance over the existing Brain
+  Sync, Unified State, Brain Work Context and Flow Resolver surfaces so one real unresolved
+  canonical semantic checkpoint can resume the bound regular-Chat Brain from fresh
+  canonical state, without adding semantic routing, lifecycle, transport or provider
+  authority.
+problem: H4A5 is closed as a Human/Brain planning milestone with explicitly accepted
+  residual live-evidence risk, and the local regular-Chat wake path is published and
+  live-proven on core attention paths. Separately, AIOS already has deterministic
+  Brain Sync, Unified State, Brain Work Context and repository-owned Flow Cards. H4B
+  has not yet established a focused cross-surface conformance contract showing that
+  a wake remains only an untrusted doorbell, that canonical state alone selects the
+  semantic flow and authority, and that the regular Chat takes at most one semantic
+  continuation step before a new Human boundary. The current gap is integration/conformance
+  and live proof, not a known production semantic implementation defect.
+assumptions:
+- Canonical main at TASK authoring is af3962a4d9d609e1d869825f1e711ef6c5f94d1c.
+- H4A5 is canonically closed with Human-accepted residual live-evidence gaps; those
+  residuals remain explicitly unproved and must carry forward without being relabeled
+  PASS.
+- src/aios_renew/brain_sync.py, src/aios_renew/unified_state.py, src/aios_renew/brain_context.py
+  and .ai/flow-cards.yaml are the existing deterministic reconstruction and semantic-flow
+  surfaces; H4B should reuse them rather than add another lifecycle reducer or semantic
+  router.
+- The published local regular-Chat wake transport remains selector-only, machine-local
+  for chat binding, and forbidden from reading assistant output or selecting lifecycle
+  action.
+- A real unresolved semantic-checkpoint live proof is a separate Human/Brain conformance
+  observation after Runtime produces an eligible subject; it is not pre-verification
+  acceptance truth for this TASK.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/flow-cards.yaml
+  - docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+  - src/aios_renew/brain_sync.py
+  - src/aios_renew/unified_state.py
+  - src/aios_renew/brain_context.py
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_brain_sync.py
+  - tests/test_brain_context.py
+  - tests/test_operator_unified_state.py
+  modify:
+  - tests/test_h4b_regular_chat_brain_resume.py
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+non_goals:
+- Modify production Python, GitHub workflows, attention schemas, local browser transport,
+  machine-local binding state, Flow Card authority, Runtime lifecycle reduction, Reviewer
+  semantics or Publisher semantics unless a separate audited TASK is later justified
+  by concrete evidence.
+- Create a second Planner, semantic router, lifecycle reducer, retry/failover authority,
+  persistent reasoning store, provider/session memory contract, or assistant-output
+  scraper.
+- Treat the wake event family, event_id text, chat history, conversation identity,
+  provider identity, browser state or cached semantic judgment as engineering truth
+  or as an authoritative next action.
+- Execute a live browser wake, fabricate an unresolved checkpoint, create a RUN/REVIEW
+  solely for conformance, or require the future TASK-285 RESULT/review/publication
+  as Runtime acceptance evidence.
+- Reclassify any H4A5 accepted residual live-evidence gap as PASS or erase its reopen
+  triggers.
+- Start or close H5, advance any downstream project, or select an Executor/model/effort
+  for a later TASK.
+constraints:
+  hard:
+  - H4B conformance must reuse the canonical Brain Sync -> Brain Work Context -> Flow
+    Resolver / Flow Card path; semantic flow and authority must be reconstructed from
+    fresh canonical state and never from the wake payload.
+  - SEMANTIC_REVIEW must remain Reviewer authority even when Brain and Reviewer are
+    co-located in the same ChatGPT conversation; co-location must not merge authority.
+  - Focused deterministic conformance must be offline/repository-local and must not
+    depend on a live ChatGPT browser session, credentials, raw logs, private conversation
+    content or provider/session identity.
+  - All final TASK acceptance criteria must be concrete implementation/documentation
+    properties claimable before Runtime verification; the real regular-Chat semantic-resume
+    observation remains a separately recorded Human/Brain live-conformance step.
+  - 'Minimum fresh context remains flow-scoped: canonical main, exact selected subject/lineage,
+    unresolved status, Unified State, next_action, authority and Flow Card are fresh;
+    unrelated repository history is not scanned for ceremony, while ambiguity expands
+    reconstruction only as needed and otherwise fails closed.'
+  - Executor changes only the two authorized conformance files. Runtime owns canonical
+    verification, Reviewer owns semantic verdict, Publisher owns publication, and
+    Human/Brain owns H4B live-proof and roadmap closure.
+acceptance:
+- id: AC1
+  condition: A focused H4B conformance test composes the existing Brain Sync, Brain
+    Work Context and Flow Resolver surfaces over a representative fresh canonical
+    unresolved RESULT/semantic-review state and proves exact selected TASK/RUN lineage,
+    selected_flow SEMANTIC_REVIEW, authority_owner REVIEWER and repository-owned SEMANTIC_REVIEW
+    Flow Card without creating RUN, Executor, verification or state-mutation effects.
+- id: AC2
+  condition: Focused conformance proves that wake-doorbell text or arbitrary Human/chat
+    text cannot select or override semantic flow, authority, next_action, review verdict
+    or lifecycle action, and that stale, altered, missing or ambiguous canonical selection
+    fails closed rather than falling back to chat memory or payload semantics.
+- id: AC3
+  condition: Focused conformance proves minimum-fresh reconstruction remains bounded
+    and flow-scoped, invalidates on relevant main/lifecycle/request movement, excludes
+    remote URL/credentials/raw logs/chat history/provider-session identity from reasoning
+    material, and does not require a ceremonial full repository or unrelated-history
+    scan.
+- id: AC4
+  condition: The TASK-285 delta contains no production Python or workflow change and
+    introduces no second semantic router, lifecycle reducer, persistent reasoning
+    store, assistant-output scraper, ChatGPT Work wake dependency, or new mutation
+    authority.
+- id: AC5
+  condition: The H4B conformance document defines a bounded live procedure in which
+    one real unresolved canonical semantic checkpoint reaches the already-bound regular
+    Chat, the Brain performs fresh canonical reconstruction, verifies the subject
+    remains unresolved, resolves the existing Flow Card, takes at most one authority-correct
+    semantic continuation step, stops at any new Human intent/priority/risk boundary,
+    and leaves the Human-visible result in the same conversation without treating
+    conversation identity as canonical truth.
+- id: AC6
+  condition: The H4B conformance document keeps H4A5 residual live-evidence gaps and
+    reopen triggers explicit, states that deterministic TASK acceptance does not itself
+    prove the future regular-Chat live step, and leaves H4B closure and any H5 start
+    to separate Human/Brain planning actions.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_h4b_regular_chat_brain_resume.py tests/test_brain_sync.py
+    tests/test_brain_context.py
+  - git diff --check
