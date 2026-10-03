@@ -146,12 +146,33 @@ The prior Issue #1390 replay was idempotent and created no new RUN. Publisher ru
 post-publication local wake workflow was created. That is the recorded
 `PUBLICATION_SUCCESS_SOURCE_NOTIFICATION_GAP` blocker, not live conformance.
 
-Rerun the publication-success probe only after TASK-280 has received exact review
-and its reviewed candidate has been published into canonical main. Executor
-implementation, Runtime deterministic checks, a source artifact, or a successful
-publisher workflow alone does not satisfy this prerequisite or prove a regular-Chat
-user turn. Until the Human live procedure succeeds, H4A5 remains blocked and H4B
-readiness remains unclaimed.
+TASK-280's direct Publisher-to-local-wake handoff has since received exact review
+and reviewed publication. A subsequent live replay, publisher workflow
+`37080008668`, used integrated REMEDIATION `RUN-280-002` with canonical PASS
+`REVIEW-280-002` and reviewed candidate
+`aa0648049194d8d51b2b04cd23b1bd0d46e71db5`, which was already published.
+Publication rejected the historical integrated `authorized_main_sha`
+`abc2aba3afd601dafbdda77647fd213a18dfe395` as stale before it could classify
+the replay as a no-op. This is the stale integrated-replay ordering blocker;
+it does not establish a defect in TASK-280's published direct handoff or prove
+live H4A5 conformance.
+
+TASK-281 repairs that ordering for integrated REMEDIATION and integrated REPAIR.
+Exact REVIEW, RESULT, predecessor, integration identity/candidate/ref and correction
+frontier validation remain required before either successful no-op. Equal canonical
+main yields `ALREADY_PUBLISHED`; strict reviewed-candidate ancestry yields
+`ALREADY_INCLUDED`. Both outcomes require zero push and no main rewrite. When main
+does not contain the reviewed candidate, stale integrated authorization still
+rejects publication before any push. PublicationReport and the existing publication
+success projector and direct handoff retain their contracts.
+
+Rerun the publication-success probe only after TASK-281 has received exact review
+and its reviewed candidate has been published into canonical main, and only under
+a separate Human authorization for that bounded live replay. Executor implementation,
+Runtime deterministic checks, a source artifact, or a successful publisher workflow
+alone does not satisfy this prerequisite or prove a regular-Chat user turn. Until
+the Human live procedure succeeds, H4A5 remains blocked and H4B readiness remains
+unclaimed.
 
 After reviewed publication, Human may separately authorize one bounded replay of
 an existing exact eligible PASS review, retaining the no-new-RUN/no-Executor

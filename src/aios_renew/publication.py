@@ -350,6 +350,10 @@ def _parse_remediation_predecessor(
 def _parse_remediation_run(
     run_data: Mapping[str, Any], *, run_id: str
 ) -> tuple[Run, Remediation]:
+    if "execution_base" in run_data and "predecessor" not in run_data:
+        base = _parse_remediation_execution_base(run_data["execution_base"])
+        if base.is_integrated:
+            raise ValueError("integrated execution_base requires canonical predecessor")
     execution = _mapping(run_data.get("execution"), "REMEDIATION.execution")
     run = _run_from_data(execution.get("run"), "REMEDIATION.execution.run")
     if run.run_id != run_id:
@@ -1084,6 +1088,7 @@ def _repair_review_lineage(
     seen: frozenset[str] = frozenset(),
     strict_source: bool = False,
     repair_sources: frozenset[str] = frozenset(),
+    integrated_origins: list[Mapping[str, Any]] | None = None,
 ) -> tuple[str, str, Review | None, str | None]:
     """Validate persisted REPAIR links and recover the applicable prior REVIEW."""
 
@@ -1320,6 +1325,8 @@ def _repair_review_lineage(
             predecessor_base = _parse_remediation_execution_base(
                 predecessor_run_data["execution_base"]
             )
+            if predecessor_base.is_integrated and integrated_origins is not None:
+                integrated_origins.append(predecessor_run_data)
             result_base_sha = (
                 predecessor_base.integration_candidate_sha
                 if predecessor_base.is_integrated
@@ -1386,6 +1393,7 @@ def _repair_review_lineage(
                 seen=seen,
                 strict_source=strict_source,
                 repair_sources=repair_sources,
+                integrated_origins=integrated_origins,
             )
             if predecessor_root != root_base_sha:
                 raise ValueError("conflicting REPAIR root_base_sha lineage")
@@ -1451,6 +1459,7 @@ def _load_success_lineage(
     remote: str,
     run_id: str,
     decision_sha: str,
+    publication_main_sha: str | None = None,
 ) -> tuple[str, ResultPackage]:
     code, tree, _ = _git(
         repo,
@@ -1553,7 +1562,7 @@ def _load_success_lineage(
         )
         task = parse_task(task_bytes.decode("utf-8", errors="strict"))
         repair_prior_review = None
-        cumulative_base = None
+        correction_origins: list[Mapping[str, Any]] = []
         if "predecessor" in run_data:
             assert remediation is not None
             prior_review = _validate_predecessor_lineage(
@@ -1565,10 +1574,7 @@ def _load_success_lineage(
                 remediation=remediation,
                 task=task,
             )
-            if "execution_base" in run_data:
-                cumulative_base = _parse_remediation_execution_base(
-                    run_data["execution_base"]
-                )
+            correction_origins.append(run_data)
         if repair_bytes is not None:
             if remediation is not None:
                 raise ValueError(
@@ -1588,6 +1594,7 @@ def _load_success_lineage(
                 child_head_sha=source_sha,
                 lineage_bytes=repair_bytes,
                 task=task,
+                integrated_origins=correction_origins,
             )
             package = _validate_repair_package(
                 repo,
@@ -1668,33 +1675,12 @@ def _load_success_lineage(
             raise ValueError(
                 "RESULT head_sha does not match canonical source ref"
             )
-        if cumulative_base is not None:
-            main_sha = _single_remote_sha(
-                repo, remote, "refs/heads/main", run_id=run_id
-            )
-            _fetch_object(repo, remote, main_sha, run_id=run_id)
-            if cumulative_base.is_integrated and cumulative_base.authorized_main_sha != main_sha:
-                raise ValueError(
-                    f"authorized main SHA {cumulative_base.authorized_main_sha} is stale (current main is {main_sha})"
-                )
-            main_is_safe_base, _, _ = _git(
-                repo, "merge-base", "--is-ancestor", main_sha,
-                cumulative_base.candidate_sha, allow_fail=True,
-            )
-            candidate_already_contained, _, _ = _git(
-                repo, "merge-base", "--is-ancestor", source_sha, main_sha,
-                allow_fail=True,
-            )
-            if main_is_safe_base and candidate_already_contained:
-                raise ValueError(
-                    "current main is not safely contained by cumulative execution base"
-                )
-        if "predecessor" in run_data:
+        for origin in correction_origins:
             frontier = _derive_publication_frontier(
                 repo,
                 remote=remote,
                 publication_run_id=run_id,
-                run_data=run_data,
+                run_data=origin,
                 delta_review=review,
             )
             if not frontier.is_empty:
@@ -1703,6 +1689,37 @@ def _load_success_lineage(
                 )
                 raise ValueError(
                     f"predecessor lineage contains outstanding findings in correction frontier: {outstanding_ids}"
+                )
+        for origin in correction_origins:
+            if "execution_base" not in origin:
+                continue
+            cumulative_base = _parse_remediation_execution_base(origin["execution_base"])
+            # Use the same main snapshot as no-op classification and the push lease.
+            # Historical integration identity/ref/parents/tree and correction lineage
+            # remain mandatory above; only the mutation freshness gate is conditional.
+            main_sha = publication_main_sha or _single_remote_sha(
+                repo, remote, "refs/heads/main", run_id=run_id
+            )
+            _fetch_object(repo, remote, main_sha, run_id=run_id)
+            candidate_already_contained, _, _ = _git(
+                repo, "merge-base", "--is-ancestor", source_sha, main_sha,
+                allow_fail=True,
+            )
+            if (
+                cumulative_base.is_integrated
+                and cumulative_base.authorized_main_sha != main_sha
+                and candidate_already_contained != 0
+            ):
+                raise ValueError(
+                    f"authorized main SHA {cumulative_base.authorized_main_sha} is stale (current main is {main_sha})"
+                )
+            main_is_safe_base, _, _ = _git(
+                repo, "merge-base", "--is-ancestor", main_sha,
+                cumulative_base.candidate_sha, allow_fail=True,
+            )
+            if main_is_safe_base and candidate_already_contained:
+                raise ValueError(
+                    "current main is not safely contained by cumulative execution base"
                 )
     except (KeyError, TypeError, ValueError, UnicodeError) as exc:
         reviewed_sha = locals().get("reviewed_sha", source_sha)
@@ -1773,6 +1790,7 @@ def publish_review_decision(
             remote=remote,
             run_id=run_id,
             decision_sha=decision_sha,
+            publication_main_sha=prior_main_sha,
         )
     except PublicationError as exc:
         reviewed = exc.report.reviewed_sha

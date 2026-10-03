@@ -3297,6 +3297,7 @@ def test_integrated_remediation_publication_rejects_missing_ref_and_stale_main_a
     git(remote, "update-ref", lineage["integration_ref"], lineage["integration_candidate_sha"])
 
     # Now advance main on remote ahead of authorized_main_sha -> fails closed
+    git(lineage["repo"], "checkout", "--quiet", "--detach", lineage["new_main_sha"])
     (lineage["repo"] / "LATER.txt").write_text("later advance\n", encoding="utf-8")
     git(lineage["repo"], "add", "LATER.txt")
     git(lineage["repo"], "commit", "-m", "advance main after integration")
@@ -3305,3 +3306,265 @@ def test_integrated_remediation_publication_rejects_missing_ref_and_stale_main_a
 
     with pytest.raises(PublicationError, match="stale"):
         publish(lineage)
+
+
+def _integrated_publication_lineage(root: Path, operation: str) -> dict[str, object]:
+    if operation == "REPAIR":
+        return make_integrated_remediation_repair_lineage(root)
+    return make_integrated_predecessor_lineage(root)
+
+
+def _set_integrated_replay_main(lineage: dict[str, object], *, later: bool) -> str:
+    repo = lineage["repo"]
+    git(repo, "checkout", "--quiet", "--detach", lineage["candidate_sha"])
+    if later:
+        (repo / "LATER.txt").write_text("later canonical commit\n", encoding="utf-8")
+        git(repo, "add", "LATER.txt")
+        git(repo, "commit", "--quiet", "-m", "later canonical commit")
+    main_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", f"{main_sha}:refs/heads/main")
+    return main_sha
+
+
+def _record_publication_pushes(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
+    real_git = publication_module._git
+    pushes = []
+
+    def recording_git(repo_path, *args, **kwargs):
+        if args and args[0] == "push":
+            pushes.append(args)
+        return real_git(repo_path, *args, **kwargs)
+
+    monkeypatch.setattr(publication_module, "_git", recording_git)
+    return pushes
+
+
+def _rewrite_publication_fixture_document(
+    lineage: dict[str, object], ref: str, path: str, mutate
+) -> str:
+    repo = lineage["repo"]
+    ref_sha = git(lineage["remote"], "rev-parse", ref)
+    git(repo, "checkout", "--quiet", "--detach", ref_sha)
+    document_path = repo / path
+    document = yaml.safe_load(document_path.read_text(encoding="utf-8"))
+    mutate(document)
+    document_path.write_text(
+        json.dumps(document) if path.endswith(".json") else yaml.safe_dump(document),
+        encoding="utf-8",
+    )
+    git(repo, "add", path)
+    git(repo, "commit", "--quiet", "-m", "alter publication fixture lineage")
+    sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "--force", "origin", f"{sha}:{ref}")
+    return sha
+
+
+@pytest.mark.parametrize("operation", ["REMEDIATION", "REPAIR"])
+@pytest.mark.parametrize("later", [False, True], ids=["equal", "strict-ancestor"])
+def test_integrated_correction_replay_tolerates_historical_main_only_for_no_op(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str, later: bool
+) -> None:
+    lineage = _integrated_publication_lineage(tmp_path, operation)
+    main_sha = _set_integrated_replay_main(lineage, later=later)
+    assert main_sha != lineage["new_main_sha"]
+    pushes = _record_publication_pushes(monkeypatch)
+
+    report = publish(lineage)
+
+    assert report.outcome == ("ALREADY_INCLUDED" if later else "ALREADY_PUBLISHED")
+    assert report.source_run == lineage["run_id"]
+    assert report.reviewed_sha == lineage["candidate_sha"]
+    assert report.prior_main_sha == main_sha
+    assert pushes == []
+    assert remote_main(lineage) == main_sha
+
+
+@pytest.mark.parametrize("operation", ["REMEDIATION", "REPAIR"])
+@pytest.mark.parametrize("main_kind", ["divergent", "integration-base"])
+def test_integrated_correction_stale_main_without_reviewed_candidate_rejects_before_push(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str, main_kind: str
+) -> None:
+    lineage = _integrated_publication_lineage(tmp_path, operation)
+    repo = lineage["repo"]
+    if main_kind == "integration-base":
+        main_sha = lineage["integration_candidate_sha"]
+    else:
+        git(repo, "checkout", "--quiet", "--detach", lineage["new_main_sha"])
+        (repo / "LATER.txt").write_text("independent main advance\n", encoding="utf-8")
+        git(repo, "add", "LATER.txt")
+        git(repo, "commit", "--quiet", "-m", "independent main advance")
+        main_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "push", "--quiet", "origin", f"{main_sha}:refs/heads/main")
+    pushes = _record_publication_pushes(monkeypatch)
+
+    with pytest.raises(PublicationError, match="authorized main SHA .* is stale") as raised:
+        publish(lineage)
+
+    assert raised.value.report.outcome == "FAILED"
+    assert pushes == []
+    assert remote_main(lineage) == main_sha
+
+
+@pytest.mark.parametrize("operation", ["REMEDIATION", "REPAIR"])
+@pytest.mark.parametrize("later", [False, True], ids=["equal", "strict-ancestor"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing_integration_ref", "moved_integration_ref", "integration_id",
+        "integration_candidate", "missing_predecessor", "missing_predecessor_field",
+        "missing_execution_base", "predecessor_identity", "predecessor_review",
+        "moved_decision", "missing_review", "source_candidate", "review",
+        "result", "outstanding_frontier",
+    ],
+)
+def test_integrated_correction_inclusion_cannot_bypass_invalid_lineage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    operation: str, later: bool, case: str,
+) -> None:
+    lineage = _integrated_publication_lineage(tmp_path, operation)
+    main_sha = _set_integrated_replay_main(lineage, later=later)
+    remote = lineage["remote"]
+    origin_run_id = lineage["failed_run_id"] if operation == "REPAIR" else lineage["run_id"]
+    origin_ref = (
+        f"refs/heads/aios/failure-artifacts/{origin_run_id}"
+        if operation == "REPAIR" else f"refs/heads/aios/artifacts/{origin_run_id}"
+    )
+    predecessor_review_ref = f"refs/heads/aios/remediation/{lineage['pred_run_id']}-R1"
+    if case == "missing_integration_ref":
+        git(remote, "update-ref", "-d", lineage["integration_ref"])
+    elif case == "moved_integration_ref":
+        git(remote, "update-ref", lineage["integration_ref"], lineage["candidate_sha"])
+    elif case in {
+        "integration_id", "integration_candidate", "predecessor_identity",
+        "missing_predecessor_field", "missing_execution_base",
+    }:
+        def mutate_origin(document):
+            if case == "missing_predecessor_field":
+                del document["predecessor"]
+            elif case == "missing_execution_base":
+                del document["execution_base"]
+            elif case == "predecessor_identity":
+                document["predecessor"]["finding_id"] = "R2"
+            elif case == "integration_id":
+                document["execution_base"]["integration_id"] = "forged-integration"
+            else:
+                document["execution_base"]["integration_candidate_sha"] = lineage["candidate_sha"]
+        _rewrite_publication_fixture_document(
+            lineage, origin_ref, ".ai/transport/run.json", mutate_origin,
+        )
+    elif case == "missing_predecessor":
+        git(remote, "update-ref", "-d", f"refs/heads/aios/artifacts/{lineage['pred_run_id']}")
+    elif case in {"predecessor_review", "outstanding_frontier"}:
+        def mutate_predecessor(document):
+            if case == "predecessor_review":
+                document["reviewed_sha"] = lineage["new_main_sha"]
+            else:
+                document["findings"].append({
+                    **document["findings"][0], "id": "R2",
+                    "issue": "Independent outstanding sibling finding.",
+                })
+        _rewrite_publication_fixture_document(
+            lineage, predecessor_review_ref, ".ai/reviews/REVIEW-063-001.yaml",
+            mutate_predecessor,
+        )
+    elif case == "review":
+        lineage["decision_sha"] = _rewrite_publication_fixture_document(
+            lineage, f"refs/heads/aios/review-decision/{lineage['run_id']}",
+            f".ai/reviews/REVIEW-{lineage['run_id'][4:]}.yaml",
+            lambda document: document.update(reviewed_sha=lineage["new_main_sha"]),
+        )
+    elif case in {"moved_decision", "missing_review"}:
+        git(remote, "update-ref", f"refs/heads/aios/review-decision/{lineage['run_id']}",
+            lineage["candidate_sha"])
+        if case == "missing_review":
+            lineage["decision_sha"] = lineage["candidate_sha"]
+    elif case == "source_candidate":
+        git(remote, "update-ref", f"refs/heads/aios/review/{lineage['run_id']}",
+            lineage["integration_candidate_sha"])
+    else:
+        _rewrite_publication_fixture_document(
+            lineage, f"refs/heads/aios/artifacts/{lineage['run_id']}",
+            ".ai/transport/result.json",
+            lambda document: document["result"].update(head_sha=lineage["new_main_sha"]),
+        )
+    pushes = _record_publication_pushes(monkeypatch)
+
+    with pytest.raises(PublicationError) as raised:
+        publish(lineage)
+
+    assert raised.value.report.outcome == "FAILED"
+    if case == "outstanding_frontier":
+        assert "outstanding findings in correction frontier: R2" in str(raised.value)
+    assert pushes == []
+    assert remote_main(lineage) == main_sha
+
+
+@pytest.mark.parametrize("later", [False, True], ids=["equal", "strict-ancestor"])
+def test_integrated_repair_replay_requires_canonical_repair_authorization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, later: bool
+) -> None:
+    lineage = make_integrated_remediation_repair_lineage(tmp_path)
+    main_sha = _set_integrated_replay_main(lineage, later=later)
+    git(lineage["remote"], "update-ref", "-d", f"refs/heads/aios/repair/{lineage['failed_run_id']}")
+    pushes = _record_publication_pushes(monkeypatch)
+
+    with pytest.raises(PublicationError):
+        publish(lineage)
+
+    assert pushes == []
+    assert remote_main(lineage) == main_sha
+
+
+@pytest.mark.parametrize("operation", ["REMEDIATION", "REPAIR"])
+def test_integrated_publication_preserves_exact_main_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    lineage = _integrated_publication_lineage(tmp_path, operation)
+    real_git = publication_module._git
+    pushes = []
+
+    def racing_git(repo_path, *args, **kwargs):
+        if args and args[0] == "push":
+            pushes.append(args)
+            git(lineage["remote"], "update-ref", "refs/heads/main",
+                lineage["integration_candidate_sha"], lineage["new_main_sha"])
+        return real_git(repo_path, *args, **kwargs)
+
+    monkeypatch.setattr(publication_module, "_git", racing_git)
+
+    with pytest.raises(PublicationError, match="publication failed"):
+        publish(lineage)
+
+    assert len(pushes) == 1
+    assert f"--force-with-lease=refs/heads/main:{lineage['new_main_sha']}" in pushes[0]
+    assert remote_main(lineage) == lineage["integration_candidate_sha"]
+
+
+@pytest.mark.parametrize("operation", ["REMEDIATION", "REPAIR"])
+def test_integrated_inclusion_on_later_observation_cannot_relax_sampled_mutation_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    lineage = _integrated_publication_lineage(tmp_path, operation)
+    git(lineage["remote"], "update-ref", "refs/heads/main", lineage["integration_candidate_sha"])
+    real_git = publication_module._git
+    main_observations = 0
+    pushes = []
+
+    def racing_git(repo_path, *args, **kwargs):
+        nonlocal main_observations
+        if args == ("ls-remote", "--refs", "origin", "refs/heads/main"):
+            main_observations += 1
+            if main_observations == 2:
+                git(lineage["remote"], "update-ref", "refs/heads/main", lineage["candidate_sha"])
+        if args and args[0] == "push":
+            pushes.append(args)
+        return real_git(repo_path, *args, **kwargs)
+
+    monkeypatch.setattr(publication_module, "_git", racing_git)
+
+    with pytest.raises(PublicationError, match="authorized main SHA .* is stale"):
+        publish(lineage)
+
+    assert main_observations >= 2
+    assert pushes == []
+    assert remote_main(lineage) == lineage["candidate_sha"]
