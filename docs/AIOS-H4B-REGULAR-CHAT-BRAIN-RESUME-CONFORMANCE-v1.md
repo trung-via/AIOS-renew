@@ -2,7 +2,8 @@
 
 TASK-285 establishes an offline composition contract and a bounded live procedure.
 TASK-286 adds bounded pre-submit structural diagnosis to the existing local wake.
-Neither deterministic acceptance reports a completed regular-Chat semantic resume
+TASK-287 adds exact-turn-bound content-free completion for a proven submitted stale flight.
+None of these deterministic acceptances reports a completed regular-Chat semantic resume
 or closes H4B. Runtime owns canonical verification and EVIDENCE; Reviewer owns
 semantic verdict; Publisher owns reviewed publication; Human/Brain owns the live
 observation, residual-risk
@@ -126,6 +127,81 @@ H4B remains **UNPROVED** pending a future real unresolved canonical semantic che
 and the separate Human/Brain live procedure below. TASK-286 acceptance itself supplies
 no live closure, authorizes no replay or fabricated checkpoint, and does not start H5.
 
+## RUN-285 stale-flight recovery, RUN-286 NOOP and TASK-287 completion contract
+
+The later RUN-285-001 publication-success wake was proven SUBMITTED, but subsequent
+read-only local proof observed `flight_present=true`, `seen_busy=false`, its exact wake
+user turn EXACT and the exact bound browser IDLE. The holder remained SUBMITTED with
+reason NONE and binding generation 0; there was no state lock, pending write or queue
+file. The existing BUSY-then-IDLE mechanism had missed transient generation. That stale
+pointer caused RUN-286-001 RESULT and publication-success attention to defer as
+`LANE_IN_FLIGHT`. Submission arrival still supplied no proof of unresolved RESULT resume.
+
+Human authorized a state-only recovery that cleared only the stale flight pointer,
+preserving the RUN-285 SUBMITTED event, dedupe identity, all seven event records,
+bindings, tombstones and queue state. TASK-286 is complete and published at reviewed
+SHA `6955668893636752bd6a7c41b0a0b29ce6adf961`, with REVIEW-286-001 PASS. After its exact
+completion was bookmarked, one bounded drain retired the deferred RUN-286-001
+publication-success attention as `NOOP/CANONICALLY_RESOLVED`, without a new Chat turn.
+These facts establish operational recovery, not H4B live semantic conformance.
+
+TASK-287 permanently addresses that transport liveness shape under the
+[exact-turn-bound completion contract](AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md#13-task-287-exact-turn-bound-completion-hardening).
+The existing observed BUSY -> seen_busy -> later IDLE path and canonical-resolution
+release remain valid. A SUBMITTED holder whose BUSY was never observed may release only
+when the adapter proves all of the following against its original binding generation:
+
+1. The exact unique authenticated regular-Chat target passes the existing surface,
+   draft and generation gates as IDLE before and after witness inspection.
+2. The shared submission resolver proves one exact outbound doorbell user turn. Its
+   marker has one visible flat turn container in the unique main.
+3. The immediate next element sibling is the final visible assistant turn container,
+   with consecutive, unique `conversation-turn-N` ordinals and explicit `data-turn`
+   user/assistant roles. There is exactly one visible assistant-role marker, no user
+   bubble, nested container, mixed role, later sibling or intervening user turn.
+
+The in-page witness uses only the existing exact wake-user identity comparison and
+structural role/order/containment/visibility metadata. It reads no assistant text,
+innerText, innerHTML/content, hidden reasoning, semantic meaning or raw chat history.
+It receives no URL, account/session/credential data, CDP endpoint or local path and
+returns only a Boolean; existing surrounding surface gates retain target authority.
+Completion identity inspection allows at most 256 user-specific candidates and
+32 ancestor levels. Missing, virtualized, hidden/aria-hidden, duplicate, nested,
+role-ambiguous or unsupported structure, an intervening user, target/surface uncertainty,
+Human draft, active generation or adapter error all retain the flight. IDLE alone,
+elapsed time, cooldowns and retry counts never release it. No semantic conclusion is
+drawn from structural completion.
+
+Only the flight pointer changes on this release. The holder stays SUBMITTED with the
+same reason, generation and dedupe identity; canonical engineering state is untouched.
+Every later pending subject still requires its own fresh canonical and binding-generation
+barriers, exact-target proof, draft/generation protection, insertion acceptance and
+immediate pre-click barrier. A finite lane pass may send that second subject at most
+once or NOOP it on fresh canonical resolution. An AMBIGUOUS post-submit attempt remains
+proof-only and is never automatically resent; the completion witness is unavailable
+until exact submission proof has established SUBMITTED.
+
+The focused synthetic coverage models a first exact SUBMITTED wake with seen_busy=false
+and a distinct pending subject, executes the production witness with traps on all
+assistant/wrapper/page content getters, and models the fail-closed structural and
+target/generation counterexamples. It also covers fresh-send barriers after release,
+canonical NOOP retirement and proof-only ambiguity. It uses no live browser or
+manufactured canonical checkpoint and produces no verification EVIDENCE.
+
+Only the four TASK-287-authorized files change. Durable lane schema, workflow timeout,
+canonical/CDP/page/insert/proof waits, follow-up recheck counts/intervals and scheduled
+cadence remain as recorded above. No timestamp, cooldown, provider-specific persistent
+state, second transport, background loop, launcher, lifecycle reducer or semantic
+authority is added. Runtime owns verification; Reviewer and Publisher retain their
+ordinary boundaries.
+
+H4B remains **UNPROVED**. Human priority selected TASK-287 as a reliability prerequisite;
+its acceptance does not supply live resume proof. RUN-285 and RUN-286 are operationally
+recovered and resolved attention must not be replayed/redrained. Closure still requires
+a future naturally produced real unresolved canonical RESULT, its eligible wake and the
+separate Human/Brain semantic-resume observation below. No execution is created to
+manufacture that proof, no roadmap state is advanced, and H5 does not start.
+
 ## Offline conformance surface
 
 [The focused tests](../tests/test_h4b_regular_chat_brain_resume.py) use disposable
@@ -170,7 +246,7 @@ These are implementation properties available for TASK acceptance before Runtime
 verification. This document does not claim that Runtime has verified them, or that
 deterministic acceptance proves the future regular-Chat live step. No production
 Python, workflow, attention schema, transport, binding or Flow Card changes were part
-of the TASK-285 composition delta; TASK-286's local wake changes are bounded above.
+of the TASK-285 composition delta; TASK-286/TASK-287 local wake changes are bounded above.
 There is no second semantic router, lifecycle reducer, persistent
 reasoning store, assistant-output scraper, ChatGPT Work wake dependency or new
 mutation authority.
@@ -220,7 +296,7 @@ published local wake path and the already Human-bound regular Chat. If there is 
 real eligible unresolved canonical RESULT, record the live case as UNPROVED and
 stop. The resolved RUN-285-001 RESULT is ineligible and must not be replayed. A future
 naturally produced unresolved canonical checkpoint may be used only while eligible;
-its future wake, review and publication are not prerequisites for TASK-286's own
+its future wake, review and publication are not prerequisites for TASK-286/TASK-287's own
 deterministic acceptance.
 
 1. Select at most one real existing unresolved canonical semantic checkpoint for
@@ -296,7 +372,7 @@ One H4B semantic resume observation does not discharge those six gaps. Missing r
 sources or operational setup remain explicit; no new RUN/REVIEW, second lane or
 binding mutation is manufactured to fill the matrix.
 
-Runtime verification of TASK-285/TASK-286, Reviewer judgment and Publisher publication each
+Runtime verification of TASK-285/TASK-286/TASK-287, Reviewer judgment and Publisher publication each
 remain separate lifecycle facts. Deterministic TASK acceptance by itself proves
 neither a future regular-Chat semantic resume nor H4B closure. Human/Brain separately
 records and evaluates the live observation, reconciles any reopened residual risk

@@ -164,6 +164,9 @@ class RecoveryAdapter:
     def generation_state(self):
         return self.generation
 
+    def completed_wake(self, text):
+        return False
+
 
 def canonical_fixture(monkeypatch, kind="RESULT"):
     """Exact synthetic canonical ref/blob observations; no network or reducer."""
@@ -1088,6 +1091,322 @@ class LocalSurfaceAdapter(wake.BrowserAdapter):
 
     def __exit__(self, *args):
         pass
+
+
+def completion_dom_result(binding, scenario="complete", text=None):
+    """Run the production witness with traps on every non-user content read."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is needed for the isolated JavaScript DOM harness")
+    arguments = dict(text=text or wake.doorbell(EVENT, wake.REPOSITORY),
+                     userTurn=wake.USER_TURN, userBubble=wake.USER_BUBBLE,
+                     turnContainer=wake.TURN_CONTAINER)
+    harness = r"""
+const input = JSON.parse(require('fs').readFileSync(0, 'utf8')), args = input.args;
+const nodes = [];
+function element(attrs = {}, parent = null, tagName = 'DIV') {
+  const e = {attrs, parentElement: parent, tagName, children: [], hidden: false, noRects: false,
+    hasAttribute(name) {return name in this.attrs;},
+    getAttribute(name) {
+      if (!['data-message-author-role', 'data-turn', 'data-testid', 'data-turn-key',
+            'aria-hidden', 'hidden'].includes(name)) throw Error('unbounded attribute');
+      return this.attrs[name] ?? null;
+    },
+    getClientRects() {return this.noRects ? [] : [1];},
+    contains(child) {
+      for (let p = child; p; p = p.parentElement) if (p === this) return true;
+      return false;
+    },
+    matches(selector) {
+      if (selector === 'main') return this.tagName === 'MAIN';
+      let negate = null;
+      const split = selector.split(':not(');
+      if (split.length === 2) {selector = split[0]; negate = split[1].slice(0, -1);}
+      const attrs = [...selector.matchAll(/\[([a-z-]+)(?:="([^"]*)")?\]/g)];
+      if (!attrs.length || attrs.map(m => m[0]).join('') !== selector)
+        throw Error('unbounded selector');
+      return attrs.every(([, key, value]) => key in this.attrs &&
+        (value === undefined || this.attrs[key] === value)) && (!negate || !this.matches(negate));
+    },
+    querySelectorAll(selector) {
+      return nodes.filter(n => n !== this && this.contains(n) &&
+        selector.split(', ').some(s => n.matches(s)));
+    },
+    querySelector(selector) {return this.querySelectorAll(selector)[0] ?? null;},
+    get nextElementSibling() {
+      if (!this.parentElement) return null;
+      return this.parentElement.children[this.parentElement.children.indexOf(this) + 1] ?? null;
+    },
+    get textContent() {
+      if (!this.exactUser) throw Error('non-user content read');
+      return this.body;
+    },
+    get innerText() {throw Error('rendered content read');},
+    get innerHTML() {throw Error('HTML read');},
+    get outerHTML() {throw Error('HTML read');}
+  };
+  if (parent) parent.children.push(e);
+  nodes.push(e); return e;
+}
+function move(e, parent, index = parent.children.length) {
+  if (e.parentElement) e.parentElement.children.splice(e.parentElement.children.indexOf(e), 1);
+  e.parentElement = parent; parent.children.splice(index, 0, e);
+}
+const root = element(), main = element({}, root, 'MAIN'), list = element({}, main);
+const turn = (role, number, parent = list) => element({'data-turn-key': 'fixture-' + number,
+  'data-testid': 'conversation-turn-' + number, 'data-turn': role}, parent, 'ARTICLE');
+const wakeTurn = turn('user', 8), user = element({'data-user-message-bubble': ''}, wakeTurn);
+user.exactUser = true; user.body = args.text;
+const response = turn('assistant', 9);
+const assistant = element({'data-message-author-role': 'assistant'}, response);
+// Assistant, transcript, wrapper and page content getters all throw, even on the success path.
+const name = input.scenario;
+if (name === 'legacy') {delete user.attrs['data-user-message-bubble']; user.attrs['data-message-author-role'] = 'user';}
+if (name === 'both') user.attrs['data-message-author-role'] = 'user';
+if (name === 'absent') user.body = 'different synthetic user turn';
+if (name === 'missing_user') delete user.attrs['data-user-message-bubble'];
+if (name === 'hidden_user') user.hidden = true;
+if (name === 'hidden_wake') wakeTurn.attrs['hidden'] = '';
+if (name === 'duplicate_user') {
+  const duplicate = element({'data-user-message-bubble': ''}, wakeTurn);
+  duplicate.exactUser = true; duplicate.body = args.text;
+}
+if (name === 'missing_response') {response.attrs = {}; assistant.attrs = {};}
+if (name === 'hidden_response') response.hidden = true;
+if (name === 'no_response_rects') response.noRects = true;
+if (name === 'hidden_assistant') assistant.hidden = true;
+if (name === 'hidden_wrapper') {
+  const wrapper = element({'aria-hidden': 'true'}, response);
+  move(assistant, wrapper);
+}
+if (['duplicate_response', 'hidden_duplicate_response'].includes(name)) {
+  const duplicate = turn('assistant', 9);
+  duplicate.hidden = name === 'hidden_duplicate_response';
+  element({'data-message-author-role': 'assistant'}, duplicate);
+}
+if (name === 'duplicate_ordinal_elsewhere') {
+  const otherList = element({}, main), duplicate = turn('assistant', 9, otherList);
+  duplicate.hidden = true;
+}
+if (name === 'duplicate_assistant') element({'data-message-author-role': 'assistant'}, response);
+if (name === 'nested_assistant') element({'data-message-author-role': 'assistant'}, assistant);
+if (name === 'nested_response') turn('assistant', 10, response);
+if (name === 'nested_wake') {const nested = turn('user', 7, wakeTurn); move(user, nested);}
+if (name === 'nested_pair') {
+  const outer = turn('assistant', 7); move(wakeTurn, outer); move(response, outer);
+}
+if (name === 'missing_role') delete assistant.attrs['data-message-author-role'];
+if (name === 'unknown_role') assistant.attrs['data-message-author-role'] = 'tool';
+if (name === 'mixed_roles') element({'data-message-author-role': 'tool'}, response);
+if (name === 'role_ambiguous_wrapper') list.attrs['data-message-author-role'] = 'assistant';
+if (name === 'role_ambiguous_turn') response.attrs['data-turn'] = 'user';
+if (name === 'role_ambiguous_descendant') assistant.attrs['data-turn'] = 'user';
+if (name === 'user_marker_in_assistant') {
+  move(user, response); user.exactUser = false; // Reading this role-ambiguous node is forbidden.
+}
+if (name === 'intervening_user') {
+  const intervening = turn('user', 9); move(intervening, list, 1);
+  response.attrs['data-testid'] = 'conversation-turn-10';
+}
+if (name === 'virtualized_gap') response.attrs['data-testid'] = 'conversation-turn-10';
+if (name === 'placeholder') {const placeholder = element({}, list); move(placeholder, list, 1);}
+if (name === 'later_user') turn('user', 10);
+if (name === 'missing_ordinal') delete response.attrs['data-testid'];
+if (name === 'missing_turn_key') delete wakeTurn.attrs['data-turn-key'];
+if (name === 'outside_main') {move(wakeTurn, root); move(response, root);}
+if (name === 'duplicate_main') element({}, root, 'MAIN');
+if (name === 'identity_bound') {
+  for (let i = 0; i < 256; i++) element({'data-user-message-bubble': ''}, list);
+}
+global.getComputedStyle = e => ({visibility: e.hidden ? 'hidden' : 'visible', display: 'block'});
+global.document = {querySelectorAll(selector) {
+  if (![args.userTurn + ', ' + args.userBubble, 'main'].includes(selector))
+    throw Error('unbounded page query');
+  return nodes.filter(e => selector.split(', ').some(s => e.matches(s)));
+}};
+process.stdout.write(JSON.stringify(eval('(' + input.script + ')')(args)));
+"""
+    process = subprocess.run(
+        [node, "-e", harness], input=json.dumps(dict(args=arguments, scenario=scenario,
+                                                    script=wake.PROVE_WAKE_COMPLETION)),
+        capture_output=True, text=True, check=True, timeout=10,
+    )
+    assert process.stdout in {"true", "false"}  # No browser metadata or content export.
+    return json.loads(process.stdout)
+
+
+class CompletionPage(Page):
+    """Keep production surface gates and execute the real structural script."""
+
+    def __init__(self, binding, scenario="complete", race=None):
+        super().__init__(binding.chat_url)
+        self.binding, self.scenario, self.completion_race = binding, scenario, race
+        self.completions = []
+
+    def evaluate(self, script, arguments):
+        if script == wake.PROVE_WAKE_COMPLETION:
+            assert set(arguments) == {"text", "userTurn", "userBubble", "turnContainer"}
+            assert arguments["text"] == self.payload
+            self.completions.append(script)
+            result = completion_dom_result(self.binding, self.scenario, arguments["text"])
+            if self.completion_race:
+                self.completion_race(self)
+            return result
+        return super().evaluate(script, arguments)
+
+
+def submitted_with_pending(binding, scenario="complete", proof=True):
+    page = CompletionPage(binding, scenario)
+    holder = LocalSurfaceAdapter(binding, page)
+    if not proof:
+        wait_for_function = page.wait_for_function
+
+        def wait_without_submission_proof(script, **kwargs):
+            if script == wake.WAIT_USER_TURN:
+                raise RuntimeError("proof unavailable")
+            return wait_for_function(script, **kwargs)
+
+        page.wait_for_function = wait_without_submission_proof
+    first = deliver(EVENT, wake.REPOSITORY, binding, lambda _: holder)
+    assert first["status"] == ("SUBMITTED" if proof else "BLOCKED")
+    second = EVENT.replace("RUN-fixture-001", "RUN-fixture-002")
+    state = wake.State(binding.state_path)
+    with state.locked() as data:
+        data["events"][second] = wake.record()
+        state.write(data)
+    assert stored(binding)["flight"] == dict(event_id=EVENT, seen_busy=False)
+    return page, holder, second
+
+
+@pytest.mark.parametrize("scenario", ["complete", "legacy", "both"])
+def test_exact_completed_wake_releases_only_pointer_and_sends_fresh_second_once(binding, scenario):
+    page, holder, second = submitted_with_pending(binding, scenario)
+    before = stored(binding)
+    projection, next_adapter, attachments = Projection(), RecoveryAdapter(binding), []
+
+    def factory(bound):
+        assert bound == binding
+        attachments.append(bound)
+        return holder if len(attachments) == 1 else next_adapter
+
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection)
+    after = stored(binding)
+    assert receipts == [dict(event_id=second, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN")]
+    assert page.completions == [wake.PROVE_WAKE_COMPLETION]
+    assert page.evaluations.count(wake.CLICK) == 1  # The first wake is never resent.
+    assert next_adapter.submits == [wake.doorbell(second, wake.REPOSITORY)]
+    assert projection.calls == [EVENT, second, second, second]
+    assert after["events"][EVENT] == before["events"][EVENT] == wake.record("SUBMITTED", binding.generation)
+    assert after["bindings"] == before["bindings"] and after["tombstones"] == before["tombstones"]
+    assert set(after) == set(before) and after["version"] == before["version"] == 2
+    assert after["flight"] == dict(event_id=second, seen_busy=False)
+    assert deliver(EVENT, wake.REPOSITORY, binding, lambda _: pytest.fail("dedupe must not attach"))["reason"] == "ALREADY_SUBMITTED"
+    assert deliver(second, wake.REPOSITORY, binding, lambda _: pytest.fail("dedupe must not attach"))["reason"] == "ALREADY_SUBMITTED"
+    next_adapter.generation = "IDLE"  # IDLE alone still cannot release the new flight.
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: next_adapter, projection=projection)
+    assert len(next_adapter.submits) == 1 and stored(binding)["flight"]["event_id"] == second
+
+
+@pytest.mark.parametrize("scenario", [
+    "absent", "missing_user", "hidden_user", "hidden_wake", "duplicate_user",
+    "missing_response", "hidden_response", "no_response_rects", "hidden_assistant", "hidden_wrapper",
+    "duplicate_response", "hidden_duplicate_response", "duplicate_ordinal_elsewhere", "duplicate_assistant",
+    "nested_assistant", "nested_response", "nested_wake", "nested_pair", "missing_role", "unknown_role",
+    "mixed_roles", "role_ambiguous_wrapper", "role_ambiguous_turn", "role_ambiguous_descendant",
+    "user_marker_in_assistant", "intervening_user", "virtualized_gap", "placeholder", "later_user",
+    "missing_ordinal", "missing_turn_key", "outside_main", "duplicate_main", "identity_bound",
+])
+def test_idle_without_unambiguous_exact_completion_holds_pending_without_send(binding, scenario):
+    assert completion_dom_result(binding, scenario) is False
+    page, holder, second = submitted_with_pending(binding, scenario)
+    before = stored(binding)
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: holder, projection=Projection())
+    after = stored(binding)
+    assert receipts == [dict(event_id=second, status="DEFERRED", reason="LANE_IN_FLIGHT")]
+    assert after["flight"] == before["flight"] == dict(event_id=EVENT, seen_busy=False)
+    assert after["events"][EVENT] == before["events"][EVENT]
+    assert page.evaluations.count(wake.CLICK) == 1 and len(page.completions) == 1
+
+
+@pytest.mark.parametrize("fault", ["busy", "draft", "disabled", "account", "login", "nonregular", "target", "duplicate_target", "adapter_error"])
+def test_completion_target_surface_and_generation_uncertainty_never_sends_pending(binding, fault):
+    page, holder, second = submitted_with_pending(binding)
+    if fault == "busy": page.counts[wake.STOP] = 1
+    if fault == "draft": page.draft = "Synthetic Human draft"
+    if fault == "disabled": page.disabled = True
+    if fault == "account": page.counts[wake.ACCOUNT] = 0
+    if fault == "login": page.counts[wake.LOGIN] = 1
+    if fault == "nonregular": page.counts[wake.NONREGULAR] = 1
+    if fault == "target": page.url = synthetic_url(50)
+    if fault == "duplicate_target": holder.browser.contexts[0].pages.append(Page(binding.chat_url))
+    if fault == "adapter_error":
+        holder.completed_wake = lambda _: (_ for _ in ()).throw(RuntimeError("adapter unavailable"))
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: holder, projection=Projection())
+    assert receipts[-1]["reason"] == "LANE_IN_FLIGHT"
+    assert stored(binding)["flight"] == dict(event_id=EVENT, seen_busy=fault == "busy")
+    assert not page.completions and page.evaluations.count(wake.CLICK) == 1
+
+
+@pytest.mark.parametrize("movement", ["generation", "target", "surface", "draft"])
+def test_completion_rechecks_exact_idle_target_after_structural_witness(binding, movement):
+    page, holder, second = submitted_with_pending(binding)
+    def race(target):
+        if movement == "generation": target.counts[wake.STOP] = 1
+        if movement == "target": target.url = synthetic_url(50)
+        if movement == "surface": target.counts[wake.ACCOUNT] = 0
+        if movement == "draft": target.draft = "Synthetic Human draft"
+    page.completion_race = race
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: holder, projection=Projection())
+    assert receipts[-1]["reason"] == "LANE_IN_FLIGHT"
+    assert stored(binding)["flight"] == dict(event_id=EVENT, seen_busy=False)
+    assert page.evaluations.count(wake.CLICK) == 1 and len(page.completions) == 1
+
+
+@pytest.mark.parametrize("boundary", ["preflight", "insert", "click", "binding", "draft", "generation"])
+def test_completion_release_cannot_bypass_second_subject_fresh_send_barriers(binding, boundary):
+    page, holder, second = submitted_with_pending(binding)
+    projection = Projection()
+    selected = [binding]
+    calls = []
+    if boundary == "preflight":
+        projection.value = lambda event: "UNRESOLVED" if event == EVENT else "UNKNOWN"
+    def race(stage):
+        if stage == boundary:
+            projection.value = lambda event: "RESOLVED" if event == second else "UNRESOLVED"
+        if boundary == "binding" and stage == "click":
+            selected[0] = wake.Binding(binding.chat_url, binding.cdp_endpoint, binding.state_path, 1)
+    block = {"draft": "DRAFT_PRESENT", "generation": "GENERATION_ACTIVE"}.get(boundary)
+    next_adapter = RecoveryAdapter(binding, block=block, race=race)
+    def factory(bound):
+        calls.append(bound)
+        return holder if len(calls) == 1 else next_adapter
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection,
+                            binding_provider=lambda: selected[0])
+    assert not next_adapter.submits and page.evaluations.count(wake.CLICK) == 1
+    assert stored(binding)["flight"] is None
+    assert stored(binding)["events"][EVENT] == wake.record("SUBMITTED", binding.generation)
+    assert receipts[-1]["status"] == ("NOOP" if boundary in {"insert", "click"} else "DEFERRED")
+
+
+def test_canonical_resolution_retires_stale_holder_without_completion_or_browser(binding):
+    page, holder, second = submitted_with_pending(binding)
+    receipts = wake.operate(wake.REPOSITORY, binding,
+                            adapter_factory=lambda _: pytest.fail("canonical resolution requires no browser"),
+                            projection=Projection("RESOLVED"))
+    assert all(receipt["reason"] == "CANONICALLY_RESOLVED" for receipt in receipts)
+    assert stored(binding)["flight"] is None
+    assert stored(binding)["events"][EVENT]["status"] == "RESOLVED_NOOP"
+    assert stored(binding)["events"][second]["status"] == "RESOLVED_NOOP"
+    assert not page.completions and page.evaluations.count(wake.CLICK) == 1
+
+
+def test_ambiguous_attempt_cannot_use_completion_witness_or_automatically_resend(binding):
+    page, holder, second = submitted_with_pending(binding, proof=False)
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: holder, projection=Projection())
+    assert receipts[-1]["reason"] == "LANE_IN_FLIGHT"
+    assert stored(binding)["events"][EVENT]["status"] == "AMBIGUOUS"
+    assert stored(binding)["flight"] == dict(event_id=EVENT, seen_busy=False)
+    assert not page.completions and page.evaluations.count(wake.CLICK) == 1
 
 
 class SurfaceURLRacePage(Page):

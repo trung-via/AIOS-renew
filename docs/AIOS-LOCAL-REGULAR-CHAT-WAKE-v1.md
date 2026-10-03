@@ -258,6 +258,9 @@ Within one lane, only one wake may be in submission/Brain-generation flight at a
 Additional events remain pending. After each completion the transport revalidates every
 pending subject, discards stale/resolved subjects as NOOP, and submits only the next
 still-unresolved event. It must not semantically coalesce unrelated attention subjects.
+For a proven submitted flight whose transient BUSY state was missed, the exact-turn-bound
+structural completion contract in section 13 supplies an additional fail-closed release
+mechanism. IDLE alone never supplies that proof.
 
 This milestone must preserve project independence even when multiple target chats share
 one authenticated browser/CDP session. Page-state checks are scoped to the exact target
@@ -422,3 +425,86 @@ own later reviewed downstream pin/binding.
 
 Closure: **CLEAR**.
 Outcome: **CANDIDATE** for roadmap insertion as H4A.4 then H4A.5 before H4B.
+
+## 13. TASK-287 exact-turn-bound completion hardening
+
+### Observed stale flight and bounded recovery
+
+RUN-285-001 publication-success attention was proven
+`SUBMITTED/EXACT_USER_TURN_PROVEN`. Later read-only local inspection found its holder
+record still `SUBMITTED`, reason `NONE`, binding generation 0, with a flight pointer
+whose `seen_busy` was false. The exact submitted wake user turn was still EXACT and
+the exact bound browser was IDLE. There was no state lock, pending write or queue file.
+The missed transient BUSY left the flight held; RUN-286-001 RESULT and publication-success
+attention then deferred as `LANE_IN_FLIGHT`. This is a transport liveness failure, not
+proof of semantic continuation or canonical resolution.
+
+Human authorized state-only recovery: clear only the stale flight pointer and preserve
+the RUN-285 SUBMITTED event, dedupe identity, all seven event records, bindings,
+tombstones and queue state. TASK-286 completed with REVIEW-286-001 PASS and reviewed/
+published SHA `6955668893636752bd6a7c41b0a0b29ce6adf961`. After that exact completion was
+bookmarked, one bounded drain classified the deferred RUN-286-001 publication-success
+attention as `NOOP/CANONICALLY_RESOLVED` without sending a new Chat turn. The incident
+is operationally recovered; neither resolved subject may be replayed or redrained to
+manufacture H4B evidence.
+
+### Content-free completion contract
+
+TASK-287 retains the existing observed BUSY -> `seen_busy=true` -> later IDLE release
+and fresh canonical-resolution release mechanisms. For a SUBMITTED holder with
+`seen_busy=false`, release is additionally permitted only when all of these hold:
+
+- The adapter uses the holder's original binding generation and proves the exact unique,
+  authenticated regular-Chat target is IDLE through the existing surface/draft/generation
+  gates before and after the structural witness. Any uncertainty retains the flight.
+- The same outbound resolver used for submission proof identifies the one exact wake
+  user turn. Only that user identity text is compared, in-page, with the already bounded
+  selector-only doorbell. No text or turn identity is returned by the witness.
+- That user marker belongs to one visible flat turn container in the unique main. Its
+  immediate next element sibling is the final visible assistant turn container, with
+  consecutive `conversation-turn-N` structural ordinals and explicit user/assistant
+  `data-turn` roles. Both ordinals must identify unique containers, including hidden
+  matches. There can be no skipped sibling, later sibling, nested turn container or
+  intervening user turn. Missing/virtualized ordinal gaps cannot establish completion.
+- The successor contains exactly one explicit assistant-role marker, with no user bubble,
+  mixed role or nested assistant marker. Its marker and enclosing structure are visible;
+  hidden, aria-hidden and invisible wrappers are rejected. Role-bearing ancestor or
+  descendant ambiguity is rejected. Completion identity candidates are capped at 256
+  and ancestor inspections at 32 levels; exceeding either bound retains the flight.
+
+The witness consumes only exact wake-user identity and bounded structural ordering,
+role, containment and visibility metadata. Assistant text, innerText, innerHTML, rendered
+content, hidden reasoning, semantic meaning and raw chat history are never read or
+exported. The witness receives no URL, account/session/credential data, CDP endpoint or
+local path; the existing surrounding surface gates alone retain exact-target authority.
+Only a Boolean leaves the in-page witness. It cannot select a flow, verdict or lifecycle
+action, and it does not prove that Brain performed semantic work.
+
+An absent or inexact wake, missing/hidden/duplicate/nested/role-ambiguous successor,
+unsupported structure, intervening user, virtualized gap, target mismatch, unproven
+surface, Human draft, active generation or adapter error keeps the flight held and
+unresolved pending subjects unsent. IDLE, elapsed time, subject age, cooldowns and retry
+counts never substitute for this witness. AMBIGUOUS attempts remain proof-only: this
+witness cannot bypass exact submission proof or authorize resend.
+
+On structural completion, only the flight pointer is cleared. The holder remains
+SUBMITTED with its existing generation, reason and dedupe identity. No canonical
+engineering state changes. The next distinct pending subject still crosses fresh
+canonical and binding-generation barriers, exact-target/surface checks, draft/generation
+guards, insertion acceptance and the immediate pre-click barrier; each finite FIFO lane
+pass can submit at most one new wake. A resolved pending subject may instead NOOP.
+
+The candidate changes only the local wake module, its focused synthetic tests, this
+document and the H4B conformance document. The durable lane schema is unchanged; no
+timestamp, cooldown, time-derived completion or provider-specific persistent state is
+introduced. Budgets stay unchanged: workflow timeout 5 minutes, canonical observation
+30 seconds, CDP attach 10 seconds, page/insert waits 3 seconds, submission proof 5 seconds,
+two follow-up rechecks at 15-second intervals, and the optional scheduled drain of four
+rechecks with that same interval and five-minute cron cadence. There is no second
+transport, background loop, browser launcher or new lifecycle/semantic authority.
+
+Focused deterministic fixtures model the stale-flight pair and fail-closed counterexamples
+without a live browser or canonical checkpoint. Runtime owns canonical verification and
+EVIDENCE. TASK-287 acceptance is a reliability prerequisite selected by Human priority;
+H4B stays open until a future naturally produced real unresolved RESULT supplies the
+separate Human/Brain live semantic-resume observation. It neither closes H4B nor starts H5.

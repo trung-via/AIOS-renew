@@ -629,17 +629,23 @@ PROVE_SEND = """({composer, send}) => {
 
 # One contract for pre-send dedupe and post-send proof. Only user-specific
 # containers are read; return a fixed status, never browser text or turn keys.
-RESOLVE_USER_TURN = """({text, userTurn, userBubble, turnContainer}) => {
+_USER_TURN_GUARDS = """
+  const resolveUserTurn = (completion = false) => {
   const candidates = [...document.querySelectorAll(userTurn + ', ' + userBubble)];
+  if (completion && candidates.length > 256) return 'AMBIGUOUS';
   const exact = [];
   for (const candidate of candidates) {
     // A user marker inside an explicitly non-user turn is not user proof.
-    for (let node = candidate; node; node = node.parentElement) {
+    for (let node = candidate, depth = 0; node; node = node.parentElement, depth++) {
+      if (completion && depth >= 32) return 'AMBIGUOUS';
       const role = node.getAttribute('data-message-author-role');
       if (role !== null && role !== 'user') return 'AMBIGUOUS';
+      if (completion && node.hasAttribute('data-turn') && node.getAttribute('data-turn') !== 'user')
+        return 'AMBIGUOUS';
     }
     if (candidate.querySelector(
         '[data-message-author-role]:not([data-message-author-role="user"])')) return 'AMBIGUOUS';
+    if (completion && candidate.querySelector('[data-turn]:not([data-turn="user"])')) return 'AMBIGUOUS';
     if (candidate.textContent.replace(/\\r\\n/g, '\\n') === text) exact.push(candidate);
   }
   if (!exact.length) return 'ABSENT';
@@ -660,7 +666,78 @@ RESOLVE_USER_TURN = """({text, userTurn, userBubble, turnContainer}) => {
     if (candidates.filter(e => e.matches(userBubble) && turns[0].contains(e)).length !== 1)
       return 'AMBIGUOUS';
   }
-  return 'EXACT';
+  return candidate;
+  };
+"""
+
+RESOLVE_USER_TURN = """({text, userTurn, userBubble, turnContainer}) => {
+""" + _USER_TURN_GUARDS + """
+  const resolved = resolveUserTurn();
+  return typeof resolved === 'string' ? resolved : 'EXACT';
+}"""
+
+# The exact outbound resolver supplies an in-page anchor, never a turn ID or
+# content export. Only the final adjacent pair of flat, consecutively numbered
+# turn containers is supported. Missing/virtualized or unfamiliar shapes hold.
+# Assistant nodes are inspected only for role, containment and visibility.
+PROVE_WAKE_COMPLETION = """({text, userTurn, userBubble, turnContainer}) => {
+""" + _USER_TURN_GUARDS + """
+  const candidate = resolveUserTurn(true);
+  if (typeof candidate === 'string') return false;
+  const mains = document.querySelectorAll('main');
+  if (mains.length !== 1) return false;
+  const main = mains[0];
+  const visibleWithinMain = element => {
+    // Bound ancestor inspection, including hidden/aria-hidden wrappers.
+    for (let node = element, depth = 0; node && depth < 32; node = node.parentElement, depth++) {
+      const style = getComputedStyle(node);
+      if (!node.getClientRects().length || style.visibility !== 'visible' ||
+          style.display === 'none' || node.hasAttribute('hidden') ||
+          node.getAttribute('aria-hidden') === 'true') return false;
+      if (node === main) return true;
+    }
+    return false;
+  };
+  const ancestors = [];
+  for (let node = candidate, depth = 0; node && node !== main && depth < 32;
+       node = node.parentElement, depth++) {
+    if (node.matches(turnContainer)) ancestors.push(node);
+  }
+  if (ancestors.length !== 1 || !visibleWithinMain(candidate)) return false;
+  const wake = ancestors[0], response = wake.nextElementSibling;
+  if (!response || !response.matches(turnContainer) || response.nextElementSibling ||
+      wake.querySelector(turnContainer) || response.querySelector(turnContainer) ||
+      !visibleWithinMain(wake) || !visibleWithinMain(response)) return false;
+  // Do not skip any sibling, even a hidden or unmarked/virtualization placeholder.
+  // Consecutive ordinals prove no intervening turn was virtualized away.
+  const ordinal = turn => {
+    const match = /^conversation-turn-(0|[1-9][0-9]{0,8})$/.exec(turn.getAttribute('data-testid'));
+    return match ? Number(match[1]) : null;
+  };
+  const first = ordinal(wake), second = ordinal(response);
+  if (first === null || second !== first + 1 ||
+      wake.getAttribute('data-turn') !== 'user' ||
+      response.getAttribute('data-turn') !== 'assistant') return false;
+  for (const turn of [wake, response]) {
+    // Include hidden duplicates; never choose one of multiple structural turns.
+    const selector = turnContainer + '[data-testid="' + turn.getAttribute('data-testid') + '"]';
+    if (main.querySelectorAll(selector).length !== 1) return false;
+    for (let node = turn.parentElement, depth = 0; node && node !== main && depth < 32;
+         node = node.parentElement, depth++)
+      if (node.matches(turnContainer) || node.hasAttribute('data-message-author-role') ||
+          node.hasAttribute('data-turn')) return false;
+  }
+  const roles = turn => [...(turn.hasAttribute('data-message-author-role') ? [turn] : []),
+    ...turn.querySelectorAll('[data-message-author-role]')];
+  const users = roles(wake), assistants = roles(response);
+  if (users.length > 1 || users.some(e => e.getAttribute('data-message-author-role') !== 'user') ||
+      assistants.length !== 1 || assistants[0].getAttribute('data-message-author-role') !== 'assistant' ||
+      response.querySelector(userBubble) || !visibleWithinMain(assistants[0])) return false;
+  if ([...wake.querySelectorAll('[data-turn]')].some(e => e !== candidate ||
+        e.getAttribute('data-turn') !== 'user') ||
+      [...response.querySelectorAll('[data-turn]')].some(e => e !== assistants[0] ||
+        e.getAttribute('data-turn') !== 'assistant')) return false;
+  return true;
 }"""
 
 # Wait only for absence to resolve. An observed ambiguity ends proof immediately;
@@ -808,6 +885,18 @@ class BrowserAdapter:
             raise WakeBlocked("DRAFT_PRESENT")
         return "IDLE"
 
+    def completed_wake(self, text):
+        """Exact-target IDLE gates surround a content-free structural witness."""
+        if self.generation_state() != "IDLE":
+            return False
+        # No URL, account/session metadata, endpoint or local path enters the
+        # witness. Existing surface gates retain sole exact-target authority.
+        arguments = dict(text=text, userTurn=USER_TURN, userBubble=USER_BUBBLE,
+                         turnContainer=TURN_CONTAINER)
+        if self.page.evaluate(PROVE_WAKE_COMPLETION, arguments) is not True:
+            return False
+        return self.generation_state() == "IDLE"
+
 
 def _remember_binding(data, binding):
     generation = str(binding.generation)
@@ -878,10 +967,13 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
         try:
             with adapter_factory(_original_binding(data, data["events"][flight["event_id"]], binding.repository)) as adapter:
                 generation = adapter.generation_state()
-            if generation == "BUSY":
-                flight["seen_busy"] = True
-            elif generation == "IDLE" and flight["seen_busy"]:
-                data["flight"] = None
+                if generation == "BUSY":
+                    flight["seen_busy"] = True
+                elif generation == "IDLE" and (flight["seen_busy"] or
+                        adapter.completed_wake(doorbell(flight["event_id"], binding.repository)) is True):
+                    # Preserve the SUBMITTED holder and its dedupe identity.
+                    # The next subject still crosses every fresh send barrier.
+                    data["flight"] = None
             state.write(data)
         except Exception:
             pass
