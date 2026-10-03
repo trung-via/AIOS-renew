@@ -4157,18 +4157,34 @@ sequence:
       model: gpt-6.1-sol
       reasoning_effort: xhigh
       persistence: THROUGH_TASK_287_UNLESS_HUMAN_CHANGES
+    primary_dispatch:
+      dispatch_id: task287-r1-codex61-xhigh-20261003-001
+      issue_number: 1419
+      carrier_workflow_run_id: 37117971140
+      primary_workflow_run_id: 37117984399
+      status: DISPATCH_ACCEPTED
+      execution_outcome: NOT_OBSERVED
+      task_blob_sha: "f7eb8c9b9117b678cbc86d60193eb55fd1c8af51"
+      task_commit_sha: "ae7f5afd6f629ba7b5699408be7c829d54e54bb4"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      model_source: EXPLICIT
+      effort_source: EXPLICIT
     current_live_blocker:
-      code: H4B_TASK_287_PRIMARY_DISPATCH_PENDING
-      authority: HUMAN_BRAIN_PLANNING
+      code: H4B_TASK_287_PRIMARY_TERMINAL_PENDING
+      authority: AIOS_RUNTIME
       task_binding: TASK-287
       root_cause_class: MISSED_TRANSIENT_BUSY_CAN_STALE_SUBMITTED_FLIGHT
-      next_action: DISPATCH_PRIMARY_WITH_EXACT_HUMAN_SELECTION
+      next_action: OBSERVE_CANONICAL_PRIMARY_TERMINAL_STATE
       prohibitions:
+        - DISPATCH_ACCEPTANCE_IS_NOT_RUN_CREATION
         - NO_EXECUTOR_MODEL_EFFORT_SUBSTITUTION
+        - NO_DUPLICATE_PRIMARY_DISPATCH
         - NO_TIME_ONLY_COMPLETION_HEURISTIC
         - NO_ASSISTANT_CONTENT_SCRAPING
         - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: TASK_287_PRIMARY_DISPATCH
+    remaining_gate: TASK_287_PRIMARY_TERMINAL_RESULT_OR_FAILURE
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
     status: DONE
