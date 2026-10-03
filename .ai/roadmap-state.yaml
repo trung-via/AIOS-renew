@@ -2895,8 +2895,6 @@ sequence:
     status: NEXT
     phase: H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
     implementation_task_id: TASK-279
-    task_id: TASK-284
-    task_revision: 1
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
     planning_document: docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
@@ -3285,6 +3283,7 @@ sequence:
           later FIFO work remained held by the first unresolved subject within the pass.
       task284_authoring:
         status: AUDITED_CANDIDATE
+        canonical_binding_state: PRE_AUTHORING_UNBOUND
         task_id: TASK-284
         task_revision: 1
         audit_profile: brain-high-value-v3
