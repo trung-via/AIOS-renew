@@ -565,15 +565,55 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
       persistence: THROUGH_TASK_292_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-292
+      task_revision: 1
+      run_id: RUN-292-001
+      result_artifact_sha: "9372c724afaab2ff8637732a5c92ce22b397beb0"
+      candidate_sha: "101d624642e3731fff43d034b902ab98011da08f"
+      verification_summary: "63 passed, 1 skipped in 0.41s; git diff --check passed; unresolved empty."
+      review_id: REVIEW-292-001
+      review_decision_sha: "cb2007d8d5e47caa5d6573248a7c2d9f8a8ed64b"
+      verdict: PASS
+      reviewed_sha: "101d624642e3731fff43d034b902ab98011da08f"
+      published_sha: "101d624642e3731fff43d034b902ab98011da08f"
+      publication_workflow_run_id: 37145547997
+      completed_on: "2026-10-04"
+      interpretation: >-
+        TASK-292 implementation, Runtime verification, PRIMARY semantic review and exact
+        reviewed publication are complete. The one skipped test is the optional MCP-SDK
+        subprocess case when the development extra is absent and is not treated as live
+        H4C0 conformance evidence.
+    live_conformance:
+      authority: HUMAN_BRAIN_PLANNING
+      status: PENDING
+      contract: H4C0_TWO_REGULAR_CHAT_ORIGIN_CAPTURE_V1
+      published_sha: "101d624642e3731fff43d034b902ab98011da08f"
+      required_observation:
+        - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
+        - TWO_CAPTURE_CALLS_PER_CONVERSATION
+        - SAME_OPAQUE_HANDLE_WITHIN_EACH_CONVERSATION
+        - DISTINCT_OPAQUE_HANDLES_ACROSS_CONVERSATIONS
+        - NO_RAW_SESSION_OR_TRANSCRIPT_CANONICALIZATION
+        - AMBIGUITY_OR_MISSING_METADATA_REMAINS_UNPROVED
+      interpretation: >-
+        Reviewed publication makes the bounded development probe eligible for the
+        separately Human/Brain-owned live observation. TASK acceptance, review and
+        publication do not prove exact origin capture in two real regular Chats and do
+        not close H4C0 or authorize H4C1.
     current_live_blocker:
-      code: TASK_292_PRIMARY_DISPATCH_PENDING
-      authority: AIOS_RUNTIME_ADMISSION
+      code: H4C0_LIVE_TWO_CHAT_ORIGIN_CAPTURE_PENDING
+      authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-292
-      next_action: DISPATCH_PRIMARY_WITH_HUMAN_SELECTED_EXECUTION_PROFILE
+      next_action: HUMAN_PREPARE_DEVELOPMENT_CONNECTION_AND_RUN_BOUNDED_TWO_CHAT_OBSERVATION
       prohibitions:
-        - NO_EXECUTOR_MODEL_EFFORT_CHANGE_WITHOUT_HUMAN_OVERRIDE
-        - NO_H4C1_BEFORE_TASK_292_REVIEWED_PUBLICATION_AND_H4C0_LIVE_TWO_CHAT_PROOF
+        - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
+        - NO_RAW_OPENAI_SESSION_OR_CHAT_URL_IN_CANONICAL_STATE
+        - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_IDENTITY_INFERENCE
+        - NO_SYNTHETIC_TEST_OR_PUBLICATION_AS_LIVE_TWO_CHAT_PROOF
+        - NO_AUTOMATIC_ROADMAP_ADVANCE
     primary_dispatch_intent:
       dispatch_id: task292-r1-codex61-xhigh-20261004-001
       task_blob_sha: "602baebd63fa109dab2536df88162131b4606db3"
@@ -581,8 +621,9 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: READY_TO_DISPATCH
-    remaining_gate: TASK_292_PRIMARY_ADMISSION_AND_EXECUTION
+      status: DISPATCH_ACCEPTED
+      carrier_issue_number: 1448
+    remaining_gate: H4C0_TWO_DISTINCT_REGULAR_CHAT_LIVE_ORIGIN_CAPTURE_AND_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
