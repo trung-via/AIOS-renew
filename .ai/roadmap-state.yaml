@@ -498,19 +498,7 @@ sequence:
     approved_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
-    task_id: TASK-292
-    task_revision: 1
-    task_authoring_status: CANONICALIZED
-    task_author_commit_sha: "dd65f683267ca52a622027dfa063f30f49a9fca2"
-    task_blob_sha: "602baebd63fa109dab2536df88162131b4606db3"
-    authoring_issue_number: 1447
-    audit_profile: brain-high-value-v3
-    audit_stages:
-      - CONSTRUCT
-      - ADVERSARIAL_AUDIT_AND_RECONCILE
-    packet_fingerprint: "53d2d53bf39f47a8ca2235edb160ea72def96f5b62c5fb2d95cf52a991a3343b"
-    construct_fingerprint: "1f0d2938eb51df8be8d4541a9dd40fdb4f54886cdfcbfa9cd3ed4de6194e7fc2"
-    reconciled_candidate_fingerprint: "77f820533030a7e6df4aa1427f34c5826a0d8056d1210475fdedadc4f2f2380d"
+    task_authoring_status: PENDING_FALLBACK_TASK
     production_requirement:
       - ORIGIN_AFFINE_RETURN_REQUIRED_BEFORE_H5
       - UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5
@@ -548,6 +536,18 @@ sequence:
       contract: OPENAI_SESSION_ORIGIN_CAPTURE_V1
       engineering_task: TASK-292
       engineering_status: REVIEWED_PUBLISHED
+      task_authoring:
+        revision: 1
+        task_author_commit_sha: "dd65f683267ca52a622027dfa063f30f49a9fca2"
+        task_blob_sha: "602baebd63fa109dab2536df88162131b4606db3"
+        authoring_issue_number: 1447
+        audit_profile: brain-high-value-v3
+        audit_stages:
+          - CONSTRUCT
+          - ADVERSARIAL_AUDIT_AND_RECONCILE
+        packet_fingerprint: "53d2d53bf39f47a8ca2235edb160ea72def96f5b62c5fb2d95cf52a991a3343b"
+        construct_fingerprint: "1f0d2938eb51df8be8d4541a9dd40fdb4f54886cdfcbfa9cd3ed4de6194e7fc2"
+        reconciled_candidate_fingerprint: "77f820533030a7e6df4aa1427f34c5826a0d8056d1210475fdedadc4f2f2380d"
       current_surface_live_status: BLOCKED_BY_MISSING_REGULAR_CHAT_DEVELOPER_MODE_ENTRY
       interpretation: >-
         TASK-292 remains valid immutable engineering evidence. The current Human-observed
@@ -593,7 +593,7 @@ sequence:
         - CREATE_NEW_PLANNER_RUNTIME_REVIEWER_PUBLISHER_OR_WAKE_QUEUE
         - REQUIRE_DEVELOPER_MODE_MCP_RESPONSES_API_OR_OPENAI_SESSION_METADATA
         - MAKE_ROUTE_HANDLE_AN_AUTHORIZATION_CAPABILITY
-    human_execution_delegation:
+    prior_human_execution_delegation:
       selected_on: "2026-10-04"
       authority: HUMAN
       task_id: TASK-292
@@ -604,7 +604,7 @@ sequence:
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
       persistence: THROUGH_TASK_292_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
-    engineering_completion:
+    prior_engineering_completion:
       authority: RUNTIME_REVIEWER_PUBLISHER
       task_id: TASK-292
       task_revision: 1
@@ -654,7 +654,7 @@ sequence:
         - NO_ACTIVE_TAB_RECENT_CHAT_TIMESTAMP_HEURISTIC
         - NO_IMPLEMENTATION_OR_PUBLICATION_TREATED_AS_LIVE_TWO_CHAT_PROOF
         - NO_AUTOMATIC_ROADMAP_ADVANCE
-    primary_dispatch_intent:
+    prior_primary_dispatch_intent:
       dispatch_id: task292-r1-codex61-xhigh-20261004-001
       task_blob_sha: "602baebd63fa109dab2536df88162131b4606db3"
       task_commit_sha: "dd65f683267ca52a622027dfa063f30f49a9fca2"
