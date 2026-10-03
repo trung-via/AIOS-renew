@@ -4150,19 +4150,25 @@ sequence:
       - ADD_SECOND_WAKE_TRANSPORT
       - REPLAY_RESOLVED_RUN_285_OR_RUN_286
       - CLOSE_H4B_OR_START_H5_FROM_THIS_TASK
-    current_live_blocker:
-      code: H4B_TASK_287_EXECUTOR_SELECTION_PENDING
+    execution_selection:
       authority: HUMAN
+      selected_on: "2026-10-03"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      persistence: THROUGH_TASK_287_UNLESS_HUMAN_CHANGES
+    current_live_blocker:
+      code: H4B_TASK_287_PRIMARY_DISPATCH_PENDING
+      authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-287
       root_cause_class: MISSED_TRANSIENT_BUSY_CAN_STALE_SUBMITTED_FLIGHT
-      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT
+      next_action: DISPATCH_PRIMARY_WITH_EXACT_HUMAN_SELECTION
       prohibitions:
-        - NO_PRIMARY_BEFORE_HUMAN_EXECUTION_SELECTION
-        - NO_EXECUTOR_REUSE_FROM_TASK_286
+        - NO_EXECUTOR_MODEL_EFFORT_SUBSTITUTION
         - NO_TIME_ONLY_COMPLETION_HEURISTIC
         - NO_ASSISTANT_CONTENT_SCRAPING
         - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: TASK_287_HUMAN_EXECUTION_SELECTION
+    remaining_gate: TASK_287_PRIMARY_DISPATCH
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
     status: DONE
