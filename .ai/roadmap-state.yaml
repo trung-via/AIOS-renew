@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
+  - brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -3966,7 +3966,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
-    status: IMPLEMENTATION_HARDENING_REQUIRED
+    status: NEXT
     phase: H4B_REGULAR_CHAT_BRAIN_RESUME
     task_id: TASK-285
     task_revision: 1
@@ -4081,7 +4081,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
-    status: NEXT
+    status: DONE
     phase: H4B_SURFACE_OBSERVABILITY_HARDENING
     task_id: TASK-286
     task_revision: 1
@@ -4135,19 +4135,68 @@ sequence:
         - PRESERVE_DURABLE_DEFERRED_RECOVERY_AND_FRESHNESS_BARRIERS
         - NEW_TASK_MUST_NOT_EXIST_SOLELY_TO_MANUFACTURE_H4B_LIVE_EVIDENCE
         - NO_H5_ADVANCE_BEFORE_H4B_LIVE_CLOSURE
-    current_live_blocker:
-      code: H4B_TASK_286_EXECUTOR_SELECTION_PENDING
+    engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-286
+      task_revision: 1
+      run_id: RUN-286-001
+      result_artifact_sha: "5d67170ca345f8d2c547059dc90f2d7f3bd3422a"
+      review_id: REVIEW-286-001
+      review_decision_sha: "5e8c8c24b35fc99c8e2be582330a6823d25f662b"
+      verdict: PASS
+      reviewed_sha: "6955668893636752bd6a7c41b0a0b29ce6adf961"
+      published_sha: "6955668893636752bd6a7c41b0a0b29ce6adf961"
+      verification_summary: "450 passed, 516 skipped in 55.43s; git diff --check passed; unresolved empty."
+      completed_on: "2026-10-03"
+    live_lane_reconciliation:
       authority: HUMAN
-      task_binding: TASK-286
-      root_cause_class: PRE_SUBMIT_SURFACE_OBSERVABILITY_GAP
-      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT
+      authorized_on: "2026-10-03"
+      exact_holder_family: PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+      exact_holder_run_id: RUN-285-001
+      exact_holder_source_boundary: PUBLICATION_PROVEN
+      precondition:
+        flight_present: true
+        flight_seen_busy: false
+        holder_status: SUBMITTED
+        holder_reason: NONE
+        holder_generation: 0
+        exact_user_turn: EXACT
+        browser_generation_state: IDLE
+        lock_present: false
+        pending_write_present: false
+        queue_files: 0
+      recovery:
+        type: STATE_ONLY
+        cleared_flight_only: true
+        preserved_submitted_event: true
+        event_count_before: 7
+        event_count_after: 7
+        queue_files_before: 0
+        queue_files_after: 0
+      postcondition:
+        flight_present: false
+        holder_status: SUBMITTED
+        holder_reason: NONE
+        holder_generation: 0
+      interpretation: >-
+        The live LANE_IN_FLIGHT blocker was a stale SUBMITTED flight for the RUN-285-001
+        publication-success attention whose transient BUSY phase was never observed.
+        Human-authorized state-only reconciliation cleared only the machine-local flight
+        pointer after exact user-turn and IDLE proof, preserving dedupe/event identity and
+        all queued/pending state. This does not itself prove H4B semantic resume.
+    current_live_blocker:
+      code: H4B_REAL_UNRESOLVED_RESULT_LIVE_PROOF_UNPROVED
+      authority: HUMAN_BRAIN_PLANNING
+      parent_task_binding: TASK-285
+      root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
+      next_action: OBSERVE_NEXT_NATURAL_REAL_UNRESOLVED_RESULT_CHECKPOINT
       prohibitions:
-        - NO_PRIMARY_BEFORE_HUMAN_EXECUTION_SELECTION
-        - NO_EXECUTOR_REUSE_FROM_TASK_285
-        - NO_TIMEOUT_BUDGET_INCREASE
-        - NO_BLIND_REPLAY_OR_REDRAIN
+        - NO_REPLAY_OF_RESOLVED_RUN_285_RESULT
+        - NO_FABRICATED_CHECKPOINT
+        - NO_NEW_EXECUTOR_SOLELY_TO_MANUFACTURE_LIVE_EVIDENCE
+        - NO_BLIND_REDRAIN
         - NO_H5_ADVANCE_BEFORE_H4B_LIVE_CLOSURE
-    remaining_gate: TASK_286_HUMAN_EXECUTION_SELECTION
+    remaining_gate: H4B_REAL_UNRESOLVED_CANONICAL_SEMANTIC_CHECKPOINT_LIVE_OBSERVATION
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
     status: DONE
