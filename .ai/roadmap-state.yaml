@@ -472,12 +472,33 @@ sequence:
       status: APPROVED
       approved_on: "2026-10-03"
       instruction: AUTHOR_TASK_289_AFTER_TWO_STAGE_BRAIN_AUDIT
-    current_live_blocker:
-      code: TASK_289_EXECUTOR_SELECTION_PENDING
+    execution_selection:
       authority: HUMAN
-      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT_FOR_TASK_289
+      selected_on: "2026-10-03"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      persistence: THROUGH_TASK_289_ALL_REVISIONS_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    primary_dispatch_intent:
+      dispatch_id: task289-r1-codex61-xhigh-20261003-001
+      task_blob_sha: "64fca073ce1dbb407328c0d9bbed13fc14a86518"
+      task_commit_sha: "a2a91ea09b61962999028de4107fe05dd6f82441"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: HUMAN_AUTHORIZED_PENDING_CARRIER_SUBMISSION
+    current_live_blocker:
+      code: TASK_289_PRIMARY_DISPATCH_PENDING
+      authority: HUMAN_RUNTIME
+      next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
       global_drain_authorized: false
-    remaining_gate: TASK_289_EXECUTOR_SELECTION_AND_PRIMARY_DISPATCH
+      prohibitions:
+        - NO_EXECUTOR_MODEL_EFFORT_SUBSTITUTION
+        - NO_DUPLICATE_PRIMARY_DISPATCH
+        - DISPATCH_ACCEPTANCE_IS_NOT_RUN_CREATION
+        - NO_GLOBAL_DRAIN_BEFORE_TASK_289_REVIEWED_PUBLICATION
+        - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
+    remaining_gate: TASK_289_PRIMARY_TERMINAL_RESULT_OR_FAILURE
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
     status: DONE
@@ -4118,11 +4139,11 @@ sequence:
         that exact regular-Chat user turn, so successful review/publication cannot be
         used retrospectively as live semantic-resume proof.
     current_live_blocker:
-      code: H4B_TASK_289_EXECUTOR_SELECTION_PENDING
-      authority: HUMAN
+      code: H4B_TASK_289_PRIMARY_DISPATCH_PENDING
+      authority: HUMAN_RUNTIME
       task_binding: TASK-289
       source_task_binding: TASK-288
-      task_status: CANONICALIZED_AWAITING_EXECUTOR_SELECTION
+      task_status: HUMAN_AUTHORIZED_PENDING_PRIMARY_DISPATCH
       latest_published_hardening_task: TASK-288
       latest_reviewed_hardening_run: RUN-288-002
       stale_failure_subject: RUN-288-001
@@ -4135,7 +4156,7 @@ sequence:
         that a later successful TASK revision supersedes that older FAILURE. With no
         active flight, an unrestricted drain could therefore attempt a stale FAILURE
         wake instead of retiring it as canonical Human/Brain supersession.
-      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT_FOR_TASK_289
+      next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
       prohibitions:
         - NO_GLOBAL_DRAIN_WHILE_RUN_288_001_FRESHNESS_REMAINS_UNRESOLVED
         - NO_MANUAL_STATE_RECLASSIFICATION_WITHOUT_CANONICAL_SUCCESSOR_PROOF
