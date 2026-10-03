@@ -2865,6 +2865,32 @@ sequence:
       completed_on: "2026-10-03"
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
 
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a5-canonical-freshness-repair
+    status: DONE
+    task_id: TASK-283
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    objective: >-
+      Align generic canonical freshness with the canonical REMEDIATION schema and
+      reduce the read-only proof graph to bounded initial/final ref snapshots plus
+      one immutable acquisition phase without increasing safety timeouts.
+    completed_by:
+      task_id: TASK-283
+      task_revision: 1
+      run_id: RUN-283-001
+      artifacts_sha: "651ace7d8d11f27a5f0911e6311c37d71feff8af"
+      review_id: REVIEW-283-001
+      review_decision_sha: "8b29b1d5a6e9977e7a40bf1a97c0438874399532"
+      verdict: PASS
+      reviewed_sha: "58f357e789626f522b76a8ce61d0c46c342f2c51"
+      published_sha: "58f357e789626f522b76a8ce61d0c46c342f2c51"
+      publication_workflow_run_id: 37096391601
+      publication_attention_artifact_id: 11263998083
+      publication_source_digest: "371365d424e253895f479c127cfbcf8c523478d1d62c96fa4ec1a9c79a2065cb"
+      completed_on: "2026-10-03"
+      verification_summary: "521 passed, 516 skipped; git diff --check passed."
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
+
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
     status: NEXT
     phase: H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
@@ -2928,7 +2954,7 @@ sequence:
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
-    execution_profile_status: HUMAN_SELECTED
+    execution_profile_status: COMPLETED
     completed_by:
       task_id: TASK-279
       task_revision: 1
@@ -3124,7 +3150,7 @@ sequence:
         code: POST_TASK_282_CANONICAL_FRESHNESS_STILL_UNKNOWN
         authority: HUMAN_BRAIN_PLANNING
         task_binding: TASK-283
-        disposition: TASK_AUTHORED_EXECUTION_PROFILE_SELECTED
+        disposition: RESOLVED_BY_REVIEWED_IMPLEMENTATION
         root_cause: MULTIPLE_DETERMINISTIC_FRESHNESS_DEFECTS
         audit_findings:
           - id: H4A5-FRESHNESS-ROADMAP-DUPLICATE-KEY
@@ -3165,15 +3191,95 @@ sequence:
           for this new TASK. Do not reuse TASK-282 delegation implicitly. Do not replay
           RUN-282-001 again, increase observation budgets, bypass freshness, infer
           old-subject resolution or advance H4B.
+      post_task283_reconciliation:
+        authority: HUMAN_BRAIN_PLANNING
+        task_id: TASK-283
+        task_revision: 1
+        run_id: RUN-283-001
+        artifacts_sha: "651ace7d8d11f27a5f0911e6311c37d71feff8af"
+        review_id: REVIEW-283-001
+        review_decision_sha: "8b29b1d5a6e9977e7a40bf1a97c0438874399532"
+        verdict: PASS
+        reviewed_sha: "58f357e789626f522b76a8ce61d0c46c342f2c51"
+        published_sha: "58f357e789626f522b76a8ce61d0c46c342f2c51"
+        publication_workflow_run_id: 37096391601
+        publication_attention_artifact_id: 11263998083
+        direct_publication_wake:
+          status: DEFERRED
+          reason: LANE_IN_FLIGHT
+        bounded_follow_up_executed: true
+        freshness_interpretation: >-
+          RUN-283-001 and the intentionally unresolved RUN-282-001
+          publication-success subjects now cross canonical freshness as actionable
+          UNRESOLVED rather than CANONICAL_UNKNOWN. TASK-283 therefore repaired the
+          publication-success freshness defect in live production. No new user turn
+          occurred because the lane remained held by an older submitted flight.
+      lane_holder_audit:
+        authority: HUMAN_BRAIN_PLANNING
+        exact_holder_source_issue_number: 1389
+        exact_holder_source_workflow_run_id: 37039065441
+        exact_holder_local_wake_run_id: 37039125505
+        exact_holder_family: INGRESS_OR_CARRIER_REJECTION
+        exact_holder_submission:
+          status: SUBMITTED
+          reason: EXACT_USER_TURN_PROVEN
+          observed_on: "2026-10-02"
+        chronology:
+          - >-
+            Local wake run 37039125505 submitted the Issue #1389 event and created
+            the only possible flight at that point.
+          - >-
+            The only intervening local-wake workflow before Issue #1391 was run
+            37040191945, whose delivery/recheck jobs were all skipped, so no other
+            subject could replace or retire that flight.
+          - >-
+            Local wake run 37041668446 then deferred Issue #1391 with
+            LANE_IN_FLIGHT, proving a flight was still present.
+          - >-
+            Scheduled run 37053912495 later canonically resolved Issue #1391 as
+            NOOP, but the lane remained held; scheduled run 37075944497 still
+            returned LANE_IN_FLIGHT for later review attention.
+          - >-
+            After TASK-283 publication, publisher run 37096391601 again returned
+            LANE_IN_FLIGHT for RUN-282-001 and RUN-283-001 publication-success
+            attention. No intervening exact user-turn submission can replace the
+            original flight while the lane is held.
+        implementation_mechanism: >-
+          local_chat_wake persists flight.seen_busy=false before click. A SUBMITTED
+          flight is automatically retired only after generation_state first observes
+          BUSY and a later observation sees IDLE. The canonical regression
+          test_unobserved_generation_completion_does_not_release_lane intentionally
+          preserves a flight when only IDLE is observed without prior BUSY evidence.
+        bounded_diagnosis: >-
+          The holder identity is deterministically RUN-independent Issue #1389
+          attention. GitHub evidence does not expose the machine-local seen_busy bit
+          or swallowed BrowserAdapter observation failures, so those two operational
+          possibilities must not be guessed. Before any further live replay, perform
+          read-only inspection of the Human-owned local lane state. If it confirms
+          the #1389 SUBMITTED flight is still present, a separately Human-authorized
+          state-only reconciliation may clear only that flight while preserving the
+          SUBMITTED event record and all pending FIFO events.
+      current_live_blocker:
+        code: LEGACY_SUBMITTED_FLIGHT_NOT_RETIRED
+        authority: HUMAN_BRAIN_PLANNING
+        task_binding: NONE
+        root_cause_class: PRE_TASK_282_OPERATIONAL_FLIGHT
+        next_action: READ_ONLY_LOCAL_STATE_CONFIRMATION
+        prohibitions:
+          - NO_RUN_282_REPLAY
+          - NO_RUN_283_REPLAY
+          - NO_TIMEOUT_INCREASE
+          - NO_BLIND_STATE_EDIT
+          - NO_H4B_ADVANCE
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
-        TASK-280, TASK-281 and TASK-282 implementation blockers are reviewed and
-        published. H4A5 remains BLOCKED only on the remaining bounded Human live
-        conformance procedure. The next live proof must first reconcile the older FIFO
-        subjects from exact canonical state, then demonstrate at most one exact bound
-        regular-Chat user turn for the still-unresolved RUN-282-001 publication-success
-        attention using the TASK-282-published transport. H4B remains unauthorized until
-        that live proof and an explicit Human/Brain roadmap closure.
+        TASK-280 through TASK-283 implementation blockers are reviewed and published.
+        TASK-283 live publication evidence shows publication-success freshness no longer
+        returns CANONICAL_UNKNOWN. H4A5 remains BLOCKED on one legacy pre-TASK-282
+        submitted-flight hold plus the final bounded Human live conformance proof.
+        Read-only local state confirmation must precede any state-only reconciliation.
+        H4B remains unauthorized until the lane is safely reconciled, the final proof
+        passes and Human/Brain explicitly closes the roadmap gate.
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
