@@ -3605,7 +3605,7 @@ sequence:
       bounded_remainder_proof_two_source_authorization:
         authority: HUMAN
         authorized_on: "2026-10-03"
-        status: PARTIAL_EXECUTION_SELECTOR_CORRECTED
+        status: EXECUTED
         exact_sources:
           - REVIEW_CHANGES_REQUIRED_OR_BLOCKED_RUN_280_001
           - PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE_RUN_280_002
@@ -3638,36 +3638,102 @@ sequence:
               - workflow_run_37080008668_publish_log
               - immutable_artifact_11257824173_source_json
             interpretation: >-
-              UNKNOWN is not evidence of a TASK-284 freshness defect. The Brain inventory
-              transcribed one hex character incorrectly in source_digest, so the constructed
-              event_id did not equal the immutable source event and was absent from durable
-              lane state. The Human-authorized proof scope is unchanged; only the exact
-              historical selector is corrected.
+              UNKNOWN was caused solely by a Brain inventory transcription error in the
+              source_digest. It is not evidence of a TASK-284 or freshness defect.
           state_unchanged: true
           queue_unchanged: true
           main_unchanged: true
           overall: INCOMPLETE_SELECTOR_CORRECTION_REQUIRED
+        corrected_execution:
+          publication_failure:
+            source_artifact_reconstruction: PASS
+            projected_event_match: true
+            freshness: RESOLVED
+            durable_location: EVENT
+            durable_status: RESOLVED_NOOP
+            durable_reason: NONE
+            durable_generation: null
+          state_hash_unchanged: true
+          queue_unchanged: true
+          main_unchanged: true
+          mutation: NONE
+          drain: NONE
+          replay: NONE
+          send: NONE
+          new_run: NONE
+          executor: NONE
+          overall: PASS
+        result: PASS
+      final_h4a5_matrix_reconciliation:
+        authority: HUMAN_BRAIN_PLANNING
+        reconciled_on: "2026-10-03"
+        representative_emissions:
+          status: PARTIAL_LIVE
+          live_or_live_lane_proven:
+            - INGRESS_OR_CARRIER_REJECTION
+            - RUN_RESULT_REQUIRING_SEMANTIC_REVIEW
+            - RUN_FAILURE_REQUIRING_CORRECTION_REASONING
+            - REVIEW_INGRESS_REJECTION
+            - REVIEW_CHANGES_REQUIRED_OR_BLOCKED
+            - PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE
+            - PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+          unproved_no_current_exact_eligible_source:
+            - PRIMARY_REMEDIATION_REPAIR_DISPATCH_REJECTION
+            - PRE_AIOS_OPERATIONAL_FAILURE_REQUIRING_DIAGNOSIS
+            - REMEDIATION_OR_REPAIR_AUTHORING_REJECTION
+            - CANONICAL_CONFLICT_OR_STALENESS
+            - WAKE_DELIVERY_RECOVERY_FOR_UNRESOLVED_ATTENTION
+          interpretation: >-
+            Existing exact historical sources were reused where current source contracts
+            could reconstruct them. No missing family was fabricated solely for coverage.
+        progress_exclusion:
+          status: DETERMINISTIC_ONLY
+          gap: NO_BOUNDED_HUMAN_ZERO_WAKE_OBSERVATION_SET_FOR_COMPLETE_PROGRESS_GROUP
+        stale_source_suppression:
+          status: PARTIAL_LIVE
+          proven:
+            - EXACT_REVIEW_FOLLOWUP_RESOLVED_NOOP
+            - EXACT_PUBLICATION_FAILURE_RESOLVED_NOOP
+          gap: HUMAN_DRAFT_UNRELATED_ACTIVITY_THEN_CANONICAL_SUCCESSOR_VARIANT_UNPROVED
+        two_lanes:
+          status: DETERMINISTIC_ONLY
+          gap: SECOND_SEPARATELY_AUTHORIZED_DEPLOYED_LIVE_LANE_UNAVAILABLE
+        ordering_and_generations:
+          status: PARTIAL_LIVE
+          proven:
+            - FIFO_ONE_FLIGHT_RETENTION
+            - POST_SEND_UNOBSERVED_GENERATION_FLIGHT_HOLD
+          gap: HUMAN_OWNED_BINDING_GENERATION_ROLLOVER_RACE_UNPROVED
+        recovery:
+          status: DETERMINISTIC_ONLY
+          gap: GENERIC_RECOVERY_FAMILY_LIVE_PROOF_UNAVAILABLE
+        compaction:
+          status: DETERMINISTIC_ONLY
+          gap: HUMAN_BOUNDED_LIVE_COMPACTED_DUPLICATE_PROOF_UNPROVED
+        conclusion: LIVE_CONFORMANCE_INCOMPLETE_NO_ENGINEERING_DEFECT_ESTABLISHED
       current_live_blocker:
-        code: BOUNDED_REMAINDER_PUBLICATION_FAILURE_SELECTOR_CORRECTION_PENDING
+        code: H4A5_REMAINING_LIVE_EVIDENCE_GAPS
         authority: HUMAN_BRAIN_PLANNING
         task_binding: NONE
-        root_cause_class: BRAIN_INVENTORY_TRANSCRIPTION_ERROR_NOT_ENGINEERING_FAILURE
-        next_action: EXECUTE_CORRECTED_READ_ONLY_PUBLICATION_FAILURE_REEVALUATION
+        root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
+        next_action: HUMAN_DECIDE_REMAINING_LIVE_PROOF_OR_EXPLICIT_RISK_ACCEPTANCE
         prohibitions:
           - NO_ASSUME_SYNTHETIC_EQUALS_LIVE
           - NO_MANUFACTURE_RUN_FAILURE_REVIEW_OR_CONFLICT
-          - NO_DRAIN
-          - NO_REPLAY
-          - NO_SEND
-          - NO_NEW_EXECUTOR_FOR_PROOF
+          - NO_UNAUTHORIZED_LANE_OR_GENERATION_MUTATION
+          - NO_DRAIN_OR_REPLAY_WITHOUT_EXPLICIT_AUTHORIZATION
           - NO_H4B_ADVANCE
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
-        TASK-284 core publication-success live proof passed and its post-send
-        unobserved-generation flight has been state-only reconciled without changing
-        the SUBMITTED dedupe record. The lane is operationally clear. H4A5 still cannot
-        close because the bounded Human conformance matrix contains live-evidence gaps;
-        deterministic/synthetic coverage is not a substitute. H4B remains unauthorized.
+        TASK-284 core live publication-success proof and the two-source bounded remainder
+        freshness proof both passed. The production lane is operationally clear and no
+        current engineering defect is established. H4A5 nevertheless remains BLOCKED
+        because strict live conformance still has unavailable or unexecuted bounded cases:
+        five representative families lack a current eligible source, the complete progress
+        exclusion observation set is absent, the Human-draft stale-source variant is absent,
+        a second authorized live lane is unavailable, no Human-owned binding-generation
+        rollover/race has been exercised, the generic recovery-family live case is unavailable,
+        and live compaction has not been performed. H4B remains unauthorized.
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
