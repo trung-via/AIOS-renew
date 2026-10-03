@@ -3708,8 +3708,13 @@ sequence:
           status: DETERMINISTIC_ONLY
           gap: GENERIC_RECOVERY_FAMILY_LIVE_PROOF_UNAVAILABLE
         compaction:
-          status: DETERMINISTIC_ONLY
-          gap: HUMAN_BOUNDED_LIVE_COMPACTED_DUPLICATE_PROOF_UNPROVED
+          status: LIVE_PASS
+          proven:
+            - PRODUCTION_CANONICAL_RESOLUTION_COMPACTION
+            - PERMANENT_DIGEST_TOMBSTONE
+            - EXACT_REPLAY_COMPACTED_DUPLICATE_NOOP
+            - REPLAY_INDEPENDENT_OF_SOURCE_AVAILABILITY
+            - ZERO_BROWSER_ZERO_SEND_ZERO_STATE_CHANGE
         conclusion: LIVE_CONFORMANCE_INCOMPLETE_NO_ENGINEERING_DEFECT_ESTABLISHED
       remaining_feasible_live_cases_authorization:
         authority: HUMAN
@@ -3720,8 +3725,8 @@ sequence:
           compaction:
             target_family: PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE
             target_run_id: RUN-280-002
-            target_state: TOMBSTONED_BEFORE_AUTHORIZED_PROOF_MUTATION
-            authorization_status: REPLAY_ONLY_REMAINS_UNUSED
+            status: LIVE_PASS
+            target_state: TOMBSTONED_BY_PRODUCTION_SCHEDULE
             attempted_proof:
               result: ABORTED_PRE_MUTATION
               reason: TARGET_EVENT_MISSING
@@ -3748,21 +3753,32 @@ sequence:
               command: LOCAL_CHAT_WAKE_DRAIN_COMPACT
               created_at_utc: "2026-10-03T07:08:24Z"
               interpretation: >-
-                The production schedule invoked the published --drain --compact path
-                after the exact target had already been proven RESOLVED_NOOP and before
-                the later Human-authorized deliberate compaction attempt. Current durable
-                state proves the exact target digest is now a tombstone. Per-event mutation
-                provenance is not separately logged, so the schedule is strong operational
-                provenance but is not retroactively relabeled as the Human-authorized proof.
-            authorized_mutation:
-              - NONE_TARGET_ALREADY_TOMBSTONED
-            remaining_proof:
-              - REPLAY_EXACT_TARGET_ONCE
-              - REQUIRE_COMPACTED_DUPLICATE_NOOP
-              - REQUIRE_ZERO_CANONICAL_SOURCE_LOOKUP
-              - REQUIRE_ZERO_BROWSER_ADAPTER_USE
-              - REQUIRE_ZERO_PERSISTENT_STATE_CHANGE
-              - REQUIRE_ZERO_SEND
+                Production schedule invoked the published --drain --compact path after
+                exact canonical resolution. Per-event mutation provenance is not separately
+                logged, so this schedule is operational provenance rather than a retrospective
+                Human-authorized mutation claim.
+            human_bounded_tombstone_replay:
+              status: PASS
+              target_event_present_before: false
+              target_tombstone_present_before: true
+              receipt_status: NOOP
+              receipt_reason: COMPACTED_DUPLICATE
+              source_lookup_calls: 0
+              browser_calls: 0
+              queue_files_after: 0
+              post_flight_present: false
+              target_event_present_after: false
+              target_tombstone_present_after: true
+              durable_state_semantically_unchanged: true
+              send: NONE
+              new_run: NONE
+              executor: NONE
+              proof: PASS
+            interpretation: >-
+              The live production path compacted an exact canonically resolved record into
+              a permanent digest tombstone, and the separately Human-bounded exact replay
+              proved COMPACTED_DUPLICATE without source availability, browser use, Send,
+              persistent-state mutation, RUN creation or Executor invocation.
             prohibitions:
               - NO_SECOND_COMPACTION
               - NO_OTHER_EVENT_COMPACTION
@@ -3792,7 +3808,7 @@ sequence:
         authority: HUMAN_BRAIN_PLANNING
         task_binding: NONE
         root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
-        next_action: EXECUTE_EXACT_RUN_280_002_TOMBSTONE_REPLAY_PROOF
+        next_action: COMPLETE_READ_ONLY_PROGRESS_EXCLUSION_INVENTORY
         prohibitions:
           - NO_ASSUME_SYNTHETIC_EQUALS_LIVE
           - NO_MANUFACTURE_RUN_FAILURE_REVIEW_OR_CONFLICT
