@@ -1,18 +1,40 @@
 """Repository-owned reusable handoff, Human gate and minimum permission bounds."""
 
+from copy import deepcopy
+from dataclasses import replace
+import json
 from pathlib import Path
 import re
+import shlex
 import tomllib
+from types import SimpleNamespace
 
 import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+READ_PERMISSIONS = {"contents": "read", "actions": "read"}
+REUSABLE_WORKFLOW = "./.github/workflows/aios-local-chat-wake.yml"
 
 
 def workflow(name="aios-local-chat-wake.yml"):
     text = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
     return yaml.load(text, Loader=yaml.BaseLoader), text
+
+
+def assert_caller_permission_ceiling(caller, callee):
+    levels = {"none": 0, "read": 1, "write": 2}
+    ceiling = caller["permissions"]
+    required = {}
+    # GitHub checks declarations even for jobs gated off in workflow_call.
+    for job_name, job in callee["jobs"].items():
+        for scope, level in job.get("permissions", callee["permissions"]).items():
+            assert levels[level] <= levels[ceiling.get(scope, "none")], (
+                f"{job_name} requires {scope}: {level} in the caller permission ceiling"
+            )
+            if levels[level] > levels[required.get(scope, "none")]:
+                required[scope] = level
+    assert ceiling == required == READ_PERMISSIONS
 
 
 def condition(expression, context):
@@ -51,9 +73,10 @@ def test_reusable_entry_accepts_only_bounded_identity_and_fixed_repository():
     assert parsed["permissions"] == {"contents": "read"}
     assert "concurrency" not in parsed  # GitHub's replaceable pending slot loses intake.
     job = parsed["jobs"]["deliver"]
+    assert job["permissions"] == READ_PERMISSIONS
     assert job["runs-on"] == ["self-hosted", "windows", "x64", "aios-renew"]
     assert int(job["timeout-minutes"]) <= 5
-    for forbidden in ("workflow_dispatch", "issues:", "actions: write",
+    for forbidden in ("workflow_dispatch", "repository_dispatch", "createWorkflowDispatch", "issues:", "actions: write",
                       "aios run", "aios repair", "aios remediate", "upload-artifact", "playwright install",
                       "new_page", "launch_persistent_context", "secrets."):
         assert forbidden not in text
@@ -124,13 +147,13 @@ def test_reusable_delivery_rejects_repository_substitution(field):
     assert not condition(parsed["jobs"]["deliver"]["if"], context)
 
 
-def test_terminal_reusable_handoff_has_no_dispatch_api_or_added_permission():
+def test_terminal_reusable_handoff_has_no_dispatch_api_or_write_permission():
     parsed, text = workflow("aios-terminal-attention.yml")
     assert parsed["permissions"] == {"contents": "read", "issues": "write"}
     job = parsed["jobs"]["local-chat-wake"]
     assert job["needs"] == "admit-and-notify"
     assert job["uses"] == "./.github/workflows/aios-local-chat-wake.yml"
-    assert job["permissions"] == {"contents": "read"}
+    assert job["permissions"] == READ_PERMISSIONS
     assert job["with"] == {
         "event_id": "${{ needs.admit-and-notify.outputs.event_id }}",
         "repository": "trung-via/AIOS-renew",
@@ -155,6 +178,7 @@ def test_binding_is_machine_local_and_dependency_is_isolated():
     assert delivery["env"] == {
         "AIOS_WAKE_EVENT_ID": "${{ inputs.event_id }}", "AIOS_WAKE_REPOSITORY": "${{ inputs.repository }}",
         "AIOS_LOCAL_CHAT_WAKE_ENABLED": "${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}",
+        "GITHUB_TOKEN": "${{ github.token }}",
     }
     assert "python -m aios_renew.local_chat_wake" in delivery["run"]
     assert "exit $LASTEXITCODE" in delivery["run"]
@@ -164,6 +188,194 @@ def test_binding_is_machine_local_and_dependency_is_isolated():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert not any("playwright" in item for item in project["dependencies"])
     assert project["optional-dependencies"]["local-chat-wake"] == ["playwright>=1.51,<2"]
+
+
+def test_reusable_freshness_token_is_current_run_and_step_local_only():
+    parsed, text = workflow()
+    job = parsed["jobs"]["deliver"]
+    assert "env" not in parsed and "env" not in job
+    steps = job["steps"]
+    intake = next(step for step in steps if step.get("id") == "admit")
+    follow_up = steps[-1]
+    assert follow_up["env"] == {
+        "AIOS_WAKE_REPOSITORY": "${{ inputs.repository }}",
+        "AIOS_LOCAL_CHAT_WAKE_ENABLED": "${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}",
+        "GITHUB_TOKEN": "${{ github.token }}",
+    }
+    assert [step for step in steps if "GITHUB_TOKEN" in step.get("env", {})] == [intake, follow_up]
+    assert intake["run"] == (
+        "python -m aios_renew.local_chat_wake --event-id $env:AIOS_WAKE_EVENT_ID "
+        "--repository $env:AIOS_WAKE_REPOSITORY\nexit $LASTEXITCODE\n"
+    )
+    assert follow_up["run"] == (
+        "python -m aios_renew.local_chat_wake --drain --rechecks 2 --interval 15 "
+        "--repository $env:AIOS_WAKE_REPOSITORY\nexit $LASTEXITCODE\n"
+    )
+    for step in steps:
+        assert "GITHUB_TOKEN" not in step.get("run", "")
+        assert "github.token" not in str(step.get("with", {}))
+        assert "AIOS_LOCAL_CHAT_WAKE_CONFIG" not in step.get("env", {})
+    for forbidden in ("secrets:", "secrets.", "secrets: inherit", "github_token", "GH_TOKEN",
+                      "GITHUB_ENV", "curl", "gh api", "cdp_endpoint", "chat_url", "state_path"):
+        assert forbidden not in text
+
+
+@pytest.mark.parametrize("step_index", [-2, -1], ids=["intake", "follow-up"])
+@pytest.mark.parametrize("guard,reason", [
+    ("disabled", "ENABLE_GATE_CLOSED"),
+    ("draft", "DRAFT_PRESENT"),
+    ("generation", "GENERATION_ACTIVE"),
+    ("binding-change", "BINDING_GENERATION_CHANGED"),
+    ("unknown", "CANONICAL_UNKNOWN"),
+    ("resolved", "CANONICALLY_RESOLVED"),
+])
+def test_authenticated_reusable_commands_preserve_local_submission_guards(
+    step_index, guard, reason, tmp_path, monkeypatch, capsys,
+):
+    from aios_renew import local_chat_wake as wake
+
+    parsed, _ = workflow()
+    step = parsed["jobs"]["deliver"]["steps"][step_index]
+    event_id = "terminal:RESULT:RUN-284-001:" + "a" * 40
+    token = "ephemeral-current-workflow-token-fixture"
+    expressions = {
+        "${{ inputs.event_id }}": event_id,
+        "${{ inputs.repository }}": "trung-via/AIOS-renew",
+        "${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}": "false" if guard == "disabled" else "true",
+        "${{ github.token }}": token,
+    }
+    environment = {key: expressions[value] for key, value in step["env"].items()}
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
+    command = shlex.split(step["run"].splitlines()[0])
+    assert command[:3] == ["python", "-m", "aios_renew.local_chat_wake"]
+    arguments = [{"$env:" + key: value for key, value in environment.items()}.get(arg, arg)
+                 for arg in command[3:]]
+    binding = wake.Binding(
+        "https://chatgpt.com/c/00000000-0000-0000-0000-000000000284",
+        "http://127.0.0.1:9222", tmp_path / "lane.json", 1,
+    )
+    binding_reads = []
+    submissions = []
+
+    def local_binding(repository):
+        assert repository == binding.repository
+        binding_reads.append(repository)
+        return replace(binding, generation=len(binding_reads)) if guard == "binding-change" else binding
+
+    class Freshness:
+        def observe(self, observed):
+            assert observed == event_id
+            return "UNKNOWN" if guard == "unknown" else "RESOLVED" if guard == "resolved" else "UNRESOLVED"
+
+    class LocalSurface:
+        # Exercise the production draft/generation check over an inert surface.
+        check = wake.BrowserAdapter.check
+
+        def __init__(self, selected_binding):
+            self.binding = selected_binding
+            self.page = SimpleNamespace(url=selected_binding.chat_url)
+            self.browser = object()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def select_page(self, browser, url):
+            return self.page
+
+        def visible(self, selector):
+            count = int(selector in {"main", wake.ACCOUNT, wake.COMPOSER}
+                        or selector == wake.STOP and guard == "generation")
+            return SimpleNamespace(count=lambda: count, get_attribute=lambda name: None,
+                                   text_content=lambda: "Human draft" if guard == "draft" else "")
+
+        def user_turn(self, text):
+            return "ABSENT"
+
+        def submit(self, *args, **kwargs):
+            submissions.append(args)
+            raise AssertionError("A guarded subject cannot reach submission")
+
+    real_operate = wake.operate
+
+    def isolated_operate(repository, selected_binding, event_id=None, adapter_factory=None,
+                         projection=None, binding_provider=None, compact=False):
+        return real_operate(repository, selected_binding, event_id, LocalSurface,
+                            Freshness(), binding_provider, compact)
+
+    monkeypatch.setattr(wake, "load_binding", local_binding)
+    monkeypatch.setattr(wake, "operate", isolated_operate)
+    monkeypatch.setattr(wake.time, "sleep", lambda seconds: None)
+    if "--drain" in arguments:
+        wake._admit_inbox(wake.State(binding.state_path), event_id)
+    assert wake.main(arguments) == (1 if guard == "disabled" else 0)
+    output = capsys.readouterr().out
+    assert {json.loads(line)["reason"] for line in output.splitlines()} == {reason}
+    assert not submissions
+    assert token not in output and token not in wake.doorbell(event_id, binding.repository)
+    if binding.state_path.exists():
+        state_text = binding.state_path.read_text(encoding="utf-8")
+        assert token not in state_text
+        assert set(json.loads(state_text)["events"]) == {event_id}
+
+
+@pytest.mark.parametrize("caller_name", ["aios-auto-publish.yml", "aios-terminal-attention.yml"])
+def test_reusable_callers_have_exact_read_only_permission_ceiling_and_selectors(caller_name):
+    callee, _ = workflow()
+    caller_workflow, _ = workflow(caller_name)
+    caller = caller_workflow["jobs"]["local-chat-wake"]
+    assert caller["uses"] == REUSABLE_WORKFLOW
+    assert set(caller) == {"needs", "if", "uses", "permissions", "with"}
+    assert caller["with"] == {
+        "event_id": "${{ needs." + caller["needs"] + ".outputs.event_id }}",
+        "repository": "trung-via/AIOS-renew",
+    }
+    assert_caller_permission_ceiling(caller, callee)
+
+
+@pytest.mark.parametrize("caller_name", ["aios-auto-publish.yml", "aios-terminal-attention.yml"])
+def test_missing_actions_read_is_rejected_by_the_caller_contract(caller_name):
+    callee, _ = workflow()
+    caller_workflow, _ = workflow(caller_name)
+    caller = deepcopy(caller_workflow["jobs"]["local-chat-wake"])
+    caller["permissions"].pop("actions")
+    with pytest.raises(AssertionError, match="requires actions: read"):
+        assert_caller_permission_ceiling(caller, callee)
+
+
+def test_all_repository_local_wake_callers_are_covered_by_the_permission_contract():
+    callee, _ = workflow()
+    callers = set()
+    for path in (ROOT / ".github/workflows").iterdir():
+        if path.suffix not in {".yml", ".yaml"}:
+            continue
+        parsed, _ = workflow(path.name)
+        for job_name, job in parsed["jobs"].items():
+            if job.get("uses") == REUSABLE_WORKFLOW:
+                callers.add((path.name, job_name))
+                assert_caller_permission_ceiling(job, callee)
+    assert callers == {
+        ("aios-auto-publish.yml", "local-chat-wake"),
+        ("aios-terminal-attention.yml", "local-chat-wake"),
+    }
+
+
+@pytest.mark.parametrize("job_name,token_steps", [
+    ("project", ["Reconstruct exact bounded source observations"]),
+    ("deliver-projected", ["Admit into the existing durable project lane", "Bounded follow-up for admitted lane work"]),
+    ("recheck", ["Recheck admitted lane work"]),
+])
+def test_projected_and_scheduled_paths_keep_the_same_step_local_actions_read_authentication(job_name, token_steps):
+    parsed, _ = workflow()
+    job = parsed["jobs"][job_name]
+    assert job["permissions"] == READ_PERMISSIONS
+    assert "env" not in parsed and "env" not in job
+    authenticated = [step for step in job["steps"] if "GITHUB_TOKEN" in step.get("env", {})]
+    assert [step["name"] for step in authenticated] == token_steps
+    assert all(step["env"]["GITHUB_TOKEN"] == "${{ github.token }}" for step in authenticated)
 
 
 @pytest.mark.parametrize("enabled,allowed", [(None, False), ("false", False), ("true", True)])

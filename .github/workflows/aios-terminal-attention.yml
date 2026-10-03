@@ -189,6 +189,7 @@ jobs:
       github.repository == 'trung-via/AIOS-renew'
     permissions:
       contents: read
+      actions: read
     uses: ./.github/workflows/aios-local-chat-wake.yml
     with:
       event_id: ${{ needs.admit-and-notify.outputs.event_id }}

@@ -129,6 +129,9 @@ jobs:
       inputs.repository == 'trung-via/AIOS-renew'
     runs-on: [self-hosted, windows, x64, aios-renew]
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Check out published transport source
         uses: actions/checkout@v4
@@ -152,6 +155,7 @@ jobs:
           AIOS_WAKE_EVENT_ID: ${{ inputs.event_id }}
           AIOS_WAKE_REPOSITORY: ${{ inputs.repository }}
           AIOS_LOCAL_CHAT_WAKE_ENABLED: ${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}
+          GITHUB_TOKEN: ${{ github.token }}
         shell: powershell
         run: |
           python -m aios_renew.local_chat_wake --event-id $env:AIOS_WAKE_EVENT_ID --repository $env:AIOS_WAKE_REPOSITORY
@@ -161,6 +165,7 @@ jobs:
         env:
           AIOS_WAKE_REPOSITORY: ${{ inputs.repository }}
           AIOS_LOCAL_CHAT_WAKE_ENABLED: ${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}
+          GITHUB_TOKEN: ${{ github.token }}
         shell: powershell
         run: |
           python -m aios_renew.local_chat_wake --drain --rechecks 2 --interval 15 --repository $env:AIOS_WAKE_REPOSITORY

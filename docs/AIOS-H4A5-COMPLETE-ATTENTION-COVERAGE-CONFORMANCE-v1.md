@@ -179,6 +179,62 @@ closure; H4B authorization and downstream adoption remain separate later decisio
 Runtime owns canonical verification, Reviewer owns the semantic verdict and
 Publisher owns publication. H4A5 live conformance and H4B readiness remain unclaimed.
 
+## TASK-284 reusable freshness authentication repair and live-proof boundary
+
+The Human-authorized state-only recovery of legacy Issue #1389 cleared only its
+stale machine-local flight pointer. It preserved the exact `SUBMITTED` event/dedupe
+record, left queue files at zero and left no flight present.
+Canonical engineering state was not mutated. This operational reconciliation is
+recorded in the Human/Brain planning record in `.ai/roadmap-state.yaml`; it does
+not establish engineering lifecycle completion or H4A5 conformance.
+
+The subsequent Human-authorized one-pass bounded drain produced no regular-Chat
+user-turn submission. Its recorded outcomes were:
+
+| Existing subject | Post-recovery bounded drain outcome |
+| --- | --- |
+| RUN-280-002 publication failure | Held as `DEFERRED` / `CANONICAL_UNKNOWN`. |
+| RUN-282-001 publication success | Retained behind the first unresolved FIFO subject with `LANE_IN_FLIGHT`. |
+| RUN-283-001 publication success | Resolved canonically with `CANONICALLY_RESOLVED`. |
+
+These are the recorded post-recovery observations, not a new Executor live probe.
+The RUN-280-002 immutable publication artifact, exact review lineage and reviewed
+candidate remain present, and canonical main includes that reviewed candidate.
+The next audited blocker is `REUSABLE_WAKE_FRESHNESS_AUTH_CONTEXT_GAP`: the reusable
+`workflow_call` delivery steps lacked process-environment `GITHUB_TOKEN`, while
+the existing `ArtifactSources` reader supplies API `Authorization` only when that
+variable is present. The projected `workflow_run` and scheduled recheck paths
+already supply the current workflow token. Unavailable or unproven source evidence
+remains UNKNOWN; artifact availability or candidate inclusion alone cannot bypass
+exact source reconstruction or the freshness barriers.
+
+TASK-284 gives reusable `deliver` exactly `contents: read` and `actions: read`,
+and supplies `${{ github.token }}` as `GITHUB_TOKEN` only in the intake and bounded
+follow-up step environments. The existing reader uses that ephemeral current-run
+token for authenticated Actions source reconstruction. The publisher and
+terminal-attention reusable call jobs both declare exactly the same read-only
+permission ceiling; deterministic contract coverage rejects a caller missing
+`actions: read`, including permissions declared on gated callee jobs.
+
+The reusable inputs remain exactly selector-only `event_id` and fixed `repository`.
+No credential enters those inputs, event identity, machine-local binding or state,
+logs, browser state or canonical artifacts. No secret, token input, inherited
+secrets, dispatch API, alternate authentication service or write permission is
+added to this handoff. The existing projected and scheduled authentication remains
+in place. The published guarded CLI entry points, Human enable gate, draft and
+generation checks, canonical freshness outcomes, FIFO/one-flight, durable dedupe,
+ambiguity/no-resend and browser/privacy contracts remain unchanged. The thirty-second
+observation, fifteen-second Git and ten-second API ceilings, five-minute job
+timeouts, finite follow-up passes and optional cron cadence remain unchanged.
+
+Runtime owns canonical verification, Reviewer owns the semantic verdict and
+Publisher owns reviewed publication. After TASK-284 has received exact review and
+reviewed publication, a final bounded live conformance procedure still requires
+separate Human authorization. Executor implementation and deterministic tests
+authorize no live browser wake, blind redrain or RUN-282-001/RUN-283-001 replay.
+Human/Brain owns planning reconciliation and explicit H4A5 closure. H4A5 live
+conformance remains unclaimed and H4B remains unauthorized.
+
 ## Family/source matrix
 
 | Family | Exact source and eligibility |
