@@ -4187,12 +4187,28 @@ sequence:
         holder_status: SUBMITTED
         holder_reason: NONE
         holder_generation: 0
+      post_recovery_bounded_drain:
+        authority: HUMAN
+        rechecks: 1
+        compact: false
+        event_family: PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+        event_run_id: RUN-286-001
+        result_status: NOOP
+        result_reason: CANONICALLY_RESOLVED
+        chat_submission_created: false
+        interpretation: >-
+          After the exact TASK-286 completed_by publication bookmark was canonicalized,
+          one Human-run bounded drain re-read canonical freshness and resolved the deferred
+          RUN-286-001 publication-success attention as NOOP/CANONICALLY_RESOLVED before
+          browser submission. No replay, resend, or new user turn occurred.
       interpretation: >-
         The live LANE_IN_FLIGHT blocker was a stale SUBMITTED flight for the RUN-285-001
         publication-success attention whose transient BUSY phase was never observed.
         Human-authorized state-only reconciliation cleared only the machine-local flight
         pointer after exact user-turn and IDLE proof, preserving dedupe/event identity and
-        all queued/pending state. This does not itself prove H4B semantic resume.
+        all queued/pending state. The later bounded drain retired the remaining RUN-286
+        publication attention canonically without Chat submission. This does not itself
+        prove H4B semantic resume.
     current_live_blocker:
       code: H4B_REAL_UNRESOLVED_RESULT_LIVE_PROOF_UNPROVED
       authority: HUMAN_BRAIN_PLANNING
