@@ -508,3 +508,53 @@ without a live browser or canonical checkpoint. Runtime owns canonical verificat
 EVIDENCE. TASK-287 acceptance is a reliability prerequisite selected by Human priority;
 H4B stays open until a future naturally produced real unresolved RESULT supplies the
 separate Human/Brain live semantic-resume observation. It neither closes H4B nor starts H5.
+
+## 14. TASK-289 terminal FAILURE same-TASK revision supersession
+
+A deferred terminal FAILURE for an older TASK revision can outlive its correction
+obligation. The observed RUN-288-001 FAILURE belongs to TASK-288 r1, while canonical
+main contains TASK-288 r2. Its old `DEFERRED/LANE_IN_FLIGHT` record must not cause a
+stale correction wake when the flight is absent. Browser IDLE and later RUN-288-002,
+REVIEW-288-002 or publication facts are not the supersession proof.
+
+The bounded terminal FAILURE reader first reconstructs the exact failure artifact,
+RUN identity, failed head and TASK binding and validates any existing exact REPAIR
+or REPAIR-supersession lineage. Those resolution paths remain valid independently
+of TASK acquisition; malformed repair lineage still fails closed. If they do not
+resolve the FAILURE, the reader fetches the observed canonical main commit and
+reads only `.ai/tasks/<failed-task-id>.yaml`. Duplicate-key rejection and the
+canonical TASK contract validator must accept that document. Its `task_id` must
+match the failed RUN exactly. A strictly greater revision resolves the old FAILURE;
+an equal revision without existing REPAIR remains UNRESOLVED. Authoring Ingress
+enforces revision continuity one revision at a time; the reader need not require
+the current revision to be the immediately following one.
+
+The TASK document itself is the Human/Brain semantic successor. No roadmap status
+or `next_action`, later RUN, REVIEW, publication, chat activity, elapsed time or
+browser state is consulted to establish this proof. Missing/unreadable main or TASK,
+malformed contracts, identity mismatch and lower revisions produce UNKNOWN. Main
+is included in the same before/after canonical ref snapshot as the terminal lineage;
+movement during acquisition, including during the TASK read, produces UNKNOWN.
+The existing 30-second observation budget applies. Terminal RESULT freshness is
+unchanged and does not acquire main/TASK for this rule.
+
+The existing finite drain turns a freshly superseded deferred FAILURE into
+`NOOP/CANONICALLY_RESOLVED` and stores `RESOLVED_NOOP` before browser attachment or
+Send. Unrelated subjects retain independent fresh canonical and binding-generation
+barriers, browser/draft checks, at most one submission per pass, permanent dedupe
+and proof-only ambiguity. No lane schema, completion witness, selector, timing,
+retry authority, generic successor router or lifecycle reducer changes.
+
+The four-file candidate includes synthetic freshness and drain fixtures and this
+contract; it establishes pre-verification implementation properties only. Runtime
+owns EVIDENCE and the unchanged minimum-sufficient verification commands:
+
+```text
+python -m pytest -q tests/test_local_chat_wake.py tests/test_h4b_regular_chat_brain_resume.py
+git diff --check
+```
+
+Reviewer owns semantic verdict and Publisher owns publication. H4B remains
+**UNPROVED**. Human/Brain owns any later authorized live drain, real unresolved
+RESULT semantic-resume observation and roadmap closure. Executor performs no live
+drain, local-state recovery, H4B evidence manufacture or roadmap advancement.

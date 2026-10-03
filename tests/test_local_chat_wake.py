@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from fnmatch import fnmatchcase
 from threading import Event as ThreadEvent
 from types import SimpleNamespace
 from uuid import UUID
@@ -168,6 +169,15 @@ class RecoveryAdapter:
         return False
 
 
+def canonical_task(task_id="TASK-fixture", revision=1):
+    return dict(task_id=task_id, revision=revision, goal="Synthetic bounded wake fixture",
+                problem="Observe exact canonical TASK revision", assumptions=[],
+                scope=dict(inspect=[], modify=[]), non_goals=[], constraints=dict(hard=[]),
+                acceptance=[dict(id="AC1", condition="Preserve exact freshness")],
+                verification=dict(policy="minimum-sufficient-v1",
+                                  required=["python -m pytest -q tests/test_local_chat_wake.py", "git diff --check"]))
+
+
 def canonical_fixture(monkeypatch, kind="RESULT"):
     """Exact synthetic canonical ref/blob observations; no network or reducer."""
     run_id, artifact, head, successor = "RUN-fixture-001", "a" * 40, "b" * 40, "c" * 40
@@ -179,17 +189,24 @@ def canonical_fixture(monkeypatch, kind="RESULT"):
     blobs = {(artifact, ".ai/transport/run.json"): dict(run_id=run_id, task=task, head_sha=None),
              (artifact, ".ai/transport/result.json"): {"result": {"head_sha": head}, "evidence": []},
              (artifact, ".ai/transport/failure.json"): dict(kind="FAILURE", run_id=run_id, task=task, failed_head_sha=head)}
+    main, main_sha, task_path = "refs/heads/main", "e" * 40, ".ai/tasks/TASK-fixture.yaml"
+    current_task = canonical_task()
+    if kind == "FAILURE":
+        refs[main] = main_sha
+        blobs[(main_sha, task_path)] = current_task
     calls, drift = [], []
     def git(self, path, *args):
         calls.append(args)
         if args[0] == "ls-remote":
             current = dict(refs)
             if drift and sum(call[0] == "ls-remote" for call in calls) > 1:
-                current[candidate] = "d" * 40
-            return "\n".join(f"{sha}\t{ref}" for ref, sha in current.items())
+                current[drift[0] if isinstance(drift[0], str) else candidate] = "d" * 40
+            return "\n".join(f"{sha}\t{ref}" for ref, sha in current.items()
+                             if any(fnmatchcase(ref, pattern) for pattern in args[3:]))
         if args[0] == "show":
             sha, name = args[1].split(":", 1)
-            return json.dumps(blobs[(sha, name)])
+            value = blobs[(sha, name)]
+            return value if isinstance(value, str) else json.dumps(value)
         if args[0] == "ls-tree":
             return ".ai/reviews/REVIEW-fixture-001.yaml"
         if args[0] == "rev-parse":
@@ -200,7 +217,8 @@ def canonical_fixture(monkeypatch, kind="RESULT"):
     projection = wake.CanonicalFreshness(wake.REPOSITORY)
     return SimpleNamespace(projection=projection, refs=refs, blobs=blobs, calls=calls, drift=drift,
                            event=f"terminal:{kind}:{run_id}:{artifact}", run_id=run_id, artifact=artifact,
-                           head=head, successor=successor, task=task, root=root, terminal=terminal, candidate=candidate)
+                           head=head, successor=successor, task=task, root=root, terminal=terminal, candidate=candidate,
+                           main=main, main_sha=main_sha, task_path=task_path, current_task=current_task)
 
 
 @pytest.mark.parametrize("kind", ["RESULT", "FAILURE"])
@@ -251,8 +269,10 @@ def test_only_exact_canonical_review_successor_resolves_result(monkeypatch, mism
 
 
 @pytest.mark.parametrize("mismatch", [None, "run", "head", "task"])
-def test_only_exact_human_repair_authorization_resolves_failure(monkeypatch, mismatch):
+@pytest.mark.parametrize("task_revision", [1, 2])
+def test_only_exact_human_repair_authorization_resolves_failure(monkeypatch, mismatch, task_revision):
     fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.current_task["revision"] = task_revision
     fixture.refs[fixture.root + "repair/" + fixture.run_id] = fixture.successor
     authorization = dict(failed_run_id=fixture.run_id, failed_head_sha=fixture.head, task=fixture.task)
     if mismatch == "run":
@@ -266,8 +286,10 @@ def test_only_exact_human_repair_authorization_resolves_failure(monkeypatch, mis
 
 
 @pytest.mark.parametrize("mismatch", [None, "gap", "artifact", "predecessor", "identity"])
-def test_repair_supersession_is_exact_contiguous_identity_observation(monkeypatch, mismatch):
+@pytest.mark.parametrize("task_revision", [1, 2])
+def test_repair_supersession_is_exact_contiguous_identity_observation(monkeypatch, mismatch, task_revision):
     fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.current_task["revision"] = task_revision
     fixture.refs[fixture.root + "repair/" + fixture.run_id] = fixture.successor
     child = "d" * 40
     suffix = "3" if mismatch == "gap" else "2"
@@ -285,6 +307,236 @@ def test_repair_supersession_is_exact_contiguous_identity_observation(monkeypatc
         fixture.blobs[(child, ".ai/transport/repair.json")]["failed_head_sha"] = "e" * 40
     fixture.blobs[(child, ".ai/transport/repair-supersession.json")] = metadata
     assert fixture.projection.observe(fixture.event) == ("RESOLVED" if mismatch is None else "UNKNOWN")
+
+
+@pytest.mark.parametrize("revision, expected", [(1, "UNRESOLVED"), (2, "RESOLVED"), (4, "RESOLVED")])
+def test_failure_task_revision_uses_only_stable_same_task_contract(monkeypatch, revision, expected):
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.current_task["revision"] = revision
+    # No roadmap, later RUN, REVIEW or publication exists in this source fixture.
+    assert fixture.projection.observe(fixture.event) == expected
+    reads = [call[1] for call in fixture.calls if call[0] == "show"]
+    assert set(reads) == {fixture.artifact + ":.ai/transport/run.json",
+                          fixture.artifact + ":.ai/transport/failure.json",
+                          fixture.main_sha + ":" + fixture.task_path}
+    snapshots = [call for call in fixture.calls if call[0] == "ls-remote"]
+    assert len(snapshots) == 2 and all(fixture.main in call for call in snapshots)
+
+
+@pytest.mark.parametrize("conflict", ["missing-main", "unreadable-main", "missing-task", "malformed-yaml",
+                                      "duplicate-key", "partial-task", "wrong-task", "lower-revision",
+                                      "bool-revision", "string-revision", "invalid-scope", "invalid-verification",
+                                      "main-drift", "terminal-drift", "candidate-drift", "task-read-race"])
+def test_failure_task_revision_invalid_or_moving_observation_is_unknown(monkeypatch, conflict):
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.current_task["revision"] = 2
+    key = (fixture.main_sha, fixture.task_path)
+    if conflict == "missing-main":
+        del fixture.refs[fixture.main]
+    if conflict == "missing-task":
+        del fixture.blobs[key]
+    if conflict == "malformed-yaml":
+        fixture.blobs[key] = "task_id: ["
+    if conflict == "duplicate-key":
+        fixture.blobs[key] = json.dumps(fixture.current_task)[:-1] + ', "revision": 3}'
+    if conflict == "partial-task":
+        del fixture.current_task["goal"]
+    if conflict == "wrong-task":
+        fixture.current_task["task_id"] = "TASK-other"
+    if conflict == "lower-revision":
+        fixture.task["revision"] = 3
+    if conflict == "bool-revision":
+        fixture.current_task["revision"] = True
+    if conflict == "string-revision":
+        fixture.current_task["revision"] = "2"
+    if conflict == "invalid-scope":
+        fixture.current_task["scope"]["modify"] = ["../outside.py"]
+    if conflict == "invalid-verification":
+        fixture.current_task["verification"]["required"] = []
+    if conflict == "main-drift":
+        fixture.drift.append(fixture.main)
+    if conflict == "terminal-drift":
+        fixture.drift.append(fixture.terminal)
+    if conflict == "candidate-drift":
+        fixture.drift.append(fixture.candidate)
+    if conflict in {"unreadable-main", "task-read-race"}:
+        git = fixture.projection.git
+        def racing_git(path, *args):
+            if conflict == "unreadable-main" and args[0] == "fetch" and args[-1] == fixture.main_sha:
+                raise wake.WakeBlocked("CANONICAL_UNKNOWN")
+            value = git(path, *args)
+            if conflict == "task-read-race" and args == ("show", fixture.main_sha + ":" + fixture.task_path):
+                fixture.refs[fixture.main] = "f" * 40
+            return value
+        monkeypatch.setattr(fixture.projection, "git", racing_git)
+    assert fixture.projection.observe(fixture.event) == "UNKNOWN"
+
+
+@pytest.mark.parametrize("conflict", ["run-id", "run-task", "run-head", "failure-run", "failure-task", "failure-head"])
+def test_failure_task_revision_never_bypasses_exact_failed_subject(monkeypatch, conflict):
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.current_task["revision"] = 2
+    run = fixture.blobs[(fixture.artifact, ".ai/transport/run.json")]
+    failure = fixture.blobs[(fixture.artifact, ".ai/transport/failure.json")]
+    if conflict == "run-id":
+        run["run_id"] = "RUN-other-001"
+    if conflict == "run-task":
+        run["task"] = dict(id="TASK-other", revision=1)
+    if conflict == "run-head":
+        run["head_sha"] = "f" * 40
+    if conflict == "failure-run":
+        failure["run_id"] = "RUN-other-001"
+    if conflict == "failure-task":
+        failure["task"] = dict(id="TASK-other", revision=1)
+    if conflict == "failure-head":
+        failure["failed_head_sha"] = "f" * 40
+    assert fixture.projection.observe(fixture.event) == "UNKNOWN"
+    assert ("show", fixture.main_sha + ":" + fixture.task_path) not in fixture.calls
+
+
+@pytest.mark.parametrize("repair_chain", [False, True])
+@pytest.mark.parametrize("task_state", ["missing", "malformed", "unreadable", "newer"])
+def test_failure_task_revision_preserves_existing_exact_repair_paths(monkeypatch, repair_chain, task_state):
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.refs[fixture.root + "repair/" + fixture.run_id] = fixture.successor
+    authorization = dict(failed_run_id=fixture.run_id, failed_head_sha=fixture.head, task=fixture.task)
+    fixture.blobs[(fixture.successor, ".ai/transport/repair.json")] = authorization
+    if repair_chain:
+        child = "d" * 40
+        fixture.refs[fixture.root + "repair-supersession/" + fixture.run_id + "/2"] = child
+        fixture.blobs[(child, ".ai/transport/repair.json")] = dict(authorization)
+        fixture.blobs[(child, ".ai/transport/repair-supersession.json")] = dict(
+            format="AIOS_REPAIR_SUPERSESSION", version=1, failed_run_id=fixture.run_id,
+            authorization_revision=2, predecessor_repair_sha=fixture.successor, failure_artifacts_sha=fixture.artifact)
+    if task_state == "missing":
+        del fixture.refs[fixture.main]
+    if task_state == "malformed":
+        fixture.blobs[(fixture.main_sha, fixture.task_path)] = "task_id: ["
+    if task_state == "newer":
+        fixture.current_task["revision"] = 2
+    if task_state == "unreadable":
+        git = fixture.projection.git
+        def no_main_fetch(path, *args):
+            if args[0] == "fetch" and args[-1] == fixture.main_sha:
+                pytest.fail("exact REPAIR resolution must not require main/TASK acquisition")
+            return git(path, *args)
+        monkeypatch.setattr(fixture.projection, "git", no_main_fetch)
+    assert fixture.projection.observe(fixture.event) == "RESOLVED"
+    assert ("show", fixture.main_sha + ":" + fixture.task_path) not in fixture.calls
+
+
+def test_failure_task_revision_unrelated_task_movement_does_not_resolve(monkeypatch):
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.blobs[(fixture.main_sha, ".ai/tasks/TASK-other.yaml")] = canonical_task("TASK-other", 9)
+    assert fixture.projection.observe(fixture.event) == "UNRESOLVED"
+    assert all("TASK-other" not in str(call) for call in fixture.calls)
+
+
+@pytest.mark.parametrize("task_state", ["missing", "malformed", "newer"])
+def test_failure_task_revision_addition_leaves_result_freshness_unchanged(monkeypatch, task_state):
+    fixture = canonical_fixture(monkeypatch)
+    fixture.refs[fixture.main] = fixture.main_sha
+    if task_state != "missing":
+        fixture.blobs[(fixture.main_sha, fixture.task_path)] = (
+            "task_id: [" if task_state == "malformed" else canonical_task(revision=2))
+    fixture.drift.append(fixture.main)
+    assert fixture.projection.observe(fixture.event) == "UNRESOLVED"
+    assert all(fixture.main not in call and fixture.main_sha not in call for call in fixture.calls)
+    assert ("show", fixture.main_sha + ":" + fixture.task_path) not in fixture.calls
+
+
+def test_failure_task_revision_deferred_drain_retires_before_browser_attachment(monkeypatch, binding):
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    state = wake.State(binding.state_path)
+    # Synthetic ledger models the observed old deferral after the flight is gone.
+    with state.locked() as data:
+        data["events"][fixture.event] = wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
+        state.write(data)
+    fixture.current_task["revision"] = 2
+    no_browser = lambda _: pytest.fail("superseded FAILURE must not attach or Send")
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=no_browser, projection=fixture.projection)
+    assert receipts == [dict(event_id=fixture.event, status="NOOP", reason="CANONICALLY_RESOLVED")]
+    assert stored(binding)["events"][fixture.event] == wake.record("RESOLVED_NOOP")
+    assert stored(binding)["flight"] is None
+    before = list(fixture.calls)
+    assert deliver(fixture.event, wake.REPOSITORY, binding, no_browser,
+                   projection=fixture.projection)["reason"] == "CANONICALLY_RESOLVED"
+    assert fixture.calls == before
+
+
+@pytest.mark.parametrize("block", [None, "canonical", "binding", "draft", "ambiguous"])
+def test_failure_task_revision_drain_preserves_unrelated_freshness_and_once_per_pass(monkeypatch, binding, block):
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    fixture.current_task["revision"] = 2
+    others = []
+    for number, artifact, head in [(2, "f" * 40, "1" * 40), (3, "9" * 40, "2" * 40)]:
+        run_id = f"RUN-fixture-00{number}"
+        fixture.refs[fixture.root + "artifacts/" + run_id] = artifact
+        fixture.refs[fixture.root + "review/" + run_id] = head
+        fixture.blobs[(artifact, ".ai/transport/run.json")] = dict(
+            run_id=run_id, task=dict(id="TASK-other", revision=1), head_sha=head)
+        fixture.blobs[(artifact, ".ai/transport/result.json")] = dict(result=dict(head_sha=head), evidence=[])
+        others.append(f"terminal:RESULT:{run_id}:{artifact}")
+    state = wake.State(binding.state_path)
+    with state.locked() as data:
+        data["events"][fixture.event] = wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
+        for event in others:
+            data["events"][event] = wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
+        state.write(data)
+    current, attachments = [binding], []
+    replacement = wake.Binding(binding.chat_url, binding.cdp_endpoint, binding.state_path, binding.generation + 1)
+    def race(stage):
+        if stage == "click" and block == "canonical":
+            fixture.blobs[("f" * 40, ".ai/transport/run.json")]["head_sha"] = "3" * 40
+        if stage == "click" and block == "binding":
+            current[0] = replacement
+    adapter = RecoveryAdapter(binding, block="DRAFT_PRESENT" if block == "draft" else None,
+                              proof=block != "ambiguous", race=race)
+    def factory(bound):
+        assert stored(binding)["events"][fixture.event]["status"] == "RESOLVED_NOOP"
+        assert bound == binding
+        attachments.append(bound)
+        return adapter
+    projection = Projection(fixture.projection.observe)
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection,
+                            binding_provider=lambda: current[0])
+    assert receipts[0] == dict(event_id=fixture.event, status="NOOP", reason="CANONICALLY_RESOLVED")
+    assert len(attachments) == 1 and projection.calls[0] == fixture.event
+    assert all(event in projection.calls for event in others)
+    assert projection.calls.count(others[0]) == (1 if block == "draft" else 2 if block == "binding" else 3)
+    assert projection.calls.count(others[1]) == 1
+    assert len(adapter.submits) == (1 if block in {None, "ambiguous"} else 0)
+    assert all(others[0] in text and fixture.event not in text for text in adapter.inserts)
+    data = stored(binding)
+    assert data["events"][others[1]]["status"] == "DEFERRED"
+    if block in {None, "ambiguous"}:
+        assert data["events"][others[0]]["status"] == ("SUBMITTED" if block is None else "AMBIGUOUS")
+        assert data["flight"]["event_id"] == others[0]
+        deliver(others[0], wake.REPOSITORY, binding, factory, projection=projection)
+        wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection)
+        assert len(adapter.submits) == 1
+        assert stored(binding)["events"][others[1]]["status"] == "DEFERRED"
+    else:
+        assert data["flight"] is None
+        assert data["events"][others[0]]["reason"] == {
+            "canonical": "CANONICAL_UNKNOWN", "binding": "BINDING_GENERATION_CHANGED", "draft": "DRAFT_PRESENT"}[block]
+
+
+@pytest.mark.parametrize("conflict", ["missing-task", "main-drift"])
+def test_failure_task_revision_unknown_drain_holds_without_browser(monkeypatch, binding, conflict):
+    fixture = canonical_fixture(monkeypatch, "FAILURE")
+    if conflict == "missing-task":
+        del fixture.blobs[(fixture.main_sha, fixture.task_path)]
+    else:
+        fixture.drift.append(fixture.main)  # Even equal revision cannot authorize Send during movement.
+    state = wake.State(binding.state_path)
+    with state.locked() as data:
+        data["events"][fixture.event] = wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
+        state.write(data)
+    receipts = wake.operate(wake.REPOSITORY, binding, projection=fixture.projection,
+                            adapter_factory=lambda _: pytest.fail("unknown TASK cannot authorize attachment"))
+    assert receipts == [dict(event_id=fixture.event, status="DEFERRED", reason="CANONICAL_UNKNOWN")]
+    assert stored(binding)["events"][fixture.event]["status"] == "DEFERRED"
 
 
 def test_canonical_remote_failure_is_sanitized_unknown(monkeypatch):

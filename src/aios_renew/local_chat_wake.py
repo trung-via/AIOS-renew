@@ -425,6 +425,9 @@ class CanonicalFreshness:
         decision = root + "review-decision/" + run_id
         repair = root + "repair/" + run_id
         patterns = (terminal, opposite, candidate, decision, repair, root + "repair-supersession/" + run_id + "/*")
+        main = "refs/heads/main"
+        if kind == "FAILURE":
+            patterns += (main,)
         try:
             with tempfile.TemporaryDirectory(prefix="aios-wake-observe-") as location:
                 path = Path(location)
@@ -442,7 +445,7 @@ class CanonicalFreshness:
                 observed = refs()
                 if observed.get(terminal) != artifact_sha or opposite in observed or candidate not in observed:
                     return "UNKNOWN"
-                for sha in set(observed.values()):
+                for sha in {sha for ref, sha in observed.items() if ref != main}:
                     self.git(path, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
                              "--refmap=", self.remote, sha)
 
@@ -511,6 +514,20 @@ class CanonicalFreshness:
                             or any(successor.get(k) != authorization.get(k) for k in ("failed_run_id", "failed_head_sha", "task"))):
                         return "UNKNOWN"
                     previous = sha
+                if kind == "FAILURE" and not resolved:
+                    # Exact failure/RUN/head/task and any REPAIR lineage have
+                    # already been reconstructed. Only the same canonical TASK
+                    # contract can supersede this failed revision; no lifecycle
+                    # search or roadmap action supplies that semantic successor.
+                    from .task import validate_task
+                    if main not in observed:
+                        return "UNKNOWN"
+                    self.git(path, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
+                             "--refmap=", self.remote, observed[main])
+                    current_task = validate_task(document(observed[main], ".ai/tasks/" + task["id"] + ".yaml"))
+                    if current_task.task_id != task["id"] or current_task.revision < task["revision"]:
+                        return "UNKNOWN"
+                    resolved = current_task.revision > task["revision"]
                 if refs() != observed:
                     return "UNKNOWN"
                 if time.monotonic() >= self.deadline:

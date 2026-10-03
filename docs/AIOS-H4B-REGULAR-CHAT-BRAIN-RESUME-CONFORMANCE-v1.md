@@ -3,6 +3,7 @@
 TASK-285 establishes an offline composition contract and a bounded live procedure.
 TASK-286 adds bounded pre-submit structural diagnosis to the existing local wake.
 TASK-287 adds exact-turn-bound content-free completion for a proven submitted stale flight.
+TASK-289 adds bounded terminal FAILURE retirement on a newer canonical revision of the same TASK.
 None of these deterministic acceptances reports a completed regular-Chat semantic resume
 or closes H4B. Runtime owns canonical verification and EVIDENCE; Reviewer owns
 semantic verdict; Publisher owns reviewed publication; Human/Brain owns the live
@@ -201,6 +202,43 @@ recovered and resolved attention must not be replayed/redrained. Closure still r
 a future naturally produced real unresolved canonical RESULT, its eligible wake and the
 separate Human/Brain semantic-resume observation below. No execution is created to
 manufacture that proof, no roadmap state is advanced, and H5 does not start.
+
+## TASK-289 terminal FAILURE freshness prerequisite
+
+After TASK-288 r2 completed, read-only local observation still found the exact
+RUN-288-001 FAILURE for TASK-288 r1 deferred as `LANE_IN_FLIGHT`, with no active flight
+or queue file. The canonical planning bookmark prohibits a global drain until this
+freshness gap is closed. The [same-TASK revision contract](AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md#14-task-289-terminal-failure-same-task-revision-supersession)
+adds only a bounded terminal FAILURE branch after exact failure/RUN/head/TASK
+reconstruction and existing REPAIR-lineage validation.
+
+When existing REPAIR does not resolve the subject, one coherent current-main snapshot
+must contain a valid canonical TASK document whose identity equals the failed RUN's
+task_id and whose revision is strictly higher. That TASK contract alone is the
+Human/Brain semantic successor; later RUN, REVIEW or publication facts and roadmap
+`next_action` are neither required nor substitutes. Equal revision without REPAIR
+remains UNRESOLVED. Missing, malformed, unreadable, wrong-task, lower-revision or
+moving main/TASK observations remain UNKNOWN. The same canonical-ref recheck covers
+main acquisition and the TASK read. Exact REPAIR and REPAIR-supersession retain their
+existing resolution paths; terminal RESULT freshness and unrelated subjects are
+unchanged.
+
+Focused synthetic fixtures model stable higher/equal revisions, invalid contracts,
+failure-binding counterexamples and movement during TASK acquisition. Drain fixtures
+model an old `DEFERRED/LANE_IN_FLIGHT` FAILURE becoming `NOOP/CANONICALLY_RESOLVED`
+before browser attachment or Send while independent pending subjects retain their
+freshness, binding/browser gates, finite-pass submission limit and no-resend ambiguity.
+These fixtures use synthetic refs/blobs and temporary lane state, with no live browser,
+canonical checkpoint or verification EVIDENCE.
+
+TASK-289 changes only the local wake module, its focused tests and these two contract
+documents. Its structural RESULT reports pre-verification candidate properties with
+unresolved empty. Runtime owns the unchanged minimum-sufficient commands documented
+in the linked contract and canonical EVIDENCE; Reviewer and Publisher retain their
+ordinary authority. H4B remains **UNPROVED**. Executor implementation authorizes no
+live drain, wake replay, local operational-state rewrite, roadmap closure, H5 start
+or downstream adoption. Any later live drain and semantic-resume observation remain
+separate Human/Brain work.
 
 ## Offline conformance surface
 
