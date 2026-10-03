@@ -415,6 +415,15 @@ sequence:
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-03"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+    task_id: TASK-290
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "c0148cceda6377ca2be677492dce700be6bc0f12"
+    task_blob_sha: "fde183b50edd7973987de5c2d405a727de02a139"
+    authoring_issue_number: 1439
+    packet_fingerprint: "906bcb9a711f413623a3edba804e885084db6677b6ca3fca94a9aa42aecc90e4"
+    construct_fingerprint: "b1f24ec0c79190005ae2d572a73f75e30e8761530de3b512a3fa3fc8e17a8428"
+    reconciled_candidate_fingerprint: "c235a8a0cadfac6c996555a7e34e8b42042fab815c7e63a1d14713c51192590f"
     objective: >-
       Remove phantom same-lane head-of-line blocking proven after TASK-289 publication:
       an event-specific CANONICAL_UNKNOWN deferral must not manufacture pass-local
@@ -478,11 +487,11 @@ sequence:
       approved_on: "2026-10-03"
       instruction: AUTHOR_TASK_290_AFTER_TWO_STAGE_BRAIN_AUDIT
     current_live_blocker:
-      code: TASK_290_AUTHORING_PENDING
-      authority: HUMAN_BRAIN_PLANNING
-      next_action: AUTHOR_TASK_290
+      code: TASK_290_EXECUTOR_SELECTION_PENDING
+      authority: HUMAN
+      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT_FOR_TASK_290
       global_drain_authorized: false
-    remaining_gate: TASK_290_CANONICAL_AUTHORING
+    remaining_gate: TASK_290_EXECUTOR_SELECTION_AND_PRIMARY_DISPATCH
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-terminal-failure-task-revision-supersession
     status: DONE
@@ -4262,11 +4271,11 @@ sequence:
         that exact regular-Chat user turn, so successful review/publication cannot be
         used retrospectively as live semantic-resume proof.
     current_live_blocker:
-      code: H4B_TASK_290_AUTHORING_PENDING
-      authority: HUMAN_BRAIN_PLANNING
+      code: H4B_TASK_290_EXECUTOR_SELECTION_PENDING
+      authority: HUMAN
       task_binding: TASK-290
       source_task_binding: TASK-289
-      task_status: UNAUTHORED_TASK
+      task_status: CANONICALIZED_AWAITING_EXECUTOR_SELECTION
       latest_published_hardening_task: TASK-289
       latest_reviewed_hardening_run: RUN-289-001
       resolved_predecessor_gap: >-
@@ -4279,7 +4288,7 @@ sequence:
         earlier CANONICAL_UNKNOWN event. Production _drain_locked sets a pass-local held
         flag after any non-NOOP receipt, so an event-specific canonical uncertainty
         fabricates lane-wide head-of-line blocking without a durable flight.
-      next_action: AUTHOR_TASK_290
+      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT_FOR_TASK_290
       prohibitions:
         - NO_GLOBAL_DRAIN_BEFORE_TASK_290_REVIEWED_PUBLICATION
         - NO_MANUAL_STATE_RECLASSIFICATION_WITHOUT_CANONICAL_SUCCESSOR_PROOF
