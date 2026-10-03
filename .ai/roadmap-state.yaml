@@ -2820,11 +2820,56 @@ sequence:
       - BEFORE_H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a5-publication-direct-handoff-repair
+    status: DONE
+    task_id: TASK-280
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    objective: >-
+      Repair the publication-success source notification edge with one deterministic
+      direct selector-only Publisher handoff into the existing local regular-Chat lane.
+    completed_by:
+      task_id: TASK-280
+      task_revision: 1
+      run_id: RUN-280-002
+      artifacts_sha: "1ba484ec9d1128cc95f6106197a20d29eb0ff1d8"
+      review_id: REVIEW-280-002
+      review_decision_sha: "25a439f8609bc0aab62cbc14fd75c489f32d07f4"
+      verdict: PASS
+      reviewed_sha: "aa0648049194d8d51b2b04cd23b1bd0d46e71db5"
+      published_sha: "aa0648049194d8d51b2b04cd23b1bd0d46e71db5"
+      publication_workflow_run_id: 37079802157
+      completed_on: "2026-10-03"
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4a5-idempotent-publication-replay-repair
+    status: DONE
+    task_id: TASK-281
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    objective: >-
+      Preserve stale integrated-publication protection while permitting exact reviewed
+      candidates already equal to or contained in canonical main to classify as
+      no-mutation publication replay outcomes.
+    completed_by:
+      task_id: TASK-281
+      task_revision: 1
+      run_id: RUN-281-001
+      artifacts_sha: "3b9f876a63af82a18d365d1f558e89f6a333b083"
+      review_id: REVIEW-281-001
+      review_decision_sha: "cbad2c49b4ddc3ae1a652d053708f7f73ad67293"
+      verdict: PASS
+      reviewed_sha: "c5f71db05aa9a19b93597db9e7fd029ca1d5da0d"
+      published_sha: "c5f71db05aa9a19b93597db9e7fd029ca1d5da0d"
+      publication_workflow_run_id: 37083627695
+      completed_on: "2026-10-03"
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
+
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
     status: NEXT
     phase: H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
     implementation_task_id: TASK-279
-    task_id: TASK-280
+    task_id: TASK-282
     task_revision: 1
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
@@ -2864,12 +2909,12 @@ sequence:
       - AFTER_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
       - BEFORE_H4B_REGULAR_CHAT_BRAIN_RESUME
     human_execution_delegation:
-      selected_on: "2026-10-02"
+      selected_on: "2026-10-03"
       authority: HUMAN
-      task_id: TASK-279
+      task_id: TASK-282
       executor: codex
       model: gpt-6.1-sol
-      reasoning_effort: xhigh
+      reasoning_effort: high
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
@@ -2957,8 +3002,8 @@ sequence:
           autonomous recheck is the actual live gap. Because Human/Brain subsequently
           canonicalized TASK-280, a later fresh recheck may legitimately resolve this
           exact rejected-authoring attention as superseded rather than submit it.
-        disposition: NEW_REVIEWED_IMPLEMENTATION_CHANGE_REQUIRED
-        task_binding: UNBOUND
+        disposition: RESOLVED_BY_REVIEWED_IMPLEMENTATION
+        task_binding: TASK-282
       live_blocker:
         code: PUBLICATION_SUCCESS_SOURCE_NOTIFICATION_GAP
         authority: HUMAN_BRAIN_PLANNING
@@ -2973,7 +3018,7 @@ sequence:
           local_wake_workflow_after_publication: NOT_OBSERVED
         run_created_by_probe: false
         executor_invoked_by_probe: false
-        disposition: NEW_REVIEWED_IMPLEMENTATION_CHANGE_REQUIRED
+        disposition: RESOLVED_BY_REVIEWED_IMPLEMENTATION
       blocker_resolution:
         task_id: TASK-280
         task_revision: 1
@@ -2994,13 +3039,45 @@ sequence:
           override_authority: HUMAN_ONLY
           expires_on_task_change: true
         execution_profile_status: HUMAN_SELECTED
+      post_task282_reconciliation:
+        authority: HUMAN_BRAIN_PLANNING
+        task_id: TASK-282
+        task_revision: 1
+        run_id: RUN-282-001
+        artifacts_sha: "80f170eacae6c7365ac590be02fc626076126c69"
+        review_id: REVIEW-282-001
+        review_decision_sha: "025bffc6d0c9b66b7e30c66ba4a31da9e270b2c6"
+        verdict: PASS
+        reviewed_sha: "f9d16d723712c01d49fd18a5756e81d3d8569991"
+        published_sha: "f9d16d723712c01d49fd18a5756e81d3d8569991"
+        publication_workflow_run_id: 37091264108
+        direct_publication_wake_receipt:
+          status: DEFERRED
+          reason: CANONICAL_UNKNOWN
+          transport_source_generation: PRE_TASK_282_CALLER_COMMIT
+        predecessor_planning_reconciliation:
+          - RUN-280-002
+          - RUN-281-001
+        current_publication_attention:
+          run_id: RUN-282-001
+          planning_resolution: INTENTIONALLY_UNRESOLVED_FOR_LIVE_PROOF
+        interpretation: >-
+          TASK-280 and TASK-281 reviewed publication are now represented as exact DONE
+          planning bookmarks so their already-handled publication-success attention can
+          resolve canonically. TASK-282 itself is deliberately not recorded as a DONE
+          completed_by bookmark yet: its publication-success attention remains the one
+          current unresolved planning subject for a separately Human-authorized
+          post-publication live regular-Chat proof. The live proof must run from the
+          TASK-282-published main so the bounded follow-up drain implementation is loaded.
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
-        The carrier-rejection representative live proof passed, but the separately
-        authorized publication-success replay exposed a production source-notification
-        gap before local wake admission. H4A5 remains blocked and cannot close or
-        authorize H4B until a reviewed implementation change fixes that edge and the
-        bounded Human conformance procedure is resumed.
+        TASK-280, TASK-281 and TASK-282 implementation blockers are reviewed and
+        published. H4A5 remains BLOCKED only on the remaining bounded Human live
+        conformance procedure. The next live proof must first reconcile the older FIFO
+        subjects from exact canonical state, then demonstrate at most one exact bound
+        regular-Chat user turn for the still-unresolved RUN-282-001 publication-success
+        attention using the TASK-282-published transport. H4B remains unauthorized until
+        that live proof and an explicit Human/Brain roadmap closure.
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
