@@ -4006,7 +4006,60 @@ sequence:
     audit_stages:
       - CONSTRUCT
       - ADVERSARIAL_AUDIT_AND_RECONCILE
-    execution_profile_status: HUMAN_SELECTION_REQUIRED_AFTER_AUTHORING
+    execution_profile_status: COMPLETED
+    engineering_completion:
+      authority: RUNTIME_REVIEWER_PUBLISHER
+      task_id: TASK-285
+      task_revision: 1
+      run_id: RUN-285-001
+      result_artifact_sha: "abf4876b3da997be503707e9579d73651a8135b1"
+      review_id: REVIEW-285-001
+      review_decision_sha: "9a350b3ec4e4fdab48fbf3340f78eaaf30d1bbd2"
+      verdict: PASS
+      reviewed_sha: "61408a376ff4fecab61aeb48493bb52d427acc3d"
+      published_sha: "61408a376ff4fecab61aeb48493bb52d427acc3d"
+      verification_summary: "117 passed in 59.30s; git diff --check passed; unresolved empty."
+      completed_on: "2026-10-03"
+    live_conformance:
+      authority: HUMAN_BRAIN_PLANNING
+      status: UNPROVED
+      result_checkpoint:
+        run_id: RUN-285-001
+        terminal_kind: RESULT
+        artifact_sha: "abf4876b3da997be503707e9579d73651a8135b1"
+        terminal_attention_workflow_run_id: 37110883793
+        regular_chat_result_turn: NOT_PROVEN
+        observed_blocker: SURFACE_UNPROVEN
+        semantic_resume_step_count: 0
+      publication_checkpoint:
+        run_id: RUN-285-001
+        family: PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+        result_artifact_sha: "abf4876b3da997be503707e9579d73651a8135b1"
+        review_decision_sha: "9a350b3ec4e4fdab48fbf3340f78eaaf30d1bbd2"
+        reviewed_sha: "61408a376ff4fecab61aeb48493bb52d427acc3d"
+        published_sha: "61408a376ff4fecab61aeb48493bb52d427acc3d"
+        regular_chat_publication_turn: OBSERVED
+      interpretation: >-
+        TASK-285 engineering acceptance, semantic review and exact reviewed publication
+        are complete. The later publication-success planning wake reached the bound
+        regular Chat, but the H4B contract requires one real unresolved RESULT checkpoint
+        to arrive and then resume fresh canonical SEMANTIC_REVIEW/REVIEWER reasoning in
+        that same conversation. The earlier RUN-285-001 RESULT path did not establish
+        that exact regular-Chat user turn, so successful review/publication cannot be
+        used retrospectively as live semantic-resume proof.
+    current_live_blocker:
+      code: H4B_REAL_UNRESOLVED_RESULT_LIVE_PROOF_UNPROVED
+      authority: HUMAN_BRAIN_PLANNING
+      task_binding: TASK-285
+      root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
+      next_action: HUMAN_BRAIN_DECIDE_H4B_LIVE_PROOF_DISPOSITION
+      prohibitions:
+        - NO_RETROSPECTIVE_RECLASSIFICATION_OF_REVIEW_OR_PUBLICATION_AS_RESULT_RESUME_PROOF
+        - NO_FABRICATED_CHECKPOINT
+        - NO_BLIND_REPLAY_OR_REDRAIN
+        - NO_NEW_EXECUTOR_SOLELY_TO_MANUFACTURE_LIVE_EVIDENCE
+        - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
+    remaining_gate: H4B_REAL_UNRESOLVED_CANONICAL_SEMANTIC_CHECKPOINT_LIVE_OBSERVATION
     sequencing:
       - AFTER_H4A5_CLOSED
       - BEFORE_H5_INTEGRATION_CONFORMANCE_CLOSURE
