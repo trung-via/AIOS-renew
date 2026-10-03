@@ -4266,19 +4266,32 @@ sequence:
       overlapping_changed_files: []
     execution_selection:
       authority: HUMAN
-      status: PENDING
-      inheritance_from_task_287: FORBIDDEN_UNLESS_HUMAN_RESELECTS
+      selected_on: "2026-10-03"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      persistence: THROUGH_TASK_288_UNLESS_HUMAN_CHANGES
+      inheritance_from_task_287: EXPLICITLY_RESELECTED_BY_HUMAN
+    dispatch_intent:
+      dispatch_id: task288-r1-codex61-xhigh-20261003-001
+      task_blob_sha: "cc0d949b3efc1a89ece09883190fa0bc0b38a19e"
+      task_commit_sha: "9d02c263e24fc9e772a912ba4e7d49c0d3879869"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: HUMAN_AUTHORIZED_PENDING_CARRIER_SUBMISSION
     current_live_blocker:
-      code: H4B_TASK_288_EXECUTOR_SELECTION_PENDING
-      authority: HUMAN
+      code: H4B_TASK_288_PRIMARY_DISPATCH_PENDING
+      authority: HUMAN_RUNTIME
       task_binding: TASK-288
-      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT
+      next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
       prohibitions:
-        - NO_PRIMARY_BEFORE_HUMAN_EXECUTION_SELECTION
-        - NO_EXECUTOR_REUSE_FROM_TASK_287_WITHOUT_NEW_HUMAN_SELECTION
+        - NO_EXECUTOR_MODEL_EFFORT_SUBSTITUTION
+        - NO_DUPLICATE_PRIMARY_DISPATCH
+        - DISPATCH_ACCEPTANCE_IS_NOT_RUN_CREATION
         - NO_DIRECT_PUBLICATION_OF_RUN_287_002
         - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: TASK_288_HUMAN_EXECUTION_SELECTION
+    remaining_gate: TASK_288_PRIMARY_TERMINAL_RESULT_OR_FAILURE
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
     status: DONE
