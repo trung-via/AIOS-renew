@@ -406,11 +406,46 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4b-non-blocking-per-event-wake
+  - brain-runtime-semantic-handoff-hardening-v1-h4b-account-surface-diagnosis
 sequence:
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-non-blocking-per-event-wake
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-account-surface-diagnosis
     status: NEXT
+    phase: H4B_ACCOUNT_SURFACE_DIAGNOSIS
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-03"
+    parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+    objective: >-
+      Determine why the bound regular Chat surface fails the structural account
+      uniqueness guard after TASK-290 publication, using read-only machine-local
+      evidence before deciding whether the cause is browser state, selector drift,
+      duplicate visible controls, or a production code defect.
+    evidence_basis:
+      task_290_run_id: RUN-290-001
+      task_290_result_artifact_sha: "6b80a07048cd4b90da289e90ac8f356261cfb617"
+      task_290_review_id: REVIEW-290-001
+      task_290_review_decision_sha: "d6feaf174b7b3357d15cfd986af24a5fe43fbb43"
+      task_290_published_sha: "1583aa75b1460fefdb3ea7373d1723d2f42f2099"
+      live_non_blocking_proof:
+        canonical_unknown_subject_remained: CANONICAL_UNKNOWN
+        run_289_publication_after_unknown: SURFACE_UNPROVEN
+        run_290_publication_after_unknown: SURFACE_UNPROVEN
+        surface_cause: ACCOUNT_NOT_UNIQUE
+        phantom_lane_in_flight_observed: false
+      interpretation: >-
+        NON_BLOCKING_PER_EVENT_WAKE_V1 is live-effective: the earlier canonical-unknown
+        subject no longer manufactures LANE_IN_FLIGHT for later publication attentions.
+        Both later subjects independently reached the browser surface barrier and were
+        deferred for the same structural account-uniqueness cause.
+    current_live_blocker:
+      code: H4B_ACCOUNT_SURFACE_DIAGNOSIS_PENDING
+      authority: HUMAN_BRAIN_PLANNING
+      next_action: READ_ONLY_DIAGNOSE_ACCOUNT_SURFACE
+      global_drain_authorized: false
+    remaining_gate: CLASSIFY_ACCOUNT_NOT_UNIQUE_BEFORE_ANY_NEW_IMPLEMENTATION_TASK
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-non-blocking-per-event-wake
+    status: DONE
     phase: H4B_NON_BLOCKING_PER_EVENT_WAKE
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-03"
@@ -500,19 +535,32 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: HUMAN_AUTHORIZED_PENDING_CARRIER_SUBMISSION
+      status: DISPATCH_ACCEPTED
+      carrier_issue_number: 1440
+      primary_workflow_run_id: 37136934026
+    completion:
+      status: DONE_PUBLISHED
+      run_id: RUN-290-001
+      result_artifact_sha: "6b80a07048cd4b90da289e90ac8f356261cfb617"
+      candidate_sha: "1583aa75b1460fefdb3ea7373d1723d2f42f2099"
+      runtime_verification: "566 passed, 610 skipped in 59.52s; git diff --check passed; unresolved empty."
+      review_id: REVIEW-290-001
+      review_decision_sha: "d6feaf174b7b3357d15cfd986af24a5fe43fbb43"
+      review_verdict: PASS
+      published_sha: "1583aa75b1460fefdb3ea7373d1723d2f42f2099"
+      publication_workflow_run_id: 37138623824
+      live_acceptance:
+        canonical_unknown_remained_event_local: true
+        run_289_publication_no_longer_phantom_lane_blocked: true
+        run_290_publication_no_longer_phantom_lane_blocked: true
+        next_barrier_reason: SURFACE_UNPROVEN
+        next_barrier_surface_cause: ACCOUNT_NOT_UNIQUE
     current_live_blocker:
-      code: TASK_290_PRIMARY_DISPATCH_PENDING
-      authority: HUMAN_RUNTIME
-      next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
+      code: ACCOUNT_SURFACE_DIAGNOSIS_PENDING
+      authority: HUMAN_BRAIN_PLANNING
+      next_action: READ_ONLY_DIAGNOSE_ACCOUNT_SURFACE
       global_drain_authorized: false
-      prohibitions:
-        - NO_EXECUTOR_MODEL_EFFORT_SUBSTITUTION
-        - NO_DUPLICATE_PRIMARY_DISPATCH
-        - DISPATCH_ACCEPTANCE_IS_NOT_RUN_CREATION
-        - NO_GLOBAL_DRAIN_BEFORE_TASK_290_REVIEWED_PUBLICATION
-        - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: TASK_290_PRIMARY_TERMINAL_RESULT_OR_FAILURE
+    remaining_gate: NONE_TASK_290_ENGINEERING_COMPLETE
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-terminal-failure-task-revision-supersession
     status: DONE
@@ -4292,26 +4340,26 @@ sequence:
         that exact regular-Chat user turn, so successful review/publication cannot be
         used retrospectively as live semantic-resume proof.
     current_live_blocker:
-      code: H4B_TASK_290_PRIMARY_DISPATCH_PENDING
-      authority: HUMAN_RUNTIME
-      task_binding: TASK-290
-      source_task_binding: TASK-289
-      task_status: HUMAN_AUTHORIZED_PENDING_PRIMARY_DISPATCH
-      latest_published_hardening_task: TASK-289
-      latest_reviewed_hardening_run: RUN-289-001
+      code: H4B_ACCOUNT_SURFACE_DIAGNOSIS_PENDING
+      authority: HUMAN_BRAIN_PLANNING
+      source_task_binding: TASK-290
+      task_status: TASK_290_DONE_PUBLISHED
+      latest_published_hardening_task: TASK-290
+      latest_reviewed_hardening_run: RUN-290-001
       resolved_predecessor_gap: >-
-        TASK-289 is reviewed and published at d0a8a5f51db5145bc6797345248bed4f13136317,
-        and the previously stale RUN-288-001 FAILURE is no longer non-resolved in the
-        live machine-local ledger.
+        TASK-290 is reviewed and published at 1583aa75b1460fefdb3ea7373d1723d2f42f2099.
+        Live post-publication delivery proves the earlier CANONICAL_UNKNOWN subject no
+        longer fabricates LANE_IN_FLIGHT for later RUN-289 and RUN-290 publication
+        attentions.
       gap: >-
-        Live post-publication evidence still shows FLIGHT=null and queue empty while a
-        RUN-289-001 publication-success event remains DEFERRED/LANE_IN_FLIGHT behind an
-        earlier CANONICAL_UNKNOWN event. Production _drain_locked sets a pass-local held
-        flag after any non-NOOP receipt, so an event-specific canonical uncertainty
-        fabricates lane-wide head-of-line blocking without a durable flight.
-      next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
+        Both later publication attentions now independently reach the browser surface
+        barrier and defer as SURFACE_UNPROVEN with surface_cause ACCOUNT_NOT_UNIQUE.
+        Production requires exactly one visible account/profile control before any
+        insertion or send. The cause must be classified read-only before deciding
+        whether browser state or selector behavior needs correction.
+      next_action: READ_ONLY_DIAGNOSE_ACCOUNT_SURFACE
       prohibitions:
-        - NO_GLOBAL_DRAIN_BEFORE_TASK_290_REVIEWED_PUBLICATION
+        - NO_GLOBAL_DRAIN_BEFORE_ACCOUNT_SURFACE_CAUSE_IS_CLASSIFIED
         - NO_MANUAL_STATE_RECLASSIFICATION_WITHOUT_CANONICAL_SUCCESSOR_PROOF
         - NO_REPLAY_OF_RESOLVED_RUN_285_OR_RUN_286_ATTENTION
         - NO_RETROSPECTIVE_RECLASSIFICATION_OF_REVIEW_OR_PUBLICATION_AS_RESULT_RESUME_PROOF
@@ -4319,7 +4367,7 @@ sequence:
         - NO_TIME_ONLY_COMPLETION_HEURISTIC
         - NO_ASSISTANT_CONTENT_SCRAPING
         - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: CLOSE_TERMINAL_FAILURE_SUPERSESSION_GAP_THEN_H4B_REAL_UNRESOLVED_CANONICAL_SEMANTIC_CHECKPOINT_LIVE_OBSERVATION
+    remaining_gate: CLASSIFY_ACCOUNT_SURFACE_THEN_H4B_REAL_UNRESOLVED_CANONICAL_SEMANTIC_CHECKPOINT_LIVE_OBSERVATION
     sequencing:
       - AFTER_H4A5_CLOSED
       - BEFORE_H5_INTEGRATION_CONFORMANCE_CLOSURE
