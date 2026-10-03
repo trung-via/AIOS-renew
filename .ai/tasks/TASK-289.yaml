@@ -1,0 +1,124 @@
+task_id: TASK-289
+revision: 1
+goal: Harden local regular-Chat canonical freshness so a deferred terminal FAILURE
+  for an older revision of one exact TASK is deterministically retired when canonical
+  main contains a newer revision of that same TASK, preventing stale duplicate correction
+  wake delivery while preserving existing repair, RESULT, dedupe, browser and authority
+  boundaries.
+problem: After TASK-288 r2 completed, the local wake ledger still contains terminal:FAILURE:RUN-288-001:34fe8b209c2eba14d2bd9eb3d0713f9333f41d4c
+  as DEFERRED/LANE_IN_FLIGHT even though RUN-288-001 belongs to TASK-288 r1 and canonical
+  main now contains TASK-288 r2. Production CanonicalFreshness for terminal FAILURE
+  reconstructs the exact failed RUN and recognizes exact REPAIR or REPAIR-supersession
+  lineage, but it does not recognize canonical same-TASK revision supersession. With
+  flight=null, an unrestricted drain could therefore treat the obsolete r1 correction
+  subject as unresolved and submit a stale wake. The missing rule is a narrow canonical
+  TASK-contract supersession proof, not a browser, completion-witness, retry, or lifecycle-routing
+  problem.
+assumptions:
+- Canonical main at TASK-289 authoring is 17808b0b293bc3473428f5ceca92eb5e6ffc53e1.
+- RUN-288-001 is the exact canonical FAILURE for TASK-288 revision 1, with failure
+  artifact 34fe8b209c2eba14d2bd9eb3d0713f9333f41d4c and failed head 005f952f878013c64ce44fe7b8fb870f30b14957.
+- Canonical main contains .ai/tasks/TASK-288.yaml revision 2; Authoring Ingress enforces
+  same-TASK revision continuity one revision at a time.
+- RUN-288-002, REVIEW-288-002 PASS and publication at dee96917738a64d5697aeb12fa0e460d3fcf1959
+  confirm TASK-288 r2 completed, but TASK-289 must not require those later lifecycle
+  facts as the generic supersession criterion.
+- Read-only local observation after TASK-288 shows flight absent, browser IDLE, queue
+  file count zero, RUN-288-001 FAILURE deferred with LANE_IN_FLIGHT, and RUN-288-002
+  publication-success attention deferred with LANE_IN_FLIGHT.
+- H4B remains UNPROVED and the canonical planning bookmark prohibits a global drain
+  until this terminal FAILURE supersession freshness gap is closed.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-288.yaml
+  - src/aios_renew/task.py
+  - src/aios_renew/authoring_ingress.py
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+non_goals:
+- Use roadmap status, roadmap next_action, chat activity, elapsed time, browser IDLE,
+  successful later RUNs, review verdicts or publication state as substitutes for the
+  exact canonical same-TASK revision proof.
+- Change terminal RESULT freshness semantics, canonical attention identity, FAILURE/RESULT
+  artifact shapes, review/publication semantics, or Runtime lifecycle reduction.
+- Create a generic successor router, task-to-run search policy, retry/failover authority,
+  automatic correction selector, or second lifecycle reducer.
+- Change TASK-287 stale-flight completion witness, browser selectors, timeout/recheck
+  budgets, durable lane schema, submission proof, dedupe or ambiguity/no-resend behavior.
+- Manually rewrite local wake state, replay RUN-288-001, run an unrestricted live
+  drain from Executor execution, or manufacture H4B evidence.
+- Close H4B, start H5, advance downstream adoption, or mutate roadmap planning from
+  Executor execution.
+constraints:
+  hard:
+  - Terminal FAILURE freshness must first reconstruct and validate the existing exact
+    failure artifact, RUN identity, failed head and task binding before considering
+    TASK-revision supersession.
+  - The only new automatic supersession proof is a valid canonical TASK document for
+    the same task_id read from one coherent current main snapshot whose revision is
+    strictly greater than the failed RUN task revision. The TASK document itself is
+    the Human/Brain semantic successor; no roadmap field or later RUN/REVIEW/publication
+    fact may be required or treated as engineering truth.
+  - 'When the current canonical TASK revision equals the failed RUN revision, preserve
+    the existing behavior: only the existing exact REPAIR or REPAIR-supersession lineage
+    may resolve the FAILURE; absent those, it remains UNRESOLVED.'
+  - Missing, malformed, identity-mismatched, lower-revision, unreadable or canonically
+    moving TASK/main observations must fail closed as UNKNOWN rather than resolve
+    or send based on partial supersession evidence.
+  - The same coherent before/after canonical-ref recheck used by terminal freshness
+    must cover any main/TASK observation added for supersession so concurrent main
+    movement cannot yield a false RESOLVED result.
+  - Preserve terminal RESULT freshness unchanged and preserve all existing FAILURE
+    REPAIR and REPAIR-supersession resolution paths.
+  - A deferred stale FAILURE proven resolved by the new rule may become RESOLVED_NOOP
+    through the existing drain path without browser attachment; every unrelated pending
+    subject still requires its own fresh canonical and binding/browser barriers and
+    at most one submission per finite pass.
+  - Executor changes only the four scope.modify files. Runtime owns canonical verification;
+    Reviewer owns semantic verdict; Publisher owns publication; Human/Brain owns any
+    later live drain, H4B observation and roadmap closure.
+acceptance:
+- id: AC1
+  condition: The candidate adds a bounded terminal-FAILURE same-TASK revision-supersession
+    branch only after exact failure/RUN/task reconstruction, without changing terminal
+    RESULT freshness or introducing a generic lifecycle/successor router.
+- id: AC2
+  condition: Focused fixtures prove that a valid stable canonical main containing
+    the same task_id at a strictly higher revision makes the older FAILURE freshness
+    observation RESOLVED using the TASK contract alone, without consulting roadmap
+    next_action or requiring a later RUN, REVIEW or publication fact.
+- id: AC3
+  condition: Focused counterexamples prove same revision without existing REPAIR stays
+    UNRESOLVED, while missing/malformed/wrong-task/lower-revision or moving-main/TASK
+    observations fail closed and never produce a false RESOLVED outcome.
+- id: AC4
+  condition: Existing exact REPAIR and REPAIR-supersession FAILURE resolution remains
+    valid, terminal RESULT freshness behavior is unchanged, and unrelated task revision
+    movement cannot resolve the failed subject.
+- id: AC5
+  condition: Synthetic drain coverage proves a deferred old-revision FAILURE that
+    is freshly superseded becomes NOOP/CANONICALLY_RESOLVED before any browser attachment
+    or Send attempt, while unrelated pending subjects retain their independent freshness
+    and exactly-once delivery barriers.
+- id: AC6
+  condition: The four-file candidate documents the TASK-revision supersession contract
+    and keeps H4B UNPROVED; its structural RESULT reports only pre-verification candidate
+    properties with unresolved empty and delegates the unchanged minimum-sufficient
+    verification commands to Runtime.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py tests/test_h4b_regular_chat_brain_resume.py
+  - git diff --check
