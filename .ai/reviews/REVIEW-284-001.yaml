@@ -1,0 +1,41 @@
+review_id: REVIEW-284-001
+reviewed_sha: 9841310083ffb948e16e5381f39152b1a8e922f3
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-284-001 is the exact canonical PRIMARY RESULT for TASK-284 r1. Candidate 9841310083ffb948e16e5381f39152b1a8e922f3
+  is exactly one commit ahead of base c73384ce23e3051d6cc68de50a2a53d8f8fbd818 and
+  changes only the four TASK-authorized files.
+- 'Canonical Runtime verification passed: python -m pytest -q tests/test_local_chat_wake_workflow.py
+  tests/test_publication.py => 280 passed in 1000.49s; git diff --check => exit 0;
+  unresolved is empty.'
+- 'AC1: reusable workflow_call deliver declares exactly contents: read plus actions:
+  read and no write permission.'
+- 'AC2: both reusable deliver freshness-bearing steps expose only the ephemeral current-run
+  github.token as step-local GITHUB_TOKEN; workflow_call inputs remain exactly event_id
+  and repository and no credential is serialized into lane state or transport identity.'
+- 'AC3: deterministic regressions exercise the published CLI entry through inert local
+  surfaces and preserve enable-gate, draft, generation-active, binding-change, canonical-UNKNOWN
+  and canonically-resolved guards without permitting guarded submission; selector-only
+  and machine-local binding boundaries remain intact.'
+- 'AC4: deterministic coverage enumerates every repository-local caller of the reusable
+  wake workflow, proves both publisher and terminal-attention callers supply the exact
+  read-only ceiling, and rejects either caller when actions: read is removed.'
+- 'AC5: projected workflow_run delivery and scheduled recheck retain their existing
+  authenticated read paths; compare evidence shows no production Python changes and
+  no change to attention identity, freshness classification, FIFO/dedupe, browser
+  behavior, retry counts, timeout budgets or polling cadence.'
+- 'AC6: the H4A5 conformance document records the #1389 state-only recovery and no-submission
+  bounded drain, identifies the reusable auth-context gap, and explicitly leaves any
+  live wake, H4A5 closure and H4B authorization to a separate Human decision after
+  reviewed publication.'
+- No semantic finding remains. This PASS does not itself authorize a live browser
+  wake, close H4A5, advance H4B or alter roadmap planning state.
