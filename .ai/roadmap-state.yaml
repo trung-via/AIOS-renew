@@ -2869,7 +2869,7 @@ sequence:
     status: NEXT
     phase: H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
     implementation_task_id: TASK-279
-    task_id: TASK-282
+    task_id: TASK-283
     task_revision: 1
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
@@ -2908,7 +2908,7 @@ sequence:
     sequencing:
       - AFTER_H4A4_DURABLE_WAKE_RECOVERY_MULTI_PROJECT_ISOLATION
       - BEFORE_H4B_REGULAR_CHAT_BRAIN_RESUME
-    human_execution_delegation:
+    prior_human_execution_delegation:
       selected_on: "2026-10-03"
       authority: HUMAN
       task_id: TASK-282
@@ -2917,8 +2917,8 @@ sequence:
       reasoning_effort: high
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
-      expires_on_task_change: true
-    execution_profile_status: COMPLETED
+      expired_on_task_change: true
+    execution_profile_status: AWAITING_HUMAN_SELECTION
     completed_by:
       task_id: TASK-279
       task_revision: 1
@@ -3113,8 +3113,8 @@ sequence:
       new_live_blocker:
         code: POST_TASK_282_CANONICAL_FRESHNESS_STILL_UNKNOWN
         authority: HUMAN_BRAIN_PLANNING
-        task_binding: UNBOUND
-        disposition: AUDIT_IDENTIFIED_TASK_AUTHORING_REQUIRED
+        task_binding: TASK-283
+        disposition: TASK_AUTHORED_AWAITING_EXECUTION_PROFILE
         root_cause: MULTIPLE_DETERMINISTIC_FRESHNESS_DEFECTS
         audit_findings:
           - id: H4A5-FRESHNESS-ROADMAP-DUPLICATE-KEY
@@ -3139,11 +3139,22 @@ sequence:
               snapshots and exact-SHA fetches. The safety budgets remain fixed; the next
               implementation must reduce remote round-trips while preserving exact
               TOCTOU/ref-race evidence instead of increasing timeout ceilings.
+        task283_authoring:
+          status: CANONICALIZED
+          issue_number: 1402
+          authored_commit_sha: "beca7ce954e1e3698b8b51e1319a8da9a602fa14"
+          task_blob_sha: "56dc4f36f540d5b6693faeb8cd92b54185c5fc28"
+          task_revision: 1
+          audit_profile: brain-high-value-v3
+          audit_stage1: CONSTRUCT
+          audit_stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+          audit_outcome: CANDIDATE
+          executor_selection: AWAITING_HUMAN
         scope_boundary: >-
-          Author one narrow reviewed implementation TASK for canonical remediation
-          schema alignment, bounded proof-graph reduction and deterministic production-
-          shaped regressions. Do not replay RUN-282-001 again, increase observation
-          budgets, bypass freshness, infer old-subject resolution or advance H4B.
+          Execute canonical TASK-283 only after Human selects a new Executor/model/effort
+          for this new TASK. Do not reuse TASK-282 delegation implicitly. Do not replay
+          RUN-282-001 again, increase observation budgets, bypass freshness, infer
+          old-subject resolution or advance H4B.
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
         TASK-280, TASK-281 and TASK-282 implementation blockers are reviewed and
