@@ -728,7 +728,7 @@ sequence:
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
-    execution_profile_status: HUMAN_SELECTED
+    execution_profile_status: COMPLETED
     completed_by:
       task_id: TASK-269
       task_revision: 1
@@ -3318,28 +3318,82 @@ sequence:
           update every reusable caller permission ceiling, and add deterministic workflow
           contract regressions without changing attention semantics, browser transport,
           timeouts, lifecycle authority or live-proof status.
+      task284_engineering_completion:
+        authority: RUNTIME_REVIEWER_PUBLISHER
+        task_id: TASK-284
+        task_revision: 1
+        run_id: RUN-284-001
+        artifacts_sha: "62975ff649e798b71cba5337163440046e9a753a"
+        review_id: REVIEW-284-001
+        review_decision_sha: "1f79c07619cc1dd1ac3e543d6202dda3e0eda11e"
+        verdict: PASS
+        reviewed_sha: "9841310083ffb948e16e5381f39152b1a8e922f3"
+        published_sha: "9841310083ffb948e16e5381f39152b1a8e922f3"
+        publication_workflow_run_id: 37102185990
+        verification_summary: "280 passed in 1000.49s; git diff --check passed; unresolved empty."
+        completed_on: "2026-10-03"
+        planning_effect: >-
+          Engineering lifecycle completion is recorded without marking the H4A5 sequence
+          DONE. RUN-284-001 publication-success planning attention therefore remains
+          eligible for the separately Human-authorized final bounded live conformance
+          procedure instead of being prematurely resolved by roadmap closure.
+      post_task284_lane_reconciliation:
+        authority: HUMAN_BRAIN_PLANNING
+        review_ingress_rejection_issue: 1407
+        review_ingress_rejection_workflow_run_id: 37102125744
+        rejection_wake_workflow_run_id: 37102145071
+        rejection_attention_outcome: CANONICALLY_RESOLVED
+        run282_publication_attention:
+          run_id: RUN-282-001
+          submission_status: SUBMITTED
+          submission_reason: EXACT_USER_TURN_PROVEN
+          flight_seen_busy_after_submission: false
+        task284_publication_attempt:
+          workflow_run_id: 37102185990
+          publication_result: SUCCESS
+          publication_source_artifact_id: 11266092727
+          direct_wake_status: DEFERRED
+          direct_wake_reason: LANE_IN_FLIGHT
+          implementation_source_generation: PRE_TASK_284_PUBLISHED_CALLER
+        human_state_only_recovery:
+          status: APPLIED
+          binding_generation: 0
+          exact_user_turn: EXACT
+          browser_generation_state: IDLE
+          preserved_event_status: SUBMITTED
+          preserved_event_reason: NONE
+          preserved_event_generation: 0
+          queue_files_after: 0
+          post_flight_present: false
+        interpretation: >-
+          The RUN-282-001 user turn was proven exact, but the lane retained an
+          unobserved-generation flight because BUSY had never been observed. Human
+          authorized state-only reconciliation cleared only that flight pointer while
+          preserving the SUBMITTED dedupe record. TASK-284 publication itself was
+          successful, but its direct reusable wake loaded the pre-publication caller
+          generation and was additionally blocked by the RUN-282 flight, so it is not
+          accepted as final TASK-284 live conformance evidence.
       current_live_blocker:
-        code: REUSABLE_WAKE_FRESHNESS_AUTH_CONTEXT_GAP
+        code: FINAL_BOUNDED_HUMAN_CONFORMANCE_AUTHORIZATION_PENDING
         authority: HUMAN_BRAIN_PLANNING
         task_binding: TASK-284
-        root_cause_class: WORKFLOW_CALL_GITHUB_TOKEN_NOT_PROPAGATED
-        next_action: EXECUTE_PRIMARY
+        root_cause_class: NONE_ENGINEERING_REPAIR_PUBLISHED
+        next_action: HUMAN_AUTHORIZE_FINAL_BOUNDED_LIVE_PROOF
         prohibitions:
+          - NO_UNAUTHORIZED_REPLAY
+          - NO_NEW_RUN_OR_EXECUTOR_FOR_PROOF
           - NO_BLIND_REDRAIN
-          - NO_MACHINE_TOKEN_WORKAROUND_AS_CONFORMANCE
           - NO_TIMEOUT_INCREASE
-          - NO_RUN_282_REPLAY
-          - NO_RUN_283_REPLAY
           - NO_H4B_ADVANCE
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
-        TASK-280 through TASK-283 implementation blockers are reviewed and published,
-        and the legacy #1389 machine-local flight has been reconciled without erasing
-        its SUBMITTED dedupe record. The next deterministic blocker is the missing
-        authenticated Actions-read context on the reusable workflow_call wake delivery
-        path. TASK-284 is the audited narrow repair. H4A5 remains BLOCKED until TASK-284
-        is reviewed and published and a separately Human-authorized final bounded live
-        conformance proof passes; H4B remains unauthorized.
+        TASK-284 is canonically verified, REVIEW-284-001 is PASS and the exact reviewed
+        candidate is published on main. The post-publication RUN-282 unobserved-generation
+        flight was Human-reconciled only after exact user-turn proof and an IDLE bound
+        surface, preserving its SUBMITTED dedupe record. No engineering blocker is
+        currently established. H4A5 remains BLOCKED solely on the separately
+        Human-authorized bounded live conformance procedure and explicit Human/Brain
+        closure; H4B remains unauthorized.
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
