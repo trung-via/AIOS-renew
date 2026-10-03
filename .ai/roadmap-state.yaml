@@ -4048,25 +4048,33 @@ sequence:
         that exact regular-Chat user turn, so successful review/publication cannot be
         used retrospectively as live semantic-resume proof.
     current_live_blocker:
-      code: H4B_TASK_288_CURRENT_MAIN_INTEGRATION_PENDING
-      authority: HUMAN
+      code: H4B_TERMINAL_FAILURE_SUPERSESSION_FRESHNESS_GAP
+      authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-288
-      source_task_binding: TASK-287
-      root_cause_class: REVIEWED_TASK_287_PUBLICATION_INTEGRATION_REQUIRED
-      lane_recovery_status: CLEAN_AFTER_HUMAN_STATE_ONLY_RECONCILIATION
-      latest_published_hardening_task: TASK-286
-      latest_reviewed_hardening_run: RUN-287-002
-      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT_FOR_TASK_288
+      task_status: DONE_PUBLISHED
+      latest_published_hardening_task: TASK-288
+      latest_reviewed_hardening_run: RUN-288-002
+      stale_failure_subject: RUN-288-001
+      successful_successor_run: RUN-288-002
+      gap: >-
+        TASK-288 r2 completed with canonical RESULT, Runtime verification, fresh
+        REVIEW-288-002 PASS and exact reviewed publication, but the local wake ledger
+        still contains the older RUN-288-001 FAILURE as deferred. Production terminal
+        freshness recognizes exact REPAIR lineage for a failed RUN but does not prove
+        that a later successful TASK revision supersedes that older FAILURE. With no
+        active flight, an unrestricted drain could therefore attempt a stale FAILURE
+        wake instead of retiring it as canonical Human/Brain supersession.
+      next_action: HUMAN_DECIDE_BOUNDED_TERMINAL_FAILURE_SUPERSESSION_FIX_BEFORE_GLOBAL_DRAIN_OR_H4B_LIVE_PROOF
       prohibitions:
-        - NO_RETROSPECTIVE_RECLASSIFICATION_OF_REVIEW_OR_PUBLICATION_AS_RESULT_RESUME_PROOF
+        - NO_GLOBAL_DRAIN_WHILE_RUN_288_001_FRESHNESS_REMAINS_UNRESOLVED
+        - NO_MANUAL_STATE_RECLASSIFICATION_WITHOUT_CANONICAL_SUCCESSOR_PROOF
         - NO_REPLAY_OF_RESOLVED_RUN_285_OR_RUN_286_ATTENTION
-        - NO_DIRECT_PUBLICATION_OF_DIVERGENT_RUN_287_002_CANDIDATE
-        - NO_REUSE_OF_REVIEW_287_002_AS_TASK_288_VERDICT
+        - NO_RETROSPECTIVE_RECLASSIFICATION_OF_REVIEW_OR_PUBLICATION_AS_RESULT_RESUME_PROOF
         - NO_FABRICATED_CHECKPOINT
         - NO_TIME_ONLY_COMPLETION_HEURISTIC
         - NO_ASSISTANT_CONTENT_SCRAPING
         - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: TASK_288_CURRENT_MAIN_INTEGRATION_THEN_H4B_REAL_UNRESOLVED_CANONICAL_SEMANTIC_CHECKPOINT_LIVE_OBSERVATION
+    remaining_gate: CLOSE_TERMINAL_FAILURE_SUPERSESSION_GAP_THEN_H4B_REAL_UNRESOLVED_CANONICAL_SEMANTIC_CHECKPOINT_LIVE_OBSERVATION
     sequencing:
       - AFTER_H4A5_CLOSED
       - BEFORE_H5_INTEGRATION_CONFORMANCE_CLOSURE
@@ -4088,7 +4096,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-stale-flight-liveness-hardening
-    status: REVIEWED_PASS_INTEGRATION_REQUIRED
+    status: DONE
     phase: H4B_STALE_FLIGHT_LIVENESS_HARDENING
     task_id: TASK-287
     task_revision: 1
@@ -4207,25 +4215,22 @@ sequence:
         run_failure: false
         semantic_failure: false
         reason: REVIEWED_CANDIDATE_AND_CURRENT_MAIN_DIVERGED
-    current_live_blocker:
-      code: TASK_287_REVIEWED_PASS_PUBLICATION_INTEGRATION_REQUIRED
-      authority: HUMAN_BRAIN_PLANNING
-      task_binding: TASK-287
-      integration_task_binding: TASK-288
-      next_action: EXECUTE_FRESH_CURRENT_MAIN_INTEGRATION_TASK
-      prohibitions:
-        - NO_DIRECT_PUBLICATION_OF_DIVERGENT_REVIEWED_SHA
-        - NO_FORCE_UPDATE_OF_MAIN
-        - NO_REUSE_OF_REVIEW_287_002_AS_TASK_288_VERDICT
-        - NO_CORRECTION_INTEGRATION_STAGING_AS_PUBLICATION_SHORTCUT
-        - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: TASK_288_FRESH_CURRENT_MAIN_RESULT_REVIEW_AND_PUBLICATION
+    integration_resolution:
+      status: RESOLVED_BY_TASK_288
+      integration_task_id: TASK-288
+      integration_task_revision: 2
+      integration_run_id: RUN-288-002
+      integration_review_id: REVIEW-288-002
+      integration_review_decision_sha: "8121728485297a11be48fcca6444131982677f37"
+      integrated_published_sha: "dee96917738a64d5697aeb12fa0e460d3fcf1959"
+      resolved_on: "2026-10-03"
+    remaining_gate: NONE_INTEGRATED_BY_TASK_288
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-task287-current-main-integration
-    status: NEXT
+    status: DONE
     phase: H4B_TASK287_CURRENT_MAIN_INTEGRATION
     task_id: TASK-288
-    task_revision: 1
+    task_revision: 2
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-03"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
@@ -4289,19 +4294,54 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: HUMAN_AUTHORIZED_PENDING_CARRIER_SUBMISSION
-    current_live_blocker:
-      code: H4B_TASK_288_R2_PRIMARY_DISPATCH_PENDING
-      authority: HUMAN_RUNTIME
-      task_binding: TASK-288
-      next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
-      prohibitions:
-        - NO_EXECUTOR_MODEL_EFFORT_SUBSTITUTION
-        - NO_DUPLICATE_PRIMARY_DISPATCH
-        - DISPATCH_ACCEPTANCE_IS_NOT_RUN_CREATION
-        - NO_DIRECT_PUBLICATION_OF_RUN_287_002
-        - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: TASK_288_R2_PRIMARY_TERMINAL_RESULT_OR_FAILURE
+      status: DISPATCH_ACCEPTED
+      issue_number: 1431
+    terminal_lineage:
+      superseded_revision_failure:
+        run_id: RUN-288-001
+        task_revision: 1
+        failure_artifact_sha: "34fe8b209c2eba14d2bd9eb3d0713f9333f41d4c"
+        failed_head_sha: "005f952f878013c64ce44fe7b8fb870f30b14957"
+        phase: COMPLETION_GATE
+        reason: RESULT_DOES_NOT_SATISFY_AC6
+      successful_primary:
+        run_id: RUN-288-002
+        task_revision: 2
+        artifacts_sha: "e87c2e0333ac9e56347f04907db3dd8ed7ea2a06"
+        base_sha: "f94f5b78db028a321712b9ebff84b9c53c27f4e9"
+        candidate_sha: "dee96917738a64d5697aeb12fa0e460d3fcf1959"
+        verification_summary: "472 passed, 610 skipped in 63.76s; git diff --check passed; unresolved empty."
+      semantic_review:
+        review_id: REVIEW-288-002
+        review_decision_sha: "8121728485297a11be48fcca6444131982677f37"
+        reviewed_sha: "dee96917738a64d5697aeb12fa0e460d3fcf1959"
+        review_mode: PRIMARY
+        verdict: PASS
+        findings: []
+      publication:
+        outcome: PUBLISHED
+        reviewed_sha: "dee96917738a64d5697aeb12fa0e460d3fcf1959"
+        published_sha: "dee96917738a64d5697aeb12fa0e460d3fcf1959"
+        canonical_main_observed_at_reconciliation: "dee96917738a64d5697aeb12fa0e460d3fcf1959"
+    completed_by:
+      run_id: RUN-288-002
+      artifacts_sha: "e87c2e0333ac9e56347f04907db3dd8ed7ea2a06"
+      review_id: REVIEW-288-002
+      review_decision_sha: "8121728485297a11be48fcca6444131982677f37"
+      reviewed_sha: "dee96917738a64d5697aeb12fa0e460d3fcf1959"
+      published_sha: "dee96917738a64d5697aeb12fa0e460d3fcf1959"
+      completed_on: "2026-10-03"
+    post_completion_attention_reconciliation:
+      status: BLOCKED_ON_TERMINAL_FAILURE_SUPERSESSION_FRESHNESS
+      stale_failure_run_id: RUN-288-001
+      successful_successor_run_id: RUN-288-002
+      global_drain_authorized: false
+      reason: >-
+        Do not drain the whole local lane until canonical freshness can prove the
+        older RUN-288-001 FAILURE superseded or otherwise resolved. TASK-288
+        engineering completion itself remains DONE and is not reopened by this
+        operational wake-reconciliation gap.
+    remaining_gate: NONE_TASK_288_ENGINEERING_COMPLETE
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
     status: DONE
