@@ -1075,6 +1075,225 @@ def adapter_for(binding, *pages):
     return adapter
 
 
+class LocalSurfaceAdapter(wake.BrowserAdapter):
+    """Replace CDP acquisition only; exercise the production delivery methods."""
+
+    def __init__(self, binding, page):
+        super().__init__(binding)
+        self.browser = SimpleNamespace(contexts=[SimpleNamespace(pages=[page])])
+        self.page = page
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+class SurfaceURLRacePage(Page):
+    """An exact page moves between selection and the structural observation."""
+
+    def __init__(self, url):
+        super().__init__(url)
+        self.url_reads = 0
+
+    @property
+    def url(self):
+        self.url_reads += 1
+        return self.target_url if self.url_reads % 2 else synthetic_url(99)
+
+    @url.setter
+    def url(self, value):
+        self.target_url = value
+
+
+def surface_cause_page(binding, conditions):
+    page = (SurfaceURLRacePage if "target_url" in conditions else Page)(binding.chat_url)
+    for condition in conditions:
+        if condition == "disabled":
+            page.disabled = True
+        elif condition != "target_url":
+            selector, number = {
+                "main_missing": ("main", 0), "main_multiple": ("main", 2),
+                "account_missing": (wake.ACCOUNT, 0), "account_multiple": (wake.ACCOUNT, 2),
+                "login": (wake.LOGIN, 1), "nonregular": (wake.NONREGULAR, 1),
+                "composer_missing": (wake.COMPOSER, 0), "composer_multiple": (wake.COMPOSER, 2),
+            }[condition]
+            page.counts[selector] = number
+    return page
+
+
+@pytest.mark.parametrize("conditions,cause", [
+    (("target_url",), "TARGET_URL_MISMATCH"),
+    (("main_missing",), "MAIN_NOT_UNIQUE"),
+    (("main_multiple",), "MAIN_NOT_UNIQUE"),
+    (("account_missing",), "ACCOUNT_NOT_UNIQUE"),
+    (("account_multiple",), "ACCOUNT_NOT_UNIQUE"),
+    (("login",), "LOGIN_PRESENT"),
+    (("nonregular",), "NON_REGULAR_SURFACE"),
+    (("composer_missing",), "COMPOSER_NOT_UNIQUE"),
+    (("composer_multiple",), "COMPOSER_NOT_UNIQUE"),
+    (("disabled",), "COMPOSER_DISABLED"),
+    (("main_missing", "account_multiple"), "MULTIPLE_OR_AMBIGUOUS"),
+    (("login", "nonregular"), "MULTIPLE_OR_AMBIGUOUS"),
+    (("target_url", "disabled"), "MULTIPLE_OR_AMBIGUOUS"),
+    (("composer_multiple", "login"), "MULTIPLE_OR_AMBIGUOUS"),
+    (("main_missing", "account_missing", "login", "nonregular", "composer_missing"),
+     "MULTIPLE_OR_AMBIGUOUS"),
+])
+def test_surface_cause_real_pre_submit_receipt_is_closed_and_operational_only(binding, conditions, cause):
+    page = surface_cause_page(binding, conditions)
+    page.draft = "Synthetic private Human text; account/session/credential fixture"
+    page.outbound = "Synthetic private chat text"
+    page.counts[wake.STOP] = 1
+    adapter, projection = LocalSurfaceAdapter(binding, page), Projection()
+    original_doorbell = wake.doorbell(EVENT, binding.repository)
+    receipt = deliver(EVENT, binding.repository, binding, lambda _: adapter, projection=projection)
+    assert receipt == dict(event_id=EVENT, status="DEFERRED", reason="SURFACE_UNPROVEN",
+                           surface_cause=cause)
+    assert isinstance(receipt["surface_cause"], str) and cause in wake.SURFACE_CAUSES
+    assert projection.calls == [EVENT]
+    assert not page.evaluations and not page.resolutions
+    assert page.draft == "Synthetic private Human text; account/session/credential fixture"
+    data = stored(binding)
+    assert list(data["events"]) == [EVENT]
+    assert data["events"][EVENT] == wake.record("DEFERRED", reason="SURFACE_UNPROVEN")
+    assert data["flight"] is None and not data["tombstones"]
+    assert '"surface_cause":' not in json.dumps(data)
+    assert wake.doorbell(EVENT, binding.repository) == original_doorbell
+    # Both consumers observe the same structural cause. Active generation may
+    # retain its existing BUSY interpretation of a disabled composer only.
+    assert adapter._observe_surface()[1] == cause
+    if cause == "COMPOSER_DISABLED":
+        assert adapter.generation_state() == "BUSY"
+        page.counts[wake.STOP] = 0
+    with pytest.raises(wake.WakeBlocked, match="^SURFACE_UNPROVEN$") as blocked:
+        adapter.generation_state()
+    assert blocked.value.surface_cause == cause
+    encoded = json.dumps(receipt)
+    for private in (page.draft, page.outbound, binding.chat_url, binding.cdp_endpoint,
+                    str(binding.state_path), wake.ACCOUNT, wake.COMPOSER, wake.LOGIN, wake.NONREGULAR):
+        assert private not in encoded
+
+
+@pytest.mark.parametrize("supplied", [None, "private DOM/text/url/session/selector", 2, {}, []])
+def test_surface_cause_annotation_rejects_unbounded_values(supplied):
+    blocked = wake.WakeBlocked("SURFACE_UNPROVEN", surface_cause=supplied)
+    assert str(blocked) == "SURFACE_UNPROVEN"
+    assert blocked.surface_cause == "MULTIPLE_OR_AMBIGUOUS"
+    assert wake.WakeBlocked("DRAFT_PRESENT", surface_cause="LOGIN_PRESENT").surface_cause is None
+
+
+@pytest.mark.parametrize("condition,reason", [
+    ("draft", "DRAFT_PRESENT"), ("generation", "GENERATION_ACTIVE"),
+    ("outbound", "OUTBOUND_ALREADY_PRESENT"), ("wrong_target", "TARGET_PAGE_NOT_UNIQUE"),
+])
+def test_surface_cause_does_not_reclassify_other_pre_submit_guards(binding, condition, reason):
+    page = Page(binding.chat_url)
+    if condition == "draft":
+        page.draft = "Synthetic Human draft"
+    elif condition == "generation":
+        page.counts[wake.STOP] = 1
+    elif condition == "outbound":
+        page.counts["outbound"] = 1
+    else:
+        page.url = synthetic_url(99)
+    receipt = deliver(EVENT, binding.repository, binding, lambda _: LocalSurfaceAdapter(binding, page))
+    assert receipt == dict(event_id=EVENT, status="DEFERRED", reason=reason)
+    assert stored(binding)["events"][EVENT] == wake.record("DEFERRED", reason=reason)
+    assert not page.evaluations
+
+
+def test_surface_cause_deferred_real_surface_recovers_once_with_fresh_barriers(binding):
+    page = surface_cause_page(binding, ("login",))
+    adapter = LocalSurfaceAdapter(binding, page)
+    assert deliver(EVENT, binding.repository, binding, lambda _: adapter)["surface_cause"] == "LOGIN_PRESENT"
+    frozen = binding.state_path.read_bytes()
+    assert stored(binding)["events"][EVENT] == wake.record("DEFERRED", reason="SURFACE_UNPROVEN")
+    page.counts[wake.LOGIN] = 0  # The same page later becomes healthy.
+    unknown = Projection("UNKNOWN")
+    receipt = wake.operate(binding.repository, binding,
+                           adapter_factory=lambda _: pytest.fail("unknown subject must not attach"),
+                           projection=unknown)
+    assert receipt == [dict(event_id=EVENT, status="DEFERRED", reason="CANONICAL_UNKNOWN")]
+    assert unknown.calls == [EVENT] and not page.evaluations
+    assert list(stored(binding)["events"]) == [EVENT]
+    assert frozen != binding.state_path.read_bytes()  # Subject retained with updated reason.
+
+    observations = []
+    def observe(event_id):
+        observations.append(tuple(page.evaluations))
+        return "UNRESOLVED"
+    projection = Projection(observe)
+    receipt = wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter,
+                           projection=projection)
+    assert receipt == [dict(event_id=EVENT, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN")]
+    assert projection.calls == [EVENT, EVENT, EVENT]
+    assert observations == [(), (), (wake.INSERT, wake.ACCEPT_INSERT)]
+    assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK, wake.PROVE_SEND]
+    assert stored(binding)["events"][EVENT] == wake.record("SUBMITTED", binding.generation)
+    assert deliver(EVENT, binding.repository, binding,
+                   lambda _: pytest.fail("submitted duplicate must not attach"))["status"] == "NOOP"
+    assert page.evaluations.count(wake.INSERT) == page.evaluations.count(wake.CLICK) == 1
+
+
+def test_surface_cause_deferred_subject_resolves_without_retry_or_insertion(binding):
+    page = surface_cause_page(binding, ("account_missing",))
+    adapter = LocalSurfaceAdapter(binding, page)
+    assert deliver(EVENT, binding.repository, binding, lambda _: adapter)["reason"] == "SURFACE_UNPROVEN"
+    page.counts[wake.ACCOUNT] = 1
+    projection = Projection("RESOLVED")
+    assert wake.operate(binding.repository, binding,
+                        adapter_factory=lambda _: pytest.fail("resolved subject must not attach"),
+                        projection=projection) == [
+        dict(event_id=EVENT, status="NOOP", reason="CANONICALLY_RESOLVED"),
+    ]
+    assert projection.calls == [EVENT]
+    assert stored(binding)["events"][EVENT] == wake.record("RESOLVED_NOOP")
+    assert deliver(EVENT, binding.repository, binding,
+                   lambda _: pytest.fail("resolved duplicate must not attach"))["status"] == "NOOP"
+    assert not page.evaluations
+
+
+def test_surface_cause_disabled_generation_preserves_busy_then_idle_lane_release(binding):
+    page = Page(binding.chat_url)
+    adapter = LocalSurfaceAdapter(binding, page)
+    assert deliver(EVENT, binding.repository, binding, lambda _: adapter)["status"] == "SUBMITTED"
+    page.disabled = True
+    page.counts[wake.STOP] = 1
+    assert wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter,
+                        projection=Projection()) == []
+    assert stored(binding)["flight"] == dict(event_id=EVENT, seen_busy=True)
+    page.disabled = False
+    page.counts[wake.STOP] = 0
+    assert wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter,
+                        projection=Projection()) == []
+    assert stored(binding)["flight"] is None
+    assert page.evaluations.count(wake.INSERT) == page.evaluations.count(wake.CLICK) == 1
+
+
+def test_surface_cause_recovery_post_submit_ambiguity_is_proof_only(binding):
+    page = surface_cause_page(binding, ("nonregular",))
+    adapter = LocalSurfaceAdapter(binding, page)
+    assert deliver(EVENT, binding.repository, binding, lambda _: adapter)["surface_cause"] == "NON_REGULAR_SURFACE"
+    page.counts[wake.NONREGULAR] = 0
+    page.outbound = "Synthetic unrelated user turn"  # Click occurs but exact proof is absent.
+    receipt = wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter,
+                           projection=Projection())
+    assert receipt == [dict(event_id=EVENT, status="BLOCKED", reason="SUBMISSION_UNPROVEN")]
+    assert stored(binding)["events"][EVENT] == wake.record(
+        "AMBIGUOUS", binding.generation, "ATTEMPT_REQUIRES_HUMAN")
+    attempts = tuple(page.evaluations)
+    for _ in range(2):
+        assert deliver(EVENT, binding.repository, binding, lambda _: adapter) == dict(
+            event_id=EVENT, status="BLOCKED", reason="ATTEMPT_REQUIRES_HUMAN")
+        assert tuple(page.evaluations) == attempts
+    page.outbound = page.payload
+    assert deliver(EVENT, binding.repository, binding, lambda _: adapter) == dict(
+        event_id=EVENT, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN")
+    assert page.evaluations.count(wake.INSERT) == page.evaluations.count(wake.CLICK) == 1
+
+
 # A selector double for the three bounded account and two composer branches.
 # It models CSS union identity and visibility without any live browser content.
 LEGACY_COMPOSER = '#prompt-textarea[contenteditable="true"]'

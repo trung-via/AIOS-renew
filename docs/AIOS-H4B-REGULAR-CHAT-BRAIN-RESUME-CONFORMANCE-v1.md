@@ -1,9 +1,11 @@
 # H4B Regular Chat Brain Resume conformance v1
 
 TASK-285 establishes an offline composition contract and a bounded live procedure.
-It does not report a completed regular-Chat semantic resume or close H4B. Runtime
-owns canonical verification and EVIDENCE; Reviewer owns semantic verdict; Publisher
-owns reviewed publication; Human/Brain owns the live observation, residual-risk
+TASK-286 adds bounded pre-submit structural diagnosis to the existing local wake.
+Neither deterministic acceptance reports a completed regular-Chat semantic resume
+or closes H4B. Runtime owns canonical verification and EVIDENCE; Reviewer owns
+semantic verdict; Publisher owns reviewed publication; Human/Brain owns the live
+observation, residual-risk
 disposition and roadmap planning. Executor implementation performs no live wake,
 browser operation, binding change, review submission or downstream activation.
 
@@ -53,6 +55,77 @@ into such a selector. A side flow retains the pending canonical review and its
 Reviewer owner, and requires fresh reconstruction before continuation. Text that
 merely contains `flow_selector: DIAGNOSTIC` is not that structured authorization.
 
+## RUN-285-001 observation and TASK-286 structural diagnosis
+
+TASK-285 r1 engineering acceptance is complete: RUN-285-001 RESULT artifact
+`abf4876b3da997be503707e9579d73651a8135b1`, REVIEW-285-001 PASS, and reviewed/published
+candidate `61408a376ff4fecab61aeb48493bb52d427acc3d`. Those facts are separate from
+H4B live conformance. The unresolved RESULT wake returned **DEFERRED/SURFACE_UNPROVEN**
+before composer insertion on the initial attempt and two follow-up rechecks separated
+by 15 seconds. The later publication-success wake for that same RUN, through the same
+published local transport, returned **SUBMITTED/EXACT_USER_TURN_PROVEN**.
+
+This establishes an opaque transient pre-submit observation gap rather than a
+fixed-selector failure. The earlier receipt does not identify which structural
+predicate was unsafe; the later successful publication wake does not retrospectively
+prove arrival or semantic resume of the unresolved RESULT wake. No selector repair or
+timeout increase follows from these observations. The RESULT subject is now canonically
+resolved by REVIEW-285-001 and must not be replayed or redrained for H4B proof.
+
+TASK-286 keeps the durable retry reason `SURFACE_UNPROVEN` and its existing `DEFERRED`
+classification. Its attempt receipt adds one operational `surface_cause` string,
+derived only from the existing exact-target URL, main, account, login, non-regular,
+composer and disabled predicates. `check()` and `generation_state()` share the same
+structural observation and cause. Generation reconciliation retains its existing
+`BUSY` interpretation when the only structural cause is a disabled composer and the
+Stop control proves active generation; this does not permit insertion. Without Stop,
+the disabled composer holds as `SURFACE_UNPROVEN`. Existing exact-page selection
+still fails closed before this observation when the target is unavailable or replaced.
+
+| Closed surface_cause value | Existing unsafe structural predicate |
+| --- | --- |
+| `TARGET_URL_MISMATCH` | Selected page URL no longer matches the full exact binding |
+| `MAIN_NOT_UNIQUE` | Visible main is missing or ambiguous |
+| `ACCOUNT_NOT_UNIQUE` | Visible account control is missing or ambiguous |
+| `LOGIN_PRESENT` | Existing visible login marker is present |
+| `NON_REGULAR_SURFACE` | Existing visible non-regular marker is present |
+| `COMPOSER_NOT_UNIQUE` | Visible composer is missing or ambiguous |
+| `COMPOSER_DISABLED` | The unique visible composer is aria-disabled |
+| `MULTIPLE_OR_AMBIGUOUS` | Simultaneous unsafe predicates or an unspecified/unrecognized cause |
+
+All readable structural predicates are evaluated; simultaneous failures produce
+`MULTIPLE_OR_AMBIGUOUS` rather than an arbitrary priority. A non-unique composer is
+never queried for a disabled attribute. The diagnostic exports no DOM, user/chat
+text, URL, account/session identity, selector text, counts, credentials, CDP endpoint
+or local binding path. The cause appears only in the bounded attempt receipt/log;
+it is absent from durable event records and doorbell text, canonical TASK/RUN/RESULT/
+FAILURE/REVIEW identity, attention event identity and roadmap truth. It cannot select
+semantic flow, authority, next_action or lifecycle state, or replace canonical freshness.
+
+[Focused synthetic coverage](../tests/test_local_chat_wake.py) replaces CDP acquisition
+only and drives the production pre-submit path for each predicate, missing/ambiguous
+matches and simultaneous failures. It asserts no insertion on deferral, shared
+generation holds, bounded receipts and unchanged durable subject identity. The same
+synthetic page becoming healthy uses the existing durable drain: unknown canonical
+freshness holds the subject, fresh barriers precede insertion and click, exact proof
+permits one submission, resolved subjects NOOP, and post-submit ambiguity allows only
+proof reconciliation without resend. These fixtures make no live browser connection
+and manufacture no canonical checkpoint or verification EVIDENCE.
+
+TASK-286 changes only the local wake module, its focused tests and this document.
+All existing selectors, draft/generation/outbound protections, exact-target binding
+and post-submit ambiguity guards are retained. Budgets remain unchanged: workflow
+timeout 5 minutes, canonical observation 30 seconds, CDP attach 10 seconds, page and
+insert waits 3 seconds, submission proof 5 seconds, two follow-up rechecks at 15-second
+intervals, and the existing optional scheduled drain of four rechecks with the same
+15-second interval and five-minute cron cadence. No workflow, browser launcher,
+scheduler, second transport, semantic router, lifecycle reducer or assistant-output
+scraping changes are introduced.
+
+H4B remains **UNPROVED** pending a future real unresolved canonical semantic checkpoint
+and the separate Human/Brain live procedure below. TASK-286 acceptance itself supplies
+no live closure, authorizes no replay or fabricated checkpoint, and does not start H5.
+
 ## Offline conformance surface
 
 [The focused tests](../tests/test_h4b_regular_chat_brain_resume.py) use disposable
@@ -96,8 +169,9 @@ the existing repository-owned Flow Card registry. They assert:
 These are implementation properties available for TASK acceptance before Runtime
 verification. This document does not claim that Runtime has verified them, or that
 deterministic acceptance proves the future regular-Chat live step. No production
-Python, workflow, attention schema, transport, binding or Flow Card changes are part
-of this delta. There is no second semantic router, lifecycle reducer, persistent
+Python, workflow, attention schema, transport, binding or Flow Card changes were part
+of the TASK-285 composition delta; TASK-286's local wake changes are bounded above.
+There is no second semantic router, lifecycle reducer, persistent
 reasoning store, assistant-output scraper, ChatGPT Work wake dependency or new
 mutation authority.
 
@@ -144,8 +218,9 @@ Runtime supplies an eligible subject. It authorizes no Executor live probe, new
 execution, fabricated checkpoint, binding change, blind redrain or replay. Use the
 published local wake path and the already Human-bound regular Chat. If there is no
 real eligible unresolved canonical RESULT, record the live case as UNPROVED and
-stop. The naturally produced TASK-285 RESULT may be used if it is then eligible;
-its future RESULT, wake, review and publication are not prerequisites for its own
+stop. The resolved RUN-285-001 RESULT is ineligible and must not be replayed. A future
+naturally produced unresolved canonical checkpoint may be used only while eligible;
+its future wake, review and publication are not prerequisites for TASK-286's own
 deterministic acceptance.
 
 1. Select at most one real existing unresolved canonical semantic checkpoint for
@@ -221,7 +296,7 @@ One H4B semantic resume observation does not discharge those six gaps. Missing r
 sources or operational setup remain explicit; no new RUN/REVIEW, second lane or
 binding mutation is manufactured to fill the matrix.
 
-Runtime verification of TASK-285, Reviewer judgment and Publisher publication each
+Runtime verification of TASK-285/TASK-286, Reviewer judgment and Publisher publication each
 remain separate lifecycle facts. Deterministic TASK acceptance by itself proves
 neither a future regular-Chat semantic resume nor H4B closure. Human/Brain separately
 records and evaluates the live observation, reconciles any reopened residual risk

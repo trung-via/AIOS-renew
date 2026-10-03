@@ -65,13 +65,24 @@ REASONS = frozenset({
     "CANONICAL_UNKNOWN", "BINDING_GENERATION_CHANGED", "LANE_IN_FLIGHT",
     "REGISTRY_CONFLICT", "ENABLE_GATE_CLOSED",
 })
+SURFACE_CAUSES = frozenset({
+    "TARGET_URL_MISMATCH", "MAIN_NOT_UNIQUE", "ACCOUNT_NOT_UNIQUE",
+    "LOGIN_PRESENT", "NON_REGULAR_SURFACE", "COMPOSER_NOT_UNIQUE",
+    "COMPOSER_DISABLED", "MULTIPLE_OR_AMBIGUOUS",
+})
 
 
 class WakeBlocked(Exception):
     """Only fixed reason codes may leave the local browser boundary."""
 
-    def __init__(self, reason: str):
-        super().__init__(reason if reason in REASONS else "LOCAL_FAILURE")
+    def __init__(self, reason: str, *, surface_cause: str | None = None):
+        reason = reason if reason in REASONS else "LOCAL_FAILURE"
+        super().__init__(reason)
+        # Operational annotation only; the reason remains the durable retry code.
+        self.surface_cause = (
+            surface_cause if isinstance(surface_cause, str) and surface_cause in SURFACE_CAUSES
+            else "MULTIPLE_OR_AMBIGUOUS"
+        ) if reason == "SURFACE_UNPROVEN" else None
 
 
 def doorbell(event_id: str, repository: str) -> str:
@@ -711,18 +722,35 @@ class BrowserAdapter:
     def user_turn(self, text):
         return self.page.evaluate(RESOLVE_USER_TURN, self.arguments(text))
 
-    def check(self, text):
+    def _observe_surface(self):
+        """Share structural gates; export only one fixed cause, never observations."""
         if self.select_page(self.browser, self.binding.chat_url) is not self.page:
             raise WakeBlocked("TARGET_PAGE_CHANGED")
-        if (normalize_chat(self.page.url) != self.binding.chat_url
-                or self.visible("main").count() != 1 or self.visible(ACCOUNT).count() != 1
-                or self.visible(LOGIN).count() or self.visible(NONREGULAR).count()
-                or self.visible(COMPOSER).count() != 1
-                or self.visible(COMPOSER).get_attribute("aria-disabled") == "true"):
-            raise WakeBlocked("SURFACE_UNPROVEN")
+        composer = self.visible(COMPOSER)
+        composer_count = composer.count()
+        # Observe every existing predicate rather than prioritizing the first
+        # failure. A non-unique composer cannot safely supply a disabled attribute.
+        predicates = (
+            ("TARGET_URL_MISMATCH", normalize_chat(self.page.url) != self.binding.chat_url),
+            ("MAIN_NOT_UNIQUE", self.visible("main").count() != 1),
+            ("ACCOUNT_NOT_UNIQUE", self.visible(ACCOUNT).count() != 1),
+            ("LOGIN_PRESENT", bool(self.visible(LOGIN).count())),
+            ("NON_REGULAR_SURFACE", bool(self.visible(NONREGULAR).count())),
+            ("COMPOSER_NOT_UNIQUE", composer_count != 1),
+            ("COMPOSER_DISABLED", composer_count == 1 and
+             composer.get_attribute("aria-disabled") == "true"),
+        )
+        causes = [cause for cause, unsafe in predicates if unsafe]
+        cause = (causes[0] if len(causes) == 1 else "MULTIPLE_OR_AMBIGUOUS") if causes else None
+        return composer, cause
+
+    def check(self, text):
+        composer, cause = self._observe_surface()
+        if cause is not None:
+            raise WakeBlocked("SURFACE_UNPROVEN", surface_cause=cause)
         if self.visible(STOP).count():
             raise WakeBlocked("GENERATION_ACTIVE")
-        if self.visible(COMPOSER).text_content() != "":
+        if composer.text_content() != "":
             raise WakeBlocked("DRAFT_PRESENT")
         if self.user_turn(text) != "ABSENT":
             raise WakeBlocked("OUTBOUND_ALREADY_PRESENT")
@@ -767,15 +795,16 @@ class BrowserAdapter:
 
     def generation_state(self):
         # Only scoped account/composer controls, never assistant output.
-        if (self.select_page(self.browser, self.binding.chat_url) is not self.page
-                or self.visible("main").count() != 1 or self.visible(ACCOUNT).count() != 1
-                or self.visible(LOGIN).count() or self.visible(NONREGULAR).count()
-                or self.visible(COMPOSER).count() != 1):
-            raise WakeBlocked("SURFACE_UNPROVEN")
-        if self.visible(STOP).count():
+        composer, cause = self._observe_surface()
+        busy = bool(self.visible(STOP).count())
+        # A disabled composer is still expected during proven active generation.
+        # Retain that BUSY observation so the existing seen-busy/idle hold can
+        # release later. All other structural failures keep the lane held.
+        if cause is not None and not (cause == "COMPOSER_DISABLED" and busy):
+            raise WakeBlocked("SURFACE_UNPROVEN", surface_cause=cause)
+        if busy:
             return "BUSY"
-        if (self.visible(COMPOSER).get_attribute("aria-disabled") == "true"
-                or self.visible(COMPOSER).text_content() != ""):
+        if composer.text_content() != "":
             raise WakeBlocked("DRAFT_PRESENT")
         return "IDLE"
 
@@ -920,6 +949,8 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
             else:
                 # A failed durable attempt write may have reached storage: never retry.
                 raise WakeBlocked("STATE_WRITE_UNCERTAIN")
+            if not attempted and isinstance(exc, WakeBlocked) and exc.surface_cause is not None:
+                receipt["surface_cause"] = exc.surface_cause
         receipts.append(receipt)
         if receipt["status"] != "NOOP":
             held = True
