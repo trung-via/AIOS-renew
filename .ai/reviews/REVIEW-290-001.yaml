@@ -1,0 +1,47 @@
+review_id: REVIEW-290-001
+reviewed_sha: 1583aa75b1460fefdb3ea7373d1723d2f42f2099
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-290-001 is the exact canonical PRIMARY RESULT for TASK-290 r1. Candidate 1583aa75b1460fefdb3ea7373d1723d2f42f2099
+  is exactly one commit ahead of admitted base 90f540cd04cf3766face6f387eb0ef8edb6b7b0a
+  and changes only the four TASK-authorized files.
+- 'Runtime verification is canonical PASS: python -m pytest -q tests/test_local_chat_wake.py
+  tests/test_h4b_regular_chat_brain_resume.py => 566 passed, 610 skipped in 59.52s;
+  git diff --check => exit 0; unresolved is empty.'
+- 'AC1 PASS: _drain_locked removes overloaded pass-local held semantics. LANE_IN_FLIGHT
+  is derived only from durable flight or AMBIGUOUS state; event-local canonical uncertainty
+  does not create a pseudo-flight, while the immediate pre-click durable uncertainty
+  boundary remains intact.'
+- 'AC2 PASS: focused fixtures model flight=null with an earlier DEFERRED/CANONICAL_UNKNOWN
+  event and later healthy UNRESOLVED events. The earlier subject remains CANONICAL_UNKNOWN,
+  only the first eligible later subject is submitted, and durable flight is bound
+  to that selected subject.'
+- 'AC3 PASS: later canonically RESOLVED subjects independently become RESOLVED_NOOP
+  without browser attachment despite earlier unknown/deferred subjects, with retained-record
+  and compacted tombstone dedupe preserved.'
+- 'AC4 PASS: draft, active generation, target/surface, binding-generation, outbound-present,
+  insertion and send blockers prevent unsafe later sends and propagate their own proven
+  reason instead of fabricating LANE_IN_FLIGHT; later resolved subjects may still
+  NOOP.'
+- 'AC5 PASS: successful and ambiguous actual submission paths still create durable
+  flight before the possible click, serialize later unresolved subjects, preserve
+  proof-only ambiguity/no-resend and enforce at most one actual user-turn submission
+  per finite pass.'
+- 'AC6 PASS: candidate changes only src/aios_renew/local_chat_wake.py, tests/test_local_chat_wake.py,
+  docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md and docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md;
+  documents define NON_BLOCKING_PER_EVENT_WAKE_V1 and keep H4B UNPROVED with Runtime/Reviewer/Publisher/Human
+  authority boundaries intact.'
+- The observed scheduled recheck runner contention occurred only after RUN-290-001
+  had terminalized and therefore does not invalidate this RESULT or verdict. It remains
+  a separate operational latency concern, not evidence against AC1-AC6.
+- Reviewer closure sweep found no material defect. This verdict does not close H4B,
+  authorize H5, or treat workflow status as publication success.
