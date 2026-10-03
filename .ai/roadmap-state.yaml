@@ -544,16 +544,55 @@ sequence:
       - IMPLEMENT_GENERIC_RETURN_ROUTING_BEFORE_FEASIBILITY_CLOSES
       - STORE_RAW_CHAT_URL_IN_TASK_RUN_RESULT_REVIEW_SEMANTICS
       - ADD_SECOND_PLANNER_ROUTER_OR_LIFECYCLE_REDUCER
-    implementation_candidate:
+    prior_implementation_candidate:
       contract: OPENAI_SESSION_ORIGIN_CAPTURE_V1
-      source_basis: >-
-        OpenAI Plugin Reference documents host-supplied tool-call
-        _meta["openai/session"] as an anonymized conversation id for correlating tool
-        calls within the same ChatGPT session. TASK-292 treats it only as replaceable
-        transport-origin input and never assumes it equals a chat URL.
-      executor_task: TASK-292
-      live_two_chat_proof: REQUIRED_AFTER_REVIEWED_PUBLICATION
-      h4c0_closure_from_task_acceptance_alone: false
+      engineering_task: TASK-292
+      engineering_status: REVIEWED_PUBLISHED
+      current_surface_live_status: BLOCKED_BY_MISSING_REGULAR_CHAT_DEVELOPER_MODE_ENTRY
+      interpretation: >-
+        TASK-292 remains valid immutable engineering evidence. The current Human-observed
+        regular-Chat surface did not expose the Developer Mode/custom MCP entry required
+        for the planned two-chat observation, so this candidate did not close H4C0 and
+        is no longer the selected primary live path. This does not claim global provider
+        unavailability or invalidate the published probe.
+    selected_fallback_candidate:
+      contract: PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1
+      selected_on: "2026-10-04"
+      authority: HUMAN_BRAIN_PLANNING
+      audit:
+        profile: brain-high-value-v3
+        stage1: CONSTRUCT
+        stage1_outcome: RISK_FOUND
+        stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+        closure: CLEAR_WITH_MANDATORY_REFINEMENTS
+        outcome: CANDIDATE_APPROVED_BY_HUMAN
+      human_gesture: ONE_TIME_EXPLICIT_IN_PAGE_ATTESTATION_PER_CONVERSATION
+      required_properties:
+        - GESTURE_ORIGINATES_INSIDE_EXACT_REGULAR_CHAT_DOCUMENT
+        - NO_BROWSER_TOOLBAR_OR_GLOBAL_ACTIVE_TAB_SELECTION_AS_ORIGIN_AUTHORITY
+        - EPHEMERAL_PAGE_CHALLENGE_MUST_BE_UNIQUE
+        - CONVERSATION_URL_STABLE_ACROSS_PROOF_AND_REVALIDATION
+        - ONE_STABLE_OPAQUE_ROUTE_PER_CONVERSATION
+        - DISTINCT_CONVERSATIONS_RECEIVE_DISTINCT_ROUTES
+        - DURABLE_MACHINE_LOCAL_BINDING_PRECEDES_INITIAL_HANDOFF
+        - RAW_CONVERSATION_URL_REMAINS_NONCANONICAL
+        - ROUTE_HANDLE_IS_SELECTOR_NOT_AUTHORITY_OR_CREDENTIAL
+        - NO_PROMPT_TRANSCRIPT_OR_ASSISTANT_OUTPUT_IDENTITY_INFERENCE
+        - AMBIGUITY_CONFLICT_OR_UNCERTAIN_WRITE_FAILS_CLOSED
+        - NO_DEFAULT_REPOSITORY_CHAT_FALLBACK
+      ordering:
+        - EXPLICIT_IN_PAGE_HUMAN_GESTURE
+        - EXACT_PAGE_CHALLENGE_PROOF
+        - MINT_OR_REUSE_OPAQUE_ROUTE
+        - DURABLE_MACHINE_LOCAL_BINDING
+        - SAME_PAGE_REVALIDATION
+        - BOUNDED_BOOTSTRAP_ENVELOPE
+        - INITIAL_AUTHORIZED_AIOS_HANDOFF
+      non_goals:
+        - IMPLEMENT_H4C1_RETURN_ROUTING
+        - CREATE_NEW_PLANNER_RUNTIME_REVIEWER_PUBLISHER_OR_WAKE_QUEUE
+        - REQUIRE_DEVELOPER_MODE_MCP_RESPONSES_API_OR_OPENAI_SESSION_METADATA
+        - MAKE_ROUTE_HANDLE_AN_AUTHORIZATION_CAPABILITY
     human_execution_delegation:
       selected_on: "2026-10-04"
       authority: HUMAN
@@ -587,32 +626,33 @@ sequence:
         H4C0 conformance evidence.
     live_conformance:
       authority: HUMAN_BRAIN_PLANNING
-      status: PENDING
-      contract: H4C0_TWO_REGULAR_CHAT_ORIGIN_CAPTURE_V1
-      published_sha: "101d624642e3731fff43d034b902ab98011da08f"
+      status: PENDING_FALLBACK_IMPLEMENTATION_AND_LIVE_PROOF
+      contract: H4C0_PAGE_SCOPED_BOOTSTRAP_LIVE_CONFORMANCE_V1
       required_observation:
         - TWO_DISTINCT_REGULAR_CHAT_CONVERSATIONS
-        - TWO_CAPTURE_CALLS_PER_CONVERSATION
-        - SAME_OPAQUE_HANDLE_WITHIN_EACH_CONVERSATION
-        - DISTINCT_OPAQUE_HANDLES_ACROSS_CONVERSATIONS
-        - NO_RAW_SESSION_OR_TRANSCRIPT_CANONICALIZATION
-        - AMBIGUITY_OR_MISSING_METADATA_REMAINS_UNPROVED
+        - TWO_BOOTSTRAPS_PER_CONVERSATION
+        - SAME_OPAQUE_ROUTE_WITHIN_EACH_CONVERSATION
+        - DISTINCT_OPAQUE_ROUTES_ACROSS_CONVERSATIONS
+        - SAME_REPOSITORY_MULTI_CHAT_DISTINCTION
+        - RELOAD_OR_REOPEN_PRESERVES_VALID_CONVERSATION_ROUTE
+        - PAGE_OR_CHALLENGE_AMBIGUITY_FAILS_CLOSED
+        - NO_RAW_CONVERSATION_IDENTITY_IN_CANONICAL_ENGINEERING_ARTIFACTS
       interpretation: >-
-        Reviewed publication makes the bounded development probe eligible for the
-        separately Human/Brain-owned live observation. TASK acceptance, review and
-        publication do not prove exact origin capture in two real regular Chats and do
-        not close H4C0 or authorize H4C1.
+        The Human approved the page-scoped bootstrap as the selected H4C0 fallback.
+        Architecture approval alone does not implement it, prove the two-chat cases,
+        close H4C0, or authorize H4C1.
     current_live_blocker:
-      code: H4C0_LIVE_TWO_CHAT_ORIGIN_CAPTURE_PENDING
+      code: H4C0_PAGE_SCOPED_BOOTSTRAP_IMPLEMENTATION_AND_LIVE_PROOF_PENDING
       authority: HUMAN_BRAIN_PLANNING
-      task_binding: TASK-292
-      next_action: HUMAN_PREPARE_DEVELOPMENT_CONNECTION_AND_RUN_BOUNDED_TWO_CHAT_OBSERVATION
+      task_binding: NONE_AUTHORED_YET
+      next_action: BRAIN_AUTHOR_PAGE_SCOPED_BOOTSTRAP_IMPLEMENTATION_TASK
       prohibitions:
         - NO_H4C1_BEFORE_H4C0_LIVE_CLOSURE
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
-        - NO_RAW_OPENAI_SESSION_OR_CHAT_URL_IN_CANONICAL_STATE
+        - NO_RAW_CONVERSATION_URL_IN_CANONICAL_STATE
         - NO_TRANSCRIPT_OR_ASSISTANT_OUTPUT_IDENTITY_INFERENCE
-        - NO_SYNTHETIC_TEST_OR_PUBLICATION_AS_LIVE_TWO_CHAT_PROOF
+        - NO_ACTIVE_TAB_RECENT_CHAT_TIMESTAMP_HEURISTIC
+        - NO_IMPLEMENTATION_OR_PUBLICATION_TREATED_AS_LIVE_TWO_CHAT_PROOF
         - NO_AUTOMATIC_ROADMAP_ADVANCE
     primary_dispatch_intent:
       dispatch_id: task292-r1-codex61-xhigh-20261004-001
@@ -623,7 +663,7 @@ sequence:
       reasoning_effort: xhigh
       status: DISPATCH_ACCEPTED
       carrier_issue_number: 1448
-    remaining_gate: H4C0_TWO_DISTINCT_REGULAR_CHAT_LIVE_ORIGIN_CAPTURE_AND_CLOSURE
+    remaining_gate: H4C0_PAGE_SCOPED_BOOTSTRAP_IMPLEMENTATION_TWO_CHAT_LIVE_PROOF_AND_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
