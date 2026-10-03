@@ -3581,7 +3581,7 @@ sequence:
             workflow_run_id: 37080008668
             run_attempt: 1
             artifact_id: 11257824173
-            source_digest: "991fce0d6b1121e6d8841ecafdd1ad363fd81e948f25999bdb7dc9b91691336d"
+            source_digest: "991fce0d6b1121e6d8841ecafdd1ad363fd81e948f25999bdb7cc9b91691336d"
             artifact_sha: "1ba484ec9d1128cc95f6106197a20d29eb0ff1d8"
             decision_sha: "25a439f8609bc0aab62cbc14fd75c489f32d07f4"
             reviewed_sha: "aa0648049194d8d51b2b04cd23b1bd0d46e71db5"
@@ -3605,7 +3605,7 @@ sequence:
       bounded_remainder_proof_two_source_authorization:
         authority: HUMAN
         authorized_on: "2026-10-03"
-        status: AUTHORIZED_PENDING_EXECUTION
+        status: PARTIAL_EXECUTION_SELECTOR_CORRECTED
         exact_sources:
           - REVIEW_CHANGES_REQUIRED_OR_BLOCKED_RUN_280_001
           - PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE_RUN_280_002
@@ -3621,12 +3621,38 @@ sequence:
           - NO_TIMEOUT_INCREASE
           - NO_MANUFACTURED_FAILURE_REVIEW_OR_CONFLICT
           - NO_H4B_ADVANCE
+        first_execution:
+          review_changes_required:
+            freshness: RESOLVED
+            durable_location: EVENT
+            durable_status: RESOLVED_NOOP
+            durable_reason: NONE
+            durable_generation: null
+          publication_failure:
+            freshness: UNKNOWN
+            durable_location: ABSENT
+            diagnosis: SELECTOR_TRANSCRIPTION_ERROR
+            wrong_source_digest: "991fce0d6b1121e6d8841ecafdd1ad363fd81e948f25999bdb7dc9b91691336d"
+            exact_source_digest: "991fce0d6b1121e6d8841ecafdd1ad363fd81e948f25999bdb7cc9b91691336d"
+            exact_digest_basis:
+              - workflow_run_37080008668_publish_log
+              - immutable_artifact_11257824173_source_json
+            interpretation: >-
+              UNKNOWN is not evidence of a TASK-284 freshness defect. The Brain inventory
+              transcribed one hex character incorrectly in source_digest, so the constructed
+              event_id did not equal the immutable source event and was absent from durable
+              lane state. The Human-authorized proof scope is unchanged; only the exact
+              historical selector is corrected.
+          state_unchanged: true
+          queue_unchanged: true
+          main_unchanged: true
+          overall: INCOMPLETE_SELECTOR_CORRECTION_REQUIRED
       current_live_blocker:
-        code: BOUNDED_REMAINDER_TWO_SOURCE_PROOF_AUTHORIZED
+        code: BOUNDED_REMAINDER_PUBLICATION_FAILURE_SELECTOR_CORRECTION_PENDING
         authority: HUMAN_BRAIN_PLANNING
         task_binding: NONE
-        root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
-        next_action: EXECUTE_READ_ONLY_TWO_SOURCE_REEVALUATION
+        root_cause_class: BRAIN_INVENTORY_TRANSCRIPTION_ERROR_NOT_ENGINEERING_FAILURE
+        next_action: EXECUTE_CORRECTED_READ_ONLY_PUBLICATION_FAILURE_REEVALUATION
         prohibitions:
           - NO_ASSUME_SYNTHETIC_EQUALS_LIVE
           - NO_MANUFACTURE_RUN_FAILURE_REVIEW_OR_CONFLICT
