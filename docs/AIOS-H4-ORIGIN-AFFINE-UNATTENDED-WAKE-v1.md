@@ -75,7 +75,7 @@ Required properties:
 - establish origin at or before the semantic flow's initial authorized handoff;
 - produce only a bounded operational route identity;
 - remain independent of chat transcript contents;
-- never infer origin from the active tab, most-recent chat, timestamps, model memory, provider/session identity, or other heuristic correlation;
+- never infer origin from the active tab, most-recent chat, timestamps, model memory, provider/account identity, or other heuristic correlation; host-supplied tool-call session metadata may be evaluated only as a replaceable transport-origin input, not canonical identity;
 - keep raw conversation URL outside canonical TASK/RUN semantics;
 - fail closed when origin is missing, stale, conflicting, or ambiguous;
 - create no semantic or lifecycle authority.
@@ -89,6 +89,14 @@ Exit gate:
 5. no repository-default fallback is used for a new origin-affine flow.
 
 If no safe mechanism is feasible, H4C0 returns an explicit architecture blocker and stops.
+
+### TASK-292 bounded feasibility candidate
+
+The [OpenAI Plugin Reference](https://developers.openai.com/plugins/reference) documents host tool-call `_meta["openai/session"]` for correlating calls within a ChatGPT session. TASK-292 evaluates this exact field through `OPENAI_SESSION_ORIGIN_CAPTURE_V1`, terminating at a provider-neutral `ORIGIN_HANDLE_V1` result. Only a deterministic, versioned opaque handle and bounded status metadata are exposed; raw metadata is never emitted, logged, persisted, or made canonical. This transport feasibility basis does not establish that the session value equals, contains, or can be converted to a chat URL/UUID.
+
+The [H4C0 conformance contract](AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md) freezes the bounds, fail-closed behavior, one read-only development MCP entry, and post-publication Human/Brain procedure: two calls each from two distinct regular ChatGPT conversations, stable opaque identity within each and distinct identity across them, with ambiguity recorded as `UNPROVED`. Raw session values and transcript content must never enter canonical records.
+
+TASK-292 acceptance and synthetic tests do not prove that future live observation or close H4C0. Reviewed publication makes the candidate available for the later Human/Brain observation; Human/Brain alone decides H4C0 live closure or architecture fallback. **H4C1 remains blocked until H4C0 live closure**, including the required architecture audit. No local-wake, lifecycle, Reviewer, Publisher, Runtime, or roadmap authority changes follow from this probe.
 
 ## 5. H4C1 — Origin-Affine Return Routing
 
