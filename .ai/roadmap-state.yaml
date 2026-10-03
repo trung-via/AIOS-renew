@@ -500,7 +500,7 @@ sequence:
     status: DONE
     phase: H4A3_TASK268_PUBLICATION_INTEGRATION_RECOVERY
     task_id: TASK-269
-    task_revision: 1
+    task_revision: 2
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
     source_task_id: TASK-268
@@ -4237,17 +4237,26 @@ sequence:
     source_publication_outcome: INTEGRATION_REQUIRED
     integration_authoring_main_sha: "148ba5faf583e87e8de4620ec59380c15d0bf0e1"
     merge_base_sha: "7e1fd0b826e84265eeb4dd36b552c09c19904831"
-    task_author_commit_sha: "9d02c263e24fc9e772a912ba4e7d49c0d3879869"
-    task_blob_sha: "cc0d949b3efc1a89ece09883190fa0bc0b38a19e"
-    authoring_issue_number: 1427
+    task_author_commit_sha: "7d16a4497bbd092025329225b5e575c7fba22241"
+    task_blob_sha: "f4e037f3e8ef5ddd17bcb9b037971c61c9f81dbc"
+    authoring_issue_number: 1430
+    prior_authoring_issue_number: 1427
     failed_authoring_issue_number: 1426
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
       - ADVERSARIAL_AUDIT_AND_RECONCILE
-    packet_fingerprint: "bce1e160258ba77d19e67b2e9c3466e79ac2e6f8640349767836f2628d084ee9"
-    construct_fingerprint: "278230a4bfdcf39a915ef214445dcff75ff91a497a02bb20529fa0536fcef454"
-    reconciled_candidate_fingerprint: "2fc196b8c91293a78c9a9072754c43688bd1477706eb5ea9fb361b6332d11b37"
+    packet_fingerprint: "bb27f25fb8177d74f7ea4fabbade2d49eb9a77a295353668ee4efc531110277c"
+    construct_fingerprint: "5644d9210142ed4107f5a2f7d52e263ab71eae78794d0941e2932db418376463"
+    reconciled_candidate_fingerprint: "e8b5fb57c323cbe11ff950440f34bada27f5415e4b23d3e7f903bd540ed40158"
+    supersedes_revision: 1
+    supersession_basis:
+      run_id: RUN-288-001
+      failure_artifact_sha: "34fe8b209c2eba14d2bd9eb3d0713f9333f41d4c"
+      failed_head_sha: "005f952f878013c64ce44fe7b8fb870f30b14957"
+      failure_phase: COMPLETION_GATE
+      verification_seconds: null
+      reason: FUTURE_RUNTIME_VERIFICATION_OUTCOME_WAS_NOT_PRE_VERIFICATION_CLAIMABLE
     objective: >-
       Re-express the exact reviewed TASK-287 four-file semantic delta on a fresh
       descendant of current canonical main, preserve current roadmap/control state,
@@ -4270,18 +4279,19 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      persistence: THROUGH_TASK_288_UNLESS_HUMAN_CHANGES
+      persistence: THROUGH_TASK_288_ALL_REVISIONS_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
       inheritance_from_task_287: EXPLICITLY_RESELECTED_BY_HUMAN
+      reaffirmed_for_revision_2: true
     dispatch_intent:
-      dispatch_id: task288-r1-codex61-xhigh-20261003-001
-      task_blob_sha: "cc0d949b3efc1a89ece09883190fa0bc0b38a19e"
-      task_commit_sha: "9d02c263e24fc9e772a912ba4e7d49c0d3879869"
+      dispatch_id: task288-r2-codex61-xhigh-20261003-001
+      task_blob_sha: "f4e037f3e8ef5ddd17bcb9b037971c61c9f81dbc"
+      task_commit_sha: "7d16a4497bbd092025329225b5e575c7fba22241"
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
       status: HUMAN_AUTHORIZED_PENDING_CARRIER_SUBMISSION
     current_live_blocker:
-      code: H4B_TASK_288_PRIMARY_DISPATCH_PENDING
+      code: H4B_TASK_288_R2_PRIMARY_DISPATCH_PENDING
       authority: HUMAN_RUNTIME
       task_binding: TASK-288
       next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
@@ -4291,7 +4301,7 @@ sequence:
         - DISPATCH_ACCEPTANCE_IS_NOT_RUN_CREATION
         - NO_DIRECT_PUBLICATION_OF_RUN_287_002
         - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: TASK_288_PRIMARY_TERMINAL_RESULT_OR_FAILURE
+    remaining_gate: TASK_288_R2_PRIMARY_TERMINAL_RESULT_OR_FAILURE
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
     status: DONE
