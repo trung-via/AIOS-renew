@@ -3114,13 +3114,36 @@ sequence:
         code: POST_TASK_282_CANONICAL_FRESHNESS_STILL_UNKNOWN
         authority: HUMAN_BRAIN_PLANNING
         task_binding: UNBOUND
-        disposition: FRESH_BRAIN_AUDIT_REQUIRED
-        root_cause: UNRESOLVED
+        disposition: AUDIT_IDENTIFIED_TASK_AUTHORING_REQUIRED
+        root_cause: MULTIPLE_DETERMINISTIC_FRESHNESS_DEFECTS
+        audit_findings:
+          - id: H4A5-FRESHNESS-ROADMAP-DUPLICATE-KEY
+            status: PLANNING_STATE_REPAIRED
+            basis: >-
+              Publication-success freshness strict-parses canonical roadmap-state.yaml.
+              The roadmap contained duplicate previous_state keys inside one historical
+              probe mapping, so strict unique-key parsing failed before planning bookmark
+              evaluation. Human/Brain repaired the planning document without changing
+              lifecycle or engineering-state truth.
+          - id: H4A5-FRESHNESS-REMEDIATION-SCHEMA-DRIFT
+            status: IMPLEMENTATION_REPAIR_REQUIRED
+            basis: >-
+              REVIEW and AUTHOR_REMEDIATION freshness currently require
+              correction.source_run_id even though canonical REMEDIATION documents do
+              not contain that field; source RUN identity is already bound by the exact
+              remediation ref/subject plus reviewed_sha/finding_id.
+          - id: H4A5-FRESHNESS-SERIAL-REMOTE-PROOF-GRAPH
+            status: IMPLEMENTATION_HARDENING_REQUIRED
+            basis: >-
+              Valid freshness observations still require multiple serial mutable-ref
+              snapshots and exact-SHA fetches. The safety budgets remain fixed; the next
+              implementation must reduce remote round-trips while preserving exact
+              TOCTOU/ref-race evidence instead of increasing timeout ceilings.
         scope_boundary: >-
-          Diagnose the exact per-subject canonical freshness failure before authoring
-          another implementation TASK. Do not replay RUN-282-001 again, increase
-          observation budgets, bypass freshness, infer old-subject resolution or
-          advance H4B from this failed proof.
+          Author one narrow reviewed implementation TASK for canonical remediation
+          schema alignment, bounded proof-graph reduction and deterministic production-
+          shaped regressions. Do not replay RUN-282-001 again, increase observation
+          budgets, bypass freshness, infer old-subject resolution or advance H4B.
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
         TASK-280, TASK-281 and TASK-282 implementation blockers are reviewed and
@@ -3420,7 +3443,7 @@ sequence:
           last_run_time: null, so that field is not accepted as execution truth for
           webhook conformance; the GitHub ACK plus exact canonical SHA is the stronger
           observed evidence.
-      previous_state: WAKE_EVENT_EMITTED_AWAITING_DELIVERY
+      earlier_state_before_first_probe: WAKE_EVENT_EMITTED_AWAITING_DELIVERY
       observed_on: "2026-09-30"
       observed_main_sha: "3ff72c354e7bad81a8cca2ad6152a280def17cdb"
       observed_pr_state:
