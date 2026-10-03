@@ -554,17 +554,35 @@ sequence:
       executor_task: TASK-292
       live_two_chat_proof: REQUIRED_AFTER_REVIEWED_PUBLICATION
       h4c0_closure_from_task_acceptance_alone: false
-    current_live_blocker:
-      code: TASK_292_EXECUTOR_SELECTION_PENDING
+    human_execution_delegation:
+      selected_on: "2026-10-04"
       authority: HUMAN
+      task_id: TASK-292
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+      persistence: THROUGH_TASK_292_ALL_REVISIONS_REMEDIATION_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    current_live_blocker:
+      code: TASK_292_PRIMARY_DISPATCH_PENDING
+      authority: AIOS_RUNTIME_ADMISSION
       task_binding: TASK-292
-      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT_FOR_TASK_292
+      next_action: DISPATCH_PRIMARY_WITH_HUMAN_SELECTED_EXECUTION_PROFILE
       prohibitions:
-        - NO_PRIMARY_BEFORE_HUMAN_EXECUTION_SELECTION
-        - NO_EXECUTOR_MODEL_EFFORT_INHERITANCE_FROM_PRIOR_TASK
+        - NO_EXECUTOR_MODEL_EFFORT_CHANGE_WITHOUT_HUMAN_OVERRIDE
         - NO_H4C1_BEFORE_TASK_292_REVIEWED_PUBLICATION_AND_H4C0_LIVE_TWO_CHAT_PROOF
         - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
-    remaining_gate: TASK_292_HUMAN_EXECUTION_SELECTION
+    primary_dispatch_intent:
+      dispatch_id: task292-r1-codex61-xhigh-20261004-001
+      task_blob_sha: "602baebd63fa109dab2536df88162131b4606db3"
+      task_commit_sha: "dd65f683267ca52a622027dfa063f30f49a9fca2"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: READY_TO_DISPATCH
+    remaining_gate: TASK_292_PRIMARY_ADMISSION_AND_EXECUTION
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
