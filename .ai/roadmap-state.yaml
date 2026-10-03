@@ -486,12 +486,33 @@ sequence:
       status: APPROVED
       approved_on: "2026-10-03"
       instruction: AUTHOR_TASK_290_AFTER_TWO_STAGE_BRAIN_AUDIT
-    current_live_blocker:
-      code: TASK_290_EXECUTOR_SELECTION_PENDING
+    execution_selection:
       authority: HUMAN
-      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT_FOR_TASK_290
+      selected_on: "2026-10-03"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      persistence: THROUGH_TASK_290_ALL_REVISIONS_AND_REPAIR_CONTINUATIONS_UNLESS_HUMAN_CHANGES
+    primary_dispatch_intent:
+      dispatch_id: task290-r1-codex61-xhigh-20261003-001
+      task_blob_sha: "fde183b50edd7973987de5c2d405a727de02a139"
+      task_commit_sha: "c0148cceda6377ca2be677492dce700be6bc0f12"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: HUMAN_AUTHORIZED_PENDING_CARRIER_SUBMISSION
+    current_live_blocker:
+      code: TASK_290_PRIMARY_DISPATCH_PENDING
+      authority: HUMAN_RUNTIME
+      next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
       global_drain_authorized: false
-    remaining_gate: TASK_290_EXECUTOR_SELECTION_AND_PRIMARY_DISPATCH
+      prohibitions:
+        - NO_EXECUTOR_MODEL_EFFORT_SUBSTITUTION
+        - NO_DUPLICATE_PRIMARY_DISPATCH
+        - DISPATCH_ACCEPTANCE_IS_NOT_RUN_CREATION
+        - NO_GLOBAL_DRAIN_BEFORE_TASK_290_REVIEWED_PUBLICATION
+        - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
+    remaining_gate: TASK_290_PRIMARY_TERMINAL_RESULT_OR_FAILURE
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-terminal-failure-task-revision-supersession
     status: DONE
@@ -4271,11 +4292,11 @@ sequence:
         that exact regular-Chat user turn, so successful review/publication cannot be
         used retrospectively as live semantic-resume proof.
     current_live_blocker:
-      code: H4B_TASK_290_EXECUTOR_SELECTION_PENDING
-      authority: HUMAN
+      code: H4B_TASK_290_PRIMARY_DISPATCH_PENDING
+      authority: HUMAN_RUNTIME
       task_binding: TASK-290
       source_task_binding: TASK-289
-      task_status: CANONICALIZED_AWAITING_EXECUTOR_SELECTION
+      task_status: HUMAN_AUTHORIZED_PENDING_PRIMARY_DISPATCH
       latest_published_hardening_task: TASK-289
       latest_reviewed_hardening_run: RUN-289-001
       resolved_predecessor_gap: >-
@@ -4288,7 +4309,7 @@ sequence:
         earlier CANONICAL_UNKNOWN event. Production _drain_locked sets a pass-local held
         flag after any non-NOOP receipt, so an event-specific canonical uncertainty
         fabricates lane-wide head-of-line blocking without a durable flight.
-      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT_FOR_TASK_290
+      next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
       prohibitions:
         - NO_GLOBAL_DRAIN_BEFORE_TASK_290_REVIEWED_PUBLICATION
         - NO_MANUAL_STATE_RECLASSIFICATION_WITHOUT_CANONICAL_SUCCESSOR_PROOF
