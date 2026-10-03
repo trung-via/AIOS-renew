@@ -1,0 +1,41 @@
+review_id: REVIEW-287-002
+reviewed_sha: 0b17f2468500a33d5352d61df91df38b78bb10bd
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-287-002 is the canonical successful REPAIR RESULT for Runtime-verification failure
+  RUN-287-001. RUN-287-001 had no semantic REVIEW, so this remains a PRIMARY semantic
+  review rather than DELTA.
+- 'Canonical REPAIR-287-001 at 55a6f72d2a77a464a9c7efc8e16587ef97f09ee9 authorizes
+  only tests/test_local_chat_wake.py, preserving the failed candidate production implementation
+  and both TASK-287 documents. RUN-287-002 changes exactly that test fixture: ACCEPT_INSERT
+  readiness remains normal and only WAIT_USER_TURN/submission proof is forced unavailable.'
+- 'Runtime verification is canonical PASS: python -m pytest -q tests/test_local_chat_wake.py
+  tests/test_h4b_regular_chat_brain_resume.py => 472 passed, 610 skipped in 60.93s;
+  git diff --check => exit 0; unresolved is empty.'
+- 'AC1/AC2: the retained exact-turn-bound completion witness releases only a proven
+  SUBMITTED missed-BUSY holder when the exact target is IDLE and one unique adjacent
+  completed assistant successor is structurally proven; bounded counterexamples retain
+  the flight on absent, hidden, duplicate, nested, role-ambiguous, intervening-user,
+  virtualized, target/surface, generation, draft or adapter uncertainty.'
+- 'AC3: existing BUSY-then-IDLE and fresh canonical-resolution release paths remain
+  intact. The repaired ambiguity fixture now reaches the durable pre-click AMBIGUOUS
+  state before post-click proof failure, proving that AMBIGUOUS attempts cannot use
+  the completion witness or automatically resend and remain Human-held.'
+- 'AC4/AC5: the witness exports only a Boolean and is bounded to exact wake-user identity
+  plus structural role/order/containment/visibility metadata; it does not read assistant
+  text/HTML/semantic content or receive session, URL, CDP or local-path data. Durable
+  lane schema and timing/recheck/workflow budgets are unchanged, and no new transport,
+  background loop or lifecycle/semantic authority is added.'
+- 'AC6: both conformance documents record the RUN-285 stale-flight evidence, Human
+  state-only recovery and RUN-286 canonical NOOP drain, and explicitly keep H4B UNPROVED
+  pending a future naturally produced real unresolved RESULT semantic-resume observation.
+  TASK-287 acceptance itself does not close H4B or start H5.'
