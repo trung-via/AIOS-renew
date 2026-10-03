@@ -1,0 +1,121 @@
+task_id: TASK-286
+revision: 1
+goal: Harden H4B local regular-Chat pre-submit surface observability so retry-safe
+  SURFACE_UNPROVEN deferrals expose a bounded privacy-safe structural cause while
+  preserving the existing exact-chat transport, durable deferred recovery, canonical
+  freshness barriers, and all timeout/retry budgets.
+problem: RUN-285-001 produced a real unresolved RESULT attention event that reached
+  the published local regular-Chat transport but the initial delivery and two bounded
+  follow-up rechecks all returned DEFERRED/SURFACE_UNPROVEN without inserting or sending
+  a user turn. The same published transport later delivered the RUN-285-001 publication-success
+  attention as SUBMITTED/EXACT_USER_TURN_PROVEN. Current evidence therefore does not
+  prove a permanently broken selector or justify timeout increases, but SURFACE_UNPROVEN
+  collapses several distinct pre-submit structural predicates into one opaque reason,
+  preventing bounded diagnosis and encouraging guess-based repair. H4B remains open
+  because the unresolved RESULT semantic-resume live step was not proven.
+assumptions:
+- Canonical main at TASK authoring is c4fc7148334082bd5a22f7b80c348ed669d644eb.
+- 'TASK-285 r1 engineering acceptance is complete: RUN-285-001 RESULT abf4876b3da997be503707e9579d73651a8135b1,
+  REVIEW-285-001 PASS, reviewed/published candidate 61408a376ff4fecab61aeb48493bb52d427acc3d.'
+- The RUN-285-001 unresolved RESULT wake returned DEFERRED/SURFACE_UNPROVEN before
+  insertion on its initial attempt and on two follow-up rechecks separated by 15 seconds.
+- The later publication-success wake for the same RUN used the same published local
+  transport and returned SUBMITTED/EXACT_USER_TURN_PROVEN, so current evidence does
+  not establish a fixed selector failure.
+- SURFACE_UNPROVEN is a retry-safe pre-submit deferral under the existing H4A4 contract;
+  the deferred RESULT subject is now canonically resolved by REVIEW-285-001 and must
+  not be replayed for H4B proof.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+  - src/aios_renew/local_chat_wake.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_local_chat_wake.py
+  - tests/test_h4b_regular_chat_brain_resume.py
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+non_goals:
+- Change canonical attention identity, lifecycle reduction, Brain/Reviewer/Runtime/Publisher
+  authority, Flow Cards, machine-local chat binding ownership, or exact-conversation
+  selection.
+- Change the existing main/account/login/non-regular/composer/Send selectors based
+  only on the RUN-285-001 opaque deferral.
+- Increase workflow timeout-minutes, CanonicalFreshness observation budget, CDP attach
+  timeout, page default timeout, insert readiness timeout, submission proof timeout,
+  follow-up recheck count or interval, or scheduled recovery cadence.
+- Add a new retry loop, background service, browser launcher, headless-browser migration,
+  provider-native transport, ChatGPT Work dependency, or second wake transport.
+- Read, persist, export, or reason from assistant output, raw conversation text, account
+  identity, cookies, credentials, browser profile data, CDP endpoint, local binding
+  paths, or chat history.
+- Replay or redrain the resolved RUN-285-001 RESULT event, fabricate another unresolved
+  checkpoint, create a new RUN solely to manufacture H4B live evidence, close H4B,
+  or start H5.
+constraints:
+  hard:
+  - Keep SURFACE_UNPROVEN as the retry-classification reason for compatibility unless
+    deterministic evidence proves a schema change is required; add only a bounded
+    fixed structural diagnostic cause that cannot select lifecycle or semantic action.
+  - The diagnostic cause must be derived only from the existing pre-submit structural
+    predicates for exact target URL/main/account/login/non-regular/composer/disabled
+    state. It must use a closed enum, emit no raw DOM/text/counts/URLs/identifiers,
+    and report an explicit MULTIPLE_OR_AMBIGUOUS value when more than one unsafe predicate
+    is simultaneously present rather than choosing an arbitrary priority.
+  - 'The diagnostic must be operational only: it may appear in the bounded attempt
+    receipt/log and focused tests/documentation, but must not enter canonical TASK/RUN/RESULT/FAILURE/REVIEW
+    identity, attention event identity, semantic next_action, or roadmap truth.'
+  - Refactor shared surface observation only as needed so check() and generation_state()
+    cannot disagree about the same structural surface. Preserve draft, generation,
+    outbound-duplicate, exact-target and post-submit ambiguity protections.
+  - Do not increase any timeout, recheck count, retry cadence or observation budget.
+    A healthy surface after a deferred attempt must continue to use the existing durable
+    recovery path and fresh canonical barriers before insertion and click.
+  - Executor changes only the three authorized files. Runtime owns canonical verification;
+    Reviewer owns semantic verdict; Publisher owns publication; Human/Brain separately
+    owns any later H4B live observation and closure.
+acceptance:
+- id: AC1
+  condition: A focused regression drives the real local_chat_wake pre-submit path
+    through each existing structural SURFACE_UNPROVEN predicate and proves the returned
+    operational receipt exposes exactly one closed privacy-safe surface_cause enum
+    (or MULTIPLE_OR_AMBIGUOUS for simultaneous unsafe predicates) while the durable
+    retry reason remains SURFACE_UNPROVEN and no composer insertion occurs.
+- id: AC2
+  condition: The structural diagnostic emits no raw DOM, user/chat text, URL, account/session
+    identity, selector text, counts, credentials, CDP endpoint or local binding path,
+    and it cannot alter event_id, canonical freshness, semantic flow, authority, next_action
+    or lifecycle state.
+- id: AC3
+  condition: The candidate preserves all existing selectors and exact-target/draft/generation/outbound/post-submit
+    safety semantics and makes no change to workflow timeout-minutes, 30-second canonical
+    observation budget, 10-second CDP attach timeout, 3-second page/insert waits,
+    5-second submission proof, follow-up recheck count/15-second interval, or cron
+    cadence.
+- id: AC4
+  condition: Deterministic recovery coverage proves a subject deferred as SURFACE_UNPROVEN
+    remains durable, revalidates canonical freshness before retry, and submits exactly
+    once when the same synthetic surface later becomes healthy; resolved subjects
+    NOOP and ambiguous post-submit attempts never auto-resend.
+- id: AC5
+  condition: The TASK-286 delta changes only src/aios_renew/local_chat_wake.py, tests/test_local_chat_wake.py
+    and docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md, with no workflow,
+    browser-launch, scheduler, second transport, semantic router, lifecycle reducer
+    or assistant-output scraping change.
+- id: AC6
+  condition: The H4B conformance document records RUN-285-001 RESULT wake as DEFERRED/SURFACE_UNPROVEN
+    and the later same-transport publication wake as SUBMITTED/EXACT_USER_TURN_PROVEN,
+    states that this proves an opaque transient pre-submit observation gap rather
+    than a fixed-selector failure, and keeps H4B live closure dependent on a future
+    real unresolved canonical semantic checkpoint rather than TASK-286 acceptance
+    itself.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py tests/test_h4b_regular_chat_brain_resume.py
+  - git diff --check
