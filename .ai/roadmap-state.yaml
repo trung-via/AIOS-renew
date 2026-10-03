@@ -3373,14 +3373,32 @@ sequence:
           successful, but its direct reusable wake loaded the pre-publication caller
           generation and was additionally blocked by the RUN-282 flight, so it is not
           accepted as final TASK-284 live conformance evidence.
+      final_task284_live_proof_authorization:
+        authority: HUMAN
+        authorized_on: "2026-10-03"
+        status: AUTHORIZED_PENDING_EXECUTION
+        exact_source_run_id: RUN-284-001
+        exact_review_id: REVIEW-284-001
+        exact_review_decision_sha: "1f79c07619cc1dd1ac3e543d6202dda3e0eda11e"
+        exact_reviewed_sha: "9841310083ffb948e16e5381f39152b1a8e922f3"
+        proof_contract:
+          - ONE_BOUNDED_IDEMPOTENT_PASS_REVIEW_REPLAY
+          - NO_NEW_RUN
+          - NO_EXECUTOR
+          - NO_TIMEOUT_INCREASE
+          - AT_MOST_ONE_EXACT_BOUND_REGULAR_CHAT_USER_TURN
+          - DIRECT_REUSABLE_WAKE_MUST_USE_PUBLISHED_TASK284_TRANSPORT
+          - LEGACY_FAN_IN_MUST_DEDUPE_OR_NOOP
+          - DRAFT_BUSY_AMBIGUITY_OR_UNKNOWN_FAILS_CLOSED
+          - NO_H4B_ADVANCE_BEFORE_EXPLICIT_HUMAN_BRAIN_CLOSURE
       current_live_blocker:
-        code: FINAL_BOUNDED_HUMAN_CONFORMANCE_AUTHORIZATION_PENDING
+        code: FINAL_BOUNDED_HUMAN_CONFORMANCE_PROOF_IN_PROGRESS
         authority: HUMAN_BRAIN_PLANNING
         task_binding: TASK-284
         root_cause_class: NONE_ENGINEERING_REPAIR_PUBLISHED
-        next_action: HUMAN_AUTHORIZE_FINAL_BOUNDED_LIVE_PROOF
+        next_action: EXECUTE_AUTHORIZED_FINAL_BOUNDED_LIVE_PROOF
         prohibitions:
-          - NO_UNAUTHORIZED_REPLAY
+          - NO_SECOND_REPLAY_WITHOUT_NEW_HUMAN_AUTHORIZATION
           - NO_NEW_RUN_OR_EXECUTOR_FOR_PROOF
           - NO_BLIND_REDRAIN
           - NO_TIMEOUT_INCREASE
