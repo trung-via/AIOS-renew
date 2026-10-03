@@ -1,0 +1,318 @@
+# AIOS H4 Origin-Affine Return and Unattended Local Wake v1
+
+Status: HUMAN APPROVED / CANONICAL PLANNING
+Approved: 2026-10-04
+Authority: HUMAN_BRAIN_PLANNING
+Parent track: `brain-runtime-semantic-handoff-hardening-v1`
+Production requirement: `ORIGIN_AFFINE_RETURN + UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5`
+
+## 1. Human production objective
+
+Before H5 may close the Brain-Runtime semantic-handoff hardening track:
+
+1. a semantic flow initiated from one regular ChatGPT conversation must return later Brain-attention wake events to that exact originating conversation;
+2. distinct flows from different conversations inside the same repository/project must retain independent return affinity;
+3. wake delivery must not require the Human to pre-open Chrome, navigate to the correct Project, open the target conversation, or leave that exact tab active;
+4. independent project/conversation lanes must not block, redirect, consume, or receive another lane's wake because of busy, draft, generation, lock, failure, recovery, or binding state;
+5. the wake path remains transport only and creates no Brain, Planner, lifecycle-router, Reviewer, Runtime, Publisher, retry/failover, or roadmap authority.
+
+These are production closure requirements, not post-H5 enhancements.
+
+## 2. Preserved authority and truth boundaries
+
+- Human owns intent, priority, risk acceptance, and explicit route ownership transfer.
+- Brain owns semantic interpretation, architecture, roadmap reasoning, and selected semantic authority.
+- Runtime owns canonical lifecycle coordination, mutation authority, canonical verification, evidence, and lifecycle-state reduction.
+- Reviewer owns semantic verdict.
+- Publisher owns publication of the exact eligible reviewed source candidate.
+- Wake transport owns bounded delivery only.
+- Conversation identity and URL remain operational transport configuration, not engineering truth.
+- Wake payload remains an untrusted selector-only doorbell.
+- Raw ChatGPT conversation URLs, cookies, credentials, account/session data, and transcript content MUST NOT become canonical TASK/RUN/RESULT/REVIEW semantics.
+- No assistant-output parsing may select lifecycle action.
+- No ChatGPT Work production wake fallback.
+- No automatic roadmap advancement.
+
+## 3. Architecture audit
+
+Audit profile: `brain-high-value-v3`.
+
+### Stage 1 — CONSTRUCT
+
+Outcome: `RISK_FOUND`.
+
+The initial proposal correctly identified repository-level fixed-chat binding and Human-prepared browser state as production gaps, but it was incomplete because it did not prove how origin identity is captured without guessing, did not distinguish conversation-lane identity from TASK identity, and risked conflating unattended capability with a specific headless implementation.
+
+### Stage 2 — ADVERSARIAL_AUDIT_AND_RECONCILE
+
+Closure: `CLEAR_WITH_MANDATORY_REFINEMENTS`.
+
+Reconciled findings:
+
+- current repository-keyed binding is insufficient for same-repository multi-chat flows;
+- origin capture must be separately proven before generic return routing implementation;
+- origin must never be inferred from timestamps, active tab, most-recent conversation, chat memory, or transcript scraping;
+- raw chat URL remains noncanonical; any return selector exposed to lineage is bounded and opaque;
+- lane identity is conversation/return-route scoped, not TASK scoped;
+- route transfer requires explicit Human authority;
+- origin-affine flows never silently fall back to the historical repository-default H4A3 chat;
+- unattended delivery is the capability requirement; `true headless` is not a roadmap-mandated HOW;
+- a local unattended transport requires the host and authorized authenticated environment to be available; powered-off-host remote wake is out of scope;
+- existing H4A4 queue, dedupe, deferred recovery, Human supersession, ambiguity, and multi-project isolation are reused rather than rebuilt;
+- final H4B live semantic-resume proof must exercise the production origin-affine unattended path.
+
+Outcome: `CANDIDATE_APPROVED_BY_HUMAN`.
+
+## 4. H4C0 — Origin Capture Feasibility & Contract Freeze
+
+Objective: establish one deterministic, authority-safe method by which AIOS can associate a newly initiated semantic flow with the exact regular-Chat conversation from which that flow originated.
+
+This phase answers only how origin identity is established. It does not yet implement generic return routing.
+
+Required properties:
+
+- distinguish two conversations belonging to the same repository/project;
+- establish origin at or before the semantic flow's initial authorized handoff;
+- produce only a bounded operational route identity;
+- remain independent of chat transcript contents;
+- never infer origin from the active tab, most-recent chat, timestamps, model memory, provider/session identity, or other heuristic correlation;
+- keep raw conversation URL outside canonical TASK/RUN semantics;
+- fail closed when origin is missing, stale, conflicting, or ambiguous;
+- create no semantic or lifecycle authority.
+
+Exit gate:
+
+1. one origin-capture mechanism has passed two-stage architecture audit;
+2. it has been demonstrated against two distinct regular conversations;
+3. exact origin is established without content inference or heuristic correlation;
+4. missing/stale/ambiguous origin fails closed;
+5. no repository-default fallback is used for a new origin-affine flow.
+
+If no safe mechanism is feasible, H4C0 returns an explicit architecture blocker and stops.
+
+## 5. H4C1 — Origin-Affine Return Routing
+
+Objective: bind downstream Brain-attention delivery for one semantic flow to the exact route established at flow origin.
+
+Target shape:
+
+```text
+Repository R
+
+Chat A
+  ├─ Flow X
+  └─ Flow Z
+
+Chat B
+  └─ Flow Y
+
+X -> Chat A
+Z -> Chat A
+Y -> Chat B
+```
+
+Rules:
+
+- repository identity alone is insufficient to select a destination for new origin-affine flows;
+- the machine-local registry owns the sensitive route-to-conversation mapping;
+- the raw conversation URL remains noncanonical;
+- one conversation/return route owns one serialized lane;
+- multiple flows sharing one chat share that lane rather than creating competing composer locks;
+- distinct chat lanes may progress independently;
+- normal descendants of one semantic flow preserve its return affinity where applicable;
+- transport cannot semantically decide lineage membership;
+- route ownership moves only through explicit Human-authorized transfer;
+- ambiguous post-submit attempts remain bound to the generation on which they were attempted;
+- missing/stale/conflicting affinity fails closed or requires Human rebind;
+- no silent fallback to H4A3/repository-default chat.
+
+Legacy pre-origin-affinity flows may retain an explicitly classified `LEGACY_REPOSITORY_DEFAULT_ROUTE`; this must never be represented as exact origin affinity.
+
+Required conformance:
+
+- same repository, Chat A/Flow X and Chat B/Flow Y: X wakes only A; Y wakes only B;
+- same Chat A, multiple flows: one lane, no simultaneous composer race, fresh pending-subject revalidation after each completed Brain turn;
+- explicit route-generation change: no silent redirect and post-submit ambiguity stays bound to its attempted generation.
+
+## 6. H4D — Unattended Local Wake Transport
+
+Objective: remove the requirement that the Human prepare the ChatGPT UI before wake delivery.
+
+Required production behavior:
+
+```text
+AIOS attention
+      ↓
+local unattended transport
+      ↓
+resolve exact origin route
+      ↓
+make target regular-Chat surface available
+      ↓
+prove exact target/surface safety
+      ↓
+submit one bounded doorbell
+```
+
+The Human must not need to:
+
+- launch or prepare the delivery browser manually;
+- navigate to the Project;
+- open the target conversation;
+- keep the target tab foregrounded;
+- press Send.
+
+The roadmap requires unattended delivery, not a specific browser implementation. `true headless`, visible background browser, or another bounded local mechanism is an Executor HOW decision subject to TASK acceptance.
+
+Local availability boundary:
+
+```text
+host running + authorized authenticated environment available
+=> unattended delivery may proceed
+```
+
+Powered-off-host remote/cloud wake is not authorized by this milestone.
+
+Preserved hard gates include exact conversation identity, regular-Chat validation, Human draft protection, active-generation protection, duplicate suppression, canonical freshness barriers, binding-generation safety, post-send ambiguity no-resend, and no assistant-content extraction.
+
+Failure to prove authentication/surface/route/target must fail closed. Transport must never silently choose another chat or account.
+
+Live exit gate: with the target conversation not pre-opened or prepared by the Human, the transport obtains/restores the authorized delivery environment, reaches the exact target, proves all required safety gates, and submits exactly one doorbell without Human UI preparation.
+
+## 7. H4E — Production Routing & Concurrency Live Conformance
+
+Objective: prove H4C + H4D under real production multi-lane conditions and close the existing H4A4 second-live-lane residual.
+
+Required live cases:
+
+### A. Same repository, different chats
+
+```text
+AIOS-renew / Chat A -> Flow X
+AIOS-renew / Chat B -> Flow Y
+```
+
+Both become eligible for attention.
+
+Required: X -> A exactly once; Y -> B exactly once; no cross-delivery.
+
+### B. Different repositories
+
+Project A is busy/generating while Project B is idle.
+
+Required: B remains independently deliverable; no global `BRAIN_BUSY`.
+
+### C. Same chat, multiple pending subjects
+
+Required: one in-flight Brain wake per conversation lane; later subjects remain durable; canonical state is freshly revalidated after completion; resolved/stale subjects become NOOP; only still-unresolved subjects may send.
+
+### D. Human supersession
+
+A wake is deferred and Human/Brain handles that exact canonical subject manually.
+
+Required: fresh canonical reconciliation -> `RESOLVED_NOOP`; no duplicate Chat turn. Unrelated Human chat activity does not consume the event.
+
+### E. Missing/stale origin route
+
+Required: fail closed; never fallback to repository-default/H4A3 chat.
+
+### F. Route generation change
+
+Required: no redirect of ambiguous attempts; generation-safe pre-submit re-resolution.
+
+### G. Unattended target acquisition
+
+The exact target chat is not pre-opened/prepared.
+
+Required: unattended delivery succeeds without Human navigation.
+
+The historical H4A5 residual `SECOND_SEPARATELY_AUTHORIZED_DEPLOYED_LIVE_LANE_UNAVAILABLE` must be proven closed for production H5 closure; it is no longer waivable under this approved production requirement.
+
+## 8. Final H4B semantic-resume proof
+
+The final H4B proof occurs after H4C0, H4C1, H4D, and H4E.
+
+Use one naturally occurring real unresolved canonical semantic checkpoint.
+
+Required sequence:
+
+```text
+real canonical attention
+        ↓
+origin-affine route resolution
+        ↓
+unattended exact-chat delivery
+        ↓
+selector-only doorbell
+        ↓
+MINIMUM_FRESH_BRAIN_SYNC_V1
+        ↓
+exact unresolved lineage
+        ↓
+Unified State / Flow Card
+        ↓
+selected Brain/Reviewer authority
+        ↓
+at most one semantic continuation step
+        ↓
+new Human/Runtime boundary
+```
+
+Forbidden substitutes: chat memory, wake-payload semantics, assistant transcript scraping, fabricated checkpoint, replay of resolved attention, or historical fixed H4A3 chat unless that exact chat is the captured origin.
+
+## 9. H5 additional mandatory conformance
+
+Existing H5 conditions 1–24 remain.
+
+Add:
+
+25. `ORIGIN_CAPTURE_INTEGRITY` — a new origin-affine flow cannot enter production return routing without exact route affinity established through H4C0.
+26. `SAME_REPOSITORY_MULTI_CHAT_ISOLATION` — flows from separate conversations in one repository cannot cross-deliver or consume one another.
+27. `NO_SILENT_DEFAULT_ROUTE_FALLBACK` — missing/stale/ambiguous/conflicting affinity never redirects to H4A3/repository default.
+28. `EXPLICIT_ROUTE_TRANSFER_SAFETY` — only Human-authorized route transfer moves future affinity; pending/ambiguous attempts obey generation safety.
+29. `UNATTENDED_DELIVERY` — Human is not required to pre-open or navigate to the target conversation.
+30. `TRANSPORT_INDEPENDENCE` — browser/session acquisition and restoration remain delivery mechanisms only and cannot select semantic/lifecycle action.
+31. `PRODUCTION_MULTI_LANE_LIVE_PROOF` — at least two independently authorized deployed live lanes prove isolation under real busy/generation conditions.
+32. `PRODUCTION_SHAPE_SEMANTIC_RESUME` — final H4B unresolved semantic-resume proof uses the origin-affine unattended production path.
+
+H5 is blocked until these conditions and the original H5 matrix are satisfied.
+
+## 10. Explicit non-goals
+
+This plan does not authorize:
+
+- storing raw ChatGPT conversation URLs in canonical TASK/RUN artifacts;
+- chat history as engineering truth;
+- browser-state semantic routing;
+- automatic Human-intent inference;
+- automatic roadmap progression;
+- provider/model-specific lifecycle semantics;
+- assistant-output parsing to select completion or next action;
+- ChatGPT Work as production wake fallback;
+- remote/cloud wake while the local host is powered off;
+- automatic route migration between conversations;
+- rebuilding valid H4A4 queue/dedupe/recovery semantics.
+
+## 11. Approved sequencing
+
+```text
+close/supersede currently proven H4B bounded blocker(s)
+        ↓
+H4C0 ORIGIN CAPTURE FEASIBILITY
+        ↓
+Human/Brain architecture decision gate if feasibility is not CLEAR
+        ↓
+H4C1 ORIGIN-AFFINE RETURN ROUTING
+        ↓
+H4D UNATTENDED LOCAL WAKE
+        ↓
+H4E PRODUCTION ROUTING + MULTI-LANE LIVE CONFORMANCE
+        ↓
+H4B FINAL REAL SEMANTIC RESUME PROOF
+        ↓
+H5 INTEGRATION / CONFORMANCE CLOSURE
+        ↓
+existing post-hardening roadmap
+```
+
+No existing TASK/RUN is retrospectively changed by this planning decision. Approval of this plan does not itself authorize an Executor, create a TASK/RUN, prove implementation, or advance any engineering lifecycle state.
