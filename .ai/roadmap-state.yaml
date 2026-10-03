@@ -2895,6 +2895,8 @@ sequence:
     status: NEXT
     phase: H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
     implementation_task_id: TASK-279
+    task_id: TASK-284
+    task_revision: 1
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
     planning_document: docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
@@ -2942,7 +2944,7 @@ sequence:
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expired_on_task_change: true
-    human_execution_delegation:
+    completed_task283_execution_delegation:
       selected_on: "2026-10-03"
       authority: HUMAN
       task_id: TASK-283
@@ -2951,8 +2953,18 @@ sequence:
       reasoning_effort: high
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
+      expired_on_task_change: true
+    human_execution_delegation:
+      selected_on: "2026-10-03"
+      authority: HUMAN
+      task_id: TASK-284
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
       expires_on_task_change: true
-    execution_profile_status: COMPLETED
+    execution_profile_status: HUMAN_SELECTED
     completed_by:
       task_id: TASK-279
       task_revision: 1
@@ -3282,14 +3294,23 @@ sequence:
           when that environment variable is present. RUN-283-001 resolved canonically;
           later FIFO work remained held by the first unresolved subject within the pass.
       task284_authoring:
-        status: AUDITED_CANDIDATE
-        canonical_binding_state: PRE_AUTHORING_UNBOUND
+        status: CANONICALIZED
+        canonical_binding_state: BOUND
         task_id: TASK-284
         task_revision: 1
+        issue_number: 1405
+        authored_commit_sha: "bb7a7873b8c211c2fb9fd3aade674398fba1965b"
+        packet_fingerprint: "ac398aca2f9ce721be7f4617b9cf95f9b4334504c9a402d3bf8478ee0a34b5c2"
+        construct_fingerprint: "5bf9cd3731dfea8ecc3063e15d271921502e15cb477d3203d218cfb209c00820"
+        reconciled_candidate_fingerprint: "6a508b5dcbfac46364c5bf52aa2853bd1dc4d8874fb7413b935ec1c65bbbb6f9"
         audit_profile: brain-high-value-v3
         audit_stage1: CONSTRUCT
         audit_stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
         audit_outcome: CANDIDATE
+        executor_selection: HUMAN_SELECTED
+        executor: codex
+        model: gpt-6.1-sol
+        reasoning_effort: xhigh
         root_cause: REUSABLE_WORKFLOW_CALL_FRESHNESS_AUTH_CONTEXT_GAP
         scope_summary: >-
           Supply minimum-sufficient actions:read permission and step-local github.token
@@ -3302,7 +3323,7 @@ sequence:
         authority: HUMAN_BRAIN_PLANNING
         task_binding: TASK-284
         root_cause_class: WORKFLOW_CALL_GITHUB_TOKEN_NOT_PROPAGATED
-        next_action: AUTHOR_TASK
+        next_action: EXECUTE_PRIMARY
         prohibitions:
           - NO_BLIND_REDRAIN
           - NO_MACHINE_TOKEN_WORKAROUND_AS_CONFORMANCE
