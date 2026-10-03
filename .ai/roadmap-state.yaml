@@ -3687,8 +3687,13 @@ sequence:
             Existing exact historical sources were reused where current source contracts
             could reconstruct them. No missing family was fabricated solely for coverage.
         progress_exclusion:
-          status: DETERMINISTIC_ONLY
-          gap: NO_BOUNDED_HUMAN_ZERO_WAKE_OBSERVATION_SET_FOR_COMPLETE_PROGRESS_GROUP
+          status: PARTIAL_LIVE
+          proven:
+            - LIVE_DISPATCH_REQUEST_ACCEPTED_OPERATIONAL_RECEIPT
+            - LIVE_AI0S_INVOKED_EXECUTION_LOG_CORROBORATION
+            - LIVE_PUBLICATION_EXECUTION
+            - EXACT_LIVE_TERMINAL_POINTER_ARTIFACT_PROJECTS_ZERO_ATTENTION
+          gap: COMPLETE_PROGRESS_GROUP_IMMUTABLE_LIVE_ZERO_WAKE_SET_UNAVAILABLE
         stale_source_suppression:
           status: PARTIAL_LIVE
           proven:
@@ -3720,7 +3725,7 @@ sequence:
         authority: HUMAN
         authorized_on: "2026-10-03"
         intent: CONTINUE_FEASIBLE_BOUNDED_LIVE_CASES
-        status: AUTHORIZED_IN_PROGRESS
+        status: COMPLETED_TO_CURRENT_FEASIBILITY_FRONTIER
         immediate_cases:
           compaction:
             target_family: PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE
@@ -3788,10 +3793,66 @@ sequence:
               - NO_TIMEOUT_INCREASE
           progress_exclusion_inventory:
             mode: READ_ONLY
-            status: AUTHORIZED
-            note: >-
-              Inventory exact existing producer evidence only. Do not create an execution
-              merely to obtain missing progress boundaries.
+            status: COMPLETED_PARTIAL_EXISTING_EVIDENCE
+            exact_existing_evidence:
+              dispatch_request_accepted:
+                issue_number: 1406
+                comment_id: 5966007028
+                source_workflow_run_id: 37100315809
+                operational_boundary: DISPATCH_REQUEST_ACCEPTED
+                human_visible_status: DISPATCH_ACCEPTED
+                interpretation: >-
+                  Existing producer evidence explicitly records dispatch acceptance as
+                  operational progress and states that it is not RUN, verification,
+                  review or publication success.
+              self_hosted_primary:
+                workflow_run_id: 37100329230
+                workflow: AIOS_SELF_HOSTED_PRIMARY_WAKEUP
+                conclusion: success
+                final_artifact_id: 11266976044
+                final_artifact_name: aios-operational-receipt-v2-primary-attempt-1
+                immutable_final_boundary: TERMINAL_POINTER
+                log_observed_intermediate_boundary: AIOS_INVOKED
+                interpretation: >-
+                  The live run reached a terminal pointer and the execution log shows the
+                  AIOS_INVOKED operational-state write. The workflow overwrites one receipt
+                  path as stronger facts become available, so no immutable intermediate
+                  AIOS_INVOKED artifact remains.
+              publication:
+                workflow_run_id: 37103110115
+                workflow: AIOS_AUTO_PUBLISH_REVIEWED_CANDIDATE
+                conclusion: success
+                publication_execution_observed: true
+                exact_auto_publication_started_signal_exported: false
+            current_projector_contract:
+              non_wake_boundaries_include:
+                - DISPATCH_ACCEPTED
+                - DISPATCH_REQUEST_ACCEPTED
+                - RUNNER_STARTED
+                - AIOS_INVOKED
+                - EXECUTOR_IN_PROGRESS
+                - VERIFICATION_IN_PROGRESS
+                - AUTO_PUBLICATION_STARTED
+                - TERMINAL_POINTER
+              exact_live_artifact_projection:
+                source_artifact_id: 11266976044
+                boundary: TERMINAL_POINTER
+                projected_attention_count: 0
+                basis: CURRENT_PUBLISHED_PROJECTOR_CONTRACT
+            unavailable_exact_existing_live_snapshots:
+              - RUNNER_STARTED
+              - EXECUTOR_IN_PROGRESS
+              - VERIFICATION_IN_PROGRESS
+              - AUTO_PUBLICATION_STARTED
+            conclusion: COMPLETE_PROGRESS_GROUP_LIVE_ZERO_WAKE_SET_UNPROVED
+            interpretation: >-
+              Existing live evidence corroborates dispatch acceptance, AIOS invocation,
+              publication execution and a final non-wake terminal pointer, while the
+              deterministic projector rejects the complete progress matrix. However the
+              current workflows do not retain immutable per-boundary snapshots for the
+              full required live group, and no new execution or instrumentation was
+              authorized solely to manufacture those observations. The strict progress
+              exclusion live case therefore remains partial rather than being inferred.
         deferred_not_currently_feasible:
           - TWO_LANES_REQUIRES_SECOND_SEPARATELY_AUTHORIZED_DEPLOYED_LANE
           - GENERATION_ROLLOVER_REQUIRES_HUMAN_OWNED_BINDING_MUTATION
@@ -3804,16 +3865,16 @@ sequence:
           mutation, or H4B. Compaction is the only immediately executable live state
           mutation with a currently exact canonically resolved target.
       current_live_blocker:
-        code: H4A5_FEASIBLE_BOUNDED_CASES_IN_PROGRESS
+        code: H4A5_CURRENTLY_FEASIBLE_BOUNDED_CASES_EXHAUSTED
         authority: HUMAN_BRAIN_PLANNING
         task_binding: NONE
         root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
-        next_action: COMPLETE_READ_ONLY_PROGRESS_EXCLUSION_INVENTORY
+        next_action: HUMAN_AUTHORIZE_NEXT_OPERATIONAL_CONFORMANCE_SETUP_OR_ACCEPT_REMAINING_GAPS
         prohibitions:
           - NO_ASSUME_SYNTHETIC_EQUALS_LIVE
           - NO_MANUFACTURE_RUN_FAILURE_REVIEW_OR_CONFLICT
+          - NO_UNAUTHORIZED_SOURCE_REPLAY
           - NO_UNAUTHORIZED_SECOND_LANE_OR_GENERATION_MUTATION
-          - NO_NON_TARGET_COMPACTION
           - NO_DRAIN_SUBMISSION
           - NO_H4B_ADVANCE
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
