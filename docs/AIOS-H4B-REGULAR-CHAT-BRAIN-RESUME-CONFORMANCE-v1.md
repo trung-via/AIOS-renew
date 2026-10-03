@@ -5,6 +5,7 @@ TASK-286 adds bounded pre-submit structural diagnosis to the existing local wake
 TASK-287 adds exact-turn-bound content-free completion for a proven submitted stale flight.
 TASK-289 adds bounded terminal FAILURE retirement on a newer canonical revision of the same TASK.
 TASK-290 separates per-event canonical uncertainty from durable flight and pass-local safety blockers.
+TASK-291 applies explicit Human risk-accepted TEMPORARY_PERMISSIVE_WAKE_V1 transport eligibility.
 None of these deterministic acceptances reports a completed regular-Chat semantic resume
 or closes H4B. Runtime owns canonical verification and EVIDENCE; Reviewer owns
 semantic verdict; Publisher owns reviewed publication; Human/Brain owns the live
@@ -59,6 +60,9 @@ Reviewer owner, and requires fresh reconstruction before continuation. Text that
 merely contains `flow_selector: DIAGNOSTIC` is not that structured authorization.
 
 ## RUN-285-001 observation and TASK-286 structural diagnosis
+
+Historical diagnosis: TASK-291 retires ACCOUNT_NOT_UNIQUE as an active eligibility
+cause under the explicit temporary policy below; the other structural causes remain.
 
 TASK-285 r1 engineering acceptance is complete: RUN-285-001 RESULT artifact
 `abf4876b3da997be503707e9579d73651a8135b1`, REVIEW-285-001 PASS, and reviewed/published
@@ -243,6 +247,9 @@ separate Human/Brain work.
 
 ## TASK-290 non-blocking per-event transport prerequisite
 
+Historical TASK-290 policy: TASK-291 below supersedes UNKNOWN suppression and
+pass-blocker propagation while preserving durable-flight and no-resend guarantees.
+
 The [NON_BLOCKING_PER_EVENT_WAKE_V1 contract](AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md#15-task-290-non-blocking-per-event-wake)
 removes the pass-local pseudo-flight created by an unrelated deferred receipt.
 An earlier `DEFERRED/CANONICAL_UNKNOWN` subject retains that classification while
@@ -284,6 +291,50 @@ regular-Chat semantic-resume proof. Human/Brain retains post-publication live-st
 observation, separately authorized live drain, the future real unresolved canonical
 RESULT observation and roadmap/H4B judgment. Executor performs no live drain,
 operational-state rewrite or wake replay and advances neither H4B nor H5.
+
+## TASK-291 temporary permissive transport risk acceptance
+
+The [TEMPORARY_PERMISSIVE_WAKE_V1 contract](AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md#16-task-291-temporary_permissive_wake_v1)
+records the Human's explicit temporary risk acceptance: stable exact target/main/composer
+observations with zero account-selector matches make further profile investigation a
+low-value blocker. Account/profile presence is removed from every local wake surface,
+insertion/acceptance/click, submission proof, generation and completion gate. No
+replacement profile/avatar selector is introduced.
+
+For pending/deferred unattempted doorbells, canonical UNKNOWN is non-suppressing
+transport uncertainty and may reach the browser barriers; it remains UNKNOWN and
+supplies no canonical UNRESOLVED or lifecycle truth. Exact RESOLVED remains a NOOP.
+Non-flight pre-submit failures are per-event; later subjects receive their own
+canonical and browser checks. Real durable flight or AMBIGUOUS attempt alone causes
+LANE_IN_FLIGHT, including for an unknown later subject, and preserves at most one
+actual submission in each finite pass. Held attempts remain proof-only with no blind
+resend; compaction still requires exact resolution and preserves permanent dedupe.
+
+Exact target identity/uniqueness/change checks, unique usable composer/main, composer
+disabled rejection, login/non-regular rejection, draft and active-generation protection,
+exact outbound dedupe, binding/state integrity and capacity, insertion/application
+Send acceptance, durable ambiguity before possible click and exact submission proof
+remain hard interlocks. Existing exact-turn completion/IDLE surroundings and BUSY/IDLE
+release behavior remain; account absence alone cannot hold a proven completed wake.
+
+Human accepts possible stale selector-only arrival when transport cannot establish
+canonical freshness, and the loss of the account-control witness. Brain must still
+perform fresh canonical Brain Sync before any semantic continuation. This is transport
+eligibility only, with no Planner, semantic router, priority selector, lifecycle reducer
+or new retry authority. The rollback/retightening boundary is the three eligibility
+changes and their focused fixtures/documents under later explicit Human/Brain decision
+and the ordinary lifecycle owners. The existing enable gate can pause affected wake
+transport after a safety defect; rollback cannot reset dedupe, discard held ambiguity,
+authorize replay or rewrite historical lineage. See section 16 for the bounded policy.
+
+The focused fixtures cover zero account success, UNKNOWN eligibility, independent
+subject barriers, true-flight/ambiguous serialization and retained hard-interlock
+counterexamples. Runtime owns canonical verification/EVIDENCE, Reviewer owns semantic
+verdict, Publisher owns exact reviewed publication and Human/Brain owns later live
+observation, risk retightening and roadmap choices. Only the four TASK-291 files change;
+no live wake/drain, operational-state rewrite or semantic proof is created here.
+H4B remains **UNPROVED**. Its separate live conformance procedure and closure boundary
+below are unchanged. TASK-291 advances neither H4B nor H5 nor roadmap state.
 
 ## Offline conformance surface
 

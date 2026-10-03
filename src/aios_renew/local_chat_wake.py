@@ -44,8 +44,6 @@ STATUSES = frozenset({"PENDING", "DEFERRED", "AMBIGUOUS", "SUBMITTED", "RESOLVED
 # CSS selector unions return each element once, even when both branches match.
 COMPOSER = ('#prompt-textarea[contenteditable="true"], '
             'main form [contenteditable="true"][role="textbox"][aria-multiline="true"]')
-ACCOUNT = ('[data-testid="profile-button"], [data-testid="accounts-profile-button"], '
-           'button[aria-label*="profile" i]')
 SEND = '[data-testid="send-button"], button[type="submit"][aria-label="Send"]'
 STOP = '[data-testid="stop-button"]'
 NONREGULAR = '[data-workspace-type="team"], [data-workspace-type="enterprise"], [data-workspace-type="business"], [data-testid="work-composer"]'
@@ -66,7 +64,7 @@ REASONS = frozenset({
     "REGISTRY_CONFLICT", "ENABLE_GATE_CLOSED",
 })
 SURFACE_CAUSES = frozenset({
-    "TARGET_URL_MISMATCH", "MAIN_NOT_UNIQUE", "ACCOUNT_NOT_UNIQUE",
+    "TARGET_URL_MISMATCH", "MAIN_NOT_UNIQUE",
     "LOGIN_PRESENT", "NON_REGULAR_SURFACE", "COMPOSER_NOT_UNIQUE",
     "COMPOSER_DISABLED", "MULTIPLE_OR_AMBIGUOUS",
 })
@@ -585,7 +583,7 @@ _COMPOSER_GUARDS = _SEND_GUARDS + """
   const surface = box => location.href.replace(/\\/$/, '') === url &&
     visible(composer).length === 1 && visible(composer)[0] === box &&
     box.getAttribute('aria-disabled') !== 'true' &&
-    visible(account).length === 1 && !visible(stop).length &&
+    !visible(stop).length &&
     !visible(nonregular).length && !visible(login).length && visible('main').length === 1;
   const ready = () => {
     const boxes = visible(composer);
@@ -597,7 +595,7 @@ _COMPOSER_GUARDS = _SEND_GUARDS + """
 
 # Inspection and native editing share one event-loop turn. Never fill, replace,
 # clear, or retry a draft. Focus handlers must leave the same empty surface.
-INSERT = """({url, text, composer, account, stop, nonregular, login, send}) => {
+INSERT = """({url, text, composer, stop, nonregular, login, send}) => {
 """ + _COMPOSER_GUARDS + """
   const boxes = visible(composer);
   if (boxes.length !== 1 || !surface(boxes[0])) return false;
@@ -623,10 +621,10 @@ INSERT = """({url, text, composer, account, stop, nonregular, login, send}) => {
   return surface(box) && equivalent(box);
 }"""
 
-ACCEPT_INSERT = """({url, text, composer, account, stop, nonregular, login, send}) => {
+ACCEPT_INSERT = """({url, text, composer, stop, nonregular, login, send}) => {
 """ + _COMPOSER_GUARDS + "return Boolean(ready()); }"
 
-CLICK = """({url, text, composer, account, stop, nonregular, login, send}) => {
+CLICK = """({url, text, composer, stop, nonregular, login, send}) => {
 """ + _COMPOSER_GUARDS + """
   const button = ready();
   if (!button) return false;
@@ -810,7 +808,7 @@ class BrowserAdapter:
 
     def arguments(self, text):
         return dict(url=self.binding.chat_url, text=text, composer=COMPOSER,
-                    account=ACCOUNT, stop=STOP, nonregular=NONREGULAR, login=LOGIN, send=SEND,
+                    stop=STOP, nonregular=NONREGULAR, login=LOGIN, send=SEND,
                     userTurn=USER_TURN, userBubble=USER_BUBBLE, turnContainer=TURN_CONTAINER)
 
     def user_turn(self, text):
@@ -827,7 +825,6 @@ class BrowserAdapter:
         predicates = (
             ("TARGET_URL_MISMATCH", normalize_chat(self.page.url) != self.binding.chat_url),
             ("MAIN_NOT_UNIQUE", self.visible("main").count() != 1),
-            ("ACCOUNT_NOT_UNIQUE", self.visible(ACCOUNT).count() != 1),
             ("LOGIN_PRESENT", bool(self.visible(LOGIN).count())),
             ("NON_REGULAR_SURFACE", bool(self.visible(NONREGULAR).count())),
             ("COMPOSER_NOT_UNIQUE", composer_count != 1),
@@ -880,7 +877,7 @@ class BrowserAdapter:
             raise WakeBlocked("SUBMISSION_UNPROVEN") from None
         if (self.select_page(self.browser, self.binding.chat_url) is not self.page
                 or self.user_turn(text) != "EXACT" or self.visible(COMPOSER).count() != 1
-                or self.visible("main").count() != 1 or self.visible(ACCOUNT).count() != 1
+                or self.visible("main").count() != 1
                 or self.visible(LOGIN).count() or self.visible(NONREGULAR).count()
                 or self.visible(COMPOSER).text_content() != ""):
             raise WakeBlocked("SUBMISSION_UNPROVEN")
@@ -888,7 +885,7 @@ class BrowserAdapter:
             raise WakeBlocked("SUBMISSION_UNPROVEN")
 
     def generation_state(self):
-        # Only scoped account/composer controls, never assistant output.
+        # Only scoped surface/composer controls, never assistant output.
         composer, cause = self._observe_surface()
         busy = bool(self.visible(STOP).count())
         # A disabled composer is still expected during proven active generation.
@@ -934,9 +931,18 @@ def _original_binding(data, item, repository):
                    item["generation"], repository)
 
 
-def _fresh(projection, event_id):
-    value = projection.observe(event_id)
+def _fresh(projection, event_id, *, allow_unknown=False):
+    try:
+        value = projection.observe(event_id)
+    except WakeBlocked as exc:
+        if not allow_unknown or str(exc) != "CANONICAL_UNKNOWN":
+            raise
+        value = "UNKNOWN"
     if value not in {"UNRESOLVED", "RESOLVED"}:
+        if allow_unknown:
+            # TEMPORARY_PERMISSIVE_WAKE_V1: transport uncertainty only. Never
+            # rewrite UNKNOWN as canonical UNRESOLVED or persist lifecycle truth.
+            return "UNKNOWN"
         raise WakeBlocked("CANONICAL_UNKNOWN")
     return value
 
@@ -994,27 +1000,21 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
             state.write(data)
         except Exception:
             pass
-    # NON_BLOCKING_PER_EVENT_WAKE_V1: canonical uncertainty belongs to one event.
-    # Other pre-submit safety failures block sends for this pass with their own
-    # reason; only durable flight/attempt state can mean LANE_IN_FLIGHT.
-    pass_blocker = None
+    # TEMPORARY_PERMISSIVE_WAKE_V1: each subject crosses its own barriers.
+    # Only durable flight/attempt state can serialize independent subjects.
     for event_id, item in data["events"].items():
         if item["status"] not in {"PENDING", "DEFERRED"}:
             continue
         receipt = dict(event_id=event_id, status="DEFERRED")
         lane_in_flight = data["flight"] is not None or any(
             v["status"] == "AMBIGUOUS" for v in data["events"].values())
-        if lane_in_flight or pass_blocker is not None:
-            receipt.update(dict(reason="LANE_IN_FLIGHT") if lane_in_flight else pass_blocker)
-            try:
-                if _fresh(projection, event_id) == "RESOLVED":
-                    data["events"][event_id] = record("RESOLVED_NOOP")
-                    state.write(data)
-                    receipts.append(dict(event_id=event_id, status="NOOP", reason="CANONICALLY_RESOLVED"))
-                    continue
-            except WakeBlocked:
-                receipt["reason"] = "CANONICAL_UNKNOWN"
-                receipt.pop("surface_cause", None)
+        if lane_in_flight:
+            receipt["reason"] = "LANE_IN_FLIGHT"
+            if _fresh(projection, event_id, allow_unknown=True) == "RESOLVED":
+                data["events"][event_id] = record("RESOLVED_NOOP")
+                state.write(data)
+                receipts.append(dict(event_id=event_id, status="NOOP", reason="CANONICALLY_RESOLVED"))
+                continue
             item.update(status="DEFERRED", reason=receipt["reason"])
             state.write(data)
             receipts.append(receipt)
@@ -1025,7 +1025,7 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
             current = binding_provider()
             if current != binding:
                 raise WakeBlocked("BINDING_GENERATION_CHANGED")
-            if _fresh(projection, event_id) == "RESOLVED":
+            if _fresh(projection, event_id, allow_unknown=True) == "RESOLVED":
                 data["events"][event_id] = record("RESOLVED_NOOP")
                 state.write(data)
                 raise _Resolved()
@@ -1068,8 +1068,6 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
             if not attempted and isinstance(exc, WakeBlocked) and exc.surface_cause is not None:
                 receipt["surface_cause"] = exc.surface_cause
         receipts.append(receipt)
-        if receipt["status"] == "DEFERRED" and receipt["reason"] != "CANONICAL_UNKNOWN":
-            pass_blocker = {key: receipt[key] for key in ("reason", "surface_cause") if key in receipt}
     return receipts
 
 
@@ -1101,8 +1099,10 @@ def operate(repository, binding, event_id=None, adapter_factory=BrowserAdapter,
             original = data["events"].get(recovery)
             if original is None or original["status"] not in {"PENDING", "DEFERRED", "AMBIGUOUS"}:
                 raise WakeBlocked("INVALID_INPUT")
-            # Missing/conflicting source evidence retains the original untouched.
-            if _fresh(projection, recovery) == "RESOLVED":
+            # Unattempted recovery shares pending transport eligibility; held
+            # attempts still require exact resolution or proof-only reconciliation.
+            if _fresh(projection, recovery,
+                      allow_unknown=original["status"] in {"PENDING", "DEFERRED"}) == "RESOLVED":
                 data["events"][recovery] = record("RESOLVED_NOOP")
                 if data["flight"] and data["flight"]["event_id"] == recovery:
                     data["flight"] = None

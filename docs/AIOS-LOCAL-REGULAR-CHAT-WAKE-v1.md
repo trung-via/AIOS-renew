@@ -257,9 +257,10 @@ attempted until exact proof, canonical resolution or Human reconciliation closes
 Within one lane, only one wake may be in submission/Brain-generation flight at a time.
 Additional events remain pending. After each completion the transport revalidates every
 pending subject, discards stale/resolved subjects as NOOP, and submits only the next
-send-eligible still-unresolved event in stable admission order. An individually UNKNOWN
-subject remains deferred while later subjects receive their own fresh observation,
-as specified by `NON_BLOCKING_PER_EVENT_WAKE_V1` in section 15. It must not semantically
+send-eligible event in stable admission order. Under the Human risk-accepted
+`TEMPORARY_PERMISSIVE_WAKE_V1` policy in section 16, UNKNOWN is transport uncertainty
+and may proceed through browser barriers; exact RESOLVED remains a NOOP. Each
+independent subject receives its own observation and browser checks. It must not semantically
 coalesce unrelated attention subjects.
 For a proven submitted flight whose transient BUSY state was missed, the exact-turn-bound
 structural completion contract in section 13 supplies an additional fail-closed release
@@ -564,6 +565,9 @@ drain, local-state recovery, H4B evidence manufacture or roadmap advancement.
 
 ## 15. TASK-290 non-blocking per-event wake
 
+Historical TASK-290 policy: section 16 supersedes its UNKNOWN suppression and
+pass-blocker propagation. Its durable-flight and no-resend guarantees remain.
+
 `NON_BLOCKING_PER_EVENT_WAKE_V1` separates an individual canonical deferral from
 durable lane flight and from a safety blocker that lasts for one finite pass.
 The supplied TASK-290 context records an earlier `DEFERRED/CANONICAL_UNKNOWN`
@@ -634,3 +638,73 @@ H4B remains **UNPROVED**. Human/Brain owns post-publication live-state observati
 any separately authorized live drain and semantic-resume proof, and roadmap/H4B
 decisions. This transport prerequisite creates no live wake, operational-state
 rewrite, manufactured semantic proof, H4B closure or H5 start.
+
+
+## 16. TASK-291 TEMPORARY_PERMISSIVE_WAKE_V1
+
+`TEMPORARY_PERMISSIVE_WAKE_V1` is an explicit Human risk-accepted temporary transport
+policy. The supplied TASK-291 context records five repeated exact-target snapshots
+with one main and one composer but zero matches for every bounded account/profile
+selector, plus a metadata-only probe with no replacement control. Human prioritizes
+leaving this low-value H4B blocker behind over further account-selector investigation.
+These supplied observations explain the policy; this candidate creates no live proof.
+
+The policy changes exactly three transport suppressors:
+
+- Account/profile presence and uniqueness are no longer eligibility gates anywhere:
+  pre-submit, native insertion, application acceptance, immediate click, exact
+  submission proof, generation-state observation and completion-witness surroundings.
+  `ACCOUNT_NOT_UNIQUE` is retired from active surface causes. No replacement avatar
+  or profile selector is added. Exact target, login and non-regular checks remain.
+- A not-yet-submitted subject with `CANONICAL_UNKNOWN` may proceed through all browser
+  barriers, including insertion and immediate pre-click checks. UNKNOWN remains
+  transport uncertainty, never canonical UNRESOLVED and never persisted as lifecycle
+  truth. Exact proven RESOLVED still becomes deterministic `NOOP/CANONICALLY_RESOLVED`
+  without attaching for that subject. Exact UNRESOLVED remains eligible. Recovery of
+  a pending/deferred original uses the same policy; held ambiguous attempts and
+  compaction still require exact proof or exact canonical resolution.
+- A non-flight pre-submit failure is local to that subject. Later independent subjects
+  cross their own canonical, binding and browser barriers in stable admission order.
+  A remaining staged or Human draft still blocks each later subject that encounters it.
+  Only real durable flight or AMBIGUOUS attempted-submission state emits/stores
+  `LANE_IN_FLIGHT`; UNKNOWN does not override that real serialization. Exact RESOLVED
+  can still retire behind a flight. At most one actual submission can occur per pass.
+
+Preserved hard interlocks are exact target URL and unique selected page (including
+change/duplicate-page rechecks), unique visible main and usable composer, composer
+disabled rejection, `LOGIN_PRESENT`, `NON_REGULAR_SURFACE`, active generation,
+Human draft protection, exact outbound dedupe, binding-generation integrity, local
+state locking/validation/capacity and durable writes, native insertion and application
+Send acceptance, immediate pre-click validation, exact outbound submission proof,
+permanent dedupe, durable AMBIGUOUS plus flight before the possible click, proof-only
+ambiguous reconciliation and no blind resend. Completion still requires the existing
+exact-turn structural witness surrounded by target/surface IDLE checks, or observed
+BUSY then IDLE. Durable schemas, timeout/recheck budgets and cadence are unchanged.
+
+The accepted residual risk is that an UNKNOWN source can deliver a selector-only
+wake whose canonical status Brain must freshly reconstruct, and account-control
+absence no longer supplies an authentication/regular-surface witness. The bounded
+rollback/retightening surface is these eligibility gates in the local wake module
+and their focused fixtures/these two documents, under a later explicit Human/Brain
+decision and ordinary TASK/Runtime/Reviewer/Publisher process. Disable the existing
+local wake enable gate to pause transport if an affected wrong-target, draft,
+duplicate or ambiguous-send defect is observed before relying on it downstream.
+Retightening must preserve permanent dedupe and held attempts; no local-state reset,
+blind resend, historical lineage deletion or new launcher is authorized by rollback.
+This temporary policy grants no future automatic risk waiver or automatic expiry
+that rewrites lifecycle truth.
+
+Focused synthetic fixtures cover zero account matches through production surface,
+send/proof/generation/completion paths, actual JavaScript account absence/movement,
+UNKNOWN at all pending barriers without lifecycle reclassification, independent
+pre-submit failures, true-flight/ambiguous serialization, resolved NOOP/dedupe and
+representative retained interlock counterexamples. No semantic router, Planner,
+lifecycle reducer, retry authority or priority selector is added. A wake remains
+only the existing selector-only doorbell with `fresh_brain_sync_required: true`.
+
+Runtime alone owns the canonical commands recorded in section 15 and EVIDENCE.
+Reviewer owns semantic verdict; Publisher owns exact reviewed publication. Human/Brain
+owns any later live observation, risk retightening and roadmap decision. Executor
+changes only the four TASK-291 files and commits the candidate without live drain,
+wake replay, operational-state rewrite or publication. H4B remains **UNPROVED**;
+this policy supplies no semantic-resume proof, H4B closure, H5 start or roadmap advance.

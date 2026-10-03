@@ -14,6 +14,10 @@ import pytest
 from aios_renew import local_chat_wake as wake
 from aios_renew import brain_attention as attention
 
+# Historical DOM shapes are fixtures only; production no longer queries accounts.
+HISTORICAL_ACCOUNT = ('[data-testid="profile-button"], [data-testid="accounts-profile-button"], '
+                      'button[aria-label*="profile" i]')
+
 EVENT = "terminal:RESULT:RUN-fixture-001:" + "a" * 40
 
 
@@ -31,7 +35,7 @@ def test_generic_attention_uses_durable_deferral_freshness_and_duplicate_preserv
     assert stored(binding)["events"][event]["status"] == "DEFERRED"
     assert not adapter.inserts and not adapter.submits
     result = deliver(event, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("UNKNOWN"))
-    assert result["reason"] == "CANONICAL_UNKNOWN" and event in stored(binding)["events"]
+    assert result["reason"] == "DRAFT_PRESENT" and event in stored(binding)["events"]
     wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: pytest.fail("resolved source must not attach"),
                  projection=Projection("RESOLVED"), compact=True)
     assert event not in stored(binding)["events"]
@@ -63,7 +67,7 @@ def test_recovery_reuses_existing_subject_and_never_enqueues_its_own_identity(bi
     deliver(event, wake.REPOSITORY, binding, lambda _: adapter)
     recovery = attention.attention(attention.RECOVERY, dict(original_event_id=event)).event_id
     before = binding.state_path.read_bytes()
-    assert deliver(recovery, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("UNKNOWN"))["reason"] == "CANONICAL_UNKNOWN"
+    assert deliver(recovery, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("UNKNOWN"))["reason"] == "DRAFT_PRESENT"
     assert binding.state_path.read_bytes() == before
     adapter.block = None
     assert deliver(recovery, wake.REPOSITORY, binding, lambda _: adapter)["status"] == "SUBMITTED"
@@ -504,23 +508,22 @@ def test_failure_task_revision_drain_preserves_unrelated_freshness_and_once_per_
     receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection,
                             binding_provider=lambda: current[0])
     assert receipts[0] == dict(event_id=fixture.event, status="NOOP", reason="CANONICALLY_RESOLVED")
-    assert len(attachments) == (2 if block == "canonical" else 1)
+    assert len(attachments) == (2 if block == "draft" else 1)
     assert projection.calls[0] == fixture.event
-    assert all(event in projection.calls for event in others)
+    assert others[0] in projection.calls
+    if block == "binding":
+        assert others[1] not in projection.calls  # Its own binding gate fails first.
+    else:
+        assert others[1] in projection.calls
     assert projection.calls.count(others[0]) == (1 if block == "draft" else 2 if block == "binding" else 3)
-    assert projection.calls.count(others[1]) == (3 if block == "canonical" else 1)
+    assert projection.calls.count(others[1]) == (0 if block == "binding" else 1)
     assert len(adapter.submits) == (1 if block in {None, "canonical", "ambiguous"} else 0)
     assert all(fixture.event not in text for text in adapter.inserts)
     data = stored(binding)
-    if block == "canonical":
-        assert data["events"][others[0]] == wake.record("DEFERRED", reason="CANONICAL_UNKNOWN")
-        assert data["events"][others[1]] == wake.record("SUBMITTED", binding.generation)
-        assert adapter.submits == [wake.doorbell(others[1], wake.REPOSITORY)]
-        assert data["flight"] == dict(event_id=others[1], seen_busy=False)
-    elif block in {None, "ambiguous"}:
+    if block in {None, "canonical", "ambiguous"}:
         assert data["events"][others[1]] == wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
         assert adapter.submits == [wake.doorbell(others[0], wake.REPOSITORY)]
-        assert data["events"][others[0]]["status"] == ("SUBMITTED" if block is None else "AMBIGUOUS")
+        assert data["events"][others[0]]["status"] == ("AMBIGUOUS" if block == "ambiguous" else "SUBMITTED")
         assert data["flight"]["event_id"] == others[0]
         deliver(others[0], wake.REPOSITORY, binding, factory, projection=projection)
         wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection)
@@ -533,20 +536,19 @@ def test_failure_task_revision_drain_preserves_unrelated_freshness_and_once_per_
 
 
 @pytest.mark.parametrize("conflict", ["missing-task", "main-drift"])
-def test_failure_task_revision_unknown_drain_defers_without_browser(monkeypatch, binding, conflict):
+def test_failure_task_revision_unknown_drain_is_transport_eligible(monkeypatch, binding, conflict):
     fixture = canonical_fixture(monkeypatch, "FAILURE")
     if conflict == "missing-task":
         del fixture.blobs[(fixture.main_sha, fixture.task_path)]
     else:
-        fixture.drift.append(fixture.main)  # Even equal revision cannot authorize Send during movement.
-    state = wake.State(binding.state_path)
-    with state.locked() as data:
-        data["events"][fixture.event] = wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
-        state.write(data)
-    receipts = wake.operate(wake.REPOSITORY, binding, projection=fixture.projection,
-                            adapter_factory=lambda _: pytest.fail("unknown TASK cannot authorize attachment"))
-    assert receipts == [dict(event_id=fixture.event, status="DEFERRED", reason="CANONICAL_UNKNOWN")]
-    assert stored(binding)["events"][fixture.event]["status"] == "DEFERRED"
+        fixture.drift.append(fixture.main)
+    adapter = RecoveryAdapter(binding)
+    receipt = deliver(fixture.event, binding.repository, binding, lambda _: adapter,
+                      projection=fixture.projection)
+    assert receipt["status"] == "SUBMITTED"
+    assert stored(binding)["events"][fixture.event] == wake.record("SUBMITTED", binding.generation)
+    assert len(adapter.submits) == 1
+    assert fixture.projection.observe(fixture.event) == "UNKNOWN"
 
 
 def test_canonical_remote_failure_is_sanitized_unknown(monkeypatch):
@@ -572,16 +574,16 @@ def test_deferred_attention_survives_and_repeats_freshness_before_retry(binding,
 
 @pytest.mark.parametrize("boundary", ["insert", "click"])
 @pytest.mark.parametrize("classification", ["RESOLVED", "UNKNOWN"])
-def test_immediate_barrier_catches_canonical_race_without_sending(binding, boundary, classification):
+def test_immediate_barrier_stops_resolved_but_allows_unknown_transport(binding, boundary, classification):
     projection = Projection()
     def race(at):
         if at == boundary:
             projection.value = classification
     adapter = RecoveryAdapter(binding, race=race)
     result = deliver(EVENT, wake.REPOSITORY, binding, lambda _: adapter, projection=projection)
-    assert result["status"] == ("NOOP" if classification == "RESOLVED" else "DEFERRED")
-    assert not adapter.submits
-    assert stored(binding)["events"][EVENT]["status"] == ("RESOLVED_NOOP" if classification == "RESOLVED" else "DEFERRED")
+    assert result["status"] == ("NOOP" if classification == "RESOLVED" else "SUBMITTED")
+    assert len(adapter.submits) == (0 if classification == "RESOLVED" else 1)
+    assert stored(binding)["events"][EVENT]["status"] == ("RESOLVED_NOOP" if classification == "RESOLVED" else "SUBMITTED")
 
 
 def test_human_chat_activity_is_not_canonical_resolution(binding):
@@ -645,54 +647,36 @@ def test_generation_reuse_and_rollback_fail_closed(binding):
 
 
 @pytest.mark.parametrize("proof", [True, False])
-def test_unknown_event_does_not_block_first_eligible_subject_or_create_phantom_flight(binding, proof):
-    first = generic_event()
-    second, third = EVENT.replace("001", "002"), EVENT.replace("001", "003")
+def test_unknown_event_is_eligible_and_real_flight_serializes_later_subjects(binding, proof):
+    first, second, third = generic_event(), EVENT.replace("001", "002"), EVENT.replace("001", "003")
     state = wake.State(binding.state_path)
     with state.locked() as data:
-        data["events"][first] = wake.record("DEFERRED", reason="CANONICAL_UNKNOWN")
-        for event in (second, third):
-            data["events"][event] = wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
+        for event in (first, second, third):
+            data["events"][event] = wake.record("DEFERRED", reason="CANONICAL_UNKNOWN")
         state.write(data)
-    assert stored(binding)["flight"] is None
-    adapter, attachments = RecoveryAdapter(binding, proof=proof), []
-    projection = Projection(lambda event: "UNKNOWN" if event == first else "UNRESOLVED")
-
-    def factory(bound):
-        assert bound == binding
-        attachments.append(bound)
-        return adapter
-
-    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection)
+    adapter = RecoveryAdapter(binding, proof=proof)
+    projection = Projection(lambda event: "UNKNOWN" if event != second else "UNRESOLVED")
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=projection)
     assert receipts == [
-        dict(event_id=first, status="DEFERRED", reason="CANONICAL_UNKNOWN"),
-        dict(event_id=second, status="SUBMITTED" if proof else "BLOCKED",
+        dict(event_id=first, status="SUBMITTED" if proof else "BLOCKED",
              reason="EXACT_USER_TURN_PROVEN" if proof else "SUBMISSION_UNPROVEN"),
+        dict(event_id=second, status="DEFERRED", reason="LANE_IN_FLIGHT"),
         dict(event_id=third, status="DEFERRED", reason="LANE_IN_FLIGHT"),
     ]
-    assert projection.calls == [first, second, second, second, third]
-    assert attachments == [binding]
-    assert adapter.inserts == adapter.submits == [wake.doorbell(second, wake.REPOSITORY)]
-    data = stored(binding)
-    assert list(data["events"]) == [first, second, third]
-    assert data["events"][first] == wake.record("DEFERRED", reason="CANONICAL_UNKNOWN")
-    assert data["events"][second] == wake.record(
+    assert projection.calls == [first, first, first, second, third]
+    assert adapter.inserts == adapter.submits == [wake.doorbell(first, wake.REPOSITORY)]
+    assert stored(binding)["flight"] == dict(event_id=first, seen_busy=False)
+    assert stored(binding)["events"][first] == wake.record(
         "SUBMITTED" if proof else "AMBIGUOUS", binding.generation,
         "NONE" if proof else "ATTEMPT_REQUIRES_HUMAN")
-    assert data["flight"] == dict(event_id=second, seen_busy=False)
-
-    # Finite retries and duplicate intake cannot resend the selected subject or
-    # send the later unresolved subject through the real/ambiguous flight.
-    deliver(second, wake.REPOSITORY, binding, factory, projection=projection)
-    wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection)
-    assert adapter.submits == [wake.doorbell(second, wake.REPOSITORY)]
-    assert stored(binding)["flight"]["event_id"] == second
-    assert stored(binding)["events"][first] == wake.record("DEFERRED", reason="CANONICAL_UNKNOWN")
+    deliver(first, wake.REPOSITORY, binding, lambda _: adapter, projection=projection)
+    wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=projection)
+    assert len(adapter.submits) == 1
     assert stored(binding)["events"][third] == wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
 
 
 @pytest.mark.parametrize("compact", [False, True])
-def test_later_resolved_subject_noops_without_browser_despite_earlier_unknown_and_keeps_dedupe(binding, compact):
+def test_later_resolved_subject_noops_without_its_browser_despite_earlier_unknown_draft_and_keeps_dedupe(binding, compact):
     first, second = generic_event(), EVENT.replace("001", "002")
     state = wake.State(binding.state_path)
     with state.locked() as data:
@@ -700,17 +684,20 @@ def test_later_resolved_subject_noops_without_browser_despite_earlier_unknown_an
         data["events"][second] = wake.record("DEFERRED", reason="LANE_IN_FLIGHT")
         state.write(data)
     projection = Projection(lambda event: "UNKNOWN" if event == first else "RESOLVED")
-    no_browser = lambda _: pytest.fail("unknown and resolved subjects must not attach")
+    adapter = RecoveryAdapter(binding, "DRAFT_PRESENT")
+    def no_browser(_):
+        assert projection.calls[-1] == first
+        return adapter
     receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=no_browser,
                             projection=projection, compact=compact)
     assert receipts == [
-        dict(event_id=first, status="DEFERRED", reason="CANONICAL_UNKNOWN"),
+        dict(event_id=first, status="DEFERRED", reason="DRAFT_PRESENT"),
         dict(event_id=second, status="NOOP", reason="CANONICALLY_RESOLVED"),
     ]
     assert projection.calls == [first, second] + ([second] if compact else [])
     data = stored(binding)
     assert data["flight"] is None
-    assert data["events"][first] == wake.record("DEFERRED", reason="CANONICAL_UNKNOWN")
+    assert data["events"][first] == wake.record("DEFERRED", reason="DRAFT_PRESENT")
     if compact:
         assert second not in data["events"]
         assert data["tombstones"] == [wake.event_digest(second)]
@@ -731,61 +718,59 @@ def test_later_resolved_subject_noops_without_browser_despite_earlier_unknown_an
     ("BINDING_GENERATION_CHANGED", "preflight"),
     ("BINDING_GENERATION_CHANGED", "insert"), ("BINDING_GENERATION_CHANGED", "click"),
 ])
-def test_pre_submit_blocker_keeps_its_reason_without_flight_and_allows_later_resolved_noop(binding, reason, boundary):
-    first = EVENT
-    second, unknown, resolved = (EVENT.replace("001", number) for number in ("002", "003", "004"))
+def test_pre_submit_blocker_is_not_propagated_to_independent_later_subject(binding, reason, boundary):
+    first, second, resolved = EVENT, EVENT.replace("001", "002"), EVENT.replace("001", "003")
     state = wake.State(binding.state_path)
     with state.locked() as data:
-        for event in (first, second, unknown, resolved):
-            data["events"][event] = wake.record("DEFERRED", reason="CANONICAL_UNKNOWN")
+        for event in (first, second, resolved):
+            data["events"][event] = wake.record()
         state.write(data)
-    projection = Projection(lambda event: "RESOLVED" if event == resolved else
-                            "UNKNOWN" if event == unknown else "UNRESOLVED")
     current, attachments = [binding], []
     replacement = wake.Binding(binding.chat_url, binding.cdp_endpoint, binding.state_path, binding.generation + 1)
-    cause = "ACCOUNT_NOT_UNIQUE" if reason == "SURFACE_UNPROVEN" else None
-
+    cause = "MAIN_NOT_UNIQUE" if reason == "SURFACE_UNPROVEN" else None
     def fail_at(stage):
-        if stage != boundary:
-            return
-        if reason == "BINDING_GENERATION_CHANGED":
-            current[0] = replacement
-        else:
-            raise wake.WakeBlocked(reason, surface_cause=cause)
-
+        if stage == boundary:
+            if reason == "BINDING_GENERATION_CHANGED":
+                current[0] = replacement
+            else:
+                raise wake.WakeBlocked(reason, surface_cause=cause)
     class BlockedAdapter(RecoveryAdapter):
         def check(self, text):
             fail_at("preflight")
-
-    adapter = BlockedAdapter(binding, race=fail_at)
+    blocked = BlockedAdapter(binding, race=fail_at)
+    healthy = RecoveryAdapter(binding)
+    def observe(event):
+        if event == second:
+            current[0] = binding  # Independent subject encounters a stable binding.
+        return "RESOLVED" if event == resolved else "UNKNOWN"
+    def provider():
+        # First preflight failure occurs before attachment; later subject resets.
+        observed = current[0]
+        current[0] = binding
+        return observed
     if reason == "BINDING_GENERATION_CHANGED" and boundary == "preflight":
-        current[0] = replacement
-
+        # Change only the second provider read in the first barrier.
+        reads = []
+        def provider():
+            reads.append(True)
+            return replacement if len(reads) == 2 else current[0]
+    projection = Projection(observe)
     def factory(bound):
-        attachments.append(bound)
-        assert bound == binding
-        return adapter
-
-    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection,
-                            binding_provider=lambda: current[0])
-    blocked_receipts = [dict(event_id=event, status="DEFERRED", reason=reason) for event in (first, second)]
-    if cause is not None:
-        for receipt in blocked_receipts:
-            receipt["surface_cause"] = cause
-    assert receipts == blocked_receipts + [
-        dict(event_id=unknown, status="DEFERRED", reason="CANONICAL_UNKNOWN"),
-        dict(event_id=resolved, status="NOOP", reason="CANONICALLY_RESOLVED"),
-    ]
-    assert attachments == ([] if reason == "BINDING_GENERATION_CHANGED" and boundary == "preflight" else [binding])
-    assert not adapter.submits
-    assert adapter.inserts == ([wake.doorbell(first, wake.REPOSITORY)] if boundary == "click" else [])
-    assert projection.calls[-3:] == [second, unknown, resolved]
-    data = stored(binding)
-    assert data["flight"] is None
-    assert all(data["events"][event] == wake.record("DEFERRED", reason=reason) for event in (first, second))
-    assert data["events"][unknown] == wake.record("DEFERRED", reason="CANONICAL_UNKNOWN")
-    assert data["events"][resolved] == wake.record("RESOLVED_NOOP")
-    assert list(data["events"]) == [first, second, unknown, resolved]
+        attachments.append(projection.calls[-1])
+        return blocked if projection.calls[-1] == first else healthy
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory,
+                            projection=projection, binding_provider=provider)
+    expected = dict(event_id=first, status="DEFERRED", reason=reason)
+    if cause:
+        expected["surface_cause"] = cause
+    assert receipts == [expected,
+        dict(event_id=second, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN"),
+        dict(event_id=resolved, status="NOOP", reason="CANONICALLY_RESOLVED")]
+    assert not blocked.submits
+    assert healthy.submits == [wake.doorbell(second, wake.REPOSITORY)]
+    assert stored(binding)["flight"] == dict(event_id=second, seen_busy=False)
+    assert stored(binding)["events"][first] == wake.record("DEFERRED", reason=reason)
+    assert stored(binding)["events"][resolved] == wake.record("RESOLVED_NOOP")
 
 
 def test_fifo_flight_preserves_distinct_subjects_and_revalidates_after_completion(binding):
@@ -947,7 +932,7 @@ def test_queued_generic_subjects_and_later_barriers_have_independent_bounded_obs
     monkeypatch.setattr(attention, "freshness", freshness)
     receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=projection)
     assert [(r["event_id"], r["reason"]) for r in receipts] == [
-        (first, "CANONICAL_UNKNOWN"), (second, "CANONICALLY_RESOLVED")]
+        (first, "DRAFT_PRESENT"), (second, "CANONICALLY_RESOLVED")]
     assert windows == [(first, 30), (second, 30)]
     assert stored(binding)["events"][first]["status"] == "DEFERRED"
     assert stored(binding)["events"][second]["status"] == "RESOLVED_NOOP"
@@ -1036,7 +1021,7 @@ def test_api_operation_ceiling_uses_the_subject_deadline_and_rejects_late_succes
 
 def test_follow_up_drain_retries_unknown_without_schedule_and_stops_after_one_submission(monkeypatch, binding):
     first, second = generic_event(), EVENT.replace("001", "002")
-    adapter = RecoveryAdapter(binding)
+    adapter = RecoveryAdapter(binding, "DRAFT_PRESENT")
     for event in (first, second):
         deliver(event, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("UNKNOWN"))
     monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_ENABLED", "true")
@@ -1046,6 +1031,8 @@ def test_follow_up_drain_retries_unknown_without_schedule_and_stops_after_one_su
         passes.append(len(passes))
         # Freshness becomes available at the finite second opportunity.
         value = "UNKNOWN" if len(passes) == 1 else "UNRESOLVED"
+        if len(passes) == 2:
+            adapter.block = None
         return original_operate(*args, adapter_factory=lambda _: adapter, projection=Projection(value), **kwargs)
     monkeypatch.setattr(wake, "operate", operate)
     monkeypatch.setattr(wake.time, "sleep", lambda interval: sleeps.append(interval))
@@ -1066,10 +1053,11 @@ def test_duplicate_direct_fallback_concurrent_follow_ups_and_optional_schedule_n
     fallback = attention.project_source(attention.load_json(attention.canonical(source)), pointer)[0].event_id
     assert direct == fallback
     second = EVENT.replace("001", "002")
-    adapter = RecoveryAdapter(binding, proof=proof)
+    adapter = RecoveryAdapter(binding, block="DRAFT_PRESENT", proof=proof)
     for event in (direct, fallback, second):
         deliver(event, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("UNKNOWN"))
     assert list(stored(binding)["events"]) == [direct, second]
+    adapter.block = None
     entered, release = ThreadEvent(), ThreadEvent()
     original_check = adapter.check
     def check(text):
@@ -1426,13 +1414,13 @@ class Page:
         self.payload = wake.doorbell(EVENT, wake.REPOSITORY)
         self.outbound = self.payload
         self.send_enabled = self.disabled = False
-        self.counts = {"main": 1, wake.COMPOSER: 1, wake.ACCOUNT: 1}
+        self.counts = {"main": 1, wake.COMPOSER: 1, HISTORICAL_ACCOUNT: 1}
         self.evaluations = []
         self.resolutions = []
         self.race = None
 
     def locator(self, selector):
-        assert selector in {"main", wake.COMPOSER, wake.ACCOUNT, wake.STOP, wake.NONREGULAR, wake.LOGIN}
+        assert selector in {"main", wake.COMPOSER, HISTORICAL_ACCOUNT, wake.STOP, wake.NONREGULAR, wake.LOGIN}
         return Locator(self, selector)
 
     def wait_for_function(self, script, *, arg, timeout):
@@ -1447,7 +1435,7 @@ class Page:
 
     def evaluate(self, script, args):
         assert args["text"] == self.payload
-        assert args["composer"] == wake.COMPOSER and args["account"] == wake.ACCOUNT
+        assert args["composer"] == wake.COMPOSER and "account" not in args
         if script == wake.RESOLVE_USER_TURN:
             self.resolutions.append(script)
             count = self.counts.get("outbound", 0)
@@ -1502,14 +1490,19 @@ class LocalSurfaceAdapter(wake.BrowserAdapter):
         pass
 
 
-def test_unknown_after_insertion_cannot_bypass_remaining_draft_for_later_subjects(binding):
+def test_failed_insertion_leaves_draft_checked_independently_for_later_subjects(binding):
     second, third, resolved = (EVENT.replace("001", number) for number in ("002", "003", "004"))
     state = wake.State(binding.state_path)
     with state.locked() as data:
         for event in (EVENT, second, third, resolved):
             data["events"][event] = wake.record()
         state.write(data)
-    page, attachments = Page(binding.chat_url), []
+    class RejectedInsertPage(Page):
+        def wait_for_function(self, script, *, arg, timeout):
+            if script == wake.ACCEPT_INSERT:
+                raise RuntimeError("application did not accept insertion")
+            return super().wait_for_function(script, arg=arg, timeout=timeout)
+    page, attachments = RejectedInsertPage(binding.chat_url), []
     adapter = LocalSurfaceAdapter(binding, page)
 
     def observe(event):
@@ -1527,18 +1520,18 @@ def test_unknown_after_insertion_cannot_bypass_remaining_draft_for_later_subject
     projection = Projection(observe)
     receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=factory, projection=projection)
     assert receipts == [
-        dict(event_id=EVENT, status="DEFERRED", reason="CANONICAL_UNKNOWN"),
+        dict(event_id=EVENT, status="DEFERRED", reason="INSERT_BLOCKED"),
         dict(event_id=second, status="DEFERRED", reason="DRAFT_PRESENT"),
         dict(event_id=third, status="DEFERRED", reason="DRAFT_PRESENT"),
         dict(event_id=resolved, status="NOOP", reason="CANONICALLY_RESOLVED"),
     ]
-    assert projection.calls == [EVENT, EVENT, EVENT, second, third, resolved]
-    assert attachments == [binding, binding]
-    assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT]
+    assert projection.calls == [EVENT, EVENT, second, third, resolved]
+    assert attachments == [binding, binding, binding]
+    assert page.evaluations == [wake.INSERT]
     assert page.draft == wake.doorbell(EVENT, wake.REPOSITORY)
     data = stored(binding)
     assert data["flight"] is None
-    assert data["events"][EVENT] == wake.record("DEFERRED", reason="CANONICAL_UNKNOWN")
+    assert data["events"][EVENT] == wake.record("DEFERRED", reason="INSERT_BLOCKED")
     assert all(data["events"][event] == wake.record("DEFERRED", reason="DRAFT_PRESENT")
                for event in (second, third))
     assert data["events"][resolved] == wake.record("RESOLVED_NOOP")
@@ -1779,13 +1772,12 @@ def test_idle_without_unambiguous_exact_completion_holds_pending_without_send(bi
     assert page.evaluations.count(wake.CLICK) == 1 and len(page.completions) == 1
 
 
-@pytest.mark.parametrize("fault", ["busy", "draft", "disabled", "account", "login", "nonregular", "target", "duplicate_target", "adapter_error"])
+@pytest.mark.parametrize("fault", ["busy", "draft", "disabled", "login", "nonregular", "target", "duplicate_target", "adapter_error"])
 def test_completion_target_surface_and_generation_uncertainty_never_sends_pending(binding, fault):
     page, holder, second = submitted_with_pending(binding)
     if fault == "busy": page.counts[wake.STOP] = 1
     if fault == "draft": page.draft = "Synthetic Human draft"
     if fault == "disabled": page.disabled = True
-    if fault == "account": page.counts[wake.ACCOUNT] = 0
     if fault == "login": page.counts[wake.LOGIN] = 1
     if fault == "nonregular": page.counts[wake.NONREGULAR] = 1
     if fault == "target": page.url = synthetic_url(50)
@@ -1804,7 +1796,7 @@ def test_completion_rechecks_exact_idle_target_after_structural_witness(binding,
     def race(target):
         if movement == "generation": target.counts[wake.STOP] = 1
         if movement == "target": target.url = synthetic_url(50)
-        if movement == "surface": target.counts[wake.ACCOUNT] = 0
+        if movement == "surface": target.counts[wake.LOGIN] = 1
         if movement == "draft": target.draft = "Synthetic Human draft"
     page.completion_race = race
     receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: holder, projection=Projection())
@@ -1813,14 +1805,12 @@ def test_completion_rechecks_exact_idle_target_after_structural_witness(binding,
     assert page.evaluations.count(wake.CLICK) == 1 and len(page.completions) == 1
 
 
-@pytest.mark.parametrize("boundary", ["preflight", "insert", "click", "binding", "draft", "generation"])
+@pytest.mark.parametrize("boundary", ["insert", "click", "binding", "draft", "generation"])
 def test_completion_release_cannot_bypass_second_subject_fresh_send_barriers(binding, boundary):
     page, holder, second = submitted_with_pending(binding)
     projection = Projection()
     selected = [binding]
     calls = []
-    if boundary == "preflight":
-        projection.value = lambda event: "UNRESOLVED" if event == EVENT else "UNKNOWN"
     def race(stage):
         if stage == boundary:
             projection.value = lambda event: "RESOLVED" if event == second else "UNRESOLVED"
@@ -1885,7 +1875,7 @@ def surface_cause_page(binding, conditions):
         elif condition != "target_url":
             selector, number = {
                 "main_missing": ("main", 0), "main_multiple": ("main", 2),
-                "account_missing": (wake.ACCOUNT, 0), "account_multiple": (wake.ACCOUNT, 2),
+                "account_missing": (HISTORICAL_ACCOUNT, 0), "account_multiple": (HISTORICAL_ACCOUNT, 2),
                 "login": (wake.LOGIN, 1), "nonregular": (wake.NONREGULAR, 1),
                 "composer_missing": (wake.COMPOSER, 0), "composer_multiple": (wake.COMPOSER, 2),
             }[condition]
@@ -1897,14 +1887,12 @@ def surface_cause_page(binding, conditions):
     (("target_url",), "TARGET_URL_MISMATCH"),
     (("main_missing",), "MAIN_NOT_UNIQUE"),
     (("main_multiple",), "MAIN_NOT_UNIQUE"),
-    (("account_missing",), "ACCOUNT_NOT_UNIQUE"),
-    (("account_multiple",), "ACCOUNT_NOT_UNIQUE"),
     (("login",), "LOGIN_PRESENT"),
     (("nonregular",), "NON_REGULAR_SURFACE"),
     (("composer_missing",), "COMPOSER_NOT_UNIQUE"),
     (("composer_multiple",), "COMPOSER_NOT_UNIQUE"),
     (("disabled",), "COMPOSER_DISABLED"),
-    (("main_missing", "account_multiple"), "MULTIPLE_OR_AMBIGUOUS"),
+    (("main_missing", "composer_multiple"), "MULTIPLE_OR_AMBIGUOUS"),
     (("login", "nonregular"), "MULTIPLE_OR_AMBIGUOUS"),
     (("target_url", "disabled"), "MULTIPLE_OR_AMBIGUOUS"),
     (("composer_multiple", "login"), "MULTIPLE_OR_AMBIGUOUS"),
@@ -1942,7 +1930,7 @@ def test_surface_cause_real_pre_submit_receipt_is_closed_and_operational_only(bi
     assert blocked.value.surface_cause == cause
     encoded = json.dumps(receipt)
     for private in (page.draft, page.outbound, binding.chat_url, binding.cdp_endpoint,
-                    str(binding.state_path), wake.ACCOUNT, wake.COMPOSER, wake.LOGIN, wake.NONREGULAR):
+                    str(binding.state_path), HISTORICAL_ACCOUNT, wake.COMPOSER, wake.LOGIN, wake.NONREGULAR):
         assert private not in encoded
 
 
@@ -1981,23 +1969,15 @@ def test_surface_cause_deferred_real_surface_recovers_once_with_fresh_barriers(b
     frozen = binding.state_path.read_bytes()
     assert stored(binding)["events"][EVENT] == wake.record("DEFERRED", reason="SURFACE_UNPROVEN")
     page.counts[wake.LOGIN] = 0  # The same page later becomes healthy.
-    unknown = Projection("UNKNOWN")
-    receipt = wake.operate(binding.repository, binding,
-                           adapter_factory=lambda _: pytest.fail("unknown subject must not attach"),
-                           projection=unknown)
-    assert receipt == [dict(event_id=EVENT, status="DEFERRED", reason="CANONICAL_UNKNOWN")]
-    assert unknown.calls == [EVENT] and not page.evaluations
-    assert list(stored(binding)["events"]) == [EVENT]
-    assert frozen != binding.state_path.read_bytes()  # Subject retained with updated reason.
-
     observations = []
     def observe(event_id):
         observations.append(tuple(page.evaluations))
-        return "UNRESOLVED"
+        return "UNKNOWN"
     projection = Projection(observe)
     receipt = wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter,
                            projection=projection)
     assert receipt == [dict(event_id=EVENT, status="SUBMITTED", reason="EXACT_USER_TURN_PROVEN")]
+    assert frozen != binding.state_path.read_bytes()
     assert projection.calls == [EVENT, EVENT, EVENT]
     assert observations == [(), (), (wake.INSERT, wake.ACCEPT_INSERT)]
     assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK, wake.PROVE_SEND]
@@ -2008,10 +1988,10 @@ def test_surface_cause_deferred_real_surface_recovers_once_with_fresh_barriers(b
 
 
 def test_surface_cause_deferred_subject_resolves_without_retry_or_insertion(binding):
-    page = surface_cause_page(binding, ("account_missing",))
+    page = surface_cause_page(binding, ("login",))
     adapter = LocalSurfaceAdapter(binding, page)
     assert deliver(EVENT, binding.repository, binding, lambda _: adapter)["reason"] == "SURFACE_UNPROVEN"
-    page.counts[wake.ACCOUNT] = 1
+    page.counts[wake.LOGIN] = 0
     projection = Projection("RESOLVED")
     assert wake.operate(binding.repository, binding,
                         adapter_factory=lambda _: pytest.fail("resolved subject must not attach"),
@@ -2093,7 +2073,7 @@ def surface_matches(element, branch):
 
 class SurfaceLocator(Locator):
     def count(self):
-        if self.selector in {wake.ACCOUNT, wake.COMPOSER}:
+        if self.selector in {HISTORICAL_ACCOUNT, wake.COMPOSER}:
             # Select each element once, rather than summing branch counts.
             return sum(element.visible and any(surface_matches(element, branch.strip())
                        for branch in self.selector.split(",")) for element in self.page.elements)
@@ -2131,8 +2111,6 @@ def composer_element(shape="fallback", ancestors=("main", "form"), **overrides):
 
 
 def test_bounded_selector_contracts_and_unchanged_stop():
-    assert wake.ACCOUNT == ('[data-testid="profile-button"], '
-                            '[data-testid="accounts-profile-button"], ' + PROFILE_ARIA)
     assert wake.COMPOSER == LEGACY_COMPOSER + ", " + STRUCTURAL_COMPOSER
     assert wake.SEND == '[data-testid="send-button"], button[type="submit"][aria-label="Send"]'
     assert wake.STOP == '[data-testid="stop-button"]'
@@ -2143,23 +2121,20 @@ def test_bounded_selector_contracts_and_unchanged_stop():
 def test_bounded_surface_compatibility_and_union_identity(binding, account_shape, composer_shape):
     page = SurfacePage(binding.chat_url, [account_element(account_shape), composer_element(composer_shape)])
     adapter = adapter_for(binding, page)
-    assert adapter.visible(wake.ACCOUNT).count() == adapter.visible(wake.COMPOSER).count() == 1
+    assert adapter.visible(HISTORICAL_ACCOUNT).count() == adapter.visible(wake.COMPOSER).count() == 1
     adapter.check(page.payload)
     adapter.submit(page.payload)
     adapter.prove(page.payload)
     assert page.evaluations == [wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK, wake.PROVE_SEND]
 
 
-@pytest.mark.parametrize("kind", ["account", "composer"])
 @pytest.mark.parametrize("number", [0, 2])
-def test_bounded_surface_zero_or_ambiguous_matches_block_check_and_prove(binding, kind, number):
-    accounts = [account_element() for _ in range(number if kind == "account" else 1)]
-    composers = [composer_element() for _ in range(number if kind == "composer" else 1)]
+def test_bounded_composer_zero_or_ambiguous_matches_block_check_and_prove(binding, number):
+    composers = [composer_element() for _ in range(number)]
     # Distinct legacy/fallback elements also constitute ambiguity.
     if number == 2:
-        (accounts if kind == "account" else composers)[0] = (
-            account_element("legacy") if kind == "account" else composer_element("legacy"))
-    page = SurfacePage(binding.chat_url, accounts + composers)
+        composers[0] = composer_element("legacy")
+    page = SurfacePage(binding.chat_url, composers)
     adapter = adapter_for(binding, page)
     with pytest.raises(wake.WakeBlocked, match="SURFACE_UNPROVEN"):
         adapter.submit(page.payload)
@@ -2188,11 +2163,10 @@ def test_structural_composer_requires_every_attribute(binding, attrs):
 
 
 @pytest.mark.parametrize("tag,label", [("div", "fixture profile"), ("button", "fixture settings")])
-def test_profile_fallback_requires_button_and_profile_aria(binding, tag, label):
+def test_account_lookalikes_do_not_affect_eligibility(binding, tag, label):
     page = SurfacePage(binding.chat_url, [
         surface_element(tag=tag, **{"aria-label": label}), composer_element()])
-    with pytest.raises(wake.WakeBlocked, match="SURFACE_UNPROVEN"):
-        adapter_for(binding, page).check(page.payload)
+    adapter_for(binding, page).check(page.payload)
 
 
 def test_hidden_bounded_matches_do_not_create_ambiguity(binding):
@@ -2279,16 +2253,14 @@ def test_project_change_with_same_conversation_blocks_before_insert_or_proof(tmp
 
 
 @pytest.mark.parametrize("condition,reason", [
-    ("logged_out", "SURFACE_UNPROVEN"), ("login", "SURFACE_UNPROVEN"),
+    ("login", "SURFACE_UNPROVEN"),
     ("wrong_surface", "SURFACE_UNPROVEN"), ("missing_composer", "SURFACE_UNPROVEN"),
     ("disabled", "SURFACE_UNPROVEN"), ("draft", "DRAFT_PRESENT"),
     ("generating", "GENERATION_ACTIVE"), ("prior_outbound", "OUTBOUND_ALREADY_PRESENT"),
 ])
 def test_browser_preflight_blocks_before_composer_modification(binding, condition, reason):
     page = Page(binding.chat_url)
-    if condition == "logged_out":
-        page.counts[wake.ACCOUNT] = 0
-    elif condition == "login":
+    if condition == "login":
         page.counts[wake.LOGIN] = 1
     elif condition == "wrong_surface":
         page.counts[wake.NONREGULAR] = 1
@@ -2575,7 +2547,8 @@ def test_client_attaches_and_disconnects_without_browser_launch(monkeypatch, bin
 
 def test_scripts_guard_identity_surface_and_human_edit_in_same_turn():
     for script in (wake.INSERT, wake.ACCEPT_INSERT, wake.CLICK):
-        for guard in ("location.href.replace", "visible(account).length === 1", "visible(stop).length",
+        assert "account" not in script
+        for guard in ("location.href.replace", "visible(composer).length === 1", "visible(stop).length",
                       "visible(nonregular).length", "visible(login).length"):
             assert guard in script
     assert "box.textContent === ''" in wake.INSERT
@@ -2727,7 +2700,7 @@ process.stdout.write(JSON.stringify({result, clicks, formQueries}));
 
 @pytest.mark.parametrize("scenario", [
     "valid", "draft", "focus_draft", "focus_navigation", "busy", "wrong_surface",
-    "logged_out", "send_edit", "send_disabled", "wrong_project", "focus_project", "send_project",
+    "zero_account", "send_edit", "send_disabled", "wrong_project", "focus_project", "send_project",
     "fallback", "overlap", "legacy_accounts", "hidden_extras", "login", "missing_composer",
     "duplicate_account", "duplicate_composer", "focus_account_ambiguous", "focus_composer_ambiguous",
     "send_account_missing", "send_account_ambiguous", "send_composer_missing", "send_composer_ambiguous",
@@ -2748,7 +2721,7 @@ def test_real_browser_scripts_on_synthetic_dom(binding, scenario):
     if not node:
         pytest.skip("Node is needed for the isolated JavaScript DOM harness")
     payload = wake.doorbell(EVENT, wake.REPOSITORY)
-    arguments = wake.BrowserAdapter(binding).arguments(payload)
+    arguments = dict(wake.BrowserAdapter(binding).arguments(payload), account=HISTORICAL_ACCOUNT)
     # Execute the actual browser programs; no browser, network or history exists.
     harness = r"""
 const fs = require('fs');
@@ -2908,6 +2881,8 @@ process.stdout.write(JSON.stringify({inserted, accepted, sent, inserts, clicks,
     )
     result = json.loads(process.stdout)
     if scenario in {"valid", "fallback", "overlap", "legacy_accounts", "hidden_extras",
+                    "zero_account", "duplicate_account", "focus_account_ambiguous",
+                    "send_account_missing", "send_account_ambiguous",
                     "blocks_double", "blocks_single", "blocks_missing_separator", "blocks_mixed", "blocks_root_text",
                     "send_blocks_double", "send_blocks_missing_separator"}:
         assert result["inserted"] is result["accepted"] is result["sent"] is True
@@ -2918,7 +2893,7 @@ process.stdout.write(JSON.stringify({inserted, accepted, sent, inserts, clicks,
     else:
         assert result["sent"] is False and result["clicks"] == 0
         if scenario in {"draft", "focus_draft", "focus_navigation", "focus_project", "busy",
-                        "wrong_surface", "logged_out", "wrong_project", "login", "missing_composer",
+                        "wrong_surface", "zero_account", "wrong_project", "login", "missing_composer",
                         "duplicate_account", "duplicate_composer", "focus_account_ambiguous",
                         "focus_composer_ambiguous", "focus_lost", "selection_missing"}:
             assert result["inserted"] is False and result["inserts"] == 0
@@ -2941,3 +2916,45 @@ process.stdout.write(JSON.stringify({inserted, accepted, sent, inserts, clicks,
             assert result["draft"] == "Human draft" and result["notifications"] == 0
         if scenario in {"send_edit", "input_edit", "native_edit"}:
             assert result["draft"] == payload + " Human edit"
+
+
+@pytest.mark.parametrize("number", [0, 2])
+@pytest.mark.parametrize("composer_shape", ["legacy", "fallback", "both"])
+def test_temporary_permissive_zero_or_multiple_accounts_send_and_observe_generation(binding, number, composer_shape):
+    page = SurfacePage(binding.chat_url,
+                       [account_element() for _ in range(number)] + [composer_element(composer_shape)])
+    adapter = adapter_for(binding, page)
+    assert adapter.visible(HISTORICAL_ACCOUNT).count() == number
+    assert "account" not in adapter.arguments(page.payload)
+    adapter.check(page.payload)
+    adapter.submit(page.payload)
+    adapter.prove(page.payload)
+    assert adapter.generation_state() == "IDLE"
+
+
+@pytest.mark.parametrize("number", [0, 2])
+def test_temporary_permissive_completion_ignores_account_presence(binding, number):
+    # Completion still surrounds its exact structural witness with surface gates.
+    complete = CompletionPage(binding)
+    complete.counts[HISTORICAL_ACCOUNT] = number
+    complete.counts["outbound"] = 1
+    complete_adapter = adapter_for(binding, complete)
+    assert complete_adapter.completed_wake(complete.payload) is True
+
+
+@pytest.mark.parametrize("unknown", ["UNKNOWN", "raised"])
+def test_temporary_permissive_unknown_is_transport_only_and_dedupes(binding, unknown):
+    calls = []
+    def observe(event):
+        calls.append(event)
+        if unknown == "raised":
+            raise wake.WakeBlocked("CANONICAL_UNKNOWN")
+        return "UNKNOWN"
+    projection, adapter = Projection(observe), RecoveryAdapter(binding)
+    assert deliver(EVENT, binding.repository, binding, lambda _: adapter, projection=projection)["status"] == "SUBMITTED"
+    assert calls == [EVENT, EVENT, EVENT]
+    assert stored(binding)["events"][EVENT] == wake.record("SUBMITTED", binding.generation)
+    assert deliver(EVENT, binding.repository, binding, lambda _: adapter, projection=projection)["status"] == "NOOP"
+    wake.operate(binding.repository, binding, adapter_factory=lambda _: adapter, projection=projection, compact=True)
+    assert len(adapter.submits) == 1 and not stored(binding)["tombstones"]
+    assert stored(binding)["events"][EVENT]["status"] == "SUBMITTED"
