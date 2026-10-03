@@ -4,6 +4,7 @@ TASK-285 establishes an offline composition contract and a bounded live procedur
 TASK-286 adds bounded pre-submit structural diagnosis to the existing local wake.
 TASK-287 adds exact-turn-bound content-free completion for a proven submitted stale flight.
 TASK-289 adds bounded terminal FAILURE retirement on a newer canonical revision of the same TASK.
+TASK-290 separates per-event canonical uncertainty from durable flight and pass-local safety blockers.
 None of these deterministic acceptances reports a completed regular-Chat semantic resume
 or closes H4B. Runtime owns canonical verification and EVIDENCE; Reviewer owns
 semantic verdict; Publisher owns reviewed publication; Human/Brain owns the live
@@ -240,6 +241,50 @@ live drain, wake replay, local operational-state rewrite, roadmap closure, H5 st
 or downstream adoption. Any later live drain and semantic-resume observation remain
 separate Human/Brain work.
 
+## TASK-290 non-blocking per-event transport prerequisite
+
+The [NON_BLOCKING_PER_EVENT_WAKE_V1 contract](AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md#15-task-290-non-blocking-per-event-wake)
+removes the pass-local pseudo-flight created by an unrelated deferred receipt.
+An earlier `DEFERRED/CANONICAL_UNKNOWN` subject retains that classification while
+the finite drain independently observes later subjects in stable admission order.
+The first healthy canonically UNRESOLVED subject may attempt delivery through the
+existing canonical, binding-generation, target/surface, draft/generation, insertion
+and immediate pre-click barriers. This eligibility scan supplies no semantic
+priority, lifecycle selection or routing authority.
+
+`LANE_IN_FLIGHT` requires current durable flight or ambiguous-attempt state. Other
+lane-wide pre-submit safety blockers prevent later sends with the proven blocker
+reason when flight is absent. Later UNKNOWN subjects retain CANONICAL_UNKNOWN;
+later RESOLVED subjects may become RESOLVED_NOOP without browser attachment for
+that subject, even behind a blocker or real flight. Per-event freshness and
+permanent dedupe remain intact. The existing pre-click durable AMBIGUOUS record and
+flight precede the possible click; a successful or ambiguous actual submission
+continues to serialize later unresolved subjects. Each finite pass may attempt
+at most one user turn. Ambiguous submission remains proof-only with no blind resend.
+
+Focused synthetic fixtures model an earlier unknown subject with `flight=null`,
+one later submitted subject, and a further unresolved subject held by that real
+flight. They also model no-browser resolved retirement and compaction dedupe,
+draft/generation/target/surface/binding and insertion/send blockers without phantom
+flight, and ambiguous no-resend behavior. The existing TASK-289 canonical-race
+fixture now permits the later independently eligible subject; a production adapter
+fixture preserves the remaining-draft gate after UNKNOWN at the pre-click barrier.
+These are candidate implementation assertions using temporary lane state, not live observation or
+verification EVIDENCE.
+
+Only the four TASK-290 scope.modify files change. The structural RESULT reports
+unresolved empty for completed implementation. Runtime owns the unchanged focused
+suite plus `git diff --check`, canonical verification and EVIDENCE; Reviewer owns
+semantic verdict and Publisher owns exact reviewed publication. Durable schema,
+completion witnesses, timeout/recheck budgets, project isolation and authority
+boundaries remain unchanged.
+
+H4B remains **UNPROVED**. This transport-liveness prerequisite supplies no
+regular-Chat semantic-resume proof. Human/Brain retains post-publication live-state
+observation, separately authorized live drain, the future real unresolved canonical
+RESULT observation and roadmap/H4B judgment. Executor performs no live drain,
+operational-state rewrite or wake replay and advances neither H4B nor H5.
+
 ## Offline conformance surface
 
 [The focused tests](../tests/test_h4b_regular_chat_brain_resume.py) use disposable
@@ -284,7 +329,7 @@ These are implementation properties available for TASK acceptance before Runtime
 verification. This document does not claim that Runtime has verified them, or that
 deterministic acceptance proves the future regular-Chat live step. No production
 Python, workflow, attention schema, transport, binding or Flow Card changes were part
-of the TASK-285 composition delta; TASK-286/TASK-287 local wake changes are bounded above.
+of the TASK-285 composition delta; TASK-286/TASK-287/TASK-289/TASK-290 local wake changes are bounded above.
 There is no second semantic router, lifecycle reducer, persistent
 reasoning store, assistant-output scraper, ChatGPT Work wake dependency or new
 mutation authority.
@@ -410,7 +455,7 @@ One H4B semantic resume observation does not discharge those six gaps. Missing r
 sources or operational setup remain explicit; no new RUN/REVIEW, second lane or
 binding mutation is manufactured to fill the matrix.
 
-Runtime verification of TASK-285/TASK-286/TASK-287, Reviewer judgment and Publisher publication each
+Runtime verification of TASK-285/TASK-286/TASK-287/TASK-289/TASK-290, Reviewer judgment and Publisher publication each
 remain separate lifecycle facts. Deterministic TASK acceptance by itself proves
 neither a future regular-Chat semantic resume nor H4B closure. Human/Brain separately
 records and evaluates the live observation, reconciles any reopened residual risk

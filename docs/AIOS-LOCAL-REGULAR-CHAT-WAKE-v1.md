@@ -257,7 +257,10 @@ attempted until exact proof, canonical resolution or Human reconciliation closes
 Within one lane, only one wake may be in submission/Brain-generation flight at a time.
 Additional events remain pending. After each completion the transport revalidates every
 pending subject, discards stale/resolved subjects as NOOP, and submits only the next
-still-unresolved event. It must not semantically coalesce unrelated attention subjects.
+send-eligible still-unresolved event in stable admission order. An individually UNKNOWN
+subject remains deferred while later subjects receive their own fresh observation,
+as specified by `NON_BLOCKING_PER_EVENT_WAKE_V1` in section 15. It must not semantically
+coalesce unrelated attention subjects.
 For a proven submitted flight whose transient BUSY state was missed, the exact-turn-bound
 structural completion contract in section 13 supplies an additional fail-closed release
 mechanism. IDLE alone never supplies that proof.
@@ -558,3 +561,76 @@ Reviewer owns semantic verdict and Publisher owns publication. H4B remains
 **UNPROVED**. Human/Brain owns any later authorized live drain, real unresolved
 RESULT semantic-resume observation and roadmap closure. Executor performs no live
 drain, local-state recovery, H4B evidence manufacture or roadmap advancement.
+
+## 15. TASK-290 non-blocking per-event wake
+
+`NON_BLOCKING_PER_EVENT_WAKE_V1` separates an individual canonical deferral from
+durable lane flight and from a safety blocker that lasts for one finite pass.
+The supplied TASK-290 context records an earlier `DEFERRED/CANONICAL_UNKNOWN`
+attention followed by an unrelated `DEFERRED/LANE_IN_FLIGHT` publication-success
+attention even though `flight=null`. The old drain's pass-local `held` flag became
+true after every non-NOOP receipt and reproduced that starvation in admission order.
+An unrelated deferred receipt is insufficient proof of submission or lane flight.
+
+The finite drain applies these rules in stable admission order:
+
+- `LANE_IN_FLIGHT` may be emitted or stored only while the current durable lane
+  state contains a real flight or an ambiguous attempt. Individual pre-submit
+  deferral never creates that classification.
+- A subject whose fresh observation is UNKNOWN remains
+  `DEFERRED/CANONICAL_UNKNOWN`. The pass continues to independently revalidate
+  later subjects. Among canonically UNRESOLVED subjects, the first send-eligible
+  subject may attempt delivery through all existing send barriers.
+- A later freshly RESOLVED subject becomes `NOOP/CANONICALLY_RESOLVED` with a
+  `RESOLVED_NOOP` record without browser attachment for that subject, independently
+  of earlier unknown/deferred subjects, pass blockers or durable flight. Existing
+  resolved-record and permanent tombstone dedupe continue to suppress redelivery.
+- Pre-submit draft, active generation, target/surface uncertainty, binding change,
+  outbound-already-present, insertion/send uncertainty and other safety failures
+  stop later sends for the pass. Later UNRESOLVED subjects retain that proven
+  blocker reason instead of `LANE_IN_FLIGHT` when durable flight is absent. A
+  `SURFACE_UNPROVEN` receipt retains its bounded operational cause annotation;
+  the durable reason remains `SURFACE_UNPROVEN`. Later UNKNOWN and RESOLVED
+  subjects still receive their own canonical classification. The blocker is
+  transient and is freshly established on a subsequent finite pass.
+- The existing immediate pre-click barrier writes the selected subject as
+  AMBIGUOUS with its binding generation and durable flight before the possible
+  click. A successful or ambiguous submission then serializes later UNRESOLVED
+  subjects as `LANE_IN_FLIGHT`. At most one actual user-turn submission is
+  attempted per pass; ambiguous attempts remain proof-only and are never resent.
+
+This is deterministic eligibility scanning, not semantic prioritization or a
+lifecycle router. Fresh canonical checks, binding-generation checks, exact target
+and surface gates, draft/generation protection, insertion acceptance, immediate
+pre-click revalidation, permanent dedupe, bounded retries and per-project lane
+isolation retain their existing authority. Canonical uncertainty after insertion
+does not waive a draft or any other browser safety gate on a later subject.
+Durable schema, completion witnesses, selectors, timeout/recheck budgets and
+scheduled cadence are unchanged.
+
+The four-file candidate adds focused synthetic coverage for an absent flight with
+an earlier unknown subject and a later healthy unresolved subject, later resolved
+NOOP and dedupe without attachment, blocker propagation without phantom flight,
+and successful/ambiguous single-submission serialization. The TASK-289 drain
+counterexample now models a later eligible subject after event-specific canonical
+uncertainty. The fixtures assert the durable uncertainty/flight boundary before
+the modeled possible click and preserve the existing real-flight/no-resend cases.
+A production-browser-adapter fixture also models UNKNOWN after insertion and
+asserts that the remaining draft blocks later sends with DRAFT_PRESENT while a
+resolved later subject still NOOPs. They use temporary lane state and no live
+browser or canonical checkpoint.
+
+The structural RESULT reports concrete candidate properties with unresolved empty;
+it does not supply verification success. Runtime owns canonical EVIDENCE and the
+unchanged minimum-sufficient verification:
+
+```text
+python -m pytest -q tests/test_local_chat_wake.py tests/test_h4b_regular_chat_brain_resume.py
+git diff --check
+```
+
+Reviewer owns semantic verdict and Publisher owns exact reviewed publication.
+H4B remains **UNPROVED**. Human/Brain owns post-publication live-state observation,
+any separately authorized live drain and semantic-resume proof, and roadmap/H4B
+decisions. This transport prerequisite creates no live wake, operational-state
+rewrite, manufactured semantic proof, H4B closure or H5 start.

@@ -942,7 +942,7 @@ def _fresh(projection, event_id):
 
 
 def _drain_locked(state, data, binding, adapter_factory, projection, binding_provider):
-    """One finite FIFO pass, at most one submission. No new subjects are created."""
+    """One finite admission-order pass, at most one submission; no new subjects."""
     receipts = []
     # Reconcile held attempts first. Pending FIFO subjects cross their own fresh
     # barrier below; old submitted history must not starve their observation budget.
@@ -994,20 +994,27 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
             state.write(data)
         except Exception:
             pass
-    held = data["flight"] is not None or any(v["status"] == "AMBIGUOUS" for v in data["events"].values())
+    # NON_BLOCKING_PER_EVENT_WAKE_V1: canonical uncertainty belongs to one event.
+    # Other pre-submit safety failures block sends for this pass with their own
+    # reason; only durable flight/attempt state can mean LANE_IN_FLIGHT.
+    pass_blocker = None
     for event_id, item in data["events"].items():
         if item["status"] not in {"PENDING", "DEFERRED"}:
             continue
-        receipt = dict(event_id=event_id, status="DEFERRED", reason="LANE_IN_FLIGHT")
-        if held:
+        receipt = dict(event_id=event_id, status="DEFERRED")
+        lane_in_flight = data["flight"] is not None or any(
+            v["status"] == "AMBIGUOUS" for v in data["events"].values())
+        if lane_in_flight or pass_blocker is not None:
+            receipt.update(dict(reason="LANE_IN_FLIGHT") if lane_in_flight else pass_blocker)
             try:
                 if _fresh(projection, event_id) == "RESOLVED":
                     data["events"][event_id] = record("RESOLVED_NOOP")
                     state.write(data)
-                    receipts.append(dict(receipt, status="NOOP", reason="CANONICALLY_RESOLVED"))
+                    receipts.append(dict(event_id=event_id, status="NOOP", reason="CANONICALLY_RESOLVED"))
                     continue
             except WakeBlocked:
                 receipt["reason"] = "CANONICAL_UNKNOWN"
+                receipt.pop("surface_cause", None)
             item.update(status="DEFERRED", reason=receipt["reason"])
             state.write(data)
             receipts.append(receipt)
@@ -1061,8 +1068,8 @@ def _drain_locked(state, data, binding, adapter_factory, projection, binding_pro
             if not attempted and isinstance(exc, WakeBlocked) and exc.surface_cause is not None:
                 receipt["surface_cause"] = exc.surface_cause
         receipts.append(receipt)
-        if receipt["status"] != "NOOP":
-            held = True
+        if receipt["status"] == "DEFERRED" and receipt["reason"] != "CANONICAL_UNKNOWN":
+            pass_blocker = {key: receipt[key] for key in ("reason", "surface_cause") if key in receipt}
     return receipts
 
 
