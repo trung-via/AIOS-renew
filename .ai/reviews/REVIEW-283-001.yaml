@@ -1,0 +1,51 @@
+review_id: REVIEW-283-001
+reviewed_sha: 58f357e789626f522b76a8ce61d0c46c342f2c51
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+  AC7: PASS
+  AC8: PASS
+findings: []
+notes:
+- RUN-283-001 is the exact canonical PRIMARY RESULT for TASK-283 r1. Runtime base
+  is 408a560cc5c24d6673cfb0ffefa4ce33af05b0d9; candidate 58f357e789626f522b76a8ce61d0c46c342f2c51
+  is exactly one commit ahead and changes only the three TASK-authorized files.
+- 'Canonical Runtime verification passed: python -m pytest -q tests/test_brain_attention.py
+  tests/test_local_chat_wake.py => 521 passed, 516 skipped in 23.65s; git diff --check
+  => exit 0; unresolved is empty.'
+- 'AC1/AC2: REVIEW and AUTHOR_REMEDIATION freshness now validate the canonical REMEDIATION
+  schema without a non-canonical source_run_id field. Source RUN/finding identity
+  is bound by the exact remediation ref subject, canonical review identity, direct
+  parent decision SHA, single metadata path, reviewed_sha and action equality. Mismatches
+  fail closed.'
+- 'AC3: publication-success freshness retains strict duplicate-key parsing. Regression
+  coverage reads the repaired repository roadmap using the same unique-key loader,
+  proves exact planning bookmark behavior, and verifies an unrelated duplicate key
+  remains UNKNOWN.'
+- 'AC4: each generic observation now snapshots the complete mutable ref set once,
+  performs one batched immutable-object acquisition, runs local proof work against
+  a frozen observation, then takes one final snapshot of the identical ref set. Production-shaped
+  regressions assert exactly two remote ls-remote phases plus one fetch phase for
+  publication and one-finding REVIEW/AUTHOR_REMEDIATION.'
+- 'AC5: adversarial coverage preserves UNKNOWN for moved/new/conflicting refs, substituted/missing
+  objects, malformed or duplicate-key YAML, invalid review/remediation lineage, incorrect
+  parents, extra paths and candidate/decision/artifact movement.'
+- 'AC6: existing safety ceilings are unchanged: 30-second subject observation, 15-second
+  Git operation and 10-second API operation. Fake-clock tests exercise ordinary bounded
+  latency without sleeps and require the valid reduced path to complete under the
+  original ceiling.'
+- 'AC7: attention identity, publication classification, canonical remediation authoring
+  schema, TASK-282 per-subject observation and bounded follow-up behavior, local wake
+  lane semantics, browser/privacy guards and Human/Brain/Runtime/Reviewer/Publisher
+  authority boundaries are unchanged.'
+- 'AC8: conformance documentation records the failed post-TASK-282 live proof, repaired
+  roadmap planning defect, remediation schema drift, reduced proof graph and the requirement
+  for separate Human authorization before any new live proof or H4A5/H4B closure.'
+- No semantic finding remains. This PASS does not itself close H4A5, authorize H4B
+  or authorize a live replay.
