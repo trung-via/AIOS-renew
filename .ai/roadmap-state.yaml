@@ -12,6 +12,50 @@ planning_baseline:
     BP-0 is the Human-approved architecture and roadmap planning baseline. It does
     not claim implementation completion for BP-1 through BP-9, does not create RUN
     or verification truth, and does not alter frozen Kernel v0.1 semantics.
+production_wake_amendment:
+  id: h4-origin-affine-unattended-wake-v1
+  status: HUMAN_APPROVED
+  approved_on: "2026-10-04"
+  authority: HUMAN_BRAIN_PLANNING
+  planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  production_requirements:
+    - ORIGIN_AFFINE_RETURN_REQUIRED_BEFORE_H5
+    - UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5
+    - SAME_REPOSITORY_MULTI_CHAT_ISOLATION_REQUIRED
+    - PRODUCTION_MULTI_LANE_LIVE_PROOF_REQUIRED
+    - FINAL_H4B_LIVE_PROOF_USES_PRODUCTION_WAKE_SHAPE
+  audit:
+    profile: brain-high-value-v3
+    stage1: CONSTRUCT
+    stage1_outcome: RISK_FOUND
+    stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+    closure: CLEAR_WITH_MANDATORY_REFINEMENTS
+    outcome: CANDIDATE_APPROVED_BY_HUMAN
+  sequencing:
+    - H4C0_ORIGIN_CAPTURE_FEASIBILITY_AND_CONTRACT_FREEZE
+    - H4C1_ORIGIN_AFFINE_RETURN_ROUTING
+    - H4D_UNATTENDED_LOCAL_WAKE
+    - H4E_PRODUCTION_ROUTING_AND_CONCURRENCY_LIVE_CONFORMANCE
+    - H4B_FINAL_PRODUCTION_SHAPE_SEMANTIC_RESUME_PROOF
+    - H5_INTEGRATION_CONFORMANCE_CLOSURE
+  boundaries:
+    - RAW_CHAT_URL_REMAINS_NONCANONICAL
+    - NO_ORIGIN_HEURISTIC_FROM_ACTIVE_TAB_TIMESTAMP_RECENT_CHAT_OR_MODEL_MEMORY
+    - NO_SILENT_DEFAULT_CHAT_FALLBACK
+    - CONVERSATION_ROUTE_OWNS_LANE_NOT_TASK
+    - HUMAN_EXPLICIT_ROUTE_TRANSFER_ONLY
+    - UNATTENDED_IS_CAPABILITY_NOT_HEADLESS_IMPLEMENTATION_MANDATE
+    - NO_POWERED_OFF_HOST_REMOTE_WAKE_CLAIM
+    - REUSE_H4A4_QUEUE_DEDUPE_RECOVERY_AND_AMBIGUITY_CONTRACTS
+    - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
+  note: >-
+    This prospective Human/Brain planning amendment makes origin-affine return and
+    unattended local wake mandatory before H5. It does not create a TASK/RUN, select an
+    Executor, or claim implementation proof. Current main already contains the
+    Human-risk-accepted TASK-291 temporary permissive source change; that source state
+    supersedes the prior account-selector diagnosis as a planning blocker without this
+    roadmap fabricating missing lifecycle artifacts.
+
 verification_foundation_audit:
   id: ta-0-ta-1-verification-foundation
   status: HUMAN_APPROVED
@@ -108,6 +152,10 @@ human_priority_sequence:
         - BSH-H4A4-DURABLE-WAKE-RECOVERY-MULTI-PROJECT-ISOLATION
         - BSH-H4A5-COMPLETE-ATTENTION-FAMILY-COVERAGE
         - BSH-H4B-REGULAR-CHAT-BRAIN-RESUME
+        - BSH-H4C0-ORIGIN-CAPTURE-FEASIBILITY
+        - BSH-H4C1-ORIGIN-AFFINE-RETURN-ROUTING
+        - BSH-H4D-UNATTENDED-LOCAL-WAKE
+        - BSH-H4E-PRODUCTION-ROUTING-CONCURRENCY-CONFORMANCE
         - BSH-H5-INTEGRATION-CONFORMANCE-CLOSURE
       constraints:
         - NO_AUTOMATIC_CORRECTION_SELECTION
@@ -129,6 +177,11 @@ human_priority_sequence:
         - NO_GLOBAL_BRAIN_BUSY_ACROSS_INDEPENDENT_PROJECTS
         - REGULAR_CHAT_REQUIRES_FRESH_BRAIN_SYNC
         - REGULAR_CHAT_FRESH_SYNC_IS_MINIMUM_SUFFICIENT_AND_FLOW_SCOPED
+        - ORIGIN_AFFINE_RETURN_REQUIRED_BEFORE_H5
+        - UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5
+        - SAME_REPOSITORY_MULTI_CHAT_ISOLATION_REQUIRED
+        - NO_SILENT_DEFAULT_CHAT_FALLBACK_FOR_ORIGIN_AFFINE_FLOW
+        - FINAL_H4B_LIVE_PROOF_MUST_USE_PRODUCTION_ORIGIN_AFFINE_UNATTENDED_PATH
         - NO_AUTOMATIC_ROADMAP_ADVANCE
         - NO_UNPROVEN_DESTRUCTIVE_LOCAL_RESET
         - LOCAL_RECONCILIATION_IS_RUNTIME_CONTROL_NOT_EXECUTOR_REASONING
@@ -406,43 +459,177 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4b-account-surface-diagnosis
+  - brain-runtime-semantic-handoff-hardening-v1-h4c0-origin-capture-feasibility
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-account-surface-diagnosis
-    status: NEXT
+    status: SUPERSEDED_BY_HUMAN_RISK_ACCEPTANCE
     phase: H4B_ACCOUNT_SURFACE_DIAGNOSIS
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-03"
+    superseded_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+    original_objective: >-
+      Determine why the bound regular Chat surface failed the structural account
+      uniqueness guard after TASK-290 publication before deciding whether browser
+      state, selector drift, duplicate visible controls, or production code required
+      correction.
+    supersession:
+      authority: HUMAN
+      decision: STOP_ACCOUNT_SELECTOR_INVESTIGATION_AND_ACCEPT_TEMPORARY_PERMISSIVE_WAKE_RISK
+      applied_source_commit_sha: "b0b1d8b97e2552329c638fcba6b5dbe0e43049e8"
+      source_label: TASK-291
+      selected_contract: TEMPORARY_PERMISSIVE_WAKE_V1
+      effect: >-
+        Current main retires ACCOUNT_NOT_UNIQUE as an active local-wake eligibility
+        cause and allows bounded CANONICAL_UNKNOWN transport progression under explicit
+        Human risk acceptance. The prior read-only account-surface diagnosis is no
+        longer a current planning blocker.
+      lifecycle_truth_boundary: >-
+        This roadmap reconciliation records current Human planning and observed main
+        source state only. It does not fabricate RUN, RESULT, REVIEW, verification,
+        publication, or other missing TASK-291 lifecycle artifacts.
+    remaining_gate: NONE_ACCOUNT_SURFACE_DIAGNOSIS_SUPERSEDED
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4c0-origin-capture-feasibility
+    status: NEXT
+    phase: H4C0_ORIGIN_CAPTURE_FEASIBILITY_AND_CONTRACT_FREEZE
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-04"
+    parent_milestone: brain-runtime-semantic-handoff-hardening-v1
+    planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+    production_requirement:
+      - ORIGIN_AFFINE_RETURN_REQUIRED_BEFORE_H5
+      - UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5
+    architecture_audit:
+      profile: brain-high-value-v3
+      stage1: CONSTRUCT
+      stage1_outcome: RISK_FOUND
+      stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+      closure: CLEAR_WITH_MANDATORY_REFINEMENTS
+      outcome: CANDIDATE_APPROVED_BY_HUMAN
     objective: >-
-      Determine why the bound regular Chat surface fails the structural account
-      uniqueness guard after TASK-290 publication, using read-only machine-local
-      evidence before deciding whether the cause is browser state, selector drift,
-      duplicate visible controls, or a production code defect.
-    evidence_basis:
-      task_290_run_id: RUN-290-001
-      task_290_result_artifact_sha: "6b80a07048cd4b90da289e90ac8f356261cfb617"
-      task_290_review_id: REVIEW-290-001
-      task_290_review_decision_sha: "d6feaf174b7b3357d15cfd986af24a5fe43fbb43"
-      task_290_published_sha: "1583aa75b1460fefdb3ea7373d1723d2f42f2099"
-      live_non_blocking_proof:
-        canonical_unknown_subject_remained: CANONICAL_UNKNOWN
-        run_289_publication_after_unknown: SURFACE_UNPROVEN
-        run_290_publication_after_unknown: SURFACE_UNPROVEN
-        surface_cause: ACCOUNT_NOT_UNIQUE
-        phantom_lane_in_flight_observed: false
-      interpretation: >-
-        NON_BLOCKING_PER_EVENT_WAKE_V1 is live-effective: the earlier canonical-unknown
-        subject no longer manufactures LANE_IN_FLIGHT for later publication attentions.
-        Both later subjects independently reached the browser surface barrier and were
-        deferred for the same structural account-uniqueness cause.
-    current_live_blocker:
-      code: H4B_ACCOUNT_SURFACE_DIAGNOSIS_PENDING
-      authority: HUMAN_BRAIN_PLANNING
-      next_action: READ_ONLY_DIAGNOSE_ACCOUNT_SURFACE
-      global_drain_authorized: false
-    remaining_gate: CLASSIFY_ACCOUNT_NOT_UNIQUE_BEFORE_ANY_NEW_IMPLEMENTATION_TASK
+      Establish and freeze one deterministic authority-safe method to associate a new
+      semantic flow with the exact regular-Chat conversation from which it originated,
+      before any generic origin-affine return-routing implementation is authorized.
+    required_properties:
+      - SAME_REPOSITORY_DIFFERENT_CHAT_ORIGINS_MUST_BE_DISTINGUISHABLE
+      - ORIGIN_ESTABLISHED_AT_OR_BEFORE_INITIAL_AUTHORIZED_FLOW_HANDOFF
+      - BOUNDED_OPERATIONAL_ROUTE_IDENTITY_ONLY
+      - RAW_CHAT_URL_REMAINS_NONCANONICAL
+      - NO_CHAT_TRANSCRIPT_OR_ASSISTANT_OUTPUT_INFERENCE
+      - NO_ACTIVE_TAB_RECENT_CHAT_TIMESTAMP_OR_MODEL_MEMORY_HEURISTICS
+      - MISSING_STALE_CONFLICTING_OR_AMBIGUOUS_ORIGIN_FAILS_CLOSED
+      - NO_REPOSITORY_DEFAULT_FALLBACK_FOR_NEW_ORIGIN_AFFINE_FLOW
+      - NO_NEW_SEMANTIC_OR_LIFECYCLE_AUTHORITY
+    exit_gate:
+      - TWO_DISTINCT_REGULAR_CHATS_DEMONSTRATE_EXACT_ORIGIN_CAPTURE
+      - ORIGIN_CAPTURE_TWO_STAGE_AUDIT_CLEAR
+      - AMBIGUOUS_ORIGIN_FAILS_CLOSED
+      - NO_CONTENT_INFERENCE_OR_HEURISTIC_CORRELATION
+    non_goals:
+      - IMPLEMENT_GENERIC_RETURN_ROUTING_BEFORE_FEASIBILITY_CLOSES
+      - STORE_RAW_CHAT_URL_IN_TASK_RUN_RESULT_REVIEW_SEMANTICS
+      - ADD_SECOND_PLANNER_ROUTER_OR_LIFECYCLE_REDUCER
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
+    status: QUEUED_AFTER_H4C0
+    phase: H4C1_ORIGIN_AFFINE_RETURN_ROUTING
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-04"
+    parent_milestone: brain-runtime-semantic-handoff-hardening-v1
+    planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+    objective: >-
+      Bind downstream Brain-attention delivery to the exact origin route established
+      for each semantic flow, including multiple independent conversations inside the
+      same repository, while keeping raw conversation identity operational and
+      noncanonical.
+    required_properties:
+      - CONVERSATION_RETURN_ROUTE_SCOPED_LANE_NOT_TASK_SCOPED_LANE
+      - SAME_CHAT_MULTIPLE_FLOWS_SHARE_ONE_SERIALIZED_LANE
+      - SAME_REPOSITORY_DIFFERENT_CHATS_REMAIN_INDEPENDENT
+      - FLOW_DESCENDANTS_PRESERVE_ROUTE_AFFINITY_WHERE_APPLICABLE
+      - HUMAN_EXPLICIT_ROUTE_TRANSFER_ONLY
+      - BINDING_GENERATION_SAFETY_PRESERVED
+      - MISSING_STALE_OR_CONFLICTING_AFFINITY_FAILS_CLOSED
+      - NO_SILENT_H4A3_OR_REPOSITORY_DEFAULT_FALLBACK
+      - LEGACY_REPOSITORY_DEFAULT_ROUTE_EXPLICITLY_CLASSIFIED_ONLY
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4d-unattended-local-wake
+    status: QUEUED_AFTER_H4C1
+    phase: H4D_UNATTENDED_LOCAL_WAKE
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-04"
+    parent_milestone: brain-runtime-semantic-handoff-hardening-v1
+    planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+    objective: >-
+      Remove the Human-prepared-browser/tab requirement so an eligible wake can make
+      the exact authorized regular-Chat target available and deliver one bounded
+      doorbell without Human navigation, while preserving all delivery-only authority
+      and safety barriers.
+    capability_requirement: UNATTENDED_DELIVERY_NOT_IMPLEMENTATION_SPECIFIC_HEADLESS
+    availability_boundary: HOST_RUNNING_AND_AUTHORIZED_AUTHENTICATED_ENVIRONMENT_AVAILABLE
+    required_properties:
+      - NO_HUMAN_PREOPEN_TARGET_CHAT_REQUIREMENT
+      - NO_HUMAN_NAVIGATION_OR_SEND_REQUIREMENT
+      - EXACT_TARGET_AND_REGULAR_CHAT_SAFETY_RETAINED
+      - HUMAN_DRAFT_AND_ACTIVE_GENERATION_PROTECTION_RETAINED
+      - PRE_SEND_CANONICAL_FRESHNESS_AND_BINDING_GENERATION_RETAINED
+      - AMBIGUOUS_SEND_NO_RESEND_RETAINED
+      - NO_ASSISTANT_OUTPUT_EXTRACTION
+      - TRANSPORT_ACQUISITION_RESTORATION_HAS_NO_SEMANTIC_AUTHORITY
+    non_goals:
+      - REQUIRE_TRUE_HEADLESS_AS_THE_ONLY_IMPLEMENTATION
+      - POWERED_OFF_HOST_REMOTE_OR_CLOUD_WAKE
+      - CHATGPT_WORK_PRODUCTION_FALLBACK
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4e-production-routing-concurrency-conformance
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4e-production-routing-concurrency-conformance
+    status: QUEUED_AFTER_H4D
+    phase: H4E_PRODUCTION_ROUTING_AND_CONCURRENCY_LIVE_CONFORMANCE
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-04"
+    parent_milestone: brain-runtime-semantic-handoff-hardening-v1
+    planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+    objective: >-
+      Prove the production origin-affine unattended wake shape across same-repository
+      multi-chat routing, cross-project isolation, same-chat serialization, Human
+      supersession, route-generation changes, missing/stale affinity fail-close, and
+      an unattended target that was not pre-opened by the Human.
+    required_live_cases:
+      - SAME_REPOSITORY_CHAT_A_FLOW_X_AND_CHAT_B_FLOW_Y_NO_CROSS_DELIVERY
+      - DIFFERENT_REPOSITORIES_BUSY_A_DOES_NOT_BLOCK_IDLE_B
+      - SAME_CHAT_MULTIPLE_PENDING_SUBJECTS_SERIALIZE_AND_REVALIDATE
+      - HUMAN_SUPERSESSION_CLOSES_EXACT_DEFERRED_SUBJECT_AS_RESOLVED_NOOP
+      - MISSING_OR_STALE_ORIGIN_ROUTE_FAILS_CLOSED_WITHOUT_DEFAULT_FALLBACK
+      - ROUTE_GENERATION_CHANGE_CANNOT_REDIRECT_AMBIGUOUS_ATTEMPT
+      - TARGET_NOT_PREOPENED_STILL_DELIVERS_UNATTENDED
+    must_close_historical_residual:
+      - SECOND_SEPARATELY_AUTHORIZED_DEPLOYED_LIVE_LANE_UNAVAILABLE
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h4b-final-production-shape-semantic-resume-proof
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-final-production-shape-semantic-resume-proof
+    status: QUEUED_AFTER_H4E
+    phase: H4B_FINAL_PRODUCTION_SHAPE_SEMANTIC_RESUME_PROOF
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-04"
+    parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+    planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+    objective: >-
+      Use one naturally occurring real unresolved canonical semantic checkpoint to
+      prove origin-affine unattended exact-chat delivery followed by minimum fresh
+      Brain Sync, exact lineage/Flow Card reconstruction, one authorized semantic
+      continuation step, and a stop at the next Human/Runtime boundary.
+    prohibitions:
+      - NO_FABRICATED_CHECKPOINT
+      - NO_REPLAY_OF_RESOLVED_ATTENTION
+      - NO_WAKE_PAYLOAD_AS_SEMANTIC_TRUTH
+      - NO_CHAT_MEMORY_AUTHORITY
+      - NO_ASSISTANT_TRANSCRIPT_SCRAPING
+      - NO_HISTORICAL_FIXED_H4A3_CHAT_UNLESS_IT_IS_THE_CAPTURED_ORIGIN
+    return_to: brain-runtime-semantic-handoff-hardening-v1-h5-integration-conformance-closure
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-non-blocking-per-event-wake
     status: DONE
@@ -4367,7 +4554,7 @@ sequence:
         - NO_TIME_ONLY_COMPLETION_HEURISTIC
         - NO_ASSISTANT_CONTENT_SCRAPING
         - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: CLASSIFY_ACCOUNT_SURFACE_THEN_H4B_REAL_UNRESOLVED_CANONICAL_SEMANTIC_CHECKPOINT_LIVE_OBSERVATION
+    remaining_gate: H4C0_THROUGH_H4E_PRODUCTION_WAKE_CLOSURE_THEN_FINAL_H4B_REAL_UNRESOLVED_SEMANTIC_RESUME_PROOF
     sequencing:
       - AFTER_H4A5_CLOSED
       - BEFORE_H5_INTEGRATION_CONFORMANCE_CLOSURE
