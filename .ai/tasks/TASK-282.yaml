@@ -1,0 +1,174 @@
+task_id: TASK-282
+revision: 1
+goal: Repair H4A5 durable local-wake eventual-delivery liveness by isolating canonical
+  freshness observation budgets per exact attention subject, avoiding redundant retrieval
+  of already-proven immutable evidence within one observation, and giving a durably
+  admitted retry-safe event a bounded local recheck opportunity without depending
+  on GitHub scheduled-workflow timing, while preserving the existing thirty-second
+  freshness safety envelope and H4A4 lane semantics.
+problem: After TASK-281 reviewed publication, Human-authorized bounded replay of RUN-280-002
+  succeeded in publisher workflow 37083846294 and produced exact PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+  evidence in artifact 11260375137. The direct Publisher handoff and legacy workflow_run
+  fallback reconstructed the same deterministic event identity, but both returned
+  DEFERRED/CANONICAL_UNKNOWN after approximately the existing thirty-second canonical
+  observation budget. CanonicalFreshness currently owns one deadline for the projection
+  object used across a whole lane pass, so earlier subjects can consume observation
+  time needed by later subjects. GitSources also repeats network fetches for immutable
+  SHAs within the same observation. Separately, the durable recovery path relies on
+  GitHub schedule */5 for later autonomous drain opportunities; live schedule runs
+  37053912495 and 37075944497 proved the recheck implementation works when invoked,
+  but no new scheduled run appeared after workflow 37083846294 despite waiting beyond
+  one configured interval. H4A5 therefore still lacks a bounded production path from
+  durable pre-submit deferral to another local freshness attempt independent of best-effort
+  cron.
+assumptions:
+- Canonical main at authoring is c5f71db05aa9a19b93597db9e7fd029ca1d5da0d.
+- TASK-280 direct Publisher-to-local-wake handoff and TASK-281 integrated no-op publication
+  replay semantics are reviewed and published and are not reopened by this TASK.
+- Publisher workflow 37083846294 completed successfully, exported publication attention
+  artifact 11260375137, and its direct and workflow_run fallback paths produced the
+  same publication-success event identity.
+- The direct and fallback local-wake receipts for that exact event were DEFERRED with
+  reason CANONICAL_UNKNOWN; neither receipt proves a ChatGPT user turn.
+- Existing scheduled local-wake runs 37053912495 and 37075944497 prove the bounded
+  recheck command itself can execute, but GitHub schedule cadence is not treated as
+  a correctness SLA.
+- Existing publication-success subjects already handled manually by Human/Brain are
+  not automatically canonically superseded by chat activity. Any planning reconciliation
+  needed to close those old subjects remains a separate Human/Brain planning mutation,
+  not transport inference.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-278.yaml
+  - .ai/tasks/TASK-279.yaml
+  - .ai/tasks/TASK-280.yaml
+  - .ai/tasks/TASK-281.yaml
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/local_chat_wake.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - .github/workflows/aios-auto-publish.yml
+  - src/aios_renew/publication.py
+  - tests/test_brain_attention.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_publication.py
+  modify:
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/local_chat_wake.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_brain_attention.py
+  - tests/test_local_chat_wake.py
+  - tests/test_local_chat_wake_workflow.py
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+non_goals:
+- Increase the existing thirty-second canonical observation budget, fifteen-second
+  individual Git ceiling or ten-second API-read ceiling merely to hide slow or duplicate
+  work.
+- Change publication.py, aios-auto-publish.yml, TASK-280 publication handoff identity,
+  TASK-281 ALREADY_PUBLISHED/ALREADY_INCLUDED semantics, or Publisher authority.
+- Change attention-family schemas, deterministic event identity, semantic routing,
+  review verdicts, correction strategy, roadmap successor selection or Executor/model
+  selection.
+- Treat Human chat activity, a later task dispatch, workflow success or elapsed time
+  as canonical proof that an older planning-attention subject is resolved.
+- Create a persistent canonical-evidence cache, second lifecycle database, daemon,
+  new retry service, self-dispatch loop, repository_dispatch bridge, actions-write
+  dependency, PAT/App secret, polling service or ChatGPT Work path.
+- Relax FIFO, one-flight, exact-event dedupe, generation safety, draft/busy guards,
+  ambiguity no-resend, exact outbound user-turn proof or multi-project lane isolation.
+- Automatically mutate roadmap planning state, close H4A5, authorize H4B, activate
+  a downstream project or claim live regular-Chat conformance from deterministic verification.
+- Perform another publication replay or live browser wake during Executor implementation.
+constraints:
+  hard:
+  - Each exact canonical freshness observation must receive its own bounded observation
+    window so one subject cannot receive CANONICAL_UNKNOWN solely because prior lane
+    subjects consumed a shared freshness deadline.
+  - 'Per-subject isolation must remain bounded: one drain/recheck invocation may process
+    only the existing finite durable lane workset under the existing job timeout and
+    at most one user submission; no unbounded retry or queue scan may be introduced.'
+  - Within one freshness observation, already-proven immutable Git objects identified
+    by exact SHA may avoid redundant remote retrieval, but mutable refs and the before/after
+    ref snapshots required for substitution or TOCTOU detection must still be freshly
+    read at their existing semantic barriers.
+  - No immutable evidence reuse may survive across independent observations or become
+    persistent operational/canonical state. A later observation must independently
+    reconstruct current mutable state.
+  - ArtifactSources and GitSources for one exact generic-attention observation must
+    share that subject's bounded deadline. Existing thirty-second overall subject
+    observation, fifteen-second Git operation and ten-second API operation ceilings
+    remain unchanged.
+  - A direct or projected local-wake job that has durably admitted an event may provide
+    a bounded follow-up drain using the existing durable lane/recheck contract. That
+    follow-up must operate only on already-admitted local subjects and must not create,
+    classify or select a semantic attention subject.
+  - Correctness of durable pre-submit recovery must not depend on GitHub schedule
+    arriving at the configured cron cadence. The schedule path may remain a best-effort
+    maintenance/fallback drain when GitHub invokes it.
+  - Direct Publisher handoff and legacy workflow_run fallback may race or both request
+    bounded recheck. Existing lane locking, exact event dedupe and no-resend rules
+    must guarantee at most one user wake turn and retain later FIFO work.
+  - AMBIGUOUS or potentially submitted attempts remain proof-only and are never made
+    retryable by the new recheck path. Only retry-safe PENDING/DEFERRED work can be
+    automatically revisited.
+  - Human/Brain manual continuation of an attention subject is not inferred from chat
+    or transport activity. Exact canonical successor/supersession remains required
+    before transport may classify that subject RESOLVED_NOOP.
+  - Browser target validation, authenticated regular-Chat requirement, unique composer/Send
+    guards, binding generation, local privacy boundary and no assistant-output extraction
+    remain unchanged.
+  - Executor changes only the seven authorized files. Runtime owns canonical verification,
+    Reviewer owns semantic verdict, Publisher owns publication, and Human/Brain owns
+    planning reconciliation and H4A5 closure.
+acceptance:
+- id: AC1
+  condition: 'Regression coverage proves two or more queued attention subjects do
+    not share one exhausted CanonicalFreshness deadline: a later subject receives
+    an independent bounded canonical observation rather than CANONICAL_UNKNOWN solely
+    from earlier-subject elapsed time.'
+- id: AC2
+  condition: Within one exact generic-attention observation, deterministic tests prove
+    immutable objects already fetched by exact SHA are not redundantly fetched while
+    mutable ref snapshots are still re-read where required to detect moved, conflicting
+    or substituted lineage.
+- id: AC3
+  condition: The implementation preserves the existing 30-second subject observation
+    ceiling, 15-second Git-operation ceiling and 10-second API-operation ceiling and
+    fails closed to UNKNOWN on unavailable, malformed, moved or time-exhausted evidence.
+- id: AC4
+  condition: After durable admission through either reusable direct deliver or workflow_run
+    deliver-projected entry, the local workflow provides a finite bounded follow-up
+    drain opportunity using the existing local lane without requiring a later schedule
+    event; held work remains durable if still ineligible.
+- id: AC5
+  condition: Workflow and transport regressions prove duplicate direct/fallback observations,
+    concurrent bounded follow-up drains and an optional later scheduled drain still
+    produce at most one exact user wake turn, preserve FIFO/one-flight behavior, and
+    never resend an AMBIGUOUS attempt.
+- id: AC6
+  condition: The schedule trigger remains optional best-effort recovery rather than
+    a liveness guarantee, and no actions:write, workflow self-dispatch, repository_dispatch,
+    PAT/App secret, new daemon, polling service, semantic retry authority or ChatGPT
+    Work dependency is introduced.
+- id: AC7
+  condition: 'Existing generic attention and publication contracts remain compatible:
+    exact event identity, canonical publication truth, PublicationReport semantics,
+    H4A4 Human supersession rules, browser/privacy guards and no-semantic-router boundaries
+    are unchanged.'
+- id: AC8
+  condition: The H4A5 conformance document records publication replay 37083846294,
+    identical direct/fallback event identity, CANONICAL_UNKNOWN receipts, observed
+    non-guaranteed schedule cadence and the requirement for separate Human/Brain canonical
+    planning reconciliation of already-handled old subjects before a post-publication
+    live wake proof; deterministic tests do not claim H4A5 closure or H4B readiness.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_brain_attention.py tests/test_local_chat_wake.py
+    tests/test_local_chat_wake_workflow.py tests/test_publication.py
+  - git diff --check
