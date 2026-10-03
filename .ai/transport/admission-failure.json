@@ -1,0 +1,1 @@
+{"dispatch_id":"task289-r1-codex61-xhigh-20261003-001","error":{"message":"repository dirty","type":"OperatorError"},"executor_invoked":false,"format":"AIOS_ADMISSION_FAILURE","kind":"ADMISSION_FAILURE","operation":"PRIMARY","phase":"PRIMARY_SYNCHRONIZATION","reason_code":"PRIMARY_SYNCHRONIZATION_REJECTED","requested_executor":"codex","requested_task_id":"TASK-289","version":2}
