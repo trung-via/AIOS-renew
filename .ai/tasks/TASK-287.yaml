@@ -1,0 +1,134 @@
+task_id: TASK-287
+revision: 1
+goal: Permanently harden H4B local regular-Chat lane liveness so a proven SUBMITTED
+  wake cannot hold the lane indefinitely merely because the transient BUSY generation
+  state was missed, while preserving exactly-once delivery, post-submit ambiguity
+  fail-close behavior, Human precedence, and transport-only authority.
+problem: Live RUN-285-001 publication-success attention was proven SUBMITTED/EXACT_USER_TURN_PROVEN,
+  but machine-local inspection later showed flight_present=true, seen_busy=false,
+  the exact wake user turn still EXACT, and the bound browser already IDLE. Because
+  the current lane releases a SUBMITTED flight automatically only after BUSY has first
+  been observed and a later observation sees IDLE, the missed transient BUSY left
+  a stale flight that caused both RUN-286-001 RESULT and publication-success attention
+  to defer as LANE_IN_FLIGHT. Human-authorized state-only recovery safely cleared
+  only that flight pointer and the remaining RUN-286 publication attention later resolved
+  NOOP/CANONICALLY_RESOLVED. The incident is operationally recovered but the production
+  algorithm can reproduce the same liveness failure.
+assumptions:
+- Canonical main at TASK authoring is 2caeed1ebf42de9924bc8732d8625c4129e3a6c4.
+- TASK-286 is complete and published at reviewed SHA 6955668893636752bd6a7c41b0a0b29ce6adf961
+  with REVIEW-286-001 PASS.
+- The stale RUN-285-001 publication-success holder was SUBMITTED with reason NONE
+  and generation 0; read-only local proof observed seen_busy=false, exact user turn
+  EXACT, browser generation state IDLE, no state lock, no pending write, and no queue
+  files.
+- Human-authorized state-only recovery cleared only the stale flight pointer while
+  preserving the RUN-285 SUBMITTED event, dedupe identity, all seven event records,
+  bindings, tombstones and queue state.
+- After exact TASK-286 completion was bookmarked, one bounded drain classified the
+  deferred RUN-286-001 publication-success attention as NOOP/CANONICALLY_RESOLVED
+  without sending a new Chat turn.
+- H4B remains open; permanent stale-flight hardening is a reliability prerequisite
+  chosen by current Human priority and is not itself H4B live semantic-resume proof.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+  - src/aios_renew/local_chat_wake.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - tests/test_local_chat_wake.py
+  - tests/test_h4b_regular_chat_brain_resume.py
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+non_goals:
+- Change canonical attention identity, TASK/RUN/RESULT/FAILURE/REVIEW semantics, Brain/Reviewer/Runtime/Publisher
+  authority, Flow Cards, roadmap advancement authority, machine-local lane ownership,
+  or exact-conversation binding.
+- Release a SUBMITTED flight from IDLE alone, elapsed time alone, a cooldown, a retry
+  counter, canonical subject age, or another heuristic that does not prove completion
+  of the exact submitted wake turn.
+- Read, persist, export, compare, summarize, or reason from assistant text, assistant
+  HTML/content, raw conversation content, account identity, cookies, credentials,
+  browser profile data, CDP endpoint, local binding paths, or chat history.
+- Increase workflow timeout-minutes, canonical observation budget, CDP/page/insert/submission-proof
+  waits, bounded follow-up recheck count or interval, or scheduled recovery cadence.
+- Add a background service, browser launcher, provider-native transport, ChatGPT Work
+  dependency, second wake transport, generic retry/failover authority, semantic router,
+  lifecycle reducer, or persistent reasoning store.
+- Replay or redrain resolved RUN-285 or RUN-286 attention, fabricate a checkpoint,
+  create execution solely to manufacture H4B proof, close H4B, or start H5.
+constraints:
+  hard:
+  - Preserve the existing BUSY -> seen_busy=true -> later IDLE release path and canonical-resolution
+    release path as valid completion mechanisms.
+  - For a SUBMITTED flight with seen_busy=false, IDLE alone must never clear the flight.
+    Automatic release is permitted only when the adapter proves a bounded completion
+    witness anchored to the exact submitted doorbell user turn while the exact authenticated
+    regular-Chat target is currently IDLE.
+  - 'The completion witness must be structural and content-free: it may use only exact-turn
+    identity already required for submission proof plus bounded turn ordering, role
+    and visibility metadata sufficient to prove one unambiguous assistant-role successor
+    for that exact wake turn. It must never read assistant text, innerHTML, rendered
+    content, hidden reasoning, or semantic meaning.'
+  - A missing, virtualized, hidden, duplicate, nested, role-ambiguous or intervening-user
+    turn structure, target mismatch, structural surface uncertainty, active generation
+    or adapter error must fail closed by retaining the flight; it must never authorize
+    resend or choose another subject.
+  - When a completion witness releases a stale flight, preserve the holder event as
+    SUBMITTED with its existing generation/reason/dedupe identity and change no canonical
+    engineering state. Any later pending event must still cross fresh canonical, binding-generation,
+    exact-target, draft/generation and pre-click barriers before a possible send.
+  - Do not add or migrate durable lane schema, timestamps, cooldown fields or time-derived
+    completion state. Keep existing timeout/recheck/workflow budgets unchanged.
+  - Executor changes only the four authorized files. Runtime owns canonical verification;
+    Reviewer owns semantic verdict; Publisher owns publication; Human/Brain separately
+    owns H4B live-proof and roadmap closure.
+acceptance:
+- id: AC1
+  condition: 'Focused deterministic coverage reproduces the observed stale-flight
+    shape: an exact first wake is SUBMITTED, its flight remains seen_busy=false, the
+    exact submitted user turn has a unique completed structural assistant successor
+    and the exact target is IDLE, while a second distinct subject is pending. One
+    lane pass releases only the first flight, preserves its SUBMITTED dedupe record,
+    freshly revalidates the second subject and may submit that second subject exactly
+    once without resending the first.'
+- id: AC2
+  condition: Focused counterexamples prove seen_busy=false plus IDLE does not release
+    when the exact wake turn is absent, the completion successor is missing, hidden,
+    duplicate, nested or role-ambiguous, an intervening user turn exists, the target/surface
+    is unproven, or generation is active; pending subjects remain held and no additional
+    send occurs.
+- id: AC3
+  condition: 'Existing completion and ambiguity guarantees remain intact: observed
+    BUSY followed by IDLE still releases the flight, fresh canonical resolution can
+    retire a held subject without browser submission, and an AMBIGUOUS post-submit
+    attempt remains proof-only and is never automatically resent.'
+- id: AC4
+  condition: 'The new completion witness is content-free and bounded: implementation/tests
+    establish that it consumes only exact wake-user-turn identity plus structural
+    turn role/order/visibility metadata and never reads or emits assistant text, assistant
+    HTML/content, raw chat history, account/session/credential data, URLs, CDP endpoint
+    or local paths.'
+- id: AC5
+  condition: The candidate changes only the four TASK-authorized files, keeps the
+    existing durable lane schema and all workflow/time/recheck budgets unchanged,
+    and introduces no second transport, background loop, lifecycle/semantic authority
+    or provider-specific persistent state.
+- id: AC6
+  condition: The wake and H4B conformance documents record the RUN-285 stale-flight
+    evidence, Human state-only recovery and RUN-286 canonical NOOP drain, define the
+    exact-turn-bound content-free completion contract and its fail-closed cases, and
+    keep H4B closure dependent on a future natural real unresolved RESULT semantic-resume
+    observation rather than TASK-287 acceptance itself.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py tests/test_h4b_regular_chat_brain_resume.py
+  - git diff --check
