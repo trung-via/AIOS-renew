@@ -3069,6 +3069,58 @@ sequence:
           current unresolved planning subject for a separately Human-authorized
           post-publication live regular-Chat proof. The live proof must run from the
           TASK-282-published main so the bounded follow-up drain implementation is loaded.
+      final_live_proof:
+        authority: HUMAN
+        authorized_on: "2026-10-03"
+        replay_issue_number: 1401
+        replay_ingress_status: IDEMPOTENT
+        replay_created_new_run: false
+        replay_invoked_executor: false
+        publisher_workflow_run_id: 37092596879
+        publisher_outcome: ALREADY_INCLUDED
+        publication_source_artifact_id: 11262871184
+        publication_source_artifact_digest: "sha256:7f96e792da51ad6f6f259556127f92462a511a74e2b2044f1736d93000899682"
+        publication_source_digest: "ab80aa399816f8963c57536c64e0824c2999e5c8032595b302b6a696820ed90a"
+        source_boundary: PUBLICATION_PROVEN
+        event_id: "attention:v1:PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING:eyJhcnRpZmFjdF9zaGEiOiI4MGYxNzBlYWNhZTZjNzM2NWFjNTkwYmUwMmZjNjI2MDc2MTI2YzY5IiwiZGVjaXNpb25fc2hhIjoiMDI1YmZmYzZkMGM5YjY2YjdlMzBjNjZiYTRhMzFkYTllMjcwYjJjNiIsInB1Ymxpc2hlZF9zaGEiOiJmOWQxNmQ3MjM3MTJjMDFkNDlmZDE4YTU3NTZlODFkM2Q4NTY5OTkxIiwicmV2aWV3ZWRfc2hhIjoiZjlkMTZkNzIzNzEyYzAxZDQ5ZmQxOGE1NzU2ZTgxZDNkODU2OTk5MSIsInJ1bl9pZCI6IlJVTi0yODItMDAxIiwic291cmNlX2JvdW5kYXJ5IjoiUFVCTElDQVRJT05fUFJPVkVOIn0"
+        direct_local_wake:
+          job_id: 111115937821
+          initial_receipt_status: DEFERRED
+          initial_receipt_reason: CANONICAL_UNKNOWN
+          bounded_follow_up_executed: true
+          bounded_follow_up_passes: 2
+          observed_receipt_count: 11
+          submitted_count: 0
+          noop_count: 0
+          blocked_count: 0
+          observed_receipts: DEFERRED_CANONICAL_UNKNOWN_ONLY
+        exact_bound_regular_chat_user_turn_proven: false
+        publisher_workflow_result: SUCCESS
+        legacy_workflow_run_fallback_after_publisher: NOT_OBSERVED_IN_BOUNDED_WINDOW
+        result: FAIL
+        failure_class: POST_TASK_282_CANONICAL_FRESHNESS_STILL_UNKNOWN
+        interpretation: >-
+          This replay loaded the TASK-282-published reusable local-wake workflow and
+          executed the new bounded follow-up drain. The direct intake still deferred
+          the exact RUN-282-001 publication-success subject as CANONICAL_UNKNOWN, and
+          both bounded follow-up passes returned only DEFERRED/CANONICAL_UNKNOWN
+          receipts across the retained FIFO workset. No SUBMITTED,
+          EXACT_USER_TURN_PROVEN, NOOP or BLOCKED receipt was observed. The live result
+          proves that TASK-282 removed dependence on a later cron invocation but did
+          not yet make the canonical freshness observation complete within the
+          preserved safety bounds. It does not by itself identify which exact
+          canonical read or proof sub-operation is exhausting or failing.
+      new_live_blocker:
+        code: POST_TASK_282_CANONICAL_FRESHNESS_STILL_UNKNOWN
+        authority: HUMAN_BRAIN_PLANNING
+        task_binding: UNBOUND
+        disposition: FRESH_BRAIN_AUDIT_REQUIRED
+        root_cause: UNRESOLVED
+        scope_boundary: >-
+          Diagnose the exact per-subject canonical freshness failure before authoring
+          another implementation TASK. Do not replay RUN-282-001 again, increase
+          observation budgets, bypass freshness, infer old-subject resolution or
+          advance H4B from this failed proof.
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
         TASK-280, TASK-281 and TASK-282 implementation blockers are reviewed and
