@@ -91,8 +91,9 @@ ArtifactSources share that observation's deadline; each Git operation remains
 capped at fifteen seconds and each API operation at ten seconds. A successful
 exact-SHA fetch may be reused only by that observation's disposable reader. A later
 observation reconstructs a new store and re-fetches its own exact evidence. Mutable
-refs are never cached: the existing before/after lineage, inclusion and planning
-snapshots remain fresh reads. Unavailable, malformed, moved, conflicting or
+refs are never reused across observations. TASK-283 consolidates the original
+lineage, inclusion and planning barriers into the initial/final snapshots described
+below. Unavailable, malformed, moved, conflicting or
 time-exhausted evidence remains UNKNOWN and cannot authorize submission.
 
 Both reusable `deliver` and `workflow_run` `deliver-projected` intake jobs now offer
@@ -121,6 +122,62 @@ TASK-282 transport implementation; transport cannot infer it, bypass old FIFO wo
 close H4A5 or authorize H4B. Deterministic regression coverage of budgets, immutable
 retrieval, concurrent follow-ups and duplicate identities does not claim H4A5 closure
 or H4B readiness. A live wake proof remains a separately authorized Human procedure.
+
+## TASK-283 canonical freshness repair and live-proof boundary
+
+The final Human-authorized post-TASK-282 replay of RUN-282-001, Issue #1401,
+used publisher workflow `37092596879` and publication source artifact `11262871184`.
+Ingress was idempotent, created no new RUN and invoked no Executor; publication
+reported `ALREADY_INCLUDED`. The TASK-282-published reusable local-wake workflow
+executed both bounded follow-up passes, but all eleven observed receipts remained
+`DEFERRED` / `CANONICAL_UNKNOWN`. No exact bound regular-Chat user turn was proven.
+This remains failed live conformance evidence, not H4A5 closure.
+
+The subsequent bounded audit identified a duplicate `previous_state` key in
+unrelated historical roadmap planning data. Publication-success freshness parses
+the whole roadmap with unique-key semantics, so that defect prevented evaluation
+of even exact planning bookmarks. Human/Brain repaired the planning document at
+canonical main `85ec017e8ac6cde0db75396789dc7f15271fe249` without changing lifecycle
+or engineering-state truth. TASK-283 does not modify roadmap state or relax strict
+parsing: a duplicate anywhere in a supplied roadmap still produces UNKNOWN.
+
+The audit also found schema drift: REVIEW and AUTHOR_REMEDIATION freshness required
+`source_run_id` inside REMEDIATION, although the canonical `Remediation` /
+`parse_remediation` and authoring ingress contract owns `finding_id`, `action` and
+`reviewed_sha`, with its existing optional scope, verification and constraints.
+The repaired reader proves source RUN identity from the exact
+`refs/heads/aios/remediation/<RUN>-<finding>` subject and canonical review identity.
+It parses the canonical remediation shape and checks the finding, its exact review
+action and reviewed SHA, sole review-decision parent and exact metadata-only change.
+It never chooses a correction strategy or a replacement successor.
+
+TASK-283 reduces the serial proof graph instead of increasing deadlines. Each
+generic observation takes one initial snapshot of every mutable ref needed for
+its family, acquires together only the immutable object SHAs identified by that
+snapshot, and performs local document, tree and ancestry checks. A final snapshot
+of the identical ref set must exactly equal the initial snapshot before either
+RESOLVED or UNRESOLVED can be returned. Publication success and one-finding
+REVIEW/AUTHOR_REMEDIATION therefore use two remote-ref snapshots and one immutable
+acquisition phase, with no duplicate exact-SHA fetch phase. No ref snapshot or
+fetch cache survives an independent observation. Missing, substituted, malformed,
+conflicting or moved evidence remains UNKNOWN.
+
+The TASK-282 per-subject thirty-second window, fifteen-second Git ceiling,
+ten-second API ceiling and finite in-job follow-up drain remain unchanged.
+Deterministic fixtures cover the reduced call budget using fake clocks, canonical
+remediation documents and the repaired roadmap; they do not constitute live proof.
+Generic attention identity, publication classification, H4A4/H4A5 FIFO/one-flight,
+browser/privacy and ambiguity guards retain their existing contracts. The local
+wake lane receives only RESOLVED, UNRESOLVED or UNKNOWN and gains no semantic,
+correction, review, publication or roadmap authority.
+
+Any new live proof requires separate Human authorization after exact review and
+reviewed publication of TASK-283. No additional RUN-282-001 replay or live browser
+wake is authorized by Executor implementation or deterministic Runtime checks.
+Human/Brain still owns old-subject planning reconciliation and explicit H4A5
+closure; H4B authorization and downstream adoption remain separate later decisions.
+Runtime owns canonical verification, Reviewer owns the semantic verdict and
+Publisher owns publication. H4A5 live conformance and H4B readiness remain unclaimed.
 
 ## Family/source matrix
 

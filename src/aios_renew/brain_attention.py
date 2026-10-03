@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 import hashlib
 import io
 import json
@@ -487,11 +488,29 @@ class GitSources:
         return values
 
     def fetch(self, sha):
-        _value(sha, "sha")
-        if sha in self._fetched:
+        self.acquire(sha)
+
+    def acquire(self, *shas):
+        for sha in shas:
+            _value(sha, "sha")
+        missing = sorted(set(shas) - self._fetched)
+        if not missing:
             return
-        self.git(self.path, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", self.remote, sha)
-        self._fetched.add(sha)
+        self.git(self.path, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", self.remote, *missing)
+        self._fetched.update(missing)
+
+    def frozen(self, refs):
+        # A new reader per observation; never inherit another reader's fetch cache.
+        return _GitObservation(self.path, self.git, self.remote, refs)
+
+    def remediation(self, sha, subject, decision):
+        name = f".ai/remediations/REMEDIATION-{subject}.yaml"
+        correction = self.document(sha, name)
+        parents = self.git(self.path, "rev-list", "--parents", "--max-count=1", sha).split()
+        changed = self.git(self.path, "diff-tree", "--no-commit-id", "--name-only", "-r", decision, sha).splitlines()
+        if parents != [sha, decision] or changed != [name]:
+            raise AttentionError("UNPROVEN_REMEDIATION_LINEAGE")
+        return correction
 
     def document(self, sha, name):
         self.fetch(sha)
@@ -509,10 +528,10 @@ class GitSources:
     def review(self, run_id, decision_sha=None):
         _value(run_id, "run")
         root = "refs/heads/aios/"
-        patterns = [root + x + "/" + run_id for x in ("artifacts", "failure-artifacts", "review", "review-decision")]
+        patterns = _review_patterns(run_id)
         before = self.refs(*patterns)
         artifact, head, decision = [before.get(root + x + "/" + run_id) for x in ("artifacts", "review", "review-decision")]
-        if (not all((artifact, head, decision)) or root + "failure-artifacts/" + run_id in before
+        if (not all((artifact, head, decision)) or any(root + x + "/" + run_id in before for x in ("failure-artifacts", "failure"))
                 or (decision_sha is not None and decision != decision_sha)):
             raise AttentionError("UNPROVEN_REVIEW_IDENTITY")
         run = self.document(artifact, ".ai/transport/run.json")
@@ -532,6 +551,8 @@ class GitSources:
         if len(paths) != 1 or paths[0] not in {f".ai/reviews/REVIEW-{run_id[4:]}.yaml", f".ai/reviews/REVIEW-{run_id[4:]}.yml"}:
             raise AttentionError("UNPROVEN_REVIEW_IDENTITY")
         review = self.document(decision, paths[0])
+        from .review import parse_review
+        parse_review(json.dumps(review))
         if (not {"review_id", "reviewed_sha", "mode", "verdict", "acceptance", "findings"}.issubset(review)
                 or review["review_id"] != "REVIEW-" + run_id[4:] or review["reviewed_sha"] != head
                 or review["verdict"] not in {"PASS", "CHANGES_REQUIRED", "BLOCKED"} or self.refs(*patterns) != before):
@@ -547,6 +568,31 @@ class GitSources:
         if remaining:
             _value(remaining, "sha")
         return not remaining
+
+
+class _GitObservation(GitSources):
+    """Local proof over one initial snapshot; the caller owns the final read."""
+
+    def __init__(self, path, git, remote, refs):
+        super().__init__(path, git, remote)
+        self._refs = dict(refs)
+        self.acquire(*self._refs.values())
+
+    def refs(self, *patterns):
+        return {ref: sha for ref, sha in self._refs.items()
+                if any(fnmatchcase(ref, pattern) for pattern in patterns)}
+
+    def fetch(self, sha):
+        _value(sha, "sha")
+        if sha not in self._fetched:
+            # An event-selected ancestor may be inspected locally, but never
+            # causes a second remote acquisition or an unbound exact-SHA fetch.
+            self.git(self.path, "cat-file", "-e", sha + "^{commit}")
+
+
+def _review_patterns(run_id):
+    return [f"refs/heads/aios/{namespace}/{run_id}" for namespace in
+            ("artifacts", "failure-artifacts", "review", "failure", "review-decision")]
 
 
 # workflow_run must identify a trusted producer path, never just a display name.
@@ -687,8 +733,7 @@ class ArtifactSources:
         return run_id, receipt
 
 
-def _delivery_resolution(s, sources, artifacts):
-    successor = artifacts.delivery_successor(s)
+def _delivery_resolution(s, sources, artifacts, successor):
     if successor is None:
         return "UNRESOLVED"
     run_id, receipt = successor
@@ -739,7 +784,7 @@ def _delivery_resolution(s, sources, artifacts):
 
 
 def freshness(item, sources, artifacts):
-    """Exact source reconstruction, then only exact canonical successor facts."""
+    """One coherent before/after snapshot around an observation-local proof."""
     s = dict(item.selectors)
     if item.family in {RESULT, FAILURE, RECOVERY}:
         raise AttentionError("USE_ORIGINAL_LANE_FRESHNESS")
@@ -748,47 +793,93 @@ def freshness(item, sources, artifacts):
         candidates = project_source(artifacts.artifact(pointer), pointer)
         if item.event_id not in {candidate.event_id for candidate in candidates}:
             return "UNKNOWN"
+    root = "refs/heads/aios/"
+    patterns, successor = [], None
+    if item.family in {REVIEW, PUBLICATION_FAILURE, PUBLICATION_SUCCESS}:
+        patterns = _review_patterns(s["run_id"])
+        patterns += ([root + "remediation/" + s["run_id"] + "-*"] if item.family == REVIEW
+                     else ["refs/heads/main"])
+    elif item.family == CONFLICT:
+        patterns = [s["predecessor_ref"]]
+    elif item.family == REVIEW_INGRESS and s["subject_sha"] != "0" * 40:
+        patterns = _review_patterns(s["subject_id"])
+    elif item.family == AUTHORING and s["subject_sha"] != "0" * 40:
+        if s["operation"] == "AUTHOR_REMEDIATION":
+            patterns = _review_patterns(s["subject_id"]) + [root + "remediation/" + s["subject_id"] + "-" + s["finding_id"]]
+        else:
+            patterns = [root + "repair/" + s["subject_id"]]
+    elif item.family == INGRESS and s["carrier"] == "INGRESS" and s["operation"] == "AUTHOR_TASK":
+        patterns = ["refs/heads/main"]
+    elif item.family in {DISPATCH, PRE_AIOS}:
+        successor = artifacts.delivery_successor(s)
+        if successor is not None:
+            run_id, _ = successor
+            _value(run_id, "run")
+            patterns = [root + namespace + "/" + run_id for namespace in
+                        ("artifacts", "failure-artifacts", "review", "failure")]
+            if s["operation"] == "REPAIR":
+                patterns.append(root + "repair/" + s["subject_id"])
+    if not patterns:
+        return _freshness(item, sources, artifacts, successor)
+    before = sources.refs(*patterns)
+    observation = sources.frozen(before)
+    state = _freshness(item, observation, artifacts, successor)
+    return state if sources.refs(*patterns) == before else "UNKNOWN"
+
+
+def _findings(review):
+    from .review import REMEDIATION_ACTIONS
+    findings = review.get("findings")
+    if not isinstance(findings, list):
+        raise AttentionError("UNPROVEN_FINDINGS")
+    actions = {}
+    for finding in findings:
+        if not isinstance(finding, dict):
+            raise AttentionError("UNPROVEN_FINDINGS")
+        finding_id = finding.get("id")
+        _value(finding_id, "delivery")
+        if finding_id in actions or finding.get("action") not in REMEDIATION_ACTIONS:
+            raise AttentionError("UNPROVEN_FINDINGS")
+        actions[finding_id] = finding["action"]
+    return actions
+
+
+def _remediation(sources, ref, sha, identity, actions):
+    from .review import parse_remediation
+    subject = ref.rsplit("/", 1)[-1]
+    correction = parse_remediation(json.dumps(sources.remediation(sha, subject, identity["decision_sha"])))
+    if (ref != "refs/heads/aios/remediation/" + identity["run_id"] + "-" + correction.finding_id
+            or correction.reviewed_sha != identity["reviewed_sha"]
+            or actions.get(correction.finding_id) != correction.action):
+        raise AttentionError("UNPROVEN_REMEDIATION_BINDING")
+    return correction.finding_id
+
+
+def _freshness(item, sources, artifacts, successor):
+    """Exact source reconstruction, then only exact canonical successor facts."""
+    s = dict(item.selectors)
     if item.family in {REVIEW, PUBLICATION_FAILURE, PUBLICATION_SUCCESS}:
         identity, review = sources.review(s["run_id"], s["decision_sha"])
         if any(s[key] != identity[key] for key in _REVIEW):
+            return "UNKNOWN"
+        if item.family == REVIEW:
+            if review["verdict"] not in {"CHANGES_REQUIRED", "BLOCKED"}:
+                return "UNKNOWN"
+            # An exact correction artifact is a successor; never choose its strategy.
+            actions = _findings(review)
+            pattern = f"refs/heads/aios/remediation/{s['run_id']}-*"
+            refs = sources.refs(pattern)
+            corrected = set()
+            for ref, sha in refs.items():
+                corrected.add(_remediation(sources, ref, sha, identity, actions))
+            return "RESOLVED" if actions and corrected == set(actions) else "UNRESOLVED"
+        if review["verdict"] != "PASS":
             return "UNKNOWN"
         main_ref = "refs/heads/main"
         main = sources.refs(main_ref).get(main_ref)
         if main is None:
             return "UNKNOWN"
         included = sources.included(s["reviewed_sha"], main)
-        if sources.refs(main_ref).get(main_ref) != main:
-            return "UNKNOWN"
-        if item.family == REVIEW:
-            if review["verdict"] not in {"CHANGES_REQUIRED", "BLOCKED"}:
-                return "UNKNOWN"
-            # An exact correction artifact is a successor; never choose its strategy.
-            findings = review.get("findings")
-            if not isinstance(findings, list):
-                return "UNKNOWN"
-            ids = set()
-            for finding in findings:
-                if not isinstance(finding, dict) or finding.get("id") in ids:
-                    return "UNKNOWN"
-                _value(finding.get("id"), "delivery")
-                ids.add(finding["id"])
-            pattern = f"refs/heads/aios/remediation/{s['run_id']}-*"
-            refs = sources.refs(pattern)
-            corrected = set()
-            for ref, sha in refs.items():
-                subject = ref.rsplit("/", 1)[-1]
-                correction = sources.document(sha, f".ai/remediations/REMEDIATION-{subject}.yaml")
-                if (correction.get("source_run_id") != s["run_id"]
-                        or correction.get("reviewed_sha") != s["reviewed_sha"]
-                        or correction.get("finding_id") not in ids
-                        or subject != s["run_id"] + "-" + correction["finding_id"]):
-                    return "UNKNOWN"
-                corrected.add(correction["finding_id"])
-            if sources.refs(pattern) != refs:
-                return "UNKNOWN"
-            return "RESOLVED" if ids and corrected == ids else "UNRESOLVED"
-        if review["verdict"] != "PASS":
-            return "UNKNOWN"
         if item.family == PUBLICATION_FAILURE:
             return "RESOLVED" if included else "UNRESOLVED"
         if not included:
@@ -837,11 +928,10 @@ def freshness(item, sources, artifacts):
                 ref = "refs/heads/aios/remediation/" + subject
                 refs = sources.refs(ref)
                 if ref in refs:
-                    identity, _ = sources.review(s["subject_id"])
-                    correction = sources.document(refs[ref], f".ai/remediations/REMEDIATION-{subject}.yaml")
-                    if (identity["reviewed_sha"] == s["subject_sha"] and correction.get("source_run_id") == s["subject_id"]
-                            and correction.get("finding_id") == s["finding_id"] and correction.get("reviewed_sha") == s["subject_sha"]
-                            and sources.refs(ref) == refs):
+                    identity, review = sources.review(s["subject_id"])
+                    if identity["reviewed_sha"] != s["subject_sha"] or review["verdict"] != "CHANGES_REQUIRED":
+                        return "UNKNOWN"
+                    if _remediation(sources, ref, refs[ref], identity, _findings(review)) == s["finding_id"]:
                         return "RESOLVED"
                     return "UNKNOWN"
             else:
@@ -875,7 +965,7 @@ def freshness(item, sources, artifacts):
                 return "RESOLVED"
         return "UNRESOLVED"
     if item.family in {DISPATCH, PRE_AIOS}:
-        return _delivery_resolution(s, sources, artifacts)
+        return _delivery_resolution(s, sources, artifacts, successor)
     return "UNKNOWN"
 
 

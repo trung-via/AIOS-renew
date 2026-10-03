@@ -1,6 +1,7 @@
 """Synthetic exact-source regressions. No live delivery or lifecycle operations."""
 
 from fnmatch import fnmatchcase
+import copy
 import hashlib
 import io
 import json
@@ -180,7 +181,8 @@ def test_pre_aios_operational_receipts_are_subordinate_selector_only_and_do_not_
 class Sources:
     def __init__(self, verdict="CHANGES_REQUIRED"):
         self.identity = dict(IDENTITY)
-        self.decision = dict(review_id="REVIEW-fixture-001", verdict=verdict, findings=[{"id": "F1"}, {"id": "F2"}])
+        self.decision = dict(review_id="REVIEW-fixture-001", verdict=verdict,
+                             findings=[{"id": "F1", "action": "CODE_FIX"}, {"id": "F2", "action": "EVIDENCE_ONLY"}])
         self.values = {"refs/heads/main": "d" * 40}
         self.docs = {("d" * 40, ".ai/roadmap-state.yaml"): {"version": 1, "sequence": []}}
         self.is_included = False
@@ -196,6 +198,14 @@ class Sources:
 
     def document(self, sha, name):
         return self.docs[sha, name]
+
+    def frozen(self, refs):
+        observation = copy.copy(self)
+        observation.values = dict(refs)
+        return observation
+
+    def remediation(self, sha, subject, decision):
+        return self.document(sha, f".ai/remediations/REMEDIATION-{subject}.yaml")
 
     def optional_document(self, sha, name):
         return self.docs.get((sha, name))
@@ -456,7 +466,9 @@ def test_review_followup_requires_all_exact_finding_successors_and_pass_never_be
         sha = str(number) * 40
         subject = IDENTITY["run_id"] + f"-F{number}"
         sources.values["refs/heads/aios/remediation/" + subject] = sha
-        sources.docs[sha, f".ai/remediations/REMEDIATION-{subject}.yaml"] = dict(source_run_id=IDENTITY["run_id"], reviewed_sha=IDENTITY["reviewed_sha"], finding_id=f"F{number}")
+        sources.docs[sha, f".ai/remediations/REMEDIATION-{subject}.yaml"] = dict(
+            reviewed_sha=IDENTITY["reviewed_sha"], finding_id=f"F{number}",
+            action="CODE_FIX" if number == 1 else "EVIDENCE_ONLY")
         assert brain.freshness(item, sources, Artifacts()) == ("UNRESOLVED" if number == 1 else "RESOLVED")
     sources.decision["verdict"] = "PASS"
     assert brain.freshness(item, sources, Artifacts()) == "UNKNOWN"
@@ -583,7 +595,7 @@ def test_canonical_review_reader_binds_run_result_candidate_and_decision_and_rec
     refs = {root + name + "/RUN-fixture-001": sha for name, sha in
             (("artifacts", "a" * 40), ("review", "c" * 40), ("review-decision", "b" * 40))}
     run = dict(run_id="RUN-fixture-001", task=dict(id="TASK-fixture", revision=1), head_sha=None)
-    review = dict(review_id="REVIEW-fixture-001", reviewed_sha="c" * 40, mode="FULL",
+    review = dict(review_id="REVIEW-fixture-001", reviewed_sha="c" * 40, mode="PRIMARY",
                   verdict="BLOCKED", acceptance={}, findings=[])
     blobs = {("a" * 40, ".ai/transport/run.json"): run,
              ("a" * 40, ".ai/transport/result.json"): dict(result=dict(head_sha="c" * 40)),
@@ -636,10 +648,10 @@ def publication_reader():
             dict(result=dict(head_sha=IDENTITY["reviewed_sha"])),
         (IDENTITY["decision_sha"], ".ai/reviews/REVIEW-fixture-001.yaml"):
             dict(review_id="REVIEW-fixture-001", reviewed_sha=IDENTITY["reviewed_sha"],
-                 mode="FULL", verdict="PASS", acceptance={}, findings=[]),
+                 mode="PRIMARY", verdict="PASS", acceptance={"AC1": "PASS"}, findings=[]),
         ("d" * 40, ".ai/roadmap-state.yaml"): dict(version=1, sequence=[]),
     }
-    calls, snapshots = [], []
+    calls, snapshots, parents, changed = [], [], {}, {}
     change = [None]
 
     def git(path, *args):
@@ -653,16 +665,23 @@ def publication_reader():
             return "\n".join(sha + "\t" + ref for ref, sha in snapshot.items())
         if args[0] == "show":
             sha, name = args[1].split(":", 1)
-            return json.dumps(blobs[sha, name])
+            if (sha, name) not in blobs:
+                raise brain.AttentionError("CANONICAL_UNKNOWN")
+            blob = blobs[sha, name]
+            return blob if isinstance(blob, str) else json.dumps(blob)
         if args[0] == "ls-tree":
             return args[-1] if args[-1] != ".ai/reviews" else ".ai/reviews/REVIEW-fixture-001.yaml"
-        assert args[0] in {"init", "fetch", "rev-list"}
+        if args[0] == "rev-list" and "--parents" in args:
+            return " ".join([args[-1], *parents[args[-1]]])
+        if args[0] == "diff-tree":
+            return "\n".join(changed[args[-1]])
+        assert args[0] in {"init", "fetch", "rev-list", "cat-file"}
         return ""
 
     event = brain.project_observation(dict(boundary="PUBLICATION_PROVEN", **IDENTITY,
                                            published_sha=IDENTITY["reviewed_sha"]), {}).event_id
     return SimpleNamespace(git=git, calls=calls, snapshots=snapshots, refs=refs,
-                           blobs=blobs, change=change, event=event)
+                           blobs=blobs, change=change, event=event, parents=parents, changed=changed)
 
 
 def test_one_generic_observation_reuses_exact_sha_fetches_and_rereads_all_ref_barriers(monkeypatch, publication_reader):
@@ -673,14 +692,16 @@ def test_one_generic_observation_reuses_exact_sha_fetches_and_rereads_all_ref_ba
         fixture.calls.clear()
         fixture.snapshots.clear()
         assert projection.observe(fixture.event) == "UNRESOLVED"
-        fetched = [args[-1] for args in fixture.calls if args[0] == "fetch"]
+        phases = [args for args in fixture.calls if args[0] == "fetch"]
+        assert len(phases) == 1
+        fetched = phases[0][6:]
         assert len(fetched) == len(set(fetched)) == 4
         assert set(fetched) == {IDENTITY["artifact_sha"], IDENTITY["decision_sha"],
                                 IDENTITY["reviewed_sha"], "d" * 40}
         # Both independent observations reconstruct their own immutable store.
-        assert len(fixture.snapshots) == 5
+        assert len(fixture.snapshots) == 2
         assert fixture.snapshots[0] == fixture.snapshots[1]
-        assert fixture.snapshots[2:] == [("refs/heads/main",)] * 3
+        assert "refs/heads/main" in fixture.snapshots[0]
 
 
 @pytest.mark.parametrize("fault", ["review-moved", "main-moved-after-inclusion", "main-moved-after-roadmap",
@@ -690,7 +711,7 @@ def test_immutable_fetch_reuse_cannot_hide_moved_conflicting_or_substituted_line
     def change(snapshot, snapshots):
         if fault == "review-moved" and len(snapshots) == 2:
             snapshot["refs/heads/aios/review/" + IDENTITY["run_id"]] = "e" * 40
-        if fault.startswith("main-moved") and len(snapshots) == (4 if fault.endswith("inclusion") else 5):
+        if fault.startswith("main-moved") and len(snapshots) == 2:
             snapshot["refs/heads/main"] = "e" * 40
         if fault == "conflicting":
             snapshot["refs/heads/aios/failure-artifacts/" + IDENTITY["run_id"]] = "e" * 40
@@ -720,3 +741,248 @@ def test_optional_document_fetches_once_and_failed_fetch_is_never_remembered(tmp
     unavailable[0] = False
     assert sources.optional_document("a" * 40, ".ai/identity.yaml") == {"version": 1}
     assert len([args for args in calls if args[0] == "fetch"]) == 2  # Failure, then one successful fetch.
+
+
+def remediation_observation(fixture, family):
+    """Canonical authoring shape: provenance is the ref, never a document field."""
+    from aios_renew.review import parse_remediation
+    subject = IDENTITY["run_id"] + "-F1"
+    ref, sha = "refs/heads/aios/remediation/" + subject, "e" * 40
+    name = f".ai/remediations/REMEDIATION-{subject}.yaml"
+    correction = dict(finding_id="F1", action="CODE_FIX", reviewed_sha=IDENTITY["reviewed_sha"],
+                      scope=dict(modify=["src/sample.py"]), verification=dict(affected=["sample-check"]),
+                      constraints=dict(hard=["Preserve scope"]))
+    assert parse_remediation(json.dumps(correction)).finding_id == "F1"
+    assert "source_run_id" not in correction
+    review = fixture.blobs[IDENTITY["decision_sha"], ".ai/reviews/REVIEW-fixture-001.yaml"]
+    review.update(verdict="CHANGES_REQUIRED", acceptance={"AC1": "FAIL"}, findings=[dict(
+        id="F1", basis="AC1", action="CODE_FIX", location="src/sample.py",
+        issue="fixture finding", expected="fixture correction")])
+    fixture.refs[ref] = sha
+    fixture.blobs[sha, name] = correction
+    fixture.parents[sha] = [IDENTITY["decision_sha"]]
+    fixture.changed[sha] = [name]
+    observation = (dict(boundary="REVIEW_FOLLOWUP", **IDENTITY) if family == brain.REVIEW
+                   else rejection("AUTHOR_REMEDIATION"))
+    item, source, _ = source_event(observation)
+    return SimpleNamespace(item=item, source=source, ref=ref, sha=sha, name=name,
+                           correction=correction, review=review)
+
+
+@pytest.mark.parametrize("family", [brain.REVIEW, brain.AUTHORING])
+def test_canonical_remediation_resolves_with_one_acquisition_and_two_complete_snapshots(
+        monkeypatch, publication_reader, family):
+    fixture = publication_reader
+    correction = remediation_observation(fixture, family)
+    monkeypatch.setattr(wake.CanonicalFreshness, "git", lambda self, path, *args: fixture.git(path, *args))
+    monkeypatch.setattr(brain.ArtifactSources, "artifact", lambda self, pointer: correction.source)
+    projection = wake.CanonicalFreshness(wake.REPOSITORY)
+    for _ in range(2):
+        fixture.calls.clear()
+        fixture.snapshots.clear()
+        assert projection.observe(correction.item.event_id) == "RESOLVED"
+        phases = [args for args in fixture.calls if args[0] == "fetch"]
+        assert len(phases) == 1
+        assert set(phases[0][6:]) == {IDENTITY[key] for key in ("artifact_sha", "decision_sha", "reviewed_sha")} | {correction.sha}
+        assert len(phases[0][6:]) == 4
+        assert len(fixture.snapshots) == 2
+        assert fixture.snapshots[0] == fixture.snapshots[1]
+        assert "refs/heads/main" not in fixture.snapshots[0]
+        assert correction.ref in fixture.snapshots[0] or correction.ref.rsplit("-", 1)[0] + "-*" in fixture.snapshots[0]
+
+
+@pytest.mark.parametrize("family", [brain.REVIEW, brain.AUTHORING])
+@pytest.mark.parametrize("fault", ["subject", "finding", "reviewed_sha", "action", "invalid_action",
+    "missing_action", "review_id", "review_candidate", "review_schema", "result", "run", "review_parent", "merge_parent",
+    "extra_path", "missing_blob", "missing_object", "malformed", "duplicate_key", "moved", "new_ref",
+    "decision_moved", "artifact_moved", "candidate_moved", "failure_artifact", "failure_ref", "duplicate_ref"])
+def test_reduced_remediation_proof_fails_closed_on_binding_lineage_object_and_snapshot_faults(
+        monkeypatch, publication_reader, family, fault):
+    fixture = publication_reader
+    successor = remediation_observation(fixture, family)
+    root = "refs/heads/aios/"
+    if fault in {"finding", "reviewed_sha", "action", "invalid_action"}:
+        key, value = {"finding": ("finding_id", "F-other"), "reviewed_sha": ("reviewed_sha", "f" * 40),
+                      "action": ("action", "EVIDENCE_ONLY"), "invalid_action": ("action", "SELECT_STRATEGY")}[fault]
+        successor.correction[key] = value
+    elif fault == "missing_action":
+        del successor.correction["action"]
+    elif fault == "review_id":
+        successor.review["review_id"] = "REVIEW-other-001"
+    elif fault == "review_candidate":
+        successor.review["reviewed_sha"] = "f" * 40
+    elif fault == "review_schema":
+        successor.review["mode"] = "SUBSTITUTED"
+    elif fault == "result":
+        fixture.blobs[IDENTITY["artifact_sha"], ".ai/transport/result.json"]["result"]["head_sha"] = "f" * 40
+    elif fault == "run":
+        fixture.blobs[IDENTITY["artifact_sha"], ".ai/transport/run.json"]["run_id"] = "RUN-other-001"
+    elif fault in {"review_parent", "merge_parent"}:
+        fixture.parents[successor.sha] = (["f" * 40] if fault == "review_parent"
+                                        else [IDENTITY["decision_sha"], "f" * 40])
+    elif fault == "extra_path":
+        fixture.changed[successor.sha].append("src/substituted.py")
+    elif fault == "missing_blob":
+        del fixture.blobs[successor.sha, successor.name]
+    elif fault in {"malformed", "duplicate_key"}:
+        fixture.blobs[successor.sha, successor.name] = ("finding_id: [" if fault == "malformed"
+            else json.dumps(successor.correction)[:-1] + ',"action":"CODE_FIX"}')
+    elif fault == "subject":
+        # Same object under the selected ref, but only a different RUN's document.
+        fixture.blobs[successor.sha, successor.name.replace(IDENTITY["run_id"], "RUN-other-001")] = fixture.blobs.pop((successor.sha, successor.name))
+    elif fault in {"failure_artifact", "failure_ref"}:
+        fixture.refs[root + ("failure-artifacts" if fault == "failure_artifact" else "failure") + "/" + IDENTITY["run_id"]] = "f" * 40
+
+    def change(snapshot, snapshots):
+        if len(snapshots) != 2:
+            return
+        if fault == "moved":
+            snapshot[successor.ref] = "f" * 40
+        elif fault == "new_ref":
+            # Appearance of an initially absent canonical binding is a race.
+            snapshot[root + "failure/" + IDENTITY["run_id"]] = "f" * 40
+        elif fault in {"decision_moved", "artifact_moved", "candidate_moved"}:
+            namespace = {"decision_moved": "review-decision", "artifact_moved": "artifacts", "candidate_moved": "review"}[fault]
+            snapshot[root + namespace + "/" + IDENTITY["run_id"]] = "f" * 40
+    fixture.change[0] = change
+
+    def git(self, path, *args):
+        if fault == "missing_object" and args[0] == "fetch":
+            raise brain.AttentionError("CANONICAL_UNKNOWN")
+        output = fixture.git(path, *args)
+        if fault == "duplicate_ref" and args[0] == "ls-remote":
+            output += "\n" + successor.sha + "\t" + successor.ref
+        return output
+    monkeypatch.setattr(wake.CanonicalFreshness, "git", git)
+    monkeypatch.setattr(brain.ArtifactSources, "artifact", lambda self, pointer: successor.source)
+    assert wake.CanonicalFreshness(wake.REPOSITORY).observe(successor.item.event_id) == "UNKNOWN"
+
+
+@pytest.mark.parametrize("family", [brain.REVIEW, brain.AUTHORING])
+def test_absent_remediation_successor_is_unresolved_only_with_stable_refs(monkeypatch, publication_reader, family):
+    fixture = publication_reader
+    successor = remediation_observation(fixture, family)
+    del fixture.refs[successor.ref]
+    monkeypatch.setattr(wake.CanonicalFreshness, "git", lambda self, path, *args: fixture.git(path, *args))
+    monkeypatch.setattr(brain.ArtifactSources, "artifact", lambda self, pointer: successor.source)
+    monkeypatch.setattr(brain.ArtifactSources, "request", lambda self, path: dict(id=10, body=BODY))
+    projection = wake.CanonicalFreshness(wake.REPOSITORY)
+    assert projection.observe(successor.item.event_id) == "UNRESOLVED"
+    fixture.snapshots.clear()
+    fixture.change[0] = lambda snapshot, snapshots: snapshot.update({successor.ref: successor.sha}) if len(snapshots) == 2 else None
+    assert projection.observe(successor.item.event_id) == "UNKNOWN"
+
+
+def test_author_remediation_rejected_subject_sha_must_match_canonical_review(monkeypatch, publication_reader):
+    fixture = publication_reader
+    successor = remediation_observation(fixture, brain.AUTHORING)
+    observation = rejection("AUTHOR_REMEDIATION")
+    observation["subject_sha"] = "f" * 40
+    item, source, _ = source_event(observation)
+    monkeypatch.setattr(wake.CanonicalFreshness, "git", lambda self, path, *args: fixture.git(path, *args))
+    monkeypatch.setattr(brain.ArtifactSources, "artifact", lambda self, pointer: source)
+    assert wake.CanonicalFreshness(wake.REPOSITORY).observe(item.event_id) == "UNKNOWN"
+
+
+def test_repaired_repository_roadmap_uses_unique_keys_and_exact_planning_bookmarks(monkeypatch, publication_reader):
+    fixture = publication_reader
+    raw = (Path(__file__).resolve().parents[1] / ".ai/roadmap-state.yaml").read_text(encoding="utf-8")
+    roadmap = brain._load_yaml(raw, "repaired repository roadmap")
+    fixture.blobs["d" * 40, ".ai/roadmap-state.yaml"] = raw
+    monkeypatch.setattr(wake.CanonicalFreshness, "git", lambda self, path, *args: fixture.git(path, *args))
+    projection = wake.CanonicalFreshness(wake.REPOSITORY)
+    assert projection.observe(fixture.event) == "UNRESOLVED"
+    completed = dict(run_id=IDENTITY["run_id"], artifacts_sha=IDENTITY["artifact_sha"],
+                     review_id="REVIEW-fixture-001", review_decision_sha=IDENTITY["decision_sha"],
+                     reviewed_sha=IDENTITY["reviewed_sha"], published_sha=IDENTITY["reviewed_sha"])
+    roadmap["sequence"].append(dict(status="DONE", completed_by=completed))
+    fixture.blobs["d" * 40, ".ai/roadmap-state.yaml"] = roadmap
+    assert projection.observe(fixture.event) == "RESOLVED"
+    for key in completed:
+        if key == "run_id":
+            continue
+        original = completed[key]
+        completed[key] = "REVIEW-other" if key == "review_id" else "f" * 40
+        assert projection.observe(fixture.event) == "UNKNOWN"
+        completed[key] = original
+    roadmap["sequence"][-1]["status"] = "ACTIVE"
+    assert projection.observe(fixture.event) == "UNRESOLVED"
+    # An unrelated historical duplicate still rejects the entire document.
+    fixture.blobs["d" * 40, ".ai/roadmap-state.yaml"] = json.dumps(roadmap)[:-1] + ',"historical":{"previous_state":"old","previous_state":"new"}}'
+    assert projection.observe(fixture.event) == "UNKNOWN"
+
+
+@pytest.mark.parametrize("family", [brain.PUBLICATION_SUCCESS, brain.REVIEW, brain.AUTHORING])
+def test_reduced_proof_completes_under_unchanged_fake_clock_and_operation_ceilings(
+        monkeypatch, publication_reader, family):
+    fixture = publication_reader
+    source = None
+    if family != brain.PUBLICATION_SUCCESS:
+        successor = remediation_observation(fixture, family)
+        event, source = successor.item.event_id, successor.source
+    else:
+        event = fixture.event
+    now, git_timeouts, remote_calls = [100.0], [], []
+    monkeypatch.setattr(wake.time, "monotonic", lambda: now[0])
+    if source:
+        def artifact(self, pointer):
+            assert self.deadline - now[0] <= 30
+            now[0] += 3  # Bounded source API reconstruction also consumes this window.
+            return source
+        monkeypatch.setattr(brain.ArtifactSources, "artifact", artifact)
+
+    def run(command, **kwargs):
+        args = command[3:]
+        git_timeouts.append(kwargs["timeout"])
+        assert 0 < kwargs["timeout"] <= 15
+        if args[0] in {"ls-remote", "fetch"}:
+            remote_calls.append(args[0])
+            now[0] += 6  # Ordinary latency; no sleep or timeout inflation.
+        else:
+            now[0] += 0.02
+        return SimpleNamespace(returncode=0, stdout=fixture.git(Path(command[2]), *args).encode())
+    monkeypatch.setattr(wake.subprocess, "run", run)
+    projection = wake.CanonicalFreshness(wake.REPOSITORY)
+    for _ in range(2):
+        started = now[0]
+        remote_calls.clear()
+        expected = "UNRESOLVED" if family == brain.PUBLICATION_SUCCESS else "RESOLVED"
+        assert projection.observe(event) == expected
+        assert projection.deadline == started + 30
+        assert now[0] - started < 30
+        assert remote_calls == ["ls-remote", "fetch", "ls-remote"]
+    assert max(git_timeouts) == 15
+
+
+def test_api_ceiling_and_remaining_subject_budget_are_preserved_with_fake_clock(monkeypatch):
+    import urllib.request
+    now, timeouts = [100.0], []
+    monkeypatch.setattr(brain.time, "monotonic", lambda: now[0])
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self, limit):
+            assert limit == 1048577
+            return b"{}"
+
+    def open_request(request, timeout):
+        assert request.full_url.endswith("/issues/2")
+        timeouts.append(timeout)
+        now[0] += 0.5
+        return Response()
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *args: SimpleNamespace(open=open_request))
+    sources = brain.ArtifactSources(brain.REPOSITORY)
+    assert sources.deadline == 130
+    assert sources.request("/issues/2") == {}
+    now[0] = 128
+    assert sources.request("/issues/2") == {}
+    assert timeouts == [10, 2]
+    now[0] = 130
+    with pytest.raises(brain.AttentionError):
+        sources.request("/issues/2")
+    assert timeouts == [10, 2]
