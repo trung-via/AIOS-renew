@@ -3376,7 +3376,7 @@ sequence:
       final_task284_live_proof_authorization:
         authority: HUMAN
         authorized_on: "2026-10-03"
-        status: AUTHORIZED_PENDING_EXECUTION
+        status: EXECUTED
         exact_source_run_id: RUN-284-001
         exact_review_id: REVIEW-284-001
         exact_review_decision_sha: "1f79c07619cc1dd1ac3e543d6202dda3e0eda11e"
@@ -3391,16 +3391,47 @@ sequence:
           - LEGACY_FAN_IN_MUST_DEDUPE_OR_NOOP
           - DRAFT_BUSY_AMBIGUITY_OR_UNKNOWN_FAILS_CLOSED
           - NO_H4B_ADVANCE_BEFORE_EXPLICIT_HUMAN_BRAIN_CLOSURE
+        replay_issue_number: 1409
+        replay_ingress_status: IDEMPOTENT
+        replay_created_new_run: false
+        replay_invoked_executor: false
+        publisher_workflow_run_id: 37103110115
+        publisher_workflow_result: SUCCESS
+        publication_source_artifact_id: 11266649247
+        publication_source_digest: "f6ca9c3e7b81663d5f79d7cd12c0eb5645bf66267cfc187506c280347bd179d8"
+        direct_reusable_wake_source_sha: "9663e4b74f8d8ca74e62234b605993bf118d4bbc"
+        direct_reusable_wake:
+          status: SUBMITTED
+          reason: EXACT_USER_TURN_PROVEN
+          submitted_count: 1
+        post_proof_lane_observation:
+          binding_generation: 0
+          flight_present: true
+          flight_run_id: RUN-284-001
+          flight_family: PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+          flight_seen_busy: false
+          event_status: SUBMITTED
+          event_reason: NONE
+          browser_generation_state: IDLE
+          queue_files: 0
+        result: CORE_PUBLICATION_SUCCESS_LIVE_PROOF_PASS_WITH_POST_SEND_FLIGHT_HOLD
+        interpretation: >-
+          The published TASK-284 reusable workflow path reconstructed the exact canonical
+          publication source with authenticated Actions reads and proved exactly one bound
+          regular-Chat user turn for RUN-284-001. No new RUN or Executor was created.
+          The proof itself passed, but the machine-local lane retained an unobserved-generation
+          flight because BUSY was never observed before the exact bound page returned IDLE.
+          That operational flight must not be blind-cleared or treated as proof failure.
       current_live_blocker:
-        code: FINAL_BOUNDED_HUMAN_CONFORMANCE_PROOF_IN_PROGRESS
+        code: POST_PROOF_UNOBSERVED_GENERATION_FLIGHT
         authority: HUMAN_BRAIN_PLANNING
-        task_binding: TASK-284
-        root_cause_class: NONE_ENGINEERING_REPAIR_PUBLISHED
-        next_action: EXECUTE_AUTHORIZED_FINAL_BOUNDED_LIVE_PROOF
+        task_binding: NONE
+        root_cause_class: MACHINE_LOCAL_POST_SEND_FLIGHT_NOT_RETIRED
+        next_action: HUMAN_AUTHORIZE_STATE_ONLY_RECOVERY_RUN_284
         prohibitions:
           - NO_SECOND_REPLAY_WITHOUT_NEW_HUMAN_AUTHORIZATION
-          - NO_NEW_RUN_OR_EXECUTOR_FOR_PROOF
           - NO_BLIND_REDRAIN
+          - NO_BLIND_FLIGHT_CLEAR
           - NO_TIMEOUT_INCREASE
           - NO_H4B_ADVANCE
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
