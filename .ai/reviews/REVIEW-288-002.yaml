@@ -1,0 +1,47 @@
+review_id: REVIEW-288-002
+reviewed_sha: dee96917738a64d5697aeb12fa0e460d3fcf1959
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-288-002 is the exact canonical PRIMARY RESULT for TASK-288 r2. Candidate dee96917738a64d5697aeb12fa0e460d3fcf1959
+  is exactly one commit ahead of admitted base f94f5b78db028a321712b9ebff84b9c53c27f4e9
+  and changes only the four TASK-authorized files.
+- 'Runtime verification is canonical PASS: python -m pytest -q tests/test_local_chat_wake.py
+  tests/test_h4b_regular_chat_brain_resume.py => 472 passed, 610 skipped in 63.76s;
+  git diff --check => exit 0; unresolved is empty.'
+- 'AC1 PASS: candidate parent is exactly admitted base f94f5b78db028a321712b9ebff84b9c53c27f4e9;
+  compare shows one commit and exactly the four authorized paths. The .ai/roadmap-state.yaml
+  blob is byte-identical to the admitted base.'
+- 'AC2 PASS: each of the four candidate file blobs is byte-identical to reviewed TASK-287
+  source candidate 0b17f2468500a33d5352d61df91df38b78bb10bd, so the current-main integration
+  introduces no additional stale-flight semantics, selector, timing budget, state
+  schema, transport, semantic authority or privacy exposure.'
+- 'AC3 PASS: exact test-file blob identity to the reviewed TASK-287 source preserves
+  the missed-BUSY completion witness, exactly-once next-subject behavior, fail-closed
+  ambiguous post-submit behavior, BUSY-to-IDLE and canonical-resolution paths, freshness
+  barriers and content-free privacy assertions; Runtime executed the unchanged focused
+  suite successfully.'
+- 'AC4 PASS: exact document blob identity preserves the RUN-285 stale-flight evidence,
+  Human state-only recovery, RUN-286 canonical NOOP drain, exact-turn-bound completion
+  contract and fail-closed cases; the H4B conformance document still states H4B UNPROVED
+  pending a future natural unresolved RESULT semantic-resume observation.'
+- 'AC5 PASS: the candidate changes only source/conformance files and does not mutate
+  historical TASK-287/RUN/REPAIR/REVIEW lineage. REVIEW-287-002 was used only as exact
+  source provenance; REVIEW-288-002 is a fresh PRIMARY semantic verdict for this integration
+  candidate.'
+- 'AC6 PASS: Runtime admitted the Executor structural RESULT through COMPLETION_GATE,
+  the final canonical RESULT records the exact four-file delta and unresolved=[],
+  and Runtime then attached V001/V002 verification evidence. The verification commands
+  remain Runtime-owned rather than Executor-verdict authority.'
+- Reviewer closure sweep found no material integration defect or inconsistency between
+  TASK-288 r2 acceptance, exact candidate ancestry/blob identity, Runtime evidence
+  and the fresh PRIMARY verdict. H4B remains open; this review does not close H4B
+  or start H5.
