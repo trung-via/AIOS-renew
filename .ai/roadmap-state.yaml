@@ -3422,12 +3422,40 @@ sequence:
           The proof itself passed, but the machine-local lane retained an unobserved-generation
           flight because BUSY was never observed before the exact bound page returned IDLE.
           That operational flight must not be blind-cleared or treated as proof failure.
+      state_only_recovery_run284_authorization:
+        authority: HUMAN
+        authorized_on: "2026-10-03"
+        status: AUTHORIZED_PENDING_EXECUTION
+        exact_flight_run_id: RUN-284-001
+        exact_family: PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+        required_preconditions:
+          - EXACT_USER_TURN_PROVEN
+          - EVENT_STATUS_SUBMITTED
+          - EVENT_REASON_NONE
+          - FLIGHT_SEEN_BUSY_FALSE
+          - EXACT_BOUND_BROWSER_IDLE
+          - QUEUE_EMPTY
+          - BINDING_GENERATION_UNCHANGED
+        authorized_mutation: CLEAR_ONLY_DATA_FLIGHT
+        preserve:
+          - EXACT_SUBMITTED_EVENT
+          - DEDUPE_IDENTITY
+          - EVENT_GENERATION
+          - ALL_OTHER_EVENT_RECORDS
+          - FIFO_STATE
+        prohibitions:
+          - NO_DRAIN
+          - NO_REPLAY
+          - NO_SEND
+          - NO_EVENT_STATUS_MUTATION
+          - NO_TIMEOUT_INCREASE
+          - NO_H4B_ADVANCE
       current_live_blocker:
         code: POST_PROOF_UNOBSERVED_GENERATION_FLIGHT
         authority: HUMAN_BRAIN_PLANNING
         task_binding: NONE
         root_cause_class: MACHINE_LOCAL_POST_SEND_FLIGHT_NOT_RETIRED
-        next_action: HUMAN_AUTHORIZE_STATE_ONLY_RECOVERY_RUN_284
+        next_action: EXECUTE_HUMAN_AUTHORIZED_STATE_ONLY_RECOVERY_RUN_284
         prohibitions:
           - NO_SECOND_REPLAY_WITHOUT_NEW_HUMAN_AUTHORIZATION
           - NO_BLIND_REDRAIN
