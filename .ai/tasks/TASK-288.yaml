@@ -1,35 +1,33 @@
 task_id: TASK-288
-revision: 1
+revision: 2
 goal: Integrate the semantically reviewed TASK-287 stale-flight liveness hardening
-  onto the current canonical main as a fresh current-main descendant, preserving the
-  current roadmap/control state and the exact reviewed TASK-287 behavior, then produce
-  a newly verified and semantically reviewed candidate eligible for normal safe publication.
-problem: 'TASK-287 completed through repair continuation RUN-287-002 at candidate
-  0b17f2468500a33d5352d61df91df38b78bb10bd. Runtime verification passed with 472 passed,
-  610 skipped, git diff --check passed, unresolved was empty, and REVIEW-287-002 returned
-  PRIMARY PASS for AC1-AC6 with no findings. Auto-publication correctly failed closed
-  with INTEGRATION_REQUIRED because canonical main independently advanced to 148ba5faf583e87e8de4620ec59380c15d0bf0e1.
-  Both lineages share merge base 7e1fd0b826e84265eeb4dd36b552c09c19904831: current
-  main differs from that base only in .ai/roadmap-state.yaml, while the reviewed TASK-287
-  source differs only in the four TASK-287 authorized implementation/conformance files.
-  Publishing the historical reviewed SHA directly would discard current planning state,
-  while using a correction-integration ref alone would not create a newly reviewed
-  publishable source. A fresh current-main integration TASK is therefore required.'
+  onto the current canonical main as a fresh current-main descendant, preserving current
+  roadmap/control state and the exact reviewed TASK-287 behavior, then produce a newly
+  Runtime-verifiable, semantically reviewable and normally publishable source candidate.
+problem: 'TASK-288 r1 preserved the correct current-main integration objective but
+  encoded AC6 as a future Runtime verification outcome. RUN-288-001 therefore terminated
+  at COMPLETION_GATE before Runtime verification with ''RESULT does not satisfy acceptance
+  criteria: AC6'' and verification_seconds=null. The failed candidate 005f952f878013c64ce44fe7b8fb870f30b14957
+  is clean, descends from base caa25bbd4f4758e55427b8122afc4ddff3969cdc, changes only
+  the four authorized files, and is repairable/transportable; this is evidence of
+  a TASK-contract ordering defect, not evidence that the implementation or required
+  tests failed. Revision 2 preserves r1 integration semantics and verification commands
+  while making every acceptance criterion truthfully claimable from the Executor-produced
+  candidate before Runtime verification, matching the established TASK-239 r2 correction
+  pattern.'
 assumptions:
-- Canonical main at TASK-288 authoring is 148ba5faf583e87e8de4620ec59380c15d0bf0e1.
-- RUN-287-002 is the canonical successful REPAIR RESULT for TASK-287 and its result
-  head is 0b17f2468500a33d5352d61df91df38b78bb10bd.
-- REVIEW-287-002 at decision SHA 758655253a78158653f3c3ae88f480f0dd79f47d is PRIMARY
-  PASS for AC1-AC6 with no findings.
-- The failed RUN-287-002 publication is an ancestry/integration boundary, not a semantic
-  failure of TASK-287.
-- Canonical compare establishes merge base 7e1fd0b826e84265eeb4dd36b552c09c19904831.
-  Current main is one commit ahead and changes only .ai/roadmap-state.yaml; reviewed
-  TASK-287 is two commits ahead and changes only docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md,
+- Canonical main at TASK-288 r2 authoring is caa25bbd4f4758e55427b8122afc4ddff3969cdc.
+- RUN-288-001 is the canonical r1 FAILURE at COMPLETION_GATE with failed candidate
+  005f952f878013c64ce44fe7b8fb870f30b14957 and FAILURE artifact 34fe8b209c2eba14d2bd9eb3d0713f9333f41d4c.
+- RUN-288-001 Runtime verification did not run; verification_seconds is null. No r1
+  RESULT or REVIEW exists.
+- The r1 failed candidate changes only docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md,
   docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md, src/aios_renew/local_chat_wake.py, and
-  tests/test_local_chat_wake.py.
-- The historical REVIEW-287-002 remains evidence for the intended TASK-287 semantic
-  delta but is not a review verdict for the new TASK-288 integration candidate.
+  tests/test_local_chat_wake.py; outside_task_scope is empty.
+- RUN-287-002 remains the exact reviewed source provenance at candidate 0b17f2468500a33d5352d61df91df38b78bb10bd
+  with REVIEW-287-002 PASS; that historical verdict is not a verdict for TASK-288.
+- Human has explicitly selected Codex GPT-6.1 Sol xhigh to persist throughout TASK-288,
+  including this revision, until Human changes it.
 scope:
   inspect:
   - docs/AIOS-MANIFESTO.md
@@ -38,6 +36,7 @@ scope:
   - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
   - .ai/roadmap-state.yaml
   - .ai/tasks/TASK-287.yaml
+  - .ai/tasks/TASK-288.yaml
   - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
   - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
   - src/aios_renew/local_chat_wake.py
@@ -49,80 +48,76 @@ scope:
   - src/aios_renew/local_chat_wake.py
   - tests/test_local_chat_wake.py
 non_goals:
-- Rewrite, delete, supersede, reinterpret, or republish historical TASK-287, RUN-287-001,
-  RUN-287-002, REPAIR-287-001, REVIEW-287-002, RESULT, FAILURE, EVIDENCE, repair authorization,
-  or publication-attempt lineage.
-- Force-publish, force-update main, publish the divergent historical TASK-287 reviewed
-  SHA directly, or treat REVIEW-287-002 as the semantic verdict for TASK-288.
-- Change TASK-287 semantics, add a new completion heuristic, weaken fail-closed ambiguity
-  handling, change DOM selectors, timing/recheck budgets, durable lane schema, exact-target
-  barriers, privacy boundaries, or lifecycle/authority ownership.
-- Modify .ai/roadmap-state.yaml, TASK documents, workflows, publication/Runtime/Reviewer
-  code, frozen Kernel artifacts, downstream repositories, or files outside the four
-  authorized mutation targets.
-- Use correction-integration staging as a publication shortcut, create a new correction
-  finding, rerun historical RUN-287 execution, or add merge/retry/reroute/fallback
-  authority.
-- Close H4B, claim the future natural unresolved RESULT live proof, or start H5 from
-  TASK-288 acceptance.
-- Push or publish from Executor implementation execution.
+- Treat RUN-288-001 completion-gate failure as proof that the implementation or required
+  tests failed.
+- Require the Executor RESULT to claim Runtime verification success, canonical EVIDENCE
+  creation, Reviewer verdict, publication, roadmap advancement, or any fact that can
+  exist only after Runtime accepts the structural RESULT.
+- Rewrite, delete, supersede or reinterpret TASK-287/RUN-287/REPAIR-287/REVIEW-287
+  history or use REVIEW-287-002 as TASK-288 verdict.
+- Change TASK-287 stale-flight semantics, add completion heuristics, weaken fail-closed
+  behavior, alter selectors, timing/recheck budgets, durable lane schema, privacy
+  boundaries or lifecycle authority.
+- Modify .ai/roadmap-state.yaml, workflows, Runtime, Reviewer, Publisher, frozen Kernel
+  artifacts, downstream repositories, or files outside scope.modify.
+- Use correction-integration staging as a publication shortcut, force-publish, create
+  a generic merge/retry/fallback authority, close H4B, claim the future natural unresolved
+  RESULT live proof, or start H5.
 constraints:
   hard:
-  - The TASK-288 candidate must descend from the exact TASK-288 current-main authoring
-    state. All current-main planning/control state, including .ai/roadmap-state.yaml,
-    must remain present and unchanged by Executor mutation.
-  - Within the four authorized files, preserve the complete reviewed TASK-287 behavior
-    and documentation represented by reviewed SHA 0b17f2468500a33d5352d61df91df38b78bb10bd.
-    Because current main has no overlapping changes in those files since merge base
-    7e1fd0b826e84265eeb4dd36b552c09c19904831, the integrated file contents must not
-    introduce semantic changes beyond the reviewed TASK-287 delta.
-  - 'Preserve the permanent stale-flight contract: existing BUSY->IDLE release remains
-    valid; seen_busy=false plus IDLE alone never releases; release without observed
-    BUSY requires the exact-turn-bound content-free structural completion witness
-    on the exact authenticated regular-Chat target while IDLE; every missing/hidden/duplicate/nested/role-ambiguous/intervening-user/surface/generation
-    uncertainty holds the flight.'
-  - Preserve SUBMITTED dedupe identity and all fresh canonical, binding-generation,
-    exact-target, draft/generation and pre-click barriers before any later pending
-    send. The integration must not authorize replay or resend of historical wake events.
-  - 'Preserve the privacy boundary: no assistant text, assistant HTML/raw content,
-    semantic interpretation, chat-history export, account/session/credential data,
-    CDP endpoint or local-path data may enter the completion witness.'
-  - Historical RUN-287-002 verification and REVIEW-287-002 establish provenance for
-    the source delta only. TASK-288 must undergo fresh Runtime verification on the
-    current-main descendant and a fresh semantic REVIEW before Publisher may publish
-    it.
+  - The r2 implementation candidate must be produced from the admitted r2 current-main
+    execution base. RUN-288-001 failed candidate may be inspected as bounded implementation
+    reference only and is not publication or verification authority.
+  - Within the four authorized files preserve the complete reviewed TASK-287 behavior
+    and documentation represented by reviewed SHA 0b17f2468500a33d5352d61df91df38b78bb10bd;
+    introduce no semantic behavior beyond that reviewed delta.
+  - 'Preserve the permanent stale-flight contract: BUSY->IDLE remains valid; seen_busy=false
+    plus IDLE alone never releases; release without observed BUSY requires the exact-turn-bound
+    content-free structural completion witness on the exact authenticated regular-Chat
+    target while IDLE; ambiguity holds the flight.'
+  - Preserve SUBMITTED dedupe identity, fresh canonical/binding-generation/exact-target/draft/generation/pre-click
+    barriers, no historical wake replay/resend, and the content-free privacy boundary.
+  - Every acceptance criterion in r2 must be claimable from the Executor-produced
+    repository/result structure before Runtime verification starts. Runtime alone
+    executes the verification commands and attaches canonical EVIDENCE after the completion
+    gate.
+  - Keep the r1 verification policy and commands unchanged. Do not weaken, skip, xfail
+    or replace focused stale-flight/H4B tests to obtain a pass.
   - Executor changes only the four authorized files. Runtime owns verification and
-    changed-file enforcement; Reviewer owns the new semantic verdict; Publisher owns
-    publication; Human/Brain retains H4B live-proof and roadmap closure authority.
+    changed-file enforcement; Reviewer owns the fresh semantic verdict; Publisher
+    owns publication; Human/Brain owns H4B live-proof and roadmap closure.
 acceptance:
 - id: AC1
-  condition: The final TASK-288 candidate descends from the exact TASK-288 authoring
-    main and changes only the four authorized TASK-287 implementation/conformance
-    files, preserving current-main .ai/roadmap-state.yaml and every file outside scope.modify.
+  condition: The Executor-produced TASK-288 r2 candidate descends from its admitted
+    current-main execution base, changes only the four authorized TASK-287 implementation/conformance
+    files, and preserves inherited .ai/roadmap-state.yaml and every file outside scope.modify.
 - id: AC2
   condition: The four integrated files preserve the reviewed RUN-287-002/TASK-287
     semantics represented by reviewed SHA 0b17f2468500a33d5352d61df91df38b78bb10bd
     without adding a new completion heuristic, selector, timing budget, state schema,
-    transport, semantic authority, or privacy exposure.
+    transport, semantic authority or privacy exposure.
 - id: AC3
-  condition: Focused stale-flight coverage on the integrated current-main descendant
-    proves the missed-BUSY completion witness, exactly-once next-subject behavior,
-    fail-closed ambiguous post-submit behavior, existing BUSY->IDLE path, canonical-resolution
-    path, fresh barriers, and content-free privacy boundary remain intact.
+  condition: The candidate's focused stale-flight/H4B test corpus encodes the missed-BUSY
+    completion witness, exactly-once next-subject behavior, fail-closed ambiguous
+    post-submit behavior, existing BUSY->IDLE path, canonical-resolution path, fresh
+    barriers and content-free privacy boundary without weakening or skipping those
+    assertions.
 - id: AC4
-  condition: The H4B and local-wake conformance documents on the integrated descendant
-    continue to record RUN-285 stale-flight evidence, Human state-only recovery, RUN-286
-    canonical NOOP drain, the exact-turn-bound completion contract and fail-closed
-    cases, and they still leave H4B UNPROVED pending a future natural real unresolved
-    RESULT semantic-resume observation.
+  condition: The H4B and local-wake conformance documents in the candidate continue
+    to record RUN-285 stale-flight evidence, Human state-only recovery, RUN-286 canonical
+    NOOP drain, the exact-turn-bound completion contract and fail-closed cases, and
+    leave H4B UNPROVED pending a future natural real unresolved RESULT semantic-resume
+    observation.
 - id: AC5
-  condition: The integration does not mutate or reinterpret historical TASK-287/RUN/REPAIR/REVIEW/publication
-    lineage and does not use REVIEW-287-002 as the verdict for TASK-288; TASK-288
-    produces its own canonical RESULT and requires its own semantic REVIEW.
+  condition: The candidate does not mutate or reinterpret historical TASK-287/RUN/REPAIR/REVIEW/publication
+    lineage and does not reuse REVIEW-287-002 as TASK-288 verdict; the new TASK-288
+    RESULT remains subject to a fresh semantic REVIEW.
 - id: AC6
-  condition: Runtime minimum-sufficient verification passes on the fresh current-main
-    descendant, git diff checking passes, RESULT contains zero unresolved items, and
-    no mutation occurs outside the four authorized files.
+  condition: 'The Executor structural RESULT is complete before Runtime verification:
+    unresolved is empty, changed_files names exactly the authorized candidate delta,
+    all AC1-AC6 are claimed only as pre-verification implementation/result properties,
+    and the unchanged minimum-sufficient verification commands remain delegated to
+    Runtime rather than claimed as already executed or passed.'
 verification:
   policy: minimum-sufficient-v1
   required:
