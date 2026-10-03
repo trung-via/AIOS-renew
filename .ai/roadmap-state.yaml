@@ -3932,18 +3932,31 @@ sequence:
           Human continuation immediately after H4A5 closure authorizes the next
           canonical roadmap milestone, H4B. This authorization does not itself author
           TASK-285, select an Executor/model/effort, create a RUN, or prove H4B.
+      task285_authoring:
+        status: CANONICALIZED
+        issue_number: 1410
+        authored_commit_sha: "67aceb31476e053f5aa96de918aec385250ab6cc"
+        task_blob_sha: "00e1e48388d13800de496bb2d81be74bd449e6e3"
+        task_revision: 1
+        audit_profile: brain-high-value-v3
+        audit_stage1: CONSTRUCT
+        audit_stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+        audit_outcome: CANDIDATE
+        packet_fingerprint: "3744665b19d5ca83763c0f131a029706eac0e4aafafe550d4acc49800774ef08"
+        construct_fingerprint: "fff418e185bde6946411737fc1f00c9549b964ec5aba5c98443c7773644f508e"
+        reconciled_candidate_fingerprint: "1a0393be8f3e2c99506ab24d31797f3b424c9a7e5573d289a9b0127b7a595155"
       current_live_blocker:
-        code: H4B_AUTHORIZED_TASK_285_UNAUTHORED
-        authority: HUMAN_BRAIN_PLANNING
+        code: H4B_TASK_285_EXECUTOR_SELECTION_PENDING
+        authority: HUMAN
         task_binding: TASK-285
         root_cause_class: NONE
-        next_action: AUTHOR_TASK_285
+        next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT
         prohibitions:
-          - NO_PRIMARY_BEFORE_CANONICAL_TASK_AUTHORING
+          - NO_PRIMARY_BEFORE_HUMAN_EXECUTION_SELECTION
           - NO_EXECUTOR_REUSE_FROM_TASK_284
           - NO_RECLASSIFICATION_OF_H4A5_ACCEPTED_GAPS_AS_LIVE_PASS
           - NO_H5_AUTOMATIC_ADVANCE
-      remaining_gate: TASK_285_AUDITED_AUTHORING
+      remaining_gate: TASK_285_HUMAN_EXECUTION_SELECTION
       note: >-
         Human explicitly accepted the recorded residual live-evidence gaps as bounded
         conformance risk for H4A5 milestone closure. Brain therefore closes H4A5 as a
@@ -3985,7 +3998,10 @@ sequence:
       second lifecycle reducer, semantic router, persistent reasoning store or transport
       authority. Any production-code change requires a concrete gap proven during
       TASK-285 audit rather than implementation convenience.
-    task_authoring_status: PENDING_AUDITED_AUTHORING
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "67aceb31476e053f5aa96de918aec385250ab6cc"
+    task_blob_sha: "00e1e48388d13800de496bb2d81be74bd449e6e3"
+    authoring_issue_number: 1410
     audit_profile: brain-high-value-v3
     audit_stages:
       - CONSTRUCT
