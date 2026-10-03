@@ -1,0 +1,129 @@
+task_id: TASK-292
+revision: 1
+goal: Establish the H4C0 origin-capture feasibility primitive by adding one bounded
+  read-only ChatGPT MCP development probe that consumes only the host-provided openai/session
+  tool-call metadata, derives a provider-opaque origin handle, and proves deterministic
+  fail-closed behavior without implementing return routing or wake delivery.
+problem: Production H5 now requires origin-affine return, but the current local wake
+  registry binds only repository to one chat and AIOS has no trustworthy way to identify
+  which regular ChatGPT conversation initiated a new semantic flow. Active-tab, recent-chat,
+  timestamp, transcript, and model-memory correlation are explicitly forbidden. Current
+  OpenAI plugin documentation states that ChatGPT tool calls can provide _meta["openai/session"]
+  as an anonymized conversation id for correlating tool calls within the same ChatGPT
+  session. H4C0 must test this as a replaceable transport-origin input without assuming
+  it equals the chat URL or making provider/session identity canonical.
+assumptions:
+- Canonical main at TASK-292 authoring is 2062597d423293d0e38ca059bc15350526317f9b.
+- Human approved docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md and made H4C0 the
+  unique canonical NEXT before H4C1, H4D, H4E, final H4B production-shape proof, and
+  H5.
+- OpenAI's current Plugin Reference documents tool-call _meta["openai/session"] as
+  an anonymized conversation id for correlating tool calls within the same ChatGPT
+  session; H4C0 treats that statement as transport feasibility evidence only, not
+  as canonical engineering truth or proof that the value equals a chatgpt.com conversation
+  URL.
+- ChatGPT developer-mode MCP testing can use a public HTTPS endpoint or Secure MCP
+  Tunnel; live two-chat observation is a later Human/Brain conformance step and is
+  not Runtime verification or TASK-292 acceptance.
+- TASK-291's temporary permissive local-wake source state does not supply origin affinity
+  and TASK-292 must not reopen account-selector work or alter local wake delivery.
+- H4C0 must fail closed if the provider metadata is absent, malformed, ambiguous,
+  or cannot support the later two-chat live observation; no repository-default chat
+  fallback is authorized for new origin-affine flows.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - .ai/roadmap-state.yaml
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+  - src/aios_renew/local_chat_wake.py
+  - pyproject.toml
+  modify:
+  - src/aios_renew/origin_capture.py
+  - scripts/aios_origin_capture_probe.py
+  - tests/test_origin_capture.py
+  - pyproject.toml
+  - docs/AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md
+  - docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+non_goals:
+- Implement H4C1 return routing, map an origin handle to a chat URL, change the local
+  wake registry, navigate a browser, send a wake, or modify any H4A4/H4B delivery
+  semantics.
+- Assume or claim that openai/session equals, contains, or can be reversibly converted
+  into the chatgpt.com conversation URL or conversation UUID.
+- Persist, log, return, commit, or place the raw provider session value in canonical
+  TASK/RUN/RESULT/FAILURE/REVIEW/roadmap state, repository files, Runtime evidence,
+  or a reasoning store.
+- Infer origin from active tab, most-recent chat, timestamps, transcript text, assistant
+  output, model memory, account/profile UI, or browser focus.
+- Use ChatGPT Work, MCP Events, Cloud Browser, a second wake transport, or a generic
+  lifecycle/router service as a substitute for the regular-Chat origin-capture proof.
+- Treat synthetic tests or TASK-292 Runtime PASS as the required live two-conversation
+  H4C0 exit proof; that observation remains a separate Human/Brain conformance step
+  after reviewed publication.
+constraints:
+  hard:
+  - The origin-capture primitive accepts origin identity only from host-supplied tool-call
+    metadata at the MCP boundary. Tool arguments, model text, browser state and caller-provided
+    chat identifiers must not be accepted as equivalent origin proof.
+  - Handle only the exact openai/session metadata value as a bounded opaque transport
+    input. Missing, null, non-string, empty, structurally invalid or over-bound input
+    fails closed and produces no origin handle.
+  - Derive a deterministic domain-separated opaque origin handle from the exact accepted
+    session value and expose only the opaque handle plus bounded contract/status metadata.
+    The raw session value must not be emitted, persisted or logged by the probe.
+  - The provider-specific metadata adapter must terminate at a provider-neutral origin-handle
+    contract so future origin providers can replace it without changing Brain, Runtime,
+    Reviewer, Publisher or lifecycle semantics.
+  - The development probe exposes one read-only origin-capture operation suitable
+    for ChatGPT developer-mode MCP testing and must be testable offline by injecting
+    tool-call metadata; no network call is required for deterministic unit acceptance.
+  - The probe must not create or mutate canonical engineering state, allocate TASK/RUN
+    identities, choose semantic flow, select next_action, create route ownership,
+    write a route registry, or deliver a wake.
+  - 'Documentation must define the post-publication H4C0 live procedure: invoke the
+    probe from two distinct regular ChatGPT conversations, verify stable repeat identity
+    within each conversation and distinct opaque handles across them, record ambiguity
+    as UNPROVED, and never copy raw session metadata or transcript content into canonical
+    records.'
+  - Executor changes only scope.modify. Runtime owns verification; Reviewer owns semantic
+    verdict; Publisher owns exact reviewed publication; Human/Brain alone evaluates
+    the later live two-chat observation and decides H4C0 closure or architecture fallback.
+acceptance:
+- id: AC1
+  condition: The candidate adds a bounded origin-capture primitive that accepts host
+    tool-call metadata, recognizes only the documented openai/session field as the
+    OpenAI origin input, and returns a deterministic provider-opaque origin handle
+    without exposing or persisting the raw value.
+- id: AC2
+  condition: Focused tests prove exact repeated session metadata yields the same opaque
+    handle, two distinct valid session values yield distinct handles, and the derivation
+    is domain-separated/versioned so the handle contract is explicit rather than an
+    accidental raw-session alias.
+- id: AC3
+  condition: Focused fail-closed tests cover absent, null, non-string, empty, over-bound
+    and structurally invalid metadata and prove none can fall back to repository identity,
+    a configured default chat, tool arguments, model text or browser state.
+- id: AC4
+  condition: The candidate provides one read-only development MCP probe entry suitable
+    for later ChatGPT developer-mode invocation, with no semantic arguments required
+    for origin identity and with offline tests proving the adapter passes host metadata
+    into the provider-neutral primitive without canonical mutation.
+- id: AC5
+  condition: The candidate changes no local wake, lifecycle, TASK/RUN artifact, Reviewer,
+    Publisher or Runtime authority and introduces no route database, browser automation,
+    wake delivery, Work/MCP-Events dependency, transcript scraping or assistant-output
+    interpretation.
+- id: AC6
+  condition: The H4C0 conformance documentation records the OpenAI session-metadata
+    feasibility basis and a bounded post-publication two-regular-chat Human/Brain
+    live procedure, explicitly states that TASK-292 acceptance does not prove that
+    future live observation, does not equate the session value with a chat URL, and
+    keeps H4C1 blocked until H4C0 live closure.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_origin_capture.py
+  - git diff --check
