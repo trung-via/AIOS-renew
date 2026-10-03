@@ -406,7 +406,7 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+  - brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
 sequence:
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
@@ -3966,7 +3966,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
-    status: NEXT
+    status: IMPLEMENTATION_HARDENING_REQUIRED
     phase: H4B_REGULAR_CHAT_BRAIN_RESUME
     task_id: TASK-285
     task_revision: 1
@@ -4079,6 +4079,55 @@ sequence:
       - NO_AUTOMATIC_ROADMAP_ADVANCE
       - NO_H5_START_BEFORE_H4B_CLOSURE
     return_to: brain-runtime-semantic-handoff-hardening-v1
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
+    status: NEXT
+    phase: H4B_SURFACE_OBSERVABILITY_HARDENING
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-03"
+    parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+    task_authoring_status: PENDING
+    objective: >-
+      Harden the current local regular-Chat pre-submit surface observation so a retry-safe
+      SURFACE_UNPROVEN deferral reports a bounded privacy-safe structural cause instead of
+      collapsing main/account/login/non-regular/composer/disabled conditions into one opaque
+      reason, while preserving exact-chat fail-close behavior, durable deferred recovery,
+      canonical freshness barriers and transport-only authority.
+    live_evidence_basis:
+      source_run_id: RUN-285-001
+      source_event_id: terminal:RESULT:RUN-285-001:abf4876b3da997be503707e9579d73651a8135b1
+      first_result_delivery:
+        status: DEFERRED
+        reason: SURFACE_UNPROVEN
+        bounded_follow_up_rechecks: 2
+        interval_seconds: 15
+        submission_proven: false
+      later_same_transport_publication_delivery:
+        status: SUBMITTED
+        reason: EXACT_USER_TURN_PROVEN
+        interpretation: >-
+          The same published transport later delivered successfully, so current evidence
+          does not establish a permanently broken selector. The concrete gap is opaque
+          pre-submit surface diagnosis and live-proof reliability, not a known semantic,
+          lifecycle or fixed-selector failure.
+    human_brain_disposition:
+      authority: HUMAN_BRAIN_PLANNING
+      decision: AUTHOR_BOUNDED_SURFACE_OBSERVABILITY_HARDENING_TASK
+      constraints:
+        - DO_NOT_REOPEN_TASK_285
+        - DO_NOT_RECLASSIFY_RUN_285_RESULT_WAKE_AS_PASS
+        - NO_TIMEOUT_BUDGET_INCREASE
+        - NO_BLIND_REPLAY_OR_REDRAIN
+        - NO_ASSISTANT_OUTPUT_OR_CHAT_HISTORY_SCRAPING
+        - NO_NEW_BROWSER_OR_LIFECYCLE_AUTHORITY
+        - PRESERVE_DURABLE_DEFERRED_RECOVERY_AND_FRESHNESS_BARRIERS
+        - NEW_TASK_MUST_NOT_EXIST_SOLELY_TO_MANUFACTURE_H4B_LIVE_EVIDENCE
+        - NO_H5_ADVANCE_BEFORE_H4B_LIVE_CLOSURE
+    current_live_blocker:
+      code: H4B_SURFACE_UNPROVEN_CAUSE_OPAQUE
+      root_cause_class: PRE_SUBMIT_SURFACE_OBSERVABILITY_GAP
+      next_action: BRAIN_AUTHOR_FOLLOW_UP_TASK
+    remaining_gate: FOLLOW_UP_TASK_AUTHORING
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
     status: DONE
