@@ -3711,17 +3711,62 @@ sequence:
           status: DETERMINISTIC_ONLY
           gap: HUMAN_BOUNDED_LIVE_COMPACTED_DUPLICATE_PROOF_UNPROVED
         conclusion: LIVE_CONFORMANCE_INCOMPLETE_NO_ENGINEERING_DEFECT_ESTABLISHED
+      remaining_feasible_live_cases_authorization:
+        authority: HUMAN
+        authorized_on: "2026-10-03"
+        intent: CONTINUE_FEASIBLE_BOUNDED_LIVE_CASES
+        status: AUTHORIZED_IN_PROGRESS
+        immediate_cases:
+          compaction:
+            target_family: PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE
+            target_run_id: RUN-280-002
+            target_state: RESOLVED_NOOP
+            authorized_mutation:
+              - MOVE_EXACT_TARGET_EVENT_TO_PERMANENT_DIGEST_TOMBSTONE
+            proof:
+              - USE_PRODUCTION_OPERATE_COMPACTION_PATH
+              - BOUND_CANONICAL_FRESHNESS_TO_EXACT_TARGET
+              - ABORT_IF_FLIGHT_QUEUE_PENDING_DEFERRED_OR_AMBIGUOUS_EXISTS
+              - PRESERVE_ALL_NON_TARGET_EVENTS
+              - REPLAY_EXACT_TARGET_ONCE
+              - REQUIRE_COMPACTED_DUPLICATE_NOOP
+              - REQUIRE_ZERO_BROWSER_ADAPTER_USE
+              - REQUIRE_ZERO_SEND
+            prohibitions:
+              - NO_OTHER_EVENT_COMPACTION
+              - NO_DRAIN_SUBMISSION
+              - NO_NEW_RUN
+              - NO_EXECUTOR
+              - NO_TIMEOUT_INCREASE
+          progress_exclusion_inventory:
+            mode: READ_ONLY
+            status: AUTHORIZED
+            note: >-
+              Inventory exact existing producer evidence only. Do not create an execution
+              merely to obtain missing progress boundaries.
+        deferred_not_currently_feasible:
+          - TWO_LANES_REQUIRES_SECOND_SEPARATELY_AUTHORIZED_DEPLOYED_LANE
+          - GENERATION_ROLLOVER_REQUIRES_HUMAN_OWNED_BINDING_MUTATION
+          - GENERIC_RECOVERY_REQUIRES_EXISTING_UNRESOLVED_ORIGINAL
+          - STALE_SOURCE_DRAFT_VARIANT_REQUIRES_NATURALLY_ELIGIBLE_UNRESOLVED_SOURCE
+          - MISSING_REPRESENTATIVE_FAMILIES_REQUIRE_REAL_ELIGIBLE_SOURCE
+        interpretation: >-
+          Human authorization to continue feasible bounded cases does not authorize
+          fabrication of lifecycle failures, a second lane deployment, binding-generation
+          mutation, or H4B. Compaction is the only immediately executable live state
+          mutation with a currently exact canonically resolved target.
       current_live_blocker:
-        code: H4A5_REMAINING_LIVE_EVIDENCE_GAPS
+        code: H4A5_FEASIBLE_BOUNDED_CASES_IN_PROGRESS
         authority: HUMAN_BRAIN_PLANNING
         task_binding: NONE
         root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
-        next_action: HUMAN_DECIDE_REMAINING_LIVE_PROOF_OR_EXPLICIT_RISK_ACCEPTANCE
+        next_action: EXECUTE_EXACT_RUN_280_002_COMPACTION_PROOF
         prohibitions:
           - NO_ASSUME_SYNTHETIC_EQUALS_LIVE
           - NO_MANUFACTURE_RUN_FAILURE_REVIEW_OR_CONFLICT
-          - NO_UNAUTHORIZED_LANE_OR_GENERATION_MUTATION
-          - NO_DRAIN_OR_REPLAY_WITHOUT_EXPLICIT_AUTHORIZATION
+          - NO_UNAUTHORIZED_SECOND_LANE_OR_GENERATION_MUTATION
+          - NO_NON_TARGET_COMPACTION
+          - NO_DRAIN_SUBMISSION
           - NO_H4B_ADVANCE
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
