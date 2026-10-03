@@ -1,0 +1,127 @@
+task_id: TASK-291
+revision: 1
+goal: Temporarily make local regular-Chat Brain wake delivery permissive against the
+  nonessential false-negative suppressors now blocking progress, while preserving
+  the minimum hard interlocks required to avoid wrong-target, Human-draft, duplicate,
+  or ambiguous user-turn submission.
+problem: After TASK-290 removed phantom LANE_IN_FLIGHT starvation, live delivery reached
+  SURFACE_UNPROVEN/ACCOUNT_NOT_UNIQUE because ChatGPT's current UI no longer exposes
+  any of the bounded profile/account selectors. Additional probing showed the exact
+  bound project chat, one main and one composer remain stable, so continuing to harden
+  profile selectors has low value relative to the Human's current priority. The same
+  wake path also treats CANONICAL_UNKNOWN and a pass-local blocker from an unrelated
+  event as reasons to suppress later doorbells. The Human explicitly accepts a bounded
+  temporary reduction of these nonessential transport suppressors so work can move
+  to higher-value roadmap stages, provided exact-target, Human-interaction, dedupe
+  and ambiguous-send safety remain intact.
+assumptions:
+- Canonical main at TASK-291 authoring is 9ed05abf6d7a55566cebfced6eef83b648f9ee26.
+- TASK-290 completed through RUN-290-001, REVIEW-290-001 PASS and publication at 1583aa75b1460fefdb3ea7373d1723d2f42f2099;
+  its live acceptance proved later attentions no longer receive phantom LANE_IN_FLIGHT
+  when durable flight is absent.
+- Five repeated live snapshots showed exact target URL, one main and one composer
+  while all existing account/profile selector branches matched zero elements; a broader
+  metadata-only probe also found no replacement account/profile control.
+- The Human explicitly prioritizes leaving this low-value H4B blocker behind and accepts
+  a temporary permissive wake policy rather than further account-selector hardening.
+- A local Chat wake remains only a selector-only doorbell with fresh_brain_sync_required=true;
+  it is not engineering truth and does not authorize semantic continuation without
+  fresh Brain Sync.
+- H4B remains unproved until separately closed; TASK-291 changes only local wake transport
+  eligibility and must not manufacture H4B, roadmap, review or publication truth.
+scope:
+  inspect:
+  - docs/AIOS-MANIFESTO.md
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - docs/AIOS-RENEW-KERNEL-v0.1-FREEZE.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-290.yaml
+  - src/aios_renew/local_chat_wake.py
+  - src/aios_renew/brain_attention.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+  modify:
+  - src/aios_renew/local_chat_wake.py
+  - tests/test_local_chat_wake.py
+  - docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+  - docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md
+non_goals:
+- Remove exact target-page identity, unique main/composer requirements, binding/state
+  integrity, logged-out or non-regular-surface rejection, Human draft protection,
+  active-generation protection, outbound duplicate detection, durable ambiguous-attempt
+  handling, submission proof, or no-blind-resend behavior.
+- Allow simultaneous same-chat user-turn submissions or more than one actual submission
+  in one finite drain pass.
+- Treat CANONICAL_UNKNOWN as canonical UNRESOLVED truth, infer lifecycle state from
+  the browser, or let the transport choose a semantic action.
+- Delete historical safety contracts or rewrite prior TASK/RUN/RESULT/FAILURE/REVIEW/REMEDIATION/REPAIR
+  lineage.
+- Change Brain attention identity, Runtime lifecycle reduction, Reviewer semantics,
+  Publisher authority, or roadmap planning state.
+- Continue account/profile DOM investigation or add another profile/avatar selector
+  solely to follow the current ChatGPT UI.
+constraints:
+  hard:
+  - ACCOUNT_NOT_UNIQUE must cease to be a wake eligibility requirement across pre-submit,
+    insertion acceptance, submission proof, generation-state and completion-witness
+    paths; removal of the account/profile dependency must not weaken exact target-page,
+    unique main/composer, LOGIN_PRESENT or NON_REGULAR_SURFACE checks.
+  - 'CANONICAL_UNKNOWN may not defer or suppress a not-yet-submitted doorbell. It
+    is transport uncertainty only: exact canonical RESOLVED still becomes a NOOP when
+    proven, exact UNRESOLVED remains eligible, and UNKNOWN may proceed to the browser
+    path without being persisted or represented as canonical lifecycle truth.'
+  - A non-flight pre-submit failure for one event must not become a pass-wide blocker
+    for independent later events. Each later pending/deferred subject must cross its
+    own canonical and browser barriers unless a real durable flight or AMBIGUOUS attempted
+    submission exists.
+  - LANE_IN_FLIGHT remains valid only for real durable flight or AMBIGUOUS attempted-submission
+    state and must continue to serialize later unresolved sends.
+  - Preserve exactly one possible actual user-turn submission per finite pass, durable
+    uncertainty before the possible click, permanent dedupe, proof-only reconciliation
+    after ambiguous attempts, and no blind resend.
+  - Preserve hard interlocks for target-page uniqueness/change, main/composer uniqueness,
+    composer disabled state, LOGIN_PRESENT, NON_REGULAR_SURFACE, GENERATION_ACTIVE,
+    DRAFT_PRESENT, OUTBOUND_ALREADY_PRESENT, binding-generation change, local state
+    integrity/capacity, insert/send acceptance and exact submission proof.
+  - The temporary permissive policy must be explicit in repository documentation with
+    a bounded rollback/retightening boundary; it must not become a new Planner, router,
+    lifecycle reducer, retry authority or semantic priority selector.
+  - Executor changes only the four scope.modify files. Runtime owns canonical verification;
+    Reviewer owns semantic verdict; Publisher owns exact reviewed publication; Human/Brain
+    owns later risk retightening and roadmap decisions.
+acceptance:
+- id: AC1
+  condition: The candidate removes account/profile-control presence from every local
+    wake surface gate and JavaScript send/proof predicate so an otherwise valid exact
+    regular-Chat target with zero ACCOUNT matches is send-eligible.
+- id: AC2
+  condition: The candidate makes CANONICAL_UNKNOWN non-suppressing for a not-yet-submitted
+    event without reclassifying it as canonical UNRESOLVED, while preserving deterministic
+    NOOP for an exactly proven RESOLVED event.
+- id: AC3
+  condition: The candidate removes pass-local propagation of unrelated pre-submit
+    blockers; later independent subjects are evaluated against their own barriers,
+    while real flight or AMBIGUOUS attempted-submission state still produces LANE_IN_FLIGHT
+    and at most one actual submission can occur per finite pass.
+- id: AC4
+  condition: The candidate preserves all declared hard interlocks for exact target
+    identity, unique usable composer/main, login/non-regular rejection, Human draft
+    or active generation, outbound dedupe, binding/state integrity, insert/send acceptance,
+    durable ambiguous-attempt handling and exact submission proof.
+- id: AC5
+  condition: Focused regression fixtures cover zero-account-selector success, CANONICAL_UNKNOWN
+    delivery eligibility, absence of pass-blocker propagation, true-flight serialization,
+    and representative retained hard-interlock counterexamples without adding semantic
+    routing behavior.
+- id: AC6
+  condition: The local wake and H4B documents identify TEMPORARY_PERMISSIVE_WAKE_V1
+    as an explicit Human risk-accepted transport policy, state the preserved hard
+    interlocks and rollback boundary, and leave H4B plus lifecycle/roadmap authority
+    unchanged.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake.py tests/test_h4b_regular_chat_brain_resume.py
+  - git diff --check
