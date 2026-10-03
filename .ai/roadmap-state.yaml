@@ -4135,6 +4135,15 @@ sequence:
         - PRESERVE_DURABLE_DEFERRED_RECOVERY_AND_FRESHNESS_BARRIERS
         - NEW_TASK_MUST_NOT_EXIST_SOLELY_TO_MANUFACTURE_H4B_LIVE_EVIDENCE
         - NO_H5_ADVANCE_BEFORE_H4B_LIVE_CLOSURE
+    completed_by:
+      task_id: TASK-286
+      task_revision: 1
+      run_id: RUN-286-001
+      artifacts_sha: "5d67170ca345f8d2c547059dc90f2d7f3bd3422a"
+      review_id: REVIEW-286-001
+      review_decision_sha: "5e8c8c24b35fc99c8e2be582330a6823d25f662b"
+      reviewed_sha: "6955668893636752bd6a7c41b0a0b29ce6adf961"
+      published_sha: "6955668893636752bd6a7c41b0a0b29ce6adf961"
     engineering_completion:
       authority: RUNTIME_REVIEWER_PUBLISHER
       task_id: TASK-286
