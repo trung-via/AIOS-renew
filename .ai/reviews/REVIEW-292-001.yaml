@@ -1,0 +1,43 @@
+review_id: REVIEW-292-001
+reviewed_sha: 101d624642e3731fff43d034b902ab98011da08f
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-292-001 is the canonical PRIMARY RESULT for TASK-292 r1. Candidate 101d624642e3731fff43d034b902ab98011da08f
+  descends from base 484a2d4b0aca261dbd42c5fbcb37c75655b733c2 and changes exactly
+  the six TASK-authorized files.
+- 'Runtime verification is canonical PASS: python -m pytest -q tests/test_origin_capture.py
+  => 63 passed, 1 skipped in 0.41s; git diff --check => exit 0; unresolved is empty.
+  The single skip is the optional MCP-SDK subprocess integration case when the origin-capture-probe
+  extra is not installed; it is not treated as live H4C0 proof.'
+- 'AC1/AC2: capture_origin accepts only the exact host-metadata openai/session field
+  under a bounded grammar and derives a deterministic domain-separated ORIGIN_HANDLE_V1
+  SHA-256 selector. The raw provider session value is neither returned nor retained
+  by the neutral result contract, and repeat/distinct/domain-version behavior is covered
+  by focused tests.'
+- 'AC3: missing, malformed, empty, non-string, non-ASCII/control, over-bound and structurally
+  invalid inputs fail closed. Exact-field tests prohibit aliases and nested _meta
+  substitution; ambient environment, repository/default-chat, arguments, model text
+  and browser-state fallbacks are explicitly rejected.'
+- 'AC4: the dedicated stdio probe exposes exactly one read-only no-semantic-argument
+  tool and obtains origin metadata from the MCP request context before passing it
+  into the provider-neutral primitive. Direct offline adapter tests prove forwarding
+  without filesystem/canonical mutation; the optional SDK test exercises the same
+  request-context path when that development extra is installed. TASK acceptance does
+  not claim Secure MCP Tunnel or two-chat live success.'
+- 'AC5: no local wake, routing registry, browser automation, wake delivery, TASK/RUN
+  lifecycle, Reviewer, Publisher or Runtime authority is changed. The optional dependency
+  is isolated to origin-capture-probe and no Work/MCP-Events or transcript/assistant-output
+  interpretation is introduced.'
+- 'AC6: both H4C0 documents keep session metadata as transport feasibility input only,
+  explicitly deny equivalence to a chat URL/UUID, define the bounded post-publication
+  two-regular-chat observation, record ambiguity as UNPROVED, prohibit raw-session/transcript
+  canonicalization, and keep H4C1 blocked until separate Human/Brain H4C0 live closure.'
