@@ -2918,7 +2918,17 @@ sequence:
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expired_on_task_change: true
-    execution_profile_status: AWAITING_HUMAN_SELECTION
+    human_execution_delegation:
+      selected_on: "2026-10-03"
+      authority: HUMAN
+      task_id: TASK-283
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: high
+      scope: ENTIRE_TASK_LIFECYCLE
+      override_authority: HUMAN_ONLY
+      expires_on_task_change: true
+    execution_profile_status: HUMAN_SELECTED
     completed_by:
       task_id: TASK-279
       task_revision: 1
@@ -3114,7 +3124,7 @@ sequence:
         code: POST_TASK_282_CANONICAL_FRESHNESS_STILL_UNKNOWN
         authority: HUMAN_BRAIN_PLANNING
         task_binding: TASK-283
-        disposition: TASK_AUTHORED_AWAITING_EXECUTION_PROFILE
+        disposition: TASK_AUTHORED_EXECUTION_PROFILE_SELECTED
         root_cause: MULTIPLE_DETERMINISTIC_FRESHNESS_DEFECTS
         audit_findings:
           - id: H4A5-FRESHNESS-ROADMAP-DUPLICATE-KEY
@@ -3149,7 +3159,7 @@ sequence:
           audit_stage1: CONSTRUCT
           audit_stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
           audit_outcome: CANDIDATE
-          executor_selection: AWAITING_HUMAN
+          executor_selection: HUMAN_SELECTED
         scope_boundary: >-
           Execute canonical TASK-283 only after Human selects a new Executor/model/effort
           for this new TASK. Do not reuse TASK-282 delegation implicitly. Do not replay
