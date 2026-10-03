@@ -498,6 +498,19 @@ sequence:
     approved_on: "2026-10-04"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1
     planning_document: docs/AIOS-H4-ORIGIN-AFFINE-UNATTENDED-WAKE-v1.md
+    task_id: TASK-292
+    task_revision: 1
+    task_authoring_status: CANONICALIZED
+    task_author_commit_sha: "dd65f683267ca52a622027dfa063f30f49a9fca2"
+    task_blob_sha: "602baebd63fa109dab2536df88162131b4606db3"
+    authoring_issue_number: 1447
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    packet_fingerprint: "53d2d53bf39f47a8ca2235edb160ea72def96f5b62c5fb2d95cf52a991a3343b"
+    construct_fingerprint: "1f0d2938eb51df8be8d4541a9dd40fdb4f54886cdfcbfa9cd3ed4de6194e7fc2"
+    reconciled_candidate_fingerprint: "77f820533030a7e6df4aa1427f34c5826a0d8056d1210475fdedadc4f2f2380d"
     production_requirement:
       - ORIGIN_AFFINE_RETURN_REQUIRED_BEFORE_H5
       - UNATTENDED_LOCAL_WAKE_REQUIRED_BEFORE_H5
@@ -531,6 +544,27 @@ sequence:
       - IMPLEMENT_GENERIC_RETURN_ROUTING_BEFORE_FEASIBILITY_CLOSES
       - STORE_RAW_CHAT_URL_IN_TASK_RUN_RESULT_REVIEW_SEMANTICS
       - ADD_SECOND_PLANNER_ROUTER_OR_LIFECYCLE_REDUCER
+    implementation_candidate:
+      contract: OPENAI_SESSION_ORIGIN_CAPTURE_V1
+      source_basis: >-
+        OpenAI Plugin Reference documents host-supplied tool-call
+        _meta["openai/session"] as an anonymized conversation id for correlating tool
+        calls within the same ChatGPT session. TASK-292 treats it only as replaceable
+        transport-origin input and never assumes it equals a chat URL.
+      executor_task: TASK-292
+      live_two_chat_proof: REQUIRED_AFTER_REVIEWED_PUBLICATION
+      h4c0_closure_from_task_acceptance_alone: false
+    current_live_blocker:
+      code: TASK_292_EXECUTOR_SELECTION_PENDING
+      authority: HUMAN
+      task_binding: TASK-292
+      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT_FOR_TASK_292
+      prohibitions:
+        - NO_PRIMARY_BEFORE_HUMAN_EXECUTION_SELECTION
+        - NO_EXECUTOR_MODEL_EFFORT_INHERITANCE_FROM_PRIOR_TASK
+        - NO_H4C1_BEFORE_TASK_292_REVIEWED_PUBLICATION_AND_H4C0_LIVE_TWO_CHAT_PROOF
+        - NO_REPOSITORY_DEFAULT_CHAT_FALLBACK
+    remaining_gate: TASK_292_HUMAN_EXECUTION_SELECTION
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4c1-origin-affine-return-routing
