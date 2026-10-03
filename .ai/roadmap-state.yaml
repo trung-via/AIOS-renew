@@ -3720,19 +3720,51 @@ sequence:
           compaction:
             target_family: PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE
             target_run_id: RUN-280-002
-            target_state: RESOLVED_NOOP
+            target_state: TOMBSTONED_BEFORE_AUTHORIZED_PROOF_MUTATION
+            authorization_status: REPLAY_ONLY_REMAINS_UNUSED
+            attempted_proof:
+              result: ABORTED_PRE_MUTATION
+              reason: TARGET_EVENT_MISSING
+              observed:
+                binding_generation: 0
+                flight_present: false
+                queue_files: 0
+                pending_write_present: false
+                lock_present: false
+            post_abort_read_only_diagnostic:
+              state_hash: "c0e31bb6ba47bcb8808526785d20acc069bc4005c86e986c67e5fb26157c8c6c"
+              event_count: 3
+              tombstone_count: 17
+              status_counts:
+                SUBMITTED: 3
+              target_event_present: false
+              target_tombstone_present: true
+              run280_publication_failure_event_count: 0
+            production_scheduler_evidence:
+              workflow_run_id: 37105355610
+              event: schedule
+              head_sha: "09f6d1bca3167125fa958146c7db3c8104da6381"
+              conclusion: success
+              command: LOCAL_CHAT_WAKE_DRAIN_COMPACT
+              created_at_utc: "2026-10-03T07:08:24Z"
+              interpretation: >-
+                The production schedule invoked the published --drain --compact path
+                after the exact target had already been proven RESOLVED_NOOP and before
+                the later Human-authorized deliberate compaction attempt. Current durable
+                state proves the exact target digest is now a tombstone. Per-event mutation
+                provenance is not separately logged, so the schedule is strong operational
+                provenance but is not retroactively relabeled as the Human-authorized proof.
             authorized_mutation:
-              - MOVE_EXACT_TARGET_EVENT_TO_PERMANENT_DIGEST_TOMBSTONE
-            proof:
-              - USE_PRODUCTION_OPERATE_COMPACTION_PATH
-              - BOUND_CANONICAL_FRESHNESS_TO_EXACT_TARGET
-              - ABORT_IF_FLIGHT_QUEUE_PENDING_DEFERRED_OR_AMBIGUOUS_EXISTS
-              - PRESERVE_ALL_NON_TARGET_EVENTS
+              - NONE_TARGET_ALREADY_TOMBSTONED
+            remaining_proof:
               - REPLAY_EXACT_TARGET_ONCE
               - REQUIRE_COMPACTED_DUPLICATE_NOOP
+              - REQUIRE_ZERO_CANONICAL_SOURCE_LOOKUP
               - REQUIRE_ZERO_BROWSER_ADAPTER_USE
+              - REQUIRE_ZERO_PERSISTENT_STATE_CHANGE
               - REQUIRE_ZERO_SEND
             prohibitions:
+              - NO_SECOND_COMPACTION
               - NO_OTHER_EVENT_COMPACTION
               - NO_DRAIN_SUBMISSION
               - NO_NEW_RUN
@@ -3760,7 +3792,7 @@ sequence:
         authority: HUMAN_BRAIN_PLANNING
         task_binding: NONE
         root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
-        next_action: EXECUTE_EXACT_RUN_280_002_COMPACTION_PROOF
+        next_action: EXECUTE_EXACT_RUN_280_002_TOMBSTONE_REPLAY_PROOF
         prohibitions:
           - NO_ASSUME_SYNTHETIC_EQUALS_LIVE
           - NO_MANUFACTURE_RUN_FAILURE_REVIEW_OR_CONFLICT
