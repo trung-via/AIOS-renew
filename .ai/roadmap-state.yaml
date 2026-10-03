@@ -3425,7 +3425,7 @@ sequence:
       state_only_recovery_run284_authorization:
         authority: HUMAN
         authorized_on: "2026-10-03"
-        status: AUTHORIZED_PENDING_EXECUTION
+        status: EXECUTED
         exact_flight_run_id: RUN-284-001
         exact_family: PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
         required_preconditions:
@@ -3450,27 +3450,104 @@ sequence:
           - NO_EVENT_STATUS_MUTATION
           - NO_TIMEOUT_INCREASE
           - NO_H4B_ADVANCE
+        result:
+          exact_user_turn: EXACT
+          browser_generation_state: IDLE
+          recovery: APPLIED
+          cleared_flight_run_id: RUN-284-001
+          preserved_event_status: SUBMITTED
+          preserved_event_reason: NONE
+          preserved_event_generation: 0
+          queue_files_after: 0
+          post_flight_present: false
+      remaining_bounded_cases_audit:
+        authority: HUMAN_BRAIN_PLANNING
+        audited_on: "2026-10-03"
+        basis:
+          - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+          - docs/AIOS-H4A4-DURABLE-WAKE-RECOVERY-CONFORMANCE-v1.md
+          - published TASK-278 through TASK-284 lineage
+          - sanitized live lane observations through RUN-284-001
+        cases:
+          representative_emissions:
+            status: PARTIAL_LIVE
+            proven:
+              - INGRESS_OR_CARRIER_REJECTION_EXACT_BOUND_USER_TURN
+              - PUBLICATION_SUCCESS_EXACT_BOUND_USER_TURN
+              - REVIEW_INGRESS_REJECTION_CANONICALLY_RESOLVED_NOOP
+            missing_live_representatives:
+              - PRIMARY_REMEDIATION_REPAIR_DISPATCH_REJECTION
+              - PRE_AIOS_OPERATIONAL_FAILURE_REQUIRING_DIAGNOSIS
+              - RUN_RESULT_REQUIRING_SEMANTIC_REVIEW
+              - RUN_FAILURE_REQUIRING_CORRECTION_REASONING
+              - REVIEW_CHANGES_REQUIRED_OR_BLOCKED
+              - REMEDIATION_OR_REPAIR_AUTHORING_REJECTION
+              - PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE
+              - CANONICAL_CONFLICT_OR_STALENESS
+              - WAKE_DELIVERY_RECOVERY_FOR_UNRESOLVED_ATTENTION
+            note: >-
+              Deterministic coverage exists for the full matrix, but live conformance
+              cannot infer missing family emissions from tests or unrelated historical
+              workflow activity.
+          progress_exclusion:
+            status: DETERMINISTIC_ONLY
+            note: >-
+              Published projection code and tests exclude DISPATCH_ACCEPTED,
+              RUNNER_STARTED, AIOS_INVOKED, Executor/verification progress and
+              auto-publication start, but no bounded Human live observation set has
+              yet recorded zero new lane subjects/user turns for the complete progress
+              group.
+          stale_source_suppression:
+            status: PARTIAL_LIVE
+            note: >-
+              Exact old subjects have resolved to RESOLVED_NOOP after canonical progress,
+              including the previously deferred old publication-failure subject by the
+              time the RUN-284 proof completed. The prescribed Human-draft-defer variant
+              with unrelated-chat non-resolution and later canonical successor has not
+              been recorded as one bounded H4A5 live case.
+          two_lanes:
+            status: DETERMINISTIC_ONLY
+            note: >-
+              TASK-278 regressions prove lane isolation and duplicate ownership fail-close,
+              but no second separately Human-authorized deployed live lane is recorded.
+          ordering_and_generations:
+            status: PARTIAL_LIVE
+            note: >-
+              Live FIFO/one-flight retention and multiple post-send flight holds are
+              observed. No Human-owned live binding-generation change/race case is
+              recorded; the production lane remains generation 0.
+          recovery:
+            status: DETERMINISTIC_ONLY
+            note: >-
+              Human state-only flight reconciliation for RUN-282-001 and RUN-284-001 is
+              operational recovery, not a live WAKE_DELIVERY_RECOVERY_FOR_UNRESOLVED_ATTENTION
+              family proof. The generic recovery-family contract remains synthetic-only.
+          compaction:
+            status: DETERMINISTIC_ONLY
+            note: >-
+              TASK-278 regressions prove canonical-resolution-only compaction and permanent
+              duplicate tombstones, but no bounded Human live COMPACTED_DUPLICATE proof is
+              recorded.
+        conclusion: LIVE_CONFORMANCE_INCOMPLETE
       current_live_blocker:
-        code: POST_PROOF_UNOBSERVED_GENERATION_FLIGHT
+        code: REMAINING_BOUNDED_H4A5_LIVE_CASES_UNPROVED
         authority: HUMAN_BRAIN_PLANNING
         task_binding: NONE
-        root_cause_class: MACHINE_LOCAL_POST_SEND_FLIGHT_NOT_RETIRED
-        next_action: EXECUTE_HUMAN_AUTHORIZED_STATE_ONLY_RECOVERY_RUN_284
+        root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
+        next_action: HUMAN_DECIDE_BOUNDED_REMAINDER_PROOF_SCOPE
         prohibitions:
-          - NO_SECOND_REPLAY_WITHOUT_NEW_HUMAN_AUTHORIZATION
-          - NO_BLIND_REDRAIN
-          - NO_BLIND_FLIGHT_CLEAR
-          - NO_TIMEOUT_INCREASE
+          - NO_ASSUME_SYNTHETIC_EQUALS_LIVE
+          - NO_MANUFACTURE_RUN_FAILURE_REVIEW_OR_CONFLICT
+          - NO_UNAUTHORIZED_REPLAY
+          - NO_NEW_EXECUTOR_FOR_PROOF
           - NO_H4B_ADVANCE
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
-        TASK-284 is canonically verified, REVIEW-284-001 is PASS and the exact reviewed
-        candidate is published on main. The post-publication RUN-282 unobserved-generation
-        flight was Human-reconciled only after exact user-turn proof and an IDLE bound
-        surface, preserving its SUBMITTED dedupe record. No engineering blocker is
-        currently established. H4A5 remains BLOCKED solely on the separately
-        Human-authorized bounded live conformance procedure and explicit Human/Brain
-        closure; H4B remains unauthorized.
+        TASK-284 core publication-success live proof passed and its post-send
+        unobserved-generation flight has been state-only reconciled without changing
+        the SUBMITTED dedupe record. The lane is operationally clear. H4A5 still cannot
+        close because the bounded Human conformance matrix contains live-evidence gaps;
+        deterministic/synthetic coverage is not a substitute. H4B remains unauthorized.
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
