@@ -499,10 +499,36 @@ sequence:
         observed_detail: REPOSITORY_DIRTY
         run_created: false
         executor_invoked: false
-    current_live_blocker:
-      code: TASK_289_PRE_AIOS_LOCAL_REPOSITORY_DIRTY
+    local_repository_recovery:
       authority: HUMAN_RUNTIME
-      next_action: READ_ONLY_DIAGNOSE_LOCAL_REPOSITORY_DIRTY_BEFORE_ANY_RETRY
+      status: VERIFIED_CLEAN_FAST_FORWARD
+      observed_before_head: "dee96917738a64d5697aeb12fa0e460d3fcf1959"
+      canonical_target_sha: "a1bc2239d0e73c63710642b904715c5335138523"
+      dirty_cause: UNTRACKED_READ_ONLY_DIAGNOSTIC_PROBE
+      preserved_probe_path_class: OUTSIDE_REPOSITORY_TEMP
+      tracked_worktree_diff: NONE
+      staged_diff: NONE
+      ancestry_proof: LOCAL_HEAD_IS_ANCESTOR_OF_CANONICAL_MAIN
+      synchronization: FETCH_PLUS_FF_ONLY
+      final_branch_ab: "+0 -0"
+      final_head_sha: "a1bc2239d0e73c63710642b904715c5335138523"
+      final_worktree: CLEAN
+      run_created_by_failed_attempt: false
+      executor_invoked_by_failed_attempt: false
+    retry_dispatch_intent:
+      dispatch_id: task289-r1-codex61-xhigh-20261003-002
+      predecessor_dispatch_id: task289-r1-codex61-xhigh-20261003-001
+      retry_basis: PRE_AIOS_DIRTY_REPOSITORY_RECOVERED_WITHOUT_RUN_CREATION
+      task_blob_sha: "64fca073ce1dbb407328c0d9bbed13fc14a86518"
+      task_commit_sha: "a2a91ea09b61962999028de4107fe05dd6f82441"
+      executor: codex
+      model: gpt-6.1-sol
+      reasoning_effort: xhigh
+      status: HUMAN_AUTHORIZED_PENDING_CARRIER_SUBMISSION
+    current_live_blocker:
+      code: TASK_289_RETRY_PRIMARY_DISPATCH_PENDING
+      authority: HUMAN_RUNTIME
+      next_action: SUBMIT_EXACT_RETRY_PRIMARY_WAKEUP_REQUEST
       global_drain_authorized: false
       prohibitions:
         - NO_EXECUTOR_MODEL_EFFORT_SUBSTITUTION
@@ -4151,11 +4177,11 @@ sequence:
         that exact regular-Chat user turn, so successful review/publication cannot be
         used retrospectively as live semantic-resume proof.
     current_live_blocker:
-      code: H4B_TASK_289_PRE_AIOS_LOCAL_REPOSITORY_DIRTY
+      code: H4B_TASK_289_RETRY_PRIMARY_DISPATCH_PENDING
       authority: HUMAN_RUNTIME
       task_binding: TASK-289
       source_task_binding: TASK-288
-      task_status: BLOCKED_BEFORE_RUN_CREATION
+      task_status: PRE_AIOS_DIRTY_REPOSITORY_RECOVERED_AWAITING_RETRY
       latest_published_hardening_task: TASK-288
       latest_reviewed_hardening_run: RUN-288-002
       stale_failure_subject: RUN-288-001
@@ -4168,7 +4194,7 @@ sequence:
         that a later successful TASK revision supersedes that older FAILURE. With no
         active flight, an unrestricted drain could therefore attempt a stale FAILURE
         wake instead of retiring it as canonical Human/Brain supersession.
-      next_action: READ_ONLY_DIAGNOSE_LOCAL_REPOSITORY_DIRTY_BEFORE_TASK_289_RETRY
+      next_action: SUBMIT_EXACT_TASK_289_RETRY_PRIMARY_WAKEUP_REQUEST
       prohibitions:
         - NO_GLOBAL_DRAIN_WHILE_RUN_288_001_FRESHNESS_REMAINS_UNRESOLVED
         - NO_MANUAL_STATE_RECLASSIFICATION_WITHOUT_CANONICAL_SUCCESSOR_PROOF
