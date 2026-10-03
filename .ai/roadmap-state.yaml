@@ -3920,17 +3920,30 @@ sequence:
             misdelivery, cross-lane interference, generation misbinding, recovery resend,
             or progress signal producing attention reopens the affected H4A5 risk before
             relying on it downstream.
+      h4b_start_authorization:
+        authority: HUMAN
+        authorized_on: "2026-10-03"
+        decision: START_H4B_REGULAR_CHAT_BRAIN_RESUME
+        scope:
+          - AUTHOR_AND_EXECUTE_H4B_ONLY_AFTER_CANONICAL_TASK_AUTHORING
+          - PRESERVE_H4A5_RESIDUAL_RISK_REGISTER
+          - NO_H5_AUTOMATIC_ADVANCE
+        interpretation: >-
+          Human continuation immediately after H4A5 closure authorizes the next
+          canonical roadmap milestone, H4B. This authorization does not itself author
+          TASK-285, select an Executor/model/effort, create a RUN, or prove H4B.
       current_live_blocker:
-        code: H4A5_CLOSED_H4B_START_NOT_AUTHORIZED
+        code: H4B_AUTHORIZED_TASK_285_UNAUTHORED
         authority: HUMAN_BRAIN_PLANNING
-        task_binding: NONE
+        task_binding: TASK-285
         root_cause_class: NONE
-        next_action: HUMAN_AUTHORIZE_H4B_REGULAR_CHAT_BRAIN_RESUME_START
+        next_action: AUTHOR_TASK_285
         prohibitions:
-          - NO_AUTOMATIC_H4B_ADVANCE
-          - NO_RECLASSIFICATION_OF_ACCEPTED_GAPS_AS_LIVE_PASS
-          - NO_SILENT_RESIDUAL_RISK_DROP
-      remaining_gate: H4B_SEPARATE_HUMAN_START
+          - NO_PRIMARY_BEFORE_CANONICAL_TASK_AUTHORING
+          - NO_EXECUTOR_REUSE_FROM_TASK_284
+          - NO_RECLASSIFICATION_OF_H4A5_ACCEPTED_GAPS_AS_LIVE_PASS
+          - NO_H5_AUTOMATIC_ADVANCE
+      remaining_gate: TASK_285_AUDITED_AUTHORING
       note: >-
         Human explicitly accepted the recorded residual live-evidence gaps as bounded
         conformance risk for H4A5 milestone closure. Brain therefore closes H4A5 as a
@@ -3938,6 +3951,65 @@ sequence:
         engineering lifecycle truth. The H4A5 prerequisite no longer blocks H4B, but
         H4B is not started or authorized automatically.
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+    status: NEXT
+    phase: H4B_REGULAR_CHAT_BRAIN_RESUME
+    task_id: TASK-285
+    task_revision: 1
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-03"
+    contract: MINIMUM_FRESH_BRAIN_SYNC_V1
+    planning_document: docs/AIOS-BRAIN-RUNTIME-SEMANTIC-HANDOFF-HARDENING-v1.md
+    wake_document: docs/AIOS-LOCAL-REGULAR-CHAT-WAKE-v1.md
+    predecessor:
+      milestone: H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
+      status: CLOSED_WITH_HUMAN_ACCEPTED_RESIDUAL_GAPS
+      closure_commit_sha: "ba51fefec6498071766864e96241b29fb213d20f"
+      closure_document_commit_sha: "9dfd703e87fa2f56e3e9b20779dc7957acb8d89c"
+    objective: >-
+      Prove that one real unresolved canonical semantic checkpoint delivered through
+      the bound regular-Chat wake path causes the Brain to reconstruct current canonical
+      state, resolve the existing Flow Card, occupy only the selected semantic authority,
+      take at most one semantic continuation step, and stop at a new Human boundary,
+      without using ChatGPT Work or turning the wake payload into engineering truth.
+    existing_capability_basis:
+      - AIOS_BRAIN_SYNC_SNAPSHOT
+      - AIOS_BRAIN_WORK_CONTEXT
+      - AIOS_FLOW_RESOLUTION
+      - REPOSITORY_OWNED_FLOW_CARDS
+      - H4A5_PUBLISHED_LOCAL_REGULAR_CHAT_WAKE
+    task_design_direction: >-
+      Prefer a conformance/integration task over new production semantic machinery.
+      Reuse Brain Sync, Unified State, Brain Work Context and Flow Resolver. Add no
+      second lifecycle reducer, semantic router, persistent reasoning store or transport
+      authority. Any production-code change requires a concrete gap proven during
+      TASK-285 audit rather than implementation convenience.
+    task_authoring_status: PENDING_AUDITED_AUTHORING
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    execution_profile_status: HUMAN_SELECTION_REQUIRED_AFTER_AUTHORING
+    sequencing:
+      - AFTER_H4A5_CLOSED
+      - BEFORE_H5_INTEGRATION_CONFORMANCE_CLOSURE
+    live_proof_boundary: >-
+      TASK-285 deterministic acceptance must not require its own future wake or semantic
+      review as pre-verification truth. A real unresolved checkpoint live proof remains
+      Human/Brain conformance evidence at the semantic-review boundary and may use the
+      exact TASK-285 RESULT attention if it naturally becomes the current unresolved
+      subject after Runtime completion.
+    prohibitions:
+      - NO_WAKE_PAYLOAD_AS_TRUTH
+      - NO_NEW_SEMANTIC_ROUTER
+      - NO_SECOND_LIFECYCLE_REDUCER
+      - NO_PERSISTENT_REASONING_STORE
+      - NO_CHATGPT_WORK_PRODUCTION_WAKE
+      - NO_ASSISTANT_OUTPUT_SCRAPING
+      - NO_AUTOMATIC_ROADMAP_ADVANCE
+      - NO_H5_START_BEFORE_H4B_CLOSURE
+    return_to: brain-runtime-semantic-handoff-hardening-v1
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
     status: DONE
