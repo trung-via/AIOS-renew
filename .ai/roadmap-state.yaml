@@ -406,8 +406,68 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4b-task287-current-main-integration
+  - brain-runtime-semantic-handoff-hardening-v1-h4b-terminal-failure-task-revision-supersession
 sequence:
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-terminal-failure-task-revision-supersession
+    status: NEXT
+    phase: H4B_TERMINAL_FAILURE_TASK_REVISION_SUPERSESSION
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-03"
+    parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+    objective: >-
+      Close the demonstrated stale terminal-FAILURE wake gap so a deferred FAILURE
+      bound to an older canonical TASK revision becomes canonically resolved when
+      Human/Brain has authored a newer revision of that exact TASK, without using
+      roadmap next_action, chat activity, elapsed time, or unrelated lifecycle state
+      as engineering truth.
+    evidence_basis:
+      stale_event: terminal:FAILURE:RUN-288-001:34fe8b209c2eba14d2bd9eb3d0713f9333f41d4c
+      failed_run_id: RUN-288-001
+      failed_task_id: TASK-288
+      failed_task_revision: 1
+      failure_artifact_sha: "34fe8b209c2eba14d2bd9eb3d0713f9333f41d4c"
+      newer_canonical_task_revision: 2
+      successful_successor_run_id: RUN-288-002
+      current_local_observation:
+        flight_present: false
+        browser_generation_state: IDLE
+        queue_file_count: 0
+        stale_failure_status: DEFERRED
+        stale_failure_reason: LANE_IN_FLIGHT
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    semantic_design:
+      selected_contract: TERMINAL_FAILURE_TASK_REVISION_SUPERSESSION_V1
+      requirements:
+        - RECONSTRUCT_EXACT_FAILURE_RUN_AND_TASK_BINDING_FIRST
+        - USE_CURRENT_CANONICAL_TASK_DOCUMENT_FROM_MAIN_AS_SUCCESSOR_PROOF
+        - HIGHER_REVISION_OF_SAME_TASK_RESOLVES_OLDER_FAILURE_CORRECTION_ATTENTION
+        - SAME_REVISION_WITHOUT_EXISTING_REPAIR_SUCCESSOR_REMAINS_UNRESOLVED
+        - MISSING_MALFORMED_OR_IDENTITY_MISMATCHED_TASK_STATE_FAILS_CLOSED
+        - PRESERVE_EXISTING_REPAIR_AND_REPAIR_SUPERSESSION_RESOLUTION
+        - RESULT_FRESHNESS_REMAINS_UNCHANGED
+        - NO_ROADMAP_NEXT_ACTION_AS_ENGINEERING_TRUTH
+        - NO_CHAT_ACTIVITY_OR_TIME_BASED_SUPERSESSION
+        - COHERENT_BEFORE_AFTER_CANONICAL_REF_RECHECK
+    non_goals:
+      - CHANGE_FAILURE_OR_RESULT_ARTIFACT_IDENTITY
+      - CREATE_GENERIC_LIFECYCLE_ROUTER_OR_SUCCESSOR_SELECTOR
+      - RETROACTIVELY_REWRITE_RUN_288_001
+      - MANUALLY_MARK_LOCAL_WAKE_STATE_RESOLVED_WITHOUT_PRODUCTION_FRESHNESS_PROOF
+      - CHANGE_BROWSER_COMPLETION_WITNESS_OR_STALE_FLIGHT_RELEASE
+      - CLOSE_H4B_OR_START_H5
+    human_authorization:
+      status: APPROVED
+      approved_on: "2026-10-03"
+      instruction: AUTHOR_TASK_289_AFTER_TWO_STAGE_BRAIN_AUDIT
+    current_live_blocker:
+      code: TASK_289_AUTHORING_PENDING
+      next_action: AUTHOR_TASK_289
+      global_drain_authorized: false
+    remaining_gate: TASK_289_CANONICAL_AUTHORING
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
     status: DONE
@@ -4048,7 +4108,7 @@ sequence:
         that exact regular-Chat user turn, so successful review/publication cannot be
         used retrospectively as live semantic-resume proof.
     current_live_blocker:
-      code: H4B_TERMINAL_FAILURE_SUPERSESSION_FRESHNESS_GAP
+      code: H4B_TASK_289_AUTHORING_PENDING
       authority: HUMAN_BRAIN_PLANNING
       task_binding: TASK-288
       task_status: DONE_PUBLISHED
@@ -4064,7 +4124,7 @@ sequence:
         that a later successful TASK revision supersedes that older FAILURE. With no
         active flight, an unrestricted drain could therefore attempt a stale FAILURE
         wake instead of retiring it as canonical Human/Brain supersession.
-      next_action: HUMAN_DECIDE_BOUNDED_TERMINAL_FAILURE_SUPERSESSION_FIX_BEFORE_GLOBAL_DRAIN_OR_H4B_LIVE_PROOF
+      next_action: AUTHOR_TASK_289
       prohibitions:
         - NO_GLOBAL_DRAIN_WHILE_RUN_288_001_FRESHNESS_REMAINS_UNRESOLVED
         - NO_MANUAL_STATE_RECLASSIFICATION_WITHOUT_CANONICAL_SUCCESSOR_PROOF
