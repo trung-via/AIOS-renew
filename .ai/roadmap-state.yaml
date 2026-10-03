@@ -850,7 +850,7 @@ sequence:
       scope: ENTIRE_TASK_LIFECYCLE
       override_authority: HUMAN_ONLY
       expires_on_task_change: true
-    execution_profile_status: HUMAN_SELECTED
+    execution_profile_status: COMPLETED
     completed_by:
       task_id: TASK-271
       task_revision: 1
@@ -2892,7 +2892,7 @@ sequence:
     return_to: brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
 
   - id: brain-runtime-semantic-handoff-hardening-v1-h4a5-complete-attention-family-coverage
-    status: NEXT
+    status: DONE
     phase: H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
     implementation_task_id: TASK-279
     task_id: TASK-284
@@ -2993,9 +2993,17 @@ sequence:
       completed_on: "2026-10-02"
       verification_summary: "RUN-279-002: 800 passed, 516 skipped; git diff --check passed. RUN-279-003: git diff --check passed."
     live_conformance:
-      status: BLOCKED
+      status: CLOSED_WITH_HUMAN_ACCEPTED_RESIDUAL_GAPS
+      strict_matrix_status: INCOMPLETE
       procedure: docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
       observed_on: "2026-10-03"
+      closed_on: "2026-10-03"
+      closure_authority: HUMAN_BRAIN_PLANNING
+      claim_boundary: >-
+        H4A5 roadmap closure does not convert unobserved live cases into PASS and does
+        not assert full strict live-matrix completion. Deterministic/synthetic coverage,
+        exact engineering lineage and completed bounded live proofs remain the evidence
+        basis; unavailable live cases remain explicitly recorded as residual risk.
       representative_family_proofs:
         - family: INGRESS_OR_CARRIER_REJECTION
           source_issue_number: 1389
@@ -3864,30 +3872,71 @@ sequence:
           fabrication of lifecycle failures, a second lane deployment, binding-generation
           mutation, or H4B. Compaction is the only immediately executable live state
           mutation with a currently exact canonically resolved target.
+      h4a5_human_risk_acceptance_and_brain_closure:
+        human_decision:
+          authority: HUMAN
+          decided_on: "2026-10-03"
+          decision: ACCEPT_RESIDUAL_LIVE_EVIDENCE_GAPS_FOR_H4A5_CLOSURE_EVALUATION
+          accepted_residuals:
+            - FIVE_REPRESENTATIVE_FAMILIES_WITHOUT_CURRENT_EXACT_ELIGIBLE_SOURCE
+            - COMPLETE_PROGRESS_GROUP_IMMUTABLE_LIVE_ZERO_WAKE_SET_UNAVAILABLE
+            - HUMAN_DRAFT_STALE_SOURCE_VARIANT_UNPROVED
+            - SECOND_SEPARATELY_AUTHORIZED_DEPLOYED_LIVE_LANE_UNAVAILABLE
+            - HUMAN_OWNED_BINDING_GENERATION_ROLLOVER_RACE_UNPROVED
+            - GENERIC_RECOVERY_FAMILY_LIVE_CASE_UNAVAILABLE
+          non_acceptance:
+            - NO_ENGINEERING_DEFECT_WAIVER
+            - NO_FABRICATED_LIFECYCLE_EVIDENCE
+            - NO_RECLASSIFICATION_OF_UNPROVED_CASES_AS_PASS
+            - NO_AUTOMATIC_H4B_START
+        brain_evaluation:
+          authority: BRAIN
+          evaluated_on: "2026-10-03"
+          verdict: CLOSE_H4A5_WITH_ACCEPTED_RESIDUAL_CONFORMANCE_RISK
+          rationale:
+            - NO_CURRENT_ENGINEERING_DEFECT_ESTABLISHED
+            - TASK_279_THROUGH_TASK_284_ENGINEERING_LINEAGE_REVIEWED_AND_PUBLISHED
+            - CORE_PUBLICATION_SUCCESS_REGULAR_CHAT_LIVE_PROOF_PASS
+            - RUN_RESULT_AND_RUN_FAILURE_LIVE_ATTENTION_PATHS_PROVEN
+            - REVIEW_AND_PUBLICATION_FAILURE_FRESHNESS_RESOLUTION_PROVEN
+            - EXACT_DEDUPE_AND_COMPACTION_LIVE_PROOF_PASS
+            - PROGRESS_EXCLUSION_PARTIALLY_CORROBORATED_LIVE_AND_FULLY_DETERMINISTIC
+            - REMAINING_GAPS_REQUIRE_UNAVAILABLE_REAL_SOURCE_OR_SEPARATE_HUMAN_OPERATIONAL_SETUP
+          strict_live_matrix: INCOMPLETE
+          roadmap_milestone: CLOSED
+          engineering_truth_effect: NONE
+          lifecycle_truth_effect: NONE
+        residual_risk_register:
+          disposition: ACCEPTED_FOR_THIS_MILESTONE_ONLY
+          carry_forward:
+            - UNOBSERVED_FAMILIES_REMAIN_UNPROVED
+            - TWO_LANE_LIVE_ISOLATION_NOT_OBSERVED
+            - GENERATION_ROLLOVER_RACE_NOT_OBSERVED
+            - GENERIC_RECOVERY_LIVE_CASE_NOT_OBSERVED
+            - FULL_PROGRESS_ZERO_WAKE_LIVE_SET_NOT_OBSERVED
+            - HUMAN_DRAFT_STALE_SOURCE_VARIANT_NOT_OBSERVED
+          reopen_trigger: >-
+            Any future evidence of a transport defect, duplicate Send, stale-source
+            misdelivery, cross-lane interference, generation misbinding, recovery resend,
+            or progress signal producing attention reopens the affected H4A5 risk before
+            relying on it downstream.
       current_live_blocker:
-        code: H4A5_CURRENTLY_FEASIBLE_BOUNDED_CASES_EXHAUSTED
+        code: H4A5_CLOSED_H4B_START_NOT_AUTHORIZED
         authority: HUMAN_BRAIN_PLANNING
         task_binding: NONE
-        root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
-        next_action: HUMAN_AUTHORIZE_NEXT_OPERATIONAL_CONFORMANCE_SETUP_OR_ACCEPT_REMAINING_GAPS
+        root_cause_class: NONE
+        next_action: HUMAN_AUTHORIZE_H4B_REGULAR_CHAT_BRAIN_RESUME_START
         prohibitions:
-          - NO_ASSUME_SYNTHETIC_EQUALS_LIVE
-          - NO_MANUFACTURE_RUN_FAILURE_REVIEW_OR_CONFLICT
-          - NO_UNAUTHORIZED_SOURCE_REPLAY
-          - NO_UNAUTHORIZED_SECOND_LANE_OR_GENERATION_MUTATION
-          - NO_DRAIN_SUBMISSION
-          - NO_H4B_ADVANCE
-      remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
+          - NO_AUTOMATIC_H4B_ADVANCE
+          - NO_RECLASSIFICATION_OF_ACCEPTED_GAPS_AS_LIVE_PASS
+          - NO_SILENT_RESIDUAL_RISK_DROP
+      remaining_gate: H4B_SEPARATE_HUMAN_START
       note: >-
-        TASK-284 core live publication-success proof and the two-source bounded remainder
-        freshness proof both passed. The production lane is operationally clear and no
-        current engineering defect is established. H4A5 nevertheless remains BLOCKED
-        because strict live conformance still has unavailable or unexecuted bounded cases:
-        five representative families lack a current eligible source, the complete progress
-        exclusion observation set is absent, the Human-draft stale-source variant is absent,
-        a second authorized live lane is unavailable, no Human-owned binding-generation
-        rollover/race has been exercised, the generic recovery-family live case is unavailable,
-        and live compaction has not been performed. H4B remains unauthorized.
+        Human explicitly accepted the recorded residual live-evidence gaps as bounded
+        conformance risk for H4A5 milestone closure. Brain therefore closes H4A5 as a
+        planning milestone without claiming strict live-matrix PASS or changing any
+        engineering lifecycle truth. The H4A5 prerequisite no longer blocks H4B, but
+        H4B is not started or authorized automatically.
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
