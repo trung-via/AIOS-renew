@@ -406,11 +406,86 @@ human_priority_sequence:
         - EXACT_REVIEWED_SOURCE_PUBLICATION_REQUIRED
 
 next_items:
-  - brain-runtime-semantic-handoff-hardening-v1-h4b-terminal-failure-task-revision-supersession
+  - brain-runtime-semantic-handoff-hardening-v1-h4b-non-blocking-per-event-wake
 sequence:
 
-  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-terminal-failure-task-revision-supersession
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-non-blocking-per-event-wake
     status: NEXT
+    phase: H4B_NON_BLOCKING_PER_EVENT_WAKE
+    authority: HUMAN_BRAIN_PLANNING
+    approved_on: "2026-10-03"
+    parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
+    objective: >-
+      Remove phantom same-lane head-of-line blocking proven after TASK-289 publication:
+      an event-specific CANONICAL_UNKNOWN deferral must not manufacture pass-local
+      LANE_IN_FLIGHT for later independent subjects when durable flight is absent,
+      while preserving exactly-once delivery, true in-flight serialization and at most
+      one actual user-turn submission per finite pass.
+    evidence_basis:
+      production_main_sha: "d0a8a5f51db5145bc6797345248bed4f13136317"
+      task_289_run_id: RUN-289-001
+      task_289_result_artifact_sha: "8a58363a5c402a9473a1450bf14cd599ca780bae"
+      task_289_review_id: REVIEW-289-001
+      task_289_review_decision_sha: "e108c2fe14e00e3fe2bdd5d19206ddf5b66b6134"
+      task_289_published_sha: "d0a8a5f51db5145bc6797345248bed4f13136317"
+      task_289_live_effect: >-
+        RUN-288-001 FAILURE no longer appears among non-resolved local events after
+        TASK-289 publication, proving same-TASK revision supersession retired that stale
+        failure as RESOLVED_NOOP.
+      post_publication_live_state:
+        flight_present: false
+        queue_file_count: 0
+        submitted_count: 4
+        deferred_count: 2
+        resolved_noop_count: 4
+        first_deferred_reason: CANONICAL_UNKNOWN
+        later_publication_reason: LANE_IN_FLIGHT
+        later_publication_run_id: RUN-289-001
+      root_cause: >-
+        _drain_locked computes a pass-local held flag from real flight/AMBIGUOUS state,
+        but after processing each pending/deferred item it unconditionally sets held=true
+        for every non-NOOP receipt. Therefore an event-specific CANONICAL_UNKNOWN with
+        data.flight still null makes every later unresolved event take the held branch
+        and persist reason LANE_IN_FLIGHT. Repeated drains reproduce the same ordering,
+        so the later event can be starved indefinitely behind an unrelated unknown event.
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    semantic_design:
+      selected_contract: NON_BLOCKING_PER_EVENT_WAKE_V1
+      requirements:
+        - LANE_IN_FLIGHT_REQUIRES_REAL_DURABLE_FLIGHT_OR_AMBIGUOUS_ATTEMPT
+        - EVENT_LOCAL_CANONICAL_UNKNOWN_MUST_NOT_CREATE_PASS_WIDE_HOLD
+        - SCAN_ADMISSION_ORDER_FOR_FIRST_SEND_ELIGIBLE_UNRESOLVED_EVENT
+        - RESOLVED_LATER_EVENTS_MAY_NOOP_INDEPENDENTLY
+        - AT_MOST_ONE_ACTUAL_USER_TURN_SUBMISSION_PER_FINITE_PASS
+        - TRUE_SUBMISSION_OR_AMBIGUOUS_ATTEMPT_CREATES_REAL_FLIGHT_AND_SERIALIZES_LATER_SENDS
+        - LANE_WIDE_PRE_SUBMIT_BLOCKERS_PROPAGATE_THEIR_OWN_REASON_NOT_LANE_IN_FLIGHT
+        - PRESERVE_PRE_SEND_FRESHNESS_BINDING_AND_IMMEDIATE_PRE_CLICK_BARRIERS
+        - PRESERVE_AMBIGUOUS_PROOF_ONLY_NO_RESEND
+        - PRESERVE_PER_PROJECT_LANE_ISOLATION
+        - NO_NEW_SEMANTIC_ROUTER_OR_PRIORITY_SELECTOR
+    non_goals:
+      - ALLOW_MULTIPLE_SIMULTANEOUS_USER_TURN_SUBMISSIONS_IN_ONE_CHAT
+      - REMOVE_DURABLE_FLIGHT_OR_AMBIGUOUS_ATTEMPT_PROTECTION
+      - BYPASS_DRAFT_GENERATION_TARGET_SURFACE_OR_BINDING_SAFETY
+      - CHANGE_CANONICAL_FRESHNESS_SEMANTICS
+      - CHANGE_TASK_RESULT_REVIEW_PUBLICATION_AUTHORITY
+      - AUTO_ADVANCE_H4B_OR_H5
+    human_authorization:
+      status: APPROVED
+      approved_on: "2026-10-03"
+      instruction: AUTHOR_TASK_290_AFTER_TWO_STAGE_BRAIN_AUDIT
+    current_live_blocker:
+      code: TASK_290_AUTHORING_PENDING
+      authority: HUMAN_BRAIN_PLANNING
+      next_action: AUTHOR_TASK_290
+      global_drain_authorized: false
+    remaining_gate: TASK_290_CANONICAL_AUTHORING
+
+  - id: brain-runtime-semantic-handoff-hardening-v1-h4b-terminal-failure-task-revision-supersession
+    status: DONE
     phase: H4B_TERMINAL_FAILURE_TASK_REVISION_SUPERSESSION
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-03"
@@ -525,18 +600,28 @@ sequence:
       model: gpt-6.1-sol
       reasoning_effort: xhigh
       status: HUMAN_AUTHORIZED_PENDING_CARRIER_SUBMISSION
+    completion:
+      status: DONE_PUBLISHED
+      run_id: RUN-289-001
+      result_artifact_sha: "8a58363a5c402a9473a1450bf14cd599ca780bae"
+      candidate_sha: "d0a8a5f51db5145bc6797345248bed4f13136317"
+      runtime_verification: "534 passed, 610 skipped in 58.74s; git diff --check passed; unresolved empty."
+      review_id: REVIEW-289-001
+      review_decision_sha: "e108c2fe14e00e3fe2bdd5d19206ddf5b66b6134"
+      review_verdict: PASS
+      published_sha: "d0a8a5f51db5145bc6797345248bed4f13136317"
+      publication_workflow_run_id: 37135580696
+      live_acceptance:
+        stale_run_288_001_failure_retired: true
+        flight_present_after_publication: false
+        queue_file_count_after_publication: 0
+        residual_gap: PHANTOM_PASS_LOCAL_LANE_IN_FLIGHT_HEAD_OF_LINE_BLOCKING
     current_live_blocker:
-      code: TASK_289_RETRY_PRIMARY_DISPATCH_PENDING
-      authority: HUMAN_RUNTIME
-      next_action: SUBMIT_EXACT_RETRY_PRIMARY_WAKEUP_REQUEST
+      code: TASK_290_AUTHORING_PENDING
+      authority: HUMAN_BRAIN_PLANNING
+      next_action: AUTHOR_TASK_290
       global_drain_authorized: false
-      prohibitions:
-        - NO_EXECUTOR_MODEL_EFFORT_SUBSTITUTION
-        - NO_DUPLICATE_PRIMARY_DISPATCH
-        - DISPATCH_ACCEPTANCE_IS_NOT_RUN_CREATION
-        - NO_GLOBAL_DRAIN_BEFORE_TASK_289_REVIEWED_PUBLICATION
-        - NO_H5_ADVANCE_BEFORE_H4B_CLOSURE
-    remaining_gate: TASK_289_PRIMARY_TERMINAL_RESULT_OR_FAILURE
+    remaining_gate: TASK_290_CANONICAL_AUTHORING
 
   - id: brain-runtime-semantic-handoff-hardening-v1-brain-audit-v3-terminal-feasibility
     status: DONE
@@ -4177,26 +4262,26 @@ sequence:
         that exact regular-Chat user turn, so successful review/publication cannot be
         used retrospectively as live semantic-resume proof.
     current_live_blocker:
-      code: H4B_TASK_289_RETRY_PRIMARY_DISPATCH_PENDING
-      authority: HUMAN_RUNTIME
-      task_binding: TASK-289
-      source_task_binding: TASK-288
-      task_status: PRE_AIOS_DIRTY_REPOSITORY_RECOVERED_AWAITING_RETRY
-      latest_published_hardening_task: TASK-288
-      latest_reviewed_hardening_run: RUN-288-002
-      stale_failure_subject: RUN-288-001
-      successful_successor_run: RUN-288-002
+      code: H4B_TASK_290_AUTHORING_PENDING
+      authority: HUMAN_BRAIN_PLANNING
+      task_binding: TASK-290
+      source_task_binding: TASK-289
+      task_status: UNAUTHORED_TASK
+      latest_published_hardening_task: TASK-289
+      latest_reviewed_hardening_run: RUN-289-001
+      resolved_predecessor_gap: >-
+        TASK-289 is reviewed and published at d0a8a5f51db5145bc6797345248bed4f13136317,
+        and the previously stale RUN-288-001 FAILURE is no longer non-resolved in the
+        live machine-local ledger.
       gap: >-
-        TASK-288 r2 completed with canonical RESULT, Runtime verification, fresh
-        REVIEW-288-002 PASS and exact reviewed publication, but the local wake ledger
-        still contains the older RUN-288-001 FAILURE as deferred. Production terminal
-        freshness recognizes exact REPAIR lineage for a failed RUN but does not prove
-        that a later successful TASK revision supersedes that older FAILURE. With no
-        active flight, an unrestricted drain could therefore attempt a stale FAILURE
-        wake instead of retiring it as canonical Human/Brain supersession.
-      next_action: SUBMIT_EXACT_TASK_289_RETRY_PRIMARY_WAKEUP_REQUEST
+        Live post-publication evidence still shows FLIGHT=null and queue empty while a
+        RUN-289-001 publication-success event remains DEFERRED/LANE_IN_FLIGHT behind an
+        earlier CANONICAL_UNKNOWN event. Production _drain_locked sets a pass-local held
+        flag after any non-NOOP receipt, so an event-specific canonical uncertainty
+        fabricates lane-wide head-of-line blocking without a durable flight.
+      next_action: AUTHOR_TASK_290
       prohibitions:
-        - NO_GLOBAL_DRAIN_WHILE_RUN_288_001_FRESHNESS_REMAINS_UNRESOLVED
+        - NO_GLOBAL_DRAIN_BEFORE_TASK_290_REVIEWED_PUBLICATION
         - NO_MANUAL_STATE_RECLASSIFICATION_WITHOUT_CANONICAL_SUCCESSOR_PROOF
         - NO_REPLAY_OF_RESOLVED_RUN_285_OR_RUN_286_ATTENTION
         - NO_RETROSPECTIVE_RECLASSIFICATION_OF_REVIEW_OR_PUBLICATION_AS_RESULT_RESUME_PROOF
