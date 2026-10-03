@@ -3529,16 +3529,110 @@ sequence:
               duplicate tombstones, but no bounded Human live COMPACTED_DUPLICATE proof is
               recorded.
         conclusion: LIVE_CONFORMANCE_INCOMPLETE
+      historical_source_inventory:
+        authority: HUMAN_BRAIN_PLANNING
+        inventoried_on: "2026-10-03"
+        canonical_main_at_inventory: "7749088fd08a299837e8e76939092760b01a09b3"
+        already_observed_live:
+          ingress_or_carrier_rejection:
+            family: INGRESS_OR_CARRIER_REJECTION
+            source_issue_number: 1389
+            source_workflow_run_id: 37039065441
+            receipt_status: SUBMITTED
+            receipt_reason: EXACT_USER_TURN_PROVEN
+          run_result:
+            family: RUN_RESULT_REQUIRING_SEMANTIC_REVIEW
+            source_run_id: RUN-279-003
+            terminal_attention_workflow_run_id: 37038115683
+            receipt_status: SUBMITTED
+            receipt_reason: EXACT_USER_TURN_PROVEN
+          run_failure:
+            family: RUN_FAILURE_REQUIRING_CORRECTION_REASONING
+            source_run_id: RUN-270-001
+            terminal_attention_workflow_run_id: 37007708622
+            receipt_status: SUBMITTED
+            receipt_reason: EXACT_USER_TURN_PROVEN
+          review_ingress_rejection:
+            family: REVIEW_INGRESS_REJECTION
+            source_issue_number: 1407
+            local_wake_workflow_run_id: 37102145071
+            receipt_status: NOOP
+            receipt_reason: CANONICALLY_RESOLVED
+          publication_success:
+            family: PUBLICATION_SUCCESS_REQUIRING_HUMAN_BRAIN_PLANNING
+            source_run_id: RUN-284-001
+            publisher_workflow_run_id: 37103110115
+            receipt_status: SUBMITTED
+            receipt_reason: EXACT_USER_TURN_PROVEN
+        exact_existing_sources_selected_for_bounded_remainder_proof:
+          review_changes_required:
+            family: REVIEW_CHANGES_REQUIRED_OR_BLOCKED
+            source_run_id: RUN-280-001
+            artifact_sha: "9240f875b2dbda81f23fd014de769700e0e55a95"
+            decision_sha: "8bb3e7b0854093419ec86efac9c4dfc7f58d8dfe"
+            reviewed_sha: "2b558594c67167fb6e75216ad9b44135e7afaff2"
+            source_boundary: REVIEW_FOLLOWUP
+            historical_observation_workflow_run_id: 37087753297
+            historical_receipt_status: DEFERRED
+            historical_receipt_reason: CANONICAL_UNKNOWN
+          publication_failure:
+            family: PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE
+            source_run_id: RUN-280-002
+            workflow_run_id: 37080008668
+            run_attempt: 1
+            artifact_id: 11257824173
+            source_digest: "991fce0d6b1121e6d8841ecafdd1ad363fd81e948f25999bdb7dc9b91691336d"
+            artifact_sha: "1ba484ec9d1128cc95f6106197a20d29eb0ff1d8"
+            decision_sha: "25a439f8609bc0aab62cbc14fd75c489f32d07f4"
+            reviewed_sha: "aa0648049194d8d51b2b04cd23b1bd0d46e71db5"
+            stage: EXECUTION
+            source_boundary: PUBLICATION_FAILED
+            historical_observation_workflow_run_id: 37087753297
+            historical_receipt_status: DEFERRED
+            historical_receipt_reason: CANONICAL_UNKNOWN
+        no_current_exact_eligible_source_found:
+          - PRIMARY_REMEDIATION_REPAIR_DISPATCH_REJECTION
+          - PRE_AIOS_OPERATIONAL_FAILURE_REQUIRING_DIAGNOSIS
+          - REMEDIATION_OR_REPAIR_AUTHORING_REJECTION
+          - CANONICAL_CONFLICT_OR_STALENESS
+          - WAKE_DELIVERY_RECOVERY_FOR_UNRESOLVED_ATTENTION
+        interpretation: >-
+          Historical workflow failures and operational receipts exist for some missing
+          families, but the audited inventory found no current source that satisfies the
+          present immutable ArtifactSources/source-contract shape for those families.
+          They remain unproved rather than being fabricated or replayed as engineering
+          lifecycle events.
+      bounded_remainder_proof_two_source_authorization:
+        authority: HUMAN
+        authorized_on: "2026-10-03"
+        status: AUTHORIZED_PENDING_EXECUTION
+        exact_sources:
+          - REVIEW_CHANGES_REQUIRED_OR_BLOCKED_RUN_280_001
+          - PUBLICATION_DISPATCH_OR_EXECUTION_FAILURE_RUN_280_002
+        proof_contract:
+          - READ_ONLY_CURRENT_CANONICAL_FRESHNESS_REEVALUATION
+          - VERIFY_EXACT_DURABLE_EVENT_RECORD_IF_PRESENT
+          - NO_LOCAL_STATE_MUTATION
+          - NO_DRAIN
+          - NO_REPLAY
+          - NO_SEND
+          - NO_NEW_RUN
+          - NO_EXECUTOR
+          - NO_TIMEOUT_INCREASE
+          - NO_MANUFACTURED_FAILURE_REVIEW_OR_CONFLICT
+          - NO_H4B_ADVANCE
       current_live_blocker:
-        code: REMAINING_BOUNDED_H4A5_LIVE_CASES_UNPROVED
+        code: BOUNDED_REMAINDER_TWO_SOURCE_PROOF_AUTHORIZED
         authority: HUMAN_BRAIN_PLANNING
         task_binding: NONE
         root_cause_class: CONFORMANCE_EVIDENCE_GAP_NOT_ENGINEERING_FAILURE
-        next_action: HUMAN_DECIDE_BOUNDED_REMAINDER_PROOF_SCOPE
+        next_action: EXECUTE_READ_ONLY_TWO_SOURCE_REEVALUATION
         prohibitions:
           - NO_ASSUME_SYNTHETIC_EQUALS_LIVE
           - NO_MANUFACTURE_RUN_FAILURE_REVIEW_OR_CONFLICT
-          - NO_UNAUTHORIZED_REPLAY
+          - NO_DRAIN
+          - NO_REPLAY
+          - NO_SEND
           - NO_NEW_EXECUTOR_FOR_PROOF
           - NO_H4B_ADVANCE
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
