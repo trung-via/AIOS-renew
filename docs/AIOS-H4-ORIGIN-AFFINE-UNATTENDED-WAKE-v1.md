@@ -98,6 +98,67 @@ The [H4C0 conformance contract](AIOS-H4C0-ORIGIN-CAPTURE-CONFORMANCE-v1.md) free
 
 TASK-292 acceptance and synthetic tests do not prove that future live observation or close H4C0. Reviewed publication makes the candidate available for the later Human/Brain observation; Human/Brain alone decides H4C0 live closure or architecture fallback. **H4C1 remains blocked until H4C0 live closure**, including the required architecture audit. No local-wake, lifecycle, Reviewer, Publisher, Runtime, or roadmap authority changes follow from this probe.
 
+
+### Human-approved H4C0 fallback — page-scoped origin bootstrap
+
+On 2026-10-04 the Human stopped the optional Responses API smoke test and approved an architecture fallback after the current regular-Chat account surface did not expose the Developer Mode/custom MCP entry needed for the planned TASK-292 two-chat observation. This is an operational availability observation for the current surface, not a claim that OpenAI session metadata is invalid or unavailable on every account.
+
+TASK-292 remains immutable engineering evidence: its bounded `OPENAI_SESSION_ORIGIN_CAPTURE_V1` implementation, Runtime verification, semantic PASS, and exact publication remain valid. Its task acceptance and publication never closed H4C0, and the unavailable current-surface live path does not retroactively invalidate that work.
+
+The selected fallback architecture candidate is:
+
+`PAGE_SCOPED_AIOS_SEND_ORIGIN_BOOTSTRAP_V1`
+
+Two-stage architecture audit used `brain-high-value-v3`:
+
+- Stage 1 `CONSTRUCT`: `RISK_FOUND`;
+- Stage 2 `ADVERSARIAL_AUDIT_AND_RECONCILE`: `CLEAR_WITH_MANDATORY_REFINEMENTS`;
+- Human outcome: `CANDIDATE_APPROVED_BY_HUMAN`.
+
+The contract is a one-time explicit Human attestation per regular-Chat conversation, not a new way to send every message. A chat that has not yet established an AIOS return route exposes an in-page Human action conceptually equivalent to `Connect this chat to AIOS` / `Start AIOS Flow`. The gesture originates inside the exact regular-Chat document selected by the Human. Browser-toolbar selection, global hotkeys that first query the active tab, most-recent-tab selection, timestamps, transcript contents, assistant output, and model memory are not origin authority.
+
+The page-scoped bootstrap must:
+
+1. create a bounded ephemeral challenge in the exact document receiving the Human gesture;
+2. prove exactly one regular-Chat page owns that challenge and that the normalized conversation URL is unchanged across the proof;
+3. mint or reuse one opaque conversation-scoped return-route handle;
+4. durably store only the sensitive route mapping machine-locally, including exact normalized conversation route, authorized browser/profile binding where required, and binding generation;
+5. revalidate the same page/challenge after the durable write and before bootstrap-envelope insertion;
+6. insert only bounded opaque route metadata into the initial AIOS handoff on that same page;
+7. fail closed before submission when binding, durability, uniqueness, surface, challenge, generation, or page continuity is unproved.
+
+Ordering is mandatory:
+
+```text
+explicit in-page Human gesture
+        ↓
+exact-page challenge proof
+        ↓
+mint/reuse opaque route handle
+        ↓
+durable machine-local binding
+        ↓
+same-page revalidation
+        ↓
+bounded bootstrap envelope
+        ↓
+initial authorized AIOS handoff
+```
+
+Sending first and attempting to recover origin afterward is forbidden. A route handle is a bounded selector only; possession of it grants no TASK, execution, review, publication, roadmap, or route-transfer authority. The raw conversation URL remains noncanonical and must not enter TASK/RUN/RESULT/REVIEW semantics.
+
+One regular-Chat conversation reuses one stable return-route handle across multiple flows unless an explicit Human-authorized rebind/transfer later changes its generation. Two distinct conversations in the same repository must receive distinct handles. Multiple tabs showing the same conversation do not create multiple conversation routes; the ephemeral challenge identifies the exact document on which the Human acted while the durable route remains conversation-scoped.
+
+The origin subsystem does not inspect the Human prompt, transcript, or assistant response and must not become a Planner, Runtime, Reviewer, Publisher, generic router, or second wake queue. Existing bounded surface validation, URL normalization, durable-state, generation, ambiguity, and no-blind-resend primitives should be reused where semantically applicable rather than duplicated.
+
+At minimum, fail closed for unproved gesture, non-unique challenge, non-regular Chat surface, invalid conversation route, page change during bootstrap, registry conflict, uncertain durable write, binding-generation change, bootstrap-envelope insertion failure, or ambiguous submission.
+
+The fallback does not require Developer Mode, MCP, Responses API credit, or host-provided `openai/session` metadata. Those mechanisms remain replaceable transport options rather than H4C0 authority.
+
+H4C0 live closure still requires real two-chat evidence. The selected fallback proof must demonstrate at least: Chat A bootstrap twice resolves to the same route A; Chat B bootstrap twice resolves to the same route B; A differs from B; same-repository chats remain distinct; reload/reopen of the same conversation preserves its route when valid; page/challenge ambiguity fails closed; and raw conversation identity remains outside canonical engineering artifacts.
+
+**H4C1 remains blocked until the fallback implementation is reviewed/published and the Human/Brain-owned two-chat live conformance gate closes.** No automatic roadmap advancement follows from implementation, review, publication, or live transport success.
+
 ## 5. H4C1 — Origin-Affine Return Routing
 
 Objective: bind downstream Brain-attention delivery for one semantic flow to the exact route established at flow origin.
