@@ -1259,7 +1259,14 @@ def submitted_with_pending(binding, scenario="complete", proof=True):
     page = CompletionPage(binding, scenario)
     holder = LocalSurfaceAdapter(binding, page)
     if not proof:
-        page.wait_for_function = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("proof unavailable"))
+        wait_for_function = page.wait_for_function
+
+        def wait_without_submission_proof(script, **kwargs):
+            if script == wake.WAIT_USER_TURN:
+                raise RuntimeError("proof unavailable")
+            return wait_for_function(script, **kwargs)
+
+        page.wait_for_function = wait_without_submission_proof
     first = deliver(EVENT, wake.REPOSITORY, binding, lambda _: holder)
     assert first["status"] == ("SUBMITTED" if proof else "BLOCKED")
     second = EVENT.replace("RUN-fixture-001", "RUN-fixture-002")
