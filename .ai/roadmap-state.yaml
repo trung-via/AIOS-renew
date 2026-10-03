@@ -2895,7 +2895,7 @@ sequence:
     status: NEXT
     phase: H4A5_COMPLETE_ATTENTION_FAMILY_COVERAGE
     implementation_task_id: TASK-279
-    task_id: TASK-283
+    task_id: TASK-284
     task_revision: 1
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-02"
@@ -3259,27 +3259,67 @@ sequence:
           the #1389 SUBMITTED flight is still present, a separately Human-authorized
           state-only reconciliation may clear only that flight while preserving the
           SUBMITTED event record and all pending FIFO events.
+      state_only_recovery_1389:
+        authority: HUMAN
+        status: APPLIED
+        preserved_event_status: SUBMITTED
+        cleared_flight_only: true
+        queue_files_after: 0
+        post_flight_present: false
+        note: >-
+          Human-authorized machine-local recovery cleared only the stale #1389 flight
+          pointer while preserving the exact SUBMITTED event/dedupe record. This is
+          operational reconciliation, not engineering lifecycle or roadmap completion.
+      post_recovery_bounded_drain:
+        authority: HUMAN
+        status: COMPLETED_NO_SUBMISSION
+        run280_publication_failure: CANONICAL_UNKNOWN
+        run282_publication_success: LANE_IN_FLIGHT
+        run283_publication_success: CANONICALLY_RESOLVED
+        interpretation: >-
+          The one-pass bounded drain produced no ChatGPT user-turn submission. Exact
+          RUN-280-002 publication-failure evidence remains held because the reusable
+          workflow_call delivery path does not propagate GITHUB_TOKEN to the freshness
+          reader even though ArtifactSources authenticates GitHub Actions reads only
+          when that environment variable is present. RUN-283-001 resolved canonically;
+          later FIFO work remained held by the first unresolved subject within the pass.
+      task284_authoring:
+        status: AUDITED_CANDIDATE
+        task_id: TASK-284
+        task_revision: 1
+        audit_profile: brain-high-value-v3
+        audit_stage1: CONSTRUCT
+        audit_stage2: ADVERSARIAL_AUDIT_AND_RECONCILE
+        audit_outcome: CANDIDATE
+        root_cause: REUSABLE_WORKFLOW_CALL_FRESHNESS_AUTH_CONTEXT_GAP
+        scope_summary: >-
+          Supply minimum-sufficient actions:read permission and step-local github.token
+          propagation to the reusable local-chat-wake freshness-bearing delivery path,
+          update every reusable caller permission ceiling, and add deterministic workflow
+          contract regressions without changing attention semantics, browser transport,
+          timeouts, lifecycle authority or live-proof status.
       current_live_blocker:
-        code: LEGACY_SUBMITTED_FLIGHT_NOT_RETIRED
+        code: REUSABLE_WAKE_FRESHNESS_AUTH_CONTEXT_GAP
         authority: HUMAN_BRAIN_PLANNING
-        task_binding: NONE
-        root_cause_class: PRE_TASK_282_OPERATIONAL_FLIGHT
-        next_action: READ_ONLY_LOCAL_STATE_CONFIRMATION
+        task_binding: TASK-284
+        root_cause_class: WORKFLOW_CALL_GITHUB_TOKEN_NOT_PROPAGATED
+        next_action: AUTHOR_TASK
         prohibitions:
+          - NO_BLIND_REDRAIN
+          - NO_MACHINE_TOKEN_WORKAROUND_AS_CONFORMANCE
+          - NO_TIMEOUT_INCREASE
           - NO_RUN_282_REPLAY
           - NO_RUN_283_REPLAY
-          - NO_TIMEOUT_INCREASE
-          - NO_BLIND_STATE_EDIT
           - NO_H4B_ADVANCE
       remaining_gate: FULL_BOUNDED_HUMAN_CONFORMANCE_PROCEDURE
       note: >-
-        TASK-280 through TASK-283 implementation blockers are reviewed and published.
-        TASK-283 live publication evidence shows publication-success freshness no longer
-        returns CANONICAL_UNKNOWN. H4A5 remains BLOCKED on one legacy pre-TASK-282
-        submitted-flight hold plus the final bounded Human live conformance proof.
-        Read-only local state confirmation must precede any state-only reconciliation.
-        H4B remains unauthorized until the lane is safely reconciled, the final proof
-        passes and Human/Brain explicitly closes the roadmap gate.
+        TASK-280 through TASK-283 implementation blockers are reviewed and published,
+        and the legacy #1389 machine-local flight has been reconciled without erasing
+        its SUBMITTED dedupe record. The next deterministic blocker is the missing
+        authenticated Actions-read context on the reusable workflow_call wake delivery
+        path. TASK-284 is the audited narrow repair. H4A5 remains BLOCKED until TASK-284
+        is reviewed and published and a separately Human-authorized final bounded live
+        conformance proof passes; H4B remains unauthorized.
     return_to: brain-runtime-semantic-handoff-hardening-v1-local-regular-chat-wake
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
