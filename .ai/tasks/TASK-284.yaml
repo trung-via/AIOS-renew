@@ -1,0 +1,119 @@
+task_id: TASK-284
+revision: 1
+goal: Repair the H4A5 reusable workflow_call freshness authentication gap so the existing
+  local regular-Chat wake lane can reconstruct exact GitHub Actions source evidence
+  with minimum-sufficient read authority, without changing attention semantics, browser
+  transport, lifecycle authority, or safety timeouts.
+problem: 'After the Human-authorized state-only recovery of legacy flight #1389, one
+  bounded drain produced no ChatGPT submission. RUN-283-001 publication-success freshness
+  resolved canonically, but the older RUN-280-002 publication-failure subject remained
+  DEFERRED/CANONICAL_UNKNOWN even though its immutable publication artifact, exact
+  review lineage, and reviewed candidate are still present and the reviewed candidate
+  is included in canonical main. The reusable local-chat-wake workflow_call delivery
+  path does not export GITHUB_TOKEN to the Python freshness reader; ArtifactSources
+  authenticates GitHub Actions API reads only when that environment variable is present.
+  The projected and scheduled paths already export github.token, so authentication
+  behavior is inconsistent across the same lane.'
+assumptions:
+- Canonical main at TASK authoring is e484a2d0b0025465c03717fce1e53f363421dfc4.
+- 'Human-authorized state-only recovery cleared only the stale Issue #1389 flight
+  pointer, preserved its SUBMITTED event/dedupe record, left queue files at zero,
+  and did not mutate canonical engineering state.'
+- 'The subsequent one-pass bounded drain produced no user-turn submission: RUN-280-002
+  publication failure returned CANONICAL_UNKNOWN, RUN-282-001 publication success
+  was retained behind the first unresolved subject, and RUN-283-001 publication success
+  returned CANONICALLY_RESOLVED.'
+- ArtifactSources uses Authorization only when GITHUB_TOKEN is present in the process
+  environment, and the current reusable deliver steps do not set that variable.
+- 'The current publisher reusable caller already grants contents: read plus actions:
+  read. Live regular-Chat proof remains a separate Human-authorized action after reviewed
+  publication.'
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-280.yaml
+  - .ai/tasks/TASK-281.yaml
+  - .ai/tasks/TASK-282.yaml
+  - .ai/tasks/TASK-283.yaml
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+  - src/aios_renew/brain_attention.py
+  - src/aios_renew/local_chat_wake.py
+  - .github/workflows/aios-local-chat-wake.yml
+  - .github/workflows/aios-auto-publish.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - tests/test_local_chat_wake_workflow.py
+  - tests/test_publication.py
+  modify:
+  - .github/workflows/aios-local-chat-wake.yml
+  - .github/workflows/aios-terminal-attention.yml
+  - tests/test_local_chat_wake_workflow.py
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+non_goals:
+- Change brain_attention freshness classification, attention event schemas, source
+  identity, dedupe, FIFO/one-flight semantics, binding generations, BrowserAdapter
+  behavior, or ChatGPT composer/Send policy.
+- Increase the thirty-second canonical observation budget, Git/API operation ceilings,
+  workflow timeout, drain retry count, or polling cadence.
+- 'Add PATs, GitHub App secrets, secrets: inherit, token-bearing workflow inputs,
+  actions:write, repository_dispatch, workflow_dispatch self-routing, Issues/comments
+  as a new bridge, or another authentication service.'
+- Treat a workflow token, artifact availability, workflow success, or source reconstruction
+  alone as engineering lifecycle truth, semantic review, publication truth, planning
+  completion, or authorization to advance H4B.
+- Perform another live browser wake, replay RUN-282-001/RUN-283-001, manufacture new
+  publication evidence, or claim H4A5 live conformance during Executor implementation.
+- Modify production Python behavior unless deterministic evidence proves the existing
+  ArtifactSources/local wake contract itself is insufficient.
+constraints:
+  hard:
+  - The reusable workflow_call delivery path must provide the existing freshness reader
+    only GitHub's ephemeral current-run token through the step process environment;
+    no credential may enter event_id, workflow_call inputs, machine-local binding
+    state, logs, browser state, or canonical artifacts.
+  - Permissions must remain minimum-sufficient and read-only. No actions:write or
+    other new write scope is permitted.
+  - 'Every repository-local caller of the reusable local-chat-wake workflow must grant
+    a permission ceiling at least as strong as the callee''s declared read-only requirements;
+    the terminal-attention caller must therefore remain valid when actions: read is
+    required.'
+  - The existing deliver-projected and scheduled recheck authentication behavior must
+    remain valid and must not be replaced by a second authentication mechanism.
+  - The publisher direct handoff must retain selector-only event_id plus fixed repository
+    identity and existing durable lane dedupe.
+  - Executor changes only the authorized files; Runtime owns canonical verification,
+    Reviewer owns semantic verdict, Publisher owns publication, and Human/Brain owns
+    live-proof and roadmap closure.
+acceptance:
+- id: AC1
+  condition: The reusable workflow_call deliver job has exactly the read permissions
+    required for authenticated canonical freshness and no write permission.
+- id: AC2
+  condition: Both freshness-bearing steps in the reusable deliver job provide GITHUB_TOKEN
+    from the current GitHub workflow token only as step-local process environment
+    while workflow_call inputs remain exactly event_id and repository.
+- id: AC3
+  condition: Deterministic workflow tests prove the reusable delivery path preserves
+    selector-only transport, machine-local chat binding isolation, and existing enable/draft/generation/freshness
+    guards without introducing secrets, token inputs, dispatch APIs, or write authority.
+- id: AC4
+  condition: 'Deterministic caller/callee permission-ceiling coverage proves both
+    the publisher and terminal-attention reusable callers grant exactly the required
+    read scopes; a caller missing actions: read fails the contract test rather than
+    failing later at workflow startup or freshness observation.'
+- id: AC5
+  condition: Projected workflow_run delivery and scheduled recheck retain authenticated
+    actions-read reconstruction, and the repair does not change attention identities,
+    canonical freshness outcomes, FIFO/dedupe semantics, retry/time budgets, or browser
+    behavior.
+- id: AC6
+  condition: 'The H4A5 conformance document records the #1389 state-only recovery
+    and the post-recovery bounded drain evidence, identifies the reusable workflow_call
+    authentication gap as the next blocker, and leaves live conformance/H4B closure
+    to separate Human authorization after reviewed publication.'
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_local_chat_wake_workflow.py tests/test_publication.py
+  - git diff --check
