@@ -1,0 +1,50 @@
+review_id: REVIEW-286-001
+reviewed_sha: 6955668893636752bd6a7c41b0a0b29ce6adf961
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-286-001 is the exact canonical PRIMARY RESULT for TASK-286 r1. Candidate 6955668893636752bd6a7c41b0a0b29ce6adf961
+  is exactly one commit ahead of base f80119b4d1e7e4d6e0e57b7cd7e69710dc83d43d and
+  changes only the three TASK-authorized files.
+- 'Canonical Runtime verification passed: python -m pytest -q tests/test_local_chat_wake.py
+  tests/test_h4b_regular_chat_brain_resume.py => 450 passed, 516 skipped in 55.43s;
+  git diff --check => exit 0; unresolved is empty.'
+- 'AC1 PASS: production pre-submit delivery logic now derives one closed surface_cause
+  from the existing target URL/main/account/login/non-regular/composer/disabled predicates,
+  reports MULTIPLE_OR_AMBIGUOUS for simultaneous unsafe predicates, retains durable
+  reason SURFACE_UNPROVEN, and performs no insertion on deferral.'
+- 'AC2 PASS: surface_cause is a fixed enum attached only to the bounded operational
+  receipt for pre-submit SURFACE_UNPROVEN. Tests prove it is absent from durable lane
+  event records and doorbell text and does not expose raw DOM/text/URL/account/session/selector/count/credential/CDP/path
+  material or alter canonical identity/freshness/semantic/lifecycle authority.'
+- 'AC3 PASS: compare evidence preserves the existing ACCOUNT/COMPOSER/SEND/STOP/NONREGULAR/LOGIN
+  selector constants and all workflow/time/recheck budgets. Shared _observe_surface
+  preserves exact-target/draft/generation/outbound/post-submit fail-close protections;
+  disabled composer without proven generation is now diagnosed as SURFACE_UNPROVEN/COMPOSER_DISABLED
+  while disabled composer with Stop retains BUSY, preserving pre-submit safety.'
+- 'AC4 PASS: focused regressions retain deferred subjects, block UNKNOWN freshness
+  before browser attach, revalidate UNRESOLVED freshness before insertion and click,
+  submit exactly once after the same synthetic surface becomes healthy, NOOP resolved
+  subjects, and reconcile ambiguous post-submit proof without resend.'
+- 'AC5 PASS: the delta changes only src/aios_renew/local_chat_wake.py, tests/test_local_chat_wake.py
+  and docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md; no workflow, launcher,
+  scheduler, second transport, semantic router, lifecycle reducer or assistant-output
+  scraping is introduced.'
+- 'AC6 PASS: the conformance document records RUN-285-001 RESULT DEFERRED/SURFACE_UNPROVEN
+  and later same-transport publication SUBMITTED/EXACT_USER_TURN_PROVEN, does not
+  infer a fixed selector defect, forbids replay/redrain of the resolved RESULT and
+  leaves H4B closure dependent on a future real unresolved semantic checkpoint.'
+- 'Live observation after RUN-286-001 RESULT did not reach the regular Chat: terminal
+  attention delivery returned DEFERRED/LANE_IN_FLIGHT on the initial attempt and both
+  bounded follow-up rechecks. This is an operational lane-state blocker outside TASK-286
+  acceptance, not a semantic finding against candidate 6955668. It means the RUN-286
+  RESULT cannot yet serve as H4B live semantic-resume proof and the lane must be reconciled
+  separately before H4B closure.'
