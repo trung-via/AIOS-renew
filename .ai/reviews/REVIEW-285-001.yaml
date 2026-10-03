@@ -1,0 +1,51 @@
+review_id: REVIEW-285-001
+reviewed_sha: 61408a376ff4fecab61aeb48493bb52d427acc3d
+mode: PRIMARY
+verdict: PASS
+acceptance:
+  AC1: PASS
+  AC2: PASS
+  AC3: PASS
+  AC4: PASS
+  AC5: PASS
+  AC6: PASS
+findings: []
+notes:
+- RUN-285-001 is the exact canonical PRIMARY RESULT for TASK-285 r1. Candidate 61408a376ff4fecab61aeb48493bb52d427acc3d
+  is exactly one commit ahead of base 4ff7a0b91d8e6daf2bd56ad2f311e6ad74085187 and
+  changes only the two TASK-authorized conformance files.
+- 'Canonical Runtime verification passed: python -m pytest -q tests/test_h4b_regular_chat_brain_resume.py
+  tests/test_brain_sync.py tests/test_brain_context.py => 117 passed in 59.30s; git
+  diff --check => exit 0; unresolved is empty.'
+- 'AC1 PASS: focused tests compose production Brain Sync, Brain Work Context, Unified
+  State semantic-review scope and repository-owned Flow Resolver over a representative
+  unresolved PRIMARY RESULT, preserving exact TASK/RUN/candidate lineage, SEMANTIC_REVIEW
+  and REVIEWER authority while trapping RUN creation, Executor invocation, verification
+  and mutation effects.'
+- 'AC2 PASS: genuine/wrong wake doorbells and arbitrary chat text cannot override
+  canonical flow, authority, next_action, verdict or lifecycle action; unsupported
+  semantic payload fields are rejected; missing, moved, altered and ambiguous canonical
+  selections fail closed without chat-memory fallback.'
+- 'AC3 PASS: tests bound the minimum read set to current roadmap selection, exact
+  TASK and repository Flow Card registry plus selected lifecycle acquisition; relevant
+  main/review/run/request movement invalidates old binding, while remote URL, credentials,
+  raw logs, chat history and provider/session metadata do not enter reasoning material.'
+- 'AC4 PASS: the candidate adds only tests/test_h4b_regular_chat_brain_resume.py and
+  docs/AIOS-H4B-REGULAR-CHAT-BRAIN-RESUME-CONFORMANCE-v1.md; no production Python/workflow,
+  second router/reducer/store/scraper, ChatGPT Work wake dependency or mutation authority
+  is introduced.'
+- 'AC5 PASS: the conformance document defines one bounded real unresolved-checkpoint
+  procedure through the already-bound regular Chat, fresh canonical reconstruction,
+  unresolved/currentness checks, existing Flow Card resolution, at most one authority-correct
+  Reviewer continuation step, Human-boundary stop and same-conversation observability
+  without making conversation identity canonical truth.'
+- 'AC6 PASS: the document preserves the six H4A5 residual live-evidence gaps and reopen
+  triggers, explicitly states deterministic TASK acceptance does not prove the live
+  regular-Chat resume, and leaves H4B closure and H5 start to separate Human/Brain
+  planning actions.'
+- Post-RESULT live transport observation for RUN-285-001 returned DEFERRED/SURFACE_UNPROVEN
+  rather than a user-turn submission. This is outside TASK-285 deterministic acceptance
+  by explicit non-goal and is not a semantic finding against this candidate; it means
+  the live H4B observation remains UNPROVED and must not be inferred from this PASS.
+  Human/Brain must separately reconcile the resulting transport-risk evidence before
+  H4B closure or H5.
