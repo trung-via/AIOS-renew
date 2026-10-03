@@ -472,6 +472,9 @@ class GitSources:
 
     def __init__(self, path, git, remote):
         self.path, self.git, self.remote = path, git, remote
+        # This reader belongs to one disposable observation. Only successful
+        # exact-SHA fetches are reusable; mutable ref snapshots are never cached.
+        self._fetched = set()
 
     def refs(self, *patterns):
         values = {}
@@ -485,7 +488,10 @@ class GitSources:
 
     def fetch(self, sha):
         _value(sha, "sha")
+        if sha in self._fetched:
+            return
         self.git(self.path, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--refmap=", self.remote, sha)
+        self._fetched.add(sha)
 
     def document(self, sha, name):
         self.fetch(sha)
@@ -560,7 +566,7 @@ class ArtifactSources:
 
     def __init__(self, repository, deadline=None):
         self.repository = repository
-        self.deadline = deadline or time.monotonic() + 30
+        self.deadline = deadline if deadline is not None else time.monotonic() + 30
 
     def request(self, path, binary=False):
         remaining = self.deadline - time.monotonic()

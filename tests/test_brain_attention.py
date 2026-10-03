@@ -620,3 +620,103 @@ def test_shared_projector_has_no_generic_semantic_router_or_downstream_activatio
         assert forbidden not in source
     assert '.get("next_action")' not in source and '["next_action"]' not in source
     assert "parse_envelope" in source  # Structural source selectors, not a flow reducer.
+
+
+@pytest.fixture
+def publication_reader():
+    """A complete exact publication observation with mutable remote snapshots."""
+    root = "refs/heads/aios/"
+    refs = {root + name + "/" + IDENTITY["run_id"]: IDENTITY[key] for name, key in
+            (("artifacts", "artifact_sha"), ("review", "reviewed_sha"), ("review-decision", "decision_sha"))}
+    refs["refs/heads/main"] = "d" * 40
+    blobs = {
+        (IDENTITY["artifact_sha"], ".ai/transport/run.json"):
+            dict(run_id=IDENTITY["run_id"], task=dict(id="TASK-fixture", revision=1), head_sha=None),
+        (IDENTITY["artifact_sha"], ".ai/transport/result.json"):
+            dict(result=dict(head_sha=IDENTITY["reviewed_sha"])),
+        (IDENTITY["decision_sha"], ".ai/reviews/REVIEW-fixture-001.yaml"):
+            dict(review_id="REVIEW-fixture-001", reviewed_sha=IDENTITY["reviewed_sha"],
+                 mode="FULL", verdict="PASS", acceptance={}, findings=[]),
+        ("d" * 40, ".ai/roadmap-state.yaml"): dict(version=1, sequence=[]),
+    }
+    calls, snapshots = [], []
+    change = [None]
+
+    def git(path, *args):
+        calls.append(args)
+        if args[0] == "ls-remote":
+            snapshot = {ref: sha for ref, sha in refs.items()
+                        if any(fnmatchcase(ref, pattern) for pattern in args[3:])}
+            snapshots.append(args[3:])
+            if change[0]:
+                change[0](snapshot, snapshots)
+            return "\n".join(sha + "\t" + ref for ref, sha in snapshot.items())
+        if args[0] == "show":
+            sha, name = args[1].split(":", 1)
+            return json.dumps(blobs[sha, name])
+        if args[0] == "ls-tree":
+            return args[-1] if args[-1] != ".ai/reviews" else ".ai/reviews/REVIEW-fixture-001.yaml"
+        assert args[0] in {"init", "fetch", "rev-list"}
+        return ""
+
+    event = brain.project_observation(dict(boundary="PUBLICATION_PROVEN", **IDENTITY,
+                                           published_sha=IDENTITY["reviewed_sha"]), {}).event_id
+    return SimpleNamespace(git=git, calls=calls, snapshots=snapshots, refs=refs,
+                           blobs=blobs, change=change, event=event)
+
+
+def test_one_generic_observation_reuses_exact_sha_fetches_and_rereads_all_ref_barriers(monkeypatch, publication_reader):
+    fixture = publication_reader
+    monkeypatch.setattr(wake.CanonicalFreshness, "git", lambda self, path, *args: fixture.git(path, *args))
+    projection = wake.CanonicalFreshness(wake.REPOSITORY)
+    for observation in range(2):
+        fixture.calls.clear()
+        fixture.snapshots.clear()
+        assert projection.observe(fixture.event) == "UNRESOLVED"
+        fetched = [args[-1] for args in fixture.calls if args[0] == "fetch"]
+        assert len(fetched) == len(set(fetched)) == 4
+        assert set(fetched) == {IDENTITY["artifact_sha"], IDENTITY["decision_sha"],
+                                IDENTITY["reviewed_sha"], "d" * 40}
+        # Both independent observations reconstruct their own immutable store.
+        assert len(fixture.snapshots) == 5
+        assert fixture.snapshots[0] == fixture.snapshots[1]
+        assert fixture.snapshots[2:] == [("refs/heads/main",)] * 3
+
+
+@pytest.mark.parametrize("fault", ["review-moved", "main-moved-after-inclusion", "main-moved-after-roadmap",
+                                  "conflicting", "substituted", "unavailable", "malformed"])
+def test_immutable_fetch_reuse_cannot_hide_moved_conflicting_or_substituted_lineage(monkeypatch, publication_reader, fault):
+    fixture = publication_reader
+    def change(snapshot, snapshots):
+        if fault == "review-moved" and len(snapshots) == 2:
+            snapshot["refs/heads/aios/review/" + IDENTITY["run_id"]] = "e" * 40
+        if fault.startswith("main-moved") and len(snapshots) == (4 if fault.endswith("inclusion") else 5):
+            snapshot["refs/heads/main"] = "e" * 40
+        if fault == "conflicting":
+            snapshot["refs/heads/aios/failure-artifacts/" + IDENTITY["run_id"]] = "e" * 40
+    fixture.change[0] = change
+    if fault == "substituted":
+        fixture.blobs[IDENTITY["artifact_sha"], ".ai/transport/result.json"]["result"]["head_sha"] = "e" * 40
+    def git(self, path, *args):
+        if fault == "unavailable" and args[0] == "fetch":
+            raise brain.AttentionError("CANONICAL_UNKNOWN")
+        if fault == "malformed" and args[0] == "show":
+            return '{"duplicate":1,"duplicate":2}'
+        return fixture.git(path, *args)
+    monkeypatch.setattr(wake.CanonicalFreshness, "git", git)
+    assert wake.CanonicalFreshness(wake.REPOSITORY).observe(fixture.event) == "UNKNOWN"
+
+
+def test_optional_document_fetches_once_and_failed_fetch_is_never_remembered(tmp_path):
+    calls, unavailable = [], [True]
+    def git(path, *args):
+        calls.append(args)
+        if args[0] == "fetch" and unavailable[0]:
+            raise brain.AttentionError("CANONICAL_UNKNOWN")
+        return ".ai/identity.yaml" if args[0] == "ls-tree" else '{"version":1}' if args[0] == "show" else ""
+    sources = brain.GitSources(tmp_path, git, "fixture")
+    with pytest.raises(brain.AttentionError):
+        sources.optional_document("a" * 40, ".ai/identity.yaml")
+    unavailable[0] = False
+    assert sources.optional_document("a" * 40, ".ai/identity.yaml") == {"version": 1}
+    assert len([args for args in calls if args[0] == "fetch"]) == 2  # Failure, then one successful fetch.

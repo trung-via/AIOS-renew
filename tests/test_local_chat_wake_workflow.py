@@ -151,14 +151,14 @@ def test_binding_is_machine_local_and_dependency_is_isolated():
     parsed, text = workflow()
     steps = parsed["jobs"]["deliver"]["steps"]
     assert steps[0]["with"] == {"ref": "main", "persist-credentials": "false"}
-    delivery = steps[-1]
+    delivery = next(step for step in steps if step.get("id") == "admit")
     assert delivery["env"] == {
         "AIOS_WAKE_EVENT_ID": "${{ inputs.event_id }}", "AIOS_WAKE_REPOSITORY": "${{ inputs.repository }}",
         "AIOS_LOCAL_CHAT_WAKE_ENABLED": "${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}",
     }
     assert "python -m aios_renew.local_chat_wake" in delivery["run"]
     assert "exit $LASTEXITCODE" in delivery["run"]
-    assert ".[local-chat-wake]" in steps[-2]["run"]
+    assert any(".[local-chat-wake]" in step.get("run", "") for step in steps)
     assert "AIOS_LOCAL_CHAT_WAKE_CONFIG" not in delivery["env"]
     assert "chatgpt.com/c/" not in text and "secrets." not in text
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
@@ -210,9 +210,50 @@ def test_source_fan_in_is_read_only_bounded_and_enters_the_existing_local_lane()
     assert local["needs"] == "project"
     assert "has_events == 'true'" in local["if"]
     assert local["strategy"]["fail-fast"] == "false"
-    assert "aios_renew.local_chat_wake --event-id" in local["steps"][-1]["run"]
+    assert "aios_renew.local_chat_wake --event-id" in next(
+        step for step in local["steps"] if step.get("id") == "admit")["run"]
     assert "aios_renew.local_chat_wake --drain" in parsed["jobs"]["recheck"]["steps"][-1]["run"]
     assert "workflow_run.conclusion" not in text
     assert "createWorkflowDispatch" not in text and "actions: write" not in text
     assert "aios run" not in text and "aios repair" not in text and "aios remediate" not in text
     assert "chatgpt.com" not in text and "cdp_endpoint" not in text and "next_action" not in text
+
+
+@pytest.mark.parametrize("entry", ["deliver", "deliver-projected"])
+@pytest.mark.parametrize("outcome,cancelled,allowed", [
+    ("success", False, True), ("failure", False, True),
+    ("skipped", False, False), ("success", True, False), ("failure", True, False),
+])
+def test_admission_entries_offer_finite_follow_up_even_after_durable_intake_delivery_failure(entry, outcome, cancelled, allowed):
+    parsed, text = workflow()
+    job = parsed["jobs"][entry]
+    steps = job["steps"]
+    admission_index = next(i for i, step in enumerate(steps) if step.get("id") == "admit")
+    follow_up = steps[admission_index + 1]
+    expression = follow_up["if"].removeprefix("${{").removesuffix("}}").strip()
+    expression = expression.replace("!cancelled()", repr(not cancelled)).replace("steps.admit.outcome", repr(outcome))
+    assert bool(eval(expression.replace("&&", " and "), {"__builtins__": {}}, {})) is allowed
+    assert "--drain --rechecks 2 --interval 15" in follow_up["run"]
+    assert "--event-id" not in follow_up["run"] and "brain_attention" not in follow_up["run"]
+    assert "AIOS_WAKE_EVENT_ID" not in follow_up["env"]
+    assert follow_up["env"]["AIOS_LOCAL_CHAT_WAKE_ENABLED"] == "${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}"
+    assert follow_up["env"]["AIOS_WAKE_REPOSITORY"] == (
+        "${{ inputs.repository }}" if entry == "deliver" else "${{ github.repository }}")
+    assert int(job["timeout-minutes"]) == 5
+    assert "schedule" not in job["if"] and "schedule" not in follow_up["if"]
+    assert set(job.get("permissions", parsed["permissions"])) <= {"contents", "actions"}
+    assert all(value == "read" for value in job.get("permissions", parsed["permissions"]).values())
+    for forbidden in ("actions: write", "repository_dispatch", "workflow_dispatch", "createWorkflowDispatch",
+                      "secrets.", "next_action", "ChatGPT Work"):
+        assert forbidden not in text
+
+
+def test_schedule_is_documented_as_best_effort_and_both_delivery_entries_have_local_follow_up():
+    parsed, text = workflow()
+    assert "cron cadence is not a liveness guarantee" in text
+    assert all("--drain --rechecks 2 --interval 15" in parsed["jobs"][entry]["steps"][-1]["run"]
+               for entry in ("deliver", "deliver-projected"))
+    document = (ROOT / "docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md").read_text(encoding="utf-8")
+    for fact in ("37083846294", "11260375137", "37053912495", "37075944497", "CANONICAL_UNKNOWN",
+                 "Human/Brain", "already-handled", "H4A5 closure", "H4B readiness"):
+        assert fact in document

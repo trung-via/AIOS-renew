@@ -69,6 +69,59 @@ completion. This does not weaken source, chat-target, generation or Send guards.
 Exact PASS lineage and canonical-main inclusion remain publication-success gates;
 the handoff cannot publish a candidate, reconcile planning or change roadmap state.
 
+## TASK-282 bounded recovery and observed replay limits
+
+The Human-authorized publication replay of RUN-280-002 in publisher workflow
+`37083846294` completed successfully and exported publication attention artifact
+`11260375137`. The direct reusable handoff and completed-source `workflow_run`
+fallback reconstructed an identical exact publication-success event identity.
+Both local-wake receipts were `DEFERRED` with reason `CANONICAL_UNKNOWN` after
+approximately the existing thirty-second observation window. Those receipts prove
+durable pre-submit deferral, not an exact regular-Chat user turn or H4A5 closure.
+
+Scheduled local-wake runs `37053912495` and `37075944497` showed that the bounded
+recheck command can execute when invoked. No new scheduled run was observed after
+publication replay `37083846294` despite waiting beyond one configured five-minute
+interval. The observed schedule cadence is non-guaranteed: cron remains optional
+best-effort recovery and supplies no correctness SLA or eventual-delivery guarantee.
+
+Each exact freshness observation now starts its own thirty-second deadline,
+including later FIFO subjects and later pre-send barriers. GitSources and
+ArtifactSources share that observation's deadline; each Git operation remains
+capped at fifteen seconds and each API operation at ten seconds. A successful
+exact-SHA fetch may be reused only by that observation's disposable reader. A later
+observation reconstructs a new store and re-fetches its own exact evidence. Mutable
+refs are never cached: the existing before/after lineage, inclusion and planning
+snapshots remain fresh reads. Unavailable, malformed, moved, conflicting or
+time-exhausted evidence remains UNKNOWN and cannot authorize submission.
+
+Both reusable `deliver` and `workflow_run` `deliver-projected` intake jobs now offer
+an in-job follow-up using the existing local `--drain` contract. It runs after an
+attempted intake even when delivery failed, since inbox admission can have survived
+a lane-lock conflict or delivery failure. It performs at most two finite passes,
+with one fifteen-second interval, under the unchanged five-minute job timeout.
+It processes only already-admitted bounded local lane work and creates or classifies
+no semantic attention subject. A submission, exact submission proof or ambiguity
+hold ends rechecks in that invocation. Ineligible or interrupted work remains
+durable; the follow-up offers another bounded opportunity, not unlimited retries.
+The optional later scheduled drain uses the same lane lock, FIFO/one-flight,
+exact-event dedupe, generation, browser/privacy and no-resend rules. AMBIGUOUS work
+remains proof-only, including when direct, fallback and follow-up paths race.
+No actions-write permission, workflow self-dispatch, repository_dispatch, PAT/App
+secret, daemon, polling service, semantic retry authority or ChatGPT Work dependency
+is introduced. PublicationReport semantics and publication truth are unchanged.
+
+Already-handled old publication-success subjects may still be unresolved in the
+durable FIFO lane. Human chat activity and manual continuation do not canonically
+supersede those subjects. Before a post-publication live wake proof, separate
+Human/Brain canonical planning reconciliation must record the exact already-handled
+subjects through their required DONE/completed_by lineage, or otherwise supply the
+existing exact canonical successor proof. That planning mutation is outside
+TASK-282 transport implementation; transport cannot infer it, bypass old FIFO work,
+close H4A5 or authorize H4B. Deterministic regression coverage of budgets, immutable
+retrieval, concurrent follow-ups and duplicate identities does not claim H4A5 closure
+or H4B readiness. A live wake proof remains a separately authorized Human procedure.
+
 ## Family/source matrix
 
 | Family | Exact source and eligibility |

@@ -3,6 +3,8 @@
 import json
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event as ThreadEvent
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -511,6 +513,183 @@ def test_drain_is_gate_bound_and_does_not_admit_any_subject(monkeypatch, binding
 def test_drain_bounds_and_admission_modes_fail_closed(arguments, capsys):
     assert wake.main(arguments + ["--repository", wake.REPOSITORY]) == 1
     assert json.loads(capsys.readouterr().out)["reason"] == "INVALID_INPUT"
+
+
+def test_queued_generic_subjects_and_later_barriers_have_independent_bounded_observations(monkeypatch, binding):
+    first = generic_event()
+    original = attention.parse_event_id(first)
+    second = attention.attention(original.family, dict(original.selectors, run_id="RUN-fixture-002")).event_id
+    adapter = RecoveryAdapter(binding, "DRAFT_PRESENT")
+    deliver(first, wake.REPOSITORY, binding, lambda _: adapter)
+    deliver(second, wake.REPOSITORY, binding, lambda _: adapter)
+    now, windows = [100.0], []
+    monkeypatch.setattr(wake.time, "monotonic", lambda: now[0])
+    projection = wake.CanonicalFreshness(wake.REPOSITORY)
+    now[0] += 100  # Idle time after construction must not consume an observation.
+    monkeypatch.setattr(projection, "git", lambda *_: "")
+    def freshness(item, sources, artifacts):
+        windows.append((item.event_id, artifacts.deadline - now[0]))
+        assert artifacts.deadline == projection.deadline
+        now[0] += 31 if item.event_id == first else 5
+        return "UNRESOLVED" if item.event_id == first else "RESOLVED"
+    monkeypatch.setattr(attention, "freshness", freshness)
+    receipts = wake.operate(wake.REPOSITORY, binding, adapter_factory=lambda _: adapter, projection=projection)
+    assert [(r["event_id"], r["reason"]) for r in receipts] == [
+        (first, "CANONICAL_UNKNOWN"), (second, "CANONICALLY_RESOLVED")]
+    assert windows == [(first, 30), (second, 30)]
+    assert stored(binding)["events"][first]["status"] == "DEFERRED"
+    assert stored(binding)["events"][second]["status"] == "RESOLVED_NOOP"
+    assert projection.observe(second) == "RESOLVED"
+    assert windows[-1] == (second, 30)
+    assert not adapter.submits
+
+
+def test_git_operation_ceiling_and_success_after_subject_deadline_fail_closed(monkeypatch, tmp_path):
+    now, timeouts = [100.0], []
+    monkeypatch.setattr(wake.time, "monotonic", lambda: now[0])
+    projection = wake.CanonicalFreshness(wake.REPOSITORY)
+    projection.deadline = 130
+    def run(command, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        return SimpleNamespace(returncode=0, stdout=b"")
+    monkeypatch.setattr(wake.subprocess, "run", run)
+    projection.git(tmp_path, "init")
+    now[0] = 125
+    projection.git(tmp_path, "ls-remote")
+    assert timeouts == [15, 5]
+    def exhausted(command, **kwargs):
+        now[0] = 130
+        return run(command, **kwargs)
+    monkeypatch.setattr(wake.subprocess, "run", exhausted)
+    with pytest.raises(wake.WakeBlocked, match="CANONICAL_UNKNOWN"):
+        projection.git(tmp_path, "ls-remote")
+    count = len(timeouts)
+    with pytest.raises(wake.WakeBlocked, match="CANONICAL_UNKNOWN"):
+        projection.git(tmp_path, "ls-remote")
+    assert len(timeouts) == count
+
+
+def test_recovery_unwrapping_cannot_extend_the_original_subject_observation_window(monkeypatch):
+    original = generic_event()
+    recovery = attention.attention(attention.RECOVERY, dict(original_event_id=original)).event_id
+    now = [100.0]
+    monkeypatch.setattr(wake.time, "monotonic", lambda: now[0])
+    parse = attention.parse_event_id
+    def parse_with_cost(event_id):
+        now[0] += 5
+        return parse(event_id)
+    monkeypatch.setattr(attention, "parse_event_id", parse_with_cost)
+    projection = wake.CanonicalFreshness(wake.REPOSITORY)
+    monkeypatch.setattr(projection, "git", lambda *_: "")
+    def freshness(item, sources, artifacts):
+        assert item.event_id == original
+        assert artifacts.deadline == 130
+        now[0] = 131
+        return "UNRESOLVED"
+    monkeypatch.setattr(attention, "freshness", freshness)
+    assert projection.observe(recovery) == "UNKNOWN"
+
+
+def test_api_operation_ceiling_uses_the_subject_deadline_and_rejects_late_success(monkeypatch):
+    import urllib.request
+    now, timeouts = [100.0], []
+    monkeypatch.setattr(attention.time, "monotonic", lambda: now[0])
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def read(self, limit):
+            return b"{}"
+    def open_request(request, timeout):
+        timeouts.append(timeout)
+        return Response()
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *_: SimpleNamespace(open=open_request))
+    artifacts = attention.ArtifactSources(wake.REPOSITORY, deadline=130)
+    assert artifacts.request("/fixture") == {}
+    now[0] = 125
+    assert artifacts.request("/fixture") == {}
+    assert timeouts == [10, 5]
+    def late_read(self, limit):
+        now[0] = 131
+        return b"{}"
+    monkeypatch.setattr(Response, "read", late_read)
+    with pytest.raises(attention.AttentionError, match="SOURCE_TIMEOUT"):
+        artifacts.request("/fixture")
+    count = len(timeouts)
+    with pytest.raises(attention.AttentionError, match="SOURCE_TIMEOUT"):
+        artifacts.request("/fixture")
+    assert len(timeouts) == count
+
+
+def test_follow_up_drain_retries_unknown_without_schedule_and_stops_after_one_submission(monkeypatch, binding):
+    first, second = generic_event(), EVENT.replace("001", "002")
+    adapter = RecoveryAdapter(binding)
+    for event in (first, second):
+        deliver(event, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("UNKNOWN"))
+    monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_ENABLED", "true")
+    monkeypatch.setattr(wake, "load_binding", lambda *_: binding)
+    original_operate, passes, sleeps = wake.operate, [], []
+    def operate(*args, **kwargs):
+        passes.append(len(passes))
+        # Freshness becomes available at the finite second opportunity.
+        value = "UNKNOWN" if len(passes) == 1 else "UNRESOLVED"
+        return original_operate(*args, adapter_factory=lambda _: adapter, projection=Projection(value), **kwargs)
+    monkeypatch.setattr(wake, "operate", operate)
+    monkeypatch.setattr(wake.time, "sleep", lambda interval: sleeps.append(interval))
+    assert wake.main(["--drain", "--rechecks", "8", "--interval", "15", "--repository", wake.REPOSITORY]) == 0
+    assert len(passes) == 2 and sleeps == [15]
+    assert len(adapter.submits) == 1 and first in adapter.submits[0]
+    assert stored(binding)["events"][second]["status"] == "DEFERRED"
+    assert stored(binding)["flight"]["event_id"] == first
+
+
+@pytest.mark.parametrize("proof", [True, False])
+def test_duplicate_direct_fallback_concurrent_follow_ups_and_optional_schedule_never_resend(monkeypatch, binding, proof):
+    from test_brain_attention import IDENTITY
+    source = attention.source_document([dict(boundary="PUBLICATION_PROVEN", **IDENTITY,
+                                              published_sha=IDENTITY["reviewed_sha"])])
+    pointer = dict(workflow_run_id=100, run_attempt=1, artifact_id=200, source_digest=attention.digest(source))
+    direct = attention.project_source(source, pointer)[0].event_id
+    fallback = attention.project_source(attention.load_json(attention.canonical(source)), pointer)[0].event_id
+    assert direct == fallback
+    second = EVENT.replace("001", "002")
+    adapter = RecoveryAdapter(binding, proof=proof)
+    for event in (direct, fallback, second):
+        deliver(event, wake.REPOSITORY, binding, lambda _: adapter, projection=Projection("UNKNOWN"))
+    assert list(stored(binding)["events"]) == [direct, second]
+    entered, release = ThreadEvent(), ThreadEvent()
+    original_check = adapter.check
+    def check(text):
+        entered.set()
+        assert release.wait(5)
+        original_check(text)
+    adapter.check = check
+    original_operate = wake.operate
+    def operate(repository, selected_binding, event_id=None, adapter_factory=None,
+                projection=None, binding_provider=None, compact=False):
+        return original_operate(repository, selected_binding, event_id,
+                                lambda _: adapter, Projection(), binding_provider, compact)
+    monkeypatch.setattr(wake, "operate", operate)
+    monkeypatch.setenv("AIOS_LOCAL_CHAT_WAKE_ENABLED", "true")
+    monkeypatch.setattr(wake, "load_binding", lambda *_: binding)
+    command = ["--drain", "--rechecks", "2", "--interval", "0", "--repository", wake.REPOSITORY]
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_drain = executor.submit(wake.main, command)
+        try:
+            assert entered.wait(5)
+            assert executor.submit(wake.main, command).result(timeout=5) == 1
+            # Intake remains durable during the competing lane lock.
+            assert wake.deliver(direct, wake.REPOSITORY, binding)["reason"] == "STATE_LOCKED_OR_UNAVAILABLE"
+        finally:
+            release.set()
+        assert first_drain.result(timeout=5) == 0
+    # An optional later scheduled invocation uses exactly the same drain.
+    assert wake.main(command) == 0
+    assert len(adapter.submits) == 1 and direct in adapter.submits[0]
+    assert stored(binding)["events"][direct]["status"] == ("SUBMITTED" if proof else "AMBIGUOUS")
+    assert stored(binding)["events"][second]["status"] == "DEFERRED"
+    assert stored(binding)["flight"]["event_id"] == direct
 
 
 def synthetic_url(number=1):

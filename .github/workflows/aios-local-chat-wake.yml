@@ -10,6 +10,7 @@ on:
       - AIOS auto-publish reviewed candidate
     types: [completed]
   schedule:
+    # Optional best-effort recovery; cron cadence is not a liveness guarantee.
     - cron: '*/5 * * * *'
   workflow_call:
     inputs:
@@ -97,6 +98,7 @@ jobs:
           python -m pip install --disable-pip-version-check '.[local-chat-wake]'
           exit $LASTEXITCODE
       - name: Admit into the existing durable project lane
+        id: admit
         env:
           AIOS_WAKE_EVENT_ID: ${{ matrix.event_id }}
           AIOS_WAKE_REPOSITORY: ${{ github.repository }}
@@ -105,6 +107,18 @@ jobs:
         shell: powershell
         run: |
           python -m aios_renew.local_chat_wake --event-id $env:AIOS_WAKE_EVENT_ID --repository $env:AIOS_WAKE_REPOSITORY
+          exit $LASTEXITCODE
+      - name: Bounded follow-up for admitted lane work
+        # Intake can persist in the inbox even when the lane lock is held or
+        # delivery fails. Drain that existing work after either intake outcome.
+        if: ${{ !cancelled() && steps.admit.outcome != 'skipped' }}
+        env:
+          AIOS_WAKE_REPOSITORY: ${{ github.repository }}
+          AIOS_LOCAL_CHAT_WAKE_ENABLED: ${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          python -m aios_renew.local_chat_wake --drain --rechecks 2 --interval 15 --repository $env:AIOS_WAKE_REPOSITORY
           exit $LASTEXITCODE
 
   deliver:
@@ -131,6 +145,7 @@ jobs:
           python -m pip install --disable-pip-version-check '.[local-chat-wake]'
           exit $LASTEXITCODE
       - name: Deliver bounded local doorbell
+        id: admit
         # AIOS_LOCAL_CHAT_WAKE_CONFIG is inherited from the runner machine.
         # Binding, endpoint and persistent state are never GitHub inputs.
         env:
@@ -141,8 +156,17 @@ jobs:
         run: |
           python -m aios_renew.local_chat_wake --event-id $env:AIOS_WAKE_EVENT_ID --repository $env:AIOS_WAKE_REPOSITORY
           exit $LASTEXITCODE
+      - name: Bounded follow-up for admitted lane work
+        if: ${{ !cancelled() && steps.admit.outcome != 'skipped' }}
+        env:
+          AIOS_WAKE_REPOSITORY: ${{ inputs.repository }}
+          AIOS_LOCAL_CHAT_WAKE_ENABLED: ${{ vars.AIOS_LOCAL_CHAT_WAKE_ENABLED }}
+        shell: powershell
+        run: |
+          python -m aios_renew.local_chat_wake --drain --rechecks 2 --interval 15 --repository $env:AIOS_WAKE_REPOSITORY
+          exit $LASTEXITCODE
   recheck:
-    # This timer drains only previously admitted machine-local subjects.
+    # Best-effort fallback only: drains previously admitted machine-local subjects.
     if: >-
       vars.AIOS_LOCAL_CHAT_WAKE_ENABLED == 'true' &&
       github.repository == 'trung-via/AIOS-renew' &&

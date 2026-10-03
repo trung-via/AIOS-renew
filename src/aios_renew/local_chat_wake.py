@@ -371,7 +371,6 @@ class CanonicalFreshness:
 
     def __init__(self, repository):
         self.remote = "https://github.com/" + repository + ".git"
-        self.deadline = time.monotonic() + 30
 
     def git(self, path, *args):
         remaining = self.deadline - time.monotonic()
@@ -380,16 +379,20 @@ class CanonicalFreshness:
         process = subprocess.run(["git", "-C", str(path), *args], capture_output=True,
                                  timeout=min(15, remaining), check=False,
                                  env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
-        if process.returncode or len(process.stdout) > MAX_BYTES:
+        if process.returncode or len(process.stdout) > MAX_BYTES or time.monotonic() >= self.deadline:
             raise WakeBlocked("CANONICAL_UNKNOWN")
         return process.stdout.decode("utf-8", errors="strict").strip()
 
     def observe(self, event_id):
+        # Lane passes and pre-send barriers use this reader sequentially. Each
+        # exact observation starts afresh; prior subjects cannot spend its budget.
+        self.deadline = time.monotonic() + 30
         from .brain_attention import RECOVERY, parse_event_id
         try:
             item = parse_event_id(event_id)
             if item.family == RECOVERY:
-                return self.observe(item.selectors["original_event_id"])
+                event_id = item.selectors["original_event_id"]
+                item = parse_event_id(event_id)
             if not event_id.startswith("terminal:"):
                 from .brain_attention import ArtifactSources, GitSources, freshness
                 with tempfile.TemporaryDirectory(prefix="aios-attention-observe-") as location:
@@ -397,7 +400,8 @@ class CanonicalFreshness:
                     self.git(path, "init", "--bare", "--quiet")
                     sources = GitSources(path, self.git, self.remote)
                     repository = self.remote.removeprefix("https://github.com/").removesuffix(".git")
-                    return freshness(item, sources, ArtifactSources(repository, self.deadline))
+                    value = freshness(item, sources, ArtifactSources(repository, self.deadline))
+                    return value if time.monotonic() < self.deadline else "UNKNOWN"
         except Exception:
             return "UNKNOWN"
         from .terminal_attention import _load_yaml
@@ -497,6 +501,8 @@ class CanonicalFreshness:
                         return "UNKNOWN"
                     previous = sha
                 if refs() != observed:
+                    return "UNKNOWN"
+                if time.monotonic() >= self.deadline:
                     return "UNKNOWN"
                 return "RESOLVED" if resolved else "UNRESOLVED"
         except Exception:
@@ -1046,8 +1052,13 @@ def main(argv=None) -> int:
             for index in range(args.rechecks):
                 if os.environ.get("AIOS_LOCAL_CHAT_WAKE_ENABLED") != "true":
                     raise WakeBlocked("ENABLE_GATE_CLOSED")
-                for receipt in operate(args.repository, provider(), binding_provider=provider, compact=args.compact):
+                receipts = operate(args.repository, provider(), binding_provider=provider, compact=args.compact)
+                for receipt in receipts:
                     print(json.dumps(receipt, sort_keys=True))
+                # One invocation gets at most one possible submission. A proof
+                # or ambiguity hold also ends rechecks; neither permits resend.
+                if any(receipt["status"] in {"SUBMITTED", "BLOCKED"} for receipt in receipts):
+                    break
                 if index + 1 < args.rechecks:
                     time.sleep(args.interval)
             return 0  # Held work is reported, never converted into resend permission.
