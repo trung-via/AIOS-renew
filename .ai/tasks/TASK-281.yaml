@@ -1,0 +1,98 @@
+task_id: TASK-281
+revision: 1
+goal: Repair idempotent publication replay for reviewed integrated correction lineages
+  whose exact reviewed candidate is already contained in canonical main, while preserving
+  stale/conflict protection for any publication that would mutate main.
+problem: Live H4A5 replay workflow 37080008668 used RUN-280-002 after its reviewed
+  candidate aa0648049194d8d51b2b04cd23b1bd0d46e71db5 had already been published. Publication
+  rejected the integrated execution base because its historical authorized_main_sha
+  abc2aba3afd601dafbdda77647fd213a18dfe395 was stale before existing ALREADY_PUBLISHED/ALREADY_INCLUDED
+  no-op classification could occur. Equality-only handling is insufficient because
+  after later canonical commits the reviewed candidate becomes an ancestor rather
+  than exact main.
+assumptions:
+- REVIEW-280-002 is canonical PASS and candidate aa0648049194d8d51b2b04cd23b1bd0d46e71db5
+  has already been published.
+- TASK-280 direct Publisher-to-local-wake transport is already reviewed and published;
+  TASK-281 does not change that transport.
+- PUBLISHED, ALREADY_PUBLISHED and ALREADY_INCLUDED remain Publisher-owned publication
+  outcomes.
+- Integrated REMEDIATION and integrated REPAIR share the correction execution-base
+  lineage contract.
+scope:
+  inspect:
+  - docs/AIOS-CONSTITUTION.md
+  - docs/CHATGPT_PROJECT_CONTRACT.md
+  - .ai/roadmap-state.yaml
+  - .ai/tasks/TASK-280.yaml
+  - src/aios_renew/publication.py
+  - src/aios_renew/brain_attention.py
+  - .github/workflows/aios-auto-publish.yml
+  - tests/test_publication.py
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+  modify:
+  - src/aios_renew/publication.py
+  - tests/test_publication.py
+  - docs/AIOS-H4A5-COMPLETE-ATTENTION-COVERAGE-CONFORMANCE-v1.md
+non_goals:
+- Change TASK-280, RUN-280-002, REVIEW-280-002 or historical correction-integration
+  artifacts.
+- Modify auto-publish workflow wiring, brain_attention, local regular-Chat wake transport,
+  browser/CDP, event identity or dedupe.
+- Permit a push merely because historical authorized_main_sha is stale.
+- Skip immutable review, RESULT, predecessor, integration-ref, integration-id, candidate
+  or correction-frontier validation.
+- Create retry, routing, correction-selection, review, publication or roadmap authority.
+- Claim H4A5 live conformance from deterministic tests.
+constraints:
+  hard:
+  - Historical integrated authorized_main_sha mismatch may be tolerated only for a
+    no-mutation outcome after exact lineage is otherwise valid and reviewed_sha is
+    proven equal to or an ancestor of current canonical main.
+  - ALREADY_PUBLISHED requires current main == reviewed_sha; ALREADY_INCLUDED requires
+    reviewed_sha to be an ancestor of current main; neither may push or rewrite main.
+  - Exact REVIEW, RESULT, predecessor, integration identity, integration candidate,
+    integration ref and correction lineage validation must remain mandatory before
+    either no-op result.
+  - If current main does not contain reviewed_sha, stale integrated authorized_main_sha
+    must continue to fail closed before mutation.
+  - Normal publication from the exact authorized integrated base remains unchanged.
+  - Apply the no-op inclusion rule consistently to integrated REMEDIATION and integrated
+    REPAIR rather than special-casing RUN-280-002.
+  - PublicationReport and brain_attention publication-success interpretation remain
+    unchanged.
+  - Do not modify workflow, brain_attention, local-wake, correction-integration, Reviewer
+    or roadmap mutation mechanisms.
+  - Executor changes only the authorized files and must not claim live H4A5 conformance.
+  - Runtime owns verification, Reviewer owns semantic verdict, Publisher owns publication,
+    Human/Brain owns roadmap closure.
+acceptance:
+- id: AC1
+  condition: A valid integrated REMEDIATION whose reviewed_sha equals current main
+    returns ALREADY_PUBLISHED with zero push despite an older historical authorized_main_sha.
+- id: AC2
+  condition: A valid integrated REMEDIATION or integrated REPAIR whose reviewed_sha
+    is a strict ancestor of current main returns ALREADY_INCLUDED with zero push despite
+    an older historical authorized_main_sha.
+- id: AC3
+  condition: When current main does not contain reviewed_sha, stale integrated authorized_main_sha
+    continues to reject publication before any push.
+- id: AC4
+  condition: Missing, moved, forged or mismatched integration, predecessor, REVIEW,
+    RESULT or correction lineage cannot be converted into a successful no-op by candidate
+    ancestry.
+- id: AC5
+  condition: Normal integrated publication, ordinary PRIMARY publication, exact-sha
+    concurrency protection and existing non-integrated no-op behavior remain unchanged.
+- id: AC6
+  condition: PublicationReport and existing brain_attention success projection remain
+    unchanged and no workflow, local-wake, retry or roadmap authority is added.
+- id: AC7
+  condition: The H4A5 conformance document records workflow 37080008668 as the stale
+    integrated-replay ordering blocker and requires a separately Human-authorized
+    live replay only after TASK-281 reviewed publication.
+verification:
+  policy: minimum-sufficient-v1
+  required:
+  - python -m pytest -q tests/test_publication.py
+  - git diff --check
