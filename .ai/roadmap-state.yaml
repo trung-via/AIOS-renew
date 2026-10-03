@@ -4083,10 +4083,22 @@ sequence:
   - id: brain-runtime-semantic-handoff-hardening-v1-h4b-surface-observability-hardening
     status: NEXT
     phase: H4B_SURFACE_OBSERVABILITY_HARDENING
+    task_id: TASK-286
+    task_revision: 1
+    task_author_commit_sha: "8bc6eb4915c5045d3475bcaf5769987bae7ab67c"
+    task_blob_sha: "18a94a997915f2972be9ef9c118c63e9f4411289"
+    authoring_issue_number: 1414
+    audit_profile: brain-high-value-v3
+    audit_stages:
+      - CONSTRUCT
+      - ADVERSARIAL_AUDIT_AND_RECONCILE
+    packet_fingerprint: "bea9015c4414cd7c00eba793021181b8285988dc8d96f7fc092f62d75ee22221"
+    construct_fingerprint: "88595e489f61392ee25e5c45ba1503dde26f55bdd26946c7ec42e69def111e2e"
+    reconciled_candidate_fingerprint: "6932d2e7ba4e0a3ab8237f98a2c43452a9198b4ce66f1bdf119e32f106589db0"
     authority: HUMAN_BRAIN_PLANNING
     approved_on: "2026-10-03"
     parent_milestone: brain-runtime-semantic-handoff-hardening-v1-h4b-regular-chat-brain-resume
-    task_authoring_status: PENDING
+    task_authoring_status: CANONICALIZED
     objective: >-
       Harden the current local regular-Chat pre-submit surface observation so a retry-safe
       SURFACE_UNPROVEN deferral reports a bounded privacy-safe structural cause instead of
@@ -4124,10 +4136,18 @@ sequence:
         - NEW_TASK_MUST_NOT_EXIST_SOLELY_TO_MANUFACTURE_H4B_LIVE_EVIDENCE
         - NO_H5_ADVANCE_BEFORE_H4B_LIVE_CLOSURE
     current_live_blocker:
-      code: H4B_SURFACE_UNPROVEN_CAUSE_OPAQUE
+      code: H4B_TASK_286_EXECUTOR_SELECTION_PENDING
+      authority: HUMAN
+      task_binding: TASK-286
       root_cause_class: PRE_SUBMIT_SURFACE_OBSERVABILITY_GAP
-      next_action: BRAIN_AUTHOR_FOLLOW_UP_TASK
-    remaining_gate: FOLLOW_UP_TASK_AUTHORING
+      next_action: HUMAN_SELECT_EXECUTOR_MODEL_EFFORT
+      prohibitions:
+        - NO_PRIMARY_BEFORE_HUMAN_EXECUTION_SELECTION
+        - NO_EXECUTOR_REUSE_FROM_TASK_285
+        - NO_TIMEOUT_BUDGET_INCREASE
+        - NO_BLIND_REPLAY_OR_REDRAIN
+        - NO_H5_ADVANCE_BEFORE_H4B_LIVE_CLOSURE
+    remaining_gate: TASK_286_HUMAN_EXECUTION_SELECTION
 
   - id: github-chatgpt-brain-wake-automation-v1-real-conformance
     status: DONE
