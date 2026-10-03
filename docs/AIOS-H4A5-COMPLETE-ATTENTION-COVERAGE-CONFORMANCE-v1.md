@@ -398,3 +398,33 @@ claims live regular-Chat conformance, planning completion, H4A5 closure or H4B r
 Assess these observations separately from implementation and Runtime verification.
 Do not mark live conformance, roadmap closure, Human planning reconciliation or H4B
 resume complete merely because source artifacts or synthetic tests exist.
+
+
+## Closure disposition — 2026-10-03
+
+Human explicitly accepted the remaining bounded live-evidence gaps as residual
+conformance risk for the H4A5 milestone and asked Brain to evaluate closure. This
+risk acceptance does not turn an unobserved live case into PASS, does not waive a
+known engineering defect, does not fabricate lifecycle evidence, and does not
+alter Runtime/Reviewer/Publisher truth.
+
+Brain closes H4A5 as a Human/Brain planning milestone because the reviewed and
+published implementation lineage through TASK-284 has no current established
+engineering defect; the core regular-Chat publication-success path, RESULT and
+FAILURE attention paths, exact freshness resolution, dedupe, state-only recovery
+safety and permanent compaction/tombstone replay have bounded live evidence; and
+the complete family/progress semantics retain deterministic coverage. The
+remaining strict-live gaps require unavailable real source evidence or separately
+authorized operational setup rather than a known implementation correction.
+
+The strict live matrix therefore remains **INCOMPLETE**. The accepted residual
+risk register continues to include: representative families without a current
+exact eligible source, full immutable progress-zero-wake observation coverage,
+the Human-draft stale-source variant, second-lane live isolation, Human-owned
+binding-generation rollover/race, and generic recovery-family live observation.
+Future contrary evidence reopens the affected risk.
+
+This closure removes H4A5 as a prerequisite blocker only. It does **not**
+automatically start H4B. H4B regular-Chat Brain resume remains a separate
+Human-authorized planning step, and no lifecycle or engineering-state artifact is
+created by this closure decision.
