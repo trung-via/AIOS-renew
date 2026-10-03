@@ -486,11 +486,15 @@ sequence:
       executor: codex
       model: gpt-6.1-sol
       reasoning_effort: xhigh
-      status: HUMAN_AUTHORIZED_PENDING_CARRIER_SUBMISSION
+      status: DISPATCH_ACCEPTED
+      issue_number: 1435
+      carrier_workflow_run_id: 37133258986
+      primary_workflow_run_id: 37133274873
+      execution_outcome: NOT_OBSERVED
     current_live_blocker:
-      code: TASK_289_PRIMARY_DISPATCH_PENDING
-      authority: HUMAN_RUNTIME
-      next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
+      code: TASK_289_PRIMARY_EXECUTION_IN_PROGRESS
+      authority: AIOS_RUNTIME
+      next_action: OBSERVE_PRIMARY_TERMINAL_RESULT_OR_FAILURE
       global_drain_authorized: false
       prohibitions:
         - NO_EXECUTOR_MODEL_EFFORT_SUBSTITUTION
@@ -4139,11 +4143,11 @@ sequence:
         that exact regular-Chat user turn, so successful review/publication cannot be
         used retrospectively as live semantic-resume proof.
     current_live_blocker:
-      code: H4B_TASK_289_PRIMARY_DISPATCH_PENDING
-      authority: HUMAN_RUNTIME
+      code: H4B_TASK_289_PRIMARY_EXECUTION_IN_PROGRESS
+      authority: AIOS_RUNTIME
       task_binding: TASK-289
       source_task_binding: TASK-288
-      task_status: HUMAN_AUTHORIZED_PENDING_PRIMARY_DISPATCH
+      task_status: PRIMARY_DISPATCH_ACCEPTED_EXECUTION_OUTCOME_NOT_OBSERVED
       latest_published_hardening_task: TASK-288
       latest_reviewed_hardening_run: RUN-288-002
       stale_failure_subject: RUN-288-001
@@ -4156,7 +4160,7 @@ sequence:
         that a later successful TASK revision supersedes that older FAILURE. With no
         active flight, an unrestricted drain could therefore attempt a stale FAILURE
         wake instead of retiring it as canonical Human/Brain supersession.
-      next_action: SUBMIT_EXACT_PRIMARY_WAKEUP_REQUEST
+      next_action: OBSERVE_TASK_289_TERMINAL_RESULT_OR_FAILURE
       prohibitions:
         - NO_GLOBAL_DRAIN_WHILE_RUN_288_001_FRESHNESS_REMAINS_UNRESOLVED
         - NO_MANUAL_STATE_RECLASSIFICATION_WITHOUT_CANONICAL_SUCCESSOR_PROOF
